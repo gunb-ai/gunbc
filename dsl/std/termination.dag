@@ -211,18 +211,20 @@ type ProofEdge {
   evidence: List<DescentEvidence>   // one per dimension, same order
 }
 
-// Verify a termination proof: every cycle must have lexicographic descent
+// Verify a termination proof: every cycle must have lexicographic descent.
+// DECLARATION ONLY — this function defines the concept. The actual
+// implementation lives in complexity.dag as proof_has_non_descending_cycle.
+// When complexity.dag imports from std.termination (post-bootstrap), this
+// becomes the single authority and proof_has_non_descending_cycle delegates here.
 fn is_valid_proof(proof: TerminationProof, edges: List<ProofEdge>) -> Bool {
   // For every cycle in the call graph formed by edges,
   // the product of evidence along the cycle must be
   // lexicographically decreasing (at least one Strict
   // in the highest non-NonIncreasing dimension).
   //
-  // Implementation: check that the ProgressSame subgraph
+  // Algorithm: check that the NonIncreasing-only subgraph
   // (edges where ALL dimensions are NonIncreasing) has no cycles.
-  // This is the same algorithm as same_progress_subgraph_has_cycle
-  // but generalized to multiple dimensions.
-  false // fail-closed: actual cycle-checking implementation lives in complexity.dag (proof_has_non_descending_cycle)
+  false // fail-closed: not yet wired as consumer (bootstrap constraint)
 }
 
 // =========================================================================
