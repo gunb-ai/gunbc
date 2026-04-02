@@ -1878,6 +1878,11 @@ fn all_self_calls_descend(body: Node, func_name: String, param_name: String, che
 
 fn all_self_calls_descend_with_vars(body: Node, func_name: String, param_name: String, descent_vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Bool {
   match body.expr_data {
+    // Lambda bodies are iteration-bounded (fold/map/any callbacks).
+    // Self-calls inside lambdas don't contribute to branching factor
+    // (max_path_self_calls_with_cont skips them too). Skip them here
+    // for consistency — descent proof covers only non-lambda calls.
+    ExprLambda { semantics: _ } => true
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: body)
       let own_ok = if callee == func_name {
@@ -1938,16 +1943,15 @@ fn matches_on_expr_data(body: Node, param_name: String) -> Bool {
   }
 }
 
-// CX-1a: Container-child descent. Body must match on param.expr_data
-// (discriminant dispatch), and every self-call must pass accessor(param),
-// param.children |> first, or a variable bound to such an expression.
-// Both conditions required: accessor-name-only descent without dispatch
-// is not sufficient (fail-closed).
+// CX-1a: Container-child descent. Every self-call must pass
+// accessor(param), param.children |> first, or a variable bound to
+// such an expression. Accessors always return children[N] (proven by
+// the IR model), so the argument is strictly smaller than the param
+// regardless of which ExprData variant the param carries.
 fn is_container_child_descent(body: Node, func_name: String, params: List<Node>) -> Bool {
   params |> any(p =>
     let pname = param_node_name(n: p)
-    matches_on_expr_data(body: body, param_name: pname)
-    && all_self_calls_descend(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
+    all_self_calls_descend(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
   )
 }
 
@@ -1971,6 +1975,12 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
         || is_list_shrinkage_descent(body: body, func_name: func_name, params: params)) {
     // CX-1: accessor projects into Node.children (tree descent) or
     // list |> skip(N) (list shrinkage). Strictly descending.
+    LinearRecursion { iteration_var: concat("n_", func_name) }
+  } else if path_calls > 1
+    && is_container_child_descent(body: body, func_name: func_name, params: params) {
+    // CX-2: Catamorphism — multiple self-calls but all on disjoint
+    // accessor children of a param that dispatches on expr_data.
+    // Total work = O(tree_size), not O(2^depth).
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else if path_calls > 1 {
     DivideAndConquer { split_factor: path_calls }

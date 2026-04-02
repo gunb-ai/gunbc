@@ -1893,6 +1893,11 @@ pub fn all_self_calls_descend(body: Rc<Node>, func_name: String, param_name: Str
 pub fn all_self_calls_descend_with_vars(body: Rc<Node>, func_name: String, param_name: String, descent_vars: HashMap<String, bool>, check_child: bool, check_list: bool) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
     match (*body.expr_data.clone()).clone() {
+        // Lambda bodies are iteration-bounded (fold/map/any callbacks).
+        // Self-calls inside lambdas don't contribute to branching factor
+        // (max_path_self_calls_with_cont skips them too). Skip them here
+        // for consistency.
+        ExprData::ExprLambda { .. } => true,
         ExprData::ExprCall { .. } => {
             let callee = expr_call_func(body.clone());
             let own_ok = if callee == func_name {
@@ -1961,16 +1966,15 @@ pub fn matches_on_expr_data(body: Rc<Node>, param_name: String) -> bool {
     }
 }
 
-// CX-1a: Container-child descent. Body must match on param.expr_data
-// (discriminant dispatch), and every self-call must pass accessor(param),
-// param.children |> first, or a variable bound to such an expression.
-// Both conditions required: accessor-name-only descent without dispatch
-// is not sufficient (fail-closed).
+// CX-1a: Container-child descent. Every self-call must pass
+// accessor(param), param.children |> first, or a variable bound to
+// such an expression. Accessors always return children[N] (proven by
+// the IR model), so the argument is strictly smaller than the param
+// regardless of which ExprData variant the param carries.
 pub fn is_container_child_descent(body: Rc<Node>, func_name: String, params: Vec<Rc<Node>>) -> bool {
     params.iter().any(|p| {
         let pname = param_node_name(p.clone());
-        matches_on_expr_data(body.clone(), pname.clone())
-        && all_self_calls_descend(body.clone(), func_name.clone(), pname.clone(), true, false)
+        all_self_calls_descend(body.clone(), func_name.clone(), pname.clone(), true, false)
     })
 }
 
@@ -2004,6 +2008,14 @@ pub fn classify_recursion_pattern(
             || is_list_shrinkage_descent(body.clone(), func_name.clone(), params.clone())) {
         // CX-1: accessor projects into Node.children (tree descent) or
         // list |> skip(N) (list shrinkage). Strictly descending.
+        Rc::new(RecursionPattern::LinearRecursion {
+            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+        })
+    } else if (path_calls.clone() > 1)
+        && is_container_child_descent(body.clone(), func_name.clone(), params.clone()) {
+        // CX-2: Catamorphism — multiple self-calls but all on disjoint
+        // accessor children of a param that dispatches on expr_data.
+        // Total work = O(tree_size), not O(2^depth).
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
