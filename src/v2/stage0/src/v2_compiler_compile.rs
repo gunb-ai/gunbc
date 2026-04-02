@@ -61,7 +61,6 @@ pub use crate::v2_compiler_emit_go::emit_go;
 pub use crate::v2_compiler_emit_python::emit_python;
 pub use crate::v2_compiler_emit_rust::emit_rust;
 pub use crate::v2_compiler_infer::reconcile;
-pub use crate::v2_compiler_infer_env::merge_recursive_variant_fields;
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_normalize::{normalize_graph, NormalizeResult};
 use crate::v2_compiler_ownership::OwnershipDecision::SharedError;
@@ -160,15 +159,10 @@ pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> Rc<RecursionContext>
     typed.modules.iter().cloned().fold(
         Rc::new(RecursionContext {
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
-            recursive_variant_fields: Rc::new(<HashMap<_, _>>::new()),
         }),
         |acc: Rc<RecursionContext>, m: Rc<TypedModule>| {
             Rc::new(RecursionContext {
                 recursive_type_set: Rc::new(v2_rt::map_merge((*acc.recursive_type_set).clone(), (*m.type_env.recursive_type_set).clone())),
-                recursive_variant_fields: Rc::new(merge_recursive_variant_fields(
-                    (*acc.recursive_variant_fields).clone(),
-                    (*m.type_env.recursive_variant_fields).clone(),
-                )),
             })
         },
     )

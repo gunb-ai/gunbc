@@ -15,7 +15,6 @@
 module v2.compiler.complexity
 
 import std.types { SourceSpan }
-import v2.compiler.infer_env { RecursiveVariantFieldWitness }
 import v2.compiler.emit { to_string }
 import v2.compiler.parse {
   ParserResultWitness,
@@ -212,12 +211,6 @@ type RecursionPattern
   = LinearRecursion { iteration_var: String }
   | DivideAndConquer { split_factor: Int }
   | UnresolvableRecursion { reason: String }
-
-type StructuralParam {
-  name: String
-  index: Int
-  type_name: String
-}
 
 type CallEdge {
   caller: String
@@ -1422,376 +1415,6 @@ fn max_path_target_calls_with_cont(body: Node, target_set: Map<String, Bool>, co
   }
 }
 
-fn recursive_variant_field_witnesses_for_type(type_name: String, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> List<RecursiveVariantFieldWitness> {
-  match map_get(recursive_variant_fields, type_name) {
-    Some { value: witnesses } => witnesses
-    None => []
-  }
-}
-
-fn has_recursive_variant_field(type_name: String, variant_name: String, field_name: String, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> Bool {
-  recursive_variant_field_witnesses_for_type(type_name: type_name, recursive_variant_fields: recursive_variant_fields)
-    |> any(witness => witness.variant_name == variant_name && witness.field_name == field_name)
-}
-
-fn has_recursive_fields_for_type(type_name: String, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> Bool {
-  map_get(recursive_type_set, type_name) != none
-  || map_get(recursive_variant_fields, type_name) != none
-}
-
-fn structural_match_param_name(body: Node) -> String? {
-  match body.expr_data {
-    ExprMatch =>
-      let scrut = match_scrutinee(texpr: body)
-      match scrut.expr_data {
-        ExprVar { binding_kind: _ } => Some { value: expr_var_name(texpr: scrut) }
-        _ => none
-      }
-
-    ExprLet =>
-      match let_body(texpr: body) {
-        Some { value: b } => structural_match_param_name(body: b)
-        None => none
-      }
-
-    ExprBlock =>
-      let stmts = body.children
-      match stmts |> last {
-        Some { value: last_stmt } => structural_match_param_name(body: last_stmt)
-        None => none
-      }
-
-    _ => none
-  }
-}
-
-fn structural_param_from_body(body: Node, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> StructuralParam? {
-  match structural_match_param_name(body: body) {
-    Some { value: target_name } =>
-      params |> enumerate |> fold(init: none, f: (acc, pair) =>
-        if acc != none {
-          acc
-        } else {
-          let idx = pair.first
-          let param = pair.second
-          let type_name = param_node_type_expr(n: param).name
-          if param_node_name(n: param) == target_name
-            && has_recursive_fields_for_type(type_name: type_name, recursive_type_set: recursive_type_set, recursive_variant_fields: recursive_variant_fields) {
-            Some { value: StructuralParam { name: target_name, index: idx, type_name: type_name } }
-          } else {
-            none
-          }
-        }
-      )
-    None => none
-  }
-}
-
-fn recursive_arm_binding_names(arm_node: Node, structural_param: StructuralParam, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> List<String> {
-  match arm_pattern(n: arm_node) {
-    VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings } =>
-      let all_bindings = bindings |> flat_map(fb =>
-        match field_binding_pattern(n: fb) {
-          Bind { name: binding_name } => [binding_name]
-          _ => []
-        }
-      )
-      let recursive_bindings = bindings |> flat_map(fb =>
-        if has_recursive_variant_field(type_name: structural_param.type_name, variant_name: variant_name, field_name: field_binding_name(n: fb), recursive_variant_fields: recursive_variant_fields) == false {
-          []
-        } else {
-          match field_binding_pattern(n: fb) {
-            Bind { name: binding_name } => [binding_name]
-            _ => []
-          }
-        }
-      )
-      if recursive_bindings |> count > 0 { recursive_bindings } else { all_bindings }
-    _ => []
-  }
-}
-
-fn expr_is_recursive_binding_var(expr: Node, allowed_bindings: List<String>) -> Bool {
-  match expr.expr_data {
-    ExprVar { binding_kind: _ } =>
-      let v = expr_var_name(texpr: expr)
-      allowed_bindings |> any(name => name == v)
-    _ => false
-  }
-}
-
-fn self_call_descends_on_recursive_bindings(call_node: Node, structural_param: StructuralParam, allowed_bindings: List<String>) -> Bool {
-  call_node.children |> enumerate |> any(pair =>
-    let idx = pair.first
-    let arg_node = pair.second
-    let targets_structural_param = if arg_name(n: arg_node) != "" {
-      arg_name(n: arg_node) == structural_param.name
-    } else {
-      idx == structural_param.index
-    }
-    targets_structural_param
-    && expr_is_recursive_binding_var(expr: arg_value(n: arg_node), allowed_bindings: allowed_bindings)
-  )
-}
-
-fn self_calls_descend_on_recursive_bindings(body: Node, func_name: String, structural_param: StructuralParam, allowed_bindings: List<String>) -> Bool {
-  match body.expr_data {
-    ExprCall { call_semantics: _ } =>
-      let own_ok = if expr_call_func(texpr: body) == func_name {
-        self_call_descends_on_recursive_bindings(call_node: body, structural_param: structural_param, allowed_bindings: allowed_bindings)
-      } else { true }
-      own_ok
-      && (body.children |> all(child =>
-        self_calls_descend_on_recursive_bindings(
-          body: child,
-          func_name: func_name,
-          structural_param: structural_param,
-          allowed_bindings: allowed_bindings
-        )
-      ))
-    _ =>
-      body.children |> all(child =>
-        self_calls_descend_on_recursive_bindings(
-          body: child,
-          func_name: func_name,
-          structural_param: structural_param,
-          allowed_bindings: allowed_bindings
-        )
-      )
-  }
-}
-
-// Classify the recursion pattern of a self-recursive function.
-//
-// Uses max_path_self_calls to count the maximum self-calls on any
-// single execution path. This correctly classifies tree traversal
-// functions (which have many self-call SITES across match arms but
-// only 1-2 per execution path) as LinearRecursion, not
-// DivideAndConquer.
-//
-// The classification determines the cost formula:
-//   LinearRecursion (0-1 path calls) → O(n × per_iteration)
-//   DivideAndConquer (2+ path calls) → CostUnknown (hard error target)
-//   UnresolvableRecursion            → hard compilation error
-// Check if the function body is a structural descent over a recursive
-// union parameter. Recursive calls are only accepted when the recursive
-// argument is a variant field the type definition marks as recursive.
-//
-// This recognizes the catamorphism pattern:
-//   fn walk(expr: T) -> R {
-//     match expr {
-//       Leaf { ... } => ...                          // 0 self-calls
-//       Binary { left: l, right: r } => ... walk(l) ... walk(r) ...  // 2 self-calls on children
-//       Unary { inner: i } => ... walk(i) ...        // 1 self-call on child
-//     }
-//   }
-//
-// Total work = |tree| × max(per-arm cost). Not 2^depth.
-fn is_structural_descent_with_param(body: Node, func_name: String, structural_param: StructuralParam, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> Bool {
-  match body.expr_data {
-    ExprMatch =>
-      let scrut = match_scrutinee(texpr: body)
-      let scrut_calls = count_self_calls(body: scrut, func_name: func_name)
-      scrut_calls == 0
-      && match scrut.expr_data {
-        ExprVar { binding_kind: _ } =>
-          expr_var_name(texpr: scrut) == structural_param.name
-          && (match_arm_nodes(texpr: body) |> all(arm_node =>
-            let guard_ok = match arm_guard(n: arm_node) {
-              Some { value: g } => count_self_calls(body: g, func_name: func_name) == 0
-              None => true
-            }
-            let recursive_bindings = recursive_arm_binding_names(
-              arm_node: arm_node,
-              structural_param: structural_param,
-              recursive_variant_fields: recursive_variant_fields
-            )
-            guard_ok
-            && self_calls_descend_on_recursive_bindings(
-              body: arm_body(n: arm_node),
-              func_name: func_name,
-              structural_param: structural_param,
-              allowed_bindings: recursive_bindings
-            )
-          ))
-        _ => false
-      }
-
-    ExprLet =>
-      // let x = ... in <body>: descent if the body is a descent
-      // and the let-value has no self-calls
-      let val_calls = count_self_calls(body: let_value(texpr: body), func_name: func_name)
-      if val_calls > 0 { false }
-      else {
-        match let_body(texpr: body) {
-          Some { value: b } => is_structural_descent_with_param(body: b, func_name: func_name, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields)
-          None => false
-        }
-      }
-
-    ExprBlock =>
-      // Block: last statement is the descent, earlier ones must not self-call
-      let stmts = body.children
-      let len = stmts |> count
-      if len == 0 { false }
-      else {
-        // All statements except the last must have 0 self-calls
-        let prefix_calls = stmts |> take(len - 1) |> fold(init: 0, f: (acc, s) =>
-          acc + count_self_calls(body: s, func_name: func_name)
-        )
-        if prefix_calls > 0 { false }
-        else {
-          match stmts |> last {
-            Some { value: last_stmt } => is_structural_descent_with_param(body: last_stmt, func_name: func_name, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields)
-            None => false
-          }
-        }
-      }
-
-    _ => false
-  }
-}
-
-fn is_structural_descent(body: Node, func_name: String, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> Bool {
-  match structural_param_from_body(body: body, params: params, recursive_type_set: recursive_type_set, recursive_variant_fields: recursive_variant_fields) {
-    Some { value: structural_param } =>
-      is_structural_descent_with_param(
-        body: body,
-        func_name: func_name,
-        structural_param: structural_param,
-        recursive_variant_fields: recursive_variant_fields
-      )
-    None => false
-  }
-}
-
-fn scc_call_descends_on_recursive_bindings(call_node: Node, scc_name_set: Map<String, Bool>, scc_structural_params: Map<String, StructuralParam>, allowed_bindings: List<String>) -> Bool {
-  let callee = expr_call_func(texpr: call_node)
-  if set_has(m: scc_name_set, key: callee) == false {
-    true
-  } else {
-    match map_get(scc_structural_params, callee) {
-      Some { value: structural_param } =>
-        call_node.children |> enumerate |> any(pair =>
-          let idx = pair.first
-          let arg_node = pair.second
-          let targets_structural_param = if arg_name(n: arg_node) != "" {
-            arg_name(n: arg_node) == structural_param.name
-          } else {
-            idx == structural_param.index
-          }
-          targets_structural_param
-          && expr_is_recursive_binding_var(expr: arg_value(n: arg_node), allowed_bindings: allowed_bindings)
-        )
-      None => false
-    }
-  }
-}
-
-fn scc_calls_descend_on_recursive_bindings(body: Node, scc_name_set: Map<String, Bool>, scc_structural_params: Map<String, StructuralParam>, allowed_bindings: List<String>) -> Bool {
-  match body.expr_data {
-    ExprCall { call_semantics: _ } =>
-      let own_ok = scc_call_descends_on_recursive_bindings(
-        call_node: body,
-        scc_name_set: scc_name_set,
-        scc_structural_params: scc_structural_params,
-        allowed_bindings: allowed_bindings
-      )
-      own_ok
-      && (body.children |> all(child =>
-        scc_calls_descend_on_recursive_bindings(
-          body: child,
-          scc_name_set: scc_name_set,
-          scc_structural_params: scc_structural_params,
-          allowed_bindings: allowed_bindings
-        )
-      ))
-    _ =>
-      body.children |> all(child =>
-        scc_calls_descend_on_recursive_bindings(
-          body: child,
-          scc_name_set: scc_name_set,
-          scc_structural_params: scc_structural_params,
-          allowed_bindings: allowed_bindings
-        )
-      )
-  }
-}
-
-fn is_scc_structural_descent_with_param(body: Node, structural_param: StructuralParam, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>, scc_name_set: Map<String, Bool>, scc_structural_params: Map<String, StructuralParam>) -> Bool {
-  match body.expr_data {
-    ExprMatch =>
-      let scrut = match_scrutinee(texpr: body)
-      let scrut_calls = count_target_calls(body: scrut, target_set: scc_name_set)
-      scrut_calls == 0
-      && match scrut.expr_data {
-        ExprVar { binding_kind: _ } =>
-          expr_var_name(texpr: scrut) == structural_param.name
-          && (match_arm_nodes(texpr: body) |> all(arm_node =>
-            let guard_ok = match arm_guard(n: arm_node) {
-              Some { value: g } => count_target_calls(body: g, target_set: scc_name_set) == 0
-              None => true
-            }
-            let recursive_bindings = recursive_arm_binding_names(
-              arm_node: arm_node,
-              structural_param: structural_param,
-              recursive_variant_fields: recursive_variant_fields
-            )
-            guard_ok
-            && scc_calls_descend_on_recursive_bindings(
-              body: arm_body(n: arm_node),
-              scc_name_set: scc_name_set,
-              scc_structural_params: scc_structural_params,
-              allowed_bindings: recursive_bindings
-            )
-          ))
-        _ => false
-      }
-
-    ExprLet =>
-      let val_calls = count_target_calls(body: let_value(texpr: body), target_set: scc_name_set)
-      if val_calls > 0 { false }
-      else {
-        match let_body(texpr: body) {
-          Some { value: b } => is_scc_structural_descent_with_param(body: b, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields, scc_name_set: scc_name_set, scc_structural_params: scc_structural_params)
-          None => false
-        }
-      }
-
-    ExprBlock =>
-      let stmts = body.children
-      let len = stmts |> count
-      if len == 0 { false }
-      else {
-        let prefix_calls = stmts |> take(len - 1) |> fold(init: 0, f: (acc, s) =>
-          acc + count_target_calls(body: s, target_set: scc_name_set)
-        )
-        if prefix_calls > 0 { false }
-        else {
-          match stmts |> last {
-            Some { value: last_stmt } => is_scc_structural_descent_with_param(body: last_stmt, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields, scc_name_set: scc_name_set, scc_structural_params: scc_structural_params)
-            None => false
-          }
-        }
-      }
-
-    _ => false
-  }
-}
-
-fn build_scc_structural_params(members: List<String>, func_index: Map<String, FuncEntry>, recursion_ctx: RecursionContext) -> Map<String, StructuralParam> {
-  members |> fold(init: empty_map(), f: (acc, name) =>
-    match map_get(func_index, name) {
-      Some { value: entry } =>
-        match structural_param_from_body(body: entry.body, params: entry.params, recursive_type_set: recursion_ctx.recursive_type_set, recursive_variant_fields: recursion_ctx.recursive_variant_fields) {
-          Some { value: structural_param } => map_insert(acc, name, structural_param)
-          None => acc
-        }
-      None => acc
-    }
-  )
-}
-
 fn build_scc_measure_params(members: List<String>, func_index: Map<String, FuncEntry>) -> Map<String, Map<String, String>> {
   members |> fold(init: empty_map(), f: (acc, name) =>
     match map_get(func_index, name) {
@@ -1874,14 +1497,9 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
     // measure decreases. Treating arbitrary field access as descent would
     // accept unsound programs like `f(match x { A(child) => child, B(_) => x })`.
     //
-    // Resolution path (ROADMAP §I1): complexity should consume resolved
-    // descent witnesses owned by resolve/infer — specifically,
-    // RecursiveVariantFieldWitness facts that identify which fields of
-    // each type are recursive child positions. When those facts are
-    // threaded into expr_descending_witness_source, ExprFieldAccess on a
-    // proven recursive field and ExprMethodCall(first/last) on a
-    // collection of proven recursive children can be re-enabled as
-    // StructuralChildDescent witnesses (distinct from ArithmeticDescent).
+    // Container-child descent (CX-1) handles Node tree walkers via
+    // accessor identity. User-defined recursive unions deferred until
+    // resolve/infer carry descent witnesses downstream.
     _ => none
   }
 }
@@ -2059,16 +1677,11 @@ fn has_arithmetic_descent(body: Node, func_name: String) -> Bool {
   }
 }
 
-fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>, parser_always_advancing: Map<String, Bool>) -> RecursionPattern {
+fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>) -> RecursionPattern {
   let path_calls = max_path_self_calls(body: body, func_name: func_name)
   let initial_witnesses = recursive_measure_param_names(body: body, params: params)
   let descending_witness_names = collect_descending_witness_names(body: body, descending_witness_names: initial_witnesses)
   if path_calls == 0 {
-    LinearRecursion { iteration_var: concat("n_", func_name) }
-  } else if is_structural_descent(body: body, func_name: func_name, params: params, recursive_type_set: recursive_type_set, recursive_variant_fields: recursive_variant_fields) {
-    // Structural descent: body is a match over a recursive union input, self-calls are
-    // in arms on destructured children. Total work = |tree| × per-node,
-    // not k^depth. Classify as LinearRecursion (catamorphism).
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else if path_calls > 1 {
     DivideAndConquer { split_factor: path_calls }
@@ -2237,75 +1850,31 @@ fn scc_label(members: List<String>) -> String {
   }
 }
 
-fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String, FuncEntry>, recursion_ctx: RecursionContext) -> RecursionPattern {
+fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String, FuncEntry>) -> RecursionPattern {
   let scc_name_set = members |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
   )
-  let structural_params = build_scc_structural_params(members: members, func_index: func_index, recursion_ctx: recursion_ctx)
   let scc_measure_params = build_scc_measure_params(members: members, func_index: func_index)
-  let all_structural = members |> all(name =>
-    match map_get(func_index, name) {
-      Some { value: entry } =>
-        match map_get(structural_params, name) {
-          Some { value: structural_param } =>
-            is_scc_structural_descent_with_param(
-              body: entry.body,
-              structural_param: structural_param,
-              recursive_variant_fields: recursion_ctx.recursive_variant_fields,
-              scc_name_set: scc_name_set,
-              scc_structural_params: structural_params
-            )
+  match classify_parser_scc_recursion_pattern(members: members, func_index: func_index) {
+      Some { value: parser_pattern } => parser_pattern
+    None =>
+      let all_arithmetic = members |> all(name =>
+        match map_get(func_index, name) {
+          Some { value: entry } =>
+            max_path_target_calls(body: entry.body, target_set: scc_name_set) <= 1
+            && scc_calls_have_arithmetic_descent(body: entry.body, target_set: scc_name_set, func_index: func_index, scc_measure_params: scc_measure_params)
           None => false
         }
-      None => false
-    }
-  )
-  if all_structural {
-    LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
-  } else {
-    match classify_parser_scc_recursion_pattern(members: members, func_index: func_index) {
-      Some { value: parser_pattern } => parser_pattern
-      None =>
-        // Soundness requirement: SCC-wide linearity via arithmetic descent
-        // requires BOTH single-call paths AND proven descent on EVERY cycle
-        // edge. The current check is conservative in that it requires every
-        // member to have at most one call to any SCC peer AND that call must
-        // have arithmetic descent. However, this is the mutual-recursion
-        // analogue of the fib_like soundness concern: ping-pong identity
-        // passes with occasional decrease (A calls B with n, B calls A with
-        // n-1) could still produce exponential branching if not every edge
-        // strictly descends. The single-path requirement (max_path <= 1)
-        // prevents branching, but a shared structural measure on every cycle
-        // edge — or a real frontier/cache witness for finite-key SCCs — is
-        // the fully sound design target (ROADMAP §I2).
-        let all_arithmetic = members |> all(name =>
-          match map_get(func_index, name) {
-            Some { value: entry } =>
-              max_path_target_calls(body: entry.body, target_set: scc_name_set) <= 1
-              && scc_calls_have_arithmetic_descent(body: entry.body, target_set: scc_name_set, func_index: func_index, scc_measure_params: scc_measure_params)
-            None => false
-          }
-        )
-        if all_arithmetic {
-          LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
-        } else {
-          // Remaining SCC witness gaps (313→0 path):
-          //   (a) parser SCC: parse_type_expr / parse_callable_type_expr
-          //       family needs token/cursor progress proved across SCC
-          //       edges. Infrastructure exists in classify_parser_scc_
-          //       recursion_pattern; gap is ProgressUnknown edges for
-          //       specific parser helper chains.
-          //   (b) block/tree-walker SCC: emit_rust_block_stmts,
-          //       emit_py_block_stmts, emit_go_block_stmts,
-          //       infer_block_stmts — need a shared statement-tail /
-          //       child-node descent proof for block-processing SCCs.
-          UnresolvableRecursion { reason: concat("non-descending mutual recursion in ", scc_label(members: members)) }
-        }
-    }
+      )
+      if all_arithmetic {
+        LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
+      } else {
+        UnresolvableRecursion { reason: concat("non-descending mutual recursion in ", scc_label(members: members)) }
+      }
   }
 }
 
-fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEntry>, recursion_ctx: RecursionContext) -> Map<String, SccInfo> {
+fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEntry>) -> Map<String, SccInfo> {
   let names = func_entries |> map(entry => entry.name)
   let graph = build_call_graph(func_entries: func_entries)
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
@@ -2327,7 +1896,7 @@ fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEn
         let info = SccInfo {
           members: members,
           member_set: member_set,
-          pattern: classify_scc_recursion_pattern(members: members, func_index: func_index, recursion_ctx: recursion_ctx)
+          pattern: classify_scc_recursion_pattern(members: members, func_index: func_index)
         }
         let next_index = members |> fold(init: acc.index, f: (inner, member) =>
           map_insert(inner, member, info)
@@ -2829,7 +2398,6 @@ type FuncEntry {
 // not copied per-function.
 type RecursionContext {
   recursive_type_set: Map<String, Bool>
-  recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>
 }
 
 // Result of get_or_compute_summary: updated table + the summary.
@@ -3255,8 +2823,6 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
                     func_name: func_name,
                     body: entry.body,
                     params: entry.params,
-                    recursive_type_set: recursion_ctx.recursive_type_set,
-                    recursive_variant_fields: recursion_ctx.recursive_variant_fields,
                     parser_always_advancing: parser_always_advancing
                   )
                   ComplexitySummary {
@@ -3349,7 +2915,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let func_index = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
     map_insert(acc, entry.name, entry)
   )
-  let scc_index = build_scc_index(func_entries: func_entries, func_index: func_index, recursion_ctx: recursion_ctx)
+  let scc_index = build_scc_index(func_entries: func_entries, func_index: func_index)
   let parser_always_advancing = infer_all_parser_always_advancing(func_index: func_index)
   // Compute summaries for all functions
   let result = func_entries |> fold(init: SummaryResult {

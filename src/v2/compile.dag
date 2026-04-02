@@ -36,7 +36,6 @@ import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.normalize { normalize_graph, NormalizeResult }
 import v2.compiler.infer_items { ResolvedGraph, TypedModule }
-import v2.compiler.infer_env { merge_recursive_variant_fields }
 import v2.compiler.infer { reconcile }
 import v2.compiler.emit { EmitResult, escape_json_string }
 import v2.compiler.emit_rust { emit_rust }
@@ -95,10 +94,9 @@ fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
 // all compiled modules. This is the single authority for recursive type
 // and variant field information consumed by the complexity analyzer.
 fn build_recursion_context(typed: ResolvedGraph) -> RecursionContext {
-  typed.modules |> fold(init: RecursionContext { recursive_type_set: empty_map(), recursive_variant_fields: empty_map() }, f: (acc, m) =>
+  typed.modules |> fold(init: RecursionContext { recursive_type_set: empty_map() }, f: (acc, m) =>
     RecursionContext {
-      recursive_type_set: map_merge(acc.recursive_type_set, m.type_env.recursive_type_set),
-      recursive_variant_fields: merge_recursive_variant_fields(left: acc.recursive_variant_fields, right: m.type_env.recursive_variant_fields)
+      recursive_type_set: map_merge(acc.recursive_type_set, m.type_env.recursive_type_set)
     }
   )
 }

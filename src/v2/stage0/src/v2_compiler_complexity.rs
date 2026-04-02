@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-use crate::v2_compiler_infer_env::RecursiveVariantFieldWitness;
 use crate::v2_compiler_parse::{
     parser_passthrough_state_expr, parser_progress_flag_var, parser_result_witness,
     ParserCallIdentity, ParserResultWitness,
@@ -207,13 +206,6 @@ pub enum RecursionPattern {
     UnresolvableRecursion {
         reason: String,
     },
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct StructuralParam {
-    pub name: String,
-    pub index: i64,
-    pub type_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1324,481 +1316,6 @@ pub fn max_path_target_calls_with_cont(body: Rc<Node>, target_set: HashMap<Strin
     }
 }
 
-pub fn recursive_variant_field_witnesses_for_type(
-    type_name: String,
-    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
-) -> Vec<Rc<RecursiveVariantFieldWitness>> {
-    match v2_rt::map_get(&recursive_variant_fields, type_name.clone()) {
-        Some(witnesses) => witnesses.clone(),
-        None => vec![],
-    }
-}
-
-pub fn has_recursive_variant_field(
-    type_name: String,
-    variant_name: String,
-    field_name: String,
-    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
-) -> bool {
-    recursive_variant_field_witnesses_for_type(type_name.clone(), recursive_variant_fields.clone())
-        .iter()
-        .any(|witness| {
-            (witness.variant_name.clone() == variant_name.clone())
-                && (witness.field_name.clone() == field_name.clone())
-        })
-}
-
-pub fn has_recursive_fields_for_type(
-    type_name: String,
-    recursive_type_set: Rc<HashMap<String, bool>>,
-    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
-) -> bool {
-    v2_rt::map_get(&recursive_type_set, type_name.clone()).is_some()
-        || v2_rt::map_get(&recursive_variant_fields, type_name.clone()).is_some()
-}
-
-pub fn structural_match_param_name(
-    body: Rc<Node>,
-) -> Option<String> {
-    match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprMatch { .. } => {
-            let scrut = match_scrutinee(body.clone());
-            match (*scrut.clone().expr_data.clone()).clone() {
-                ExprData::ExprVar { .. } => Some(expr_var_name(scrut.clone())),
-                _ => None,
-            }
-        }
-        ExprData::ExprLet { .. } => {
-            match let_body(body.clone()) {
-                Some(let_tail) => structural_match_param_name(let_tail.clone()),
-                None => None,
-            }
-        }
-        ExprData::ExprBlock { .. } => {
-            let stmts = body.children.clone();
-            if stmts.is_empty() {
-                None
-            } else {
-                match stmts.last().cloned() {
-                    Some(last_stmt) => structural_match_param_name(last_stmt.clone()),
-                    None => None,
-                }
-            }
-        }
-        _ => None,
-    }
-}
-
-pub fn structural_param_from_body(
-    body: Rc<Node>,
-    params: Vec<Rc<Node>>,
-    recursive_type_set: Rc<HashMap<String, bool>>,
-    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
-) -> Option<Rc<StructuralParam>> {
-    match structural_match_param_name(body.clone()) {
-        Some(target_name) => params.iter().cloned().enumerate().fold(None, |acc: _, pair| {
-            if acc.is_some() {
-                acc
-            } else {
-                let idx = pair.0 as i64;
-                let param = pair.1.clone();
-                let type_name = param_node_type_expr(param.clone()).name.clone();
-                if param_node_name(param.clone()) == target_name.clone()
-                    && has_recursive_fields_for_type(
-                        type_name.clone(),
-                        recursive_type_set.clone(),
-                        recursive_variant_fields.clone(),
-                    )
-                {
-                    Some(Rc::new(StructuralParam {
-                        name: target_name.clone(),
-                        index: idx,
-                        type_name: type_name.clone(),
-                    }))
-                } else {
-                    None
-                }
-            }
-        }),
-        None => None,
-    }
-}
-
-pub fn recursive_arm_binding_names(
-    arm_node: Rc<Node>,
-    structural_param: Rc<StructuralParam>,
-    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
-) -> Vec<String> {
-    match (*arm_pattern(arm_node.clone())).clone() {
-        crate::v2_std_core::MatchPattern::VariantPattern { name: variant_name, field_bindings: bindings, .. } => {
-            let mut all_bindings = Vec::new();
-            let mut recursive_bindings = Vec::new();
-            for fb in bindings.iter().cloned() {
-                match (*field_binding_pattern(fb.clone())).clone() {
-                    crate::v2_std_core::MatchPattern::Bind { name: binding_name } => all_bindings.push(binding_name.clone()),
-                    _ => {}
-                }
-                if has_recursive_variant_field(
-                    structural_param.type_name.clone(),
-                    variant_name.clone(),
-                    fb.name.clone(),
-                    recursive_variant_fields.clone(),
-                ) {
-                    match (*field_binding_pattern(fb.clone())).clone() {
-                        crate::v2_std_core::MatchPattern::Bind { name: binding_name } => recursive_bindings.push(binding_name.clone()),
-                        _ => {}
-                    }
-                }
-            }
-            if recursive_bindings.is_empty() { all_bindings } else { recursive_bindings }
-        }
-        _ => vec![],
-    }
-}
-
-pub fn expr_is_recursive_binding_var(expr: Rc<Node>, allowed_bindings: Vec<String>) -> bool {
-    match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprVar { .. } => {
-            let v = expr_var_name(expr.clone());
-            allowed_bindings.iter().any(|name| *name == v)
-        }
-        _ => false,
-    }
-}
-
-pub fn self_call_descends_on_recursive_bindings(
-    call_node: Rc<Node>,
-    structural_param: Rc<StructuralParam>,
-    allowed_bindings: Vec<String>,
-) -> bool {
-    call_node
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .enumerate()
-        .any(|pair| {
-            let idx = pair.0 as i64;
-            let arg_node = pair.1.clone();
-            let targets_structural_param = match arg_name(arg_node.clone()) {
-                Some(arg_name_value) => arg_name_value == structural_param.name.clone(),
-                None => idx == structural_param.index,
-            };
-            targets_structural_param
-                && expr_is_recursive_binding_var(arg_value(arg_node.clone()), allowed_bindings.clone())
-        })
-}
-
-pub fn self_calls_descend_on_recursive_bindings(
-    body: Rc<Node>,
-    func_name: String,
-    structural_param: Rc<StructuralParam>,
-    allowed_bindings: Vec<String>,
-) -> bool {
-    match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => {
-            let own_ok = if expr_call_func(body.clone()) == func_name.clone() {
-                self_call_descends_on_recursive_bindings(
-                    body.clone(),
-                    structural_param.clone(),
-                    allowed_bindings.clone(),
-                )
-            } else {
-                true
-            };
-            own_ok
-                && body.children.clone().iter().cloned().all(|child| {
-                    self_calls_descend_on_recursive_bindings(
-                        child.clone(),
-                        func_name.clone(),
-                        structural_param.clone(),
-                        allowed_bindings.clone(),
-                    )
-                })
-        }
-        _ => body.children.clone().iter().cloned().all(|child| {
-            self_calls_descend_on_recursive_bindings(
-                child.clone(),
-                func_name.clone(),
-                structural_param.clone(),
-                allowed_bindings.clone(),
-            )
-        }),
-    }
-}
-
-pub fn is_structural_descent_with_param(
-    body: Rc<Node>,
-    func_name: String,
-    structural_param: Rc<StructuralParam>,
-    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
-) -> bool {
-    match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprMatch { .. } => {
-            let scrut = match_scrutinee(body.clone());
-            let scrut_calls = count_self_calls(scrut.clone(), func_name.clone());
-            scrut_calls == 0
-                && match (*scrut.clone().expr_data.clone()).clone() {
-                    ExprData::ExprVar { .. } =>
-                        expr_var_name(scrut.clone()) == structural_param.name.clone()
-                            && match_arm_nodes(body.clone()).iter().cloned().all(|arm_node| {
-                                let guard_ok = match arm_guard(arm_node.clone()) {
-                                    Some(g) => count_self_calls(g, func_name.clone()) == 0,
-                                    None => true,
-                                };
-                                let recursive_bindings = recursive_arm_binding_names(
-                                    arm_node.clone(),
-                                    structural_param.clone(),
-                                    recursive_variant_fields.clone(),
-                                );
-                                guard_ok
-                                    && self_calls_descend_on_recursive_bindings(
-                                        arm_body(arm_node.clone()),
-                                        func_name.clone(),
-                                        structural_param.clone(),
-                                        recursive_bindings.clone(),
-                                    )
-                            }),
-                    _ => false,
-                }
-        }
-        ExprData::ExprLet { .. } => {
-            let val_calls = count_self_calls(let_value(body.clone()), func_name.clone());
-            if val_calls > 0 {
-                false
-            } else {
-                match let_body(body.clone()) {
-                    Some(let_tail) => is_structural_descent_with_param(
-                        let_tail.clone(),
-                        func_name.clone(),
-                        structural_param.clone(),
-                        recursive_variant_fields.clone(),
-                    ),
-                    None => false,
-                }
-            }
-        }
-        ExprData::ExprBlock { .. } => {
-            let stmts = body.children.clone();
-            if stmts.is_empty() {
-                false
-            } else {
-                let prefix_calls = stmts
-                    .iter()
-                    .take(stmts.len().saturating_sub(1))
-                    .cloned()
-                    .fold(0i64, |acc, stmt| acc + count_self_calls(stmt.clone(), func_name.clone()));
-                if prefix_calls > 0 {
-                    false
-                } else {
-                    match stmts.last().cloned() {
-                        Some(last_stmt) => is_structural_descent_with_param(
-                            last_stmt.clone(),
-                            func_name.clone(),
-                            structural_param.clone(),
-                            recursive_variant_fields.clone(),
-                        ),
-                        None => false,
-                    }
-                }
-            }
-        }
-        _ => false,
-    }
-}
-
-pub fn is_structural_descent(
-    body: Rc<Node>,
-    func_name: String,
-    params: Vec<Rc<Node>>,
-    recursive_type_set: Rc<HashMap<String, bool>>,
-    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
-) -> bool {
-    match structural_param_from_body(
-        body.clone(),
-        params.clone(),
-        recursive_type_set.clone(),
-        recursive_variant_fields.clone(),
-    ) {
-        Some(structural_param) => is_structural_descent_with_param(
-            body.clone(),
-            func_name.clone(),
-            structural_param.clone(),
-            recursive_variant_fields.clone(),
-        ),
-        None => false,
-    }
-}
-
-pub fn scc_call_descends_on_recursive_bindings(
-    call_node: Rc<Node>,
-    scc_name_set: HashMap<String, bool>,
-    scc_structural_params: HashMap<String, Rc<StructuralParam>>,
-    allowed_bindings: Vec<String>,
-) -> bool {
-    let callee = expr_call_func(call_node.clone());
-    if set_has(scc_name_set.clone(), callee.clone()) == false {
-        true
-    } else {
-        match v2_rt::map_get(&scc_structural_params, callee.clone()) {
-            Some(structural_param) => call_node
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .enumerate()
-                .any(|pair| {
-                    let idx = pair.0 as i64;
-                    let arg_node = pair.1.clone();
-                    let targets_structural_param = match arg_name(arg_node.clone()) {
-                        Some(arg_name_value) => arg_name_value == structural_param.name.clone(),
-                        None => idx == structural_param.index,
-                    };
-                    targets_structural_param
-                        && expr_is_recursive_binding_var(arg_value(arg_node.clone()), allowed_bindings.clone())
-                }),
-            None => false,
-        }
-    }
-}
-
-pub fn scc_calls_descend_on_recursive_bindings(
-    body: Rc<Node>,
-    scc_name_set: HashMap<String, bool>,
-    scc_structural_params: HashMap<String, Rc<StructuralParam>>,
-    allowed_bindings: Vec<String>,
-) -> bool {
-    match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => {
-            scc_call_descends_on_recursive_bindings(
-                body.clone(),
-                scc_name_set.clone(),
-                scc_structural_params.clone(),
-                allowed_bindings.clone(),
-            ) && body.children.clone().iter().cloned().all(|child| {
-                scc_calls_descend_on_recursive_bindings(
-                    child.clone(),
-                    scc_name_set.clone(),
-                    scc_structural_params.clone(),
-                    allowed_bindings.clone(),
-                )
-            })
-        }
-        _ => body.children.clone().iter().cloned().all(|child| {
-            scc_calls_descend_on_recursive_bindings(
-                child.clone(),
-                scc_name_set.clone(),
-                scc_structural_params.clone(),
-                allowed_bindings.clone(),
-            )
-        }),
-    }
-}
-
-pub fn is_scc_structural_descent_with_param(
-    body: Rc<Node>,
-    structural_param: Rc<StructuralParam>,
-    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
-    scc_name_set: HashMap<String, bool>,
-    scc_structural_params: HashMap<String, Rc<StructuralParam>>,
-) -> bool {
-    match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprMatch { .. } => {
-            let scrut = match_scrutinee(body.clone());
-            let scrut_calls = count_target_calls(scrut.clone(), scc_name_set.clone());
-            scrut_calls == 0
-                && match (*scrut.clone().expr_data.clone()).clone() {
-                    ExprData::ExprVar { .. } =>
-                        expr_var_name(scrut.clone()) == structural_param.name.clone()
-                            && match_arm_nodes(body.clone()).iter().cloned().all(|arm_node| {
-                                let guard_ok = match arm_guard(arm_node.clone()) {
-                                    Some(g) => count_target_calls(g, scc_name_set.clone()) == 0,
-                                    None => true,
-                                };
-                                let recursive_bindings = recursive_arm_binding_names(
-                                    arm_node.clone(),
-                                    structural_param.clone(),
-                                    recursive_variant_fields.clone(),
-                                );
-                                guard_ok
-                                    && scc_calls_descend_on_recursive_bindings(
-                                        arm_body(arm_node.clone()),
-                                        scc_name_set.clone(),
-                                        scc_structural_params.clone(),
-                                        recursive_bindings.clone(),
-                                    )
-                            }),
-                    _ => false,
-                }
-        }
-        ExprData::ExprLet { .. } => {
-            let val_calls = count_target_calls(let_value(body.clone()), scc_name_set.clone());
-            if val_calls > 0 {
-                false
-            } else {
-                match let_body(body.clone()) {
-                    Some(let_tail) => is_scc_structural_descent_with_param(
-                        let_tail.clone(),
-                        structural_param.clone(),
-                        recursive_variant_fields.clone(),
-                        scc_name_set.clone(),
-                        scc_structural_params.clone(),
-                    ),
-                    None => false,
-                }
-            }
-        }
-        ExprData::ExprBlock { .. } => {
-            let stmts = body.children.clone();
-            if stmts.is_empty() {
-                false
-            } else {
-                let prefix_calls = stmts
-                    .iter()
-                    .take(stmts.len().saturating_sub(1))
-                    .cloned()
-                    .fold(0i64, |acc, stmt| acc + count_target_calls(stmt.clone(), scc_name_set.clone()));
-                if prefix_calls > 0 {
-                    false
-                } else {
-                    match stmts.last().cloned() {
-                        Some(last_stmt) => is_scc_structural_descent_with_param(
-                            last_stmt.clone(),
-                            structural_param.clone(),
-                            recursive_variant_fields.clone(),
-                            scc_name_set.clone(),
-                            scc_structural_params.clone(),
-                        ),
-                        None => false,
-                    }
-                }
-            }
-        }
-        _ => false,
-    }
-}
-
-pub fn build_scc_structural_params(
-    members: Vec<String>,
-    func_index: HashMap<String, Rc<FuncEntry>>,
-    recursion_ctx: Rc<RecursionContext>,
-) -> HashMap<String, Rc<StructuralParam>> {
-    members.iter().cloned().fold(<HashMap<String, Rc<StructuralParam>>>::new(), |acc: _, name: String| {
-        match v2_rt::map_get(&func_index, name.clone()) {
-            Some(entry) => match structural_param_from_body(
-                entry.body.clone(),
-                entry.params.clone(),
-                recursion_ctx.recursive_type_set.clone(),
-                recursion_ctx.recursive_variant_fields.clone(),
-            ) {
-                Some(structural_param) => v2_rt::map_insert(acc.clone(), name.clone(), structural_param.clone()),
-                None => acc.clone(),
-            },
-            None => acc.clone(),
-        }
-    })
-}
-
 pub fn build_scc_measure_params(
     members: Vec<String>,
     func_index: HashMap<String, Rc<FuncEntry>>,
@@ -2148,8 +1665,6 @@ pub fn classify_recursion_pattern(
     func_name: String,
     body: Rc<Node>,
     params: Vec<Rc<Node>>,
-    recursive_type_set: Rc<HashMap<String, bool>>,
-    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
     parser_always_advancing: HashMap<String, bool>,
 ) -> Rc<RecursionPattern> {
     let path_calls = max_path_self_calls(body.clone(), func_name.clone());
@@ -2159,16 +1674,6 @@ pub fn classify_recursion_pattern(
         Rc::new(initial_witnesses.clone()),
     );
     if (path_calls.clone() == 0) {
-        Rc::new(RecursionPattern::LinearRecursion {
-            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
-        })
-    } else if is_structural_descent(
-        body.clone(),
-        func_name.clone(),
-        params.clone(),
-        recursive_type_set.clone(),
-        recursive_variant_fields.clone(),
-    ) {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
@@ -2385,62 +1890,40 @@ pub fn graph_has_multi_node_scc(names: Vec<String>, graph: Rc<CallGraph>) -> boo
     result.has_cycle
 }
 
-pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>, recursion_ctx: Rc<RecursionContext>) -> Rc<RecursionPattern> {
+pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>) -> Rc<RecursionPattern> {
     let scc_name_set = members.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, name: String| {
         v2_rt::map_insert(acc.clone(), name.clone(), true)
     });
-    let structural_params = build_scc_structural_params(members.clone(), func_index.clone(), recursion_ctx.clone());
     let scc_measure_params = build_scc_measure_params(members.clone(), func_index.clone());
-    let all_structural = members.iter().cloned().all(|name| {
-        match v2_rt::map_get(&func_index, name.clone()) {
-            Some(entry) => match v2_rt::map_get(&structural_params, name.clone()) {
-                Some(structural_param) => is_scc_structural_descent_with_param(
-                    entry.body.clone(),
-                    structural_param.clone(),
-                    recursion_ctx.recursive_variant_fields.clone(),
-                    scc_name_set.clone(),
-                    structural_params.clone(),
-                ),
-                None => false,
-            },
-            None => false,
-        }
-    });
-    if all_structural {
-        Rc::new(RecursionPattern::LinearRecursion {
-            iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
-        })
-    } else {
-        match classify_parser_scc_recursion_pattern(members.clone(), func_index.clone()) {
-            Some(parser_pattern) => parser_pattern.clone(),
-            None => {
-                let all_arithmetic = members.iter().cloned().all(|name| {
-                    match v2_rt::map_get(&func_index, name.clone()) {
-                        Some(entry) => max_path_target_calls(entry.body.clone(), scc_name_set.clone()) <= 1
-                            && scc_calls_have_arithmetic_descent(
-                                entry.body.clone(),
-                                scc_name_set.clone(),
-                                func_index.clone(),
-                                scc_measure_params.clone(),
-                            ),
-                        None => false,
-                    }
-                });
-                if all_arithmetic {
-                    Rc::new(RecursionPattern::LinearRecursion {
-                        iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
-                    })
-                } else {
-                    Rc::new(RecursionPattern::UnresolvableRecursion {
-                        reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
-                    })
+    match classify_parser_scc_recursion_pattern(members.clone(), func_index.clone()) {
+        Some(parser_pattern) => parser_pattern.clone(),
+        None => {
+            let all_arithmetic = members.iter().cloned().all(|name| {
+                match v2_rt::map_get(&func_index, name.clone()) {
+                    Some(entry) => max_path_target_calls(entry.body.clone(), scc_name_set.clone()) <= 1
+                        && scc_calls_have_arithmetic_descent(
+                            entry.body.clone(),
+                            scc_name_set.clone(),
+                            func_index.clone(),
+                            scc_measure_params.clone(),
+                        ),
+                    None => false,
                 }
+            });
+            if all_arithmetic {
+                Rc::new(RecursionPattern::LinearRecursion {
+                    iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
+                })
+            } else {
+                Rc::new(RecursionPattern::UnresolvableRecursion {
+                    reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
+                })
             }
         }
     }
 }
 
-pub fn build_scc_index(func_entries: Vec<Rc<FuncEntry>>, func_index: HashMap<String, Rc<FuncEntry>>, recursion_ctx: Rc<RecursionContext>) -> HashMap<String, Rc<SccInfo>> {
+pub fn build_scc_index(func_entries: Vec<Rc<FuncEntry>>, func_index: HashMap<String, Rc<FuncEntry>>) -> HashMap<String, Rc<SccInfo>> {
     let names = func_entries.iter().cloned().map(|entry| entry.name.clone()).collect::<Vec<_>>();
     let graph = build_call_graph(func_entries.clone());
     let finish = names.iter().cloned().fold(Rc::new(DfsFinishAcc {
@@ -2471,7 +1954,7 @@ pub fn build_scc_index(func_entries: Vec<Rc<FuncEntry>>, func_index: HashMap<Str
                 let info = Rc::new(SccInfo {
                     members: members.clone(),
                     member_set: member_set.clone(),
-                    pattern: classify_scc_recursion_pattern(members.clone(), func_index.clone(), recursion_ctx.clone()),
+                    pattern: classify_scc_recursion_pattern(members.clone(), func_index.clone()),
                 });
                 let next_index = members.iter().cloned().fold(acc.index.clone(), |inner: _, member: String| {
                     v2_rt::map_insert(inner.clone(), member.clone(), info.clone())
@@ -3081,7 +2564,6 @@ pub struct FuncEntry {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecursionContext {
     pub recursive_type_set: Rc<HashMap<String, bool>>,
-    pub recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3531,8 +3013,6 @@ let bounded = match scc_bounded.clone() {
             func_name.clone(),
             entry.body.clone(),
             entry.params.clone(),
-            recursion_ctx.recursive_type_set.clone(),
-            recursion_ctx.recursive_variant_fields.clone(),
             parser_always_advancing.clone(),
         );
         Rc::new(ComplexitySummary {
@@ -3581,7 +3061,7 @@ Rc::new(SummaryResult {
 pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>, recursion_ctx: Rc<RecursionContext>) -> Rc<ComplexityReport> {
     {
         let func_index = func_entries.clone().iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
-let scc_index = build_scc_index(func_entries.clone(), func_index.clone(), recursion_ctx.clone());
+let scc_index = build_scc_index(func_entries.clone(), func_index.clone());
 let parser_always_advancing = infer_all_parser_always_advancing(func_index.clone());
 let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
