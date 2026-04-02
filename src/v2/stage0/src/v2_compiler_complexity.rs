@@ -2601,6 +2601,94 @@ pub fn is_scc_container_child_descent(members: Vec<String>, func_index: HashMap<
 
 // T6: SCC proof constructor with lexicographic dimensions
 
+pub fn classify_arg_multidim(
+    arg_expr: Rc<Node>,
+    param_name: String,
+    tree_vars: HashMap<String, bool>,
+    list_vars: HashMap<String, bool>,
+) -> Vec<DescentEvidence> {
+    let tree_ev = if is_child_descent_expr(arg_expr.clone(), param_name.clone()) {
+        DescentEvidence::Strict
+    } else {
+        match &*arg_expr.expr_data {
+            ExprData::ExprVar { .. } => {
+                let vname = expr_var_name(arg_expr.clone());
+                if set_has(tree_vars.clone(), vname.clone()) { DescentEvidence::Strict }
+                else if vname == param_name { DescentEvidence::NonIncreasing }
+                else { DescentEvidence::DescentUnknown }
+            }
+            _ => DescentEvidence::DescentUnknown,
+        }
+    };
+    let list_ev = if is_list_shrink_expr(arg_expr.clone(), param_name.clone()) {
+        DescentEvidence::Strict
+    } else {
+        match &*arg_expr.expr_data {
+            ExprData::ExprVar { .. } => {
+                let vname = expr_var_name(arg_expr.clone());
+                if set_has(list_vars.clone(), vname.clone()) { DescentEvidence::Strict }
+                else if vname == param_name { DescentEvidence::NonIncreasing }
+                else { DescentEvidence::DescentUnknown }
+            }
+            _ => DescentEvidence::DescentUnknown,
+        }
+    };
+    vec![tree_ev, list_ev]
+}
+
+fn best_evidence_per_dim(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+    match b {
+        DescentEvidence::Strict => DescentEvidence::Strict,
+        DescentEvidence::NonIncreasing => match a {
+            DescentEvidence::DescentUnknown => DescentEvidence::NonIncreasing,
+            _ => a,
+        },
+        DescentEvidence::DescentUnknown => a,
+    }
+}
+
+pub fn collect_scc_multidim_edges(
+    body: Rc<Node>,
+    caller: String,
+    param_name: String,
+    tree_vars: HashMap<String, bool>,
+    list_vars: HashMap<String, bool>,
+    target_set: HashMap<String, bool>,
+) -> Vec<Rc<ProofEdge>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    match &*body.expr_data {
+        ExprData::ExprLambda { .. } => vec![],
+        ExprData::ExprCall { .. } => {
+            let callee = expr_call_func(body.clone());
+            let own_edges = if set_has(target_set.clone(), callee.clone()) {
+                let best_evidence = body.children.iter().fold(
+                    vec![DescentEvidence::DescentUnknown, DescentEvidence::DescentUnknown],
+                    |best: Vec<DescentEvidence>, arg_node: &Rc<Node>| {
+                        let av = arg_value(arg_node.clone());
+                        let arg_ev = classify_arg_multidim(av.clone(), param_name.clone(), tree_vars.clone(), list_vars.clone());
+                        let best_tree = best_evidence_per_dim(best[0], arg_ev[0]);
+                        let best_list = best_evidence_per_dim(best[1], arg_ev[1]);
+                        vec![best_tree, best_list]
+                    },
+                );
+                vec![Rc::new(ProofEdge { caller: caller.clone(), callee: callee.clone(), evidence: best_evidence })]
+            } else { vec![] };
+            let child_edges: Vec<Rc<ProofEdge>> = body.children.iter().flat_map(|child| {
+                collect_scc_multidim_edges(child.clone(), caller.clone(), param_name.clone(), tree_vars.clone(), list_vars.clone(), target_set.clone())
+            }).collect();
+            let mut result = own_edges;
+            result.extend(child_edges);
+            result
+        }
+        _ => {
+            body.children.iter().flat_map(|child| {
+                collect_scc_multidim_edges(child.clone(), caller.clone(), param_name.clone(), tree_vars.clone(), list_vars.clone(), target_set.clone())
+            }).collect()
+        }
+    }
+    })
+}
+
 pub fn collect_scc_proof_edges_for_dim(
     members: Vec<String>,
     func_index: HashMap<String, Rc<FuncEntry>>,
@@ -2660,10 +2748,52 @@ pub fn construct_scc_termination_proof(
             dimensions: vec![Rc::new(RankingDimension::ListLength { param: "scc".to_string() })],
         }));
     }
-    // Try combined (child OR list)
-    let combined_edges = collect_scc_proof_edges_for_dim(members.clone(), func_index.clone(), scc_name_set.clone(), true, true);
-    let combined_all_known = combined_edges.iter().all(|e| !matches!(e.evidence.first(), Some(DescentEvidence::DescentUnknown)));
-    if combined_all_known && !combined_edges.is_empty() && !proof_has_non_descending_cycle(members.clone(), combined_edges) {
+    // Lexicographic: independently find best tree dim and best list dim per edge
+    let lex_edges: Vec<Rc<ProofEdge>> = {
+        let mut result = vec![];
+        for name in members.iter() {
+            if let Some(entry) = v2_rt::map_get(&func_index, name.clone()) {
+                let mut tree_best: HashMap<(String, String), DescentEvidence> = HashMap::new();
+                let mut list_best: HashMap<(String, String), DescentEvidence> = HashMap::new();
+                for p in entry.params.iter() {
+                    let pname = param_node_name(p.clone());
+                    let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), <HashMap<_, _>>::new(), true, false);
+                    let tree_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars, scc_name_set.clone());
+                    for pe in tree_edges.iter() {
+                        let key = (pe.caller.clone(), pe.callee.clone());
+                        let new_ev = progress_to_evidence(pe.progress);
+                        let prev = tree_best.get(&key).copied().unwrap_or(DescentEvidence::DescentUnknown);
+                        tree_best.insert(key, best_evidence_per_dim(prev, new_ev));
+                    }
+                    let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), <HashMap<_, _>>::new(), false, true);
+                    let list_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), list_vars, scc_name_set.clone());
+                    for pe in list_edges.iter() {
+                        let key = (pe.caller.clone(), pe.callee.clone());
+                        let new_ev = progress_to_evidence(pe.progress);
+                        let prev = list_best.get(&key).copied().unwrap_or(DescentEvidence::DescentUnknown);
+                        list_best.insert(key, best_evidence_per_dim(prev, new_ev));
+                    }
+                }
+                let mut all_keys: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+                for k in tree_best.keys() { all_keys.insert(k.clone()); }
+                for k in list_best.keys() { all_keys.insert(k.clone()); }
+                for key in all_keys {
+                    let tree_ev = tree_best.get(&key).copied().unwrap_or(DescentEvidence::DescentUnknown);
+                    let list_ev = list_best.get(&key).copied().unwrap_or(DescentEvidence::DescentUnknown);
+                    result.push(Rc::new(ProofEdge {
+                        caller: key.0.clone(),
+                        callee: key.1.clone(),
+                        evidence: vec![tree_ev, list_ev],
+                    }));
+                }
+            }
+        }
+        result
+    };
+    let lex_all_known = lex_edges.iter().all(|e| {
+        e.evidence.iter().any(|ev| !matches!(ev, DescentEvidence::DescentUnknown))
+    });
+    if lex_all_known && !lex_edges.is_empty() && !proof_has_non_descending_cycle(members.clone(), lex_edges) {
         return Some(Rc::new(TerminationProof {
             dimensions: vec![
                 Rc::new(RankingDimension::TreeSize { param: "scc".to_string() }),
