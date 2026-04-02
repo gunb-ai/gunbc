@@ -1690,46 +1690,90 @@ delete the function and derive from the data.
 
 Pattern matching should operate on type structure, not string extraction.
 
-### M9: Every type is a mathematical concept — name it
+### M9: DFS the concept DAG — every construct attaches to first principles
 
-Programs are applied mathematics with informal names. When a compiler
-type cannot be mapped to a standard algebraic structure, the type is
-either (a) a genuine new concept that should be added to std/ with an
-external authority citation, or (b) a reinvention of an existing
-structure under a different name. Case (b) is far more common.
+The `std/` library is a connected DAG of concepts rooted in
+first-principles logic. Every concept in the codebase — types, algebras,
+iteration, termination, coercion — traces back through this DAG to
+`Classical` (True/False). This is not aspirational; it is the actual
+structure of the `std/` files today:
 
-**The test:** before defining a new type, ask:
-1. Is this a term in an algebra? (Check std/algebra.dag)
-2. Is this a result/error monad? (Check M6)
-3. Is this a lattice/ordering? (Check std/algebra.dag Lattice)
-4. Is this an accumulator threaded through a fold? (Check std/iteration.dag)
-5. Is this a tree that should be Node?
+```
+Classical (logic.dag)
+├── Bit → Word8..Word64 (bit.dag)
+│   ├── Int = Word64 + OrderedRing witness (integer.dag)
+│   ├── Float = Word64 + ApproximateField witness (float.dag)
+│   └── Bool = Classical itself
+├── Product / Coproduct (constructors.dag)
+│   ├── Node = recursive Product with Coproduct discriminant (00_core.dag)
+│   └── every .dag type
+├── Monoid → Semiring → Ring → Field (algebra.dag)
+│   ├── FreeMonoid<T> → List, String (algebra.dag, string_type.dag)
+│   ├── PartialFunction<K,V> → Map (algebra.dag)
+│   ├── BooleanAlgebra<T> → Set (algebra.dag)
+│   └── Lattice → BoundedLattice (algebra.dag)
+│       └── DescentEvidence = BoundedLattice (termination.dag)
+├── fold / descend / repeat (iteration.dag)
+│   └── every loop, every recursion
+└── Ordering = Less | Equal | Greater (algebra.dag)
+    └── well-founded orderings → termination proofs (termination.dag)
+```
 
-If yes to any, use the existing concept. Don't rename it.
+**The methodology:** when implementing or changing code, think in terms
+of DFS. Start from the concept you need, walk DOWN to its root in the
+DAG. The root tells you what the concept ACTUALLY IS. Then walk back UP
+from the closest existing concept in `std/` to find your attachment point.
 
-**Why this matters:** algebraic structures are permanent — they don't
-need refactoring because they ARE the foundation everything else
-refactors toward. A Semiring is a Semiring. A BoundedLattice is a
-BoundedLattice. When a compiler type is grounded in one of these, it
-inherits the structure's properties (commutativity, associativity,
-well-foundedness) for free. Ad-hoc types get none of this.
+**The process:**
+1. "I need a cost expression type." → DFS down: what IS cost? It's a
+   value in a semiring (add, multiply, zero, one) with a lattice join
+   (max). → Walk up from `std/algebra.dag` Semiring + Lattice. Found.
+   Don't invent CostExpr; use the existing algebraic structure.
+2. "I need a progress tracking type." → DFS down: what IS progress?
+   It's an ordering: strict decrease, same, or unknown. → Walk up from
+   `std/termination.dag` DescentEvidence. Found. Don't invent
+   ProgressKind; it's the same BoundedLattice.
+3. "I need a parse result type." → DFS down: what IS a parse result?
+   It's a value + state + errors. → Walk up: this is a state monad
+   (threaded state) with error accumulation (writer). → If std/ has
+   no monad type, ADD it with authority citation (Moggi 1989). Then
+   use it everywhere instead of defining 36 bespoke result types.
+
+**The test for any new type:**
+- Can you point to its parent in the concept DAG?
+- Does that parent already exist in std/?
+- If yes: import and compose. If no: add it with an external authority
+  citation, THEN import and compose.
+- If you can't find ANY parent: you've likely invented an abstraction
+  rather than discovered a concept. Reconsider.
+
+**Why this works:** concepts rooted in first principles NEVER need
+refactoring — they are what everything else refactors TOWARD. If
+something competes with a concept in the DAG, the competing thing is
+what needs to change, not the concept. A Semiring will always be a
+Semiring. A BoundedLattice will always be a BoundedLattice. Code
+grounded in these is permanent.
 
 **Worked examples from the pipeline audit:**
 
-| Ad-hoc type | Is actually | std/ structure | Consequence of not naming it |
+| Ad-hoc type | DFS root | std/ attachment point | Cost of not doing DFS |
 |---|---|---|---|
-| CostExpr (7 recursive variants) | Tropical semiring term | Semiring + Lattice (std/algebra.dag) | 11 hand-written walker functions, 30 CX violations |
-| SizeExpr (5 recursive variants) | Sub-algebra of CostExpr | CommutativeMonoid + Lattice | Separate type for the same algebra, doubling walker code |
-| ProgressKind (3 variants) | DescentEvidence (already exists) | BoundedLattice (std/termination.dag) | Duplicate type, bridge functions, 3 CX violations |
-| 36 parse result types | State monad | Writer × State (Moggi 1989) | 36 types instead of 1 generic |
-| 22 resolve/infer result types | Error-accumulating monad | Writer monad | 22 types instead of 1 generic |
-| AlgebraTypeTemplate (9 variants) | Type constructor free algebra | Node tree | Separate recursive type, 14 CX violations |
-| InferScope ≅ ModuleContext | Same inference context | Product type | 2 types for 1 concept |
+| CostExpr (7 variants) | Semiring + Lattice | `std/algebra.dag` line 145 | 11 walker functions, 30 CX violations |
+| SizeExpr (5 variants) | CommutativeMonoid + Lattice | sub-algebra of CostExpr | Separate type doubling walker code |
+| ProgressKind (3 variants) | BoundedLattice | `std/termination.dag` line 57 | Duplicate of DescentEvidence |
+| 36 parse result types | State × Writer monad | needs std/ addition | 36 types instead of 1 |
+| 22 resolve/infer result types | Writer monad | needs std/ addition | 22 types instead of 1 |
+| AlgebraTypeTemplate (9 variants) | Free algebra of type constructors | Node (universal carrier) | Separate recursive type |
+| InferScope ≅ ModuleContext | Product type (context) | same concept | 2 types for 1 concept |
 
-**The pattern:** every row is the same mistake — a standard algebraic
-structure implemented ad-hoc under a domain-specific name. The fix is
-always the same: identify the algebra, import or add it to std/, delete
-the ad-hoc type.
+**When you find a concept not in the DAG:** add it to `std/` with an
+external authority citation. The citation is the proof that you
+discovered something real, not invented something ad-hoc. Examples:
+- `std/termination.dag` cites Floyd (1967), Lee/Jones/Ben-Amram (2001)
+- `std/algebra.dag` cites ring theory, lattice theory
+- `std/iteration.dag` cites catamorphism theory
+- A new `std/discrimination.dag` would cite pattern calculus, tree automata
+- A new `std/graph.dag` would cite Cormen et al., Tarjan (1972)
 
 ---
 
