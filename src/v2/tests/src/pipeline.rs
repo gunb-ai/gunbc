@@ -2146,6 +2146,39 @@ fn render(name: String) -> String {
 }
 
 #[test]
+fn complexity_parser_same_state_mutual_cycle_remains_violation() {
+    let source = r#"module parser_cycle
+type ParserState { pos: Int }
+type UnitResult { state: ParserState, err: Int? }
+
+fn parse_a(state: ParserState) -> UnitResult {
+  parse_b(state: state)
+}
+
+fn parse_b(state: ParserState) -> UnitResult {
+  parse_a(state: state)
+}
+"#;
+    let result = compile_dag(source);
+    let parser_violations: Vec<_> = result
+        .complexity
+        .violations
+        .iter()
+        .filter(|v| v.func_name == "parse_a" || v.func_name == "parse_b")
+        .collect();
+    assert!(
+        !parser_violations.is_empty(),
+        "same-state parser mutual recursion must remain a violation, got: {:?}",
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 #[ignore] // ~1 min: compiles all v2 .dag sources through the full pipeline
 fn complexity_parser_state_aliases_unblock_type_parser_scc() {
     let ws = crate::helpers::workspace_root();

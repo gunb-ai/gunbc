@@ -40,7 +40,7 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body, let_binding_name,
   match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value,
+  method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, record_lit_type_name, return_value,
   expr_call_func, expr_var_name, field_access_base, field_access_field,
   LiteralValue, LitNull
 }
@@ -260,6 +260,11 @@ type SccCycleAcc {
   has_cycle: Bool
 }
 
+type SccMemberAcc {
+  visited: Map<String, Bool>
+  cycle_members: Map<String, Bool>
+}
+
 type ParserStateParam {
   name: String
   index: Int
@@ -274,6 +279,15 @@ type ParserResultSource
   | ParserResultCall { input: ProgressKind, callee: String }
   | ParserResultOpaque
 
+type ParserSuccessSummary
+  = NoSuccessfulReturn
+  | SuccessfulReturn { progress: ProgressKind }
+
+type ParserBoundResult {
+  source: ParserResultSource
+  success: ParserSuccessSummary
+}
+
 type ParserProgressEdge {
   caller: String
   callee: String
@@ -282,8 +296,7 @@ type ParserProgressEdge {
 
 type ParserProgressEnv {
   state_aliases: Map<String, ProgressKind>
-  result_sources: Map<String, ParserResultSource>
-  result_state_aliases: Map<String, ProgressKind>
+  bound_results: Map<String, ParserBoundResult>
 }
 
 type ParserProgressAcc {
@@ -362,6 +375,19 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
   map_get(m, key) != none
 }
 
+fn set_without_key(m: Map<String, Bool>, key: String) -> Map<String, Bool> {
+  map_keys(m) |> fold(init: empty_map(), f: (acc, name) =>
+    if name == key {
+      acc
+    } else {
+      match map_get(m, name) {
+        Some { value: present } => map_insert(acc, name, present)
+        None => acc
+      }
+    }
+  )
+}
+
 fn strict_progress(progress: ProgressKind) -> ProgressKind {
   match progress {
     ProgressSame => ProgressStrict
@@ -387,28 +413,10 @@ fn merge_progress(a: ProgressKind, b: ProgressKind) -> ProgressKind {
   }
 }
 
-fn merge_success_progress(a: ProgressKind, b: ProgressKind) -> ProgressKind {
-  match a {
-    ProgressUnknown => b
-    ProgressStrict =>
-      match b {
-        ProgressUnknown => ProgressStrict
-        ProgressStrict => ProgressStrict
-        ProgressSame => ProgressSame
-      }
-    ProgressSame =>
-      match b {
-        ProgressUnknown => ProgressSame
-        _ => ProgressSame
-      }
-  }
-}
-
 fn empty_parser_progress_env() -> ParserProgressEnv {
   ParserProgressEnv {
     state_aliases: empty_map(),
-    result_sources: empty_map(),
-    result_state_aliases: empty_map()
+    bound_results: empty_map()
   }
 }
 
@@ -443,11 +451,18 @@ fn parser_state_base_var(expr: Node) -> String? {
   }
 }
 
+fn parser_bound_result_success_summary(result_name: String, env: ParserProgressEnv) -> ParserSuccessSummary {
+  match map_get(env.bound_results, result_name) {
+    Some { value: bound_result } => bound_result.success
+    None => SuccessfulReturn { progress: ProgressUnknown }
+  }
+}
+
 fn parser_bound_result_state_progress(result_name: String, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
-  let source_progress = match map_get(env.result_sources, result_name) {
-    Some { value: source } =>
+  let source_progress = match map_get(env.bound_results, result_name) {
+    Some { value: bound_result } =>
       parser_result_state_progress(
-        source: source,
+        source: bound_result.source,
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: consumed_true_set,
         result_name: result_name
@@ -456,10 +471,9 @@ fn parser_bound_result_state_progress(result_name: String, env: ParserProgressEn
   }
   match source_progress {
     ProgressUnknown =>
-      match map_get(env.result_state_aliases, result_name) {
-        Some { value: progress } => progress
-        None => ProgressUnknown
-      }
+      parser_success_progress_from_summary(
+        summary: parser_bound_result_success_summary(result_name: result_name, env: env)
+      )
     _ => source_progress
   }
 }
@@ -571,7 +585,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
           )
         None => ProgressUnknown
       }
-      merge_success_progress(a: then_progress, b: else_progress)
+      merge_progress(a: then_progress, b: else_progress)
 
     ExprLet =>
       let next_env = parser_env_with_binding(
@@ -664,7 +678,7 @@ fn parser_env_with_binding(name: String, value_expr: Node, env: ParserProgressEn
     parser_always_advancing: parser_always_advancing,
     consumed_true_set: consumed_true_set
   )
-  let result_state_progress = parser_success_progress(
+  let result_success = parser_success_summary(
     expr: value_expr,
     state_param: state_param,
     env: env,
@@ -673,31 +687,44 @@ fn parser_env_with_binding(name: String, value_expr: Node, env: ParserProgressEn
   )
   ParserProgressEnv {
     state_aliases: map_insert(env.state_aliases, name, state_progress),
-    result_sources: map_insert(env.result_sources, name, result_source),
-    result_state_aliases: map_insert(env.result_state_aliases, name, result_state_progress)
+    bound_results: map_insert(
+      env.bound_results,
+      name,
+      ParserBoundResult { source: result_source, success: result_success }
+    )
   }
 }
 
-fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+fn parser_call_input_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
   match parser_state_arg_expr(call_node: call_node, state_param: state_param) {
     Some { value: state_expr } =>
-      let input_progress = parser_state_expr_progress(
+      parser_state_expr_progress(
         expr: state_expr,
         state_param: state_param,
         env: env,
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: consumed_true_set
       )
-      if set_has(m: parser_always_advancing, key: expr_call_func(texpr: call_node)) {
-        strict_progress(progress: input_progress)
-      } else {
-        input_progress
-      }
     None => ProgressUnknown
   }
 }
 
-fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> List<ParserProgressEdge> {
+fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+  let input_progress = parser_call_input_progress(
+    call_node: call_node,
+    state_param: state_param,
+    env: env,
+    parser_always_advancing: parser_always_advancing,
+    consumed_true_set: consumed_true_set
+  )
+  if set_has(m: parser_always_advancing, key: expr_call_func(texpr: call_node)) {
+    strict_progress(progress: input_progress)
+  } else {
+    input_progress
+  }
+}
+
+fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, credit_callee_progress: Bool) -> List<ParserProgressEdge> {
   let acc = stmts |> fold(init: ParserProgressAcc { edges: [], env: env }, f: (acc, stmt) =>
     match stmt.expr_data {
       ExprLet =>
@@ -711,7 +738,8 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
               scc_name_set: scc_name_set,
               env: acc.env,
               parser_always_advancing: parser_always_advancing,
-              consumed_true_set: consumed_true_set
+              consumed_true_set: consumed_true_set,
+              credit_callee_progress: credit_callee_progress
             )
             let next_env = parser_env_with_binding(
               name: let_binding_name(texpr: stmt),
@@ -730,7 +758,8 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
               scc_name_set: scc_name_set,
               env: acc.env,
               parser_always_advancing: parser_always_advancing,
-              consumed_true_set: consumed_true_set
+              consumed_true_set: consumed_true_set,
+              credit_callee_progress: credit_callee_progress
             )
             ParserProgressAcc { edges: concat(acc.edges, stmt_edges), env: acc.env }
         }
@@ -742,7 +771,8 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
           scc_name_set: scc_name_set,
           env: acc.env,
           parser_always_advancing: parser_always_advancing,
-          consumed_true_set: consumed_true_set
+          consumed_true_set: consumed_true_set,
+          credit_callee_progress: credit_callee_progress
         )
         ParserProgressAcc { edges: concat(acc.edges, stmt_edges), env: acc.env }
     }
@@ -750,20 +780,30 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
   acc.edges
 }
 
-fn collect_parser_progress_edges(caller: String, body: Node, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> List<ParserProgressEdge> {
+fn collect_parser_progress_edges(caller: String, body: Node, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, credit_callee_progress: Bool) -> List<ParserProgressEdge> {
   match body.expr_data {
     ExprCall { call_semantics: _ } =>
       let own_edges = if set_has(m: scc_name_set, key: expr_call_func(texpr: body)) {
         [ParserProgressEdge {
           caller: caller,
           callee: expr_call_func(texpr: body),
-          progress: parser_call_edge_progress(
-            call_node: body,
-            state_param: state_param,
-            env: env,
-            parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
-          )
+          progress: if credit_callee_progress {
+            parser_call_edge_progress(
+              call_node: body,
+              state_param: state_param,
+              env: env,
+              parser_always_advancing: parser_always_advancing,
+              consumed_true_set: consumed_true_set
+            )
+          } else {
+            parser_call_input_progress(
+              call_node: body,
+              state_param: state_param,
+              env: env,
+              parser_always_advancing: parser_always_advancing,
+              consumed_true_set: consumed_true_set
+            )
+          }
         }]
       } else {
         []
@@ -776,7 +816,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
           scc_name_set: scc_name_set,
           env: env,
           parser_always_advancing: parser_always_advancing,
-          consumed_true_set: consumed_true_set
+          consumed_true_set: consumed_true_set,
+          credit_callee_progress: credit_callee_progress
         )
       )
       concat(own_edges, child_edges)
@@ -790,7 +831,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         scc_name_set: scc_name_set,
         env: env,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set
+        consumed_true_set: consumed_true_set,
+        credit_callee_progress: credit_callee_progress
       )
       let then_consumed = match parser_progress_flag_var(expr: cond) {
         Some { value: name } => map_insert(consumed_true_set, name, true)
@@ -803,7 +845,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         scc_name_set: scc_name_set,
         env: env,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: then_consumed
+        consumed_true_set: then_consumed,
+        credit_callee_progress: credit_callee_progress
       )
       let else_edges = match if_else_branch(texpr: body) {
         Some { value: eb } =>
@@ -814,7 +857,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
             scc_name_set: scc_name_set,
             env: env,
             parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
+            consumed_true_set: consumed_true_set,
+            credit_callee_progress: credit_callee_progress
           )
         None => []
       }
@@ -829,7 +873,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         scc_name_set: scc_name_set,
         env: env,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set
+        consumed_true_set: consumed_true_set,
+        credit_callee_progress: credit_callee_progress
       )
       let next_env = parser_env_with_binding(
         name: let_binding_name(texpr: body),
@@ -848,7 +893,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
             scc_name_set: scc_name_set,
             env: next_env,
             parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
+            consumed_true_set: consumed_true_set,
+            credit_callee_progress: credit_callee_progress
           )
         None => []
       }
@@ -862,7 +908,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         scc_name_set: scc_name_set,
         env: env,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set
+        consumed_true_set: consumed_true_set,
+        credit_callee_progress: credit_callee_progress
       )
 
     ExprMatch =>
@@ -873,7 +920,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         scc_name_set: scc_name_set,
         env: env,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set
+        consumed_true_set: consumed_true_set,
+        credit_callee_progress: credit_callee_progress
       )
       let arm_edges = match_arm_nodes(texpr: body) |> flat_map(arm_node =>
         collect_parser_progress_edges(
@@ -883,7 +931,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
           scc_name_set: scc_name_set,
           env: env,
           parser_always_advancing: parser_always_advancing,
-          consumed_true_set: consumed_true_set
+          consumed_true_set: consumed_true_set,
+          credit_callee_progress: credit_callee_progress
         )
       )
       concat(scrut_edges, arm_edges)
@@ -897,7 +946,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
           scc_name_set: scc_name_set,
           env: env,
           parser_always_advancing: parser_always_advancing,
-          consumed_true_set: consumed_true_set
+          consumed_true_set: consumed_true_set,
+          credit_callee_progress: credit_callee_progress
         )
       )
   }
@@ -914,10 +964,40 @@ fn parser_expr_is_none(expr: Node) -> Bool {
   }
 }
 
-fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+fn merge_parser_success_summary(a: ParserSuccessSummary, b: ParserSuccessSummary) -> ParserSuccessSummary {
+  match a {
+    NoSuccessfulReturn => b
+    SuccessfulReturn { progress: left_progress } =>
+      match b {
+        NoSuccessfulReturn => a
+        SuccessfulReturn { progress: right_progress } =>
+          SuccessfulReturn { progress: merge_progress(a: left_progress, b: right_progress) }
+      }
+  }
+}
+
+fn parser_success_progress_from_summary(summary: ParserSuccessSummary) -> ProgressKind {
+  match summary {
+    NoSuccessfulReturn => ProgressUnknown
+    SuccessfulReturn { progress: progress } => progress
+  }
+}
+
+fn parser_expr_is_definitely_some(expr: Node) -> Bool {
+  match expr.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      match record_lit_type_name(texpr: expr) {
+        Some { value: type_name } => type_name == "Some"
+        None => false
+      }
+    _ => false
+  }
+}
+
+fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ParserSuccessSummary {
   match expr.expr_data {
     ExprReturn =>
-      parser_success_progress(
+      parser_success_summary(
         expr: return_value(texpr: expr),
         state_param: state_param,
         env: env,
@@ -926,26 +1006,23 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
       )
 
     ExprVar { binding_kind: _ } =>
-      parser_bound_result_state_progress(
-        result_name: expr_var_name(texpr: expr),
-        env: env,
-        parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set
-      )
+      parser_bound_result_success_summary(result_name: expr_var_name(texpr: expr), env: env)
 
     ExprCall { call_semantics: _ } =>
-      parser_result_state_progress(
-        source: parser_result_source_for_expr(
-          expr: expr,
-          state_param: state_param,
-          env: env,
+      SuccessfulReturn {
+        progress: parser_result_state_progress(
+          source: parser_result_source_for_expr(
+            expr: expr,
+            state_param: state_param,
+            env: env,
+            parser_always_advancing: parser_always_advancing,
+            consumed_true_set: consumed_true_set
+          ),
           parser_always_advancing: parser_always_advancing,
-          consumed_true_set: consumed_true_set
-        ),
-        parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set,
-        result_name: ""
-      )
+          consumed_true_set: consumed_true_set,
+          result_name: ""
+        )
+      }
 
     ExprRecordLit { parent_enum: _ } =>
       match parser_record_field_value(expr: expr, field_name: "err") {
@@ -953,19 +1030,35 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
           if parser_expr_is_none(expr: err_expr) {
             match parser_record_field_value(expr: expr, field_name: "state") {
               Some { value: state_expr } =>
-                parser_state_expr_progress(
-                  expr: state_expr,
-                  state_param: state_param,
-                  env: env,
-                  parser_always_advancing: parser_always_advancing,
-                  consumed_true_set: consumed_true_set
-                )
-              None => ProgressUnknown
+                SuccessfulReturn {
+                  progress: parser_state_expr_progress(
+                    expr: state_expr,
+                    state_param: state_param,
+                    env: env,
+                    parser_always_advancing: parser_always_advancing,
+                    consumed_true_set: consumed_true_set
+                  )
+                }
+              None => SuccessfulReturn { progress: ProgressUnknown }
             }
+          } else if parser_expr_is_definitely_some(expr: err_expr) {
+            NoSuccessfulReturn
           } else {
-            ProgressUnknown
+            match parser_record_field_value(expr: expr, field_name: "state") {
+              Some { value: state_expr } =>
+                SuccessfulReturn {
+                  progress: parser_state_expr_progress(
+                    expr: state_expr,
+                    state_param: state_param,
+                    env: env,
+                    parser_always_advancing: parser_always_advancing,
+                    consumed_true_set: consumed_true_set
+                  )
+                }
+              None => SuccessfulReturn { progress: ProgressUnknown }
+            }
           }
-        None => ProgressUnknown
+        None => SuccessfulReturn { progress: ProgressUnknown }
       }
 
     ExprIf =>
@@ -974,7 +1067,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
         Some { value: name } => map_insert(consumed_true_set, name, true)
         None => consumed_true_set
       }
-      let then_progress = parser_success_progress(
+      let then_progress = parser_success_summary(
         expr: if_then_branch(texpr: expr),
         state_param: state_param,
         env: env,
@@ -983,16 +1076,16 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
       )
       let else_progress = match if_else_branch(texpr: expr) {
         Some { value: eb } =>
-          parser_success_progress(
+          parser_success_summary(
             expr: eb,
             state_param: state_param,
             env: env,
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set
           )
-        None => ProgressUnknown
+        None => NoSuccessfulReturn
       }
-      merge_progress(a: then_progress, b: else_progress)
+      merge_parser_success_summary(a: then_progress, b: else_progress)
 
     ExprLet =>
       let next_env = parser_env_with_binding(
@@ -1005,14 +1098,14 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
       )
       match let_body(texpr: expr) {
         Some { value: body } =>
-          parser_success_progress(
+          parser_success_summary(
             expr: body,
             state_param: state_param,
             env: next_env,
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set
           )
-        None => ProgressUnknown
+        None => NoSuccessfulReturn
       }
 
     ExprBlock =>
@@ -1038,19 +1131,19 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
       )
       match expr.children |> last {
         Some { value: last_stmt } =>
-          parser_success_progress(
+          parser_success_summary(
             expr: last_stmt,
             state_param: state_param,
             env: acc.env,
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set
           )
-        None => ProgressUnknown
+        None => NoSuccessfulReturn
       }
 
     ExprMatch =>
       let arm_progresses = match_arm_nodes(texpr: expr) |> map(arm_node =>
-        parser_success_progress(
+        parser_success_summary(
           expr: arm_body(n: arm_node),
           state_param: state_param,
           env: env,
@@ -1061,19 +1154,82 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
       match arm_progresses |> first {
         Some { value: initial } =>
           arm_progresses |> fold(init: initial, f: (acc, p) =>
-            merge_success_progress(a: acc, b: p)
+            merge_parser_success_summary(a: acc, b: p)
           )
-        None => ProgressUnknown
+        None => NoSuccessfulReturn
       }
 
-    _ => ProgressUnknown
+    _ => SuccessfulReturn { progress: ProgressUnknown }
   }
 }
 
-fn parser_member_is_always_advancing(entry: FuncEntry, candidates: Map<String, Bool>) -> Bool {
+fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+  parser_success_progress_from_summary(
+    summary: parser_success_summary(
+      expr: expr,
+      state_param: state_param,
+      env: env,
+      parser_always_advancing: parser_always_advancing,
+      consumed_true_set: consumed_true_set
+    )
+  )
+}
+
+fn candidate_member_set(members: List<String>, candidates: Map<String, Bool>) -> Map<String, Bool> {
+  members |> fold(init: empty_map(), f: (acc, name) =>
+    if set_has(m: candidates, key: name) {
+      map_insert(acc, name, true)
+    } else {
+      acc
+    }
+  )
+}
+
+fn collect_candidate_parser_progress_edges(members: List<String>, func_index: Map<String, FuncEntry>, candidates: Map<String, Bool>, credit_callee_progress: Bool) -> List<ParserProgressEdge> {
+  let candidate_set = candidate_member_set(members: members, candidates: candidates)
+  members |> flat_map(name =>
+    if set_has(m: candidate_set, key: name) == false {
+      []
+    } else {
+      match map_get(func_index, name) {
+        Some { value: entry } =>
+          match parser_state_param(params: entry.params) {
+            Some { value: state_param } =>
+              collect_parser_progress_edges(
+                caller: name,
+                body: entry.body,
+                state_param: state_param,
+                scc_name_set: candidate_set,
+                env: empty_parser_progress_env(),
+                parser_always_advancing: candidates,
+                consumed_true_set: empty_map(),
+                credit_callee_progress: credit_callee_progress
+              )
+            None => []
+          }
+        None => []
+      }
+    }
+  )
+}
+
+fn parser_same_progress_cycle_members(members: List<String>, func_index: Map<String, FuncEntry>, candidates: Map<String, Bool>) -> Map<String, Bool> {
+  let candidate_set = candidate_member_set(members: members, candidates: candidates)
+  let candidate_names = members |> filter(name => set_has(m: candidate_set, key: name))
+  let edges = collect_candidate_parser_progress_edges(
+    members: candidate_names,
+    func_index: func_index,
+    candidates: candidates,
+    credit_callee_progress: false
+  )
+  same_progress_cycle_members(members: candidate_names, edges: edges)
+}
+
+fn parser_member_is_always_advancing(entry: FuncEntry, same_cycle_members: Map<String, Bool>, candidates: Map<String, Bool>) -> Bool {
   match parser_state_param(params: entry.params) {
     Some { value: state_param } =>
-      parser_success_progress(
+      set_has(m: same_cycle_members, key: entry.name) == false
+      && parser_success_progress(
         expr: entry.body,
         state_param: state_param,
         env: empty_parser_progress_env(),
@@ -1084,53 +1240,96 @@ fn parser_member_is_always_advancing(entry: FuncEntry, candidates: Map<String, B
   }
 }
 
-fn same_member_set(a: Map<String, Bool>, b: Map<String, Bool>, members: List<String>) -> Bool {
-  members |> all(name =>
-    set_has(m: a, key: name) == set_has(m: b, key: name)
-  )
-}
-
-fn infer_parser_always_advancing_members_loop(members: List<String>, func_index: Map<String, FuncEntry>, candidates: Map<String, Bool>, fuel: Int) -> Map<String, Bool> {
-  if fuel <= 0 {
-    candidates
-  } else {
-    let next = members |> fold(init: empty_map(), f: (acc, name) =>
+fn infer_parser_always_advancing_members_worklist(queue: List<String>, members: List<String>, func_index: Map<String, FuncEntry>, reverse_graph: Map<String, List<String>>, candidates: Map<String, Bool>, same_cycle_members: Map<String, Bool>) -> Map<String, Bool> {
+  match queue |> first {
+    Some { value: name } =>
+      let rest = queue |> skip(1)
       if set_has(m: candidates, key: name) == false {
-        acc
+        infer_parser_always_advancing_members_worklist(
+          queue: rest,
+          members: members,
+          func_index: func_index,
+          reverse_graph: reverse_graph,
+          candidates: candidates,
+          same_cycle_members: same_cycle_members
+        )
       } else {
         match map_get(func_index, name) {
           Some { value: entry } =>
-            if parser_member_is_always_advancing(entry: entry, candidates: candidates) {
-              map_insert(acc, name, true)
+            if parser_member_is_always_advancing(entry: entry, same_cycle_members: same_cycle_members, candidates: candidates) {
+              infer_parser_always_advancing_members_worklist(
+                queue: rest,
+                members: members,
+                func_index: func_index,
+                reverse_graph: reverse_graph,
+                candidates: candidates,
+                same_cycle_members: same_cycle_members
+              )
             } else {
-              acc
+              let caller_names = match map_get(reverse_graph, name) {
+                Some { value: ns } => ns
+                None => []
+              }
+              let next_candidates = set_without_key(m: candidates, key: name)
+              infer_parser_always_advancing_members_worklist(
+                queue: deduplicate(items: concat(rest, caller_names)),
+                members: members,
+                func_index: func_index,
+                reverse_graph: reverse_graph,
+                candidates: next_candidates,
+                same_cycle_members: parser_same_progress_cycle_members(
+                  members: members,
+                  func_index: func_index,
+                  candidates: next_candidates
+                )
+              )
             }
-          None => acc
+          None =>
+            infer_parser_always_advancing_members_worklist(
+              queue: rest,
+              members: members,
+              func_index: func_index,
+              reverse_graph: reverse_graph,
+              candidates: candidates,
+              same_cycle_members: same_cycle_members
+            )
         }
       }
-    )
-    if same_member_set(a: candidates, b: next, members: members) {
-      next
-    } else {
-      infer_parser_always_advancing_members_loop(
-        members: members,
-        func_index: func_index,
-        candidates: next,
-        fuel: fuel - 1
-      )
-    }
+    None => candidates
   }
 }
 
 fn infer_parser_always_advancing_members(members: List<String>, func_index: Map<String, FuncEntry>) -> Map<String, Bool> {
-  let initial = members |> fold(init: empty_map(), f: (acc, name) =>
+  let parser_name_set = members |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
   )
-  infer_parser_always_advancing_members_loop(
+  let reverse_graph = build_parser_result_call_graph(names: members, func_index: func_index).reverse
+  infer_parser_always_advancing_members_worklist(
+    queue: members,
     members: members,
     func_index: func_index,
-    candidates: initial,
-    fuel: count(members)
+    reverse_graph: reverse_graph,
+    candidates: parser_name_set,
+    same_cycle_members: parser_same_progress_cycle_members(
+      members: members,
+      func_index: func_index,
+      candidates: parser_name_set
+    )
+  )
+}
+
+fn parser_result_function_calls(body: Node) -> List<String> {
+  let own_calls = match body.expr_data {
+    ExprCall { call_semantics: _ } =>
+      match parser_result_witness(expr: body) {
+        ParserWitnessCall { callee: ParserCallFunction { name: name } } => [name]
+        _ => []
+      }
+    _ => []
+  }
+  concat(
+    own_calls,
+    body.children |> flat_map(child => parser_result_function_calls(body: child))
   )
 }
 
@@ -1143,8 +1342,23 @@ fn parser_function_names(func_index: Map<String, FuncEntry>) -> List<String> {
   )
 }
 
+fn parser_result_function_names(func_index: Map<String, FuncEntry>) -> List<String> {
+  let called_names = parser_function_names(func_index: func_index) |> flat_map(name =>
+    match map_get(func_index, name) {
+      Some { value: entry } => parser_result_function_calls(body: entry.body)
+      None => []
+    }
+  )
+  deduplicate(items: called_names) |> filter(name =>
+    match map_get(func_index, name) {
+      Some { value: entry } => parser_state_param(params: entry.params) != none
+      None => false
+    }
+  )
+}
+
 fn infer_all_parser_always_advancing(func_index: Map<String, FuncEntry>) -> Map<String, Bool> {
-  let members = parser_function_names(func_index: func_index)
+  let members = parser_result_function_names(func_index: func_index)
   infer_parser_always_advancing_members(members: members, func_index: func_index)
 }
 
@@ -1159,7 +1373,8 @@ fn self_calls_have_strict_parser_progress(func_name: String, body: Node, params:
         scc_name_set: self_set,
         env: empty_parser_progress_env(),
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: empty_map()
+        consumed_true_set: empty_map(),
+        credit_callee_progress: false
       )
       (edges |> count) > 0 && (edges |> all(edge => edge.progress == ProgressStrict))
     None => false
@@ -1190,14 +1405,65 @@ fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserPro
   CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
-fn same_progress_subgraph_has_cycle(members: List<String>, edges: List<ParserProgressEdge>) -> Bool {
+fn build_parser_result_call_graph(names: List<String>, func_index: Map<String, FuncEntry>) -> CallGraph {
+  let name_set = names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, true)
+  )
+  let edges = names |> flat_map(name =>
+    match map_get(func_index, name) {
+      Some { value: entry } =>
+        parser_result_function_calls(body: entry.body)
+        |> filter(callee => set_has(m: name_set, key: callee))
+        |> map(callee =>
+          ParserProgressEdge {
+            caller: name,
+            callee: callee,
+            progress: ProgressUnknown
+          }
+        )
+      None => []
+    }
+  )
+  build_call_graph_from_parser_edges(names: names, edges: edges)
+}
+
+fn graph_multi_node_scc_member_set(names: List<String>, graph: CallGraph) -> Map<String, Bool> {
+  let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
+    dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
+  )
+  let result = finish.order |> reverse |> fold(init: SccMemberAcc { visited: empty_map(), cycle_members: empty_map() }, f: (acc, name) =>
+    if set_has(m: acc.visited, key: name) {
+      acc
+    } else {
+      let component = dfs_collect_component(node: name, adjacency: graph.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
+      let next_cycle_members = if (component.members |> count) > 1 {
+        component.members |> fold(init: acc.cycle_members, f: (member_acc, member) =>
+          map_insert(member_acc, member, true)
+        )
+      } else {
+        acc.cycle_members
+      }
+      SccMemberAcc { visited: component.visited, cycle_members: next_cycle_members }
+    }
+  )
+  result.cycle_members
+}
+
+fn same_progress_cycle_members(members: List<String>, edges: List<ParserProgressEdge>) -> Map<String, Bool> {
   let same_edges = edges |> filter(edge => edge.progress == ProgressSame)
-  if same_edges |> any(edge => edge.caller == edge.callee) {
-    true
-  } else {
-    let graph = build_call_graph_from_parser_edges(names: members, edges: same_edges)
-    graph_has_multi_node_scc(names: members, graph: graph)
-  }
+  let self_loop_members = same_edges |> fold(init: empty_map(), f: (acc, edge) =>
+    if edge.caller == edge.callee {
+      map_insert(acc, edge.caller, true)
+    } else {
+      acc
+    }
+  )
+  let graph = build_call_graph_from_parser_edges(names: members, edges: same_edges)
+  map_merge(self_loop_members, graph_multi_node_scc_member_set(names: members, graph: graph))
+}
+
+fn same_progress_subgraph_has_cycle(members: List<String>, edges: List<ParserProgressEdge>) -> Bool {
+  map_keys(same_progress_cycle_members(members: members, edges: edges)) |> count > 0
 }
 
 fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<String, FuncEntry>) -> RecursionPattern? {
@@ -1214,7 +1480,7 @@ fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<
     none
   } else {
     let parser_always_advancing = infer_parser_always_advancing_members(
-      members: parser_function_names(func_index: func_index),
+      members: parser_result_function_names(func_index: func_index),
       func_index: func_index
     )
     let edges = members |> flat_map(name =>
@@ -1229,7 +1495,8 @@ fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<
                 scc_name_set: scc_name_set,
                 env: empty_parser_progress_env(),
                 parser_always_advancing: parser_always_advancing,
-                consumed_true_set: empty_map()
+                consumed_true_set: empty_map(),
+                credit_callee_progress: true
               )
             None => []
           }
