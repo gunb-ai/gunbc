@@ -283,6 +283,7 @@ type ParserProgressEdge {
 type ParserProgressEnv {
   state_aliases: Map<String, ProgressKind>
   result_sources: Map<String, ParserResultSource>
+  result_state_aliases: Map<String, ProgressKind>
 }
 
 type ParserProgressAcc {
@@ -386,10 +387,28 @@ fn merge_progress(a: ProgressKind, b: ProgressKind) -> ProgressKind {
   }
 }
 
+fn merge_success_progress(a: ProgressKind, b: ProgressKind) -> ProgressKind {
+  match a {
+    ProgressUnknown => b
+    ProgressStrict =>
+      match b {
+        ProgressUnknown => ProgressStrict
+        ProgressStrict => ProgressStrict
+        ProgressSame => ProgressSame
+      }
+    ProgressSame =>
+      match b {
+        ProgressUnknown => ProgressSame
+        _ => ProgressSame
+      }
+  }
+}
+
 fn empty_parser_progress_env() -> ParserProgressEnv {
   ParserProgressEnv {
     state_aliases: empty_map(),
-    result_sources: empty_map()
+    result_sources: empty_map(),
+    result_state_aliases: empty_map()
   }
 }
 
@@ -421,6 +440,27 @@ fn parser_state_base_var(expr: Node) -> String? {
         None => none
       }
     _ => none
+  }
+}
+
+fn parser_bound_result_state_progress(result_name: String, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+  let source_progress = match map_get(env.result_sources, result_name) {
+    Some { value: source } =>
+      parser_result_state_progress(
+        source: source,
+        parser_always_advancing: parser_always_advancing,
+        consumed_true_set: consumed_true_set,
+        result_name: result_name
+      )
+    None => ProgressUnknown
+  }
+  match source_progress {
+    ProgressUnknown =>
+      match map_get(env.result_state_aliases, result_name) {
+        Some { value: progress } => progress
+        None => ProgressUnknown
+      }
+    _ => source_progress
   }
 }
 
@@ -482,16 +522,12 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
       if field_access_field(texpr: expr) == "state" {
         match parser_state_base_var(expr: expr) {
           Some { value: result_name } =>
-            match map_get(env.result_sources, result_name) {
-              Some { value: source } =>
-                parser_result_state_progress(
-                  source: source,
-                  parser_always_advancing: parser_always_advancing,
-                  consumed_true_set: consumed_true_set,
-                  result_name: result_name
-                )
-              None => ProgressUnknown
-            }
+            parser_bound_result_state_progress(
+              result_name: result_name,
+              env: env,
+              parser_always_advancing: parser_always_advancing,
+              consumed_true_set: consumed_true_set
+            )
           None => ProgressUnknown
         }
       } else {
@@ -535,7 +571,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
           )
         None => ProgressUnknown
       }
-      merge_progress(a: then_progress, b: else_progress)
+      merge_success_progress(a: then_progress, b: else_progress)
 
     ExprLet =>
       let next_env = parser_env_with_binding(
@@ -628,9 +664,17 @@ fn parser_env_with_binding(name: String, value_expr: Node, env: ParserProgressEn
     parser_always_advancing: parser_always_advancing,
     consumed_true_set: consumed_true_set
   )
+  let result_state_progress = parser_success_progress(
+    expr: value_expr,
+    state_param: state_param,
+    env: env,
+    parser_always_advancing: parser_always_advancing,
+    consumed_true_set: consumed_true_set
+  )
   ParserProgressEnv {
     state_aliases: map_insert(env.state_aliases, name, state_progress),
-    result_sources: map_insert(env.result_sources, name, result_source)
+    result_sources: map_insert(env.result_sources, name, result_source),
+    result_state_aliases: map_insert(env.result_state_aliases, name, result_state_progress)
   }
 }
 
@@ -882,16 +926,12 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
       )
 
     ExprVar { binding_kind: _ } =>
-      match map_get(env.result_sources, expr_var_name(texpr: expr)) {
-        Some { value: source } =>
-          parser_result_state_progress(
-            source: source,
-            parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set,
-            result_name: expr_var_name(texpr: expr)
-          )
-        None => ProgressUnknown
-      }
+      parser_bound_result_state_progress(
+        result_name: expr_var_name(texpr: expr),
+        env: env,
+        parser_always_advancing: parser_always_advancing,
+        consumed_true_set: consumed_true_set
+      )
 
     ExprCall { call_semantics: _ } =>
       parser_result_state_progress(
@@ -1008,101 +1048,89 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
         None => ProgressUnknown
       }
 
+    ExprMatch =>
+      let arm_progresses = match_arm_nodes(texpr: expr) |> map(arm_node =>
+        parser_success_progress(
+          expr: arm_body(n: arm_node),
+          state_param: state_param,
+          env: env,
+          parser_always_advancing: parser_always_advancing,
+          consumed_true_set: consumed_true_set
+        )
+      )
+      match arm_progresses |> first {
+        Some { value: initial } =>
+          arm_progresses |> fold(init: initial, f: (acc, p) =>
+            merge_success_progress(a: acc, b: p)
+          )
+        None => ProgressUnknown
+      }
+
     _ => ProgressUnknown
   }
 }
 
-fn parser_member_is_always_advancing(entry: FuncEntry, parser_name_set: Map<String, Bool>, proven: Map<String, Bool>) -> Bool {
+fn parser_member_is_always_advancing(entry: FuncEntry, candidates: Map<String, Bool>) -> Bool {
   match parser_state_param(params: entry.params) {
     Some { value: state_param } =>
-      let edges = collect_parser_progress_edges(
-        caller: entry.name,
-        body: entry.body,
-        state_param: state_param,
-        scc_name_set: parser_name_set,
-        env: empty_parser_progress_env(),
-        parser_always_advancing: proven,
-        consumed_true_set: empty_map()
-      )
-      (edges |> all(edge => edge.progress == ProgressStrict))
-      && parser_success_progress(
+      parser_success_progress(
         expr: entry.body,
         state_param: state_param,
         env: empty_parser_progress_env(),
-        parser_always_advancing: proven,
+        parser_always_advancing: candidates,
         consumed_true_set: empty_map()
       ) == ProgressStrict
     None => false
   }
 }
 
-fn infer_parser_always_advancing_members_worklist(queue: List<String>, func_index: Map<String, FuncEntry>, parser_name_set: Map<String, Bool>, reverse_graph: Map<String, List<String>>, proven: Map<String, Bool>) -> Map<String, Bool> {
-  match queue |> first {
-    Some { value: name } =>
-      let rest = queue |> skip(1)
-      if set_has(m: proven, key: name) {
-        infer_parser_always_advancing_members_worklist(
-          queue: rest,
-          func_index: func_index,
-          parser_name_set: parser_name_set,
-          reverse_graph: reverse_graph,
-          proven: proven
-        )
+fn same_member_set(a: Map<String, Bool>, b: Map<String, Bool>, members: List<String>) -> Bool {
+  members |> all(name =>
+    set_has(m: a, key: name) == set_has(m: b, key: name)
+  )
+}
+
+fn infer_parser_always_advancing_members_loop(members: List<String>, func_index: Map<String, FuncEntry>, candidates: Map<String, Bool>, fuel: Int) -> Map<String, Bool> {
+  if fuel <= 0 {
+    candidates
+  } else {
+    let next = members |> fold(init: empty_map(), f: (acc, name) =>
+      if set_has(m: candidates, key: name) == false {
+        acc
       } else {
         match map_get(func_index, name) {
           Some { value: entry } =>
-            if parser_member_is_always_advancing(entry: entry, parser_name_set: parser_name_set, proven: proven) {
-              let callers = match map_get(reverse_graph, name) {
-                Some { value: members } => members
-                None => []
-              }
-              infer_parser_always_advancing_members_worklist(
-                queue: deduplicate(items: concat(rest, callers)),
-                func_index: func_index,
-                parser_name_set: parser_name_set,
-                reverse_graph: reverse_graph,
-                proven: map_insert(proven, name, true)
-              )
+            if parser_member_is_always_advancing(entry: entry, candidates: candidates) {
+              map_insert(acc, name, true)
             } else {
-              infer_parser_always_advancing_members_worklist(
-                queue: rest,
-                func_index: func_index,
-                parser_name_set: parser_name_set,
-                reverse_graph: reverse_graph,
-                proven: proven
-              )
+              acc
             }
-          None =>
-            infer_parser_always_advancing_members_worklist(
-              queue: rest,
-              func_index: func_index,
-              parser_name_set: parser_name_set,
-              reverse_graph: reverse_graph,
-              proven: proven
-            )
+          None => acc
         }
       }
-    None => proven
+    )
+    if same_member_set(a: candidates, b: next, members: members) {
+      next
+    } else {
+      infer_parser_always_advancing_members_loop(
+        members: members,
+        func_index: func_index,
+        candidates: next,
+        fuel: fuel - 1
+      )
+    }
   }
 }
 
 fn infer_parser_always_advancing_members(members: List<String>, func_index: Map<String, FuncEntry>) -> Map<String, Bool> {
-  let parser_name_set = members |> fold(init: empty_map(), f: (acc, name) =>
+  let initial = members |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
   )
-  let parser_entries = members |> flat_map(name =>
-    match map_get(func_index, name) {
-      Some { value: entry } => [entry]
-      None => []
-    }
-  )
-  let reverse_graph = build_call_graph(func_entries: parser_entries).reverse
-  infer_parser_always_advancing_members_worklist(
-    queue: members,
+  infer_parser_always_advancing_members_loop(
+    members: members,
     func_index: func_index,
-    parser_name_set: parser_name_set,
-    reverse_graph: reverse_graph,
-    proven: empty_map()
+    candidates: initial,
+    fuel: count(members)
   )
 }
 

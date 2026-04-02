@@ -307,6 +307,7 @@ pub struct ParserProgressEdge {
 pub struct ParserProgressEnv {
     pub state_aliases: HashMap<String, ProgressKind>,
     pub result_sources: HashMap<String, ParserResultSource>,
+    pub result_state_aliases: HashMap<String, ProgressKind>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -416,6 +417,7 @@ pub fn empty_parser_progress_env() -> ParserProgressEnv {
     ParserProgressEnv {
         state_aliases: <HashMap<_, _>>::new(),
         result_sources: <HashMap<_, _>>::new(),
+        result_state_aliases: <HashMap<_, _>>::new(),
     }
 }
 
@@ -442,6 +444,21 @@ pub fn parser_state_base_var(expr: Rc<Node>) -> Option<String> {
             None => None,
         },
         _ => None,
+    }
+}
+
+pub fn parser_bound_result_state_progress(result_name: String, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>) -> ProgressKind {
+    let source_progress = match env.result_sources.get(&result_name) {
+        Some(source) => parser_result_state_progress(source.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_name.clone()),
+        None => ProgressKind::ProgressUnknown,
+    };
+    if (source_progress != ProgressKind::ProgressUnknown) {
+        source_progress
+    } else {
+        match env.result_state_aliases.get(&result_name) {
+            Some(progress) => *progress,
+            None => ProgressKind::ProgressUnknown,
+        }
     }
 }
 
@@ -497,10 +514,7 @@ pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: ParserStateParam,
         ExprData::ExprFieldAccess { .. } => {
             if (field_access_field(expr.clone()) == "state".to_string()) {
                 match parser_state_base_var(expr.clone()) {
-                    Some(result_name) => match env.result_sources.get(&result_name) {
-                        Some(source) => parser_result_state_progress(source.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_name.clone()),
-                        None => ProgressKind::ProgressUnknown,
-                    },
+                    Some(result_name) => parser_bound_result_state_progress(result_name.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
                     None => ProgressKind::ProgressUnknown,
                 }
             } else {
@@ -626,9 +640,11 @@ pub fn parser_result_source_for_expr(expr: Rc<Node>, state_param: ParserStatePar
 pub fn parser_env_with_binding(name: String, value_expr: Rc<Node>, env: ParserProgressEnv, state_param: ParserStateParam, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>) -> ParserProgressEnv {
     let state_progress = parser_state_expr_progress(value_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone());
     let result_source = parser_result_source_for_expr(value_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone());
+    let result_state_progress = parser_success_progress(value_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone());
     ParserProgressEnv {
         state_aliases: v2_rt::map_insert(env.state_aliases.clone(), name.clone(), state_progress),
         result_sources: v2_rt::map_insert(env.result_sources.clone(), name.clone(), result_source),
+        result_state_aliases: v2_rt::map_insert(env.result_state_aliases.clone(), name.clone(), result_state_progress),
     }
 }
 
@@ -889,10 +905,7 @@ pub fn parser_success_progress(expr: Rc<Node>, state_param: ParserStateParam, en
         ExprData::ExprReturn { .. } => parser_success_progress(return_value(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
         ExprData::ExprVar { .. } => {
             let name = expr_var_name(expr.clone());
-            match env.result_sources.get(&name) {
-                Some(source) => parser_result_state_progress(source.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), name.clone()),
-                None => ProgressKind::ProgressUnknown,
-            }
+            parser_bound_result_state_progress(name.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone())
         }
         ExprData::ExprCall { .. } => parser_result_state_progress(
             parser_result_source_for_expr(

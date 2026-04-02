@@ -358,12 +358,15 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
     let stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_complexity.rs");
 
     for needle in [
+        "fn merge_success_progress(",
         "fn max_path_self_calls(",
         "fn max_path_self_calls_with_cont(",
         "fn max_path_self_calls_block(",
         "type CallGraphAcc {",
         "type DfsFinishAcc {",
         "type SccComponentAcc {",
+        "result_state_aliases: Map<String, ProgressKind>",
+        "fn parser_bound_result_state_progress(",
         "fn build_scc_measure_params(",
         "fn collect_descending_witness_names(",
         "fn dfs_finish_order(",
@@ -388,12 +391,15 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
     }
 
     for needle in [
+        "pub fn merge_success_progress(",
         "pub fn max_path_self_calls(",
         "pub fn max_path_self_calls_with_cont(",
         "pub fn max_path_self_calls_block(",
         "pub struct CallGraphAcc",
         "pub struct DfsFinishAcc",
         "pub struct SccComponentAcc",
+        "pub result_state_aliases: HashMap<String, ProgressKind>",
+        "pub fn parser_bound_result_state_progress(",
         "pub fn build_scc_measure_params(",
         "pub fn collect_descending_witness_names(",
         "pub fn dfs_finish_order(",

@@ -2145,6 +2145,66 @@ fn render(name: String) -> String {
     );
 }
 
+#[test]
+#[ignore] // ~1 min: compiles all v2 .dag sources through the full pipeline
+fn complexity_parser_state_aliases_unblock_type_parser_scc() {
+    let ws = crate::helpers::workspace_root();
+    let v2_dir = ws.join("src/v2");
+    let mut v2_files: Vec<_> = std::fs::read_dir(&v2_dir)
+        .unwrap()
+        .filter_map(|e| {
+            let e = e.ok()?;
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.ends_with(".dag") {
+                Some(format!("src/v2/{}", name))
+            } else {
+                None
+            }
+        })
+        .collect();
+    v2_files.sort();
+
+    let files: Vec<(String, String)> = v2_files
+        .iter()
+        .map(|rel| {
+            let full = ws.join(rel);
+            let content = std::fs::read_to_string(&full)
+                .unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e));
+            (rel.clone(), content)
+        })
+        .collect();
+
+    let file_refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
+    let result = crate::helpers::compile_multi(&file_refs);
+
+    let parser_scc_violations: Vec<String> = result
+        .complexity
+        .violations
+        .iter()
+        .filter(|v| {
+            matches!(
+                v.func_name.as_str(),
+                "parse_type_expr"
+                    | "parse_callable_type_expr"
+                    | "parse_callable_param_types"
+                    | "parse_field"
+                    | "parse_match_arm"
+                    | "parse_match_arms_acc"
+            ) || v.reason.contains("parse_type_expr")
+        })
+        .map(|v| format!("{}: {}", v.func_name, v.reason))
+        .collect();
+
+    assert!(
+        parser_scc_violations.is_empty(),
+        "parser result-state aliases should unblock the parse_type_expr SCC, got: {:?}",
+        parser_scc_violations
+    );
+}
+
 // ── Self-compile complexity ratchet ─────────────────────────────────────
 //
 // Compiles all v2 .dag sources and asserts the complexity violation count
