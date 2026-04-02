@@ -1236,7 +1236,7 @@ Blocked on: nothing. Could land first as a standalone language feature.
 - No dual IR: analyzer reads Node.children, Node.expr_data, accessor
   function identities — nothing invented
 - Variant-field proof infrastructure deleted
-- Complexity gate: 255 → 0 without suppression or ratchet
+- Complexity gate: 315 → 0 without suppression or ratchet
 - `BOOTSTRAP_MODE` complexity bypass deleted
 - Targeted negative tests for each proof rule (no global-ratchet-only validation)
 
