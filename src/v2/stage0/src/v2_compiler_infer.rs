@@ -248,7 +248,12 @@ fn collect_field_expectations(
                             let var_name = expr_var_name(fi_val.clone());
                             let fi_name = field_init_node_name(fi.clone());
                             if let Some(field_type) = lookup_field_type_node(sn.clone(), fi_name) {
-                                out.entry(var_name).or_insert(field_type);
+                                match out.get(&var_name) {
+                                    None => { out.insert(var_name, field_type); }
+                                    Some(existing) if existing.name == field_type.name
+                                        && existing.children.len() == field_type.children.len() => {}
+                                    Some(_) => { out.remove(&var_name); }
+                                }
                             }
                         }
                     }
