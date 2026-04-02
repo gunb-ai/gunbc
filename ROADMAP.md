@@ -241,13 +241,12 @@ M1 (every .dag compiles)
                          └→ M7 (dissolve structural bridges)
 
   SIDEBAR (parallel, not blocking):
-  CX: complexity analyzer redesign
+  CX: complexity analyzer redesign (315 → 313, PR #301)
       CX-0: delete dead infrastructure (DONE)
-      CX-1: container-child descent proof (DONE, rework pending CX-M)
-      CX-M: IR child layout model in 00_core.dag (prerequisite for CX-1r+)
-      CX-1r: rework descent proof to use model (eliminate duplicate repr)
-      CX-2: catamorphism proof (multi-call on disjoint children)
-      CX-3: SCC container-child descent
+      CX-1: container-child descent proof (DONE)
+      CX-M: IR child layout model (DONE — expr_child_roles in 00_core.dag)
+      CX-2: catamorphism + lambda-skip consistency (DONE)
+      CX-3: SCC container-child descent (DONE)
       CX-4: parser if-progress merging
       CX-5: finalize (ratchets → 0)
 ```
@@ -1156,39 +1155,26 @@ compiler verifies the SCC has a shared decreasing measure:
 If no shared decreasing measure exists, the SCC is a compilation
 error — same as case 4 above.
 
-**Current state (2026-04-02):** 300 complexity violations (down from
-315). CX-0 (dead variant-field deletion) and CX-1 (container-child
-descent proof) landed on branch `cool-lynx-138`, PR #301.
+**Current state (2026-04-02):** 313 complexity violations (down from
+315, after multiple soundness tightenings). PR #301 on `cool-lynx-138`.
+
+Landed:
+- CX-0: dead variant-field infrastructure deleted (~350 lines)
+- CX-1: container-child descent proof for single-function recursion
+- CX-M: IR child layout model (`expr_child_roles` / `wrapper_child_roles`
+  in `00_core.dag`). Replaces hardcoded `child_accessor_table`.
+- CX-2: catamorphism proof (multi-call on disjoint accessor children)
+- CX-3: SCC container-child descent (ProgressKind edge classification)
+- Soundness fixes: skip(N >= 1) check, W-3/W-4 descent_vars path-safety
+- BOOTSTRAP_MODE bypass already removed (confirmed: no matches in stage0)
 
 Existing infrastructure:
 - direct recursion is fail-closed on the actual measured parameter
 - SCC ownership is explicit, so callers into a cycle do not inherit the
   cycle's violation
 - parser progress is parse-owned via typed helper identities
-- unsound `ExprFieldAccess`/`ExprMethodCall` witness arms reverted
-  (soundness audit W-1, W-2)
-- container-child descent proof (CX-1) resolves 27 single-function
-  violations via accessor-mediated child recursion
-- BOOTSTRAP_MODE bypass already removed (confirmed: no matches in stage0)
-
-**Audit finding (2026-04-01):** The original 315 violations traced to a
-structural mismatch between the analyzer's proof model and the language's
-actual recursion model. The variant-field proof model has been deleted
-(CX-0). The container-child proof model (CX-1) works but has a design
-flaw: the `child_accessor_table` in `complexity.dag` is a hardcoded
-duplicate of structural facts already defined by accessor functions in
-`00_core.dag`. This duplicate representation can drift.
-
-**Design finding (2026-04-02):** The IR child layout exists in three
-independent forms that can drift:
-1. Comment table in `00_core.dag:710-731` (human spec)
-2. Accessor function bodies in `00_core.dag:787-856` (implementation)
-3. `child_accessor_table` in `complexity.dag:149-165` (consumer copy)
-
-Fix: promote the child layout to executable `.dag` data in `00_core.dag`
-(CX-M). The complexity analyzer imports the model — no hardcoded tables.
-Any future consumer of Node structure reads the same model. This is the
-"no duplicate representations" invariant applied to the IR itself.
+- lambda bodies skipped in descent proof (consistent with path counter)
+- accessor identity derived from IR model, not hardcoded table
 
 #### CX lane: complexity analyzer redesign (parallel sidebar)
 
@@ -1210,9 +1196,10 @@ provides: `Node.children`, `Node.expr_data`, accessor function identities
 - Path counting: `max_path_self_calls_with_cont` (correctly handles branch mutual exclusion)
 - Reporting: `simplify_cost`, `normalize_asymptotic`, `classify_complexity`, `build_complexity_report`
 
-**What to delete** (~350 lines):
+**Deleted** (CX-0, landed):
 - `RecursiveVariantFieldWitness` coupling and variant-field descent functions
 - `recursive_variant_fields` threading through `RecursionContext` and `FuncEntry`
+- `child_accessor_table` hardcoded map (replaced by IR model import)
 
 **What to rebuild** (proof model, simpler than current):
 - `classify_recursion_pattern` — new dispatcher with correct proof order
