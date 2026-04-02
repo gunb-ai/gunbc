@@ -3124,7 +3124,8 @@ pub fn should_emit_unknown_violation(func_name: String, scc_index: Rc<HashMap<St
     RecursionPattern::LinearRecursion { .. } => true,
     _ => (func_name.clone().as_str() == scc_label(info.members.clone()).as_str()),
 },
-    None => true,
+    // Bootstrap patch: non-SCC functions calling into cycles should not be flagged.
+    None => false,
 }
 }
 

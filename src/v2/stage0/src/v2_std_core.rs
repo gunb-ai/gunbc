@@ -1915,22 +1915,54 @@ pub struct NewlineIndex {
 }
 
 pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
+    // Bootstrap patch: real implementation (regenerated stub was empty).
+    let mut offsets = Vec::new();
+    for (i, b) in source.as_bytes().iter().enumerate() {
+        if *b == b'\n' {
+            offsets.push(i as i64);
+        }
+    }
     Rc::new(NewlineIndex {
-    file: file.clone(),
-    offsets: Rc::new(vec![]),
-    source: source.clone(),
-})
+        file,
+        offsets: Rc::new(offsets),
+        source,
+    })
 }
 
 pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> Rc<LineCol> {
+    // Bootstrap patch: real implementation (regenerated stub returned 1,1).
+    let offset = offset.max(0) as usize;
+    let offsets = &*index.offsets;
+    // Binary search for the line containing this byte offset.
+    let line = match offsets.binary_search(&(offset as i64)) {
+        Ok(i) => i + 1,   // exactly on a newline → that line (1-indexed)
+        Err(i) => i + 1,   // between newlines → line after the preceding newline
+    };
+    let line_start = if line <= 1 { 0 } else { offsets[line - 2] as usize + 1 };
+    let col = offset.saturating_sub(line_start) + 1;
     Rc::new(LineCol {
-    line: 1,
-    col: 1,
-})
+        line: line as i64,
+        col: col as i64,
+    })
 }
 
 pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
-    "".to_string()
+    // Bootstrap patch: real implementation (regenerated stub returned "").
+    if line < 1 { return String::new(); }
+    let line_idx = (line - 1) as usize;
+    let offsets = &*index.offsets;
+    let start = if line_idx == 0 { 0 } else {
+        match offsets.get(line_idx - 1) {
+            Some(&off) => (off + 1) as usize,
+            None => return String::new(),
+        }
+    };
+    let end = match offsets.get(line_idx) {
+        Some(&off) => off as usize,
+        None => index.source.len(),
+    };
+    if start > index.source.len() || end > index.source.len() { return String::new(); }
+    index.source[start..end].to_string()
 }
 
 pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> String {
