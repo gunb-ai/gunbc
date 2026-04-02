@@ -142,16 +142,17 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
     match lookup_type_for(env: env, node: n) {
       Some { value: decl } =>
         if decl.params |> count > 0 {
-          // Container types (Map, List, Set, etc.) stay unexpanded regardless
-          // of alias (INVARIANTS.md: "container_types controls which types stay
-          // unexpanded during resolve"). Map = PartialFunction<K,V> is an
-          // inhabitation declaration, not an alias to expand. Algebra fields
-          // are added on demand via enrich_kernel_type during method lookup.
-          if is_container_type(name: n.name) { false }
-          // Non-container parameterized alias (e.g., UserType<T> = Foo<T>):
-          // treat as generic use site so the alias chain is followed.
-          else if decl.inferred != none { true }
-          else { true }
+          // Parameterized alias (e.g., List<T> = FreeMonoid<T>): treat as
+          // generic use site so the alias chain is followed and the structural
+          // Conj definition (with method children) is produced via substitution.
+          if decl.inferred != none { true }
+          // Bare parameterized stub (no alias): only treat as generic use site
+          // if NOT a known container (containers have their own resolution path).
+          // Uses container_type_set — resolve is name-aware per ROADMAP.
+          else {
+            if is_container_type(name: n.name) { false }
+            else { true }
+          }
         } else { false }
       None => false
     }

@@ -514,7 +514,6 @@ fn make_resource_use_node(name: String, resource: Node, span: SourceSpan) -> Nod
 }
 
 fn resource_use_name(n: Node) -> String { n.name }
-fn resource_use_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 
 fn resource_use_resource(n: Node) -> Node {
   match n.children |> first {
@@ -547,7 +546,6 @@ fn make_field_binding_node(field_name: String, binding: MatchPattern, span: Sour
 }
 
 fn field_binding_name(n: Node) -> String { n.name }
-fn field_binding_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 
 fn field_binding_pattern(n: Node) -> MatchPattern {
   match n.match_pattern { Some { value: p } => p  None => Wildcard }
@@ -614,9 +612,6 @@ fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: So
 
 fn param_node_name(n: Node) -> String { n.name }
 fn param_node_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
-
-// Generic type parameter names (e.g., T, U in type<T, U>).
-fn generic_param_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 
 fn authored_name_at(source_index: NewlineIndex?, node: Node) -> String {
   match node.ident_span {
@@ -969,17 +964,7 @@ fn record_lit_type_name_at(texpr: Node, source_index: NewlineIndex?) -> String? 
 //
 // Transport is a Node where name = transport kind, properties = config,
 // children = ordered argv (shell only).
-//
-// Property name constants — single authority for transport config keys.
-// Constructors, predicates, accessors, and is_config_reserved_key all
-// reference these instead of bare strings.
 // =========================================================================
-
-data transport_url_key: String = "base_url"
-data transport_path_key: String = "base_path"
-data transport_auth_token_key: String = "auth_token"
-data transport_auth_header_key: String = "auth_header"
-data transport_auth_scheme_key: String = "auth_scheme"
 
 fn make_transport_node(name: String, properties: List<Node>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
@@ -997,7 +982,7 @@ fn local_transport_node(span: SourceSpan) -> Node {
 }
 
 fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, span: SourceSpan) -> Node {
-  let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: make_span(start: 0, end: 0))
+  let url_field = make_field_init_node(name: "base_url", value: base_url, span: make_span(start: 0, end: 0))
   let props = concat([url_field], auth_props, headers)
   make_transport_node(name: "rest", properties: props, children: [], span: span)
 }
@@ -1007,7 +992,7 @@ fn shell_transport_node(argv: List<Node>, env: List<Node>, span: SourceSpan) -> 
 }
 
 fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
-  let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0))
+  let path_field = make_field_init_node(name: "base_path", value: base_path, span: make_span(start: 0, end: 0))
   make_transport_node(name: "file", properties: [path_field], children: [], span: span)
 }
 
@@ -1032,13 +1017,24 @@ fn find_property_string(props: List<Node>, prop_name: String) -> String? {
   }
 }
 
-// Transport identity predicates. Constructors are the authority for
-// transport kind (they set the name field); predicates are name lookups.
+// Structural transport predicates. Transport identity is determined by
+// the node's structural properties, not a name string or enum tag.
+// REST: has base_url config property (RFC 9110 endpoint).
+// Shell: has children (argv per POSIX.1-2017).
+// File: has base_path config property (POSIX pathname).
+// Local: no config, no children — direct function call.
 // See extdeps/transports/{rest,shell,file}.dag for transport definitions.
-fn is_rest_transport(t: Node) -> Bool { t.name == "rest" }
-fn is_shell_transport(t: Node) -> Bool { t.name == "shell" }
-fn is_file_transport(t: Node) -> Bool { t.name == "file" }
-fn is_local_transport(t: Node) -> Bool { t.name == "local"
+fn is_rest_transport(t: Node) -> Bool {
+  t.children |> count == 0 && find_property(props: t.properties, prop_name: "base_url") != none
+}
+fn is_shell_transport(t: Node) -> Bool {
+  t.children |> count > 0
+}
+fn is_file_transport(t: Node) -> Bool {
+  t.children |> count == 0 && find_property(props: t.properties, prop_name: "base_path") != none
+}
+fn is_local_transport(t: Node) -> Bool {
+  t.properties |> count == 0 && t.children |> count == 0
 }
 
 fn field_init_operation_modifier(field_init: Node) -> OperationModifier? {
@@ -1058,27 +1054,27 @@ fn operation_modifier_name(modifier: OperationModifier) -> String {
 }
 
 fn transport_base_url(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: transport_url_key)
+  find_property(props: t.properties, prop_name: "base_url")
 }
 
 fn transport_auth_token(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: transport_auth_token_key)
+  find_property(props: t.properties, prop_name: "auth_token")
 }
 
 fn transport_auth_header_name(t: Node) -> String? {
-  find_property_string(props: t.properties, prop_name: transport_auth_header_key)
+  find_property_string(props: t.properties, prop_name: "auth_header")
 }
 
 fn transport_has_auth(t: Node) -> Bool {
-  match find_property(props: t.properties, prop_name: transport_auth_token_key) {
+  match find_property(props: t.properties, prop_name: "auth_token") {
     Some { value: _ } => true
     None => false
   }
 }
 
 fn is_config_reserved_key(name: String) -> Bool {
-  name == transport_url_key || name == transport_path_key || name == transport_auth_scheme_key
-    || name == transport_auth_header_key || name == transport_auth_token_key
+  name == "base_url" || name == "base_path" || name == "auth_scheme"
+    || name == "auth_header" || name == "auth_token"
 }
 
 fn transport_headers(t: Node) -> List<Node> {

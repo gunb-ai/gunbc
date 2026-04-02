@@ -14,7 +14,7 @@ use v2_compiler::v2_std_core::{
 };
 
 fn zero_span() -> Rc<SourceSpan> {
-    Rc::new(SourceSpan { file: String::new(), start: 0, end: 0 })
+    SourceSpan::new(0, 0)
 }
 
 fn unit_expr() -> Rc<Node> {
@@ -26,7 +26,7 @@ fn variant_arm(name: &str) -> Rc<Node> {
         Rc::new(MatchPattern::VariantPattern {
             name: name.to_string(),
             parent_enum: None,
-            field_bindings: Rc::new(vec![]),
+            field_bindings: Vec::new(),
         }),
         None,
         unit_expr(),
@@ -185,7 +185,7 @@ fn optional_pattern_lookup_still_resolves_some_variant() {
 fn optional_match_exhaustiveness_reports_missing_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
-        Rc::new(vec![variant_arm("Some")]),
+        vec![variant_arm("Some")],
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
             recursive_types: Rc::new(vec![]),
@@ -207,7 +207,7 @@ fn optional_match_exhaustiveness_reports_missing_none() {
 fn optional_match_exhaustiveness_accepts_some_and_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
-        Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
+        vec![variant_arm("Some"), variant_arm("None")],
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
             recursive_types: Rc::new(vec![]),
@@ -232,15 +232,15 @@ fn resolve_node_uses_node_name_for_lookup() {
         name: "User".to_string(),
         span: zero_span(),
         ident_span: None,
-        children: Rc::new(vec![]),
-        connective: v2_compiler::v2_std_core::Connective::NoConnective,
-        params: Rc::new(vec![]),
+        children: Vec::new(),
+        connective: None,
+        params: Vec::new(),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Vec::new(),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Vec::new(),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
@@ -304,7 +304,7 @@ fn structural_method_any_on_list_returns_bool() {
         "any".to_string(),
     )
     .expect("any must resolve on List<Int>");
-    assert_eq!(result.result_type.name, "Bool", "any on List<Int> should return Bool");
+    assert_eq!(result.name, "Bool", "any on List<Int> should return Bool");
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn structural_method_all_on_list_returns_bool() {
         "all".to_string(),
     )
     .expect("all must resolve on List<Int>");
-    assert_eq!(result.result_type.name, "Bool", "all on List<Int> should return Bool");
+    assert_eq!(result.name, "Bool", "all on List<Int> should return Bool");
 }
 
 #[test]
@@ -327,7 +327,7 @@ fn structural_method_sort_by_on_list_returns_self() {
     )
     .expect("sort_by must resolve on List<Int>");
     assert_eq!(
-        result.result_type.name, "List",
+        result.name, "List",
         "sort_by on List<Int> should return List (ReceiverSelf)"
     );
 }
@@ -340,9 +340,9 @@ fn structural_method_first_on_list_returns_optional_element() {
         "first".to_string(),
     )
     .expect("first must resolve on List<Int>");
-    assert_eq!(result.result_type.name, "Int", "first on List<Int> should return Int");
+    assert_eq!(result.name, "Int", "first on List<Int> should return Int");
     assert!(
-        matches!(result.result_type.return_cardinality, Cardinality::CardOptional),
+        matches!(result.return_cardinality, Cardinality::CardOptional),
         "first should return Optional"
     );
 }
@@ -355,7 +355,7 @@ fn structural_method_count_on_list_returns_int() {
         "count".to_string(),
     )
     .expect("count must resolve on List<String>");
-    assert_eq!(result.result_type.name, "Int", "count should return Int");
+    assert_eq!(result.name, "Int", "count should return Int");
 }
 
 #[test]
@@ -384,7 +384,7 @@ fn structural_method_compare_on_int_returns_ordering() {
     )
     .expect("compare must resolve on Int");
     assert_eq!(
-        result.result_type.name, "Ordering",
+        result.name, "Ordering",
         "compare on Int should return Ordering"
     );
 }
@@ -423,9 +423,9 @@ fn structural_method_get_on_map_returns_optional_value() {
         "get".to_string(),
     )
     .expect("get must resolve on Map<String,Int>");
-    assert_eq!(result.result_type.name, "Int", "get on Map<String,Int> should return Int");
+    assert_eq!(result.name, "Int", "get on Map<String,Int> should return Int");
     assert!(
-        matches!(result.result_type.return_cardinality, Cardinality::CardOptional),
+        matches!(result.return_cardinality, Cardinality::CardOptional),
         "get should return Optional"
     );
 }
@@ -441,10 +441,10 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         "keys".to_string(),
     )
     .expect("keys must resolve on Map<String,Int>");
-    assert_eq!(result.result_type.name, "List", "keys should return List");
-    assert_eq!(result.result_type.children.len(), 1, "keys result should have one child");
+    assert_eq!(result.name, "List", "keys should return List");
+    assert_eq!(result.children.len(), 1, "keys result should have one child");
     assert_eq!(
-        result.result_type.children[0].name, "String",
+        result.children[0].name, "String",
         "keys on Map<String,Int> should return List<String>"
     );
 }

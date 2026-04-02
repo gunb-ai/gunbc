@@ -26,6 +26,7 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
@@ -46,19 +47,20 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
+
 pub use crate::v2_std_core::{Node, ErrorNode, InferredNode};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule};
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NormalizeResult {
     pub graph: Rc<ModuleGraph>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn normalize_graph(graph: Rc<ModuleGraph>) -> Rc<NormalizeResult> {
     Rc::new(NormalizeResult {
     graph: graph.clone(),
-    diagnostics: Rc::new(vec![]),
+    diagnostics: vec![],
 })
 }

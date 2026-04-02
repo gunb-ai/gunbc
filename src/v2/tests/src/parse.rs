@@ -394,8 +394,8 @@ fn tokenizer_scans_null_coalesce() {
 fn tokenize_produces_correct_kinds() {
     let tokens = tokenize("fn add(a: Int) -> Int { a }");
     assert!(
-        tokens.iter().any(|t| matches!(t.shape, TokenShape::ShKeyword) && t.text == "fn"),
-        "should contain keyword 'fn' token"
+        tokens.iter().any(|t| matches!(t.shape, TokenShape::ShKwFn)),
+        "should contain KwFn token"
     );
     assert!(
         tokens

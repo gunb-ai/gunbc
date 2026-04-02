@@ -26,6 +26,7 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
@@ -46,26 +47,16 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
+
 pub use crate::v2_compiler_artifact::{RenderTarget};
-use crate::v2_compiler_artifact::RenderTarget::{Python, Dag};
-pub use crate::v2_std_core::{BinOp, LiteralValue};
-use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
-use crate::v2_std_core::LiteralValue::*;
-pub use crate::std_syntax::{ItemForm, OperatorSpec, SyntaxSpec, BodyKind};
-use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
-pub use crate::extdeps_languages_rust_emit::{rust_type_map, rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_value_types, rust_string_types};
-pub use crate::extdeps_languages_python_emit::{python_type_map, python_keywords, python_container_templates, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init};
-pub use crate::extdeps_languages_go_emit::{go_type_map, go_keywords, go_container_templates, go_reserved, go_reserved_escape_suffix, go_manifest_file};
+use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
+pub use crate::extdeps_languages_rust_emit::{RUST_TYPE_MAP, RUST_KEYWORDS, RUST_CONTAINER_TEMPLATES, RUST_RESERVED, RUST_RESERVED_ESCAPE_PREFIX, RUST_STRUCT_DERIVES, RUST_STRUCT_DERIVES_COPY, RUST_ENUM_DERIVES, RUST_ENUM_DERIVES_COPY, RUST_SERDE_TAG, RUST_SERDE_RENAME_TEMPLATE, RUST_SOURCE_EXTENSION, RUST_SOURCE_DIR, RUST_VISIBILITY};
+pub use crate::extdeps_languages_python_emit::{PYTHON_TYPE_MAP, PYTHON_KEYWORDS, PYTHON_CONTAINER_TEMPLATES, PYTHON_RESERVED, PYTHON_RESERVED_ESCAPE_SUFFIX, PYTHON_DERIVE_ATTRIBUTE, PYTHON_DEFAULT_VALUE, PYTHON_SOURCE_EXTENSION, PYTHON_MODULE_INIT};
+pub use crate::extdeps_languages_go_emit::{GO_TYPE_MAP, GO_KEYWORDS, GO_CONTAINER_TEMPLATES, GO_RESERVED, GO_RESERVED_ESCAPE_SUFFIX, GO_MANIFEST_FILE};
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
-use ImportTrigger::*;
-use ServiceBindingStrategy::*;
-use CaseStyle::*;
-use IndentStyle::*;
-use ImportGroupStyle::*;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, PartialEq)]
 pub enum ReservedWordStrategy {
     PrefixEscape {
         prefix: String,
@@ -76,13 +67,13 @@ pub enum ReservedWordStrategy {
     NoEscape,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReservedWords {
-    pub keywords: Rc<Vec<String>>,
+    pub keywords: Vec<String>,
     pub strategy: Rc<ReservedWordStrategy>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProjectScaffold {
     pub manifest_file: Option<String>,
     pub module_init_file: Option<String>,
@@ -90,7 +81,7 @@ pub struct ProjectScaffold {
     pub source_dir: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SerializationSpec {
     pub struct_derives: Option<String>,
     pub struct_derives_copy: Option<String>,
@@ -102,14 +93,13 @@ pub struct SerializationSpec {
     pub default_value: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TestNameStyle {
     SnakeCaseTestNames,
     PascalCaseTestNames,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TestConventions {
     pub file_prefix: String,
     pub file_suffix: String,
@@ -119,132 +109,12 @@ pub struct TestConventions {
     pub async_decorator: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ImportTrigger {
-    TypeUsageTrigger {
-        type_name: String,
-    },
-    TraitImplTrigger {
-        trait_name: String,
-    },
-    DeriveMacroTrigger {
-        macro_name: String,
-    },
-    ContainerUsageTrigger {
-        container: String,
-    },
-    AsyncUsageTrigger,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ImportRule {
-    pub trigger: Rc<ImportTrigger>,
-    pub import_path: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PrimitiveLowering {
-    pub dag_name: String,
-    pub target_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AlgebraicLowering {
-    pub dag_name: String,
-    pub target_template: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TypeWellFormedness {
-    pub primitive_lowerings: Rc<Vec<Rc<PrimitiveLowering>>>,
-    pub algebraic_lowerings: Rc<Vec<Rc<AlgebraicLowering>>>,
-    pub callable_template: String,
-    pub generic_params_from_dag: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ServiceBindingStrategy {
-    ParamInjection,
-    ConstructInBody,
-    GlobalSingleton,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ExprWellFormedness {
-    pub async_propagation: bool,
-    pub statement_terminator: String,
-    pub brace_escape_in_format: bool,
-    pub service_binding: ServiceBindingStrategy,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum CaseStyle {
-    PascalCaseStyle,
-    SnakeCaseStyle,
-    CamelCaseStyle,
-    ScreamingSnakeStyle,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NamingConvention {
-    pub type_names: CaseStyle,
-    pub function_names: CaseStyle,
-    pub module_names: CaseStyle,
-    pub constant_names: CaseStyle,
-    pub enum_variant_names: CaseStyle,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum IndentStyle {
-    SpaceIndent {
-        width: i64,
-    },
-    TabIndent,
-}
-impl IndentStyle {
-    pub fn width(&self) -> i64 {
-        match self {
-            IndentStyle::SpaceIndent { width: __val, .. } => __val.clone(),
-            IndentStyle::TabIndent => panic!("no width on unit variant"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ImportGroupStyle {
-    StdExternalLocal,
-    NoGrouping,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FormatModel {
-    pub indent: Rc<IndentStyle>,
-    pub max_line_width: Option<i64>,
-    pub import_grouping: ImportGroupStyle,
-    pub trailing_newline: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LintModel {
-    pub name: String,
-    pub import_rules: Rc<Vec<Rc<ImportRule>>>,
-    pub type_rules: Rc<TypeWellFormedness>,
-    pub expr_rules: Rc<ExprWellFormedness>,
-    pub naming: Rc<NamingConvention>,
-    pub formatting: Rc<FormatModel>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SharingStrategy {
     pub wrap_template: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LanguageSpec {
     pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,
@@ -259,24 +129,24 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     Rc::new(LanguageSpec {
     target_name: "rust".to_string(),
     reserved_words: Rc::new(ReservedWords {
-    keywords: rust_reserved(),
+    keywords: RUST_RESERVED.clone(),
     strategy: Rc::new(ReservedWordStrategy::PrefixEscape {
-    prefix: rust_reserved_escape_prefix(),
+    prefix: RUST_RESERVED_ESCAPE_PREFIX.clone(),
 }),
 }),
     scaffold: Rc::new(ProjectScaffold {
     manifest_file: Some("Cargo.toml".to_string()),
     module_init_file: None,
-    source_file_extension: rust_source_extension(),
-    source_dir: Some(rust_source_dir()),
+    source_file_extension: RUST_SOURCE_EXTENSION.clone(),
+    source_dir: Some(RUST_SOURCE_DIR.clone()),
 }),
     serialization: Rc::new(SerializationSpec {
-    struct_derives: Some(rust_struct_derives()),
-    struct_derives_copy: Some(rust_struct_derives_copy()),
-    enum_derives: Some(rust_enum_derives()),
-    enum_derives_copy: Some(rust_enum_derives_copy()),
-    tag_attribute: Some(rust_serde_tag()),
-    rename_attribute_template: Some(rust_serde_rename_template()),
+    struct_derives: Some(RUST_STRUCT_DERIVES.clone()),
+    struct_derives_copy: Some(RUST_STRUCT_DERIVES_COPY.clone()),
+    enum_derives: Some(RUST_ENUM_DERIVES.clone()),
+    enum_derives_copy: Some(RUST_ENUM_DERIVES_COPY.clone()),
+    tag_attribute: Some(RUST_SERDE_TAG.clone()),
+    rename_attribute_template: Some(RUST_SERDE_RENAME_TEMPLATE.clone()),
     derive_attribute: None,
     default_value: None,
 }),
@@ -288,10 +158,10 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     name_style: TestNameStyle::SnakeCaseTestNames,
     async_decorator: Some("#[tokio::test]".to_string()),
 }),
-    top_level_visibility: rust_visibility(),
+    top_level_visibility: RUST_VISIBILITY.clone(),
     sharing: Rc::new(SharingStrategy {
-    wrap_template: "Rc<{0}>".to_string(),
-}),
+        wrap_template: "Rc<{0}>".to_string(),
+    }),
 })
 }
 
@@ -299,15 +169,15 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     Rc::new(LanguageSpec {
     target_name: "python".to_string(),
     reserved_words: Rc::new(ReservedWords {
-    keywords: python_reserved(),
+    keywords: PYTHON_RESERVED.clone(),
     strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
-    suffix: python_reserved_escape_suffix(),
+    suffix: PYTHON_RESERVED_ESCAPE_SUFFIX.clone(),
 }),
 }),
     scaffold: Rc::new(ProjectScaffold {
     manifest_file: Some("requirements.txt".to_string()),
-    module_init_file: Some(python_module_init()),
-    source_file_extension: python_source_extension(),
+    module_init_file: Some(PYTHON_MODULE_INIT.clone()),
+    source_file_extension: PYTHON_SOURCE_EXTENSION.clone(),
     source_dir: None,
 }),
     serialization: Rc::new(SerializationSpec {
@@ -317,8 +187,8 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     enum_derives_copy: None,
     tag_attribute: None,
     rename_attribute_template: None,
-    derive_attribute: Some(python_derive_attribute()),
-    default_value: Some(python_default_value()),
+    derive_attribute: Some(PYTHON_DERIVE_ATTRIBUTE.clone()),
+    default_value: Some(PYTHON_DEFAULT_VALUE.clone()),
 }),
     test_conventions: Rc::new(TestConventions {
     file_prefix: "test_".to_string(),
@@ -330,8 +200,8 @@ pub fn python_spec() -> Rc<LanguageSpec> {
 }),
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
-    wrap_template: "{0}".to_string(),
-}),
+        wrap_template: "{0}".to_string(),
+    }),
 })
 }
 
@@ -339,9 +209,9 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     Rc::new(LanguageSpec {
     target_name: "go".to_string(),
     reserved_words: Rc::new(ReservedWords {
-    keywords: go_reserved(),
+    keywords: GO_RESERVED.clone(),
     strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
-    suffix: go_reserved_escape_suffix(),
+    suffix: GO_RESERVED_ESCAPE_SUFFIX.clone(),
 }),
 }),
     scaffold: Rc::new(ProjectScaffold {
@@ -370,8 +240,8 @@ pub fn go_spec() -> Rc<LanguageSpec> {
 }),
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
-    wrap_template: "{0}".to_string(),
-}),
+        wrap_template: "{0}".to_string(),
+    }),
 })
 }
 
@@ -386,15 +256,15 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
 
 pub fn target_keyword(target: RenderTarget, key: String) -> String {
     match target.clone() {
-    RenderTarget::Rust => match v2_rt::lookup(&rust_keywords(), key.clone()) {
+    RenderTarget::Rust => match v2_rt::lookup(&RUST_KEYWORDS, key.clone()) {
     Some(kw) => kw.clone(),
     None => key.clone(),
 },
-    RenderTarget::Go => match v2_rt::lookup(&go_keywords(), key.clone()) {
+    RenderTarget::Go => match v2_rt::lookup(&GO_KEYWORDS, key.clone()) {
     Some(kw) => kw.clone(),
     None => key.clone(),
 },
-    RenderTarget::Python => match v2_rt::lookup(&python_keywords(), key.clone()) {
+    RenderTarget::Python => match v2_rt::lookup(&PYTHON_KEYWORDS, key.clone()) {
     Some(kw) => kw.clone(),
     None => key.clone(),
 },
@@ -403,44 +273,28 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
 }
 
 pub fn target_primitive_type(target: RenderTarget, name: String) -> String {
-    match target.clone() {
-    RenderTarget::Rust => match v2_rt::lookup(&rust_type_map(), name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => name.clone(),
-},
-    RenderTarget::Go => match v2_rt::lookup(&go_type_map(), name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => name.clone(),
-},
-    RenderTarget::Python => match v2_rt::lookup(&python_type_map(), name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => name.clone(),
-},
-    RenderTarget::Dag => name.clone(),
-}
+    let registry = crate::v2_coercion::registry_for_target(&target);
+    crate::v2_coercion::coerce_primitive_type(&registry, &name)
 }
 
 pub fn target_container_template(target: RenderTarget, kind: String) -> Option<String> {
+    // Legacy container templates include sharing wrapping (Rc<...> in Rust)
+    // baked into the template. These will be replaced by bare algebra inhabitant
+    // templates when the old emit_node_type_rc path is fully removed (E0c completion).
     match target.clone() {
-    RenderTarget::Rust => v2_rt::lookup(&rust_container_templates(), kind.clone()),
-    RenderTarget::Go => v2_rt::lookup(&go_container_templates(), kind.clone()),
-    RenderTarget::Python => v2_rt::lookup(&python_container_templates(), kind.clone()),
+    RenderTarget::Rust => v2_rt::lookup(&RUST_CONTAINER_TEMPLATES, kind.clone()),
+    RenderTarget::Go => v2_rt::lookup(&GO_CONTAINER_TEMPLATES, kind.clone()),
+    RenderTarget::Python => v2_rt::lookup(&PYTHON_CONTAINER_TEMPLATES, kind.clone()),
     RenderTarget::Dag => None,
 }
 }
 
-pub fn is_value_type(target: RenderTarget, name: String) -> bool {
-    match target.clone() {
-    RenderTarget::Rust => { let mut __found = false; for t in rust_value_types().iter().cloned() { if (t.clone().as_str() == name.clone().as_str()) { __found = true; break; } } __found },
-    _ => false,
-}
-}
-
-pub fn is_string_like(target: RenderTarget, name: String) -> bool {
-    match target.clone() {
-    RenderTarget::Rust => { let mut __found = false; for t in rust_string_types().iter().cloned() { if (t.clone().as_str() == name.clone().as_str()) { __found = true; break; } } __found },
-    _ => false,
-}
+/// Coercion-based container template: returns bare algebra inhabitant templates
+/// without sharing wrapping. Used by the TypeRendering path where shared/boxed
+/// flags are applied separately by render_type.
+pub fn target_container_template_bare(target: RenderTarget, kind: String) -> Option<String> {
+    let registry = crate::v2_coercion::registry_for_target(&target);
+    crate::v2_coercion::coerce_container_template(&registry, &kind)
 }
 
 pub fn scaffold_for_target(target: RenderTarget) -> Rc<ProjectScaffold> {
@@ -464,8 +318,8 @@ pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
-    {
-        let tmpl: String = sharing_for_target(target.clone()).wrap_template.clone();
-v2_rt::replace(tmpl.clone(), "{0}".to_string(), inner.clone())
+    let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
+    tmpl.replace("{0}", &inner)
 }
-}
+
+

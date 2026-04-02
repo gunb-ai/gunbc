@@ -26,6 +26,7 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
@@ -46,14 +47,14 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
+
 pub use crate::v2_std_core::{TextFile};
 use RenderTarget::*;
 use ArtifactKind::*;
 use BoundaryKind::*;
 use PartitionRule::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RenderTarget {
     Rust,
     Python,
@@ -61,8 +62,7 @@ pub enum RenderTarget {
     Dag,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ArtifactKind {
     ServiceBinary,
     Library,
@@ -70,17 +70,16 @@ pub enum ArtifactKind {
     GeneratedSupport,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Artifact {
     pub name: String,
     pub kind: ArtifactKind,
     pub target: RenderTarget,
-    pub entry_modules: Rc<Vec<String>>,
-    pub dependencies: Rc<Vec<String>>,
+    pub entry_modules: Vec<String>,
+    pub dependencies: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BoundaryKind {
     DirectCall,
     HttpJson,
@@ -89,7 +88,7 @@ pub enum BoundaryKind {
     FileProtocol,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Boundary {
     pub from_artifact: String,
     pub to_artifact: String,
@@ -97,21 +96,20 @@ pub struct Boundary {
     pub contract: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ArtifactPlan {
-    pub artifacts: Rc<Vec<Rc<Artifact>>>,
-    pub boundaries: Rc<Vec<Rc<Boundary>>>,
+    pub artifacts: Vec<Rc<Artifact>>,
+    pub boundaries: Vec<Rc<Boundary>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, PartialEq)]
 pub enum PartitionRule {
     Explicit {
-        artifacts: Rc<Vec<Rc<Artifact>>>,
+        artifacts: Vec<Rc<Artifact>>,
     },
 }
 impl PartitionRule {
-    pub fn artifacts(&self) -> Rc<Vec<Rc<Artifact>>> {
+    pub fn artifacts(&self) -> Vec<Rc<Artifact>> {
         match self {
             PartitionRule::Explicit { artifacts: __val, .. } => __val.clone(),
         }
@@ -122,25 +120,25 @@ pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
     match (*rule.clone()).clone() {
     PartitionRule::Explicit { artifacts: arts, .. } => Rc::new(ArtifactPlan {
     artifacts: arts.clone(),
-    boundaries: Rc::new(vec![]),
+    boundaries: vec![],
 }),
 }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ArtifactOutput {
     pub artifact: Rc<Artifact>,
-    pub files: Rc<Vec<Rc<TextFile>>>,
+    pub files: Vec<Rc<TextFile>>,
 }
 
-pub fn default_artifact_plan(root_modules: Rc<Vec<String>>, target: RenderTarget) -> Rc<ArtifactPlan> {
+pub fn default_artifact_plan(root_modules: Vec<String>, target: RenderTarget) -> Rc<ArtifactPlan> {
     plan_artifacts(Rc::new(PartitionRule::Explicit {
-    artifacts: Rc::new(vec![Rc::new(Artifact {
+    artifacts: vec![Rc::new(Artifact {
     name: "default".to_string(),
     kind: ArtifactKind::ServiceBinary,
     target: target.clone(),
     entry_modules: root_modules.clone(),
-    dependencies: Rc::new(vec![]),
-})]),
+    dependencies: vec![],
+})],
 }))
 }

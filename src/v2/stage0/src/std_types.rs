@@ -26,6 +26,7 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
@@ -46,8 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_algebra::{FreeMonoid, PartialFunction};
-use Bool::*;
+
 use WarningPolicy::*;
 use CloudRuntime::*;
 use Platform::*;
@@ -65,56 +65,6 @@ use SymlinkTarget::*;
 use ContentEncoding::*;
 use AuthScheme::*;
 use CodegenBackend::*;
-
-pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
-    let mut __m = HashMap::new();
-    __m.insert("String".to_string(), true);
-    __m.insert("Int".to_string(), true);
-    __m.insert("Bool".to_string(), true);
-    __m.insert("Float".to_string(), true);
-    __m.insert("Secret".to_string(), true);
-    __m.insert("Json".to_string(), true);
-    __m.insert("Unit".to_string(), true);
-    __m.insert("Bytes".to_string(), true);
-    Rc::new(__m)
-}
-
-pub fn is_kernel_type(name: String) -> bool {
-    match v2_rt::map_get(&kernel_type_set(), name.clone()) {
-    Some(_) => true,
-    None => false,
-}
-}
-
-pub fn container_type_set() -> Rc<HashMap<String, bool>> {
-    let mut __m = HashMap::new();
-    __m.insert("List".to_string(), true);
-    __m.insert("Set".to_string(), true);
-    __m.insert("NonEmptyList".to_string(), true);
-    __m.insert("NonEmptySet".to_string(), true);
-    __m.insert("Map".to_string(), true);
-    Rc::new(__m)
-}
-
-pub fn is_container_type(name: String) -> bool {
-    match v2_rt::map_get(&container_type_set(), name.clone()) {
-    Some(_) => true,
-    None => false,
-}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum Bool {
-    True,
-    False,
-}
-
-
-
-pub type Json = serde_json::Value;
-
-pub type Bytes = Vec<u8>;
 
 pub type Char = i64;
 
@@ -162,21 +112,21 @@ pub type PathSegment = String;
 
 pub type GlobSegment = String;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FilePathParts {
-    pub segments: Rc<Vec<NonEmptyStr>>,
+    pub segments: Vec<NonEmptyStr>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GlobPattern {
-    pub segments: Rc<Vec<NonEmptyStr>>,
+    pub segments: Vec<NonEmptyStr>,
 }
 
 pub type FilePath = String;
 
 pub type Path = String;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SourceSpan {
     pub file: String,
     pub start: i64,
@@ -231,31 +181,27 @@ pub type OidcSubjectToken = String;
 
 pub type WifAudience = String;
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WarningPolicy {
     DenyAll,
     Default,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CloudRuntime {
     GitHubActions,
     Metadata,
     LocalDev,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Platform {
     Linux,
     Macos,
     Windows,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TopologyNodeKind {
     Pure,
     Transport,
@@ -263,16 +209,14 @@ pub enum TopologyNodeKind {
     Env,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DocSourceKind {
     Template,
     Generated,
     Static,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FermiDepth {
     Xs,
     S,
@@ -281,8 +225,7 @@ pub enum FermiDepth {
     Xl,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, PartialEq)]
 pub enum CredentialFlow {
     Stored {
         secret_name: String,
@@ -293,18 +236,17 @@ pub enum CredentialFlow {
     WorkloadIdentity {
         audience: String,
         service_account: Option<String>,
-        scopes: Rc<Vec<String>>,
+        scopes: Vec<String>,
     },
     InteractiveAuth {
-        scopes: Rc<Vec<String>>,
+        scopes: Vec<String>,
     },
     Chained {
-        steps: Rc<Vec<Rc<CredentialFlow>>>,
+        steps: Vec<Rc<CredentialFlow>>,
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Arch {
     X86_64,
     X86,
@@ -319,8 +261,7 @@ pub enum Arch {
     Wasm32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Vendor {
     UnknownVendor,
     Pc,
@@ -328,8 +269,7 @@ pub enum Vendor {
     W64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Os {
     Linux,
     Macos,
@@ -340,8 +280,7 @@ pub enum Os {
     Wasi,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AbiEnv {
     NoneAbi,
     Gnu,
@@ -354,8 +293,7 @@ pub enum AbiEnv {
     Eabihf,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ExecutionEnv {
     Native,
     Wsl,
@@ -364,7 +302,7 @@ pub enum ExecutionEnv {
     Emulator,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TargetTriple {
     pub arch: Arch,
     pub vendor: Vendor,
@@ -372,14 +310,13 @@ pub struct TargetTriple {
     pub env: Option<AbiEnv>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RuntimePlatform {
     pub host: Rc<TargetTriple>,
     pub env: ExecutionEnv,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EntryKind {
     RegularFile,
     Directory,
@@ -388,16 +325,14 @@ pub enum EntryKind {
     Other,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SymlinkTarget {
     TargetFile,
     TargetDir,
     Broken,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ContentEncoding {
     UTF8,
     ASCII,
@@ -409,7 +344,7 @@ pub type TextFilePath = String;
 
 pub type BinaryFilePath = String;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FileClassification {
     pub path: String,
     pub kind: EntryKind,
@@ -421,8 +356,7 @@ pub struct FileClassification {
 
 pub type MimeType = String;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, PartialEq)]
 pub enum AuthScheme {
     Bearer,
     Header {
@@ -433,14 +367,14 @@ pub enum AuthScheme {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AccessToken {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
     pub expires_at: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CloudSecretConfig {
     pub project_id: String,
     pub secret: String,
@@ -450,16 +384,16 @@ pub struct CloudSecretConfig {
     pub scheme: Rc<AuthScheme>,
     pub header_name: Option<String>,
     pub source_id: String,
-    pub required_scopes: Rc<Vec<String>>,
+    pub required_scopes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Credential {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
     pub header_name: Option<String>,
     pub source_id: String,
-    pub required_scopes: Rc<Vec<String>>,
+    pub required_scopes: Vec<String>,
     pub expires_in: Option<i64>,
 }
 
@@ -469,7 +403,7 @@ pub type NetworkHandle = ();
 
 pub type ToolHandle = String;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TransportRequest {
     pub method: String,
     pub url: String,
@@ -477,49 +411,49 @@ pub struct TransportRequest {
     pub body: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TransportResponse {
     pub status: i64,
     pub headers: serde_json::Value,
     pub body: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FileResponse {
     pub path: String,
     pub success: bool,
     pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ShellResponse {
     pub exit_code: i64,
     pub stdout: String,
     pub stderr: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RestResponse {
     pub status: i64,
     pub headers: serde_json::Value,
     pub body: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HttpResponse {
     pub status: i64,
     pub headers: serde_json::Value,
     pub body: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CliResult {
     pub stdout: String,
     pub stderr: String,
     pub exit_code: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TestResult {
     pub name: String,
     pub ok: bool,
@@ -528,14 +462,14 @@ pub struct TestResult {
     pub duration_ms: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Summary {
     pub total: i64,
     pub passed: i64,
     pub failed: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StageResult {
     pub name: String,
     pub success: bool,
@@ -544,61 +478,61 @@ pub struct StageResult {
     pub skipped: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DocumentLine {
     pub text: String,
     pub is_comment: bool,
     pub is_blank: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DocumentSection {
     pub title: String,
     pub has_title: bool,
-    pub lines: Rc<Vec<Rc<DocumentLine>>>,
+    pub lines: Vec<Rc<DocumentLine>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Document {
     pub header: String,
     pub has_header: bool,
     pub comment_prefix: String,
-    pub sections: Rc<Vec<Rc<DocumentSection>>>,
+    pub sections: Vec<Rc<DocumentSection>>,
     pub trailing_newline: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextFile {
     pub path: String,
     pub document: Rc<Document>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RenderedTextFile {
     pub path: String,
     pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToolEntry {
     pub name: String,
     pub command: String,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToolRegistry {
-    pub tools: Rc<Vec<Rc<ToolEntry>>>,
+    pub tools: Vec<Rc<ToolEntry>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DagTopology {
-    pub nodes: Rc<Vec<Rc<TopologyNode>>>,
-    pub edges: Rc<Vec<Rc<TopologyEdge>>>,
-    pub subdag_boundaries: Rc<Vec<String>>,
+    pub nodes: Vec<Rc<TopologyNode>>,
+    pub edges: Vec<Rc<TopologyEdge>>,
+    pub subdag_boundaries: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TopologyNode {
     pub id: String,
     pub label: String,
@@ -606,21 +540,21 @@ pub struct TopologyNode {
     pub parent: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TopologyEdge {
     pub from: String,
     pub to: String,
     pub port: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DagDiff {
-    pub added: Rc<Vec<String>>,
-    pub removed: Rc<Vec<String>>,
-    pub changed: Rc<Vec<String>>,
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+    pub changed: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CodegenTarget {
     pub name: String,
     pub path: String,
@@ -629,8 +563,7 @@ pub struct CodegenTarget {
     pub runtime_env: Option<ExecutionEnv>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CodegenBackend {
     Rust,
     Go,
@@ -638,14 +571,14 @@ pub enum CodegenBackend {
     Mips,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PragmaDirective {
     pub key: String,
     pub value: String,
     pub scope: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DocSource {
     pub path: String,
     pub kind: DocSourceKind,

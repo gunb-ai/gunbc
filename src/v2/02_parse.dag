@@ -42,7 +42,6 @@ import v2.std.core {
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
   local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
-  transport_url_key, transport_path_key,
   service_config_properties,
   OperationModifier, Idempotent, Readonly, Hermetic,
   Token, TokenShape,
@@ -57,8 +56,7 @@ import v2.std.core {
   ShNewline, ShEof, ShUnknown,
   SourceSpan, make_span,
   ErrorNode, make_error_node, ParseError,
-  with_required_cardinality,
-  error_type, is_compiler_error
+  with_required_cardinality
 }
 
 import v2.compiler.languages {
@@ -925,24 +923,21 @@ fn is_conj_with_children(n: Node) -> Bool {
   n.connective == Conj && n.children |> count > 0
 }
 
-// Extract the inferred type from a child Node.
-// Error states propagate structurally (error_type), not as fabricated Unit.
+// Extract the inferred from a child Node, with a fallback.
 fn child_inferred_or_empty(ch: Node) -> Node {
   if ch.inferred != none {
-    match rt_node(n: ch) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
+    match rt_node(n: ch) { Typed { node: rt } => rt  InferError { message: _, span: _ } => leaf_type_node(name: "Unit", span: ch.span)  InferVariable { id: _ } => leaf_type_node(name: "Unit", span: ch.span)  Untyped => leaf_type_node(name: "Unit", span: ch.span) }
   } else {
     leaf_type_node(name: "", span: ch.span)
   }
 }
 
 // Convert a Node return type to output fields.
-// Conj node with children -> extract children as fields (error-typed children filtered out).
+// Conj node with children -> extract children as fields.
 // Otherwise -> single "value" field wrapping the node.
 fn node_inferred_to_outputs(rt: Node) -> List<Node> {
   if is_conj_with_children(n: rt) {
-    rt.children
-      |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span))
-      |> filter(f => match field_node_type_expr(n: f).inferred { Some { value: inf } => !is_compiler_error(inferred: inf)  None => true })
+    rt.children |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span))
   } else {
     [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: rt.span)]
   }
@@ -963,7 +958,7 @@ fn parse_dotted_ident_rest(tokens: List<Token>, state: ParserState, acc: String,
   if e.consumed {
     let r = expect_name(tokens: tokens, state: e.state)
     if has_err(err: r.err) { return r }
-    parse_dotted_ident_rest(tokens: tokens, state: r.state, acc: concat(acc, ".", r.name), span: span)
+    parse_dotted_ident_rest(tokens: tokens, state: r.state, acc: "{acc}.{r.name}", span: span)
   } else {
     NameResult { name: acc, span: span, state: state, err: none }
   }
@@ -2412,7 +2407,7 @@ fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?) -
     let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
     let s2 = if e.consumed { e.state } else { r3.state }
     match fname {
-      transport_url_key => parse_rest_fields(tokens: tokens, state: s2, base_url: Some { value: r3.expr })
+      "base_url" => parse_rest_fields(tokens: tokens, state: s2, base_url: Some { value: r3.expr })
       _ => parse_rest_fields(tokens: tokens, state: s2, base_url: base_url)
     }
   }
@@ -2482,10 +2477,10 @@ fn parse_file_fields(tokens: List<Token>, state: ParserState, base_path: Node?) 
     if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
     let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
     let s2 = if e.consumed { e.state } else { r3.state }
-    if fname == "path" || fname == transport_path_key {
-      parse_file_fields(tokens: tokens, state: s2, base_path: Some { value: r3.expr })
-    } else {
-      parse_file_fields(tokens: tokens, state: s2, base_path: base_path)
+    match fname {
+      "path" => parse_file_fields(tokens: tokens, state: s2, base_path: Some { value: r3.expr })
+      "base_path" => parse_file_fields(tokens: tokens, state: s2, base_path: Some { value: r3.expr })
+      _ => parse_file_fields(tokens: tokens, state: s2, base_path: base_path)
     }
   }
 }

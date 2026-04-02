@@ -22,7 +22,6 @@ import v2.std.core {
   module_imports, module_items,
   param_node_name, param_node_type_expr, param_node_default_value,
   authored_name_at, NewlineIndex,
-  expr_var_name_at, expr_call_func_at, let_binding_name_at,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
@@ -225,7 +224,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_index: NewlineIndex
     ExprLiteral { value: v } => emit_literal(value: v, target: target)
     ExprError { kind: _, message: message } =>
       emit_error_expr(message: message, target: target)
-    ExprVar { binding_kind: _ } => emit_ident(name: expr_var_name_at(texpr: expr, source_index: source_index), target: target)
+    ExprVar { binding_kind: _ } => emit_ident(name: authored_name_at(source_index: source_index, node: expr), target: target)
     ExprFieldAccess { summary: _ } =>
       // field_access_field: ExprFieldAccess.ident_span carries the '.'
       // ExprFieldAccess: ident_span = full expression span (make_named_expr_node
@@ -338,7 +337,7 @@ fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
       let has_body = (ch |> count) > 1
       if has_body == false {
         let value = let_value(texpr: texpr)
-        extend_scope(scope: scope, name: let_binding_name_at(texpr: texpr, source_index: scope.type_env.source_index), resolved: rt_type(n: value))
+        extend_scope(scope: scope, name: authored_name_at(source_index: scope.type_env.source_index, node: texpr), resolved: rt_type(n: value))
       } else {
         scope
       }
@@ -473,7 +472,7 @@ fn emit_data_value_json(value: Node, source_index: NewlineIndex?) -> String {
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
-    ExprVar { binding_kind: _ } => concat("\"", escape_json_string(s: expr_var_name_at(texpr: value, source_index: source_index)), "\"")
+    ExprVar { binding_kind: _ } => concat("\"", escape_json_string(s: authored_name_at(source_index: source_index, node: value)), "\"")
     _ => "<<<UNSUPPORTED_MOCK_EXPR>>>"
   }
 }
@@ -1269,7 +1268,7 @@ type FuncBodyShape
 fn classify_func_body(body: Node, source_index: NewlineIndex?) -> FuncBodyShape {
   match body.expr_data {
     ExprLet =>
-      let n = let_binding_name_at(texpr: body, source_index: source_index)
+      let n = authored_name_at(source_index: source_index, node: body)
       let v = let_value(texpr: body)
       let rest = let_body(texpr: body)
       FuncBodyLet { name: n, value: v, rest: rest }
@@ -1291,7 +1290,7 @@ type TcoExprShape
 fn classify_tco_expr(texpr: Node, source_index: NewlineIndex?) -> TcoExprShape {
   match texpr.expr_data {
     ExprCall { call_semantics: _ } =>
-      TcoCall { func: expr_call_func_at(texpr: texpr, source_index: source_index), args: texpr.children }
+      TcoCall { func: authored_name_at(source_index: source_index, node: texpr), args: texpr.children }
     ExprIf =>
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
@@ -1302,7 +1301,7 @@ fn classify_tco_expr(texpr: Node, source_index: NewlineIndex?) -> TcoExprShape {
       let arm_list = match_arm_nodes(texpr: texpr)
       TcoMatch { scrutinee: scrut, arms: arm_list }
     ExprLet =>
-      let n = let_binding_name_at(texpr: texpr, source_index: source_index)
+      let n = authored_name_at(source_index: source_index, node: texpr)
       let v = let_value(texpr: texpr)
       let bd = let_body(texpr: texpr)
       TcoLet { name: n, value: v, body: bd }
@@ -1392,7 +1391,7 @@ fn emit_shared_tco_expr(
   let si = frame.scope.type_env.source_index
   match frame.expr.expr_data {
     ExprCall { call_semantics: _ } =>
-      if expr_call_func_at(texpr: frame.expr, source_index: si) == fn_name {
+      if authored_name_at(source_index: si, node: frame.expr) == fn_name {
         emit_self_call_reassign(TcoReassignInput { args: frame.expr.children, scope: frame.scope, depth: frame.depth })
       } else {
         emit_non_self_call(frame)
@@ -1412,7 +1411,7 @@ fn emit_shared_tco_expr(
 
 fn is_tco_candidate(texpr: Node, func_name: String, source_index: NewlineIndex?) -> Bool {
   match texpr.expr_data {
-    ExprCall { call_semantics: _ } => expr_call_func_at(texpr: texpr, source_index: source_index) == func_name
+    ExprCall { call_semantics: _ } => authored_name_at(source_index: source_index, node: texpr) == func_name
     ExprIf =>
       // children = [condition, then, else?]. Check branches.
       let then_cand = is_tco_candidate(texpr: if_then_branch(texpr: texpr), func_name: func_name, source_index: source_index)

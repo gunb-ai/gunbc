@@ -2,12 +2,9 @@
 
 #![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, unreachable_patterns, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]
 
-pub mod extdeps_languages_dag_syntax;
 pub mod extdeps_languages_go_emit;
 pub mod extdeps_languages_python_emit;
 pub mod extdeps_languages_rust_emit;
-pub mod std_algebra;
-pub mod std_syntax;
 pub mod std_types;
 pub mod v2_compiler_runtime_rust;
 pub mod v2_std_core;

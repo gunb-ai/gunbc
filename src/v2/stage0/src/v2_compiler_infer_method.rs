@@ -26,6 +26,7 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
@@ -46,123 +47,54 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, make_span, with_optional_cardinality, unit_type, bool_type, string_type, int_type, InferredNode, Connective, Cardinality, ExprData};
-use crate::v2_std_core::InferredNode::{TypeVariable};
-use crate::v2_std_core::Connective::{NoConnective};
-use crate::v2_std_core::Cardinality::{Required};
-use crate::v2_std_core::ExprData::{NoExprData};
-pub use crate::v2_compiler_infer_types::{bare_map_node};
 
-pub fn type_variable_node(id: String) -> Rc<Node> {
-    Rc::new(Node {
-    name: "".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::TypeVariable {
-    id: id.clone(),
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-}
-
-pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    Rc::new(Node {
-    name: "List".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
-    children: Rc::new(vec![type_variable_node(id.clone())]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-}
-
-pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
-    name: "List".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
-    children: Rc::new(vec![element.clone()]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-}
-
-pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
-    {
-        let m: Rc<HashMap<_, _>> = Rc::new(HashMap::new());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "count".to_string(), int_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "string_length".to_string(), int_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "code_point".to_string(), int_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "to_int".to_string(), int_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "scan_while".to_string(), int_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "scan_string_end".to_string(), int_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "scan_to_eol".to_string(), int_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "skip_horizontal_ws".to_string(), int_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "parse_int".to_string(), with_optional_cardinality(int_type()));
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "char_at".to_string(), string_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "substring".to_string(), string_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "from_code_point".to_string(), string_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "map_insert".to_string(), bare_map_node());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "map_merge".to_string(), bare_map_node());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "with".to_string(), bare_map_node());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "map_contains_key".to_string(), bool_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "map_has".to_string(), bool_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "emit_map_has".to_string(), bool_type());
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "lookup".to_string(), with_optional_cardinality(type_variable_node("map_value".to_string())));
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "map_get".to_string(), with_optional_cardinality(type_variable_node("map_value".to_string())));
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "Some".to_string(), with_optional_cardinality(type_variable_node("some_inner".to_string())));
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "map_keys".to_string(), list_of_type_variable("collection_element".to_string()));
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "map_values".to_string(), list_of_type_variable("collection_element".to_string()));
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "reverse".to_string(), list_of_type_variable("collection_element".to_string()));
-let m: Rc<HashMap<String, Rc<Node>>> = v2_rt::rc_map_insert(m.clone(), "list_push".to_string(), list_of_type_variable("collection_element".to_string()));
-m.clone()
-}
-}
+pub use crate::v2_std_core::{Node, leaf_node, with_optional_cardinality};
+pub use crate::v2_compiler_infer_types::{container_node, tuple_node, error_type_node, bare_map_node, method_receiver_element_node};
 
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
-    v2_rt::map_get(&builtin_function_registry(), name.clone())
+    if ((((name.clone() == "count".to_string()) || (name.clone() == "string_length".to_string())) || (name.clone() == "code_point".to_string())) || (name.clone() == "to_int".to_string())) {
+        Some(leaf_node("Int".to_string()))
+} else {
+        if (name.clone() == "parse_int".to_string()) {
+            Some(with_optional_cardinality(leaf_node("Int".to_string())))
+} else {
+            if (((((name.clone() == "char_at".to_string()) || (name.clone() == "substring".to_string())) || (name.clone() == "from_code_point".to_string())) || (name.clone() == "to_string".to_string())) || (name.clone() == "concat".to_string())) {
+                Some(leaf_node("String".to_string()))
+} else {
+                if ((((name.clone() == "scan_while".to_string()) || (name.clone() == "scan_string_end".to_string())) || (name.clone() == "scan_to_eol".to_string())) || (name.clone() == "skip_horizontal_ws".to_string())) {
+                    Some(leaf_node("Int".to_string()))
+} else {
+                    if ((name.clone() == "lookup".to_string()) || (name.clone() == "map_get".to_string())) {
+                        Some(with_optional_cardinality(leaf_node("Dynamic".to_string())))
+} else {
+                        if (((name.clone() == "map_insert".to_string()) || (name.clone() == "map_merge".to_string())) || (name.clone() == "with".to_string())) {
+                            Some(bare_map_node())
+} else {
+                            if (((name.clone() == "map_contains_key".to_string()) || (name.clone() == "map_has".to_string())) || (name.clone() == "emit_map_has".to_string())) {
+                                Some(leaf_node("Bool".to_string()))
+} else {
+                                if ((((name.clone() == "map_keys".to_string()) || (name.clone() == "map_values".to_string())) || (name.clone() == "reverse".to_string())) || (name.clone() == "list_push".to_string())) {
+                                    Some(container_node("List".to_string(), leaf_node("Dynamic".to_string())))
+} else {
+                                    if (name.clone() == "Some".to_string()) {
+                                        Some(with_optional_cardinality(leaf_node("Dynamic".to_string())))
+} else {
+                                        None
+}
+}
+}
+}
+}
+}
+}
+}
+}
 }
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
     match infer_builtin_call_type(name.clone()) {
     Some(v) => v.clone(),
-    None => unit_type(),
+    None => leaf_node("Unit".to_string()),
 }
 }
+

@@ -342,6 +342,158 @@ M1 (every .dag compiles)
       CX-A → CX-B → CX-C → CX-D → CX-E (see CX lane below)
 ```
 
+---
+
+## P1: Modeling Consolidation
+
+Programs are applied mathematics with informal names. The compiler
+pipeline contains ~90 redundant types that are standard algebraic
+structures (monads, lattices, free algebras) reimplemented ad-hoc.
+Consolidating them dramatically simplifies the pipeline, reduces the
+stage0 mirror surface, and dissolves complexity violations.
+
+**Thesis:** every new type should derive from an existing std/ algebraic
+structure. If it doesn't, either the structure is missing from std/ (add
+it with an external authority citation) or the type is a reinvention.
+The grounding is permanent — algebraic structures don't need refactoring
+because they ARE the foundation everything else refactors toward.
+
+### P1-A: Result monad unification (58 types → 2)
+
+**Parse stage:** 36 types in `02_parse.dag` with identical shape:
+```
+type FooResult { foo: T, state: ParserState, err: ErrorNode? }
+```
+
+**Resolve/Infer:** 22+ types across `04_resolve.dag`, `04_infer.dag`,
+`03_resolve.dag` with identical shape:
+```
+type BarResult { bar: T, diagnostics: List<ErrorNode> }
+```
+
+**Fix:** Two generic types replace 58:
+```
+type ParseM<T> { value: T, state: ParserState, err: ErrorNode? }
+type DiagM<T> { value: T, diagnostics: List<ErrorNode> }
+```
+
+**Algebraic identity:** Both are `Writer<Errors> × State<ParserState>`
+monads — standard from Moggi (1989). The parse variant threads state;
+the resolve/infer variant only accumulates diagnostics.
+
+**Impact:** ~58 type definitions deleted. ~200 construction sites
+simplified. Stage0 mirror shrinks proportionally. Parser file drops
+from 68 to ~30 type definitions.
+
+**Blocked on:** .dag generic type support (currently limited). May need
+type aliases or a `ParseResult<T>` encoding convention.
+
+### P1-B: Emit parameterization (7,020 lines → ~4,500)
+
+Three language-specific emit files repeat identical control flow with
+different string templates:
+
+| Pattern | Functions per language | Total duplicated |
+|---|---|---|
+| Expression dispatchers | 14 | 42 (3 × 14) |
+| TCO handlers | 6 | 12 (2 × 6, Python + Go) |
+| Block statement handlers | 2 | 6 |
+| Test file generators | 3 | 6 |
+| Data definition emitters | 1 | 3 |
+
+**Fix:** `emit_expr(target: LanguageSpec, ...)` replaces
+`emit_rust_expr`, `emit_py_expr`, `emit_go_expr`. The dispatch reads
+LanguageSpec data tables (already designed in `std/languages.dag`).
+
+**Algebraic identity:** Emission is a homomorphism from the typed graph
+to target-language text. The homomorphism is parameterized by the
+target algebra (LanguageSpec). Three copies of the same homomorphism
+with different parameters = one parameterized homomorphism.
+
+**Impact:** ~2,000-2,500 lines eliminated. Adding a new target language
+requires ZERO new emit functions — only LanguageSpec data. This is the
+M5 direction; P1-B is the mechanical prerequisite.
+
+**Blocked on:** M5-early (coercion via TypeRendering) for type emission.
+Expression/statement emission can be parameterized now.
+
+### P1-C: String identity → structural edges (~200 Map<String, X> sites)
+
+406 total `Map<String, X>` uses across the pipeline. Classification:
+
+| Key semantics | Count | Should be structural? |
+|---|---|---|
+| Type/declaration name | 121 | YES → Node reference |
+| Variable/binding name | 95 | YES → scope edge |
+| Module name | 38 | YES → module graph edge |
+| Set membership (Bool) | 104 | NO → correct as-is |
+| Dispatch/lookup tables | 48 | CONTEXT-DEPENDENT |
+
+**Fix:** M4 (structural identity) dissolves ~200 string-keyed lookups
+into Node edges. The remaining ~150 (set membership + dispatch tables)
+are correct uses of maps.
+
+**Algebraic identity:** String-keyed maps are finite partial functions
+(`PartialFunction<String, V>` from std/algebra.dag) used as identity
+proxies. When identity becomes structural (Node reference), the partial
+function's domain changes from String to Node — same algebra, better key.
+
+**Impact:** ~200 map lookups become edge traversals. Type errors from
+name typos become impossible (structural references are checked at
+construction). This IS M4 Lane 2 (Node.name deletion).
+
+### P1-D: Context/accumulator deduplication (10 types → 4)
+
+| Redundancy | Types | Fix |
+|---|---|---|
+| InferScope ≅ ModuleContext | 2 → 1 | Merge ModuleContext into InferScope |
+| ResolveAccum ≅ BindingsAccum ≅ DuplicateCheckState | 3 → 1 | `DiagAccum<S> { state: S, diagnostics: List<ErrorNode> }` |
+| UniqueAccum pattern (repeated) | 2 → 1 | One `DeduplicatedFold<T>` |
+| InferScopeComponents | 1 → 0 | Constructor function, not stored type |
+
+**Impact:** ~6 types eliminated. Clarifies ownership: one inference
+context type, one accumulator pattern, one deduplication fold.
+
+### P1-E: Non-Node recursive type dissolution (CX lane, see above)
+
+| Type | Variants | Algebra | CX work item |
+|---|---|---|---|
+| AlgebraTypeTemplate | 9 | Type constructor free algebra | CX-A |
+| CostExpr | 7 | Tropical semiring (std/algebra.dag) | CX-B |
+| SizeExpr | 5 | Sub-algebra of CostExpr | CX-B (merges into CostExpr) |
+| MatchPattern | 4 | Discrimination algebra | CX-D (M7 long-term) |
+| TypeRendering | 7 recursive fields | Coercion checkpoint | M5 (dissolves into coercion) |
+| ProgressKind | 3 | ≅ DescentEvidence lattice | CX-D |
+
+**Impact:** ~45 type variants eliminated. ~56 complexity violations
+dissolved. The complexity analyzer handles everything as Node descent.
+
+### P1 dependency graph
+
+```
+P1-A (result monad)     — independent, needs generic type support
+P1-B (emit param)       — depends on M5-early for types, independent for exprs
+P1-C (string→structural) — IS M4 Lane 2
+P1-D (context dedup)     — independent, small
+P1-E (non-Node types)    — CX lane, in progress (CX-A/B/D agents running)
+```
+
+P1-A and P1-D are immediately actionable. P1-B can start with
+expression/statement emission (type emission waits for M5-early).
+P1-C is the M4 roadmap. P1-E is the CX lane.
+
+### Expected total impact
+
+| Metric | Before | After P1 |
+|---|---|---|
+| Type definitions | ~536 | ~430 (~100 eliminated) |
+| Emit lines | 7,020 | ~4,500 (~2,500 eliminated) |
+| String-keyed identity maps | ~200 semantic | ~0 (structural edges) |
+| Complexity violations | 164 | ~80 (P1-E contributes ~56) |
+| Stage0 mirror surface | ~17,000 lines | ~13,000 lines |
+
+---
+
 **Coercion implementation parallelism:** The coercion design is complete
 ([docs/coercion-design.md](docs/coercion-design.md)). Implementation
 does not wait for M4 to finish — it starts as soon as E0c's
