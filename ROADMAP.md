@@ -22,7 +22,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 |--------|-------|--------|-------|
 | .dag files | 91 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
-| Self-compile diagnostics | 0 | 0 | Green |
+| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 316 are indirect-recursion complexity violations |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
@@ -32,7 +32,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 313 | 0 | 53 root functions → 313 errors (ratcheted); direct + mutual recursion are fail-closed, next drop needs parser/block/type-normalization witness work |
+| Complexity violations | 315 | 0 | Ratcheted at 315 in code. Direct + mutual recursion fail-closed. Unsound ExprFieldAccess/ExprMethodCall witnesses reverted (2026-04-01). Next drop needs parser/block/type-normalization witness work with resolved structural facts |
 
 ---
 
@@ -1085,7 +1085,7 @@ compiler verifies the SCC has a shared decreasing measure:
 If no shared decreasing measure exists, the SCC is a compilation
 error — same as case 4 above.
 
-**Current state (2026-03-31):** 53 root functions → 313 complexity
+**Current state (2026-04-01):** 27 root functions → 315 complexity
 violations, ratcheted. This branch landed the first real proof
 infrastructure:
 - direct recursion is fail-closed on the actual measured parameter
@@ -1093,13 +1093,16 @@ infrastructure:
   cycle's violation
 - parser progress is parse-owned via typed helper identities
 - recursive-field facts are structural witnesses, not concatenated keys
+- unsound `ExprFieldAccess`/`ExprMethodCall` witness arms reverted
+  (soundness audit W-1, W-2); complexity must consume resolved witnesses
 
 The remaining blockers are no longer "mutual recursion is missing";
 they are specific witness gaps:
 (a) parser SCC progress for the `parse_type_expr` family,
 (b) block/tree-walker SCC descent for emit/infer,
-(c) type-normalization self-recursion, and
-(d) a few cache/dispatcher SCCs. Those are the path from 313 → 0.
+(c) type-normalization self-recursion (requires StructuralChildDescent
+    witnesses from resolve/infer, not expression-shape heuristics), and
+(d) a few cache/dispatcher SCCs. Those are the path from 315 → 0.
 
 #### Implementation plan
 
@@ -1144,12 +1147,16 @@ rule before we harden I1/I2 further.
   `normalize_access_type_node` and its downstream family
   (`node_type_shape`, `node_type_compatible`, `node_type_equals`,
   `node_type_deps`) with a fail-closed structural measure.
-  **Progress:** `expr_descending_witness_source` extended to recognize
-  `ExprFieldAccess` chains and single-element extraction methods (first,
-  last) as structural descent. `skip`/`take` excluded — not
-  unconditionally shrinking (`skip(0)`, `take(length(xs))`). Remaining: propagate descent
-  witness through if/match optional extraction (let x = if ... {
-  param.children |> first } else { none }; match x { Some => ... }).
+  **Reverted (2026-04-01):** `ExprFieldAccess` and `ExprMethodCall`
+  (first/last) arms in `expr_descending_witness_source` removed as
+  unsound — field access is only a valid descent witness when the
+  accessed field is a proven recursive child position, not for
+  arbitrary fields (metadata, sibling payloads, measure-neutral
+  fields). The correct path: resolve/infer must own
+  `StructuralChildDescent` witnesses that identify which fields of
+  each type are recursive positions, and complexity consumes those
+  rather than recovering them from expression shape. See §Witness
+  soundness audit below.
 - [ ] Cache/frontier SCC proof: finish `resolve_callback_cost` and any
   remaining finite-key SCCs with a real frontier witness rather than a
   placeholder cycle explanation
@@ -1166,6 +1173,34 @@ rule before we harden I1/I2 further.
 - [ ] Emitter cleanup follow-up: route Python `VariantPattern` emission
   through `emit_py_variant_pattern` instead of keeping a parallel inline
   implementation
+
+**Witness soundness audit (2026-04-01).**
+
+Review identified five classes of unsound witness propagation. The
+governing principle: complexity should consume resolved descent
+witnesses owned by resolve/infer, not recover them from expression
+shape, names, or helper-call patterns. Each class below has the same
+root cause as the generic `ExprCall` catch-all that was already deleted.
+
+| # | Class | Status | What's unsound | Fix |
+|---|-------|--------|---------------|-----|
+| W-1 | `ExprFieldAccess` in `expr_descending_witness_source` | **FIXED (2026-04-01)** | Any field access propagated descent, but `x.metadata` is not smaller than `x` | Removed arm; re-enable only with `StructuralChildDescent` witness from resolve/infer |
+| W-2 | `ExprMethodCall` (first/last) in `expr_descending_witness_source` | **FIXED (2026-04-01)** | Collection extraction treated as descent without proving the collection holds recursive children | Removed arm; same re-enable path as W-1 |
+| W-3 | `ExprIf`/`ExprMatch` in witness propagation | **Safe** (not propagated) | If either branch yielded a witness, it would be unsound (`if cond { n-1 } else { n }`) | `collect_descending_witness_names` does not propagate through if/match; soundness comment added |
+| W-4 | Pattern-binding witness promotion | **Not applicable** | `add_pattern_witnesses` does not exist in this codebase; pattern bindings do not auto-promote to witnesses | If added, must restrict to resolved recursive positions |
+| W-5 | SCC `all_arithmetic` classification | **Documented** | `max_path <= 1 && scc_calls_have_arithmetic_descent` is necessary but not sufficient for full soundness; needs shared structural measure on every cycle edge | Soundness comment added in `classify_scc_recursion_pattern`; design target: §I2 |
+
+Witness kind taxonomy (design target, not yet implemented):
+- `ArithmeticDescent(param)` — valid only for single-recursion classification
+- `StructuralChildDescent { source_param, recursive_edge }` — can justify
+  multi-call linearity only when recursive calls are on proven disjoint
+  recursive children owned by resolve/infer
+
+Regression tests added:
+- `soundness_fib_like_stays_non_linear` — branching recursion stays violation
+- `soundness_conditional_descent_not_accepted` — if/else partial descent rejected
+- `soundness_partial_match_descent_not_accepted` — match partial descent documented
+- `soundness_arithmetic_descent_single_call_accepted` — valid single-call descent works
 
 **I1: `descend` primitive for recursive unions.**
 
@@ -1551,10 +1586,10 @@ the first level the language recognizes.
 
 | Ratchet | Current | Target | Command |
 |---------|---------|--------|---------|
-| Self-compile diagnostics | 310 | 0 | `strict_compile_diagnostic_count -- --ignored` (all 310 are indirect-recursion complexity violations) |
+| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count -- --ignored` (DIAG_RATCHET in bootstrap.rs) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 310 | 0 | `strict_complexity_violation_count -- --ignored` (27 root functions × indirect recursion → 310; resolves when fold primitive lands) |
+| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (COMPLEXITY_RATCHET in pipeline.rs) |
 | Emitted Rust errors | 1 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
