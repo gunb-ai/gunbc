@@ -2091,6 +2091,12 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
   let path_calls = max_path_self_calls(body: body, func_name: func_name)
   let initial_witnesses = recursive_measure_param_names(body: body, params: params)
   let descending_witness_names = collect_descending_witness_names(body: body, descending_witness_names: initial_witnesses)
+  let has_strict_parser_progress = self_calls_have_strict_parser_progress(
+    func_name: func_name,
+    body: body,
+    params: params,
+    parser_always_advancing: parser_always_advancing
+  )
   if path_calls == 0 {
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else if is_structural_descent(body: body, func_name: func_name, params: params, recursive_type_set: recursive_type_set, recursive_variant_fields: recursive_variant_fields) {
@@ -2098,11 +2104,15 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // in arms on destructured children. Total work = |tree| × per-node,
     // not k^depth. Classify as LinearRecursion (catamorphism).
     LinearRecursion { iteration_var: concat("n_", func_name) }
+  } else if has_strict_parser_progress {
+    // Parser recursion is bounded by monotonic parser-state progress.
+    // Multiple self-calls on one execution path still scan disjoint
+    // suffixes of the same token stream, so total work is linear in
+    // remaining input length rather than exponential.
+    LinearRecursion { iteration_var: concat("n_", func_name) }
   } else if path_calls > 1 {
     DivideAndConquer { split_factor: path_calls }
-  } else if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
-    || self_calls_have_strict_parser_progress(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
-    {
+  } else if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names) {
     // path_calls == 1, not structural descent, but at least one
     // self-call arg is param - expr or param / expr. Proven descent.
     LinearRecursion { iteration_var: concat("n_", func_name) }

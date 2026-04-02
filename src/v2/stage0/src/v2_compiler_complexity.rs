@@ -2171,6 +2171,12 @@ pub fn classify_recursion_pattern(
         body.clone(),
         Rc::new(initial_witnesses.clone()),
     );
+    let has_strict_parser_progress = self_calls_have_strict_parser_progress(
+        func_name.clone(),
+        body.clone(),
+        params.clone(),
+        parser_always_advancing.clone(),
+    );
     if (path_calls.clone() == 0) {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
@@ -2185,6 +2191,10 @@ pub fn classify_recursion_pattern(
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
+    } else if has_strict_parser_progress {
+        Rc::new(RecursionPattern::LinearRecursion {
+            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+        })
     } else if (path_calls.clone() > 1) {
         Rc::new(RecursionPattern::DivideAndConquer {
             split_factor: path_calls.clone(),
@@ -2194,14 +2204,7 @@ pub fn classify_recursion_pattern(
             func_name.clone(),
             params.clone(),
             descending_witness_names.clone(),
-        )
-        || self_calls_have_strict_parser_progress(
-            func_name.clone(),
-            body.clone(),
-            params.clone(),
-            parser_always_advancing.clone(),
-        )
-        {
+        ) {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
