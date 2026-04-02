@@ -607,6 +607,19 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         None => ProgressUnknown
       }
 
+    ExprRecordLit { parent_enum: _ } =>
+      match parser_record_field_value(expr: expr, field_name: "state") {
+        Some { value: state_expr } =>
+          parser_state_expr_progress(
+            expr: state_expr,
+            state_param: state_param,
+            env: env,
+            parser_always_advancing: parser_always_advancing,
+            consumed_true_set: consumed_true_set
+          )
+        None => ProgressUnknown
+      }
+
     _ => ProgressUnknown
   }
 }
@@ -2140,7 +2153,32 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
           } else { none }
         _ => none
       }
+    ExprIf =>
+      let then_source = expr_descending_witness_source(expr: if_then_branch(texpr: expr), descending_witness_names: descending_witness_names)
+      let else_source = match if_else_branch(texpr: expr) {
+        Some { value: eb } => expr_descending_witness_source(expr: eb, descending_witness_names: descending_witness_names)
+        None => none  // no else = unit = base case
+      }
+      match then_source {
+        Some { value: ts } =>
+          match else_source {
+            Some { value: es } => if ts == es { Some { value: ts } } else { none }  // both must descend from same source
+            None => then_source  // else is none/absent = base case, then descends
+          }
+        None => else_source  // then is none/base, else might descend
+      }
     _ => none
+  }
+}
+
+fn add_pattern_descent_witnesses(acc: Map<String, String>, pattern: MatchPattern, source_param: String) -> Map<String, String> {
+  match pattern {
+    Bind { name } => map_insert(acc, name, source_param)
+    VariantPattern { name: _, parent_enum: _, field_bindings } =>
+      field_bindings |> fold(init: acc, f: (inner, fb) =>
+        add_pattern_descent_witnesses(acc: inner, pattern: field_binding_pattern(n: fb), source_param: source_param)
+      )
+    _ => acc
   }
 }
 
@@ -2157,6 +2195,17 @@ fn collect_descending_witness_names(body: Node, descending_witness_names: Map<St
         Some { value: b } => collect_descending_witness_names(body: b, descending_witness_names: next_witnesses)
         None => next_witnesses
       }
+
+    ExprMatch =>
+      let scrut_source = expr_descending_witness_source(expr: match_scrutinee(texpr: body), descending_witness_names: descending_witness_names)
+      match_arm_nodes(texpr: body) |> fold(init: descending_witness_names, f: (acc, arm_node) =>
+        let arm_witnesses = match scrut_source {
+          Some { value: source_param } =>
+            add_pattern_descent_witnesses(acc: acc, pattern: arm_pattern(n: arm_node), source_param: source_param)
+          None => acc
+        }
+        collect_descending_witness_names(body: arm_body(n: arm_node), descending_witness_names: arm_witnesses)
+      )
 
     ExprBlock =>
       body.children |> fold(init: descending_witness_names, f: (acc, stmt) =>

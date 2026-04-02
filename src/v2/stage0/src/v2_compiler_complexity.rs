@@ -602,6 +602,12 @@ pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: ParserStateParam,
             }
         }
         ExprData::ExprReturn { .. } => parser_state_expr_progress(return_value(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+        ExprData::ExprRecordLit { .. } => {
+            match parser_record_field_value(expr.clone(), "state".to_string()) {
+                Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+                None => ProgressKind::ProgressUnknown,
+            }
+        }
         _ => ProgressKind::ProgressUnknown,
     }
 }
@@ -2235,7 +2241,55 @@ pub fn expr_descending_witness_source(
             ),
             _ => None,
         },
+        ExprData::ExprIf { .. } => {
+            let then_source = expr_descending_witness_source(
+                if_then_branch(expr.clone()),
+                descending_witness_names.clone(),
+            );
+            let else_source = match if_else_branch(expr.clone()) {
+                Some(eb) => expr_descending_witness_source(
+                    eb.clone(),
+                    descending_witness_names.clone(),
+                ),
+                None => None, // no else = unit = base case
+            };
+            match then_source.clone() {
+                Some(ts) => match else_source.clone() {
+                    Some(es) => {
+                        if ts == es {
+                            Some(ts)
+                        } else {
+                            None
+                        }
+                    }
+                    None => then_source, // else is none/absent = base case, then descends
+                },
+                None => else_source, // then is none/base, else might descend
+            }
+        }
         _ => None,
+    }
+}
+
+pub fn add_pattern_descent_witnesses(
+    acc: Rc<HashMap<String, String>>,
+    pattern: Rc<crate::v2_std_core::MatchPattern>,
+    source_param: String,
+) -> Rc<HashMap<String, String>> {
+    match (*pattern).clone() {
+        crate::v2_std_core::MatchPattern::Bind { name } => {
+            Rc::new(v2_rt::map_insert((*acc).clone(), name.clone(), source_param.clone()))
+        }
+        crate::v2_std_core::MatchPattern::VariantPattern { field_bindings, .. } => {
+            Rc::new(field_bindings.iter().cloned().fold((*acc).clone(), |inner, fb: Rc<Node>| {
+                (*add_pattern_descent_witnesses(
+                    Rc::new(inner.clone()),
+                    field_binding_pattern(fb.clone()),
+                    source_param.clone(),
+                )).clone()
+            }))
+        }
+        _ => acc,
     }
 }
 
@@ -2271,6 +2325,29 @@ pub fn collect_descending_witness_names(
                 ),
                 None => next_witnesses.clone(),
             }
+        }
+        ExprData::ExprMatch => {
+            let scrut_source = expr_descending_witness_source(
+                match_scrutinee(body.clone()),
+                descending_witness_names.clone(),
+            );
+            Rc::new(match_arm_nodes(body.clone()).iter().cloned().fold(
+                (*descending_witness_names).clone(),
+                |acc: _, arm_node: Rc<Node>| {
+                    let arm_witnesses = match scrut_source.clone() {
+                        Some(source_param) => add_pattern_descent_witnesses(
+                            Rc::new(acc.clone()),
+                            arm_pattern(arm_node.clone()),
+                            source_param.clone(),
+                        ),
+                        None => Rc::new(acc.clone()),
+                    };
+                    (*collect_descending_witness_names(
+                        arm_body(arm_node.clone()),
+                        arm_witnesses.clone(),
+                    )).clone()
+                },
+            ))
         }
         ExprData::ExprBlock { .. } => {
             Rc::new(body.children.clone().iter().cloned().fold((*descending_witness_names).clone(), |acc: _, stmt: Rc<Node>| {

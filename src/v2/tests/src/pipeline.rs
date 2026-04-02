@@ -2129,6 +2129,11 @@ fn strict_complexity_violation_count() {
     // remain errors (all diagnostics are errors). The ratchet only
     // moves down, never up, until I1/I2 resolve them to 0.
     const COMPLEXITY_RATCHET: usize = 255;
+    // 315→255: block SCC (list-tail descent), parser helpers, finite frontier
+    // Remaining: parser SCC (60, record-state extraction landed but if-branch
+    // merging cascades through params_result), normalize (75, if/match descent
+    // landed but may need let-alias propagation), branching (40, catamorphism
+    // pattern needs multi-child descent proof), misc (80)
     assert!(
         violation_count <= COMPLEXITY_RATCHET,
         "complexity violation count {} exceeds ratchet {}",
