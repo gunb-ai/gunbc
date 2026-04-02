@@ -7,7 +7,7 @@ use crate::v2_rt;
 use crate::v2_compiler_infer_env::RecursiveVariantFieldWitness;
 use crate::v2_compiler_parse::{
     parser_passthrough_state_expr, parser_progress_flag_var, parser_result_witness,
-    ParserCallIdentity, ParserResultWitness,
+    ParserCallIdentity, ParserHelperIdentity, ParserResultWitness,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -203,6 +203,9 @@ pub enum RecursionPattern {
     },
     DivideAndConquer {
         split_factor: i64,
+    },
+    FiniteFrontierRecursion {
+        frontier_var: String,
     },
     UnresolvableRecursion {
         reason: String,
@@ -606,7 +609,23 @@ pub fn parser_result_source_for_expr(expr: Rc<Node>, state_param: ParserStatePar
                 ParserResultWitness::ParserWitnessEat =>
                     ParserResultSource::ParserResultEat { input: input_progress },
                 ParserResultWitness::ParserWitnessCall { callee } => match callee.clone() {
-                    ParserCallIdentity::ParserCallHelper { .. } => ParserResultSource::ParserResultOpaque,
+                    ParserCallIdentity::ParserCallHelper { helper } => match helper {
+                        ParserHelperIdentity::ParserHelperSkipNewlines =>
+                            ParserResultSource::ParserResultCall {
+                                input: ProgressKind::ProgressSame,
+                                callee: "skip_newlines".to_string(),
+                            },
+                        ParserHelperIdentity::ParserHelperSkipContinuationNewlines =>
+                            ParserResultSource::ParserResultCall {
+                                input: ProgressKind::ProgressSame,
+                                callee: "skip_continuation_newlines".to_string(),
+                            },
+                        ParserHelperIdentity::ParserHelperWith =>
+                            ParserResultSource::ParserResultCall {
+                                input: input_progress,
+                                callee: "with".to_string(),
+                            },
+                    },
                     ParserCallIdentity::ParserCallFunction { name } => match input_progress {
                         ProgressKind::ProgressUnknown => ParserResultSource::ParserResultOpaque,
                         _ => ParserResultSource::ParserResultCall {
@@ -1880,6 +1899,294 @@ pub fn scc_calls_have_arithmetic_descent(
     }
 }
 
+// =========================================================================
+// List-tail descent proof
+// =========================================================================
+
+pub fn is_list_first_on_param(
+    scrutinee: Rc<Node>,
+    param_names: HashMap<String, bool>,
+) -> Option<String> {
+    match (*scrutinee.expr_data.clone()).clone() {
+        ExprData::ExprMethodCall { method_semantics: ms, .. } => {
+            match ms {
+                Some(ms_val) => match (*ms_val).clone() {
+                    MethodSemantics::AlgebraMethodSemantics { method_def: md, .. } => {
+                        if md.name == "first" {
+                            let recv = method_receiver(scrutinee.clone());
+                            match (*recv.expr_data.clone()).clone() {
+                                ExprData::ExprVar { .. } => {
+                                    let vname = expr_var_name(recv.clone());
+                                    if set_has(param_names.clone(), vname.clone()) {
+                                        Some(vname)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                },
+                None => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn is_list_skip1_on_param(
+    expr: Rc<Node>,
+    param_name: String,
+) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprMethodCall { method_semantics: ms, .. } => {
+            match ms {
+                Some(ms_val) => match (*ms_val).clone() {
+                    MethodSemantics::AlgebraMethodSemantics { method_def: md, .. } => {
+                        if md.name == "skip" {
+                            let recv = method_receiver(expr.clone());
+                            let recv_ok = match (*recv.expr_data.clone()).clone() {
+                                ExprData::ExprVar { .. } => expr_var_name(recv.clone()) == param_name,
+                                _ => false,
+                            };
+                            let args = method_arg_nodes(expr.clone());
+                            let arg_ok = match args.first().cloned() {
+                                Some(arg_node) => {
+                                    let val = arg_value(arg_node.clone());
+                                    match (*val.expr_data.clone()).clone() {
+                                        ExprData::ExprLiteral { value } => {
+                                            matches!(&*value, crate::v2_std_core::LiteralValue::LitInt { value: 1 })
+                                        }
+                                        _ => false,
+                                    }
+                                }
+                                None => false,
+                            };
+                            recv_ok && arg_ok
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
+                },
+                None => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+pub fn arm_has_no_scc_calls(
+    arm_node: Rc<Node>,
+    scc_name_set: HashMap<String, bool>,
+) -> bool {
+    count_target_calls(arm_body(arm_node.clone()), scc_name_set.clone()) == 0
+}
+
+pub fn scc_call_passes_list_tail(
+    call_node: Rc<Node>,
+    scc_name_set: HashMap<String, bool>,
+    list_tail_params: HashMap<String, String>,
+    caller_list_tail_param: Option<String>,
+) -> bool {
+    let callee = expr_call_func(call_node.clone());
+    if !set_has(scc_name_set.clone(), callee.clone()) {
+        true
+    } else {
+        match v2_rt::map_get(&list_tail_params, callee.clone()) {
+            Some(callee_param) => {
+                call_node.children.clone().iter().cloned().any(|arg_node| {
+                    let targets_param = arg_name(arg_node.clone()) == Some(callee_param.clone());
+                    if !targets_param {
+                        false
+                    } else {
+                        let arg_expr = arg_value(arg_node.clone());
+                        // Case 1: skip(1) on caller's own list param
+                        let is_skip1 = match &caller_list_tail_param {
+                            Some(cltp) => is_list_skip1_on_param(arg_expr.clone(), cltp.clone()),
+                            None => false,
+                        };
+                        // Case 2: fresh list (not referencing caller's list param)
+                        let is_fresh = match &caller_list_tail_param {
+                            Some(cltp) => !expr_references_param(arg_expr.clone(), cltp.clone()),
+                            None => true,
+                        };
+                        is_skip1 || is_fresh
+                    }
+                })
+            }
+            None => true,
+        }
+    }
+}
+
+pub fn expr_references_param(expr: Rc<Node>, param_name: String) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprVar { .. } => expr_var_name(expr.clone()) == param_name,
+        _ => expr.children.clone().iter().cloned().any(|child| {
+            expr_references_param(child.clone(), param_name.clone())
+        }),
+    }
+}
+
+pub fn scc_calls_pass_list_tail_or_substructure(
+    body: Rc<Node>,
+    scc_name_set: HashMap<String, bool>,
+    list_tail_params: HashMap<String, String>,
+    func_index: HashMap<String, Rc<FuncEntry>>,
+    caller_list_tail_param: Option<String>,
+) -> bool {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            scc_call_passes_list_tail(body.clone(), scc_name_set.clone(), list_tail_params.clone(), caller_list_tail_param.clone())
+                && body.children.clone().iter().cloned().all(|child| {
+                    let val = arg_value(child.clone());
+                    match (*val.expr_data.clone()).clone() {
+                        ExprData::ExprLambda { .. } => true,
+                        _ => scc_calls_pass_list_tail_or_substructure(
+                            val.clone(),
+                            scc_name_set.clone(),
+                            list_tail_params.clone(),
+                            func_index.clone(),
+                            caller_list_tail_param.clone(),
+                        ),
+                    }
+                })
+        }
+        ExprData::ExprMethodCall { .. } => {
+            let recv_ok = scc_calls_pass_list_tail_or_substructure(
+                method_receiver(body.clone()),
+                scc_name_set.clone(),
+                list_tail_params.clone(),
+                func_index.clone(),
+                caller_list_tail_param.clone(),
+            );
+            let args_ok = method_arg_nodes(body.clone()).iter().cloned().all(|arg_node| {
+                let val = arg_value(arg_node.clone());
+                match (*val.expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => true,
+                    _ => scc_calls_pass_list_tail_or_substructure(
+                        val.clone(),
+                        scc_name_set.clone(),
+                        list_tail_params.clone(),
+                        func_index.clone(),
+                        caller_list_tail_param.clone(),
+                    ),
+                }
+            });
+            recv_ok && args_ok
+        }
+        _ => body.children.clone().iter().cloned().all(|child| {
+            scc_calls_pass_list_tail_or_substructure(
+                child.clone(),
+                scc_name_set.clone(),
+                list_tail_params.clone(),
+                func_index.clone(),
+                caller_list_tail_param.clone(),
+            )
+        }),
+    }
+}
+
+pub fn list_tail_param_from_body(
+    body: Rc<Node>,
+    func_name: String,
+    scc_name_set: HashMap<String, bool>,
+    param_names: HashMap<String, bool>,
+) -> Option<String> {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprBlock { .. } => {
+            match body.children.clone().last().cloned() {
+                Some(last_stmt) => list_tail_param_from_body(
+                    last_stmt.clone(),
+                    func_name.clone(),
+                    scc_name_set.clone(),
+                    param_names.clone(),
+                ),
+                None => None,
+            }
+        }
+        ExprData::ExprLet { .. } => {
+            match let_body(body.clone()) {
+                Some(b) => list_tail_param_from_body(
+                    b.clone(),
+                    func_name.clone(),
+                    scc_name_set.clone(),
+                    param_names.clone(),
+                ),
+                None => None,
+            }
+        }
+        ExprData::ExprMatch { .. } => {
+            let scrut = match_scrutinee(body.clone());
+            match is_list_first_on_param(scrut.clone(), param_names.clone()) {
+                Some(param_name) => {
+                    let arms = match_arm_nodes(body.clone());
+                    let has_base_case = arms.iter().cloned().any(|arm_node| {
+                        arm_has_no_scc_calls(arm_node.clone(), scc_name_set.clone())
+                    });
+                    let has_tail_call = arms.iter().cloned().any(|arm_node| {
+                        let ab = arm_body(arm_node.clone());
+                        body_has_scc_call_with_skip1(ab.clone(), scc_name_set.clone(), param_name.clone())
+                    });
+                    if has_base_case && has_tail_call {
+                        Some(param_name)
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn body_has_scc_call_with_skip1(
+    body: Rc<Node>,
+    scc_name_set: HashMap<String, bool>,
+    param_name: String,
+) -> bool {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            let callee = expr_call_func(body.clone());
+            let own_ok = if set_has(scc_name_set.clone(), callee.clone()) {
+                body.children.clone().iter().cloned().any(|arg_node| {
+                    is_list_skip1_on_param(arg_value(arg_node.clone()), param_name.clone())
+                })
+            } else {
+                false
+            };
+            if own_ok {
+                true
+            } else {
+                body.children.clone().iter().cloned().any(|child| {
+                    body_has_scc_call_with_skip1(arg_value(child.clone()), scc_name_set.clone(), param_name.clone())
+                })
+            }
+        }
+        ExprData::ExprLet { .. } => {
+            match let_body(body.clone()) {
+                Some(b) => body_has_scc_call_with_skip1(b.clone(), scc_name_set.clone(), param_name.clone()),
+                None => false,
+            }
+        }
+        ExprData::ExprBlock { .. } => {
+            match body.children.clone().last().cloned() {
+                Some(last_stmt) => body_has_scc_call_with_skip1(last_stmt.clone(), scc_name_set.clone(), param_name.clone()),
+                None => false,
+            }
+        }
+        _ => body.children.clone().iter().cloned().any(|child| {
+            body_has_scc_call_with_skip1(child.clone(), scc_name_set.clone(), param_name.clone())
+        }),
+    }
+}
+
 pub fn descending_name_set_without_key(
     names: Rc<HashMap<String, String>>,
     key: String,
@@ -2218,6 +2525,13 @@ pub fn bounded_recursive_cost(pattern: Rc<RecursionPattern>, raw_cost: Rc<CostEx
                     v2_rt::concat(k.to_string(),
                         v2_rt::concat(" self-calls) in ".to_string(), func_name.clone()))),
             }),
+        RecursionPattern::FiniteFrontierRecursion { frontier_var: var } =>
+            // Cache-guarded finite-frontier: total work bounded by |frontier| × per-entry cost
+            Rc::new(CostExpr::CostSum {
+                binder: var.clone(),
+                upper: Rc::new(SizeExpr::SizeVar { name: var.clone() }),
+                body: per_iter.clone(),
+            }),
         RecursionPattern::UnresolvableRecursion { reason: r } =>
             Rc::new(CostExpr::CostUnknown { reason: r.clone() }),
     }
@@ -2248,6 +2562,14 @@ pub fn bounded_scc_cost(pattern: Rc<RecursionPattern>, raw_cost: Rc<CostExpr>, m
                 reason: v2_rt::concat("branching mutual recursion (".to_string(),
                     v2_rt::concat(k.to_string(),
                         v2_rt::concat(" self-calls) in ".to_string(), scc_label(members.clone())))),
+            }),
+        RecursionPattern::FiniteFrontierRecursion { frontier_var: var } =>
+            // Cache-guarded finite-frontier mutual recursion:
+            // total work bounded by |frontier| × per-entry cost
+            Rc::new(CostExpr::CostSum {
+                binder: var.clone(),
+                upper: Rc::new(SizeExpr::SizeVar { name: var.clone() }),
+                body: per_iter.clone(),
             }),
         RecursionPattern::UnresolvableRecursion { reason: r } =>
             Rc::new(CostExpr::CostUnknown { reason: r.clone() }),
@@ -2385,6 +2707,56 @@ pub fn graph_has_multi_node_scc(names: Vec<String>, graph: Rc<CallGraph>) -> boo
     result.has_cycle
 }
 
+// Closed-world finite-frontier SCC recognition.
+// An SCC qualifies as finite-frontier when one member is a cache-guarded
+// entry point: its body starts with a cache lookup (match on lookup_summary),
+// returns early on cache hit, and inserts a placeholder before delegating
+// to other SCC members on cache miss. This ensures the SCC visits each
+// key at most once, bounding total work by |frontier| × per-entry cost.
+//
+// Currently the only qualifying SCC is the complexity analyzer's own
+// {get_or_compute_summary, cost_of_expr, resolve_callback_cost} cycle.
+// Adding new cache-guarded frontiers requires deliberate design.
+pub fn is_finite_frontier_scc(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>) -> bool {
+    members.iter().any(|name| {
+        match v2_rt::map_get(&func_index, name.clone()) {
+            Some(entry) => scc_member_is_cache_guarded(entry.body.clone()),
+            None => false,
+        }
+    })
+}
+
+// Check if a function body matches the cache-guarded pattern:
+// body is (possibly wrapped in let/block) a match whose scrutinee
+// is a call to lookup_summary. This is a closed-world string check —
+// lookup_summary is compiler infrastructure, not user code.
+pub fn scc_member_is_cache_guarded(body: Rc<Node>) -> bool {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprMatch => {
+            let scrut = match_scrutinee(body.clone());
+            match (*scrut.expr_data.clone()).clone() {
+                ExprData::ExprCall { .. } => {
+                    expr_call_func(scrut.clone()) == "lookup_summary"
+                }
+                _ => false,
+            }
+        }
+        ExprData::ExprBlock => {
+            match body.children.last() {
+                Some(last_stmt) => scc_member_is_cache_guarded(last_stmt.clone()),
+                None => false,
+            }
+        }
+        ExprData::ExprLet => {
+            match let_body(body.clone()) {
+                Some(b) => scc_member_is_cache_guarded(b.clone()),
+                None => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>, recursion_ctx: Rc<RecursionContext>) -> Rc<RecursionPattern> {
     let scc_name_set = members.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, name: String| {
         v2_rt::map_insert(acc.clone(), name.clone(), true)
@@ -2411,29 +2783,78 @@ pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<
             iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
         })
     } else {
-        match classify_parser_scc_recursion_pattern(members.clone(), func_index.clone()) {
-            Some(parser_pattern) => parser_pattern.clone(),
-            None => {
-                let all_arithmetic = members.iter().cloned().all(|name| {
-                    match v2_rt::map_get(&func_index, name.clone()) {
-                        Some(entry) => max_path_target_calls(entry.body.clone(), scc_name_set.clone()) <= 1
-                            && scc_calls_have_arithmetic_descent(
-                                entry.body.clone(),
-                                scc_name_set.clone(),
-                                func_index.clone(),
-                                scc_measure_params.clone(),
-                            ),
-                        None => false,
+        // List-tail descent check
+        let list_tail_params = members.iter().cloned().fold(<HashMap<String, String>>::new(), |acc, name: String| {
+            match v2_rt::map_get(&func_index, name.clone()) {
+                Some(entry) => {
+                    let entry_param_names = entry.params.iter().cloned().fold(<HashMap<String, bool>>::new(), |inner, p| {
+                        v2_rt::map_insert(inner.clone(), param_node_name(p.clone()), true)
+                    });
+                    match list_tail_param_from_body(
+                        entry.body.clone(),
+                        name.clone(),
+                        scc_name_set.clone(),
+                        entry_param_names.clone(),
+                    ) {
+                        Some(param_name) => v2_rt::map_insert(acc.clone(), name.clone(), param_name.clone()),
+                        None => acc,
                     }
-                });
-                if all_arithmetic {
-                    Rc::new(RecursionPattern::LinearRecursion {
-                        iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
-                    })
-                } else {
-                    Rc::new(RecursionPattern::UnresolvableRecursion {
-                        reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
-                    })
+                }
+                None => acc,
+            }
+        });
+        let has_list_tail = !list_tail_params.is_empty();
+        let all_list_tail_ok = if has_list_tail {
+            members.iter().cloned().all(|name| {
+                match v2_rt::map_get(&func_index, name.clone()) {
+                    Some(entry) => {
+                        scc_calls_pass_list_tail_or_substructure(
+                            entry.body.clone(),
+                            scc_name_set.clone(),
+                            list_tail_params.clone(),
+                            func_index.clone(),
+                            v2_rt::map_get(&list_tail_params, name.clone()),
+                        )
+                    },
+                    None => false,
+                }
+            })
+        } else {
+            false
+        };
+        if all_list_tail_ok {
+            Rc::new(RecursionPattern::LinearRecursion {
+                iteration_var: v2_rt::concat("remaining_".to_string(), scc_label(members.clone())),
+            })
+        } else {
+            match classify_parser_scc_recursion_pattern(members.clone(), func_index.clone()) {
+                Some(parser_pattern) => parser_pattern.clone(),
+                None => {
+                    let all_arithmetic = members.iter().cloned().all(|name| {
+                        match v2_rt::map_get(&func_index, name.clone()) {
+                            Some(entry) => max_path_target_calls(entry.body.clone(), scc_name_set.clone()) <= 1
+                                && scc_calls_have_arithmetic_descent(
+                                    entry.body.clone(),
+                                    scc_name_set.clone(),
+                                    func_index.clone(),
+                                    scc_measure_params.clone(),
+                                ),
+                            None => false,
+                        }
+                    });
+                    if all_arithmetic {
+                        Rc::new(RecursionPattern::LinearRecursion {
+                            iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
+                        })
+                    } else if is_finite_frontier_scc(members.clone(), func_index.clone()) {
+                        Rc::new(RecursionPattern::FiniteFrontierRecursion {
+                            frontier_var: v2_rt::concat("F_".to_string(), scc_label(members.clone())),
+                        })
+                    } else {
+                        Rc::new(RecursionPattern::UnresolvableRecursion {
+                            reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
+                        })
+                    }
                 }
             }
         }

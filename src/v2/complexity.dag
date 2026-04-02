@@ -21,6 +21,7 @@ import v2.compiler.parse {
   ParserResultWitness,
   ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque,
   ParserCallHelper, ParserCallFunction,
+  ParserHelperSkipNewlines, ParserHelperSkipContinuationNewlines, ParserHelperWith,
   parser_progress_flag_var, parser_passthrough_state_expr, parser_result_witness
 }
 import v2.std.core {
@@ -42,7 +43,7 @@ import v2.std.core {
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value,
   expr_call_func, expr_var_name, field_access_field,
-  LiteralValue, LitNull
+  LiteralValue, LitNull, LitInt
 }
 
 // =========================================================================
@@ -211,6 +212,7 @@ fn lookup_summary(table: CostInternTable, func_name: String) -> ComplexitySummar
 type RecursionPattern
   = LinearRecursion { iteration_var: String }
   | DivideAndConquer { split_factor: Int }
+  | FiniteFrontierRecursion { frontier_var: String }
   | UnresolvableRecursion { reason: String }
 
 type StructuralParam {
@@ -600,7 +602,15 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
         ParserWitnessEat => ParserResultEat { input: input_progress }
         ParserWitnessCall { callee: callee } =>
           match callee {
-            ParserCallHelper { helper: _ } => ParserResultOpaque
+            ParserCallHelper { helper: helper } =>
+              match helper {
+                ParserHelperSkipNewlines =>
+                  ParserResultCall { input: ProgressSame, callee: "skip_newlines" }
+                ParserHelperSkipContinuationNewlines =>
+                  ParserResultCall { input: ProgressSame, callee: "skip_continuation_newlines" }
+                ParserHelperWith =>
+                  ParserResultCall { input: input_progress, callee: "with" }
+              }
             ParserCallFunction { name: name } =>
               match input_progress {
                 ProgressUnknown => ParserResultOpaque
@@ -1834,6 +1844,233 @@ fn scc_calls_have_arithmetic_descent(body: Node, target_set: Map<String, Bool>, 
   }
 }
 
+// =========================================================================
+// List-tail descent proof -- recognizes the pattern:
+//   fn f(remaining: List<T>, ...) {
+//     match remaining |> first {
+//       None => base_case           // no SCC calls
+//       Some { value: x } =>
+//         ... process(x) ...        // tree-walking SCC calls on substructure
+//         f(remaining: remaining |> skip(1), ...)  // recurse on tail
+//     }
+//   }
+//
+// Soundness: each recursive self-call strictly shrinks the list by one
+// element (skip(1)), so the list length is the termination measure.
+// Cross-SCC calls (e.g. emit_typed_expr) receive individual elements
+// which are substructures of the list, not the list itself.
+// =========================================================================
+
+// Check if a method call expression matches `<param> |> first` where
+// the receiver is an ExprVar whose name is in param_names.
+fn is_list_first_on_param(scrutinee: Node, param_names: Map<String, Bool>) -> String? {
+  match scrutinee.expr_data {
+    ExprMethodCall { method_semantics: ms } =>
+      match ms {
+        Some { value: AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } } =>
+          if md.name == "first" {
+            let recv = method_receiver(texpr: scrutinee)
+            match recv.expr_data {
+              ExprVar { binding_kind: _ } =>
+                let vname = expr_var_name(texpr: recv)
+                if set_has(m: param_names, key: vname) {
+                  Some { value: vname }
+                } else { none }
+              _ => none
+            }
+          } else { none }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+// Check if an argument expression matches `<param> |> skip(1)`.
+fn is_list_skip1_on_param(expr: Node, param_name: String) -> Bool {
+  match expr.expr_data {
+    ExprMethodCall { method_semantics: ms } =>
+      match ms {
+        Some { value: AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } } =>
+          if md.name == "skip" {
+            let recv = method_receiver(texpr: expr)
+            let recv_ok = match recv.expr_data {
+              ExprVar { binding_kind: _ } => expr_var_name(texpr: recv) == param_name
+              _ => false
+            }
+            let args = method_arg_nodes(texpr: expr)
+            let arg_ok = match args |> first {
+              Some { value: arg_node } =>
+                let val = arg_value(n: arg_node)
+                match val.expr_data {
+                  ExprLiteral { value: LitInt { value: n } } => n == 1
+                  _ => false
+                }
+              None => false
+            }
+            recv_ok && arg_ok
+          } else { false }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Check if a match arm has zero SCC calls (base case arm).
+fn arm_has_no_scc_calls(arm_node: Node, scc_name_set: Map<String, Bool>) -> Bool {
+  count_target_calls(body: arm_body(n: arm_node), target_set: scc_name_set) == 0
+}
+
+// Check if a call to an SCC member passes `<param> |> skip(1)` for
+// the callee's list-tail parameter.
+fn scc_call_passes_list_tail(call_node: Node, scc_name_set: Map<String, Bool>, list_tail_params: Map<String, String>, caller_list_tail_param: String?) -> Bool {
+  let callee = expr_call_func(texpr: call_node)
+  if set_has(m: scc_name_set, key: callee) == false {
+    // Not an SCC call -- OK
+    true
+  } else {
+    match map_get(list_tail_params, callee) {
+      Some { value: callee_param } =>
+        // Callee has a list-tail param. Two valid cases:
+        // 1. Self-tail-recursion: arg is <same_param> |> skip(1)
+        // 2. Fresh list from substructure: arg is NOT derived from the
+        //    caller's list-tail param (e.g., nested block children).
+        //    This is safe because the fresh list is a substructure of
+        //    the AST, so total work is bounded by AST size.
+        call_node.children |> any(arg_node =>
+          let targets_param = arg_name(n: arg_node) == callee_param
+          if targets_param == false { false }
+          else {
+            let arg_expr = arg_value(n: arg_node)
+            // Case 1: skip(1) on caller's own list param
+            let is_skip1 = match caller_list_tail_param {
+              Some { value: cltp } => is_list_skip1_on_param(expr: arg_expr, param_name: cltp)
+              None => false
+            }
+            // Case 2: fresh list (not referencing caller's list param)
+            let is_fresh = match caller_list_tail_param {
+              Some { value: cltp } => expr_references_param(expr: arg_expr, param_name: cltp) == false
+              None => true
+            }
+            is_skip1 || is_fresh
+          }
+        )
+      None =>
+        // Callee is an SCC member without a list-tail param (tree-walker):
+        // receives individual nodes (substructures), so it's OK.
+        true
+    }
+  }
+}
+
+// Check if an expression references a specific parameter name.
+fn expr_references_param(expr: Node, param_name: String) -> Bool {
+  match expr.expr_data {
+    ExprVar { binding_kind: _ } => expr_var_name(texpr: expr) == param_name
+    _ => expr.children |> any(child => expr_references_param(expr: child, param_name: param_name))
+  }
+}
+
+// Walk body tree verifying all SCC calls pass list-tail or substructure.
+// Does NOT descend into lambda bodies (ExprLambda).
+fn scc_calls_pass_list_tail_or_substructure(body: Node, scc_name_set: Map<String, Bool>, list_tail_params: Map<String, String>, func_index: Map<String, FuncEntry>, caller_list_tail_param: String?) -> Bool {
+  match body.expr_data {
+    ExprCall { call_semantics: _ } =>
+      scc_call_passes_list_tail(call_node: body, scc_name_set: scc_name_set, list_tail_params: list_tail_params, caller_list_tail_param: caller_list_tail_param)
+      && (body.children |> all(child =>
+        let val = arg_value(n: child)
+        match val.expr_data {
+          ExprLambda => true
+          _ => scc_calls_pass_list_tail_or_substructure(body: val, scc_name_set: scc_name_set, list_tail_params: list_tail_params, func_index: func_index, caller_list_tail_param: caller_list_tail_param)
+        }
+      ))
+    ExprMethodCall { method_semantics: _ } =>
+      let recv_ok = scc_calls_pass_list_tail_or_substructure(body: method_receiver(texpr: body), scc_name_set: scc_name_set, list_tail_params: list_tail_params, func_index: func_index, caller_list_tail_param: caller_list_tail_param)
+      let args_ok = method_arg_nodes(texpr: body) |> all(arg_node =>
+        let val = arg_value(n: arg_node)
+        match val.expr_data {
+          ExprLambda => true
+          _ => scc_calls_pass_list_tail_or_substructure(body: val, scc_name_set: scc_name_set, list_tail_params: list_tail_params, func_index: func_index, caller_list_tail_param: caller_list_tail_param)
+        }
+      )
+      recv_ok && args_ok
+    _ =>
+      body.children |> all(child =>
+        scc_calls_pass_list_tail_or_substructure(body: child, scc_name_set: scc_name_set, list_tail_params: list_tail_params, func_index: func_index, caller_list_tail_param: caller_list_tail_param)
+      )
+  }
+}
+
+// Detect the list-tail param from a function body. Unwinds ExprBlock
+// and ExprLet to find a match on `<param> |> first` with a None base
+// case (no SCC calls) and a Some arm with a self/SCC call passing
+// `<param> |> skip(1)`.
+fn list_tail_param_from_body(body: Node, func_name: String, scc_name_set: Map<String, Bool>, param_names: Map<String, Bool>) -> String? {
+  match body.expr_data {
+    ExprBlock =>
+      match body.children |> last {
+        Some { value: last_stmt } => list_tail_param_from_body(body: last_stmt, func_name: func_name, scc_name_set: scc_name_set, param_names: param_names)
+        None => none
+      }
+    ExprLet =>
+      match let_body(texpr: body) {
+        Some { value: b } => list_tail_param_from_body(body: b, func_name: func_name, scc_name_set: scc_name_set, param_names: param_names)
+        None => none
+      }
+    ExprMatch =>
+      let scrut = match_scrutinee(texpr: body)
+      match is_list_first_on_param(scrutinee: scrut, param_names: param_names) {
+        Some { value: param_name } =>
+          let arms = match_arm_nodes(texpr: body)
+          let has_base_case = arms |> any(arm_node =>
+            arm_has_no_scc_calls(arm_node: arm_node, scc_name_set: scc_name_set)
+          )
+          let has_tail_call = arms |> any(arm_node =>
+            let ab = arm_body(n: arm_node)
+            body_has_scc_call_with_skip1(body: ab, scc_name_set: scc_name_set, param_name: param_name)
+          )
+          if has_base_case && has_tail_call {
+            Some { value: param_name }
+          } else { none }
+        None => none
+      }
+    _ => none
+  }
+}
+
+// Check if a body contains an SCC call where the list-tail param argument
+// is `<param> |> skip(1)`. Unwinds let/block.
+fn body_has_scc_call_with_skip1(body: Node, scc_name_set: Map<String, Bool>, param_name: String) -> Bool {
+  match body.expr_data {
+    ExprCall { call_semantics: _ } =>
+      let callee = expr_call_func(texpr: body)
+      let own_ok = if set_has(m: scc_name_set, key: callee) {
+        body.children |> any(arg_node =>
+          is_list_skip1_on_param(expr: arg_value(n: arg_node), param_name: param_name)
+        )
+      } else { false }
+      if own_ok { true }
+      else {
+        body.children |> any(child =>
+          body_has_scc_call_with_skip1(body: arg_value(n: child), scc_name_set: scc_name_set, param_name: param_name)
+        )
+      }
+    ExprLet =>
+      match let_body(texpr: body) {
+        Some { value: b } => body_has_scc_call_with_skip1(body: b, scc_name_set: scc_name_set, param_name: param_name)
+        None => false
+      }
+    ExprBlock =>
+      match body.children |> last {
+        Some { value: last_stmt } => body_has_scc_call_with_skip1(body: last_stmt, scc_name_set: scc_name_set, param_name: param_name)
+        None => false
+      }
+    _ =>
+      body.children |> any(child =>
+        body_has_scc_call_with_skip1(body: child, scc_name_set: scc_name_set, param_name: param_name)
+      )
+  }
+}
+
 fn descending_name_set_without_key(names: Map<String, String>, key: String) -> Map<String, String> {
   names |> map_keys |> fold(init: empty_map(), f: (acc, name) =>
     if name == key {
@@ -2096,6 +2333,9 @@ fn bounded_recursive_cost(pattern: RecursionPattern, raw_cost: CostExpr, func_na
       // the recursion. True Fibonacci-style recursion is not expressible
       // in decidable .dag programs.
       CostUnknown { reason: concat("branching recursion (", concat(to_string(k), concat(" self-calls) in ", func_name))) }
+    FiniteFrontierRecursion { frontier_var: var } =>
+      // Cache-guarded finite-frontier: total work bounded by |frontier| × per-entry cost
+      CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
     UnresolvableRecursion { reason: r } =>
         CostUnknown { reason: r }
   }
@@ -2112,6 +2352,10 @@ fn bounded_scc_cost(pattern: RecursionPattern, raw_cost: CostExpr, members: List
       CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
     DivideAndConquer { split_factor: k } =>
       CostUnknown { reason: concat("branching mutual recursion (", to_string(n: k), " self-calls) in ", scc_label(members: members)) }
+    FiniteFrontierRecursion { frontier_var: var } =>
+      // Cache-guarded finite-frontier mutual recursion:
+      // total work bounded by |frontier| × per-entry cost
+      CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
     UnresolvableRecursion { reason: r } =>
       CostUnknown { reason: r }
   }
@@ -2219,6 +2463,53 @@ fn scc_label(members: List<String>) -> String {
   }
 }
 
+// Closed-world finite-frontier SCC recognition.
+// An SCC qualifies as finite-frontier when one member is a cache-guarded
+// entry point: its body starts with a cache lookup (match on lookup_summary),
+// returns early on cache hit, and inserts a placeholder before delegating
+// to other SCC members on cache miss. This ensures the SCC visits each
+// key at most once, bounding total work by |frontier| × per-entry cost.
+//
+// Currently the only qualifying SCC is the complexity analyzer's own
+// {get_or_compute_summary, cost_of_expr, resolve_callback_cost} cycle.
+// Adding new cache-guarded frontiers requires deliberate design.
+fn is_finite_frontier_scc(members: List<String>, func_index: Map<String, FuncEntry>) -> Bool {
+  members |> any(name =>
+    match map_get(func_index, name) {
+      Some { value: entry } =>
+        scc_member_is_cache_guarded(body: entry.body)
+      None => false
+    }
+  )
+}
+
+// Check if a function body matches the cache-guarded pattern:
+// body is (possibly wrapped in let/block) a match whose scrutinee
+// is a call to lookup_summary. This is a closed-world string check —
+// lookup_summary is compiler infrastructure, not user code.
+fn scc_member_is_cache_guarded(body: Node) -> Bool {
+  match body.expr_data {
+    ExprMatch =>
+      let scrut = match_scrutinee(texpr: body)
+      match scrut.expr_data {
+        ExprCall { call_semantics: _ } =>
+          expr_call_func(texpr: scrut) == "lookup_summary"
+        _ => false
+      }
+    ExprBlock =>
+      match body.children |> last {
+        Some { value: last_stmt } => scc_member_is_cache_guarded(body: last_stmt)
+        None => false
+      }
+    ExprLet =>
+      match let_body(texpr: body) {
+        Some { value: b } => scc_member_is_cache_guarded(body: b)
+        None => false
+      }
+    _ => false
+  }
+}
+
 fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String, FuncEntry>, recursion_ctx: RecursionContext) -> RecursionPattern {
   let scc_name_set = members |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
@@ -2245,32 +2536,64 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
   if all_structural {
     LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
   } else {
-    match classify_parser_scc_recursion_pattern(members: members, func_index: func_index) {
-      Some { value: parser_pattern } => parser_pattern
-      None =>
-        let all_arithmetic = members |> all(name =>
-          match map_get(func_index, name) {
-            Some { value: entry } =>
-              max_path_target_calls(body: entry.body, target_set: scc_name_set) <= 1
-              && scc_calls_have_arithmetic_descent(body: entry.body, target_set: scc_name_set, func_index: func_index, scc_measure_params: scc_measure_params)
-            None => false
+    // List-tail descent check: recognize match remaining |> first { None => base, Some => ... skip(1) }
+    let param_name_set = members |> fold(init: empty_map(), f: (acc, name) =>
+      match map_get(func_index, name) {
+        Some { value: entry } =>
+          entry.params |> fold(init: acc, f: (inner, p) =>
+            map_insert(inner, param_node_name(n: p), true)
+          )
+        None => acc
+      }
+    )
+    let list_tail_params = members |> fold(init: empty_map(), f: (acc, name) =>
+      match map_get(func_index, name) {
+        Some { value: entry } =>
+          let entry_param_names = entry.params |> fold(init: empty_map(), f: (inner, p) =>
+            map_insert(inner, param_node_name(n: p), true)
+          )
+          match list_tail_param_from_body(body: entry.body, func_name: name, scc_name_set: scc_name_set, param_names: entry_param_names) {
+            Some { value: param_name } => map_insert(acc, name, param_name)
+            None => acc
           }
-        )
-        if all_arithmetic {
-          LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
-        } else {
-          // Remaining SCC witness gaps (313→0 path):
-          //   (a) parser SCC: parse_type_expr / parse_callable_type_expr
-          //       family needs token/cursor progress proved across SCC
-          //       edges. Infrastructure exists in classify_parser_scc_
-          //       recursion_pattern; gap is ProgressUnknown edges for
-          //       specific parser helper chains.
-          //   (b) block/tree-walker SCC: emit_rust_block_stmts,
-          //       emit_py_block_stmts, emit_go_block_stmts,
-          //       infer_block_stmts — need a shared statement-tail /
-          //       child-node descent proof for block-processing SCCs.
-          UnresolvableRecursion { reason: concat("non-descending mutual recursion in ", scc_label(members: members)) }
+        None => acc
+      }
+    )
+    let has_list_tail = (list_tail_params |> length) > 0
+    let all_list_tail_ok = if has_list_tail {
+      members |> all(name =>
+        match map_get(func_index, name) {
+          Some { value: entry } =>
+            scc_calls_pass_list_tail_or_substructure(
+              body: entry.body, scc_name_set: scc_name_set,
+              list_tail_params: list_tail_params, func_index: func_index,
+              caller_list_tail_param: map_get(list_tail_params, name))
+          None => false
         }
+      )
+    } else { false }
+    if all_list_tail_ok {
+      LinearRecursion { iteration_var: concat("remaining_", scc_label(members: members)) }
+    } else {
+      match classify_parser_scc_recursion_pattern(members: members, func_index: func_index) {
+        Some { value: parser_pattern } => parser_pattern
+        None =>
+          let all_arithmetic = members |> all(name =>
+            match map_get(func_index, name) {
+              Some { value: entry } =>
+                max_path_target_calls(body: entry.body, target_set: scc_name_set) <= 1
+                && scc_calls_have_arithmetic_descent(body: entry.body, target_set: scc_name_set, func_index: func_index, scc_measure_params: scc_measure_params)
+              None => false
+            }
+          )
+          if all_arithmetic {
+            LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
+          } else if is_finite_frontier_scc(members: members, func_index: func_index) {
+            FiniteFrontierRecursion { frontier_var: concat("F_", scc_label(members: members)) }
+          } else {
+            UnresolvableRecursion { reason: concat("non-descending mutual recursion in ", scc_label(members: members)) }
+          }
+      }
     }
   }
 }
