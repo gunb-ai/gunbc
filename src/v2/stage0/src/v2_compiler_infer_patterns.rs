@@ -55,6 +55,7 @@ use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::Connective::{Disj, NoConnective};
 use crate::v2_std_core::CompilerDiagnostic::{VariantNotFound, FieldNotFound, NonExhaustiveMatch};
 use crate::v2_std_core::MatchPattern::*;
+use crate::v2_std_core::LiteralValue;
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, extract_optional_inner_node, emit_map_has};
 pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type};
 use NodeLookupStatus::*;
@@ -310,10 +311,17 @@ if has_catch_all.clone() {
                     {
                         let covered_set: Rc<HashMap<String, bool>> = arms.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: _, arm: Rc<Node>| match (*arm_pattern(arm.clone())).clone() {
     MatchPattern::VariantPattern { name: n, .. } => v2_rt::rc_map_insert(acc.clone(), n.clone(), true),
+    // Bool literals cover the corresponding Bool variants (true → True, false → False).
+    MatchPattern::LitPattern { value: v } => match (*v).clone() {
+        LiteralValue::LitBool { value: true } => v2_rt::rc_map_insert(acc.clone(), "True".to_string(), true),
+        LiteralValue::LitBool { value: false } => v2_rt::rc_map_insert(acc.clone(), "False".to_string(), true),
+        _ => acc.clone(),
+    },
     _ => acc.clone(),
 });
 let uncovered: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for v in variant_names.clone().iter().cloned() { if (emit_map_has(covered_set.clone(), v.clone()) == false) { __result.push(v); } } __result });
 if ((uncovered.clone().len() as i64) > 0) {
+                            eprintln!("[DEBUG] non-exhaustive: missing={:?}, scrutinee={}, module={}", uncovered, scrutinee_type.name, module_name);
                             Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::NonExhaustiveMatch {
     missing: uncovered.clone(),
     span: span.clone(),
