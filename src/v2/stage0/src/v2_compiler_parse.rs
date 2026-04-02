@@ -2358,6 +2358,7 @@ pub fn make_operation_node(
     ident_span: Option<Rc<SourceSpan>>,
     inputs: Vec<Rc<Node>>,
     outputs: Vec<Rc<Node>>,
+    return_annotation: Option<Rc<InferredNode>>,
     response_props: Vec<Rc<Node>>,
     mock_props: Vec<Rc<Node>>,
     exit_props: Vec<Rc<Node>>,
@@ -2388,7 +2389,7 @@ pub fn make_operation_node(
         ident_span: ident_span.clone(),
         children: vec![],
         params: params,
-        inferred: outputs_to_inferred(outputs, span),
+        inferred: item_return_inferred(outputs, return_annotation, span.clone()),
         return_cardinality: Cardinality::Required,
         uses: vec![],
         body: None,
@@ -2408,6 +2409,7 @@ pub fn make_capability_node(
     ident_span: Option<Rc<SourceSpan>>,
     inputs: Vec<Rc<Node>>,
     outputs: Vec<Rc<Node>>,
+    return_annotation: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     let params: Vec<Rc<Node>> = {
@@ -2428,7 +2430,7 @@ pub fn make_capability_node(
         ident_span: ident_span.clone(),
         children: vec![],
         params: params,
-        inferred: outputs_to_inferred(outputs, span),
+        inferred: item_return_inferred(outputs, return_annotation, span.clone()),
         return_cardinality: Cardinality::Required,
         uses: vec![],
         body: None,
@@ -2915,6 +2917,18 @@ pub fn outputs_to_inferred(
         }))
     } else {
         None
+    }
+}
+
+pub fn item_return_inferred(
+    outputs: Vec<Rc<Node>>,
+    return_annotation: Option<Rc<InferredNode>>,
+    span: Rc<SourceSpan>,
+) -> Option<Rc<InferredNode>> {
+    if return_annotation.is_some() {
+        return_annotation
+    } else {
+        outputs_to_inferred(outputs, span)
     }
 }
 
@@ -6166,6 +6180,7 @@ pub fn parse_operation_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -
             None,
             vec![],
             vec![],
+            None,
             vec![],
             vec![],
             vec![],
@@ -6229,6 +6244,7 @@ pub fn parse_operation_v2_inline(
             None,
             vec![],
             vec![],
+            None,
             vec![],
             vec![],
             vec![],
@@ -6282,10 +6298,6 @@ pub fn parse_operation_v2_inline(
             });
         }
         let s = ret.state.clone();
-        let outputs = match ret.return_annotation.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => return_type_node_to_outputs(rt.clone()),
-            _ => vec![],
-        };
         let s = skip_newlines(tokens.clone(), s.clone());
         let resp_r = parse_optional_response_block(tokens.clone(), s.clone());
         if has_err(resp_r.err.clone()) {
@@ -6309,7 +6321,8 @@ pub fn parse_operation_v2_inline(
             name.clone(),
             Some(name_span.clone()),
             inputs.clone(),
-            outputs.clone(),
+            vec![],
+            ret.return_annotation.clone(),
             resp_r.responses.clone(),
             mock_r.mocks.clone(),
             vec![],
@@ -6338,6 +6351,7 @@ pub fn parse_operation_v1_body(
             None,
             vec![],
             vec![],
+            None,
             vec![],
             vec![],
             vec![],
@@ -6389,6 +6403,7 @@ pub fn parse_operation_v1_body(
             Some(name_span.clone()),
             r2.inputs.clone(),
             r2.outputs.clone(),
+            None,
             r2.response_props.clone(),
             r2.mock_props.clone(),
             r2.exit_props.clone(),
@@ -8202,8 +8217,14 @@ pub fn skip_until_rbrace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
 pub fn parse_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<CapResult> {
     {
         let start_span = current_span(tokens.clone(), state.clone());
-        let dummy_cap =
-            make_capability_node("".to_string(), None, vec![], vec![], start_span.clone());
+        let dummy_cap = make_capability_node(
+            "".to_string(),
+            None,
+            vec![],
+            vec![],
+            None,
+            start_span.clone(),
+        );
         let r = expect(
             tokens.clone(),
             state.clone(),
@@ -8265,6 +8286,7 @@ pub fn parse_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
                     Some(name_span.clone()),
                     io.inputs.clone(),
                     io.outputs.clone(),
+                    None,
                     start_span.clone(),
                 );
                 Rc::new(CapResult {
@@ -8316,17 +8338,12 @@ pub fn parse_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
                             err: ret.err.clone(),
                         });
                     }
-                    let outputs = match ret.return_annotation.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: rt, .. }) => {
-                            return_type_node_to_outputs(rt.clone())
-                        }
-                        _ => vec![],
-                    };
                     let cap = make_capability_node(
                         name.clone(),
                         Some(name_span.clone()),
                         inputs.clone(),
-                        outputs.clone(),
+                        vec![],
+                        ret.return_annotation.clone(),
                         start_span.clone(),
                     );
                     Rc::new(CapResult {
@@ -8342,6 +8359,7 @@ pub fn parse_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
                         Some(name_span.clone()),
                         vec![],
                         vec![],
+                        None,
                         start_span.clone(),
                     );
                     Rc::new(CapResult {

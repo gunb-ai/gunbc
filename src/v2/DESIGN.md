@@ -30,6 +30,9 @@ one structural carrier, `Node`, across parse, resolve, infer, and emit.
 Semantic stages enrich that carrier with additional facts:
 
 - Parse returns `ParseResult { module: Node?, error: ErrorNode? }`.
+- Inline `operation` / `capability` signatures preserve authored return
+  annotations on the `Node`; only block `output { ... }` forms lower
+  through output-field shape during parse.
 - Resolve / normalize lift module collections into `ModuleGraph`.
 - Typecheck / reconcile produce `TypedModule` and `ResolvedGraph`.
 - Emit consumes `ResolvedGraph` plus `EmitGraphInfo`, a precomputed fact

@@ -96,6 +96,58 @@ fn return_type_node_to_outputs_preserves_fully_typed_products() {
     assert_eq!(field_node_type_expr(outputs[1].clone()).name, "Int");
 }
 
+#[test]
+fn inline_service_operation_preserves_scalar_return_annotation() {
+    let source = r#"module test
+service demo.Api {
+  operation Ping(city: String) -> String
+}"#;
+    let result = parse_source(source);
+    assert!(
+        result.error.is_none(),
+        "parse error: {:?}",
+        result.error.as_ref().map(|e| e.diagnostic.clone())
+    );
+
+    let module = result.module.clone().expect("module");
+    let service = module.children[0].clone();
+    let operation = service.children[0].clone();
+    let inferred = operation.inferred.clone().expect("operation inferred");
+    match inferred.as_ref() {
+        InferredNode::Resolved { node, .. } => {
+            assert_eq!(node.name, "String");
+            assert!(node.children.is_empty(), "inline return should stay scalar");
+        }
+        other => panic!("expected resolved operation return, got {:?}", other),
+    }
+}
+
+#[test]
+fn inline_resource_capability_preserves_scalar_return_annotation() {
+    let source = r#"module test
+resource Filesystem {
+  capability read(path: String) -> String
+}"#;
+    let result = parse_source(source);
+    assert!(
+        result.error.is_none(),
+        "parse error: {:?}",
+        result.error.as_ref().map(|e| e.diagnostic.clone())
+    );
+
+    let module = result.module.clone().expect("module");
+    let resource = module.children[0].clone();
+    let capability = resource.children[0].clone();
+    let inferred = capability.inferred.clone().expect("capability inferred");
+    match inferred.as_ref() {
+        InferredNode::Resolved { node, .. } => {
+            assert_eq!(node.name, "String");
+            assert!(node.children.is_empty(), "inline return should stay scalar");
+        }
+        other => panic!("expected resolved capability return, got {:?}", other),
+    }
+}
+
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
 
 #[test]

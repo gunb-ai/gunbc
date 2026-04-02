@@ -1274,6 +1274,15 @@ fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan) -> InferredNode? {
   }
 }
 
+// Preserve authored inline return annotations as-is.
+// Block output { ... } forms still lower through output fields.
+fn item_return_inferred(outputs: List<Node>, return_annotation: InferredNode?, span: SourceSpan) -> InferredNode? {
+  match return_annotation {
+    Some { value: _ } => return_annotation
+    None => outputs_to_inferred(outputs: outputs, span: span)
+  }
+}
+
 // =========================================================================
 // Operation / Capability Node constructors (D2d/D2e)
 //
@@ -1282,7 +1291,7 @@ fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan) -> InferredNode? {
 // construct Node directly using these constructors.
 // =========================================================================
 
-fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, response_props: List<Node>, mock_props: List<Node>, exit_props: List<Node>, modifier_props: List<Node>, transport: Node?, span: SourceSpan) -> Node {
+fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, return_annotation: InferredNode?, response_props: List<Node>, mock_props: List<Node>, exit_props: List<Node>, modifier_props: List<Node>, transport: Node?, span: SourceSpan) -> Node {
   let all_props = concat(modifier_props, response_props, exit_props, mock_props)
   Node { name: name, span: span, ident_span: ident_span,
     children: [],
@@ -1290,21 +1299,21 @@ fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>
       name: field_node_name(n: f), type_expr: field_node_type_expr(n: f),
       default_value: field_node_default_value(n: f), span: f.span
     )),
-    inferred: outputs_to_inferred(outputs: outputs, span: span), return_cardinality: Required,
+    inferred: item_return_inferred(outputs: outputs, return_annotation: return_annotation, span: span), return_cardinality: Required,
     uses: [], body: none, connective: NoConnective,
     transport: transport,
     properties: all_props, type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-fn make_capability_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, span: SourceSpan) -> Node {
+fn make_capability_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, return_annotation: InferredNode?, span: SourceSpan) -> Node {
   Node { name: name, span: span, ident_span: ident_span,
     children: [],
     params: inputs |> map(f => make_param_node(
       name: field_node_name(n: f), type_expr: field_node_type_expr(n: f),
       default_value: field_node_default_value(n: f), span: f.span
     )),
-    inferred: outputs_to_inferred(outputs: outputs, span: span), return_cardinality: Required,
+    inferred: item_return_inferred(outputs: outputs, return_annotation: return_annotation, span: span), return_cardinality: Required,
     uses: [], body: none, connective: NoConnective,
     transport: none,
     properties: [], type_annotation: none,
@@ -2497,7 +2506,7 @@ fn parse_file_fields(tokens: List<Token>, state: ParserState, base_path: Node?) 
 
 fn parse_operation_def(tokens: List<Token>, state: ParserState) -> OpResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
+  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], return_annotation: none, response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
   let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "operation" })
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
 
@@ -2517,7 +2526,7 @@ fn parse_operation_def(tokens: List<Token>, state: ParserState) -> OpResult {
 
 // v2 inline: operation Name modifiers? (params) -> RetType response? mock_response?
 fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
-  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
+  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], return_annotation: none, response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
   let mods_r = parse_operation_modifiers(tokens: tokens, state: state)
   let modifiers = mods_r.modifiers
   let mod_props = modifiers_to_props(modifiers: modifiers, span: start_span)
@@ -2535,10 +2544,6 @@ fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: Stri
   let ret = parse_optional_return_annotation(tokens: tokens, state: s)
   if has_err(err: ret.err) { return OpResult { operation: dummy_op, state: ret.state, err: ret.err } }
   let s = ret.state
-  let outputs = match ret.return_annotation {
-    Some { value: Resolved { node: rt } } => return_type_node_to_outputs(rt: rt)
-    _ => []
-  }
   let s = skip_newlines(tokens: tokens, state: s)
 
   let resp_r = parse_optional_response_block(tokens: tokens, state: s)
@@ -2549,7 +2554,7 @@ fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: Stri
   let s = skip_newlines(tokens: tokens, state: mock_r.state)
 
   let op = make_operation_node(
-    name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs,
+    name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: [], return_annotation: ret.return_annotation,
     response_props: resp_r.responses, mock_props: mock_r.mocks,
     exit_props: [], modifier_props: mod_props, transport: none, span: start_span
   )
@@ -2558,7 +2563,7 @@ fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: Stri
 
 // v1 block: operation Name { input {} output {} modifiers transport exit response mock_response }
 fn parse_operation_v1_body(tokens: List<Token>, state: ParserState, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
-  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
+  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], return_annotation: none, response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
   let r = expect(tokens: tokens, state: state, expected: ExpectLBrace)
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
@@ -2573,7 +2578,7 @@ fn parse_operation_v1_body(tokens: List<Token>, state: ParserState, name: String
   if has_err(err: r3.err) { return OpResult { operation: dummy_op, state: r3.state, err: r3.err } }
 
   let op = make_operation_node(
-    name: name, ident_span: Some { value: name_span }, inputs: r2.inputs, outputs: r2.outputs,
+    name: name, ident_span: Some { value: name_span }, inputs: r2.inputs, outputs: r2.outputs, return_annotation: none,
     response_props: r2.response_props, mock_props: r2.mock_props,
     exit_props: r2.exit_props, modifier_props: r2.modifier_props,
     transport: r2.transport, span: start_span
@@ -3118,7 +3123,7 @@ fn skip_until_rbrace(tokens: List<Token>, state: ParserState) -> UnitResult {
 // Parse capability in v1 block or v2 inline form.
 fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let dummy_cap = make_capability_node(name: "", ident_span: none, inputs: [], outputs: [], span: start_span)
+  let dummy_cap = make_capability_node(name: "", ident_span: none, inputs: [], outputs: [], return_annotation: none, span: start_span)
   let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "capability" })
   if has_err(err: r.err) { return CapResult { capability: dummy_cap, state: r.state, err: r.err } }
 
@@ -3136,7 +3141,7 @@ fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
     if has_err(err: io.err) { return CapResult { capability: dummy_cap, state: io.state, err: io.err } }
     let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: io.state), expected: ExpectRBrace)
     if has_err(err: r3.err) { return CapResult { capability: dummy_cap, state: r3.state, err: r3.err } }
-    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: io.inputs, outputs: io.outputs, span: start_span)
+    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: io.inputs, outputs: io.outputs, return_annotation: none, span: start_span)
     CapResult { capability: cap, state: skip_newlines(tokens: tokens, state: r3.state), err: none }
   } else if peek_is_lparen(tokens: tokens, state: s) {
     let r2 = expect(tokens: tokens, state: s, expected: ExpectLParen)
@@ -3148,14 +3153,10 @@ fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
     if has_err(err: r4.err) { return CapResult { capability: dummy_cap, state: r4.state, err: r4.err } }
     let ret = parse_optional_return_annotation(tokens: tokens, state: r4.state)
     if has_err(err: ret.err) { return CapResult { capability: dummy_cap, state: ret.state, err: ret.err } }
-    let outputs = match ret.return_annotation {
-      Some { value: Resolved { node: rt } } => return_type_node_to_outputs(rt: rt)
-      _ => []
-    }
-    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs, span: start_span)
+    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: [], return_annotation: ret.return_annotation, span: start_span)
     CapResult { capability: cap, state: skip_newlines(tokens: tokens, state: ret.state), err: none }
   } else {
-    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: [], outputs: [], span: start_span)
+    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: [], outputs: [], return_annotation: none, span: start_span)
     CapResult { capability: cap, state: skip_newlines(tokens: tokens, state: s), err: none }
   }
 }
