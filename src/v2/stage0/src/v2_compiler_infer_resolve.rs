@@ -712,7 +712,12 @@ let n_is_type_var: bool = if (n.inferred.clone() != None) {
 } else {
                                                 false
 };
-if (((is_kernel_type(n.name.clone()) || n_is_type_var.clone()) || n_is_error.clone()) || n_is_callable.clone()) {
+// Bootstrap patch: Callable nodes with params=0 are type references
+// created by callable_inferred() stripping. The committed binary resolves
+// these via env lookup (Some branch), but the regenerated binary's env
+// construction differs. Add explicit name checks as fallback.
+let n_is_special: bool = (n.name.clone() == "Callable" || n.name.clone() == "Dynamic" || n.name.clone() == "Error");
+if (((is_kernel_type(n.name.clone()) || n_is_type_var.clone()) || n_is_error.clone()) || n_is_callable.clone() || n_is_special.clone()) {
                                                 Rc::new(NodeResolveResult {
     resolved: n.clone(),
     diagnostics: Rc::new(vec![]),
