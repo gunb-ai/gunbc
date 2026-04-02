@@ -33,9 +33,10 @@ fn full_dsl_compiles() {
     let dsl_result =
         v2_compiler::v2_compiler_compile::compile_sources(dsl_sources.clone(), RenderTarget::Rust);
 
-    // CX-0 deleted the variant-field descent proof. User-defined recursive
-    // unions (Stack<T>) now produce violations. Ratchet drops to 0 when
-    // pattern-binding descent witnesses land.
+    // Known DSL complexity violations (2): user-defined recursive unions
+    // (Stack<T>) produce violations because pattern-binding descent witnesses
+    // are not yet implemented. These are hard diagnostics that must be resolved,
+    // not tolerated. Ratchet → 0 when pattern-binding descent lands.
     const DSL_COMPLEXITY_RATCHET: usize = 2;
     let dsl_diag_count = dsl_result.diagnostics.len() as usize;
     if dsl_diag_count > DSL_COMPLEXITY_RATCHET {
@@ -925,9 +926,12 @@ fn sum_list(items: List<Int>) -> Int {
     );
 }
 
-/// Multi-branch match where the Add arm has two self-calls produces a
-/// branching-recursion violation now that variant-field descent is removed.
-/// CX-1 (container-child descent) will re-prove this pattern.
+/// Known analyzer limitation: multi-branch match where the Add arm has two
+/// self-calls produces a branching-recursion violation. The correct answer is
+/// O(n) (each node visited once), but the analyzer cannot yet prove disjoint
+/// descent across match arms. This test documents the CURRENT analyzer gap,
+/// not the language's intended behavior. When disjoint-descent proof lands,
+/// this assertion should flip to `eval_violations.is_empty()`.
 #[test]
 fn complexity_match_arms_are_mutually_exclusive() {
     let source = r#"module tree

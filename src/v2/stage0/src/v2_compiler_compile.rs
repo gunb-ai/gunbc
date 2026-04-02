@@ -155,17 +155,8 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Vec<Rc<FuncEntry>> {
     }
 }
 
-pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> Rc<RecursionContext> {
-    typed.modules.iter().cloned().fold(
-        Rc::new(RecursionContext {
-            recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
-        }),
-        |acc: Rc<RecursionContext>, m: Rc<TypedModule>| {
-            Rc::new(RecursionContext {
-                recursive_type_set: Rc::new(v2_rt::map_merge((*acc.recursive_type_set).clone(), (*m.type_env.recursive_type_set).clone())),
-            })
-        },
-    )
+pub fn build_recursion_context(_typed: Rc<ResolvedGraph>) -> Rc<RecursionContext> {
+    Rc::new(RecursionContext {})
 }
 
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Vec<Rc<OwnershipProof>> {

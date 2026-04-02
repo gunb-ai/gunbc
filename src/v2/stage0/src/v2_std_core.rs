@@ -1219,11 +1219,10 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
         || WRAPPER_CHILD_ROLES.values().any(|roles| roles.iter().any(|r| r.accessor == name))
 }
 
-pub fn child_roles_for_variant(variant_name: String) -> Vec<ChildRole> {
+pub fn child_roles_for_variant(variant_name: String) -> Option<Vec<ChildRole>> {
     EXPR_CHILD_ROLES
         .get(&variant_name)
         .cloned()
-        .unwrap_or_default()
 }
 
 pub fn if_condition(texpr: Rc<Node>) -> Rc<Node> {

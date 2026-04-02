@@ -102,6 +102,9 @@ fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 // The well-foundedness of ℕ under < is the fundamental fact that
 // makes all termination proofs work.
 
+// Bootstrap constraint: `param` is a function parameter name (String).
+// .dag does not yet have first-class param references. When it does,
+// param should become a structural reference into the function's param list.
 type RankingDimension
   = TreeSize { param: String }           // |subtree| via child accessor
   | ListLength { param: String }         // |list| via skip/tail
@@ -130,6 +133,9 @@ type RankingDimension
 //   - SetRemoval: removing an element from a finite set.
 //     Grounded in BooleanAlgebra (|remove(s, x)| < |s| when x ∈ s).
 
+// Bootstrap constraint: accessor/op/witness/element are function or operator
+// names (String). In the current .dag type system, the name IS the structural
+// identity. When .dag supports function references, these should become structural.
 type DescentSource
   = ChildAccessor { accessor: String }         // e.g., "binop_left"
   | ListShrink { amount: Int }                 // skip(amount), amount >= 1
@@ -196,7 +202,9 @@ type TerminationProof {
   dimensions: List<RankingDimension>
 }
 
-// An edge in the proof: what happens to each dimension at one call
+// An edge in the proof: what happens to each dimension at one call.
+// Bootstrap constraint: caller/callee are function names (String).
+// When .dag supports function references, these should become structural.
 type ProofEdge {
   caller: String
   callee: String
@@ -214,7 +222,7 @@ fn is_valid_proof(proof: TerminationProof, edges: List<ProofEdge>) -> Bool {
   // (edges where ALL dimensions are NonIncreasing) has no cycles.
   // This is the same algorithm as same_progress_subgraph_has_cycle
   // but generalized to multiple dimensions.
-  true // placeholder — actual implementation in complexity.dag
+  false // fail-closed: actual cycle-checking implementation lives in complexity.dag (proof_has_non_descending_cycle)
 }
 
 // =========================================================================

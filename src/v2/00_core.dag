@@ -717,6 +717,9 @@ fn variant_node_span(n: Node) -> SourceSpan { n.span }
 // children are accessed directly via node.children iteration.
 // =========================================================================
 
+// Bootstrap constraint: `accessor` is a function name (String). In the current
+// .dag type system, function names ARE the structural identity. When .dag supports
+// function references, accessor should become a structural reference.
 type ChildRole {
   name: String        // role name: "left", "right", "condition"
   accessor: String    // function that projects this child: "binop_left"
@@ -726,6 +729,10 @@ type ChildRole {
 
 // Expression child roles — keyed by ExprData variant name.
 // Each entry lists the fixed named child projections for that variant.
+// This data table IS the source of truth for child layout. The accessor
+// functions below implement the projections declared here. The apparent
+// duplication is intentional: the table provides the model, the functions
+// provide the implementation. Consistency is enforced by construction.
 data expr_child_roles: Map<String, List<ChildRole>> = {
   "ExprFieldAccess": [
     ChildRole { name: "base", accessor: "field_access_base", position: 0, required: true }
@@ -798,11 +805,10 @@ fn is_child_accessor_in_model(name: String) -> Bool {
 }
 
 // Model query: get fixed child roles for an ExprData variant.
-fn child_roles_for_variant(variant_name: String) -> List<ChildRole> {
-  match lookup(expr_child_roles, key: variant_name) {
-    Some { value: roles } => roles
-    None => []
-  }
+// Returns None if the variant is not in the model (fail-closed: callers
+// must handle missing layout explicitly, not assume "no children").
+fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
+  lookup(expr_child_roles, key: variant_name)
 }
 
 // =========================================================================

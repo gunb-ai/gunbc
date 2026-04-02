@@ -90,15 +90,10 @@ fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
   )
 }
 
-// Build module-owned recursion context by merging TypeEnv facts across
-// all compiled modules. This is the single authority for recursive type
-// and variant field information consumed by the complexity analyzer.
+// Build module-owned recursion context from compiled modules.
+// Currently empty — recursive_type_set was removed (unused by complexity analyzer).
 fn build_recursion_context(typed: ResolvedGraph) -> RecursionContext {
-  typed.modules |> fold(init: RecursionContext { recursive_type_set: empty_map() }, f: (acc, m) =>
-    RecursionContext {
-      recursive_type_set: map_merge(acc.recursive_type_set, m.type_env.recursive_type_set)
-    }
-  )
+  RecursionContext {}
 }
 
 // Extract per-item ownership proofs from a ResolvedGraph.
