@@ -848,6 +848,46 @@ fn parser_progress_flag_var(expr: Node) -> String? {
   }
 }
 
+fn parser_error_result_var(expr: Node) -> String? {
+  match expr.expr_data {
+    ExprFieldAccess =>
+      if field_access_field(texpr: expr) == "err" {
+        parser_result_base_var(expr: expr)
+      } else {
+        none
+      }
+    _ => none
+  }
+}
+
+fn parser_has_err_result_var(expr: Node) -> String? {
+  match expr.expr_data {
+    ExprCall { call_semantics: _ } =>
+      if expr_call_func(texpr: expr) == "has_err" {
+        expr.children |> enumerate |> fold(init: none, f: (acc, pair) =>
+          if acc != none {
+            acc
+          } else {
+            let idx = pair.first
+            let arg_node = pair.second
+            let matches_err = match arg_name(n: arg_node) {
+              Some { value: name } => name == "err"
+              None => idx == 0
+            }
+            if matches_err {
+              parser_error_result_var(expr: arg_value(n: arg_node))
+            } else {
+              none
+            }
+          }
+        )
+      } else {
+        none
+      }
+    _ => none
+  }
+}
+
 fn parser_helper_identity(callee: String) -> ParserHelperIdentity? {
   if callee == "skip_newlines" {
     Some { value: ParserHelperSkipNewlines }

@@ -2179,39 +2179,45 @@ fn parse_b(state: ParserState) -> UnitResult {
 }
 
 #[test]
-#[ignore] // ~1 min: compiles all v2 .dag sources through the full pipeline
 fn complexity_parser_state_aliases_unblock_type_parser_scc() {
-    let ws = crate::helpers::workspace_root();
-    let v2_dir = ws.join("src/v2");
-    let mut v2_files: Vec<_> = std::fs::read_dir(&v2_dir)
-        .unwrap()
-        .filter_map(|e| {
-            let e = e.ok()?;
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.ends_with(".dag") {
-                Some(format!("src/v2/{}", name))
-            } else {
-                None
-            }
-        })
-        .collect();
-    v2_files.sort();
+    let source = r#"module parser_aliases
+type ParserState { pos: Int }
+type UnitResult { state: ParserState, err: Int? }
+type TypeResult { state: ParserState, err: Int? }
+type ParamsResult { state: ParserState, err: Int? }
 
-    let files: Vec<(String, String)> = v2_files
-        .iter()
-        .map(|rel| {
-            let full = ws.join(rel);
-            let content = std::fs::read_to_string(&full)
-                .unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e));
-            (rel.clone(), content)
-        })
-        .collect();
+fn has_err(err: Int?) -> Bool {
+  match err {
+    Some { value: _ } => true
+    None => false
+  }
+}
 
-    let file_refs: Vec<(&str, &str)> = files
-        .iter()
-        .map(|(p, c)| (p.as_str(), c.as_str()))
-        .collect();
-    let result = crate::helpers::compile_multi(&file_refs);
+fn advance(state: ParserState) -> UnitResult {
+  UnitResult { state: state, err: none }
+}
+
+fn parse_type_expr(state: ParserState) -> TypeResult {
+  let open = advance(state: state)
+  let r = parse_callable_type_expr(state: open.state)
+  if has_err(err: r.err) { return r }
+  TypeResult { state: r.state, err: r.err }
+}
+
+fn parse_callable_type_expr(state: ParserState) -> TypeResult {
+  let params_result = parse_callable_param_types(state: state)
+  if has_err(err: params_result.err) { return TypeResult { state: params_result.state, err: params_result.err } }
+  let ret = parse_type_expr(state: params_result.state)
+  if has_err(err: ret.err) { return ret }
+  TypeResult { state: ret.state, err: ret.err }
+}
+
+fn parse_callable_param_types(state: ParserState) -> ParamsResult {
+  let next = advance(state: state)
+  ParamsResult { state: next.state, err: none }
+}
+"#;
+    let result = compile_dag(source);
 
     let parser_scc_violations: Vec<String> = result
         .complexity
@@ -2220,13 +2226,8 @@ fn complexity_parser_state_aliases_unblock_type_parser_scc() {
         .filter(|v| {
             matches!(
                 v.func_name.as_str(),
-                "parse_type_expr"
-                    | "parse_callable_type_expr"
-                    | "parse_callable_param_types"
-                    | "parse_field"
-                    | "parse_match_arm"
-                    | "parse_match_arms_acc"
-            ) || v.reason.contains("parse_type_expr")
+                "parse_type_expr" | "parse_callable_type_expr" | "parse_callable_param_types"
+            )
         })
         .map(|v| format!("{}: {}", v.func_name, v.reason))
         .collect();

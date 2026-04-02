@@ -21,7 +21,8 @@ import v2.compiler.parse {
   ParserResultWitness,
   ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque,
   ParserCallHelper, ParserCallFunction,
-  parser_progress_flag_var, parser_passthrough_state_expr, parser_result_witness
+  parser_error_result_var, parser_has_err_result_var, parser_progress_flag_var,
+  parser_passthrough_state_expr, parser_result_witness
 }
 import v2.std.core {
   Node,
@@ -40,7 +41,7 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body, let_binding_name,
   match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, record_lit_type_name, return_value,
+  method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value,
   expr_call_func, expr_var_name, field_access_base, field_access_field,
   LiteralValue, LitNull
 }
@@ -283,6 +284,8 @@ type ParserSuccessSummary
   = NoSuccessfulReturn
   | SuccessfulReturn { progress: ProgressKind }
 
+type ParserResultErrStatus = ParserErrUnknown | ParserErrKnownError | ParserErrKnownClear
+
 type ParserBoundResult {
   source: ParserResultSource
   success: ParserSuccessSummary
@@ -451,6 +454,35 @@ fn parser_state_base_var(expr: Node) -> String? {
   }
 }
 
+fn parser_err_status_for_expr(expr: Node, result_err_statuses: Map<String, ParserResultErrStatus>) -> ParserResultErrStatus {
+  if parser_expr_is_none(expr: expr) {
+    ParserErrKnownClear
+  } else {
+    match parser_error_result_var(expr: expr) {
+      Some { value: result_name } =>
+        match map_get(result_err_statuses, result_name) {
+          Some { value: err_status } => err_status
+          None => ParserErrUnknown
+        }
+      None => ParserErrUnknown
+    }
+  }
+}
+
+fn parser_then_err_statuses(cond: Node, result_err_statuses: Map<String, ParserResultErrStatus>) -> Map<String, ParserResultErrStatus> {
+  match parser_has_err_result_var(expr: cond) {
+    Some { value: result_name } => map_insert(result_err_statuses, result_name, ParserErrKnownError)
+    None => result_err_statuses
+  }
+}
+
+fn parser_else_err_statuses(cond: Node, result_err_statuses: Map<String, ParserResultErrStatus>) -> Map<String, ParserResultErrStatus> {
+  match parser_has_err_result_var(expr: cond) {
+    Some { value: result_name } => map_insert(result_err_statuses, result_name, ParserErrKnownClear)
+    None => result_err_statuses
+  }
+}
+
 fn parser_bound_result_success_summary(result_name: String, env: ParserProgressEnv) -> ParserSuccessSummary {
   match map_get(env.bound_results, result_name) {
     Some { value: bound_result } => bound_result.success
@@ -519,7 +551,7 @@ fn parser_state_arg_expr(call_node: Node, state_param: ParserStateParam) -> Node
   )
 }
 
-fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_err_statuses: Map<String, ParserResultErrStatus>) -> ProgressKind {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
       let name = expr_var_name(texpr: expr)
@@ -556,7 +588,8 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
             state_param: state_param,
             env: env,
             parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
+            consumed_true_set: consumed_true_set,
+            result_err_statuses: result_err_statuses
           )
         None => ProgressUnknown
       }
@@ -567,12 +600,15 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         Some { value: name } => map_insert(consumed_true_set, name, true)
         None => consumed_true_set
       }
+      let then_err_statuses = parser_then_err_statuses(cond: cond, result_err_statuses: result_err_statuses)
+      let else_err_statuses = parser_else_err_statuses(cond: cond, result_err_statuses: result_err_statuses)
       let then_progress = parser_state_expr_progress(
         expr: if_then_branch(texpr: expr),
         state_param: state_param,
         env: env,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: then_consumed
+        consumed_true_set: then_consumed,
+        result_err_statuses: then_err_statuses
       )
       let else_progress = match if_else_branch(texpr: expr) {
         Some { value: eb } =>
@@ -581,7 +617,8 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
             state_param: state_param,
             env: env,
             parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
+            consumed_true_set: consumed_true_set,
+            result_err_statuses: else_err_statuses
           )
         None => ProgressUnknown
       }
@@ -594,7 +631,8 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         env: env,
         state_param: state_param,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set
+        consumed_true_set: consumed_true_set,
+        result_err_statuses: result_err_statuses
       )
       match let_body(texpr: expr) {
         Some { value: body } =>
@@ -603,7 +641,8 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
             state_param: state_param,
             env: next_env,
             parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
+            consumed_true_set: consumed_true_set,
+            result_err_statuses: result_err_statuses
           )
         None => ProgressUnknown
       }
@@ -615,7 +654,8 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
           state_param: state_param,
           env: env,
           parser_always_advancing: parser_always_advancing,
-          consumed_true_set: consumed_true_set
+          consumed_true_set: consumed_true_set,
+          result_err_statuses: result_err_statuses
         )
       )
       match arm_progresses |> first {
@@ -630,7 +670,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
   }
 }
 
-fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ParserResultSource {
+fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_err_statuses: Map<String, ParserResultErrStatus>) -> ParserResultSource {
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
       let input_progress = match parser_state_arg_expr(call_node: expr, state_param: state_param) {
@@ -640,7 +680,8 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
             state_param: state_param,
             env: env,
             parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
+            consumed_true_set: consumed_true_set,
+            result_err_statuses: result_err_statuses
           )
         None => ProgressUnknown
       }
@@ -663,27 +704,30 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
   }
 }
 
-fn parser_env_with_binding(name: String, value_expr: Node, env: ParserProgressEnv, state_param: ParserStateParam, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ParserProgressEnv {
+fn parser_env_with_binding(name: String, value_expr: Node, env: ParserProgressEnv, state_param: ParserStateParam, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_err_statuses: Map<String, ParserResultErrStatus>) -> ParserProgressEnv {
   let state_progress = parser_state_expr_progress(
     expr: value_expr,
     state_param: state_param,
     env: env,
     parser_always_advancing: parser_always_advancing,
-    consumed_true_set: consumed_true_set
+    consumed_true_set: consumed_true_set,
+    result_err_statuses: result_err_statuses
   )
   let result_source = parser_result_source_for_expr(
     expr: value_expr,
     state_param: state_param,
     env: env,
     parser_always_advancing: parser_always_advancing,
-    consumed_true_set: consumed_true_set
+    consumed_true_set: consumed_true_set,
+    result_err_statuses: result_err_statuses
   )
   let result_success = parser_success_summary(
     expr: value_expr,
     state_param: state_param,
     env: env,
     parser_always_advancing: parser_always_advancing,
-    consumed_true_set: consumed_true_set
+    consumed_true_set: consumed_true_set,
+    result_err_statuses: result_err_statuses
   )
   ParserProgressEnv {
     state_aliases: map_insert(env.state_aliases, name, state_progress),
@@ -695,7 +739,7 @@ fn parser_env_with_binding(name: String, value_expr: Node, env: ParserProgressEn
   }
 }
 
-fn parser_call_input_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+fn parser_call_input_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_err_statuses: Map<String, ParserResultErrStatus>) -> ProgressKind {
   match parser_state_arg_expr(call_node: call_node, state_param: state_param) {
     Some { value: state_expr } =>
       parser_state_expr_progress(
@@ -703,19 +747,21 @@ fn parser_call_input_progress(call_node: Node, state_param: ParserStateParam, en
         state_param: state_param,
         env: env,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set
+        consumed_true_set: consumed_true_set,
+        result_err_statuses: result_err_statuses
       )
     None => ProgressUnknown
   }
 }
 
-fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_err_statuses: Map<String, ParserResultErrStatus>) -> ProgressKind {
   let input_progress = parser_call_input_progress(
     call_node: call_node,
     state_param: state_param,
     env: env,
     parser_always_advancing: parser_always_advancing,
-    consumed_true_set: consumed_true_set
+    consumed_true_set: consumed_true_set,
+    result_err_statuses: result_err_statuses
   )
   if set_has(m: parser_always_advancing, key: expr_call_func(texpr: call_node)) {
     strict_progress(progress: input_progress)
@@ -724,7 +770,7 @@ fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env
   }
 }
 
-fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, credit_callee_progress: Bool) -> List<ParserProgressEdge> {
+fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_err_statuses: Map<String, ParserResultErrStatus>, credit_callee_progress: Bool) -> List<ParserProgressEdge> {
   let acc = stmts |> fold(init: ParserProgressAcc { edges: [], env: env }, f: (acc, stmt) =>
     match stmt.expr_data {
       ExprLet =>
@@ -739,6 +785,7 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
               env: acc.env,
               parser_always_advancing: parser_always_advancing,
               consumed_true_set: consumed_true_set,
+              result_err_statuses: result_err_statuses,
               credit_callee_progress: credit_callee_progress
             )
             let next_env = parser_env_with_binding(
@@ -747,7 +794,8 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
               env: acc.env,
               state_param: state_param,
               parser_always_advancing: parser_always_advancing,
-              consumed_true_set: consumed_true_set
+              consumed_true_set: consumed_true_set,
+              result_err_statuses: result_err_statuses
             )
             ParserProgressAcc { edges: concat(acc.edges, value_edges), env: next_env }
           Some { value: _ } =>
@@ -759,6 +807,7 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
               env: acc.env,
               parser_always_advancing: parser_always_advancing,
               consumed_true_set: consumed_true_set,
+              result_err_statuses: result_err_statuses,
               credit_callee_progress: credit_callee_progress
             )
             ParserProgressAcc { edges: concat(acc.edges, stmt_edges), env: acc.env }
@@ -772,6 +821,7 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
           env: acc.env,
           parser_always_advancing: parser_always_advancing,
           consumed_true_set: consumed_true_set,
+          result_err_statuses: result_err_statuses,
           credit_callee_progress: credit_callee_progress
         )
         ParserProgressAcc { edges: concat(acc.edges, stmt_edges), env: acc.env }
@@ -780,7 +830,7 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
   acc.edges
 }
 
-fn collect_parser_progress_edges(caller: String, body: Node, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, credit_callee_progress: Bool) -> List<ParserProgressEdge> {
+fn collect_parser_progress_edges(caller: String, body: Node, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_err_statuses: Map<String, ParserResultErrStatus>, credit_callee_progress: Bool) -> List<ParserProgressEdge> {
   match body.expr_data {
     ExprCall { call_semantics: _ } =>
       let own_edges = if set_has(m: scc_name_set, key: expr_call_func(texpr: body)) {
@@ -793,7 +843,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
               state_param: state_param,
               env: env,
               parser_always_advancing: parser_always_advancing,
-              consumed_true_set: consumed_true_set
+              consumed_true_set: consumed_true_set,
+              result_err_statuses: result_err_statuses
             )
           } else {
             parser_call_input_progress(
@@ -801,7 +852,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
               state_param: state_param,
               env: env,
               parser_always_advancing: parser_always_advancing,
-              consumed_true_set: consumed_true_set
+              consumed_true_set: consumed_true_set,
+              result_err_statuses: result_err_statuses
             )
           }
         }]
@@ -817,6 +869,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
           env: env,
           parser_always_advancing: parser_always_advancing,
           consumed_true_set: consumed_true_set,
+          result_err_statuses: result_err_statuses,
           credit_callee_progress: credit_callee_progress
         )
       )
@@ -832,12 +885,15 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         env: env,
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: consumed_true_set,
+        result_err_statuses: result_err_statuses,
         credit_callee_progress: credit_callee_progress
       )
       let then_consumed = match parser_progress_flag_var(expr: cond) {
         Some { value: name } => map_insert(consumed_true_set, name, true)
         None => consumed_true_set
       }
+      let then_err_statuses = parser_then_err_statuses(cond: cond, result_err_statuses: result_err_statuses)
+      let else_err_statuses = parser_else_err_statuses(cond: cond, result_err_statuses: result_err_statuses)
       let then_edges = collect_parser_progress_edges(
         caller: caller,
         body: if_then_branch(texpr: body),
@@ -846,6 +902,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         env: env,
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: then_consumed,
+        result_err_statuses: then_err_statuses,
         credit_callee_progress: credit_callee_progress
       )
       let else_edges = match if_else_branch(texpr: body) {
@@ -858,6 +915,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
             env: env,
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
+            result_err_statuses: else_err_statuses,
             credit_callee_progress: credit_callee_progress
           )
         None => []
@@ -874,6 +932,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         env: env,
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: consumed_true_set,
+        result_err_statuses: result_err_statuses,
         credit_callee_progress: credit_callee_progress
       )
       let next_env = parser_env_with_binding(
@@ -882,7 +941,8 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         env: env,
         state_param: state_param,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set
+        consumed_true_set: consumed_true_set,
+        result_err_statuses: result_err_statuses
       )
       let body_edges = match let_body(texpr: body) {
         Some { value: b } =>
@@ -894,6 +954,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
             env: next_env,
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
+            result_err_statuses: result_err_statuses,
             credit_callee_progress: credit_callee_progress
           )
         None => []
@@ -909,6 +970,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         env: env,
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: consumed_true_set,
+        result_err_statuses: result_err_statuses,
         credit_callee_progress: credit_callee_progress
       )
 
@@ -921,6 +983,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         env: env,
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: consumed_true_set,
+        result_err_statuses: result_err_statuses,
         credit_callee_progress: credit_callee_progress
       )
       let arm_edges = match_arm_nodes(texpr: body) |> flat_map(arm_node =>
@@ -932,6 +995,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
           env: env,
           parser_always_advancing: parser_always_advancing,
           consumed_true_set: consumed_true_set,
+          result_err_statuses: result_err_statuses,
           credit_callee_progress: credit_callee_progress
         )
       )
@@ -947,6 +1011,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
           env: env,
           parser_always_advancing: parser_always_advancing,
           consumed_true_set: consumed_true_set,
+          result_err_statuses: result_err_statuses,
           credit_callee_progress: credit_callee_progress
         )
       )
@@ -983,18 +1048,7 @@ fn parser_success_progress_from_summary(summary: ParserSuccessSummary) -> Progre
   }
 }
 
-fn parser_expr_is_definitely_some(expr: Node) -> Bool {
-  match expr.expr_data {
-    ExprRecordLit { parent_enum: _ } =>
-      match record_lit_type_name(texpr: expr) {
-        Some { value: type_name } => type_name == "Some"
-        None => false
-      }
-    _ => false
-  }
-}
-
-fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ParserSuccessSummary {
+fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_err_statuses: Map<String, ParserResultErrStatus>) -> ParserSuccessSummary {
   match expr.expr_data {
     ExprReturn =>
       parser_success_summary(
@@ -1002,11 +1056,16 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
         state_param: state_param,
         env: env,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set
+        consumed_true_set: consumed_true_set,
+        result_err_statuses: result_err_statuses
       )
 
     ExprVar { binding_kind: _ } =>
-      parser_bound_result_success_summary(result_name: expr_var_name(texpr: expr), env: env)
+      let result_name = expr_var_name(texpr: expr)
+      match map_get(result_err_statuses, result_name) {
+        Some { value: ParserErrKnownError } => NoSuccessfulReturn
+        _ => parser_bound_result_success_summary(result_name: result_name, env: env)
+      }
 
     ExprCall { call_semantics: _ } =>
       SuccessfulReturn {
@@ -1016,7 +1075,8 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
             state_param: state_param,
             env: env,
             parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
+            consumed_true_set: consumed_true_set,
+            result_err_statuses: result_err_statuses
           ),
           parser_always_advancing: parser_always_advancing,
           consumed_true_set: consumed_true_set,
@@ -1027,38 +1087,26 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
     ExprRecordLit { parent_enum: _ } =>
       match parser_record_field_value(expr: expr, field_name: "err") {
         Some { value: err_expr } =>
-          if parser_expr_is_none(expr: err_expr) {
-            match parser_record_field_value(expr: expr, field_name: "state") {
-              Some { value: state_expr } =>
-                SuccessfulReturn {
-                  progress: parser_state_expr_progress(
-                    expr: state_expr,
-                    state_param: state_param,
-                    env: env,
-                    parser_always_advancing: parser_always_advancing,
-                    consumed_true_set: consumed_true_set
-                  )
-                }
-              None => SuccessfulReturn { progress: ProgressUnknown }
-            }
-          } else if parser_expr_is_definitely_some(expr: err_expr) {
-            NoSuccessfulReturn
-          } else {
-            match parser_record_field_value(expr: expr, field_name: "state") {
-              Some { value: state_expr } =>
-                SuccessfulReturn {
-                  progress: parser_state_expr_progress(
-                    expr: state_expr,
-                    state_param: state_param,
-                    env: env,
-                    parser_always_advancing: parser_always_advancing,
-                    consumed_true_set: consumed_true_set
-                  )
-                }
-              None => SuccessfulReturn { progress: ProgressUnknown }
-            }
+          match parser_err_status_for_expr(expr: err_expr, result_err_statuses: result_err_statuses) {
+            ParserErrKnownClear =>
+              match parser_record_field_value(expr: expr, field_name: "state") {
+                Some { value: state_expr } =>
+                  SuccessfulReturn {
+                    progress: parser_state_expr_progress(
+                      expr: state_expr,
+                      state_param: state_param,
+                      env: env,
+                      parser_always_advancing: parser_always_advancing,
+                      consumed_true_set: consumed_true_set,
+                      result_err_statuses: result_err_statuses
+                    )
+                  }
+                None => NoSuccessfulReturn
+              }
+            ParserErrKnownError => NoSuccessfulReturn
+            ParserErrUnknown => NoSuccessfulReturn
           }
-        None => SuccessfulReturn { progress: ProgressUnknown }
+        None => NoSuccessfulReturn
       }
 
     ExprIf =>
@@ -1067,12 +1115,15 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
         Some { value: name } => map_insert(consumed_true_set, name, true)
         None => consumed_true_set
       }
+      let then_err_statuses = parser_then_err_statuses(cond: cond, result_err_statuses: result_err_statuses)
+      let else_err_statuses = parser_else_err_statuses(cond: cond, result_err_statuses: result_err_statuses)
       let then_progress = parser_success_summary(
         expr: if_then_branch(texpr: expr),
         state_param: state_param,
         env: env,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: then_consumed
+        consumed_true_set: then_consumed,
+        result_err_statuses: then_err_statuses
       )
       let else_progress = match if_else_branch(texpr: expr) {
         Some { value: eb } =>
@@ -1081,7 +1132,8 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
             state_param: state_param,
             env: env,
             parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
+            consumed_true_set: consumed_true_set,
+            result_err_statuses: else_err_statuses
           )
         None => NoSuccessfulReturn
       }
@@ -1094,7 +1146,8 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
         env: env,
         state_param: state_param,
         parser_always_advancing: parser_always_advancing,
-        consumed_true_set: consumed_true_set
+        consumed_true_set: consumed_true_set,
+        result_err_statuses: result_err_statuses
       )
       match let_body(texpr: expr) {
         Some { value: body } =>
@@ -1103,7 +1156,8 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
             state_param: state_param,
             env: next_env,
             parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
+            consumed_true_set: consumed_true_set,
+            result_err_statuses: result_err_statuses
           )
         None => NoSuccessfulReturn
       }
@@ -1121,7 +1175,8 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
                   env: acc.env,
                   state_param: state_param,
                   parser_always_advancing: parser_always_advancing,
-                  consumed_true_set: consumed_true_set
+                  consumed_true_set: consumed_true_set,
+                  result_err_statuses: result_err_statuses
                 )
                 ParserProgressAcc { edges: acc.edges, env: next_env }
               Some { value: _ } => acc
@@ -1136,7 +1191,8 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
             state_param: state_param,
             env: acc.env,
             parser_always_advancing: parser_always_advancing,
-            consumed_true_set: consumed_true_set
+            consumed_true_set: consumed_true_set,
+            result_err_statuses: result_err_statuses
           )
         None => NoSuccessfulReturn
       }
@@ -1148,7 +1204,8 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
           state_param: state_param,
           env: env,
           parser_always_advancing: parser_always_advancing,
-          consumed_true_set: consumed_true_set
+          consumed_true_set: consumed_true_set,
+          result_err_statuses: result_err_statuses
         )
       )
       match arm_progresses |> first {
@@ -1163,14 +1220,15 @@ fn parser_success_summary(expr: Node, state_param: ParserStateParam, env: Parser
   }
 }
 
-fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_err_statuses: Map<String, ParserResultErrStatus>) -> ProgressKind {
   parser_success_progress_from_summary(
     summary: parser_success_summary(
       expr: expr,
       state_param: state_param,
       env: env,
       parser_always_advancing: parser_always_advancing,
-      consumed_true_set: consumed_true_set
+      consumed_true_set: consumed_true_set,
+      result_err_statuses: result_err_statuses
     )
   )
 }
@@ -1203,6 +1261,7 @@ fn collect_candidate_parser_progress_edges(members: List<String>, func_index: Ma
                 env: empty_parser_progress_env(),
                 parser_always_advancing: candidates,
                 consumed_true_set: empty_map(),
+                result_err_statuses: empty_map(),
                 credit_callee_progress: credit_callee_progress
               )
             None => []
@@ -1234,7 +1293,8 @@ fn parser_member_is_always_advancing(entry: FuncEntry, same_cycle_members: Map<S
         state_param: state_param,
         env: empty_parser_progress_env(),
         parser_always_advancing: candidates,
-        consumed_true_set: empty_map()
+        consumed_true_set: empty_map(),
+        result_err_statuses: empty_map()
       ) == ProgressStrict
     None => false
   }
@@ -1374,6 +1434,7 @@ fn self_calls_have_strict_parser_progress(func_name: String, body: Node, params:
         env: empty_parser_progress_env(),
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: empty_map(),
+        result_err_statuses: empty_map(),
         credit_callee_progress: false
       )
       (edges |> count) > 0 && (edges |> all(edge => edge.progress == ProgressStrict))
@@ -1496,6 +1557,7 @@ fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<
                 env: empty_parser_progress_env(),
                 parser_always_advancing: parser_always_advancing,
                 consumed_true_set: empty_map(),
+                result_err_statuses: empty_map(),
                 credit_callee_progress: true
               )
             None => []

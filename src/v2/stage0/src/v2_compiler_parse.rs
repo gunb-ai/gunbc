@@ -2209,6 +2209,42 @@ pub fn parser_progress_flag_var(expr: Rc<Node>) -> Option<String> {
     }
 }
 
+pub fn parser_error_result_var(expr: Rc<Node>) -> Option<String> {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprFieldAccess { .. } => {
+            if field_access_field(expr.clone()) == "err".to_string() {
+                parser_result_base_var(expr.clone())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn parser_has_err_result_var(expr: Rc<Node>) -> Option<String> {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            if expr_call_func(expr.clone()) == "has_err".to_string() {
+                expr.children.iter().cloned().enumerate().find_map(|(idx, arg_node)| {
+                    let matches_err = match arg_name(arg_node.clone()) {
+                        Some(name) => name == "err".to_string(),
+                        None => idx == 0,
+                    };
+                    if matches_err {
+                        parser_error_result_var(arg_value(arg_node.clone()))
+                    } else {
+                        None
+                    }
+                })
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 pub fn parser_passthrough_state_expr(expr: Rc<Node>) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {

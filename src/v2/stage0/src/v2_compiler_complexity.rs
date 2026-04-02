@@ -6,8 +6,8 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::v2_compiler_infer_env::RecursiveVariantFieldWitness;
 use crate::v2_compiler_parse::{
-    parser_passthrough_state_expr, parser_progress_flag_var, parser_result_witness,
-    ParserCallIdentity, ParserResultWitness,
+    parser_error_result_var, parser_has_err_result_var, parser_passthrough_state_expr,
+    parser_progress_flag_var, parser_result_witness, ParserCallIdentity, ParserResultWitness,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -53,7 +53,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, SourceSpan, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, field_init_node_name, field_init_node_value, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{Node, ExprData, SourceSpan, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, field_init_node_name, field_init_node_value, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::BinOpKind;
@@ -460,6 +460,34 @@ pub fn parser_state_base_var(expr: Rc<Node>) -> Option<String> {
     }
 }
 
+pub fn parser_err_status_for_expr(expr: Rc<Node>, result_err_statuses: HashMap<String, ParserResultErrStatus>) -> ParserResultErrStatus {
+    if parser_expr_is_none(expr.clone()) {
+        ParserResultErrStatus::ParserErrKnownClear
+    } else {
+        match parser_error_result_var(expr.clone()) {
+            Some(result_name) => match result_err_statuses.get(&result_name) {
+                Some(err_status) => err_status.clone(),
+                None => ParserResultErrStatus::ParserErrUnknown,
+            },
+            None => ParserResultErrStatus::ParserErrUnknown,
+        }
+    }
+}
+
+pub fn parser_then_err_statuses(cond: Rc<Node>, result_err_statuses: HashMap<String, ParserResultErrStatus>) -> HashMap<String, ParserResultErrStatus> {
+    match parser_has_err_result_var(cond.clone()) {
+        Some(result_name) => v2_rt::map_insert(result_err_statuses.clone(), result_name.clone(), ParserResultErrStatus::ParserErrKnownError),
+        None => result_err_statuses.clone(),
+    }
+}
+
+pub fn parser_else_err_statuses(cond: Rc<Node>, result_err_statuses: HashMap<String, ParserResultErrStatus>) -> HashMap<String, ParserResultErrStatus> {
+    match parser_has_err_result_var(cond.clone()) {
+        Some(result_name) => v2_rt::map_insert(result_err_statuses.clone(), result_name.clone(), ParserResultErrStatus::ParserErrKnownClear),
+        None => result_err_statuses.clone(),
+    }
+}
+
 pub fn parser_bound_result_success_summary(result_name: String, env: ParserProgressEnv) -> Rc<ParserSuccessSummary> {
     match env.bound_results.get(&result_name) {
         Some(bound_result) => bound_result.success.clone(),
@@ -517,7 +545,7 @@ pub fn parser_state_arg_expr(call_node: Rc<Node>, state_param: ParserStateParam)
     })
 }
 
-pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>) -> ProgressKind {
+pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, result_err_statuses: HashMap<String, ParserResultErrStatus>) -> ProgressKind {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprVar { .. } => {
             let name = expr_var_name(expr.clone());
@@ -542,7 +570,7 @@ pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: ParserStateParam,
         }
         ExprData::ExprCall { .. } => {
             match parser_passthrough_state_expr(expr.clone()) {
-                Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+                Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone()),
                 None => ProgressKind::ProgressUnknown,
             }
         }
@@ -552,16 +580,18 @@ pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: ParserStateParam,
                 Some(name) => v2_rt::map_insert(consumed_true_set.clone(), name.clone(), true),
                 None => consumed_true_set.clone(),
             };
-            let then_progress = parser_state_expr_progress(if_then_branch(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), then_consumed.clone());
+            let then_err_statuses = parser_then_err_statuses(cond.clone(), result_err_statuses.clone());
+            let else_err_statuses = parser_else_err_statuses(cond.clone(), result_err_statuses.clone());
+            let then_progress = parser_state_expr_progress(if_then_branch(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), then_consumed.clone(), then_err_statuses.clone());
             let else_progress = match if_else_branch(expr.clone()) {
-                Some(else_branch) => parser_state_expr_progress(else_branch.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+                Some(else_branch) => parser_state_expr_progress(else_branch.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), else_err_statuses.clone()),
                 None => ProgressKind::ProgressUnknown,
             };
             merge_progress(then_progress, else_progress)
         }
         ExprData::ExprMatch { .. } => {
             let arm_progresses = match_arm_nodes(expr.clone()).iter().cloned().map(|arm_node| {
-                parser_state_expr_progress(arm_body(arm_node.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone())
+                parser_state_expr_progress(arm_body(arm_node.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone())
             }).collect::<Vec<_>>();
             match arm_progresses.into_iter().reduce(|acc, progress| merge_progress(acc, progress)) {
                 Some(progress) => progress,
@@ -569,16 +599,17 @@ pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: ParserStateParam,
             }
         }
         ExprData::ExprLet { .. } => {
-            let next_env = parser_env_with_binding(
-                let_binding_name(expr.clone()),
-                let_value(expr.clone()),
-                env.clone(),
-                state_param.clone(),
-                parser_always_advancing.clone(),
-                consumed_true_set.clone(),
-            );
-            match let_body(expr.clone()) {
-                Some(body) => parser_state_expr_progress(body.clone(), state_param.clone(), next_env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+                let next_env = parser_env_with_binding(
+                    let_binding_name(expr.clone()),
+                    let_value(expr.clone()),
+                    env.clone(),
+                    state_param.clone(),
+                    parser_always_advancing.clone(),
+                    consumed_true_set.clone(),
+                    result_err_statuses.clone(),
+                );
+                match let_body(expr.clone()) {
+                Some(body) => parser_state_expr_progress(body.clone(), state_param.clone(), next_env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone()),
                 None => ProgressKind::ProgressUnknown,
             }
         }
@@ -602,6 +633,7 @@ pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: ParserStateParam,
                                     state_param.clone(),
                                     parser_always_advancing.clone(),
                                     consumed_true_set.clone(),
+                                    result_err_statuses.clone(),
                                 );
                                 ParserProgressAcc {
                                     edges: acc.edges.clone(),
@@ -614,21 +646,21 @@ pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: ParserStateParam,
                     }
                 });
                 match expr.children.clone().last().cloned() {
-                    Some(last_stmt) => parser_state_expr_progress(last_stmt.clone(), state_param.clone(), acc.env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+                    Some(last_stmt) => parser_state_expr_progress(last_stmt.clone(), state_param.clone(), acc.env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone()),
                     None => ProgressKind::ProgressUnknown,
                 }
             }
         }
-        ExprData::ExprReturn { .. } => parser_state_expr_progress(return_value(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+        ExprData::ExprReturn { .. } => parser_state_expr_progress(return_value(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone()),
         _ => ProgressKind::ProgressUnknown,
     }
 }
 
-pub fn parser_result_source_for_expr(expr: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>) -> ParserResultSource {
+pub fn parser_result_source_for_expr(expr: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, result_err_statuses: HashMap<String, ParserResultErrStatus>) -> ParserResultSource {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let input_progress = match parser_state_arg_expr(expr.clone(), state_param.clone()) {
-                Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+                Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone()),
                 None => ProgressKind::ProgressUnknown,
             };
             match parser_result_witness(expr.clone()) {
@@ -656,10 +688,10 @@ pub fn parser_result_source_for_expr(expr: Rc<Node>, state_param: ParserStatePar
     }
 }
 
-pub fn parser_env_with_binding(name: String, value_expr: Rc<Node>, env: ParserProgressEnv, state_param: ParserStateParam, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>) -> ParserProgressEnv {
-    let state_progress = parser_state_expr_progress(value_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone());
-    let result_source = parser_result_source_for_expr(value_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone());
-    let result_success = parser_success_summary(value_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone());
+pub fn parser_env_with_binding(name: String, value_expr: Rc<Node>, env: ParserProgressEnv, state_param: ParserStateParam, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, result_err_statuses: HashMap<String, ParserResultErrStatus>) -> ParserProgressEnv {
+    let state_progress = parser_state_expr_progress(value_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone());
+    let result_source = parser_result_source_for_expr(value_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone());
+    let result_success = parser_success_summary(value_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone());
     ParserProgressEnv {
         state_aliases: v2_rt::map_insert(env.state_aliases.clone(), name.clone(), state_progress),
         bound_results: v2_rt::map_insert(env.bound_results.clone(), name.clone(), ParserBoundResult {
@@ -669,15 +701,15 @@ pub fn parser_env_with_binding(name: String, value_expr: Rc<Node>, env: ParserPr
     }
 }
 
-pub fn parser_call_input_progress(call_node: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>) -> ProgressKind {
+pub fn parser_call_input_progress(call_node: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, result_err_statuses: HashMap<String, ParserResultErrStatus>) -> ProgressKind {
     match parser_state_arg_expr(call_node.clone(), state_param.clone()) {
-        Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+        Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone()),
         None => ProgressKind::ProgressUnknown,
     }
 }
 
-pub fn parser_call_edge_progress(call_node: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>) -> ProgressKind {
-    let input_progress = parser_call_input_progress(call_node.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone());
+pub fn parser_call_edge_progress(call_node: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, result_err_statuses: HashMap<String, ParserResultErrStatus>) -> ProgressKind {
+    let input_progress = parser_call_input_progress(call_node.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone());
     if parser_always_advancing.contains_key(&expr_call_func(call_node.clone())) {
         strict_progress(input_progress)
     } else {
@@ -685,7 +717,7 @@ pub fn parser_call_edge_progress(call_node: Rc<Node>, state_param: ParserStatePa
     }
 }
 
-pub fn collect_parser_progress_block_edges(caller: String, stmts: Vec<Rc<Node>>, state_param: ParserStateParam, scc_name_set: HashMap<String, bool>, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, credit_callee_progress: bool) -> Vec<ParserProgressEdge> {
+pub fn collect_parser_progress_block_edges(caller: String, stmts: Vec<Rc<Node>>, state_param: ParserStateParam, scc_name_set: HashMap<String, bool>, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, result_err_statuses: HashMap<String, ParserResultErrStatus>, credit_callee_progress: bool) -> Vec<ParserProgressEdge> {
     let acc = stmts.iter().cloned().fold(ParserProgressAcc {
         edges: vec![],
         env: env.clone(),
@@ -702,6 +734,7 @@ pub fn collect_parser_progress_block_edges(caller: String, stmts: Vec<Rc<Node>>,
                         acc.env.clone(),
                         parser_always_advancing.clone(),
                         consumed_true_set.clone(),
+                        result_err_statuses.clone(),
                         credit_callee_progress,
                     );
                     let next_env = parser_env_with_binding(
@@ -711,6 +744,7 @@ pub fn collect_parser_progress_block_edges(caller: String, stmts: Vec<Rc<Node>>,
                         state_param.clone(),
                         parser_always_advancing.clone(),
                         consumed_true_set.clone(),
+                        result_err_statuses.clone(),
                     );
                     let mut edges = acc.edges.clone();
                     edges.extend(value_edges.clone());
@@ -728,6 +762,7 @@ pub fn collect_parser_progress_block_edges(caller: String, stmts: Vec<Rc<Node>>,
                         acc.env.clone(),
                         parser_always_advancing.clone(),
                         consumed_true_set.clone(),
+                        result_err_statuses.clone(),
                         credit_callee_progress,
                     );
                     let mut edges = acc.edges.clone();
@@ -747,6 +782,7 @@ pub fn collect_parser_progress_block_edges(caller: String, stmts: Vec<Rc<Node>>,
                     acc.env.clone(),
                     parser_always_advancing.clone(),
                     consumed_true_set.clone(),
+                    result_err_statuses.clone(),
                     credit_callee_progress,
                 );
                 let mut edges = acc.edges.clone();
@@ -761,7 +797,7 @@ pub fn collect_parser_progress_block_edges(caller: String, stmts: Vec<Rc<Node>>,
     acc.edges.clone()
 }
 
-pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param: ParserStateParam, scc_name_set: HashMap<String, bool>, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, credit_callee_progress: bool) -> Vec<ParserProgressEdge> {
+pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param: ParserStateParam, scc_name_set: HashMap<String, bool>, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, result_err_statuses: HashMap<String, ParserResultErrStatus>, credit_callee_progress: bool) -> Vec<ParserProgressEdge> {
     match (*body.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let mut own_edges = vec![];
@@ -777,6 +813,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                             env.clone(),
                             parser_always_advancing.clone(),
                             consumed_true_set.clone(),
+                            result_err_statuses.clone(),
                         )
                     } else {
                         parser_call_input_progress(
@@ -785,6 +822,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                             env.clone(),
                             parser_always_advancing.clone(),
                             consumed_true_set.clone(),
+                            result_err_statuses.clone(),
                         )
                     },
                 });
@@ -798,6 +836,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                     env.clone(),
                     parser_always_advancing.clone(),
                     consumed_true_set.clone(),
+                    result_err_statuses.clone(),
                     credit_callee_progress,
                 )
             }).collect::<Vec<_>>();
@@ -813,12 +852,15 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                 env.clone(),
                 parser_always_advancing.clone(),
                 consumed_true_set.clone(),
+                result_err_statuses.clone(),
                 credit_callee_progress,
             );
             let then_consumed = match parser_progress_flag_var(cond.clone()) {
                 Some(name) => v2_rt::map_insert(consumed_true_set.clone(), name.clone(), true),
                 None => consumed_true_set.clone(),
             };
+            let then_err_statuses = parser_then_err_statuses(cond.clone(), result_err_statuses.clone());
+            let else_err_statuses = parser_else_err_statuses(cond.clone(), result_err_statuses.clone());
             let then_edges = collect_parser_progress_edges(
                 caller.clone(),
                 if_then_branch(body.clone()),
@@ -827,6 +869,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                 env.clone(),
                 parser_always_advancing.clone(),
                 then_consumed.clone(),
+                then_err_statuses.clone(),
                 credit_callee_progress,
             );
             let else_edges = match if_else_branch(body.clone()) {
@@ -838,6 +881,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                     env.clone(),
                     parser_always_advancing.clone(),
                     consumed_true_set.clone(),
+                    else_err_statuses.clone(),
                     credit_callee_progress,
                 ),
                 None => vec![],
@@ -854,6 +898,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                 env.clone(),
                 parser_always_advancing.clone(),
                 consumed_true_set.clone(),
+                result_err_statuses.clone(),
                 credit_callee_progress,
             );
             let next_env = parser_env_with_binding(
@@ -863,6 +908,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                 state_param.clone(),
                 parser_always_advancing.clone(),
                 consumed_true_set.clone(),
+                result_err_statuses.clone(),
             );
             let body_edges = match let_body(body.clone()) {
                 Some(let_tail) => collect_parser_progress_edges(
@@ -873,6 +919,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                     next_env.clone(),
                     parser_always_advancing.clone(),
                     consumed_true_set.clone(),
+                    result_err_statuses.clone(),
                     credit_callee_progress,
                 ),
                 None => vec![],
@@ -887,6 +934,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
             env.clone(),
             parser_always_advancing.clone(),
             consumed_true_set.clone(),
+            result_err_statuses.clone(),
             credit_callee_progress,
         ),
         ExprData::ExprMatch { .. } => {
@@ -898,6 +946,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                 env.clone(),
                 parser_always_advancing.clone(),
                 consumed_true_set.clone(),
+                result_err_statuses.clone(),
                 credit_callee_progress,
             );
             let arm_edges: Vec<ParserProgressEdge> = match_arm_nodes(body.clone()).iter().cloned().flat_map(|arm_node| {
@@ -909,6 +958,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                     env.clone(),
                     parser_always_advancing.clone(),
                     consumed_true_set.clone(),
+                    result_err_statuses.clone(),
                     credit_callee_progress,
                 )
             }).collect();
@@ -923,6 +973,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
                 env.clone(),
                 parser_always_advancing.clone(),
                 consumed_true_set.clone(),
+                result_err_statuses.clone(),
                 credit_callee_progress,
             )
         }).collect::<Vec<_>>(),
@@ -954,6 +1005,13 @@ pub enum ParserSuccessSummary {
     },
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParserResultErrStatus {
+    ParserErrUnknown,
+    ParserErrKnownError,
+    ParserErrKnownClear,
+}
+
 pub fn merge_parser_success_summary(a: Rc<ParserSuccessSummary>, b: Rc<ParserSuccessSummary>) -> Rc<ParserSuccessSummary> {
     match (*a).clone() {
         ParserSuccessSummary::NoSuccessfulReturn => b.clone(),
@@ -973,22 +1031,15 @@ pub fn parser_success_progress_from_summary(summary: Rc<ParserSuccessSummary>) -
     }
 }
 
-pub fn parser_expr_is_definitely_some(expr: Rc<Node>) -> bool {
+pub fn parser_success_summary(expr: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, result_err_statuses: HashMap<String, ParserResultErrStatus>) -> Rc<ParserSuccessSummary> {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprRecordLit { .. } => match record_lit_type_name(expr.clone()) {
-            Some(type_name) => type_name == "Some".to_string(),
-            None => false,
-        },
-        _ => false,
-    }
-}
-
-pub fn parser_success_summary(expr: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>) -> Rc<ParserSuccessSummary> {
-    match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprReturn { .. } => parser_success_summary(return_value(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+        ExprData::ExprReturn { .. } => parser_success_summary(return_value(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone()),
         ExprData::ExprVar { .. } => {
             let name = expr_var_name(expr.clone());
-            parser_bound_result_success_summary(name.clone(), env.clone())
+            match result_err_statuses.get(&name) {
+                Some(ParserResultErrStatus::ParserErrKnownError) => Rc::new(ParserSuccessSummary::NoSuccessfulReturn),
+                _ => parser_bound_result_success_summary(name.clone(), env.clone()),
+            }
         }
         ExprData::ExprCall { .. } => Rc::new(ParserSuccessSummary::SuccessfulReturn {
             progress: parser_result_state_progress(
@@ -998,6 +1049,7 @@ pub fn parser_success_summary(expr: Rc<Node>, state_param: ParserStateParam, env
                     env.clone(),
                     parser_always_advancing.clone(),
                     consumed_true_set.clone(),
+                    result_err_statuses.clone(),
                 ),
                 parser_always_advancing.clone(),
                 consumed_true_set.clone(),
@@ -1005,36 +1057,21 @@ pub fn parser_success_summary(expr: Rc<Node>, state_param: ParserStateParam, env
             ),
         }),
         ExprData::ExprRecordLit { .. } => match parser_record_field_value(expr.clone(), "err".to_string()) {
-            Some(err_expr) => {
-                if parser_expr_is_none(err_expr.clone()) {
-                    match parser_record_field_value(expr.clone(), "state".to_string()) {
-                        Some(state_expr) => Rc::new(ParserSuccessSummary::SuccessfulReturn {
-                            progress: parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
-                        }),
-                        None => Rc::new(ParserSuccessSummary::SuccessfulReturn {
-                            progress: ProgressKind::ProgressUnknown,
-                        }),
-                    }
-                } else if parser_expr_is_definitely_some(err_expr.clone()) {
-                    Rc::new(ParserSuccessSummary::NoSuccessfulReturn)
-                } else {
-                    match parser_record_field_value(expr.clone(), "state".to_string()) {
-                        Some(state_expr) => Rc::new(ParserSuccessSummary::SuccessfulReturn {
-                            progress: parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
-                        }),
-                        None => Rc::new(ParserSuccessSummary::SuccessfulReturn {
-                            progress: ProgressKind::ProgressUnknown,
-                        }),
-                    }
-                }
-            }
-            None => Rc::new(ParserSuccessSummary::SuccessfulReturn {
-                progress: ProgressKind::ProgressUnknown,
-            }),
+            Some(err_expr) => match parser_err_status_for_expr(err_expr.clone(), result_err_statuses.clone()) {
+                ParserResultErrStatus::ParserErrKnownClear => match parser_record_field_value(expr.clone(), "state".to_string()) {
+                    Some(state_expr) => Rc::new(ParserSuccessSummary::SuccessfulReturn {
+                        progress: parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone()),
+                    }),
+                    None => Rc::new(ParserSuccessSummary::NoSuccessfulReturn),
+                },
+                ParserResultErrStatus::ParserErrKnownError => Rc::new(ParserSuccessSummary::NoSuccessfulReturn),
+                ParserResultErrStatus::ParserErrUnknown => Rc::new(ParserSuccessSummary::NoSuccessfulReturn),
+            },
+            None => Rc::new(ParserSuccessSummary::NoSuccessfulReturn),
         },
         ExprData::ExprMatch { .. } => {
             let arm_progresses = match_arm_nodes(expr.clone()).iter().cloned().map(|arm_node| {
-                parser_success_summary(arm_body(arm_node.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone())
+                parser_success_summary(arm_body(arm_node.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone())
             }).collect::<Vec<_>>();
             match arm_progresses.into_iter().reduce(|acc, progress| merge_parser_success_summary(acc.clone(), progress.clone())) {
                 Some(progress) => progress.clone(),
@@ -1047,9 +1084,11 @@ pub fn parser_success_summary(expr: Rc<Node>, state_param: ParserStateParam, env
                 Some(name) => v2_rt::map_insert(consumed_true_set.clone(), name.clone(), true),
                 None => consumed_true_set.clone(),
             };
-            let then_progress = parser_success_summary(if_then_branch(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), then_consumed.clone());
+            let then_err_statuses = parser_then_err_statuses(cond.clone(), result_err_statuses.clone());
+            let else_err_statuses = parser_else_err_statuses(cond.clone(), result_err_statuses.clone());
+            let then_progress = parser_success_summary(if_then_branch(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), then_consumed.clone(), then_err_statuses.clone());
             let else_progress = match if_else_branch(expr.clone()) {
-                Some(else_branch) => parser_success_summary(else_branch.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+                Some(else_branch) => parser_success_summary(else_branch.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), else_err_statuses.clone()),
                 None => Rc::new(ParserSuccessSummary::NoSuccessfulReturn),
             };
             merge_parser_success_summary(then_progress.clone(), else_progress.clone())
@@ -1062,9 +1101,10 @@ pub fn parser_success_summary(expr: Rc<Node>, state_param: ParserStateParam, env
                 state_param.clone(),
                 parser_always_advancing.clone(),
                 consumed_true_set.clone(),
+                result_err_statuses.clone(),
             );
             match let_body(expr.clone()) {
-                Some(body) => parser_success_summary(body.clone(), state_param.clone(), next_env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+                Some(body) => parser_success_summary(body.clone(), state_param.clone(), next_env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone()),
                 None => Rc::new(ParserSuccessSummary::NoSuccessfulReturn),
             }
         }
@@ -1088,6 +1128,7 @@ pub fn parser_success_summary(expr: Rc<Node>, state_param: ParserStateParam, env
                                     state_param.clone(),
                                     parser_always_advancing.clone(),
                                     consumed_true_set.clone(),
+                                    result_err_statuses.clone(),
                                 );
                                 ParserProgressAcc {
                                     edges: acc.edges.clone(),
@@ -1100,7 +1141,7 @@ pub fn parser_success_summary(expr: Rc<Node>, state_param: ParserStateParam, env
                     }
                 });
                 match expr.children.clone().last().cloned() {
-                    Some(last_stmt) => parser_success_summary(last_stmt.clone(), state_param.clone(), acc.env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+                    Some(last_stmt) => parser_success_summary(last_stmt.clone(), state_param.clone(), acc.env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_err_statuses.clone()),
                     None => Rc::new(ParserSuccessSummary::NoSuccessfulReturn),
                 }
             }
@@ -1111,7 +1152,7 @@ pub fn parser_success_summary(expr: Rc<Node>, state_param: ParserStateParam, env
     }
 }
 
-pub fn parser_success_progress(expr: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>) -> ProgressKind {
+pub fn parser_success_progress(expr: Rc<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: HashMap<String, bool>, consumed_true_set: HashMap<String, bool>, result_err_statuses: HashMap<String, ParserResultErrStatus>) -> ProgressKind {
     parser_success_progress_from_summary(
         parser_success_summary(
             expr.clone(),
@@ -1119,6 +1160,7 @@ pub fn parser_success_progress(expr: Rc<Node>, state_param: ParserStateParam, en
             env.clone(),
             parser_always_advancing.clone(),
             consumed_true_set.clone(),
+            result_err_statuses.clone(),
         ),
     )
 }
@@ -1156,6 +1198,7 @@ pub fn collect_candidate_parser_progress_edges(
                             candidate_set.clone(),
                             empty_parser_progress_env(),
                             candidates.clone(),
+                            <HashMap<_, _>>::new(),
                             <HashMap<_, _>>::new(),
                             credit_callee_progress,
                         ),
@@ -1249,12 +1292,13 @@ pub fn parser_member_is_always_advancing(
         Some(state_param) => {
             !set_has(same_cycle_members.clone(), entry.name.clone())
                 && parser_success_progress(
-                entry.body.clone(),
-                state_param.clone(),
-                empty_parser_progress_env(),
-                candidates.clone(),
-                <HashMap<_, _>>::new(),
-            ) == ProgressKind::ProgressStrict
+                    entry.body.clone(),
+                    state_param.clone(),
+                    empty_parser_progress_env(),
+                    candidates.clone(),
+                    <HashMap<_, _>>::new(),
+                    <HashMap<_, _>>::new(),
+                ) == ProgressKind::ProgressStrict
         }
         None => false,
     }
@@ -1366,6 +1410,7 @@ pub fn self_calls_have_strict_parser_progress(func_name: String, body: Rc<Node>,
                 self_set.clone(),
                 empty_parser_progress_env(),
                 parser_always_advancing.clone(),
+                <HashMap<_, _>>::new(),
                 <HashMap<_, _>>::new(),
                 false,
             );
@@ -1491,6 +1536,7 @@ pub fn classify_parser_scc_recursion_pattern(members: Vec<String>, func_index: H
                         scc_name_set.clone(),
                         empty_parser_progress_env(),
                         parser_always_advancing.clone(),
+                        <HashMap<_, _>>::new(),
                         <HashMap<_, _>>::new(),
                         true,
                     ),
