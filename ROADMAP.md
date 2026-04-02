@@ -261,15 +261,34 @@ semantics (when to apply them, how they interact, what constraints they
 impose). Emitters compensate by embedding semantic decisions as code. The
 INVARIANTS.md table at §Emission lists 8 known violations of this pattern.
 
-**Live bootstrap blockers:**
-- **B scaffolding:** 41 `Rc::new(HashMap::new())` replacing `compile_error!("empty_map")`.
-  Defers type proofs to Rust inference — scaffolding, not fix.
-- **C regression:** Regenerated binary produces 548 typed errors (297 "unresolved
-  type Callable" + cascading). Committed binary produces 0 on same input.
-  Root cause: type inference regression in regenerated code. Three perf
-  blockers resolved (tokenizer O(n^2), dag_syntax_spec cache, shape binop).
+**Live bootstrap status:**
+- **Bootstrap B:** 41 `Rc::new(HashMap::new())` scaffolding (defers type proofs).
+- **Bootstrap C (self-compile):** GREEN. Regenerated binary self-compiles with
+  0 typed errors, 40 files emitted, 297 CX diagnostics (bypassed).
+  Four root causes found and fixed:
+  1. `pattern_subject_from_node` checked `inferred` field for TypeVariable
+     instead of `node.name == "Dynamic"` — 730 cascading errors (NOTE: leans
+     on node.name, tracked as D6 debt; should become structural variant)
+  2. Container types expanded via `Map = PartialFunction<K,V>` alias — 80 errors.
+     Fix: `is_container_type` check before alias expansion (per INVARIANTS.md)
+  3. Bool literal patterns not counted in exhaustiveness checker — 1 error
+  4. String interpolation `"{acc}.{r.name}"` mis-parsed `.` as field access — 1 error
+  Plus 3 perf fixes: iterative tokenizer (O(n^2)→O(n)), dag_syntax_spec
+  thread_local cache, shape-based token_shape_to_binop.
+- **Bootstrap D (stage1→stage0 replacement):** NOT YET GREEN. Stage1 compiles
+  as Rust but replacing stage0 requires re-applying bootstrap patches
+  (tokenizer, dag_syntax cache, binop, bare-map scaffolding). Full
+  regeneration loop needs these patches automated or emitter fixed upstream.
 - Fix order #6 (M2 blocker 2) remains: incomplete parameterized types
   leaking past the inference boundary.
+
+**Next PR direction:**
+- Stay on bootstrap. Do not broaden to #1/#2/#4 completion.
+- Make bootstrap patches unnecessary: fix the emitter so regenerated code
+  doesn't need iterative tokenizer, dag_syntax cache, or shape binop patches.
+- The `node.name`-based pattern_subject fix is D6 debt — replace with
+  structural InferredNode variant when D6 lands.
+- Core question: do parameterized container facts survive resolve→emit?
 
 ---
 
