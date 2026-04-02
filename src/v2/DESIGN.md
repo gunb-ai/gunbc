@@ -7,13 +7,48 @@ For invariants, see `INVARIANTS.md`.
 ## Core claim
 
 The compiler is a pure transform: `.dag source → backend artifacts`.
-Five stages, each a pure function:
+Each stage is a pure function, but the middle is a staged enrichment
+pipeline over one carrier rather than a hard AST→IR split:
 
 ```
-.dag source → tokenize → parse → resolve → typecheck → emit → output files
+.dag source
+→ tokenize
+→ parse (syntax-faithful Node carrier)
+→ resolve / normalize
+→ typecheck / reconcile (ResolvedGraph, TypedModule)
+→ emitter fact precompute (EmitGraphInfo)
+→ per-language renderers
+→ output files
 ```
 
 No interpreter in the pipeline. Interpretation is a downstream concern.
+
+## The carrier is explicit; GraphIR is currently implicit
+
+There is no standalone executable GraphIR in v2 today. The compiler uses
+one structural carrier, `Node`, across parse, resolve, infer, and emit.
+Semantic stages enrich that carrier with additional facts:
+
+- Parse returns `ParseResult { module: Node?, error: ErrorNode? }`.
+- Resolve / normalize lift module collections into `ModuleGraph`.
+- Typecheck / reconcile produce `TypedModule` and `ResolvedGraph`.
+- Emit consumes `ResolvedGraph` plus `EmitGraphInfo`, a precomputed fact
+  bundle for value context, type summaries, recursive sets, and other
+  backend-facing summaries.
+
+That means the honest architecture story is:
+
+```
+frontend syntax
+→ unified Node carrier
+→ graph enrichment
+→ emitter facts
+→ renderers
+```
+
+The long-term direction is still to sharpen the backend contract so
+renderers consume lowered graph facts, not parser-era recovery or
+source-text heuristics.
 
 ## Types are values, not references
 

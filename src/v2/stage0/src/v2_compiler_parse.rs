@@ -449,7 +449,7 @@ pub fn parse_recovery_placeholder() -> Rc<Node> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptRetResult {
-    pub inferred: Option<Rc<InferredNode>>,
+    pub return_annotation: Option<Rc<InferredNode>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -2304,7 +2304,7 @@ pub fn is_conj_with_children(n: Rc<Node>) -> bool {
     (node_is_product(n.clone()) && ((n.children.clone().len() as i64) > 0))
 }
 
-pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
+pub fn child_type_or_error(ch: Rc<Node>) -> Rc<Node> {
     if (ch.inferred.clone() != None) {
         match (*rt_node(ch.clone())).clone() {
             NodeType::Typed { node: rt, .. } => rt.clone(),
@@ -2316,7 +2316,7 @@ pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn node_inferred_to_outputs(rt: Rc<Node>) -> Vec<Rc<Node>> {
+pub fn return_type_node_to_outputs(rt: Rc<Node>) -> Vec<Rc<Node>> {
     if is_conj_with_children(rt.clone()) {
         let typed_children = rt
             .children
@@ -2330,7 +2330,7 @@ pub fn node_inferred_to_outputs(rt: Rc<Node>) -> Vec<Rc<Node>> {
             for ch in rt.children.clone().iter().cloned() {
                 __result.push(make_field_node(
                     ch.name.clone(),
-                    child_inferred_or_empty(ch.clone()),
+                    child_type_or_error(ch.clone()),
                     Cardinality::Required,
                     ch.body.clone(),
                     None,
@@ -4720,7 +4720,7 @@ pub fn parse_fn_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<It
         }
         let params = r.params.clone();
         let s = r.state.clone();
-        let ret = parse_optional_inferred(tokens.clone(), s.clone());
+        let ret = parse_optional_return_annotation(tokens.clone(), s.clone());
         if has_err(ret.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -4728,7 +4728,7 @@ pub fn parse_fn_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<It
                 err: ret.err.clone(),
             });
         }
-        let inferred = ret.inferred.clone();
+        let return_annotation = ret.return_annotation.clone();
         let s = ret.state.clone();
         let r = parse_block(tokens.clone(), skip_newlines(tokens.clone(), s.clone()));
         if has_err(r.err.clone()) {
@@ -4749,7 +4749,7 @@ pub fn parse_fn_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<It
                 all.extend(params.clone());
                 all
             },
-            inferred: inferred.clone(),
+            inferred: return_annotation.clone(),
             return_cardinality: Cardinality::Required,
             uses: vec![],
             body: Some(body.clone()),
@@ -4855,7 +4855,7 @@ pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
         }
         let params = r.params.clone();
         let s = r.state.clone();
-        let ret = parse_optional_inferred(tokens.clone(), s.clone());
+        let ret = parse_optional_return_annotation(tokens.clone(), s.clone());
         if has_err(ret.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -4863,7 +4863,7 @@ pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
                 err: ret.err.clone(),
             });
         }
-        let inferred = ret.inferred.clone();
+        let return_annotation = ret.return_annotation.clone();
         let s = ret.state.clone();
         let uses_r = parse_uses_clause(tokens.clone(), skip_newlines(tokens.clone(), s.clone()));
         if has_err(uses_r.err.clone()) {
@@ -4890,7 +4890,7 @@ pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
             ident_span: Some(name_span.clone()),
             children: vec![],
             params: params.clone(),
-            inferred: inferred.clone(),
+            inferred: return_annotation.clone(),
             return_cardinality: Cardinality::Required,
             uses: uses.clone(),
             body: Some(body.clone()),
@@ -5146,7 +5146,7 @@ pub fn parse_resource_config_acc(
     }
 }
 
-pub fn parse_optional_inferred(
+pub fn parse_optional_return_annotation(
     tokens: Rc<Vec<Rc<Token>>>,
     state: Rc<ParserState>,
 ) -> Rc<OptRetResult> {
@@ -5157,13 +5157,13 @@ pub fn parse_optional_inferred(
                 let r = parse_type_expr(tokens.clone(), e.state.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(OptRetResult {
-                        inferred: None,
+                        return_annotation: None,
                         state: r.state.clone(),
                         err: r.err.clone(),
                     });
                 }
                 Rc::new(OptRetResult {
-                    inferred: Some(Rc::new(InferredNode::Resolved {
+                    return_annotation: Some(Rc::new(InferredNode::Resolved {
                         node: r.type_expr.clone(),
                     })),
                     state: r.state.clone(),
@@ -5172,7 +5172,7 @@ pub fn parse_optional_inferred(
             }
         } else {
             Rc::new(OptRetResult {
-                inferred: None,
+                return_annotation: None,
                 state: state.clone(),
                 err: None,
             })
@@ -6273,7 +6273,7 @@ pub fn parse_operation_v2_inline(
             });
         }
         let s = r.state.clone();
-        let ret = parse_optional_inferred(tokens.clone(), s.clone());
+        let ret = parse_optional_return_annotation(tokens.clone(), s.clone());
         if has_err(ret.err.clone()) {
             return Rc::new(OpResult {
                 operation: dummy_op.clone(),
@@ -6282,8 +6282,8 @@ pub fn parse_operation_v2_inline(
             });
         }
         let s = ret.state.clone();
-        let outputs = match ret.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(rt.clone()),
+        let outputs = match ret.return_annotation.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => return_type_node_to_outputs(rt.clone()),
             _ => vec![],
         };
         let s = skip_newlines(tokens.clone(), s.clone());
@@ -8308,7 +8308,7 @@ pub fn parse_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
                             err: r4.err.clone(),
                         });
                     }
-                    let ret = parse_optional_inferred(tokens.clone(), r4.state.clone());
+                    let ret = parse_optional_return_annotation(tokens.clone(), r4.state.clone());
                     if has_err(ret.err.clone()) {
                         return Rc::new(CapResult {
                             capability: dummy_cap.clone(),
@@ -8316,9 +8316,9 @@ pub fn parse_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
                             err: ret.err.clone(),
                         });
                     }
-                    let outputs = match ret.inferred.clone().as_deref().cloned() {
+                    let outputs = match ret.return_annotation.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
-                            node_inferred_to_outputs(rt.clone())
+                            return_type_node_to_outputs(rt.clone())
                         }
                         _ => vec![],
                     };
@@ -8688,7 +8688,7 @@ pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
                         err: r3.err.clone(),
                     });
                 }
-                let ret = parse_optional_inferred(tokens.clone(), r3.state.clone());
+                let ret = parse_optional_return_annotation(tokens.clone(), r3.state.clone());
                 if has_err(ret.err.clone()) {
                     return Rc::new(ItemResult {
                         item: named_dummy.clone(),
@@ -8696,8 +8696,8 @@ pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
                         err: ret.err.clone(),
                     });
                 }
-                let inferred = if (ret.inferred.clone() != None) {
-                    ret.inferred.clone()
+                let return_annotation = if (ret.return_annotation.clone() != None) {
+                    ret.return_annotation.clone()
                 } else {
                     Some(Rc::new(InferredNode::Resolved {
                         node: leaf_type_node("Unit".to_string(), start_span.clone()),
@@ -8709,7 +8709,7 @@ pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
                     ident_span: Some(name_span.clone()),
                     children: vec![],
                     params: r3.params.clone(),
-                    inferred: inferred.clone(),
+                    inferred: return_annotation.clone(),
                     return_cardinality: Cardinality::Required,
                     uses: vec![],
                     body: None,
@@ -8767,7 +8767,7 @@ pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
                         err: r3.err.clone(),
                     });
                 }
-                let ret = parse_optional_inferred(tokens.clone(), r3.state.clone());
+                let ret = parse_optional_return_annotation(tokens.clone(), r3.state.clone());
                 if has_err(ret.err.clone()) {
                     return Rc::new(ItemResult {
                         item: named_dummy.clone(),
@@ -8775,8 +8775,8 @@ pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
                         err: ret.err.clone(),
                     });
                 }
-                let inferred = if (ret.inferred.clone() != None) {
-                    ret.inferred.clone()
+                let return_annotation = if (ret.return_annotation.clone() != None) {
+                    ret.return_annotation.clone()
                 } else {
                     Some(Rc::new(InferredNode::Resolved {
                         node: leaf_type_node("Unit".to_string(), start_span.clone()),
@@ -8788,7 +8788,7 @@ pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
                     ident_span: Some(name_span.clone()),
                     children: vec![],
                     params: r3.params.clone(),
-                    inferred: inferred.clone(),
+                    inferred: return_annotation.clone(),
                     return_cardinality: Cardinality::Required,
                     uses: vec![],
                     body: None,
@@ -9432,7 +9432,7 @@ pub fn parse_node_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc
         return r3.clone();
     }
     // Optional return type annotation: node x: call() -> { fields }
-    let ret = parse_optional_inferred(tokens.clone(), r3.state.clone());
+    let ret = parse_optional_return_annotation(tokens.clone(), r3.state.clone());
     if has_err(ret.err.clone()) {
         return Rc::new(ExprResult {
             expr: dummy_expr.clone(),
@@ -9454,7 +9454,7 @@ pub fn parse_node_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc
             children: vec![r3.expr.clone()],
             connective: None,
             params: vec![],
-            inferred: ret.inferred.clone(),
+            inferred: ret.return_annotation.clone(),
             return_cardinality: Cardinality::Required,
             uses: vec![],
             body: None,

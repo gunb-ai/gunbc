@@ -1,7 +1,7 @@
 // v2 parser -- recursive descent, first-error-halt.
 //
 // Consumes a flat List<Token> (from the tokenizer) and produces a
-// Module AST. Every production function takes a ParserState and
+// syntax-faithful module Node. Every production function takes a ParserState and
 // returns a record with the result and the advanced state. On error,
 // functions return a ParseError record that halts parsing.
 //
@@ -116,7 +116,7 @@ type ItemPrefixResult {
   name_span: SourceSpan
   type_params: List<Node>
   params: List<Node>
-  inferred: InferredNode?
+  return_annotation: InferredNode?
   uses: List<Node>
   state: ParserState
   err: ErrorNode?
@@ -178,7 +178,7 @@ fn parse_recovery_placeholder() -> Node {
 }
 
 // Optional results
-type OptRetResult { inferred: InferredNode?, state: ParserState, err: ErrorNode? }
+type OptRetResult { return_annotation: InferredNode?, state: ParserState, err: ErrorNode? }
 type GuardResult { guard: Node?, state: ParserState, err: ErrorNode? }
 type FromKeyResult { from_key: String?, state: ParserState, err: ErrorNode? }
 
@@ -924,7 +924,7 @@ fn is_conj_with_children(n: Node) -> Bool {
 }
 
 // Extract the inferred from a child Node, fail-closed on unresolved shape.
-fn child_inferred_or_empty(ch: Node) -> Node {
+fn child_type_or_error(ch: Node) -> Node {
   if ch.inferred != none {
     match rt_node(n: ch) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
   } else {
@@ -935,7 +935,7 @@ fn child_inferred_or_empty(ch: Node) -> Node {
 // Convert a Node return type to output fields.
 // Conj node with children -> extract children as fields.
 // Otherwise -> single "value" field wrapping the node.
-fn node_inferred_to_outputs(rt: Node) -> List<Node> {
+fn return_type_node_to_outputs(rt: Node) -> List<Node> {
   if is_conj_with_children(n: rt) {
     let typed_children = rt.children |> all(ch =>
       match rt_node(n: ch) {
@@ -944,7 +944,7 @@ fn node_inferred_to_outputs(rt: Node) -> List<Node> {
       }
     )
     if typed_children {
-      rt.children |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span))
+      rt.children |> map(ch => make_field_node(name: ch.name, type_expr: child_type_or_error(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span))
     } else {
       []
     }
@@ -1150,7 +1150,7 @@ fn parse_item(tokens: List<Token>, state: ParserState) -> ItemResult {
 fn parse_item_prefix(tokens: List<Token>, state: ParserState, form: ItemForm) -> ItemPrefixResult {
   // 1. Expect identifier
   let r = expect_ident(tokens: tokens, state: state)
-  if has_err(err: r.err) { return ItemPrefixResult { name: "", name_span: r.span, type_params: [], params: [], inferred: none, uses: [], state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemPrefixResult { name: "", name_span: r.span, type_params: [], params: [], return_annotation: none, uses: [], state: r.state, err: r.err } }
   let name = r.name
   let name_span = r.span
 
@@ -1167,19 +1167,19 @@ fn parse_item_prefix(tokens: List<Token>, state: ParserState, form: ItemForm) ->
   } else {
     ParamsResult { params: [], state: tp_result.state, err: none }
   }
-  if has_err(err: params_result.err) { return ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: [], inferred: none, uses: [], state: params_result.state, err: params_result.err } }
+  if has_err(err: params_result.err) { return ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: [], return_annotation: none, uses: [], state: params_result.state, err: params_result.err } }
 
   // 4. Return type (if form.has_return_type)
   let ret_result = if form.has_return_type {
-    parse_optional_inferred(tokens: tokens, state: params_result.state)
+    parse_optional_return_annotation(tokens: tokens, state: params_result.state)
   } else {
-    OptRetResult { inferred: none, state: params_result.state, err: none }
+    OptRetResult { return_annotation: none, state: params_result.state, err: none }
   }
-  if has_err(err: ret_result.err) { return ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: params_result.params, inferred: none, uses: [], state: ret_result.state, err: ret_result.err } }
+  if has_err(err: ret_result.err) { return ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: params_result.params, return_annotation: none, uses: [], state: ret_result.state, err: ret_result.err } }
   // Enforce return_required: if the form demands a return type and none was provided, error
-  let missing_required_ret = form.return_required && match ret_result.inferred { Some { value: _ } => false  None => true }
+  let missing_required_ret = form.return_required && match ret_result.return_annotation { Some { value: _ } => false  None => true }
   if missing_required_ret {
-    return ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: params_result.params, inferred: none, uses: [], state: ret_result.state, err: Some { value: parse_error(msg: concat("expected return type annotation (-> Type) for '", concat(form.keyword, concat(" ", name))), span: current_span(tokens: tokens, state: ret_result.state)) } }
+    return ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: params_result.params, return_annotation: none, uses: [], state: ret_result.state, err: Some { value: parse_error(msg: concat("expected return type annotation (-> Type) for '", concat(form.keyword, concat(" ", name))), span: current_span(tokens: tokens, state: ret_result.state)) } }
   }
 
   // 5. Uses clause (if form.has_uses)
@@ -1188,9 +1188,9 @@ fn parse_item_prefix(tokens: List<Token>, state: ParserState, form: ItemForm) ->
   } else {
     UsesResult { uses: [], state: ret_result.state, err: none }
   }
-  if has_err(err: uses_result.err) { return ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: params_result.params, inferred: ret_result.inferred, uses: [], state: uses_result.state, err: uses_result.err } }
+  if has_err(err: uses_result.err) { return ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: params_result.params, return_annotation: ret_result.return_annotation, uses: [], state: uses_result.state, err: uses_result.err } }
 
-  ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: params_result.params, inferred: ret_result.inferred, uses: uses_result.uses, state: uses_result.state, err: none }
+  ItemPrefixResult { name: name, name_span: name_span, type_params: tp_result.params, params: params_result.params, return_annotation: ret_result.return_annotation, uses: uses_result.uses, state: uses_result.state, err: none }
 }
 
 fn parse_item_by_form(tokens: List<Token>, state: ParserState, form: ItemForm) -> ItemResult {
@@ -1948,10 +1948,10 @@ fn parse_fn_after_kw(tokens: List<Token>, state: ParserState, start_span: Source
   let params = r.params
   let s = r.state
 
-  // Optional return type: -> Type
-  let ret = parse_optional_inferred(tokens: tokens, state: s)
+  // Optional return annotation: -> Type
+  let ret = parse_optional_return_annotation(tokens: tokens, state: s)
   if has_err(err: ret.err) { return ItemResult { item: named_dummy, state: ret.state, err: ret.err } }
-  let inferred = ret.inferred
+  let return_annotation = ret.return_annotation
   let s = ret.state
 
   // Body: { exprs }
@@ -1960,21 +1960,21 @@ fn parse_fn_after_kw(tokens: List<Token>, state: ParserState, start_span: Source
   let body = r.expr
 
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: params,
-    inferred: inferred, return_cardinality: Required, uses: [],
+    inferred: return_annotation, return_cardinality: Required, uses: [],
     body: Some { value: body }, connective: NoConnective, transport: none,
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }
 
-// Body-only parser for ExprBody items. Receives prefix (name, params, inferred)
+// Body-only parser for ExprBody items. Receives prefix (name, params, return annotation)
 // from parse_item_prefix. Parses the block body and assembles the Node.
 fn parse_fn_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
   let type_params = prefix.type_params
   let params = prefix.params
-  let inferred = prefix.inferred
+  let return_annotation = prefix.return_annotation
   // Type params prepend to params (same slot as type definitions).
   // Type params are structurally distinguishable: param_node_name == param_node_type_expr.name
   // (self-referential), while function params have name != type_expr.name.
@@ -1987,7 +1987,7 @@ fn parse_fn_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, star
   let body = r.expr
 
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: all_params,
-    inferred: inferred, return_cardinality: Required, uses: [],
+    inferred: return_annotation, return_cardinality: Required, uses: [],
     body: Some { value: body }, connective: NoConnective, transport: none,
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -2030,9 +2030,9 @@ fn parse_block_item_after_kw(tokens: List<Token>, state: ParserState, start_span
   let params = r.params
   let s = r.state
 
-  let ret = parse_optional_inferred(tokens: tokens, state: s)
+  let ret = parse_optional_return_annotation(tokens: tokens, state: s)
   if has_err(err: ret.err) { return ItemResult { item: named_dummy, state: ret.state, err: ret.err } }
-  let inferred = ret.inferred
+  let return_annotation = ret.return_annotation
   let s = ret.state
 
   // Optional uses clause (only for forms that support it)
@@ -2047,20 +2047,20 @@ fn parse_block_item_after_kw(tokens: List<Token>, state: ParserState, start_span
   let body = r.expr
 
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: params,
-    inferred: inferred, return_cardinality: Required, uses: uses,
+    inferred: return_annotation, return_cardinality: Required, uses: uses,
     body: Some { value: body }, connective: NoConnective, transport: none,
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }
 
-// Body-only parser for BlockBody items. Receives prefix (name, params, inferred, uses)
+// Body-only parser for BlockBody items. Receives prefix (name, params, return annotation, uses)
 // from parse_item_prefix. Parses block body and assembles the Node.
 fn parse_block_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
   let params = prefix.params
-  let inferred = prefix.inferred
+  let return_annotation = prefix.return_annotation
   let uses = prefix.uses
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
@@ -2069,7 +2069,7 @@ fn parse_block_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, s
   let body = r.expr
 
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: params,
-    inferred: inferred, return_cardinality: Required, uses: uses,
+    inferred: return_annotation, return_cardinality: Required, uses: uses,
     body: Some { value: body }, connective: NoConnective, transport: none,
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -2079,7 +2079,7 @@ fn parse_block_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, s
 fn parse_no_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
   let item = Node {
     name: prefix.name, span: start_span, ident_span: Some { value: prefix.name_span }, children: [],
-    params: prefix.params, inferred: prefix.inferred, return_cardinality: Required, uses: prefix.uses,
+    params: prefix.params, inferred: prefix.return_annotation, return_cardinality: Required, uses: prefix.uses,
     body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
@@ -2187,14 +2187,14 @@ fn parse_resource_config_acc(tokens: List<Token>, state: ParserState, acc: List<
   }
 }
 
-fn parse_optional_inferred(tokens: List<Token>, state: ParserState) -> OptRetResult {
+fn parse_optional_return_annotation(tokens: List<Token>, state: ParserState) -> OptRetResult {
   let e = eat(tokens: tokens, state: state, expected: ExpectArrow)
   if e.consumed {
     let r = parse_type_expr(tokens: tokens, state: e.state)
-    if has_err(err: r.err) { return OptRetResult { inferred: none, state: r.state, err: r.err } }
-    OptRetResult { inferred: Some { value: Resolved { node: r.type_expr } }, state: r.state, err: none }
+    if has_err(err: r.err) { return OptRetResult { return_annotation: none, state: r.state, err: r.err } }
+    OptRetResult { return_annotation: Some { value: Resolved { node: r.type_expr } }, state: r.state, err: none }
   } else {
-    OptRetResult { inferred: none, state: state, err: none }
+    OptRetResult { return_annotation: none, state: state, err: none }
   }
 }
 
@@ -2532,11 +2532,11 @@ fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: Stri
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
   let s = r.state
 
-  let ret = parse_optional_inferred(tokens: tokens, state: s)
+  let ret = parse_optional_return_annotation(tokens: tokens, state: s)
   if has_err(err: ret.err) { return OpResult { operation: dummy_op, state: ret.state, err: ret.err } }
   let s = ret.state
-  let outputs = match ret.inferred {
-    Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt)
+  let outputs = match ret.return_annotation {
+    Some { value: Resolved { node: rt } } => return_type_node_to_outputs(rt: rt)
     _ => []
   }
   let s = skip_newlines(tokens: tokens, state: s)
@@ -3146,10 +3146,10 @@ fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
     let inputs = r3.fields
     let r4 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), expected: ExpectRParen)
     if has_err(err: r4.err) { return CapResult { capability: dummy_cap, state: r4.state, err: r4.err } }
-    let ret = parse_optional_inferred(tokens: tokens, state: r4.state)
+    let ret = parse_optional_return_annotation(tokens: tokens, state: r4.state)
     if has_err(err: ret.err) { return CapResult { capability: dummy_cap, state: ret.state, err: ret.err } }
-    let outputs = match ret.inferred {
-      Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt)
+    let outputs = match ret.return_annotation {
+      Some { value: Resolved { node: rt } } => return_type_node_to_outputs(rt: rt)
       _ => []
     }
     let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs, span: start_span)
@@ -3495,13 +3495,13 @@ fn parse_node_decl(tokens: List<Token>, state: ParserState) -> ExprResult {
   let r3 = parse_expr(tokens: tokens, state: r2_state)
   if has_err(err: r3.err) { return r3 }
   // Optional return type annotation: node x: call() -> { fields }
-  let ret = parse_optional_inferred(tokens: tokens, state: r3.state)
+  let ret = parse_optional_return_annotation(tokens: tokens, state: r3.state)
   if has_err(err: ret.err) { return ExprResult { expr: dummy_expr, state: ret.state, err: ret.err } }
   // If colon form was used (node x: Type), the expression IS the type annotation.
   // Preserve this fact for downstream phases.
   let type_ann = if e_colon.consumed { Some { value: r3.expr } } else { none }
   let node = Node { name: name, span: span, ident_span: Some { value: name_span }, children: [r3.expr],
-    connective: NoConnective,    params: [], inferred: ret.inferred, return_cardinality: Required,
+    connective: NoConnective,    params: [], inferred: ret.return_annotation, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: cr.constraints,
     type_annotation: type_ann, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none,

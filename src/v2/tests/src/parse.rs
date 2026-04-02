@@ -6,7 +6,7 @@
 
 use crate::helpers::*;
 use std::rc::Rc;
-use v2_compiler::v2_compiler_parse::{child_inferred_or_empty, node_inferred_to_outputs};
+use v2_compiler::v2_compiler_parse::{child_type_or_error, return_type_node_to_outputs};
 use v2_compiler::v2_std_core::{
     field_node_type_expr, leaf_node, Cardinality, Connective, ExprData, Node, SourceSpan,
 };
@@ -44,14 +44,14 @@ fn synthetic_node(
 }
 
 #[test]
-fn child_inferred_or_empty_fails_closed_for_untyped_child() {
+fn child_type_or_error_fails_closed_for_untyped_child() {
     let child = synthetic_node("value", vec![], None, None);
-    let inferred = child_inferred_or_empty(child);
-    assert_eq!(inferred.name, "Error");
+    let ty = child_type_or_error(child);
+    assert_eq!(ty.name, "Error");
 }
 
 #[test]
-fn node_inferred_to_outputs_refuses_partial_product_types() {
+fn return_type_node_to_outputs_refuses_partial_product_types() {
     let typed_child = synthetic_node(
         "ok",
         vec![],
@@ -67,12 +67,12 @@ fn node_inferred_to_outputs_refuses_partial_product_types() {
         Some(Connective::Conj),
         None,
     );
-    let outputs = node_inferred_to_outputs(product);
+    let outputs = return_type_node_to_outputs(product);
     assert!(outputs.is_empty(), "partial products must fail closed");
 }
 
 #[test]
-fn node_inferred_to_outputs_preserves_fully_typed_products() {
+fn return_type_node_to_outputs_preserves_fully_typed_products() {
     let first = synthetic_node(
         "name",
         vec![],
@@ -90,7 +90,7 @@ fn node_inferred_to_outputs_preserves_fully_typed_products() {
         })),
     );
     let product = synthetic_node("Outputs", vec![first, second], Some(Connective::Conj), None);
-    let outputs = node_inferred_to_outputs(product);
+    let outputs = return_type_node_to_outputs(product);
     assert_eq!(outputs.len(), 2);
     assert_eq!(field_node_type_expr(outputs[0].clone()).name, "String");
     assert_eq!(field_node_type_expr(outputs[1].clone()).name, "Int");

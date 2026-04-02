@@ -92,7 +92,7 @@ path). No overlap with Category A.
   (`transport_base_url` etc.) encode the same structural knowledge
   redundantly. Not string-keyed (correct), but no single authority
   for which properties define which transport type (M2 structural debt)
-- `child_inferred_or_empty` fabricates Unit on inference failure
+- `child_type_or_error` fabricates Unit on inference failure
   instead of propagating error state (M2 boundary sufficiency, blocker 1)
 - `partial_function_templates` contains `emit_map_has` emitter-only
   alias that doesn't belong in carrier algebra (M4 Lane 1 Tier 2.5)
@@ -109,7 +109,7 @@ path). No overlap with Category A.
 
 **External review fix order (2026-04-02):**
 
-1. `child_inferred_or_empty` → structural error propagation (M2 blocker 1)
+1. `child_type_or_error` → structural error propagation (M2 blocker 1)
 2. `authored_name_at` semantic fallback → carry names structurally (M4 L2)
 3. Finish EmitContext/boundary migration → emit consumes, not rediscovers (E0c)
 4. Transport/config → one authority (M2 structural debt)
@@ -588,16 +588,16 @@ silently go wrong.
 
 Four blocker classes:
 
-1. **Fabricated output types** — `child_inferred_or_empty` in
+1. **Fabricated output types** — `child_type_or_error` in
    `02_parse.dag` silently converts `InferError`/`InferVariable`/`Untyped`
    to `Unit` instead of propagating structural error state.
-   `node_inferred_to_outputs` then builds output fields from these
+   `return_type_node_to_outputs` then builds output fields from these
    fabricated types. A partially-typed product silently becomes
    Unit-typed. Direct violation of No-fallbacks-that-fabricate.
    (External review 2026-04-02, highest-confidence correctness bug.)
-   - [x] `child_inferred_or_empty` propagates error state structurally
+   - [x] `child_type_or_error` propagates error state structurally
      (return `error_type` or carry `InferError` forward, not `Unit`)
-   - [x] `node_inferred_to_outputs` refuses to build outputs from
+   - [x] `return_type_node_to_outputs` refuses to build outputs from
      error-typed children (fail-closed)
 
 2. **Fabricated parameterization** — parameterized types reaching infer
