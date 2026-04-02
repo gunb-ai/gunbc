@@ -50,7 +50,7 @@ enforced. 10 reviewer violations resolved. Fold inference improved.
 Error count: 99 → 12 → 5 → 1 → 0 (99 fixed). PR #277, #285, fold
 bidirectional unification, field_access_base import fix.
 
-**Not yet verified:** emission is blocked by complexity violations (311).
+**Not yet verified:** emission is blocked by complexity violations (313).
 The fail-closed gate in `compile_sources` prevents file emission when
 any infer-stage errors exist, including complexity violations. The
 bootstrap test skips cargo check when blocked by complexity violations
@@ -345,6 +345,87 @@ knowledge, but its representation should be Node compositions in a
 - The semiring laws and formal semantics are preserved — only the
   representation changes
 
+**Worked example — simplify_cost before/after:**
+
+Before (CostExpr — fails descent proof, RC-3):
+```dag
+fn simplify_cost(expr: CostExpr) -> CostExpr {
+  match expr {
+    CostAdd { left: l, right: r } =>
+      let sl = simplify_cost(expr: l)    // recurse on CostExpr field
+      let sr = simplify_cost(expr: r)    // analyzer: "l" is not a Node accessor
+      match (sl, sr) {                   // → ProgressUnknown → violation
+        (CostConst { value: a }, CostConst { value: b }) => CostConst { value: a + b }
+        _ => CostAdd { left: sl, right: sr }
+      }
+    CostConst { value: v } => expr
+    ...
+  }
+}
+```
+
+After (Node — descent proof works via CX-1):
+```dag
+fn simplify_cost(n: Node) -> Node {
+  match n.expr_data {
+    CostAdd =>
+      let sl = simplify_cost(n: cost_left(n))    // cost_left is in ChildRole model
+      let sr = simplify_cost(n: cost_right(n))   // analyzer: accessor of param → ✓
+      if is_cost_const(sl) && is_cost_const(sr) {
+        make_cost_const(value: cost_const_value(sl) + cost_const_value(sr))
+      } else { make_cost_add(left: sl, right: sr) }
+    CostConst => n
+    ...
+  }
+}
+```
+
+Why it works: `cost_left` and `cost_right` are child accessors in
+the ChildRole model. CX-1 already proves that `self(accessor(param))`
+is structural descent. No new proof rule needed.
+
+**Worked example — cost_of_expr (BUILDER, not walker):**
+
+```dag
+fn cost_of_expr(texpr: Node, ctx: CostContext) -> Node {
+  match texpr.expr_data {
+    ExprBinOp =>
+      let lc = cost_of_expr(texpr: binop_left(texpr), ctx: ctx)
+      let rc = cost_of_expr(texpr: binop_right(texpr), ctx: ctx)
+      make_cost_add(left: lc, right: rc)   // OUTPUT is a cost Node
+    ExprCall =>
+      let callee_cost = lookup_or_compute(ctx: ctx, name: call_name)
+      callee_cost
+    ...
+  }
+}
+```
+
+This function walks expression Nodes (input) and produces cost Nodes
+(output). The descent proof is on the INPUT — `binop_left(texpr)` is
+a child accessor. The output type doesn't matter for termination.
+
+**Edge case: does dissolution FAIL anywhere?**
+
+No. Every CostExpr consumer is either:
+1. A tree walker (simplify_cost, normalize_constants) → becomes Node
+   walker with accessor-based descent. CX-1 proves it.
+2. A tree builder (cost_of_expr) → descent is on the INPUT Node
+   tree, already proven. The OUTPUT being cost Nodes is irrelevant.
+3. A formatter (format_cost_inner) → same as case 1.
+
+**What dissolution does NOT solve (remaining root causes):**
+- RC-1 (emit SCCs, 99): list×tree product ordering — unrelated to
+  recursive types; needs composition of two descent dimensions
+- RC-2 (W-3, 33): if-wrapped descent — code-pattern issue, not type issue
+- RC-4 (iterator catamorphism, 12): fold/map over children — needs
+  recognizing `children |> fold(f)` as catamorphism, not type dissolution
+- RC-5 (parser, 65): state-flow composition — unrelated to recursive types
+- RC-6 (work-list, 11): finite set drain — needs new proof rule
+
+Dissolution eliminates RC-3 (~25) and RC-7 (~8) = ~33 violations.
+The other ~280 require proof extensions in the analyzer, not type changes.
+
 **MatchPattern dissolution.** MatchPattern variants (Bind, LitPattern,
 VariantPattern, Wildcard) become ExprData-like discriminants on Node.
 Field bindings are already Nodes. The pattern tree is already stored
@@ -352,11 +433,48 @@ on Node via `match_pattern: MatchPattern?` — dissolution replaces the
 separate type with discriminant metadata, making pattern trees ordinary
 Node subtrees.
 
+Worked example — analyze_rc_pattern before/after:
+
+Before (MatchPattern — fails descent proof, RC-7):
+```dag
+fn analyze_rc_pattern(pattern: MatchPattern, ...) -> RcPatternAnalysis {
+  match pattern {
+    VariantPattern { field_bindings: fbs } =>
+      fbs |> map(fb => analyze_rc_pattern(
+        pattern: field_binding_pattern(fb), ...  // opaque helper → violation
+      ))
+    Bind { name: n } => ...
+  }
+}
+```
+
+After (Node — descent works via CX-1):
+```dag
+fn analyze_rc_pattern(n: Node, ...) -> RcPatternAnalysis {
+  match n.expr_data {  // or pattern_data discriminant
+    PatternVariant =>
+      n.children |> map(fb => analyze_rc_pattern(
+        n: pattern_child(fb), ...  // child accessor in ChildRole model → ✓
+      ))
+    PatternBind => ...
+  }
+}
+```
+
 **InferredNode collapse.** InferredNode exists to wrap a Node with
 resolution state (Resolved, CompilerError, TypeVariable). This is
 metadata about a Node, not a separate recursive structure. Collapse
 into fields on Node itself (resolution state + error info), eliminating
 the indirect Node ↔ InferredNode cycle.
+
+**Caveat:** InferredNode collapse doesn't eliminate Node→Node
+recursion (Node.resolved_type would still point to another Node).
+But it normalizes to the same pattern Node already uses — recursion
+in the data (children list, resolved_type field), not in the type
+system. The complexity analyzer doesn't need a separate proof rule
+for InferredNode; it already handles Node→Node edges. The benefit
+is removing the 16-file surface area of InferredNode pattern matching
+and the Rc<InferredNode> indirection layer, not the recursion itself.
 
 **Per-file impact assessment (every v2 compiler file accounted for):**
 
@@ -446,8 +564,8 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [x] Mutual recursion detection — SCC analysis now fail-closes
   indirect recursion, accepts bounded mutual descent, and keeps
   helper-into-cycle callers out of the violation set. Remaining work:
-  analyzer redesign to target container-child recursion model (ratchet 255,
-  see I1/I2 in Exploratory Directions)
+  analyzer redesign to target container-child recursion model (ratchet
+  313, CX-0 through CX-3 landed; see CX lane sidebar + Node convergence)
 
 *Container sharing (FF-8):*
 - [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
@@ -586,6 +704,10 @@ Proposed fix: `TypeRendering` — a .dag struct with named edges and
 bits, precomputed at the resolution→emit boundary. Shape is emergent
 from which edges are populated (no tag enum). Named edges prevent
 positional fabrication — you can't confuse key with element.
+**Note (2026-04-02):** TypeRendering has 7 recursive fields — it is
+a non-Node recursive type (bounded kernel violation). It is an
+interim stepping stone; dissolves into coercion engine (M5). See
+Node convergence in Design Direction.
 
 ```
 type TypeRendering {
@@ -746,7 +868,7 @@ existing emitted-Rust/bootstrap fixed-point gates.
 
 | Bridge | Delete trigger | Latest milestone |
 |--------|---------------|-----------------|
-| `COMPLEXITY_RATCHET = 0` | Analyzer redesign (I1/I2) proves all patterns → 0 violations | Exploratory Directions (CX lane sidebar, not blocking M2) |
+| `COMPLEXITY_RATCHET = 0` | Node convergence (~33) + proof extensions (~280) → 0 violations | CX lane sidebar (parallel, not blocking M2) |
 | Ambient/manual stage0 maintenance | `regenerate-stage0.sh` green + CI diff gate | M2 |
 
 ---
@@ -988,21 +1110,25 @@ Different functions, no conflict.
 *Structural complexity facts (moved from M2 / PR #249):*
 - [x] Replace `ComplexityClassInfo` string bags with structural
   `CostExpr` — `classify_complexity` returns structural `CostExpr`
-  (the single authority); no separate `ComplexityClass` type
+  (the single authority); no separate `ComplexityClass` type.
+  **Note (2026-04-02):** CostExpr is itself a non-Node recursive type
+  (dual IR violation). Interim step: CostExpr replaces strings.
+  Final step: CostExpr dissolves into Node compositions (see Node
+  convergence in Design Direction).
 - [x] `O(...)` strings exist only at formatting boundary —
   `format_complexity_class` is the canonical producer (convention;
   source-audit grep needed to enforce as invariant)
 - [ ] Unknown complexity stays fail-closed; no steady-state `O(?)`
   success output — `is_unknown_class` / `cost_contains_unknown`
   provide structural detection; end-to-end gating wired but bypassed
-  by `BOOTSTRAP_MODE` (delete bypass after CX lane I1/I2 lands)
+  by `BOOTSTRAP_MODE` (already deleted — confirmed: no matches in stage0)
 - [ ] Mutual-recursion cycle errors: `complexity.dag:1579` returns
   only `violations`, omitting the cycle-error diagnostics that
   `detect_mutual_recursion_names` previously supplied. Verify that
   mutual-recursion cycles produce fail-closed diagnostics in the
   pipeline output, not silent omission.
-- [ ] Delete `RecursiveVariantFieldWitness` and variant-field descent
-  infrastructure — dead code, fires on zero real types (audit 2026-04-01)
+- [x] Delete `RecursiveVariantFieldWitness` and variant-field descent
+  infrastructure — dead code, fires on zero real types (CX-0, landed PR #301)
 - [x] `ClassProduct` formatting parenthesizes additive children
   (already done: `parenthesize_additive_cost` pre-existing)
 - [x] Source-audit parity checks use `live_source` /
@@ -1249,9 +1375,13 @@ lowers to a primitive:
    The compiler knows accessor functions return sub-children of Node
    (closed-world set defined in `00_core.dag`). Verification is
    mechanical: self-call argument is an accessor result applied to the
-   matched parameter. For user-defined recursive unions (future), same
-   principle: self-call argument is a variant field the type marks as
-   recursive.
+   matched parameter. User-defined recursive unions (`type Tree =
+   Leaf | Branch { left: Tree, right: Tree }`) compile to Node trees
+   with discriminant metadata — same representation, same descent
+   proof. Per the bounded kernel invariant, all recursive types are
+   Node. The ChildRole model extends to user-defined types: variant
+   fields that reference the containing type become child accessors
+   in the model. One proof rule covers compiler-internal and user types.
 
 2. **Recurse with advancing position** → `fold`. The compiler
    verifies the position argument increases monotonically (or the
@@ -1384,8 +1514,8 @@ Expected: ~25 violations resolved.
 if-expression return parser state with `ProgressStrict`, the merged
 result is `ProgressStrict`. Expected: 60 violations resolved.
 
-**CX-5: Delete BOOTSTRAP_MODE bypass.** Once ratchet reaches 0, delete
-the `BOOTSTRAP_MODE` flag. `compile.dag` gate becomes authoritative.
+**CX-5: Finalize.** Once ratchet reaches 0, `compile.dag` gate
+becomes authoritative. (`BOOTSTRAP_MODE` already deleted.)
 
 **I3: `while` surface sugar.** (Independent of CX lane.)
 
@@ -1418,13 +1548,23 @@ it is structurally impossible to write an unbounded expression. The
 language has no primitive for unbounded computation, and composition
 of bounded primitives is closed (bounded + bounded = bounded).
 
+This principle extends to the compiler itself via the bounded kernel
+invariant: Node is the only recursive type, so the compiler's own
+recursive functions walk Node trees — which are structurally bounded.
+Non-Node recursive types (CostExpr, TypeRendering, MatchPattern,
+InferredNode) violate this — they introduce recursion that the
+compiler cannot automatically prove bounded.
+
 **Current state:** recursive syntax is sugar that the compiler lowers
-to bounded primitives (`fold`, `descend`, `repeat`). The 311
+to bounded primitives (`fold`, `descend`, `repeat`). The 313
 violations are analyzer gaps — the programs ARE bounded, the analyzer
-can't prove it yet. Fixing the analyzer to recognize all descent
-patterns resolves these. Once lowering is complete, `CostUnknown`
-becomes structurally unreachable — not just validated away, but
-impossible to construct.
+can't prove it yet. Of these, ~33 dissolve when non-Node recursive
+types are eliminated (Node convergence). The remaining ~280 require
+proof extensions for patterns the analyzer doesn't yet recognize
+(list×tree products, parser state flow, work-list drains, iterator
+catamorphisms). Once all violations resolve, `CostUnknown` becomes
+structurally unreachable — not just validated away, but impossible
+to construct.
 
 **Cyclic relations, acyclic values, bounded traversals.** See
 INVARIANTS.md §Strict Forward Progress for the full formulation.
@@ -1712,7 +1852,7 @@ the first level the language recognizes.
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
 | Complexity violations | 313 | 0 | `strict_complexity_violation_count -- --ignored` (7 root causes; Node convergence dissolves ~33, proof extensions resolve rest) |
-| Emitted Rust errors | 1 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
+| Emitted Rust errors | 0 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` (unverified — emission blocked by complexity violations) |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
 
