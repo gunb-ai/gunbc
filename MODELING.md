@@ -1690,13 +1690,14 @@ delete the function and derive from the data.
 
 Pattern matching should operate on type structure, not string extraction.
 
-### M9: DFS the concept DAG — every construct attaches to first principles
+### M9: DFS the ontology — every construct attaches to first principles
 
-The `std/` library is a connected DAG of concepts rooted in
-first-principles logic. Every concept in the codebase — types, algebras,
-iteration, termination, coercion — traces back through this DAG to
-`Classical` (True/False). This is not aspirational; it is the actual
-structure of the `std/` files today:
+The `std/` library is an **ontology** — a connected DAG of concepts
+rooted in first-principles logic. Not just algebra (structures with
+operations), but the complete inventory of what exists and how things
+relate: logic, construction, algebra, iteration, termination,
+discrimination, coercion. Every concept in the codebase traces back
+through this ontology to `Classical` (True/False).
 
 ```
 Classical (logic.dag)
@@ -1720,9 +1721,23 @@ Classical (logic.dag)
 ```
 
 **The methodology:** when implementing or changing code, think in terms
-of DFS. Start from the concept you need, walk DOWN to its root in the
-DAG. The root tells you what the concept ACTUALLY IS. Then walk back UP
-from the closest existing concept in `std/` to find your attachment point.
+of DFS through the ontology. Start from the concept you need, walk DOWN
+to its root. The root tells you what the concept ACTUALLY IS. Then walk
+back UP from the closest existing concept in `std/` to find your
+attachment point. The ontology has branches beyond algebra:
+
+| Branch | Root concept | std/ file | What it covers |
+|--------|-------------|-----------|----------------|
+| **Logic** | Truth/Falseness | `logic.dag` | Propositions, connectives, entailment |
+| **Construction** | Product/Coproduct | `constructors.dag` | Type forming, records, enums |
+| **Algebra** | Monoid → Ring → Field | `algebra.dag` | Operations that emerge from structure |
+| **Iteration** | fold/descend/repeat | `iteration.dag` | All bounded computation |
+| **Termination** | Well-founded orderings | `termination.dag` | Proof that computation halts |
+| **Observation** | Pattern discrimination | (needs `discrimination.dag`) | Matching, case analysis |
+| **Coercion** | Algebraic sidecast | `coercion.dag` | Cross-language type mapping |
+
+If your concept doesn't fit any branch, you've likely found a new
+branch of the ontology — add it to std/ with an external authority.
 
 **The process:**
 1. "I need a cost expression type." → DFS down: what IS cost? It's a
