@@ -101,7 +101,7 @@ fn stage0_cargo_check() {
 // §Decidability: "If the analyzer produces ?O(?), the bug is in the
 // analyzer (it cannot see the bound that structurally exists), not in
 // the program." The ratchet only moves down, never up.
-const DIAG_RATCHET: usize = 291;
+const DIAG_RATCHET: usize = 314;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

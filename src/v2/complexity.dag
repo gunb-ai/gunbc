@@ -1815,11 +1815,24 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
 // Collect variable bindings that resolve to child descent expressions.
 // Tracks: `let x = accessor(param)`, `match accessor(param) { Some { value: x } => ... }`,
 // `let x = param.children |> first`, etc.
+//
+// Soundness: for let-bindings, ONLY accept direct descent expressions
+// (is_child_descent_expr / is_list_shrink_expr / known descent var).
+// Do NOT look through if/match wrappers — `let x = if c { desc } else { n }`
+// is not guaranteed descent (W-3 witness propagation class).
+// For match scrutinees, expr_contains_descent IS safe because the match
+// extracts the descending component (W-4 is safe when gated by match).
 fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Map<String, Bool> {
   match body.expr_data {
     ExprLet =>
       let val = let_value(texpr: body)
-      let val_is_descent = expr_contains_descent(expr: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+      let is_direct_descent = (check_child && is_child_descent_expr(expr: val, param_name: param_name))
+        || (check_list && is_list_shrink_expr(expr: val, param_name: param_name))
+      let is_descent_var = match val.expr_data {
+        ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name(texpr: val))
+        _ => false
+      }
+      let val_is_descent = is_direct_descent || is_descent_var
       let next_vars = if val_is_descent {
         map_insert(vars, let_binding_name(texpr: body), true)
       } else { vars }

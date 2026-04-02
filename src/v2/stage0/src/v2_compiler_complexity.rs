@@ -1826,7 +1826,15 @@ pub fn collect_descent_vars(body: Rc<Node>, param_name: String, vars: HashMap<St
     match (*body.expr_data.clone()).clone() {
         ExprData::ExprLet { .. } => {
             let val = let_value(body.clone());
-            let val_is_descent = expr_contains_descent(val.clone(), param_name.clone(), vars.clone(), check_child, check_list);
+            // Soundness: only accept direct descent for let-bindings.
+            // Do NOT look through if/match wrappers (W-3 class).
+            let val_is_descent =
+                (check_child && is_child_descent_expr(val.clone(), param_name.clone()))
+                || (check_list && is_list_shrink_expr(val.clone(), param_name.clone()))
+                || match (*val.expr_data.clone()).clone() {
+                    ExprData::ExprVar { .. } => set_has(vars.clone(), expr_var_name(val.clone())),
+                    _ => false,
+                };
             let next_vars = if val_is_descent {
                 v2_rt::map_insert(vars.clone(), let_binding_name(body.clone()), true)
             } else { vars.clone() };
