@@ -172,7 +172,7 @@ mod compiler_tests {
             tokens.len()
         );
         assert!(
-            matches!(tokens[0].shape, crate::v2_std_core::TokenShape::ShKwFn),
+            matches!(tokens[0].shape, crate::v2_std_core::TokenShape::ShKeyword),
             "first token should be KwFn, got {:?}",
             tokens[0].shape
         );
@@ -270,7 +270,7 @@ mod compiler_tests {
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo { x: Int, name: String }\nfn add(a: Int, b: Int) -> Int { a + b }\n".to_string(),
                 });
-                let result = crate::v2_compiler_compile::compile_sources(vec![source], crate::v2_compiler_artifact::RenderTarget::Rust);
+                let result = crate::v2_compiler_compile::compile_sources(std::rc::Rc::new(vec![source]), crate::v2_compiler_artifact::RenderTarget::Rust);
 
                 // Should produce at least one output file
                 assert!(
@@ -355,7 +355,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = self_compile_sources();
+                let sources = std::rc::Rc::new(self_compile_sources());
                 let source_count = sources.len();
                 let result = crate::v2_compiler_compile::compile_sources(
                     sources,
@@ -421,7 +421,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = self_compile_sources();
+                let sources = std::rc::Rc::new(self_compile_sources());
 
                 let result = crate::v2_compiler_compile::compile_sources(
                     sources,
@@ -493,7 +493,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = gist_sources();
+                let sources = std::rc::Rc::new(gist_sources());
                 let result = crate::v2_compiler_compile::resolve_sources(sources);
 
                 // Count error-severity diagnostics from tokenize + parse + resolve.
@@ -532,7 +532,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = gist_sources();
+                let sources = std::rc::Rc::new(gist_sources());
                 let result = crate::v2_compiler_compile::compile_sources(
                     sources,
                     crate::v2_compiler_artifact::RenderTarget::Rust,
@@ -759,7 +759,7 @@ mod compiler_tests {
 
                 // Stage 3: Resolve module graph
                 let t_stage = Instant::now();
-                let graph = crate::v2_compiler_resolve::resolve_modules(modules);
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
                 let resolve_total = t_stage.elapsed();
                 let errors: Vec<_> = graph
                     .diagnostics
@@ -930,7 +930,7 @@ mod compiler_tests {
 
                 // Phase 3: Resolve module graph
                 let t_stage = Instant::now();
-                let graph = crate::v2_compiler_resolve::resolve_modules(modules);
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
                 let resolve_total = t_stage.elapsed();
                 let phase3_diags: usize = graph
                     .diagnostics
@@ -960,7 +960,7 @@ mod compiler_tests {
                         acc
                     },
                 );
-                let typed = crate::v2_compiler_infer::reconcile(graph, source_indices);
+                let typed = crate::v2_compiler_infer::reconcile(graph, std::rc::Rc::new(source_indices));
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed
                     .diagnostics
@@ -1060,7 +1060,7 @@ mod compiler_tests {
                         eprintln!("  WARN: parse failed for {}", source.path);
                     }
                 }
-                let graph = crate::v2_compiler_resolve::resolve_modules(modules);
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
                 let setup_time = t0.elapsed();
                 let rss_baseline = get_rss_bytes();
                 eprintln!(
@@ -1075,7 +1075,7 @@ mod compiler_tests {
                     String,
                     std::rc::Rc<crate::v2_compiler_infer_items::TypedModule>,
                 >::new();
-                let source_indices = sources.iter().fold(
+                let source_indices = std::rc::Rc::new(sources.iter().fold(
                     HashMap::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>::new(),
                     |mut acc, source| {
                         acc.insert(
@@ -1087,7 +1087,7 @@ mod compiler_tests {
                         );
                         acc
                     },
-                );
+                ));
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
@@ -1098,7 +1098,7 @@ mod compiler_tests {
                     // Print BEFORE typecheck so we know which module crashed on SIGKILL
                     eprint!("  {:>35} ({:>3} items) ... ", name, item_count);
 
-                    let module_index = mi_raw.clone();
+                    let module_index = std::rc::Rc::new(mi_raw.clone());
 
                     // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
                     let t_unres = Instant::now();
