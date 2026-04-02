@@ -3125,11 +3125,13 @@ pub fn infer_record_lit(
             for fi in field_inits.clone().iter().cloned() {
                 __result.push({
                     let fi_name = field_init_node_name(fi.clone());
+                    // Struct definition children store type in inferred (via
+                    // field_to_child_node), not in children[0].
                     let field_expected: Option<Rc<Node>> = {
                         let matching: Vec<_> = struct_fields.iter().filter(|sf| sf.name == fi_name).cloned().collect();
                         match matching.first() {
                             Some(sf) => {
-                                let ft = field_node_type_expr(sf.clone());
+                                let ft = rt_type(sf.clone());
                                 if !ft.name.is_empty() { Some(ft) } else { None }
                             }
                             None => None,
