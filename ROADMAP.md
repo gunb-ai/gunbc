@@ -80,6 +80,27 @@ path). No overlap with Category A.
   (is_error) → dissolves into coercion engine (M5)
 - Codepoint carrier: chars() returns List\<Int> but should model
   codepoints explicitly → algebra design (M4 Tier 2.5)
+- Transport/config authority fragmented across 35+ sites: constructors,
+  predicates (`is_rest_transport` etc.), and property accessors
+  (`transport_base_url` etc.) encode the same structural knowledge
+  redundantly. Not string-keyed (correct), but no single authority
+  for which properties define which transport type (M2 structural debt)
+- `child_inferred_or_empty` fabricates Unit on inference failure
+  instead of propagating error state (M2 boundary sufficiency, blocker 1)
+- `partial_function_templates` contains `emit_map_has` emitter-only
+  alias that doesn't belong in carrier algebra (M4 Lane 1 Tier 2.5)
+- Callback shapes (`fn(Acc, T) -> Acc`) synthesized at inference time,
+  not declared as algebra template structure; `CallableOf` abstraction
+  missing (M4 Lane 1 Tier 2.5)
+
+**External review fix order (2026-04-02):**
+
+1. `child_inferred_or_empty` → structural error propagation (M2 blocker 1)
+2. `authored_name_at` semantic fallback → carry names structurally (M4 L2)
+3. Finish EmitContext/boundary migration → emit consumes, not rediscovers (E0c)
+4. Transport/config → one authority (M2 structural debt)
+5. `CallableOf` + clean `partial_function_templates` (M4 L1 Tier 2.5)
+6. Eliminate bare containers at inference boundary (M2 blocker 2)
 
 ---
 
@@ -535,18 +556,35 @@ must carry enough structure for emit to be a pure translation — every
 place emit guesses from names or shape is a place a new backend can
 silently go wrong.
 
-Three blocker classes:
+Four blocker classes:
 
-1. **Fabricated parameterization** — parameterized types reaching infer
+1. **Fabricated output types** — `child_inferred_or_empty` in
+   `02_parse.dag` silently converts `InferError`/`InferVariable`/`Untyped`
+   to `Unit` instead of propagating structural error state.
+   `node_inferred_to_outputs` then builds output fields from these
+   fabricated types. A partially-typed product silently becomes
+   Unit-typed. Direct violation of No-fallbacks-that-fabricate.
+   (External review 2026-04-02, highest-confidence correctness bug.)
+   - [ ] `child_inferred_or_empty` propagates error state structurally
+     (return `error_type` or carry `InferError` forward, not `Unit`)
+   - [ ] `node_inferred_to_outputs` refuses to build outputs from
+     error-typed children (fail-closed)
+
+2. **Fabricated parameterization** — parameterized types reaching infer
    without bound children. `algebra_child_or_placeholder` and
    `map_key_type_in_env` are fail-closed (return `error_type`/`none`)
    but should be deleted behind a normalization/resolve gate. Bare
-   `Map` without `<K,V>` is the canonical case.
+   `Map` without `<K,V>` is the canonical case. `bare_map_node()`/
+   `bare_list_node()` still exist; `unify_incomplete_type` is a recent
+   partial fix but incomplete types can still leak to emit as
+   `compile_error!` safety valves.
    - [x] Fallbacks converted to fail-closed (`error_type` not `string_type`)
+   - [x] `unify_incomplete_type` for fold accumulator unification
    - [ ] Incomplete parameterized types rejected at normalization, not infer
    - [ ] `algebra_child_or_placeholder` error_type fallback deleted
+   - [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit
 
-2. **Inference propagation** — expected types not flowing far enough.
+3. **Inference propagation** — expected types not flowing far enough.
    `resolve_builtin_call_type` → `unit_type`, fold accumulators
    under-resolved, higher-order method templates collapse callable
    structure into `ReceiverSelf`.
@@ -556,7 +594,7 @@ Three blocker classes:
    - [ ] Refine fold accumulators structurally via `is_fully_resolved`
    - [ ] Model higher-order signatures explicitly for `sort_by`/`fold`
 
-3. **Structural ownership and identity** — variant constructors must
+4. **Structural ownership and identity** — variant constructors must
    use structural resolved facts, not name-based stand-ins. Variant
    suffix scanning is M2 correctness with M4 deletion trigger: fix
    now by carrying explicit owner facts, let M4 identity dissolution
