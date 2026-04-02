@@ -2137,6 +2137,120 @@ fn scc_label(members: List<String>) -> String {
   }
 }
 
+// CX-3: Classify a call to an SCC peer as Strict (accessor/descent),
+// Same (unchanged param), or Unknown (fail-closed).
+fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: Map<String, Bool>) -> ProgressKind {
+  // Check if arg is a descent expression (accessor or children projection)
+  if is_child_descent_expr(expr: arg_expr, param_name: param_name) {
+    ProgressStrict
+  } else if is_list_shrink_expr(expr: arg_expr, param_name: param_name) {
+    ProgressStrict
+  } else {
+    match arg_expr.expr_data {
+      // Variable: check if it's a known descent var or the param itself
+      ExprVar { binding_kind: _ } =>
+        let vname = expr_var_name(texpr: arg_expr)
+        if set_has(m: descent_vars, key: vname) { ProgressStrict }
+        else if vname == param_name { ProgressSame }
+        else { ProgressUnknown }
+      _ => ProgressUnknown
+    }
+  }
+}
+
+// CX-3: Walk a function body and collect progress edges for all calls
+// to SCC peers. For each call, check each named argument to see if
+// it passes a descent expression for the caller's param.
+fn collect_scc_child_edges(body: Node, caller: String, param_name: String, descent_vars: Map<String, Bool>, target_set: Map<String, Bool>) -> List<ParserProgressEdge> {
+  match body.expr_data {
+    ExprLambda { semantics: _ } => []
+    ExprCall { call_semantics: _ } =>
+      let callee = expr_call_func(texpr: body)
+      let own_edges = if set_has(m: target_set, key: callee) {
+        // SCC peer call. Check all arguments for descent evidence.
+        // An argument passes descent if its value is an accessor(param),
+        // a descent var, or param.children projection.
+        let has_descent_arg = body.children |> any(arg_node =>
+          let av = arg_value(n: arg_node)
+          is_child_descent_expr(expr: av, param_name: param_name)
+          || is_list_shrink_expr(expr: av, param_name: param_name)
+          || (match av.expr_data {
+            ExprVar { binding_kind: _ } => set_has(m: descent_vars, key: expr_var_name(texpr: av))
+            _ => false
+          })
+        )
+        let has_same_arg = body.children |> any(arg_node =>
+          match arg_value(n: arg_node).expr_data {
+            ExprVar { binding_kind: _ } => expr_var_name(texpr: arg_value(n: arg_node)) == param_name
+            _ => false
+          }
+        )
+        if has_descent_arg {
+          [ParserProgressEdge { caller: caller, callee: callee, progress: ProgressStrict }]
+        } else if has_same_arg {
+          [ParserProgressEdge { caller: caller, callee: callee, progress: ProgressSame }]
+        } else {
+          [ParserProgressEdge { caller: caller, callee: callee, progress: ProgressUnknown }]
+        }
+      } else { [] }
+      let child_edges = body.children |> flat_map(child =>
+        collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set)
+      )
+      concat(own_edges, child_edges)
+    _ =>
+      body.children |> flat_map(child =>
+        collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set)
+      )
+  }
+}
+
+// CX-3: Find the first Node-typed parameter in a function's param list.
+// Returns the param name, or none if no Node param exists.
+fn find_node_param_name(params: List<Node>) -> String? {
+  // Heuristic: the Node param is typically named "texpr", "n", "body",
+  // "remaining", "expr", or similar. Since we can't check types at this
+  // stage, try each param and return the first one where descent vars
+  // or accessor calls reference it.
+  // Simple approach: return the first param that isn't obviously non-Node
+  // (not named "accum", "indent", "emit_info", etc.)
+  // Actually: just return all params — the descent check will fail-closed
+  // for non-Node params.
+  none
+}
+
+// CX-3: SCC container-child descent proof. Every cycle through the SCC
+// must have at least one edge where the callee receives an accessor
+// child (ProgressStrict). Fail-closed: any ProgressUnknown edge or
+// any all-Same cycle means UnresolvableRecursion.
+fn is_scc_container_child_descent(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>) -> Bool {
+  // For each member, try each param as the descent param.
+  // Collect edges across all members.
+  let edges = members |> flat_map(name =>
+    match map_get(func_index, name) {
+      Some { value: entry } =>
+        // Try each param — the right param will produce known edges,
+        // wrong params will produce Unknown edges.
+        let best_edges = entry.params |> fold(init: [], f: (best, p) =>
+          let pname = param_node_name(n: p)
+          let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: true)
+          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set)
+          // Keep the param whose edges have the fewest ProgressUnknown.
+          let unknown_count = param_edges |> filter(e => e.progress == ProgressUnknown) |> count
+          let best_unknown = best |> filter(e => e.progress == ProgressUnknown) |> count
+          if best |> count == 0 || unknown_count < best_unknown {
+            param_edges
+          } else { best }
+        )
+        best_edges
+      None => []
+    }
+  )
+  let all_known = edges |> all(edge => edge.progress != ProgressUnknown)
+  all_known
+  && (edges |> count) > 0
+  && same_progress_subgraph_has_cycle(members: members, edges: edges) == false
+}
+
 fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String, FuncEntry>) -> RecursionPattern {
   let scc_name_set = members |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
@@ -2145,18 +2259,23 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
   match classify_parser_scc_recursion_pattern(members: members, func_index: func_index) {
       Some { value: parser_pattern } => parser_pattern
     None =>
-      let all_arithmetic = members |> all(name =>
-        match map_get(func_index, name) {
-          Some { value: entry } =>
-            max_path_target_calls(body: entry.body, target_set: scc_name_set) <= 1
-            && scc_calls_have_arithmetic_descent(body: entry.body, target_set: scc_name_set, func_index: func_index, scc_measure_params: scc_measure_params)
-          None => false
-        }
-      )
-      if all_arithmetic {
+      // CX-3: Container-child descent for SCCs.
+      if is_scc_container_child_descent(members: members, func_index: func_index, scc_name_set: scc_name_set) {
         LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
       } else {
-        UnresolvableRecursion { reason: concat("non-descending mutual recursion in ", scc_label(members: members)) }
+        let all_arithmetic = members |> all(name =>
+          match map_get(func_index, name) {
+            Some { value: entry } =>
+              max_path_target_calls(body: entry.body, target_set: scc_name_set) <= 1
+              && scc_calls_have_arithmetic_descent(body: entry.body, target_set: scc_name_set, func_index: func_index, scc_measure_params: scc_measure_params)
+            None => false
+          }
+        )
+        if all_arithmetic {
+          LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
+        } else {
+          UnresolvableRecursion { reason: concat("non-descending mutual recursion in ", scc_label(members: members)) }
+        }
       }
   }
 }

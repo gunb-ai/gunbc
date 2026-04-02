@@ -2232,6 +2232,100 @@ pub fn graph_has_multi_node_scc(names: Vec<String>, graph: Rc<CallGraph>) -> boo
     result.has_cycle
 }
 
+// CX-3: Classify a call to an SCC peer.
+pub fn classify_scc_call_progress(arg_expr: Rc<Node>, param_name: String, descent_vars: HashMap<String, bool>) -> ProgressKind {
+    if is_child_descent_expr(arg_expr.clone(), param_name.clone()) {
+        ProgressKind::ProgressStrict
+    } else if is_list_shrink_expr(arg_expr.clone(), param_name.clone()) {
+        ProgressKind::ProgressStrict
+    } else {
+        match (*arg_expr.expr_data.clone()).clone() {
+            ExprData::ExprVar { .. } => {
+                let vname = expr_var_name(arg_expr.clone());
+                if set_has(descent_vars.clone(), vname.clone()) { ProgressKind::ProgressStrict }
+                else if vname == param_name { ProgressKind::ProgressSame }
+                else { ProgressKind::ProgressUnknown }
+            },
+            _ => ProgressKind::ProgressUnknown,
+        }
+    }
+}
+
+// CX-3: Collect progress edges for SCC peer calls in a function body.
+pub fn collect_scc_child_edges(body: Rc<Node>, caller: String, param_name: String, descent_vars: HashMap<String, bool>, target_set: HashMap<String, bool>) -> Vec<Rc<ParserProgressEdge>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprLambda { .. } => vec![],
+        ExprData::ExprCall { .. } => {
+            let callee = expr_call_func(body.clone());
+            let own_edges = if set_has(target_set.clone(), callee.clone()) {
+                // Check all arguments for descent evidence.
+                let has_descent_arg = body.children.clone().iter().any(|arg_node| {
+                    let av = arg_value(arg_node.clone());
+                    is_child_descent_expr(av.clone(), param_name.clone())
+                    || is_list_shrink_expr(av.clone(), param_name.clone())
+                    || match (*av.expr_data.clone()).clone() {
+                        ExprData::ExprVar { .. } => set_has(descent_vars.clone(), expr_var_name(av.clone())),
+                        _ => false,
+                    }
+                });
+                let has_same_arg = body.children.clone().iter().any(|arg_node| {
+                    let av = arg_value(arg_node.clone());
+                    match (*av.expr_data.clone()).clone() {
+                        ExprData::ExprVar { .. } => expr_var_name(av.clone()) == param_name,
+                        _ => false,
+                    }
+                });
+                if has_descent_arg {
+                    vec![Rc::new(ParserProgressEdge { caller: caller.clone(), callee: callee.clone(), progress: ProgressKind::ProgressStrict })]
+                } else if has_same_arg {
+                    vec![Rc::new(ParserProgressEdge { caller: caller.clone(), callee: callee.clone(), progress: ProgressKind::ProgressSame })]
+                } else {
+                    vec![Rc::new(ParserProgressEdge { caller: caller.clone(), callee: callee.clone(), progress: ProgressKind::ProgressUnknown })]
+                }
+            } else { vec![] };
+            let child_edges: Vec<Rc<ParserProgressEdge>> = body.children.clone().iter().flat_map(|child| {
+                collect_scc_child_edges(child.clone(), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone())
+            }).collect();
+            let mut result = own_edges;
+            result.extend(child_edges);
+            result
+        },
+        _ => {
+            body.children.clone().iter().flat_map(|child| {
+                collect_scc_child_edges(child.clone(), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone())
+            }).collect()
+        },
+    }
+    })
+}
+
+// CX-3: SCC container-child descent proof.
+pub fn is_scc_container_child_descent(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>, scc_name_set: HashMap<String, bool>) -> bool {
+    let edges: Vec<Rc<ParserProgressEdge>> = members.iter().flat_map(|name| {
+        match v2_rt::map_get(&func_index, name.clone()) {
+            Some(entry) => {
+                let best_edges = entry.params.iter().fold(vec![] as Vec<Rc<ParserProgressEdge>>, |best: Vec<Rc<ParserProgressEdge>>, p| {
+                    let pname = param_node_name(p.clone());
+                    let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), <HashMap<_, _>>::new(), true, true);
+                    let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars, scc_name_set.clone());
+                    let unknown_count = param_edges.iter().filter(|e| e.progress == ProgressKind::ProgressUnknown).count();
+                    let best_unknown = best.iter().filter(|e| e.progress == ProgressKind::ProgressUnknown).count();
+                    if best.is_empty() || unknown_count < best_unknown {
+                        param_edges
+                    } else { best }
+                });
+                best_edges
+            },
+            None => vec![],
+        }
+    }).collect();
+    let all_known = edges.iter().all(|edge| edge.progress != ProgressKind::ProgressUnknown);
+    all_known
+    && !edges.is_empty()
+    && !same_progress_subgraph_has_cycle(members.clone(), edges.iter().map(|e| (**e).clone()).collect())
+}
+
 pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>) -> Rc<RecursionPattern> {
     let scc_name_set = members.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, name: String| {
         v2_rt::map_insert(acc.clone(), name.clone(), true)
@@ -2240,26 +2334,33 @@ pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<
     match classify_parser_scc_recursion_pattern(members.clone(), func_index.clone()) {
         Some(parser_pattern) => parser_pattern.clone(),
         None => {
-            let all_arithmetic = members.iter().cloned().all(|name| {
-                match v2_rt::map_get(&func_index, name.clone()) {
-                    Some(entry) => max_path_target_calls(entry.body.clone(), scc_name_set.clone()) <= 1
-                        && scc_calls_have_arithmetic_descent(
-                            entry.body.clone(),
-                            scc_name_set.clone(),
-                            func_index.clone(),
-                            scc_measure_params.clone(),
-                        ),
-                    None => false,
-                }
-            });
-            if all_arithmetic {
+            // CX-3: Container-child descent for SCCs.
+            if is_scc_container_child_descent(members.clone(), func_index.clone(), scc_name_set.clone()) {
                 Rc::new(RecursionPattern::LinearRecursion {
                     iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
                 })
             } else {
-                Rc::new(RecursionPattern::UnresolvableRecursion {
-                    reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
-                })
+                let all_arithmetic = members.iter().cloned().all(|name| {
+                    match v2_rt::map_get(&func_index, name.clone()) {
+                        Some(entry) => max_path_target_calls(entry.body.clone(), scc_name_set.clone()) <= 1
+                            && scc_calls_have_arithmetic_descent(
+                                entry.body.clone(),
+                                scc_name_set.clone(),
+                                func_index.clone(),
+                                scc_measure_params.clone(),
+                            ),
+                        None => false,
+                    }
+                });
+                if all_arithmetic {
+                    Rc::new(RecursionPattern::LinearRecursion {
+                        iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
+                    })
+                } else {
+                    Rc::new(RecursionPattern::UnresolvableRecursion {
+                        reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
+                    })
+                }
             }
         }
     }

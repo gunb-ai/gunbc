@@ -22,7 +22,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 |--------|-------|--------|-------|
 | .dag files | 91 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
-| Self-compile diagnostics | 300 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 300 are indirect-recursion complexity violations |
+| Self-compile diagnostics | 291 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 291 are indirect-recursion complexity violations |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 92 dsl + 29 v2 files, M1 complete. DSL_COMPLEXITY_RATCHET = 2 allows 2 user-defined recursive union violations (stack_size, fold_stack) — deferred until CX lane completes |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
@@ -32,7 +32,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 299 | 0 | Down from 315. CX-0/CX-1/CX-M/CX-2 landed. Lambda-skip consistency + catamorphism proof resolved 24 branching violations (normalize_access_type_node cascade). **Next:** CX-3 (SCC descent). See Exploratory Directions for CX lane plan. |
+| Complexity violations | 290 | 0 | Down from 315. CX-0 through CX-3 landed. SCC descent proof resolved tco_if + pattern SCCs. **Remaining:** emit_block_stmts (99), parse_type_expr (60), branching (70+). See Exploratory Directions for CX lane plan. |
 
 ---
 
