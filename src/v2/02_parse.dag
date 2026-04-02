@@ -2482,10 +2482,10 @@ fn parse_file_fields(tokens: List<Token>, state: ParserState, base_path: Node?) 
     if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
     let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
     let s2 = if e.consumed { e.state } else { r3.state }
-    match fname {
-      "path" => parse_file_fields(tokens: tokens, state: s2, base_path: Some { value: r3.expr })
-      transport_path_key => parse_file_fields(tokens: tokens, state: s2, base_path: Some { value: r3.expr })
-      _ => parse_file_fields(tokens: tokens, state: s2, base_path: base_path)
+    if fname == "path" || fname == transport_path_key {
+      parse_file_fields(tokens: tokens, state: s2, base_path: Some { value: r3.expr })
+    } else {
+      parse_file_fields(tokens: tokens, state: s2, base_path: base_path)
     }
   }
 }

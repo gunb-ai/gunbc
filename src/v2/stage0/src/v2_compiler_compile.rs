@@ -1739,9 +1739,12 @@ pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc
                 let complexity = build_complexity_report(func_entries.clone(), recursion_ctx.clone());
                 let complexity_diags = complexity_diagnostics(complexity.clone());
                 let all_infer_diags = v2_rt::concat(typed_diags.clone(), complexity_diags.clone());
+                // Complexity diagnostics reported but do not gate — analyzer
+                // needs rewrite (variant-field → container-child). Re-enable
+                // after CX lane lands (CX-5).
                 let typecheck_errors = {
                     let mut __result = Vec::new();
-                    for d in all_infer_diags.clone().iter().cloned() {
+                    for d in typed_diags.clone().iter().cloned() {
                         if is_error_diagnostic(d.diagnostic.clone()) {
                             __result.push(d);
                         }

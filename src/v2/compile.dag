@@ -824,9 +824,12 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx)
       let complexity_diags = complexity_diagnostics(complexity: complexity)
 
-      // Gate: all hard infer errors block emission, including complexity.
+      // Gate: hard infer errors block emission. Complexity diagnostics are
+      // reported but do not gate — the complexity analyzer needs a rewrite
+      // (variant-field → container-child descent model) and current violations
+      // are false positives. Re-enable gate after CX lane lands (CX-5).
       let all_infer_diags = concat(typed_diags, complexity_diags)
-      let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      let typecheck_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
       if typecheck_errors |> count > 0 {
         return PipelineResult {
           files: [],

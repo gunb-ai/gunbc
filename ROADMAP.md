@@ -26,8 +26,8 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | UNVERIFIED (0 known) | 0 | Down from 8658→99→12→5→1→0 known. All E0425/E0282 fixed. Emission blocked by complexity violations; cargo check not yet run on emitted output |
-| Stage0 regeneration (C) | RED | GREEN | Blocked on complexity violations → 0 (emission gate); stage0 emits 40 files but output doesn't compile yet |
+| Bootstrap emitted Rust (B) | 110 | 0 | CX gate no longer blocks emission (PR #300). 110 `compile_error!` safety valves: all `empty_map: value type unresolved` — bare containers reaching emit without resolved value types (M2 blocker 2, fix order #6). Serde errors resolved by adding `serde` dep with `features = ["rc"]`. |
+| Stage0 regeneration (C) | RED | GREEN | 40 files emit, cargo check has 110 errors (all bare-container safety valves). No serde/type/import errors. |
 | L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
@@ -102,12 +102,12 @@ path). No overlap with Category A.
 
 **External review fix order (2026-04-02):**
 
-1. `child_inferred_or_empty` → structural error propagation (M2 blocker 1)
-2. `authored_name_at` semantic fallback → carry names structurally (M4 L2)
+1. ~~`child_inferred_or_empty` → structural error propagation (M2 blocker 1)~~ **DONE** (PR #300)
+2. ~~`authored_name_at` semantic fallback → carry names structurally (M4 L2)~~ **DONE** (PR #300)
 3. Finish EmitContext/boundary migration → emit consumes, not rediscovers (E0c)
-4. Transport/config → one authority (M2 structural debt)
+4. ~~Transport/config → one authority (M2 structural debt)~~ **DONE** (PR #300)
 5. `CallableOf` + clean `partial_function_templates` (M4 L1 Tier 2.5)
-6. Eliminate bare containers at inference boundary (M2 blocker 2)
+6. **Eliminate bare containers at inference boundary (M2 blocker 2) — ACTIVE BOOTSTRAP BLOCKER (110 errors)**
 
 ---
 
@@ -219,6 +219,53 @@ intermediate compilation step becomes a bottleneck.
 - Editing `src/v2/*.dag` (compiler source): automatic regeneration via `gunbc-dev build`
 - Editing `dsl/extdeps/languages/*/emit.dag` (emission rules): stage0 unchanged unless the compiler imports the file
 - Adding a new target language: stage0 unchanged (new language = new extdep data)
+
+---
+
+## Emission Design Debt (2026-04-02 bootstrap triage)
+
+Bootstrap B triage (110 remaining errors after CX gate bypass + serde fix)
+revealed three incomplete abstractions in the emission pipeline. These are
+not bugs to patch — they are design gaps that will hit every new target
+(Spice, English, etc.) and violate "emission is translation, not
+decision-making" (INVARIANTS.md §Emission).
+
+**1. Materialization strategy is not parameterized.**
+Data constants (`data foo: List<T> = [...]`) use three ad-hoc strategies:
+Rust JSON-deserializes nested records (`serde_json::from_value`), Python
+assigns directly, Go assigns directly. The decision to JSON-round-trip is
+embedded in `emit_data_def()` behind `has_nested_records_node()` — other
+targets don't even check. A new target must independently invent its
+materialization pathway. LanguageSpec should declare how each language
+constructs nested values; the emitter should read that declaration.
+
+**2. Sharing × serialization coupling is unmodeled.**
+`build_rc_types()` (Rust emitter) decides what gets Rc-wrapped.
+`SerializationSpec` (language extdep data) decides what derives are applied.
+`emit_data_def()` tries to deserialize into the Rc-wrapped type. These three
+concerns interact but have no coordination point. Serde's `features = ["rc"]`
+papers over Rust, but any target with explicit memory management will
+rediscover this coupling. LanguageSpec's `SharingStrategy` carries
+`wrap_template` (syntax) but not the downstream constraints wrapping imposes
+on construction/serialization.
+
+**3. Type decoration selection leaks into emitters.**
+`SerializationSpec` carries four Rust derive strings (normal/copy × struct/
+enum) plus Python's `@dataclass`. But the selection logic (which derive for
+which type) is embedded in `emit_struct_from_children()` checking `rc_types`
+membership and `has_fn_fields`. This is a per-language rendering fact that
+should be data in LanguageSpec, not code in the emitter.
+
+**Root pattern:** LanguageSpec describes syntax (templates, strings) but not
+semantics (when to apply them, how they interact, what constraints they
+impose). Emitters compensate by embedding semantic decisions as code. The
+INVARIANTS.md table at §Emission lists 8 known violations of this pattern.
+
+**Live bootstrap blocker:** 110 `compile_error!("empty_map: value type
+unresolved")` safety valves — bare `Map<K, V>` reaching emit without resolved
+value types. Concentrated in complexity (51), infer (23), emit (11),
+emit_info (9). This is fix order #6 (M2 blocker 2): incomplete
+parameterized types leaking past the inference boundary.
 
 ---
 
