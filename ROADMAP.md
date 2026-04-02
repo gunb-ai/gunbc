@@ -286,6 +286,12 @@ INVARIANTS.md table at §Emission lists 8 known violations of this pattern.
 - Stay on bootstrap. Do not broaden to #1/#2/#4 completion.
 - Make bootstrap patches unnecessary: fix the emitter so regenerated code
   doesn't need iterative tokenizer, dag_syntax cache, or shape binop patches.
+- **Root cause of all perf patches**: the Rust emitter generates all values
+  as owned types (`String`, `Rc<Vec<T>>`) with `.clone()` on every reference.
+  Hot paths like `char_at(source.text.clone(), pos)` clone 60KB per character.
+  Without compiler optimizations, this is 93x slower than release mode.
+  The fix is emitting `&str`-based code for read-only string access and
+  `&[T]` for read-only list access — a fundamental emitter architecture change.
 - The `node.name`-based pattern_subject fix is D6 debt — replace with
   structural InferredNode variant when D6 lands.
 - Core question: do parameterized container facts survive resolve→emit?
