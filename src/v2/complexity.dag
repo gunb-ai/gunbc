@@ -2082,32 +2082,146 @@ fn is_list_shrinkage_descent(body: Node, func_name: String, params: List<Node>) 
   )
 }
 
+// =========================================================================
+// T2: Unified proof constructor
+//
+// Tries each parameter as a candidate ranking dimension (TreeSize,
+// ListLength, ArithmeticValue). Returns a TerminationProof if any
+// dimension has Strict descent evidence for ALL self-calls.
+// =========================================================================
+
+fn classify_self_call_evidence(arg_expr: Node, param_name: String, descent_vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> DescentEvidence {
+  if check_child && is_child_descent_expr(expr: arg_expr, param_name: param_name) { Strict }
+  else if check_list && is_list_shrink_expr(expr: arg_expr, param_name: param_name) { Strict }
+  else {
+    match arg_expr.expr_data {
+      ExprVar { binding_kind: _ } =>
+        let vname = expr_var_name(texpr: arg_expr)
+        if set_has(m: descent_vars, key: vname) { Strict }
+        else if vname == param_name { NonIncreasing }
+        else { DescentUnknown }
+      _ => DescentUnknown
+    }
+  }
+}
+
+fn try_dimension_for_param(body: Node, func_name: String, param_name: String, check_child: Bool, check_list: Bool) -> DescentEvidence? {
+  let descent_vars = collect_descent_vars(body: body, param_name: param_name, vars: empty_map(), check_child: check_child, check_list: check_list)
+  let result = collect_self_call_evidence(body: body, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+  result
+}
+
+// Collect the WORST evidence across all self-calls for a given param/dimension.
+// Returns None if no self-calls found, Some(worst_evidence) otherwise.
+fn collect_self_call_evidence(body: Node, func_name: String, param_name: String, descent_vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> DescentEvidence? {
+  match body.expr_data {
+    ExprCall { call_semantics: _ } =>
+      let callee = expr_call_func(texpr: body)
+      let own_evidence = if callee == func_name {
+        // Find the argument at param_name position
+        let arg_evidence = body.children |> fold(init: DescentUnknown, f: (acc, arg_node) =>
+          let aname = arg_name(n: arg_node)
+          if aname == param_name {
+            classify_self_call_evidence(arg_expr: arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+          } else { acc }
+        )
+        Some { value: arg_evidence }
+      } else { none }
+      // Recurse into children for nested self-calls
+      let child_evidence = body.children |> fold(init: none, f: (acc, child) =>
+        let ce = collect_self_call_evidence(body: child, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+        match (acc, ce) {
+          (None, _) => ce
+          (_, None) => acc
+          (Some { value: a }, Some { value: b }) => Some { value: merge_evidence(a: a, b: b) }
+        }
+      )
+      // Skip lambda bodies (consistent with path counter — iteration-bounded)
+      let skip_lambdas = match body.expr_data {
+        ExprCall { call_semantics: _ } => false
+        _ => false
+      }
+      match (own_evidence, child_evidence) {
+        (None, _) => child_evidence
+        (_, None) => own_evidence
+        (Some { value: a }, Some { value: b }) => Some { value: merge_evidence(a: a, b: b) }
+      }
+    _ =>
+      // Skip lambda bodies
+      match body.expr_data {
+        ExprLet =>
+          let val_ev = collect_self_call_evidence(body: let_value(texpr: body), func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+          let body_ev = match let_body(texpr: body) {
+            Some { value: b } => collect_self_call_evidence(body: b, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+            None => none
+          }
+          match (val_ev, body_ev) {
+            (None, _) => body_ev
+            (_, None) => val_ev
+            (Some { value: a }, Some { value: b }) => Some { value: merge_evidence(a: a, b: b) }
+          }
+        _ =>
+          body.children |> fold(init: none, f: (acc, child) =>
+            let ce = collect_self_call_evidence(body: child, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+            match (acc, ce) {
+              (None, _) => ce
+              (_, None) => acc
+              (Some { value: a }, Some { value: b }) => Some { value: merge_evidence(a: a, b: b) }
+            }
+          )
+      }
+  }
+}
+
+fn construct_termination_proof(func_name: String, body: Node, params: List<Node>) -> TerminationProof? {
+  // Try each parameter as a candidate ranking dimension
+  params |> fold(init: none, f: (best, p) =>
+    match best {
+      Some { value: _ } => best  // already found a proof
+      None =>
+        let pname = param_node_name(n: p)
+        // Try TreeSize (child accessor descent)
+        let tree_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
+        match tree_evidence {
+          Some { value: Strict } =>
+            Some { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
+          _ =>
+            // Try ListLength (skip/tail descent)
+            let list_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true)
+            match list_evidence {
+              Some { value: Strict } =>
+                Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
+              _ => none  // ArithmeticValue handled by existing has_arithmetic_descent for now
+            }
+        }
+    }
+  )
+}
+
 fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>) -> RecursionPattern {
   let path_calls = max_path_self_calls(body: body, func_name: func_name)
-  let initial_witnesses = recursive_measure_param_names(body: body, params: params)
-  let descending_witness_names = collect_descending_witness_names(body: body, descending_witness_names: initial_witnesses)
   if path_calls == 0 {
     LinearRecursion { iteration_var: concat("n_", func_name) }
-  } else if path_calls == 1
-    && (is_container_child_descent(body: body, func_name: func_name, params: params)
-        || is_list_shrinkage_descent(body: body, func_name: func_name, params: params)) {
-    // CX-1: accessor projects into Node.children (tree descent) or
-    // list |> skip(N) (list shrinkage). Strictly descending.
-    LinearRecursion { iteration_var: concat("n_", func_name) }
-  } else if path_calls > 1
-    && is_container_child_descent(body: body, func_name: func_name, params: params) {
-    // CX-2: Catamorphism — multiple self-calls but all on disjoint
-    // accessor children of a param that dispatches on expr_data.
-    // Total work = O(tree_size), not O(2^depth).
-    LinearRecursion { iteration_var: concat("n_", func_name) }
-  } else if path_calls > 1 {
-    DivideAndConquer { split_factor: path_calls }
-  } else if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
-    || self_calls_have_strict_parser_progress(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
-    {
-    LinearRecursion { iteration_var: concat("n_", func_name) }
   } else {
-    UnresolvableRecursion { reason: concat("non-descending recursion in ", func_name) }
+    // T2: Try unified proof constructor first
+    let proof = construct_termination_proof(func_name: func_name, body: body, params: params)
+    match proof {
+      Some { value: _ } =>
+        LinearRecursion { iteration_var: concat("n_", func_name) }
+      None =>
+        // Fall back to old classifiers for patterns not yet in proof constructor
+        let initial_witnesses = recursive_measure_param_names(body: body, params: params)
+        let descending_witness_names = collect_descending_witness_names(body: body, descending_witness_names: initial_witnesses)
+        if path_calls > 1 {
+          DivideAndConquer { split_factor: path_calls }
+        } else if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
+          || self_calls_have_strict_parser_progress(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
+          {
+          LinearRecursion { iteration_var: concat("n_", func_name) }
+        } else {
+          UnresolvableRecursion { reason: concat("non-descending recursion in ", func_name) }
+        }
+    }
   }
 }
 

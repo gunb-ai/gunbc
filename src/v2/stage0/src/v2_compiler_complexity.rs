@@ -2094,6 +2094,136 @@ pub fn is_list_shrinkage_descent(body: Rc<Node>, func_name: String, params: Vec<
     })
 }
 
+// =========================================================================
+// T2: Unified proof constructor
+// =========================================================================
+
+pub fn classify_self_call_evidence(
+    arg_expr: Rc<Node>,
+    param_name: String,
+    descent_vars: HashMap<String, bool>,
+    check_child: bool,
+    check_list: bool,
+) -> DescentEvidence {
+    if check_child && is_child_descent_expr(arg_expr.clone(), param_name.clone()) {
+        DescentEvidence::Strict
+    } else if check_list && is_list_shrink_expr(arg_expr.clone(), param_name.clone()) {
+        DescentEvidence::Strict
+    } else {
+        match &*arg_expr.expr_data {
+            ExprData::ExprVar { .. } => {
+                let vname = expr_var_name(arg_expr.clone());
+                if set_has(descent_vars.clone(), vname.clone()) {
+                    DescentEvidence::Strict
+                } else if vname == param_name {
+                    DescentEvidence::NonIncreasing
+                } else {
+                    DescentEvidence::DescentUnknown
+                }
+            }
+            _ => DescentEvidence::DescentUnknown,
+        }
+    }
+}
+
+fn merge_option_evidence(a: Option<DescentEvidence>, b: Option<DescentEvidence>) -> Option<DescentEvidence> {
+    match (a, b) {
+        (None, other) => other,
+        (other, None) => other,
+        (Some(ea), Some(eb)) => Some(merge_evidence(ea, eb)),
+    }
+}
+
+pub fn collect_self_call_evidence(
+    body: Rc<Node>,
+    func_name: String,
+    param_name: String,
+    descent_vars: HashMap<String, bool>,
+    check_child: bool,
+    check_list: bool,
+) -> Option<DescentEvidence> {
+    match &*body.expr_data {
+        ExprData::ExprCall { .. } => {
+            let callee = expr_call_func(body.clone());
+            let own_evidence = if callee == func_name {
+                let arg_ev = body.children.iter().fold(DescentEvidence::DescentUnknown, |acc, arg_node| {
+                    let aname = arg_name(arg_node.clone());
+                    if aname == Some(param_name.clone()) {
+                        classify_self_call_evidence(arg_value(arg_node.clone()), param_name.clone(), descent_vars.clone(), check_child, check_list)
+                    } else {
+                        acc
+                    }
+                });
+                Some(arg_ev)
+            } else {
+                None
+            };
+            let child_evidence = body.children.iter().fold(None, |acc, child| {
+                let ce = collect_self_call_evidence(child.clone(), func_name.clone(), param_name.clone(), descent_vars.clone(), check_child, check_list);
+                merge_option_evidence(acc, ce)
+            });
+            merge_option_evidence(own_evidence, child_evidence)
+        }
+        ExprData::ExprLet { .. } => {
+            let val_ev = collect_self_call_evidence(let_value(body.clone()), func_name.clone(), param_name.clone(), descent_vars.clone(), check_child, check_list);
+            let body_ev = match let_body(body.clone()) {
+                Some(b) => collect_self_call_evidence(b, func_name.clone(), param_name.clone(), descent_vars.clone(), check_child, check_list),
+                None => None,
+            };
+            merge_option_evidence(val_ev, body_ev)
+        }
+        _ => {
+            body.children.iter().fold(None, |acc, child| {
+                let ce = collect_self_call_evidence(child.clone(), func_name.clone(), param_name.clone(), descent_vars.clone(), check_child, check_list);
+                merge_option_evidence(acc, ce)
+            })
+        }
+    }
+}
+
+pub fn try_dimension_for_param(
+    body: Rc<Node>,
+    func_name: String,
+    param_name: String,
+    check_child: bool,
+    check_list: bool,
+) -> Option<DescentEvidence> {
+    let descent_vars = collect_descent_vars(body.clone(), param_name.clone(), <HashMap<_, _>>::new(), check_child, check_list);
+    collect_self_call_evidence(body, func_name, param_name, descent_vars, check_child, check_list)
+}
+
+pub fn construct_termination_proof(
+    func_name: String,
+    body: Rc<Node>,
+    params: Vec<Rc<Node>>,
+) -> Option<Rc<TerminationProof>> {
+    params.iter().fold(None, |best: Option<Rc<TerminationProof>>, p| {
+        if best.is_some() { return best; }
+        let pname = param_node_name(p.clone());
+        // Try TreeSize (child accessor descent)
+        let tree_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), true, false);
+        match tree_evidence {
+            Some(DescentEvidence::Strict) => {
+                Some(Rc::new(TerminationProof {
+                    dimensions: vec![Rc::new(RankingDimension::TreeSize { param: pname.clone() })],
+                }))
+            }
+            _ => {
+                // Try ListLength (skip/tail descent)
+                let list_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, true);
+                match list_evidence {
+                    Some(DescentEvidence::Strict) => {
+                        Some(Rc::new(TerminationProof {
+                            dimensions: vec![Rc::new(RankingDimension::ListLength { param: pname.clone() })],
+                        }))
+                    }
+                    _ => None,
+                }
+            }
+        }
+    })
+}
+
 pub fn classify_recursion_pattern(
     func_name: String,
     body: Rc<Node>,
@@ -2101,55 +2231,53 @@ pub fn classify_recursion_pattern(
     parser_always_advancing: HashMap<String, bool>,
 ) -> Rc<RecursionPattern> {
     let path_calls = max_path_self_calls(body.clone(), func_name.clone());
-    let initial_witnesses = (*recursive_measure_param_names(body.clone(), params.clone())).clone();
-    let descending_witness_names = collect_descending_witness_names(
-        body.clone(),
-        Rc::new(initial_witnesses.clone()),
-    );
-    if (path_calls.clone() == 0) {
-        Rc::new(RecursionPattern::LinearRecursion {
-            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
-        })
-    } else if (path_calls.clone() == 1)
-        && (is_container_child_descent(body.clone(), func_name.clone(), params.clone())
-            || is_list_shrinkage_descent(body.clone(), func_name.clone(), params.clone())) {
-        // CX-1: accessor projects into Node.children (tree descent) or
-        // list |> skip(N) (list shrinkage). Strictly descending.
-        Rc::new(RecursionPattern::LinearRecursion {
-            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
-        })
-    } else if (path_calls.clone() > 1)
-        && is_container_child_descent(body.clone(), func_name.clone(), params.clone()) {
-        // CX-2: Catamorphism — multiple self-calls but all on disjoint
-        // accessor children of a param that dispatches on expr_data.
-        // Total work = O(tree_size), not O(2^depth).
-        Rc::new(RecursionPattern::LinearRecursion {
-            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
-        })
-    } else if (path_calls.clone() > 1) {
-        Rc::new(RecursionPattern::DivideAndConquer {
-            split_factor: path_calls.clone(),
-        })
-    } else if self_calls_have_descending_witness(
-            body.clone(),
-            func_name.clone(),
-            params.clone(),
-            descending_witness_names.clone(),
-        )
-        || self_calls_have_strict_parser_progress(
-            func_name.clone(),
-            body.clone(),
-            params.clone(),
-            parser_always_advancing.clone(),
-        )
-        {
+    if path_calls == 0 {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
     } else {
-        Rc::new(RecursionPattern::UnresolvableRecursion {
-            reason: v2_rt::concat("non-descending recursion in ".to_string(), func_name.clone()),
-        })
+        // T2: Try unified proof constructor first
+        let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone());
+        match proof {
+            Some(_) => {
+                Rc::new(RecursionPattern::LinearRecursion {
+                    iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+                })
+            }
+            None => {
+                // Fall back to old classifiers for patterns not yet in proof constructor
+                let initial_witnesses = (*recursive_measure_param_names(body.clone(), params.clone())).clone();
+                let descending_witness_names = collect_descending_witness_names(
+                    body.clone(),
+                    Rc::new(initial_witnesses.clone()),
+                );
+                if path_calls > 1 {
+                    Rc::new(RecursionPattern::DivideAndConquer {
+                        split_factor: path_calls,
+                    })
+                } else if self_calls_have_descending_witness(
+                        body.clone(),
+                        func_name.clone(),
+                        params.clone(),
+                        descending_witness_names.clone(),
+                    )
+                    || self_calls_have_strict_parser_progress(
+                        func_name.clone(),
+                        body.clone(),
+                        params.clone(),
+                        parser_always_advancing.clone(),
+                    )
+                    {
+                    Rc::new(RecursionPattern::LinearRecursion {
+                        iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+                    })
+                } else {
+                    Rc::new(RecursionPattern::UnresolvableRecursion {
+                        reason: v2_rt::concat("non-descending recursion in ".to_string(), func_name.clone()),
+                    })
+                }
+            }
+        }
     }
 }
 
