@@ -3111,16 +3111,36 @@ pub fn infer_record_lit(
     scope: Rc<InferScope>,
 ) -> Rc<InferResult> {
     {
+        // Look up struct definition to propagate field types as expected context.
+        let struct_def = match type_name.clone() {
+            Some(ref tn) => lookup_type(scope.type_env.clone(), tn.clone()),
+            None => None,
+        };
+        let struct_fields = match struct_def.clone() {
+            Some(ref sd) => sd.children.clone(),
+            None => vec![],
+        };
         let fi_infer_results = {
             let mut __result = Vec::new();
             for fi in field_inits.clone().iter().cloned() {
                 __result.push({
-                    let ar = infer_expr(field_init_node_value(fi.clone()), scope.clone(), None);
+                    let fi_name = field_init_node_name(fi.clone());
+                    let field_expected: Option<Rc<Node>> = {
+                        let matching: Vec<_> = struct_fields.iter().filter(|sf| sf.name == fi_name).cloned().collect();
+                        match matching.first() {
+                            Some(sf) => {
+                                let ft = field_node_type_expr(sf.clone());
+                                if !ft.name.is_empty() { Some(ft) } else { None }
+                            }
+                            None => None,
+                        }
+                    };
+                    let ar = infer_expr(field_init_node_value(fi.clone()), scope.clone(), field_expected);
                     let ar_typed = ar.typed.clone();
                     let ar_diags = ar.diagnostics.clone();
                     Rc::new(FieldInferResult {
                         typed_field: make_field_init_node(
-                            field_init_node_name(fi.clone()),
+                            fi_name.clone(),
                             ar_typed.clone(),
                             fi.span.clone(),
                         ),
