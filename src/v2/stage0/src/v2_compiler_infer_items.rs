@@ -26,7 +26,6 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
@@ -47,18 +46,19 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, leaf_node, make_field_node, node_has_structure, node_is_product, node_is_coproduct};
-use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
+pub use crate::v2_std_core::{Node, ErrorNode, make_param_node, param_node_name, param_node_type_expr, make_field_node, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, Connective};
+use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Cardinality::{Required};
-pub use crate::v2_compiler_infer_types::{rt_type};
+use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
+pub use crate::v2_compiler_infer_types::{child_inferred_or_name, rt_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo};
 use ItemKind::*;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+
 pub enum ItemKind {
     FnItem,
     FuncItem,
@@ -68,69 +68,72 @@ pub enum ItemKind {
     OtherItem,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemInfo {
     pub name: String,
     pub kind: ItemKind,
-    pub service_names: Vec<String>,
-    pub resource_names: Vec<String>,
-    pub params: Vec<Rc<Node>>,
+    pub service_names: Rc<Vec<String>>,
+    pub resource_names: Rc<Vec<String>>,
+    pub params: Rc<Vec<Rc<Node>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
     pub module: Rc<Node>,
-    pub items: Vec<Rc<Node>>,
+    pub items: Rc<Vec<Rc<Node>>>,
     pub type_env: Rc<TypeEnv>,
     pub func_env: Rc<ResolvedFuncEnv>,
-    pub item_registry: HashMap<String, Rc<ItemInfo>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedGraph {
-    pub modules: Vec<Rc<TypedModule>>,
-    pub item_registry: HashMap<String, Rc<ItemInfo>>,
-    pub diagnostics: Vec<Rc<ErrorNode>>,
+    pub modules: Rc<Vec<Rc<TypedModule>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedGraph {
-    pub modules: Vec<Rc<TypedModule>>,
-    pub item_registry: HashMap<String, Rc<ItemInfo>>,
-    pub diagnostics: Vec<Rc<ErrorNode>>,
+    pub modules: Rc<Vec<Rc<TypedModule>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub emit_graph_info: Rc<EmitGraphInfo>,
 }
 
-pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Vec<Rc<Node>> {
+pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Vec<Rc<Node>>> {
     if (inferred.clone() == None) {
-        vec![]
+        Rc::new(vec![])
 } else {
         match (*inferred.clone().unwrap()).clone() {
-    InferredNode::CompilerError { .. } => vec![],
-    InferredNode::Resolved { node: rt, .. } => if node_has_structure(rt.clone()) {
-            if node_is_product(rt.clone()) {
-                if (rt.name.clone() == "".to_string()) {
-                    { let mut __result = Vec::new(); for child in rt.children.iter().cloned() { __result.push({
-                        let child_type = if (child.inferred.clone() == None) {
-                            leaf_node(child.name.clone())
-} else {
-                            rt_type(child.clone())
-};
+    InferredNode::CompilerError { .. } => Rc::new(vec![]),
+    InferredNode::TypeVariable { .. } => Rc::new(vec![]),
+    InferredNode::Resolved { node: rt, .. } => {
+            let has_structure: bool = (rt.connective.clone() != Connective::NoConnective);
+if has_structure.clone() {
+                {
+                    let is_product: bool = (rt.connective.clone() == Connective::Conj);
+if is_product.clone() {
+                        if (rt.name.clone().as_str() == "".to_string().as_str()) {
+                            Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
+                                let child_type: Rc<Node> = child_inferred_or_name(child.clone());
 make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone())
-}); } __result }
+}); } __result })
 } else {
-                    vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())]
+                            Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())])
 }
 } else {
-                vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())]
+                        Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())])
+}
 }
 } else {
-            if ((rt.name.clone() == "Unit".to_string()) && ((rt.children.clone().len() as i64) == 0)) {
-                vec![]
+                if ((rt.connective.clone() == Connective::Conj) && ((rt.children.clone().len() as i64) == 0)) {
+                    Rc::new(vec![])
 } else {
-                vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())]
+                    Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())])
+}
 }
 },
 }
@@ -139,7 +142,7 @@ make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, N
 
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
-        let kind = if (node_has_structure(item.clone()) && (item.transport.clone() == None)) {
+        let kind: ItemKind = if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None)) {
             ItemKind::TypeItem
 } else {
             if (item.transport.clone() != None) {
@@ -168,13 +171,16 @@ kind.clone()
 }
 }
 
-pub fn variant_locals_from_items(items: Vec<Rc<Node>>, init: HashMap<String, Rc<TypeBinding>>) -> HashMap<String, Rc<TypeBinding>> {
-    items.iter().cloned().fold(init.clone(), |acc: _, item: Rc<Node>| if node_is_coproduct(item.clone()) {
-        item.children.iter().cloned().fold(acc.clone(), |vacc: _, child: Rc<Node>| v2_rt::map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {
+pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<String, Rc<TypeBinding>>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    items.clone().iter().cloned().fold(init.clone(), |acc: _, item: Rc<Node>| {
+        let is_coproduct: bool = (item.connective.clone() == Connective::Disj);
+if is_coproduct.clone() {
+            item.children.clone().iter().cloned().fold(acc.clone(), |vacc: _, child: Rc<Node>| v2_rt::rc_map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {
     name: child.name.clone(),
     resolved: item.clone(),
 })))
 } else {
-        acc.clone()
+            acc.clone()
+}
 })
 }

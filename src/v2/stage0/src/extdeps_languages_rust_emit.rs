@@ -26,7 +26,6 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
@@ -48,151 +47,175 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-
-lazy_static::lazy_static! {
-    pub static ref RUST_TYPE_MAP: HashMap<String, String> = {
-        let mut __m = HashMap::new();
-        __m.insert("String".to_string(), "String".to_string());
-        __m.insert("Int".to_string(), "i64".to_string());
-        __m.insert("Float".to_string(), "f64".to_string());
-        __m.insert("Bool".to_string(), "bool".to_string());
-        __m.insert("Bytes".to_string(), "Vec<u8>".to_string());
-        __m.insert("Unit".to_string(), "()".to_string());
-        __m.insert("Secret".to_string(), "String".to_string());
-        __m.insert("Json".to_string(), "serde_json::Value".to_string());
-        __m
-    };
+pub fn rust_type_map() -> Rc<HashMap<String, String>> {
+    let mut __m = HashMap::new();
+    __m.insert("String".to_string(), "String".to_string());
+    __m.insert("Int".to_string(), "i64".to_string());
+    __m.insert("Float".to_string(), "f64".to_string());
+    __m.insert("Bool".to_string(), "bool".to_string());
+    __m.insert("Bytes".to_string(), "Vec<u8>".to_string());
+    __m.insert("Unit".to_string(), "()".to_string());
+    __m.insert("Secret".to_string(), "String".to_string());
+    __m.insert("Json".to_string(), "serde_json::Value".to_string());
+    Rc::new(__m)
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_KEYWORDS: HashMap<String, String> = {
-        let mut __m = HashMap::new();
-        __m.insert("true".to_string(), "true".to_string());
-        __m.insert("false".to_string(), "false".to_string());
-        __m.insert("null".to_string(), "None".to_string());
-        __m.insert("and".to_string(), "&&".to_string());
-        __m.insert("or".to_string(), "||".to_string());
-        __m.insert("not".to_string(), "!".to_string());
-        __m.insert("div".to_string(), "/".to_string());
-        __m
-    };
+pub fn rust_keywords() -> Rc<HashMap<String, String>> {
+    let mut __m = HashMap::new();
+    __m.insert("true".to_string(), "true".to_string());
+    __m.insert("false".to_string(), "false".to_string());
+    __m.insert("null".to_string(), "None".to_string());
+    __m.insert("and".to_string(), "&&".to_string());
+    __m.insert("or".to_string(), "||".to_string());
+    __m.insert("not".to_string(), "!".to_string());
+    __m.insert("div".to_string(), "/".to_string());
+    Rc::new(__m)
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_CONTAINER_TEMPLATES: HashMap<String, String> = {
-        let mut __m = HashMap::new();
-        __m.insert("list".to_string(), "Rc<Vec<{0}>>".to_string());
-        __m.insert("set".to_string(), "Rc<std::collections::BTreeSet<{0}>>".to_string());
-        __m.insert("non_empty_list".to_string(), "Rc<NonEmptyVec<{0}>>".to_string());
-        __m.insert("non_empty_set".to_string(), "Rc<NonEmptyBTreeSet<{0}>>".to_string());
-        __m.insert("optional".to_string(), "Option<{0}>".to_string());
-        __m.insert("map".to_string(), "Rc<HashMap<{0}, {1}>>".to_string());
-        __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
-        __m.insert("partial_function".to_string(), "HashMap<{0}, {1}>".to_string());
-        __m.insert("boolean_algebra".to_string(), "bool".to_string());
-        __m
-    };
+pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
+    let mut __m = HashMap::new();
+    __m.insert("list".to_string(), "Vec<{0}>".to_string());
+    __m.insert("set".to_string(), "std::collections::BTreeSet<{0}>".to_string());
+    __m.insert("non_empty_list".to_string(), "NonEmptyVec<{0}>".to_string());
+    __m.insert("non_empty_set".to_string(), "NonEmptyBTreeSet<{0}>".to_string());
+    __m.insert("optional".to_string(), "Option<{0}>".to_string());
+    __m.insert("map".to_string(), "HashMap<{0}, {1}>".to_string());
+    __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
+    __m.insert("partial_function".to_string(), "HashMap<{0}, {1}>".to_string());
+    __m.insert("boolean_algebra".to_string(), "bool".to_string());
+    Rc::new(__m)
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_RESERVED: Vec<String> = vec!["as".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "const".to_string(), "continue".to_string(), "crate".to_string(), "dyn".to_string(), "else".to_string(), "enum".to_string(), "extern".to_string(), "false".to_string(), "fn".to_string(), "for".to_string(), "if".to_string(), "impl".to_string(), "in".to_string(), "let".to_string(), "loop".to_string(), "match".to_string(), "mod".to_string(), "move".to_string(), "mut".to_string(), "pub".to_string(), "ref".to_string(), "return".to_string(), "self".to_string(), "Self".to_string(), "static".to_string(), "struct".to_string(), "super".to_string(), "trait".to_string(), "true".to_string(), "type".to_string(), "unsafe".to_string(), "use".to_string(), "where".to_string(), "while".to_string(), "yield".to_string(), "abstract".to_string(), "become".to_string(), "box".to_string(), "do".to_string(), "final".to_string(), "macro".to_string(), "override".to_string(), "priv".to_string(), "try".to_string(), "typeof".to_string(), "unsized".to_string(), "virtual".to_string()];
+pub fn rust_reserved() -> Rc<Vec<String>> {
+    Rc::new(vec!["as".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "const".to_string(), "continue".to_string(), "crate".to_string(), "dyn".to_string(), "else".to_string(), "enum".to_string(), "extern".to_string(), "false".to_string(), "fn".to_string(), "for".to_string(), "if".to_string(), "impl".to_string(), "in".to_string(), "let".to_string(), "loop".to_string(), "match".to_string(), "mod".to_string(), "move".to_string(), "mut".to_string(), "pub".to_string(), "ref".to_string(), "return".to_string(), "self".to_string(), "Self".to_string(), "static".to_string(), "struct".to_string(), "super".to_string(), "trait".to_string(), "true".to_string(), "type".to_string(), "unsafe".to_string(), "use".to_string(), "where".to_string(), "while".to_string(), "yield".to_string(), "abstract".to_string(), "become".to_string(), "box".to_string(), "do".to_string(), "final".to_string(), "macro".to_string(), "override".to_string(), "priv".to_string(), "try".to_string(), "typeof".to_string(), "unsized".to_string(), "virtual".to_string()])
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_RESERVED_ESCAPE_PREFIX: String = "r#".to_string();
+pub fn rust_reserved_escape_prefix() -> String {
+    "r#".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_STRUCT_DERIVES: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
+pub fn rust_value_types() -> Rc<Vec<String>> {
+    Rc::new(vec!["Int".to_string(), "Bool".to_string(), "Float".to_string()])
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_STRUCT_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
+pub fn rust_string_types() -> Rc<Vec<String>> {
+    Rc::new(vec!["String".to_string(), "Secret".to_string()])
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_ENUM_DERIVES: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
+pub fn rust_struct_derives() -> String {
+    "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_ENUM_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
+pub fn rust_struct_derives_copy() -> String {
+    "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_SERDE_TAG: String = "".to_string();
+pub fn rust_enum_derives() -> String {
+    "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_SERDE_RENAME_TEMPLATE: String = "".to_string();
+pub fn rust_enum_derives_copy() -> String {
+    "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_SOURCE_EXTENSION: String = ".rs".to_string();
+pub fn rust_serde_tag() -> String {
+    "".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_SOURCE_DIR: String = "src/".to_string();
+pub fn rust_serde_rename_template() -> String {
+    "".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref RUST_VISIBILITY: String = "pub ".to_string();
+pub fn rust_source_extension() -> String {
+    ".rs".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref RT_FUNCTIONS: HashMap<String, bool> = {
-        let mut __m = HashMap::new();
-        __m.insert("concat".to_string(), true);
-        __m.insert("char_at".to_string(), true);
-        __m.insert("string_length".to_string(), true);
-        __m.insert("substring".to_string(), true);
-        __m.insert("string_contains".to_string(), true);
-        __m.insert("scan_while".to_string(), true);
-        __m.insert("skip_horizontal_ws".to_string(), true);
-        __m.insert("scan_to_eol".to_string(), true);
-        __m.insert("scan_string_end".to_string(), true);
-        __m.insert("code_point".to_string(), true);
-        __m.insert("from_code_point".to_string(), true);
-        __m.insert("lookup".to_string(), true);
-        __m.insert("index_by".to_string(), true);
-        __m.insert("empty_map".to_string(), true);
-        __m.insert("map_insert".to_string(), true);
-        __m.insert("map_merge".to_string(), true);
-        __m.insert("list_concat".to_string(), true);
-        __m.insert("str_eq".to_string(), true);
-        __m.insert("filesystem_read".to_string(), true);
-        __m.insert("list_push".to_string(), true);
-        __m.insert("map_get".to_string(), true);
-        __m.insert("map_keys".to_string(), true);
-        __m.insert("map_values".to_string(), true);
-        __m.insert("parse_int".to_string(), true);
-        __m.insert("map_contains_key".to_string(), true);
-        __m.insert("map_has".to_string(), true);
-        __m
-    };
+pub fn rust_source_dir() -> String {
+    "src/".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref RT_REF_MAP_FUNCTIONS: HashMap<String, bool> = {
-        let mut __m = HashMap::new();
-        __m.insert("map_get".to_string(), true);
-        __m.insert("map_keys".to_string(), true);
-        __m.insert("map_values".to_string(), true);
-        __m.insert("lookup".to_string(), true);
-        __m.insert("map_contains_key".to_string(), true);
-        __m.insert("map_has".to_string(), true);
-        __m
-    };
+pub fn rust_visibility() -> String {
+    "pub ".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref RT_BRIDGE_FUNCTION_NAMES: HashMap<String, String> = {
-        let mut __m = HashMap::new();
-        __m.insert("empty_map".to_string(), "rc_empty_map".to_string());
-        __m.insert("index_by".to_string(), "rc_index_by".to_string());
-        __m.insert("list_concat".to_string(), "rc_list_concat".to_string());
-        __m.insert("list_push".to_string(), "rc_list_push".to_string());
-        __m.insert("map_insert".to_string(), "rc_map_insert".to_string());
-        __m.insert("map_merge".to_string(), "rc_map_merge".to_string());
-        __m
-    };
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RuntimeFunction {
+    pub name: String,
+    pub bridge_name: String,
+    pub passes_by_ref: bool,
+}
+
+pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
+    serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false}]))
+        .expect("valid data definition")
+}
+
+pub fn rt_functions() -> Rc<HashMap<String, bool>> {
+    let mut __m = HashMap::new();
+    __m.insert("concat".to_string(), true);
+    __m.insert("char_at".to_string(), true);
+    __m.insert("string_length".to_string(), true);
+    __m.insert("substring".to_string(), true);
+    __m.insert("string_contains".to_string(), true);
+    __m.insert("scan_while".to_string(), true);
+    __m.insert("skip_horizontal_ws".to_string(), true);
+    __m.insert("scan_to_eol".to_string(), true);
+    __m.insert("scan_string_end".to_string(), true);
+    __m.insert("code_point".to_string(), true);
+    __m.insert("from_code_point".to_string(), true);
+    __m.insert("lookup".to_string(), true);
+    __m.insert("index_by".to_string(), true);
+    __m.insert("empty_map".to_string(), true);
+    __m.insert("map_insert".to_string(), true);
+    __m.insert("map_merge".to_string(), true);
+    __m.insert("list_concat".to_string(), true);
+    __m.insert("str_eq".to_string(), true);
+    __m.insert("filesystem_read".to_string(), true);
+    __m.insert("list_push".to_string(), true);
+    __m.insert("map_get".to_string(), true);
+    __m.insert("map_keys".to_string(), true);
+    __m.insert("map_values".to_string(), true);
+    __m.insert("parse_int".to_string(), true);
+    __m.insert("map_contains_key".to_string(), true);
+    __m.insert("map_has".to_string(), true);
+    __m.insert("reverse".to_string(), true);
+    __m.insert("replace".to_string(), true);
+    Rc::new(__m)
+}
+
+pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
+    let mut __m = HashMap::new();
+    __m.insert("map_get".to_string(), true);
+    __m.insert("map_keys".to_string(), true);
+    __m.insert("map_values".to_string(), true);
+    __m.insert("lookup".to_string(), true);
+    __m.insert("map_contains_key".to_string(), true);
+    __m.insert("map_has".to_string(), true);
+    Rc::new(__m)
+}
+
+pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
+    let mut __m = HashMap::new();
+    __m.insert("empty_map".to_string(), "rc_empty_map".to_string());
+    __m.insert("index_by".to_string(), "rc_index_by".to_string());
+    __m.insert("list_concat".to_string(), "rc_list_concat".to_string());
+    __m.insert("list_push".to_string(), "rc_list_push".to_string());
+    __m.insert("map_insert".to_string(), "rc_map_insert".to_string());
+    __m.insert("map_merge".to_string(), "rc_map_merge".to_string());
+    Rc::new(__m)
+}
+
+pub fn is_rt_function(name: String) -> bool {
+    v2_rt::map_contains_key(&rt_functions(), name.clone())
+}
+
+pub fn rt_bridge_name(name: String) -> String {
+    match v2_rt::map_get(&rt_bridge_function_names(), name.clone()) {
+    Some(bridge) => bridge.clone(),
+    None => name.clone(),
+}
+}
+
+pub fn rt_passes_by_ref(name: String) -> bool {
+    v2_rt::map_contains_key(&rt_ref_map_functions(), name.clone())
 }

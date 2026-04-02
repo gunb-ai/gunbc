@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-use crate::v2_std_core::param_node_name;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
@@ -27,7 +26,6 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
@@ -48,15 +46,24 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-
-pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, node_has_structure, node_is_product, with_required_cardinality, is_compiler_error, param_node_type_expr};
-use crate::v2_std_core::InferredNode::{Resolved};
+pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, with_required_cardinality, Connective, param_node_name, Cardinality};
+use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, TupleFirst, TupleSecond};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
-pub use crate::v2_compiler_infer_types::{node_is_optional, normalize_access_type_node, rt_type, child_inferred_or_name, node_type_equals, node_is_collection, node_is_keyed_collection, node_is_element_collection};
+use crate::v2_std_core::Connective::{Conj, NoConnective};
+use crate::v2_std_core::Cardinality::{CardOptional};
+pub use crate::v2_compiler_infer_types::{normalize_access_type_node, rt_type, emit_map_has, child_inferred_or_name, node_type_equals};
 use TypeRepr::*;
 
-#[derive(Debug, Clone, PartialEq)]
+pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
+    match (*inferred.clone()).clone() {
+    InferredNode::TypeVariable { .. } => true,
+    _ => false,
+}
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
 pub enum TypeRepr {
     StructRepr,
     EnumRepr {
@@ -72,543 +79,156 @@ impl TypeRepr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypeSummary {
-    pub name: String,
-    pub repr: Rc<TypeRepr>,
-    pub field_summaries: HashMap<String, Rc<FieldSummary>>,
-    pub field_type_map: HashMap<String, String>,
-    pub variant_name_set: HashMap<String, bool>,
-    pub generic_param_names: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ValueContext {
     pub has_fn_fields: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct EmitGraphInfo {
-    pub type_summaries: HashMap<String, Rc<TypeSummary>>,
-    pub recursive_type_set: HashMap<String, bool>,
-    pub fielded_variants: HashMap<String, bool>,
-    pub value_contexts: HashMap<String, Rc<ValueContext>>,
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeSummary {
+    pub name: String,
+    pub repr: Rc<TypeRepr>,
+    pub field_summaries: Rc<HashMap<String, Rc<FieldSummary>>>,
+    pub field_type_map: Rc<HashMap<String, String>>,
+    pub variant_name_set: Rc<HashMap<String, bool>>,
+    pub generic_param_names: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EmitGraphInfo {
+    pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    pub recursive_type_set: Rc<HashMap<String, bool>>,
+    pub fielded_variants: Rc<HashMap<String, bool>>,
+    pub value_contexts: Rc<HashMap<String, Rc<ValueContext>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeRendering {
     pub type_name: String,
-    // Named structural edges
-    pub element: Option<Rc<TypeRendering>>,       // List<THIS>, Set<THIS>
-    pub key: Option<Rc<TypeRendering>>,            // Map<THIS, V>
-    pub value: Option<Rc<TypeRendering>>,          // Map<K, THIS>
-    pub params: Vec<Rc<TypeRendering>>,            // fn(THESE) -> ...
-    pub return_type: Option<Rc<TypeRendering>>,    // fn(...) -> THIS
-    pub inner: Option<Rc<TypeRendering>>,          // Optional<THIS>, Refined<THIS>
-    pub generic_args: Vec<Rc<TypeRendering>>,      // V10: FreeMonoid<THIS>, PartialFunction<THIS, THIS>
-    // Structural flags (not name-derived)
-    pub shared: bool,                              // needs Rc/pointer/GC
-    pub boxed: bool,                               // recursive indirection
-    pub is_tuple: bool,                            // V4: structural tuple, not name check
-    pub is_error: bool,                            // V1: inference failure — emit must fail-closed
-    pub error_label: String,                       // V1: diagnostic context for the error
+    pub element: Option<Rc<TypeRendering>>,
+    pub key: Option<Rc<TypeRendering>>,
+    pub value: Option<Rc<TypeRendering>>,
+    pub params: Rc<Vec<Rc<TypeRendering>>>,
+    pub return_type: Option<Rc<TypeRendering>>,
+    pub inner: Option<Rc<TypeRendering>>,
+    pub generic_args: Rc<Vec<Rc<TypeRendering>>>,
+    pub shared: bool,
+    pub boxed: bool,
+    pub is_tuple: bool,
+    pub is_error: bool,
+    pub error_label: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitInfoBuildState {
-    pub type_summaries: HashMap<String, Rc<TypeSummary>>,
+    pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 }
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
-    type_summaries: <HashMap<_, _>>::new(),
-    recursive_type_set: <HashMap<_, _>>::new(),
-    fielded_variants: <HashMap<_, _>>::new(),
-    value_contexts: <HashMap<_, _>>::new(),
+    type_summaries: v2_rt::rc_empty_map::<Rc<TypeSummary>>(),
+    recursive_type_set: v2_rt::rc_empty_map::<bool>(),
+    fielded_variants: v2_rt::rc_empty_map::<bool>(),
+    value_contexts: v2_rt::rc_empty_map::<Rc<ValueContext>>(),
 })
 }
 
 pub fn leaf_type_rendering(name: String) -> Rc<TypeRendering> {
     Rc::new(TypeRendering {
-        type_name: name,
-        element: None,
-        key: None,
-        value: None,
-        params: vec![],
-        return_type: None,
-        inner: None,
-        generic_args: vec![],
-        shared: false,
-        boxed: false,
-        is_tuple: false,
-        is_error: false,
-        error_label: String::new(),
-    })
-}
-
-pub fn error_type_rendering(label: String) -> Rc<TypeRendering> {
-    Rc::new(TypeRendering {
-        type_name: String::new(),
-        element: None,
-        key: None,
-        value: None,
-        params: vec![],
-        return_type: None,
-        inner: None,
-        generic_args: vec![],
-        shared: false,
-        boxed: false,
-        is_tuple: false,
-        is_error: true,
-        error_label: label,
-    })
+    type_name: name.clone(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
 }
 
 pub fn leaf_type_rendering_shared(name: String) -> Rc<TypeRendering> {
     Rc::new(TypeRendering {
-        type_name: name,
-        element: None,
-        key: None,
-        value: None,
-        params: vec![],
-        return_type: None,
-        inner: None,
-        generic_args: vec![],
-        shared: true,
-        boxed: false,
-        is_tuple: false,
-        is_error: false,
-        error_label: String::new(),
-    })
+    type_name: name.clone(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: true,
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
 }
 
-fn is_type_shared(name: &str, _emit_info: &EmitGraphInfo, rc_types: &HashMap<String, bool>) -> bool {
-    v2_rt::map_has(rc_types, name.to_string())
+pub fn variant_has_fields(emit_info: Rc<EmitGraphInfo>, enum_name: String, variant_name: String) -> bool {
+    {
+        let key: String = v2_rt::concat(v2_rt::concat(enum_name.clone(), "::".to_string()), variant_name.clone());
+match v2_rt::map_get(&emit_info.fielded_variants.clone(), key.clone()) {
+    Some(v) => v.clone(),
+    None => false,
 }
-
-fn is_recursive_needs_box(name: &str, emit_info: &EmitGraphInfo, rc_types: &HashMap<String, bool>) -> bool {
-    let is_recursive = v2_rt::map_has(&emit_info.recursive_type_set, name.to_string());
-    let is_shared = is_type_shared(name, emit_info, rc_types);
-    is_recursive && !is_shared
 }
-
-pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
-    // V1: Error/TypeVariable — fail-closed, not fabricated leaf names
-    let n_is_error = n.inferred.as_ref().map_or(false, |i| is_compiler_error(Rc::new((**i).clone())));
-    // stage0: TypeVariable variant does not exist; n_is_type_var is always false.
-    let n_is_type_var = false;
-    // Sentinel names from incomplete inference — these are not real types
-    let n_is_sentinel = n.name == "Error" || n.name == "Dynamic";
-    if (n_is_type_var || n_is_error || n_is_sentinel) && n.children.is_empty() {
-        let label = if n_is_error { "CompilerError" } else if n_is_sentinel { &n.name } else { "TypeVariable" };
-        return error_type_rendering(label.to_string());
-    }
-
-    // V2: Only named Callable enters callable path — generic types with params (FreeMonoid<T>)
-    // fall through to connective dispatch where build_conj_rendering handles them.
-    if n.name == "Callable" {
-        let param_renderings: Vec<Rc<TypeRendering>> = n.params.iter().cloned().map(|p| {
-            build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
-        }).collect();
-        let ret_rendering = match n.inferred.as_deref() {
-            Some(InferredNode::Resolved { node: rt, .. }) => {
-                build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone())
-            }
-            _ => leaf_type_rendering("Unit".to_string()),
-        };
-        return Rc::new(TypeRendering {
-            type_name: String::new(),
-            element: None,
-            key: None,
-            value: None,
-            params: param_renderings,
-            return_type: Some(ret_rendering),
-            inner: None,
-            generic_args: vec![],
-            shared: false,
-            boxed: false,
-            is_tuple: false,
-            is_error: false,
-            error_label: String::new(),
-            });
-    }
-
-    // Optional: wrap inner type
-    if n.return_cardinality == crate::v2_std_core::Cardinality::CardOptional {
-        let inner_rendering = build_type_rendering(
-            with_required_cardinality(n.clone()),
-            emit_info.clone(), rc_types.clone()
-        );
-        return Rc::new(TypeRendering {
-            type_name: "optional".to_string(),
-            element: None,
-            key: None,
-            value: None,
-            params: vec![],
-            return_type: None,
-            inner: Some(inner_rendering),
-            generic_args: vec![],
-            shared: false,
-            boxed: false,
-            is_tuple: false,
-            is_error: false,
-            error_label: String::new(),
-            });
-    }
-
-    // Tuple: structural, regardless of connective
-    if n.name == "Tuple" {
-        let first_r = n.children.first().map_or_else(
-            || leaf_type_rendering("__MISSING_TUPLE_FIRST__".to_string()),
-            |c| {
-                let resolved = if c.inferred.is_some() { rt_type(c.clone()) } else { c.clone() };
-                build_type_rendering(resolved, emit_info.clone(), rc_types.clone())
-            }
-        );
-        let second_r = n.children.iter().skip(1).next().map_or_else(
-            || leaf_type_rendering("__MISSING_TUPLE_SECOND__".to_string()),
-            |c| {
-                let resolved = if c.inferred.is_some() { rt_type(c.clone()) } else { c.clone() };
-                build_type_rendering(resolved, emit_info.clone(), rc_types.clone())
-            }
-        );
-        return Rc::new(TypeRendering {
-            type_name: "Tuple".to_string(),
-            element: Some(first_r), key: None, value: Some(second_r),
-            params: vec![], return_type: None, inner: None,
-            generic_args: vec![],
-            shared: false, boxed: false,
-            is_tuple: true, is_error: false, error_label: String::new(),
-        });
-    }
-
-    // Dispatch on connective
-    let is_conj = n.connective == Some(crate::v2_std_core::Connective::Conj);
-    let is_disj = n.connective == Some(crate::v2_std_core::Connective::Disj);
-    if !is_conj && !is_disj {
-        build_leaf_rendering(n, emit_info, rc_types)
-    } else if is_conj {
-        build_conj_rendering(n, emit_info, rc_types)
-    } else {
-        build_disj_rendering(n, emit_info, rc_types)
-    }
-}
-
-fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
-    let shared = is_type_shared(&n.name, &emit_info, &rc_types);
-    if n.children.is_empty() {
-        // V5: Container identity from data authority, not inline name checks
-        let bare_is_map = node_is_keyed_collection(n.clone()) || is_known_keyed_container_name(&n.name);
-        let bare_is_collection = node_is_element_collection(n.clone()) || is_known_element_container_name(&n.name);
-        if bare_is_map {
-            Rc::new(TypeRendering {
-                type_name: n.name.clone(),
-                element: None,
-                key: Some(leaf_type_rendering("_".to_string())),
-                value: Some(leaf_type_rendering("_".to_string())),
-                params: vec![],
-                return_type: None,
-                inner: None,
-                generic_args: vec![],
-                shared,
-                boxed: false,
-                is_tuple: false,
-                is_error: false,
-                error_label: String::new(),
-                    })
-        } else if bare_is_collection {
-            Rc::new(TypeRendering {
-                type_name: n.name.clone(),
-                element: Some(leaf_type_rendering("_".to_string())),
-                key: None,
-                value: None,
-                params: vec![],
-                return_type: None,
-                inner: None,
-                generic_args: vec![],
-                shared,
-                boxed: false,
-                is_tuple: false,
-                is_error: false,
-                error_label: String::new(),
-                    })
-        } else if !n.params.is_empty() && n.params.len() == 1 {
-            // Bare generic type with one param (e.g., FreeMonoid<T>) — render as container if template exists
-            let param_r = build_type_rendering(
-                param_node_type_expr(n.params[0].clone()),
-                emit_info.clone(), rc_types.clone()
-            );
-            Rc::new(TypeRendering {
-                type_name: n.name.clone(),
-                element: Some(param_r),
-                key: None,
-                value: None,
-                params: vec![],
-                return_type: None,
-                inner: None,
-                generic_args: vec![],
-                shared,
-                boxed: false,
-                is_tuple: false,
-                is_error: false,
-                error_label: String::new(),
-                    })
-        } else {
-            // Check if this is a generic type whose params were lost (self-referential fields)
-            let gpn = emit_info.type_summaries.get(&n.name)
-                .map(|s| s.generic_param_names.clone())
-                .unwrap_or_default();
-            if !gpn.is_empty() {
-                    let generic: Vec<Rc<TypeRendering>> = gpn.iter().map(|pn| {
-                        leaf_type_rendering(pn.clone())
-                    }).collect();
-                    Rc::new(TypeRendering {
-                        type_name: n.name.clone(),
-                        element: None, key: None, value: None,
-                        params: vec![], return_type: None, inner: None,
-                        generic_args: generic,
-                        shared, boxed: false,
-                        is_tuple: false, is_error: false, error_label: String::new(),
-                    })
-            } else {
-                    if shared {
-                        leaf_type_rendering_shared(n.name.clone())
-                    } else {
-                        leaf_type_rendering(n.name.clone())
-                    }
-            }
-        }
-    } else {
-        let is_map = node_is_keyed_collection(n.clone());
-        if is_map {
-            let key_r = n.children.first().map_or_else(
-                || leaf_type_rendering("__MISSING_MAP_KEY__".to_string()),
-                |kn| build_type_rendering(kn.clone(), emit_info.clone(), rc_types.clone())
-            );
-            let val_r = n.children.iter().skip(1).next().map_or_else(
-                || leaf_type_rendering("__MISSING_MAP_VALUE__".to_string()),
-                |vn| build_type_rendering(vn.clone(), emit_info.clone(), rc_types.clone())
-            );
-            Rc::new(TypeRendering {
-                type_name: n.name.clone(),
-                element: None,
-                key: Some(key_r),
-                value: Some(val_r),
-                params: vec![],
-                return_type: None,
-                inner: None,
-                generic_args: vec![],
-                shared,
-                boxed: false,
-                is_tuple: false,
-                is_error: false,
-                error_label: String::new(),
-                    })
-        } else if n.children.len() == 1 {
-            let child_r = n.children.first().map_or_else(
-                || leaf_type_rendering("__MISSING_ELEMENT__".to_string()),
-                |child| build_type_rendering(child.clone(), emit_info.clone(), rc_types.clone())
-            );
-            Rc::new(TypeRendering {
-                type_name: n.name.clone(),
-                element: Some(child_r),
-                key: None,
-                value: None,
-                params: vec![],
-                return_type: None,
-                inner: None,
-                generic_args: vec![],
-                shared,
-                boxed: false,
-                is_tuple: false,
-                is_error: false,
-                error_label: String::new(),
-                    })
-        } else {
-            // Non-container type with multiple children: treat children as generic args
-            // (e.g. PartialFunction<K, V> where children are [K_node, V_node])
-            let generic: Vec<Rc<TypeRendering>> = n.children.iter().map(|c| {
-                build_type_rendering(c.clone(), emit_info.clone(), rc_types.clone())
-            }).collect();
-            if !generic.is_empty() {
-                Rc::new(TypeRendering {
-                    type_name: n.name.clone(),
-                    element: None, key: None, value: None,
-                    params: vec![], return_type: None, inner: None,
-                    generic_args: generic,
-                    shared, boxed: false,
-                    is_tuple: false, is_error: false, error_label: String::new(),
-                })
-            } else if shared {
-                leaf_type_rendering_shared(n.name.clone())
-            } else {
-                leaf_type_rendering(n.name.clone())
-            }
-        }
-    }
-}
-
-fn build_conj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
-    let shared = is_type_shared(&n.name, &emit_info, &rc_types);
-    let boxed = is_recursive_needs_box(&n.name, &emit_info, &rc_types);
-    if n.name == "Refined" {
-        match n.children.first() {
-            Some(base) => {
-                let base_r = build_type_rendering(base.clone(), emit_info.clone(), rc_types.clone());
-                Rc::new(TypeRendering {
-                    type_name: "Refined".to_string(),
-                    element: None, key: None, value: None, params: vec![],
-                    return_type: None,
-                    inner: Some(base_r),
-                    generic_args: vec![],
-                    shared: false, boxed: false,
-                    is_tuple: false,
-                    is_error: false,
-                    error_label: String::new(),
-                })
-            }
-            None => leaf_type_rendering("Refined".to_string()),
-        }
-    } else if n.name == "Tuple" {
-        let first_r = n.children.first().map_or_else(
-            || leaf_type_rendering("__MISSING_TUPLE_FIRST__".to_string()),
-            |c| {
-                let resolved = if c.inferred.is_some() { rt_type(c.clone()) } else { c.clone() };
-                build_type_rendering(resolved, emit_info.clone(), rc_types.clone())
-            }
-        );
-        let second_r = n.children.iter().skip(1).next().map_or_else(
-            || leaf_type_rendering("__MISSING_TUPLE_SECOND__".to_string()),
-            |c| {
-                let resolved = if c.inferred.is_some() { rt_type(c.clone()) } else { c.clone() };
-                build_type_rendering(resolved, emit_info.clone(), rc_types.clone())
-            }
-        );
-        Rc::new(TypeRendering {
-            type_name: "Tuple".to_string(),
-            element: Some(first_r),
-            key: None,
-            value: Some(second_r),
-            params: vec![],
-            return_type: None,
-            inner: None,
-            generic_args: vec![],
-            shared: false, boxed: false,
-            is_tuple: true,
-            is_error: false,
-            error_label: String::new(),
-        })
-    } else if !n.name.is_empty() {
-        // V10: Carry generic type params (FreeMonoid<T>, PartialFunction<K,V>)
-        let generic: Vec<Rc<TypeRendering>> = if !n.params.is_empty() {
-            n.params.iter().cloned().map(|p| {
-                build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
-            }).collect()
-        } else {
-            // Recover generic params from type definition (self-referential fields)
-            emit_info.type_summaries.get(&n.name)
-                .map(|s| s.generic_param_names.iter().map(|pn| leaf_type_rendering(pn.clone())).collect())
-                .unwrap_or_default()
-        };
-        Rc::new(TypeRendering {
-            type_name: n.name.clone(),
-            element: None, key: None, value: None, params: vec![],
-            return_type: None, inner: None,
-            generic_args: generic,
-            shared, boxed,
-            is_tuple: false, is_error: false, error_label: String::new(),
-        })
-    } else {
-        // Anonymous product
-        if n.children.len() == 1 {
-            match n.children.first() {
-                Some(field_node) => {
-                    if field_node.inferred.is_some() {
-                        build_type_rendering(rt_type(field_node.clone()), emit_info, rc_types)
-                    } else {
-                        leaf_type_rendering("__ANON_PRODUCT_MISSING_INFERRED__".to_string())
-                    }
-                }
-                None => leaf_type_rendering("__ANON_PRODUCT_EMPTY__".to_string()),
-            }
-        } else {
-            let first_r = n.children.first().map_or_else(
-                || leaf_type_rendering("__ANON_FIRST_MISSING__".to_string()),
-                |c| {
-                    if c.inferred.is_some() {
-                        build_type_rendering(rt_type(c.clone()), emit_info.clone(), rc_types.clone())
-                    } else {
-                        leaf_type_rendering("__ANON_FIELD_MISSING__".to_string())
-                    }
-                }
-            );
-            let second_r = n.children.iter().skip(1).next().map_or_else(
-                || leaf_type_rendering("__ANON_SECOND_MISSING__".to_string()),
-                |c| {
-                    if c.inferred.is_some() {
-                        build_type_rendering(rt_type(c.clone()), emit_info.clone(), rc_types.clone())
-                    } else {
-                        leaf_type_rendering("__ANON_FIELD_MISSING__".to_string())
-                    }
-                }
-            );
-            Rc::new(TypeRendering {
-                type_name: "Tuple".to_string(),
-                element: Some(first_r),
-                key: None,
-                value: Some(second_r),
-                params: vec![],
-                return_type: None, inner: None,
-                generic_args: vec![],
-                shared: false, boxed: false,
-                is_tuple: true,
-                is_error: false,
-                error_label: String::new(),
-            })
-        }
-    }
-}
-
-fn build_disj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
-    let shared = is_type_shared(&n.name, &emit_info, &rc_types);
-    let boxed = is_recursive_needs_box(&n.name, &emit_info, &rc_types);
-    if !n.name.is_empty() {
-        // RC-1: Carry generic params for Disj types (same as Conj V10 fix)
-        let generic = n.params.iter().cloned().map(|p| {
-            build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
-        }).collect::<Vec<_>>();
-        Rc::new(TypeRendering {
-            type_name: n.name.clone(),
-            element: None, key: None, value: None, params: vec![],
-            return_type: None, inner: None,
-            generic_args: generic,
-            shared, boxed,
-            is_tuple: false, is_error: false, error_label: String::new(),
-        })
-    } else {
-        leaf_type_rendering("__ANON_DISJ__".to_string())
-    }
-}
-
-// V5: Container identity from coercion data authority.
-// Derived from algebra inhabitants in dsl/extdeps/languages/*/types.dag:
-// arity-2 algebras → keyed containers, arity-1 algebras → element containers.
-pub fn is_known_keyed_container_name(name: &str) -> bool {
-    crate::v2_coercion::COERCION_KEYED_CONTAINER_NAMES.contains(&name)
-}
-
-pub fn is_known_element_container_name(name: &str) -> bool {
-    crate::v2_coercion::COERCION_ELEMENT_CONTAINER_NAMES.contains(&name)
 }
 
 pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: String) -> Option<Rc<TypeSummary>> {
     v2_rt::map_get(&emit_info.type_summaries.clone(), type_name.clone())
 }
 
+pub fn derive_variant_to_enum(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>) -> Rc<HashMap<String, String>> {
+    Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(Rc::new(HashMap::new()), |acc: _, summary: Rc<TypeSummary>| match (*summary.repr.clone()).clone() {
+    TypeRepr::EnumRepr { .. } => Rc::new(v2_rt::map_keys(&summary.variant_name_set.clone())).iter().cloned().fold(acc.clone(), |inner: _, vn: String| match v2_rt::map_get(&inner, vn.clone()) {
+    Some(_) => inner.clone(),
+    None => v2_rt::rc_map_insert(inner.clone(), vn.clone(), summary.name.clone()),
+}),
+    _ => acc.clone(),
+})
+}
+
+pub fn is_known_variant(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>, name: String) -> bool {
+    { let mut __found = false; for summary in Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned() { if match (*summary.repr.clone()).clone() {
+    TypeRepr::EnumRepr { .. } => emit_map_has(summary.variant_name_set.clone(), name.clone()),
+    _ => false,
+} { __found = true; break; } } __found }
+}
+
+pub fn variant_belongs_to_enum(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>, variant_name: String, enum_name: String) -> bool {
+    match v2_rt::map_get(&type_summaries, enum_name.clone()) {
+    Some(summary) => match (*summary.repr.clone()).clone() {
+    TypeRepr::EnumRepr { .. } => emit_map_has(summary.variant_name_set.clone(), variant_name.clone()),
+    _ => false,
+},
+    None => false,
+}
+}
+
+pub fn is_enum_in_summaries(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>, type_name: String) -> bool {
+    match v2_rt::map_get(&type_summaries, type_name.clone()) {
+    Some(summary) => match (*summary.repr.clone()).clone() {
+    TypeRepr::EnumRepr { .. } => true,
+    _ => false,
+},
+    None => false,
+}
+}
+
+pub fn find_variant_parent(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>, variant_name: String, scope_enums: Rc<Vec<String>>) -> Option<String> {
+    Rc::new({ let mut __result = Vec::new(); for en in scope_enums.clone().iter().cloned() { if variant_belongs_to_enum(type_summaries.clone(), variant_name.clone(), en.clone()) { __result.push(en); } } __result }).first().cloned()
+}
+
 pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
     {
-        let normed = normalize_access_type_node(type_node.clone());
-if node_is_optional(normed.clone()) {
+        let normed: Rc<Node> = normalize_access_type_node(type_node.clone());
+let is_optional: bool = (normed.return_cardinality.clone() == Cardinality::CardOptional);
+if is_optional.clone() {
             FieldValueShape::OptionalValue
 } else {
             FieldValueShape::PlainValue
@@ -616,13 +236,13 @@ if node_is_optional(normed.clone()) {
 }
 }
 
-pub fn is_pair_children(children: Vec<Rc<Node>>) -> bool {
+pub fn is_pair_children(children: Rc<Vec<Rc<Node>>>) -> bool {
     if ((children.clone().len() as i64) != 2) {
         false
 } else {
         match children.clone().first().cloned() {
-    Some(c0) => match children.iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
-    Some(c1) => ((c0.name.clone() == "first".to_string()) && (c1.name.clone() == "second".to_string())),
+    Some(c0) => match Rc::new(children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(c1) => ((c0.name.clone().as_str() == "first".to_string().as_str()) && (c1.name.clone().as_str() == "second".to_string().as_str())),
     None => false,
 },
     None => false,
@@ -631,26 +251,26 @@ pub fn is_pair_children(children: Vec<Rc<Node>>) -> bool {
 }
 
 pub fn pair_access_style(field_name: String) -> FieldAccessStyle {
-    if (field_name.clone() == "first".to_string()) {
+    if (field_name.clone().as_str() == "first".to_string().as_str()) {
         FieldAccessStyle::TupleFirst
 } else {
         FieldAccessStyle::TupleSecond
 }
 }
 
-pub fn build_struct_field_summaries(children: Vec<Rc<Node>>) -> HashMap<String, Rc<FieldSummary>> {
+pub fn build_struct_field_summaries(children: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Rc<FieldSummary>>> {
     {
-        let is_pair = is_pair_children(children.clone());
-children.iter().cloned().fold(<HashMap<_, _>>::new(), |acc: _, child: Rc<Node>| if (child.inferred.clone() == None) {
+        let is_pair: bool = is_pair_children(children.clone());
+children.clone().iter().cloned().fold(Rc::new(HashMap::new()), |acc: _, child: Rc<Node>| if (child.inferred.clone() == None) {
             acc.clone()
 } else {
             {
-                let style = if is_pair.clone() {
+                let style: FieldAccessStyle = if is_pair.clone() {
                     pair_access_style(child.name.clone())
 } else {
                     FieldAccessStyle::StoredField
 };
-v2_rt::map_insert(acc.clone(), child.name.clone(), Rc::new(FieldSummary {
+v2_rt::rc_map_insert(acc.clone(), child.name.clone(), Rc::new(FieldSummary {
     access_style: style.clone(),
     value_shape: field_value_shape_from_type_node(rt_type(child.clone())),
 }))
@@ -659,9 +279,9 @@ v2_rt::map_insert(acc.clone(), child.name.clone(), Rc::new(FieldSummary {
 }
 }
 
-pub fn find_first_enum_field_node(variants: Vec<Rc<Node>>, field_name: String) -> Option<Rc<Node>> {
+pub fn find_first_enum_field_node(variants: Rc<Vec<Rc<Node>>>, field_name: String) -> Option<Rc<Node>> {
     match variants.clone().first().cloned() {
-    Some(variant) => match { let mut __result = Vec::new(); for f in variant.children.iter().cloned() { if (f.name.clone() == field_name.clone()) { __result.push(f); } } __result }.first().cloned() {
+    Some(variant) => match Rc::new({ let mut __result = Vec::new(); for f in variant.children.clone().iter().cloned() { if (f.name.clone().as_str() == field_name.clone().as_str()) { __result.push(f); } } __result }).first().cloned() {
     Some(field_child) => Some(field_child.clone()),
     None => None,
 },
@@ -669,30 +289,30 @@ pub fn find_first_enum_field_node(variants: Vec<Rc<Node>>, field_name: String) -
 }
 }
 
-pub fn enum_field_present_in_all_variants(variants: Vec<Rc<Node>>, field_name: String) -> bool {
-    { let mut __all = true; for variant in variants.iter().cloned() { if !({ let mut __found = false; for field_child in variant.children.iter().cloned() { if (field_child.name.clone() == field_name.clone()) { __found = true; break; } } __found }) { __all = false; break; } } __all }
+pub fn enum_field_present_in_all_variants(variants: Rc<Vec<Rc<Node>>>, field_name: String) -> bool {
+    { let mut __all = true; for variant in variants.clone().iter().cloned() { if !({ let mut __found = false; for field_child in variant.children.clone().iter().cloned() { if (field_child.name.clone().as_str() == field_name.clone().as_str()) { __found = true; break; } } __found }) { __all = false; break; } } __all }
 }
 
-pub fn enum_field_type_consistent(variants: Vec<Rc<Node>>, field_name: String, expected: Rc<Node>) -> bool {
-    { let mut __all = true; for variant in variants.iter().cloned() { if !(match { let mut __result = Vec::new(); for f in variant.children.iter().cloned() { if (f.name.clone() == field_name.clone()) { __result.push(f); } } __result }.first().cloned() {
+pub fn enum_field_type_consistent(variants: Rc<Vec<Rc<Node>>>, field_name: String, expected: Rc<Node>) -> bool {
+    { let mut __all = true; for variant in variants.clone().iter().cloned() { if !(match Rc::new({ let mut __result = Vec::new(); for f in variant.children.clone().iter().cloned() { if (f.name.clone().as_str() == field_name.clone().as_str()) { __result.push(f); } } __result }).first().cloned() {
     Some(field_child) => node_type_equals(child_inferred_or_name(field_child.clone()), expected.clone()),
     None => false,
 }) { __all = false; break; } } __all }
 }
 
-pub fn build_enum_field_summaries(variants: Vec<Rc<Node>>) -> HashMap<String, Rc<FieldSummary>> {
+pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Rc<FieldSummary>>> {
     {
-        let first_field_names = match variants.clone().first().cloned() {
-    Some(first_variant) => { let mut __result = Vec::new(); for f in first_variant.children.iter().cloned() { __result.push(f.name.clone()); } __result },
-    None => vec![],
+        let first_field_names: Rc<Vec<String>> = match variants.clone().first().cloned() {
+    Some(first_variant) => Rc::new({ let mut __result = Vec::new(); for f in first_variant.children.clone().iter().cloned() { __result.push(f.name.clone()); } __result }),
+    None => Rc::new(vec![]),
 };
-let shared = { let mut __result = Vec::new(); for field_name in first_field_names.iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone()) { __result.push(field_name); } } __result };
-let consistent = { let mut __result = Vec::new(); for field_name in shared.iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone()) {
+let shared: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for field_name in first_field_names.clone().iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone()) { __result.push(field_name); } } __result });
+let consistent: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for field_name in shared.clone().iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone()) {
     Some(first_field) => enum_field_type_consistent(variants.clone(), field_name.clone(), child_inferred_or_name(first_field.clone())),
     None => false,
-} { __result.push(field_name); } } __result };
-consistent.iter().cloned().fold(<HashMap<String, Rc<FieldSummary>>>::new(), |acc: _, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone()) {
-    Some(first_field) => v2_rt::map_insert(acc.clone(), field_name.clone(), Rc::new(FieldSummary {
+} { __result.push(field_name); } } __result });
+consistent.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc: _, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone()) {
+    Some(first_field) => v2_rt::rc_map_insert(acc.clone(), field_name.clone(), Rc::new(FieldSummary {
     access_style: FieldAccessStyle::EnumAccessor,
     value_shape: field_value_shape_from_type_node(child_inferred_or_name(first_field.clone())),
 })),
@@ -701,49 +321,53 @@ consistent.iter().cloned().fold(<HashMap<String, Rc<FieldSummary>>>::new(), |acc
 }
 }
 
-pub fn build_field_type_map(children: Vec<Rc<Node>>) -> HashMap<String, String> {
-    children.iter().cloned().fold(<HashMap<_, _>>::new(), |acc: HashMap<String, String>, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: ft, .. }) => {
-            let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
-            // stage0: TypeVariable variant does not exist; ft_is_type_var is always false.
-            // Fail-closed: exclude Dynamic placeholder from authority surface.
-            if ((resolved_name.clone() != "".to_string()) && (resolved_name.clone() != "Dynamic".to_string())) {
-                v2_rt::map_insert(acc.clone(), child.name.clone(), resolved_name.clone())
-            } else {
-                acc.clone()
-            }
-        },
-        _ => acc.clone(),
-    })
+pub fn build_field_type_map(children: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, String>> {
+    children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: _, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: ft, .. }) => {
+        let resolved_name: String = normalize_access_type_node(ft.clone()).name.clone();
+let ft_is_type_var: bool = if (ft.inferred.clone() != None) {
+            is_type_variable(ft.inferred.clone().clone().unwrap())
+} else {
+            false
+};
+if (((resolved_name.clone().as_str() != "".to_string().as_str()) && !ft_is_type_var.clone()) && (resolved_name.clone().as_str() != "Dynamic".to_string().as_str())) {
+            v2_rt::rc_map_insert(acc.clone(), child.name.clone(), resolved_name.clone())
+} else {
+            acc.clone()
+}
+},
+    _ => acc.clone(),
+})
 }
 
 pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
     {
-        if ((node_has_structure(item.clone()) == false) || (item.transport.clone() != None)) {
+        if ((item.connective.clone() == Connective::NoConnective) || (item.transport.clone() != None)) {
             return None
 }
-let gpn: Vec<String> = item.params.iter().map(|p| param_node_name(p.clone())).collect();
-if node_is_product(item.clone()) {
+let gpn: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result });
+let is_product: bool = (item.connective.clone() == Connective::Conj);
+if is_product.clone() {
             Some(Rc::new(TypeSummary {
     name: item.name.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(item.children.clone()),
     field_type_map: build_field_type_map(item.children.clone()),
-    variant_name_set: <HashMap<_, _>>::new(),
-    generic_param_names: gpn,
+    variant_name_set: v2_rt::rc_empty_map::<bool>(),
+    generic_param_names: gpn.clone(),
 }))
 } else {
             {
-                let unit_only = { let mut __all = true; for child in item.children.iter().cloned() { if !(((child.children.clone().len() as i64) == 0)) { __all = false; break; } } __all };
+                let unit_only: bool = { let mut __all = true; for child in item.children.clone().iter().cloned() { if !(((child.children.clone().len() as i64) == 0)) { __all = false; break; } } __all };
 Some(Rc::new(TypeSummary {
     name: item.name.clone(),
     repr: Rc::new(TypeRepr::EnumRepr {
     unit_only: unit_only.clone(),
 }),
     field_summaries: build_enum_field_summaries(item.children.clone()),
-    field_type_map: <HashMap<_, _>>::new(),
-    variant_name_set: item.children.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, child| v2_rt::map_insert(acc, child.name.clone(), true)),
-    generic_param_names: gpn,
+    field_type_map: v2_rt::rc_empty_map::<String>(),
+    variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: _, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), child.name.clone(), true)),
+    generic_param_names: gpn.clone(),
 }))
 }
 }
@@ -753,76 +377,26 @@ Some(Rc::new(TypeSummary {
 pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> Rc<EmitInfoBuildState> {
     match build_type_summary(item.clone()) {
     Some(summary) => {
-        let with_variants = match (*summary.repr.clone()).clone() {
-    TypeRepr::EnumRepr { .. } => item.children.iter().cloned().fold(state.type_summaries.clone(), |acc: _, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
-            v2_rt::map_insert(acc.clone(), variant.name.clone(), Rc::new(TypeSummary {
+        let with_variants: Rc<HashMap<String, Rc<TypeSummary>>> = match (*summary.repr.clone()).clone() {
+    TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.type_summaries.clone(), |acc: _, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
+            v2_rt::rc_map_insert(acc.clone(), variant.name.clone(), Rc::new(TypeSummary {
     name: variant.name.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(variant.children.clone()),
     field_type_map: build_field_type_map(variant.children.clone()),
-    variant_name_set: <HashMap<_, _>>::new(),
-    generic_param_names: vec![],
+    variant_name_set: v2_rt::rc_empty_map::<bool>(),
+    generic_param_names: Rc::new(vec![]),
 }))
 } else {
             acc.clone()
 }),
     _ => state.type_summaries.clone(),
 };
-let next_summaries = v2_rt::map_insert(with_variants.clone(), summary.name.clone(), summary.clone());
+let next_summaries: Rc<HashMap<String, Rc<TypeSummary>>> = v2_rt::rc_map_insert(with_variants.clone(), summary.name.clone(), summary.clone());
 Rc::new(EmitInfoBuildState {
     type_summaries: next_summaries.clone(),
 })
 },
     None => state.clone(),
 }
-}
-
-pub fn variant_belongs_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>, variant_name: String, enum_name: String) -> bool {
-    match v2_rt::map_get(&type_summaries, enum_name.clone()) {
-        Some(summary) => match (*summary.repr.clone()).clone() {
-            TypeRepr::EnumRepr { .. } => summary.variant_name_set.contains_key(&variant_name),
-            _ => false,
-        },
-        None => false,
-    }
-}
-
-pub fn is_known_variant(type_summaries: HashMap<String, Rc<TypeSummary>>, name: String) -> bool {
-    v2_rt::map_values(&type_summaries).iter().any(|summary| {
-        matches!(&*summary.repr, TypeRepr::EnumRepr { .. }) && v2_rt::map_has(&summary.variant_name_set, name.clone())
-    })
-}
-
-pub fn is_enum_in_summaries(type_summaries: HashMap<String, Rc<TypeSummary>>, type_name: String) -> bool {
-    match v2_rt::map_get(&type_summaries, type_name.clone()) {
-        Some(summary) => match (*summary.repr.clone()).clone() {
-            TypeRepr::EnumRepr { .. } => true,
-            _ => false,
-        },
-        None => false,
-    }
-}
-
-pub fn find_variant_parent(type_summaries: HashMap<String, Rc<TypeSummary>>, variant_name: String, scope_enums: Vec<String>) -> Option<String> {
-    scope_enums
-        .iter()
-        .cloned()
-        .filter(|en| variant_belongs_to_enum(type_summaries.clone(), variant_name.clone(), en.clone()))
-        .collect::<Vec<_>>()
-        .first()
-        .cloned()
-}
-
-pub fn derive_variant_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>) -> HashMap<String, String> {
-    v2_rt::map_values(&type_summaries).iter().cloned().fold(<HashMap<String, String>>::new(), |acc: HashMap<String, String>, summary: Rc<TypeSummary>| {
-        match (*summary.repr.clone()).clone() {
-            TypeRepr::EnumRepr { .. } => v2_rt::map_keys(&summary.variant_name_set).iter().cloned().fold(acc.clone(), |inner: HashMap<String, String>, vn: String| {
-                match v2_rt::map_get(&inner, vn.clone()) {
-                    Some(_) => inner.clone(),
-                    None => v2_rt::map_insert(inner.clone(), vn.clone(), summary.name.clone()),
-                }
-            }),
-            _ => acc.clone(),
-        }
-    })
 }
