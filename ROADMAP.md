@@ -7,6 +7,13 @@ types, truth values, cardinality, product/coproduct — is compositional
 modeling in `.dag`. Languages are coercion targets. Testing is
 compilation.
 
+**Bounded kernel invariant:** Node is the only recursive type in the
+system. All recursive structures are Node trees — recursion lives in
+the data (children list), not in type definitions. Non-Node types are
+flat discriminants and data tables. This makes descent provable by
+construction: any function that walks Node.children is structurally
+bounded, and the complexity analyzer needs exactly one proof rule.
+
 Full thesis: [docs/architecture.md](docs/architecture.md)
 Compiler laws and coercion model: [docs/compiler-laws.md](docs/compiler-laws.md)
 Coercion design (algebra-keyed inhabitants): [docs/coercion-design.md](docs/coercion-design.md)
@@ -32,7 +39,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 313 | 0 | Down from 315→290 then up to 313 after soundness tightening (W-3/W-4 witness propagation fix). CX-0 through CX-3 landed. **Remaining:** emit_block_stmts (99), parse_type_expr (60), branching (70+), normalize_access_type_node (33). See Exploratory Directions for CX lane plan. |
+| Complexity violations | 313 | 0 | Down from 315→290 then up to 313 after soundness tightening (W-3/W-4). CX-0 through CX-3 landed. 7 root causes identified: RC-1 emit SCCs (99), RC-2 W-3/if-wrapped (33), RC-3 non-Node types (25), RC-4 iterator catamorphism (12), RC-5 parser (65), RC-6 work-list (11), RC-7 opaque helpers (8). Structural fix: Node convergence dissolves RC-3/RC-7. |
 
 ---
 
@@ -247,6 +254,15 @@ M1 (every .dag compiles)
       CX-M: IR child layout model (DONE — expr_child_roles in 00_core.dag)
       CX-2: catamorphism + lambda-skip consistency (DONE)
       CX-3: SCC container-child descent (DONE)
+      ── remaining 313 violations, 7 root causes ──
+      RC-1: emit SCC mixed descent (99) — list×tree product ordering
+      RC-2: W-3 blocks if-wrapped descent (33) — normalize_access_type_node
+      RC-3: non-Node recursive types (25) — CostExpr/SizeExpr/AlgebraTypeTemplate
+      RC-4: iterator-mediated catamorphism (12) — fold/map over children
+      RC-5: parser state advancement (65) — ProgressUnknown edges
+      RC-6: work-list drain (11) — finite set monotonic progress
+      RC-7: opaque helper descent (8) — field_binding_pattern etc.
+      ── structural fix: Node convergence dissolves RC-3/RC-7 (~33) ──
       CX-4: parser if-progress merging
       CX-5: finalize (ratchets → 0)
 ```
@@ -286,6 +302,112 @@ users have their own domain models (boutique/application-level) that
 interact with the standard language infrastructure. The boundary matters:
 if a concept belongs to a standard, it should trace to one. If it's
 user-owned domain logic, it lives in user `.dag` files.
+
+### Node convergence: all recursive types dissolve into Node
+
+**Status:** Incomplete. The Node migration unified types and expressions
+into a single IR, but several compiler-internal types still define
+recursion in their type definitions rather than using Node structure.
+
+**Invariant:** Node is the only recursive type. All other types are
+flat (no self-referencing fields). Recursive data is represented as
+Node trees with discriminant metadata. This is not a style preference
+— it is load-bearing for decidability. Every non-Node recursive type
+creates:
+- Rc insertion and clone proliferation (14,204 clones across 33 files)
+- Stack overflow guards (59 `stacker::maybe_grow` calls)
+- Cycle detection infrastructure (200+ lines)
+- Depth limits (`resolve_node_bounded` hardcodes depth=100)
+- Complexity analyzer failures (analyzer only proves Node descent)
+
+**Remaining recursive types and dissolution path:**
+
+| Type | Recursive fields | Dissolution | Milestone |
+|------|-----------------|-------------|-----------|
+| **Node** | children, params, body, etc. | THE kernel — stays | — |
+| **CostExpr** | CostAdd/CostMul/CostMax left+right, CostSum body | Node composition in `std/cost.dag` (see below) | CX lane |
+| **SizeExpr** | SizeAdd/SizeMax left+right | Node composition in `std/cost.dag` | CX lane |
+| **TypeRendering** | element, key, value, params, return_type, inner, generic_args | Dissolves into coercion engine | M5 |
+| **MatchPattern** | VariantPattern.field_bindings → Node → MatchPattern | Full dissolution into Node metadata | M7 |
+| **InferredNode** | Resolved.node → Node → InferredNode | Collapse into Node field (no separate type) | M7 |
+
+**CostExpr/SizeExpr dissolution.** Cost expressions are expression
+trees — structurally identical to the expression model `.dag` already
+has. `CostAdd { left, right }` is `ExprBinOp { op: Add }` with two
+children. The cost semiring algebra (Add, Mul, Max, Sum, Log) is domain
+knowledge, but its representation should be Node compositions in a
+`std/cost.dag` module, not a parallel recursive type. This means:
+- Cost algebra operations become `.dag` type definitions over Node
+- `simplify_cost`, `normalize_constants`, `format_cost_inner` etc.
+  become Node tree walkers — covered by existing descent proofs
+- New cost operations (Pow, Sqrt, Exp) are data table entries, not
+  new variants requiring exhaustive match updates
+- The semiring laws and formal semantics are preserved — only the
+  representation changes
+
+**MatchPattern dissolution.** MatchPattern variants (Bind, LitPattern,
+VariantPattern, Wildcard) become ExprData-like discriminants on Node.
+Field bindings are already Nodes. The pattern tree is already stored
+on Node via `match_pattern: MatchPattern?` — dissolution replaces the
+separate type with discriminant metadata, making pattern trees ordinary
+Node subtrees.
+
+**InferredNode collapse.** InferredNode exists to wrap a Node with
+resolution state (Resolved, CompilerError, TypeVariable). This is
+metadata about a Node, not a separate recursive structure. Collapse
+into fields on Node itself (resolution state + error info), eliminating
+the indirect Node ↔ InferredNode cycle.
+
+**Per-file impact assessment (every v2 compiler file accounted for):**
+
+CostExpr/SizeExpr (isolated — complexity.dag only):
+- complexity.dag: defines + consumes + produces. All 30+ match sites rewrite
+- stage0/v2_compiler_complexity.rs: mirror of above
+- No other files touched. Lowest-risk dissolution.
+
+TypeRendering (limited scope — 5 files):
+- 04_emit_info.dag: defines + produces (build_type_rendering)
+- 05_emit.dag: consumes + produces (render_type)
+- stage0/v2_compiler_emit_rust.rs: consumes
+- stage0/v2_compiler_emit.rs: consumes + produces
+- stage0/v2_compiler_languages.rs: consumes
+- Already planned for M5 coercion dissolution.
+
+MatchPattern (medium scope — 9 .dag files, 9 .rs files):
+- 00_core.dag: defines
+- 02_parse.dag: produces (parser constructs patterns)
+- 04_infer.dag, 04_patterns.dag, 04_resolve.dag: consume + produce
+- 05_emit_rust.dag, 05_emit_python.dag, 05_emit_go.dag: consume + produce
+- complexity.dag, compile.dag: consume
+- Plus 9 stage0 .rs mirrors
+- Dissolution: pattern variants become ExprData-like discriminants on Node
+
+InferredNode (largest scope — 16 .dag files, 15 .rs files):
+- 00_core.dag: defines (Node.inferred: InferredNode?)
+- Every resolve/infer file: consumes + produces (04_*.dag, 8 files)
+- Every emit file: consumes (05_*.dag, 4 files)
+- 02_parse.dag, 03_normalize.dag, compile.dag: consume + produce
+- Plus 15 stage0 .rs mirrors
+- Dissolution: collapse into Node fields (resolution_state + error_info)
+- Largest migration. Must wait for bootstrap to be green.
+
+Files with NO non-Node recursive type exposure (clean):
+- 01_tokenize.dag, 03_resolve.dag, 04_cycle.dag, 04_env.dag,
+  04_method.dag, 04_sigs.dag, artifact.dag, languages.dag,
+  ownership.dag, runtime_rust.dag, trace.dag
+
+**Dissolution ordering (by risk and dependency):**
+1. CostExpr/SizeExpr → Node (isolated, unblocks CX lane, no cross-file impact)
+2. TypeRendering → coercion (already planned M5, limited scope)
+3. MatchPattern → Node discriminant (medium scope, post-bootstrap)
+4. InferredNode → Node fields (largest scope, post-bootstrap, last)
+
+**Downstream consequences of completion:**
+- Complexity analyzer needs ONE proof rule (Node descent), not per-type rules
+- Rc insertion follows ONE pattern (Node.children)
+- Cycle detection simplifies to Node graph cycles only
+- `stacker::maybe_grow` calls reduce to Node-walking boundaries only
+- Cost algebra functions become ordinary Node walkers — ~40 violations dissolve
 
 ---
 
@@ -1188,13 +1310,26 @@ inference, parse, or core changes. Lane exclusivity is structural.
 **Design constraint:** No dual IR. The analyzer reads what the language
 provides: `Node.children`, `Node.expr_data`, accessor function identities
 (closed-world set from `00_core.dag`). No invented representations.
+**This constraint currently violated:** `CostExpr` and `SizeExpr` are
+parallel recursive types — dual IR by definition. The cost semiring
+algebra is legitimate domain knowledge, but its representation must be
+Node compositions (see "Node convergence" in Design Direction), not a
+separate recursive type that requires its own descent proofs.
 
 **What to keep** (~1,500 lines of `complexity.dag`):
-- Cost algebra types: `SizeExpr`, `CostExpr`, `CostShape`, `Certainty`
+- Cost algebra semantics: semiring laws, CostShape, Certainty
 - Cost evaluation: `cost_of_expr`, `get_or_compute_summary`, `cost_of_method_by_shape`
 - Graph infrastructure: `build_call_graph`, Tarjan's SCC, `dfs_finish_order`
 - Path counting: `max_path_self_calls_with_cont` (correctly handles branch mutual exclusion)
 - Reporting: `simplify_cost`, `normalize_asymptotic`, `classify_complexity`, `build_complexity_report`
+
+**What to dissolve** (CostExpr/SizeExpr → Node compositions):
+- `CostExpr` (7 recursive variants) → Node tree with CostKind discriminant
+- `SizeExpr` (5 recursive variants) → Node tree with SizeKind discriminant
+- All functions that pattern-match on CostExpr/SizeExpr variants become
+  Node tree walkers — descent proven automatically via existing CX-1 proof
+- Semiring operations (Add, Mul, Max, Sum, Log) become data table entries
+- Net effect: ~40 complexity violations dissolve by construction
 
 **Deleted** (CX-0, landed):
 - `RecursiveVariantFieldWitness` coupling and variant-field descent functions
@@ -1267,8 +1402,10 @@ Blocked on: nothing. Could land first as a standalone language feature.
 **Acceptance criteria (CX lane complete):**
 - Container-child descent proven for all Node tree walkers
 - Catamorphism proof: multi-call arms on disjoint children → O(n)
-- No dual IR: analyzer reads Node.children, Node.expr_data, accessor
-  function identities — nothing invented
+- No dual IR: CostExpr/SizeExpr dissolved into Node compositions;
+  analyzer reads Node.children, Node.expr_data, accessor function
+  identities — nothing invented
+- Node is the only recursive type consumed by complexity analysis
 - Variant-field proof infrastructure deleted
 - Complexity gate: 315 → 0 without suppression or ratchet
 - `BOOTSTRAP_MODE` complexity bypass deleted
@@ -1400,30 +1537,40 @@ associative, commutative (for ⊕), and distributes correctly.
 Unlike a tropical semiring (which uses min/+), this algebra uses
 +/× because we are computing total cost, not shortest paths.
 
-**Current CostExpr variants and their formal semantics:**
+**Current cost operations and their formal semantics:**
 
-| Variant | Formal definition | Function class |
-|---------|------------------|----------------|
-| `CostConst(c)` | f(n) = c | Θ(1) |
-| `CostAdd(f, g)` | f(n) + g(n) | max class of f, g |
-| `CostMul(f, g)` | f(n) · g(n) | product of classes |
-| `CostMax(f, g)` | max(f(n), g(n)) | max class of f, g |
-| `CostSum(i, N, f)` | Σ_{i=0}^{N} f(i) | depends on f: Σ1=N, Σi=N², Σlog=N·log |
-| `CostLog(b, n)` | log_b(n) | Θ(log n) |
-| `CostUnknown(r)` | ⊥ (bottom) | analysis failure — structurally eliminated |
+| Operation | Formal definition | Function class |
+|-----------|------------------|----------------|
+| Const(c) | f(n) = c | Θ(1) |
+| Add(f, g) | f(n) + g(n) | max class of f, g |
+| Mul(f, g) | f(n) · g(n) | product of classes |
+| Max(f, g) | max(f(n), g(n)) | max class of f, g |
+| Sum(i, N, f) | Σ_{i=0}^{N} f(i) | depends on f: Σ1=N, Σi=N², Σlog=N·log |
+| Log(b, n) | log_b(n) | Θ(log n) |
+| Unknown(r) | ⊥ (bottom) | analysis failure — structurally eliminated |
+
+**Note:** These are currently `CostExpr` enum variants (a recursive
+type). Per the Node convergence direction, they will become cost Node
+discriminants — data table entries, not type-level variants. The
+semiring semantics are preserved; only the representation changes.
+Adding a new operation becomes a data table entry, not a new variant
+requiring exhaustive match updates across ~30 call sites.
 
 **Expressible function classes (current):**
 - Θ(1), Θ(log n), Θ(n), Θ(n log n), Θ(n²), Θ(n² log n), Θ(n³)
 - Arbitrary polynomial-logarithmic: Θ(n^a · log^b n) for constant a, b
 - Multi-variable: Θ(n · m), Θ(n · m · log k)
 
-**Planned extensions — new CostExpr variants:**
+**Planned extensions — new cost operations:**
 
-| Variant | Formal definition | Function class | Use case |
-|---------|------------------|----------------|----------|
-| `CostPow(n, k)` | n^k for constant k ∈ ℕ | Θ(n^k) | Explicit polynomial degree (matrix multiply Θ(n³), naive sort Θ(n²)) |
-| `CostSqrt(n)` | n^(1/2) | Θ(√n) | Trial division, block decomposition, Mo's algorithm O((n+q)√n) |
-| `CostExp(b, n)` | b^n for constant b | Θ(b^n) | Detect and REJECT — exponential cost is a compilation error |
+| Operation | Formal definition | Function class | Use case |
+|-----------|------------------|----------------|----------|
+| Pow(n, k) | n^k for constant k ∈ ℕ | Θ(n^k) | Explicit polynomial degree (matrix multiply Θ(n³), naive sort Θ(n²)) |
+| Sqrt(n) | n^(1/2) | Θ(√n) | Trial division, block decomposition, Mo's algorithm O((n+q)√n) |
+| Exp(b, n) | b^n for constant b | Θ(b^n) | Detect and REJECT — exponential cost is a compilation error |
+
+After Node convergence, these are data table rows in `std/cost.dag`,
+not new recursive variants. Cost of change for a new operation: 1 file.
 
 **Recurrence resolution:** Recursive cost follows from the bounded
 iteration primitives. Each primitive declares a recurrence:
@@ -1443,8 +1590,8 @@ tokens. Tree-walker SCCs (children shrink) → descend over tree.
 
 ```
 CostAmortized { 
-  worst_case: CostExpr,      — single-operation worst case
-  amortized: CostExpr,       — per-operation amortized cost
+  worst_case: Node,           — single-operation worst case (cost Node tree)
+  amortized: Node,            — per-operation amortized cost (cost Node tree)
   potential: PotentialFn      — Φ: State → ℝ⁺ (potential function)
 }
 
@@ -1460,14 +1607,14 @@ with Φ = Σ log(subtree_size)).
 
 **Space complexity as a peer dimension:**
 
-The `FunctionSummary` already has `work: CostExpr` and `span: CostExpr`.
-Adding `space: CostExpr` makes it a three-dimensional cost vector:
+The `FunctionSummary` already has `work` and `span` cost trees.
+Adding `space` makes it a three-dimensional cost vector:
 
 ```
 type CostVector {
-  work: CostExpr       — total operations (time)
-  span: CostExpr       — critical path length (parallel time)  
-  space: CostExpr      — peak memory usage
+  work: Node            — total operations (time) — cost Node tree
+  span: Node            — critical path length (parallel time)
+  space: Node           — peak memory usage
 }
 ```
 
@@ -1525,7 +1672,7 @@ in time.
 algebra; access pattern determines representation. Mixed access = type
 error.
 
-**Space complexity as peer dimension.** `space: CostExpr` peer to `work`
+**Space complexity as peer dimension.** `space` cost tree peer to `work`
 and `span`. Currently `output_size` is unpopulated.
 
 **Computed data declarations.** The `.dag` `data` syntax only supports
@@ -1561,10 +1708,10 @@ the first level the language recognizes.
 
 | Ratchet | Current | Target | Command |
 |---------|---------|--------|---------|
-| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count -- --ignored` (DIAG_RATCHET in bootstrap.rs; all are complexity violations from analyzer-language mismatch) |
+| Self-compile diagnostics | 314 | 0 | `strict_compile_diagnostic_count -- --ignored` (DIAG_RATCHET in bootstrap.rs; all are complexity violations — 7 root causes identified, see CX sidebar) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (51 root functions; resolves with CX lane analyzer redesign) |
+| Complexity violations | 313 | 0 | `strict_complexity_violation_count -- --ignored` (7 root causes; Node convergence dissolves ~33, proof extensions resolve rest) |
 | Emitted Rust errors | 1 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
