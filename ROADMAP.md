@@ -26,8 +26,8 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 110 | 0 | CX gate no longer blocks emission (PR #300). 110 `compile_error!` safety valves: all `empty_map: value type unresolved` — bare containers reaching emit without resolved value types (M2 blocker 2, fix order #6). Serde errors resolved by adding `serde` dep with `features = ["rc"]`. |
-| Stage0 regeneration (C) | RED | GREEN | 40 files emit, cargo check has 110 errors (all bare-container safety valves). No serde/type/import errors. |
+| Bootstrap emitted Rust (B) | 41 | 0 | CX gate bypassed (PR #300). 41 `Rc::new(HashMap::new())` scaffolding replacing `compile_error!("empty_map")` — bare containers reaching emit without resolved value types (M2 blocker 2, fix order #6). |
+| Stage0 regeneration (C) | RED | GREEN | Self-compile: 0 typed errors, 40 files emitted, 297 CX (bypassed). Stage1→stage0 replacement (Bootstrap D) not yet green. |
 | L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
