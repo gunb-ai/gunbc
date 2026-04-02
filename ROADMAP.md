@@ -26,7 +26,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 0 errors | 0 | Down from 8658→99→12→5→1→0. All E0425/E0282 resolved. Emission currently blocked by complexity violations (311); test skips cargo check when blocked |
+| Bootstrap emitted Rust (B) | UNVERIFIED (0 known) | 0 | Down from 8658→99→12→5→1→0 known. All E0425/E0282 fixed. Emission blocked by complexity violations; cargo check not yet run on emitted output |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on complexity violations → 0 (emission gate); stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
@@ -36,19 +36,20 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 
 ---
 
-## Active: Bootstrap B → 0 (**COMPLETE** — 0 codegen errors)
+## Active: Bootstrap B → 0 (all known codegen errors fixed, not yet verified)
 
 TypeRendering infrastructure landed. Always-annotate let bindings
 enforced. 10 reviewer violations resolved. Fold inference improved.
 Error count: 99 → 12 → 5 → 1 → 0 (99 fixed). PR #277, #285, fold
 bidirectional unification, field_access_base import fix.
 
-**Emission currently blocked by complexity violations (311).** The
-fail-closed gate in `compile_sources` prevents file emission when any
-infer-stage errors exist, including complexity violations. Bootstrap B
-test gracefully skips cargo check when emission is blocked. Once
-complexity violations reach 0, emission unblocks and the ratchet
-(EMITTED_RUST_ERROR_RATCHET = 0) becomes the live gate.
+**Not yet verified:** emission is blocked by complexity violations (311).
+The fail-closed gate in `compile_sources` prevents file emission when
+any infer-stage errors exist, including complexity violations. The
+bootstrap test skips cargo check when blocked by complexity violations
+(other failures still fail the test). Bootstrap B = 0 is **unproven**
+until complexity violations reach 0 and the ratchet
+(EMITTED_RUST_ERROR_RATCHET = 0) becomes a live checked gate.
 
 **All codegen errors resolved (2 categories):**
 
@@ -386,10 +387,10 @@ and added to EmitGraphInfo in the same pass.
 Acceptance criteria:
 - [x] `data` declarations emit as constructor functions (no
   `lazy_static` + `Rc` → E0277 Send/Sync: 97→31)
-- [x] ValueContext `{ is_constant, has_fn_fields }` precomputed in
-  EmitGraphInfo. `build_value_contexts` in `04_infer.dag` computes
-  per-type ValueContext from item registry (is_constant = DataItem)
-  and resolved child types (has_fn_fields = any callable child).
+- [x] ValueContext `{ has_fn_fields }` precomputed in EmitGraphInfo.
+  `build_value_contexts` in `04_infer.dag` computes per-type
+  ValueContext from resolved child types (has_fn_fields = any callable
+  child). `is_constant` deferred — no consumer yet.
 - [x] `fielded_variants` precomputed for structural variant-has-fields
 - [x] `has_fn_fields` → skip `PartialEq`/`Debug` derives for
   algebra types (now reads from `emit_info.value_contexts` boundary

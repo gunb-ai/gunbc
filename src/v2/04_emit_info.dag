@@ -42,16 +42,12 @@ type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 // determining its target-language representation. Precomputed in
 // EmitGraphInfo so the emitter reads facts instead of heuristics.
 //
-// Orthogonal because a value can be constant AND callable (e.g.,
-// a data declaration of function type). A sum type would force
-// ad hoc classification; orthogonal flags compose naturally.
-//
 // The emitter reads ValueContext × LanguageSpec to choose representation:
-//   is_constant × Rust → const/static (no Rc, no lazy_static)
-//   !is_constant × Rust → Rc<T>
 //   has_fn_fields × Rust → skip PartialEq/Debug derives
+//
+// Future fields (land when consumer exists):
+//   is_constant → const/static (no Rc, no lazy_static) in Rust
 type ValueContext {
-  is_constant: Bool
   has_fn_fields: Bool
 }
 

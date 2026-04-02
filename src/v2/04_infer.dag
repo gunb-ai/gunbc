@@ -2827,16 +2827,12 @@ fn child_has_fn_type(child: Node) -> Bool {
 }
 
 fn build_value_contexts(modules: List<TypedModule>) -> Map<String, ValueContext> {
+  // Keyed by type name — same keying contract as type_summaries and
+  // recursive_type_set (unique within the compilation unit after resolution).
   modules |> fold(init: empty_map(), f: (acc, m) =>
-    let registry = m.item_registry
     m.items |> fold(init: acc, f: (inner, item) =>
-      let name = item.name
-      let is_constant = match map_get(registry, name) {
-        Some { value: info } => info.kind == DataItem
-        None => false
-      }
       let has_fn_fields = item.children |> any(child => child_has_fn_type(child: child))
-      map_insert(inner, name, ValueContext { is_constant: is_constant, has_fn_fields: has_fn_fields })
+      map_insert(inner, item.name, ValueContext { has_fn_fields: has_fn_fields })
     )
   )
 }

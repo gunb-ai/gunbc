@@ -5128,15 +5128,9 @@ fn child_has_fn_type(child: &Node) -> bool {
 
 pub fn build_value_contexts(modules: &[Rc<TypedModule>]) -> HashMap<String, Rc<ValueContext>> {
     modules.iter().fold(<HashMap<String, Rc<ValueContext>>>::new(), |acc, m| {
-        let registry = &m.item_registry;
         m.items.iter().fold(acc, |mut inner, item| {
-            let name = item.name.clone();
-            let is_constant = match v2_rt::map_get(registry, name.clone()) {
-                Some(info) => matches!(info.kind, DataItem),
-                None => false,
-            };
             let has_fn_fields = item.children.iter().any(|child| child_has_fn_type(child));
-            inner.insert(name, Rc::new(ValueContext { is_constant, has_fn_fields }));
+            inner.insert(item.name.clone(), Rc::new(ValueContext { has_fn_fields }));
             inner
         })
     })

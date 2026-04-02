@@ -84,7 +84,6 @@ pub struct TypeSummary {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueContext {
-    pub is_constant: bool,
     pub has_fn_fields: bool,
 }
 
