@@ -963,7 +963,7 @@ fn parse_dotted_ident_rest(tokens: List<Token>, state: ParserState, acc: String,
   if e.consumed {
     let r = expect_name(tokens: tokens, state: e.state)
     if has_err(err: r.err) { return r }
-    parse_dotted_ident_rest(tokens: tokens, state: r.state, acc: "{acc}.{r.name}", span: span)
+    parse_dotted_ident_rest(tokens: tokens, state: r.state, acc: concat(acc, ".", r.name), span: span)
   } else {
     NameResult { name: acc, span: span, state: state, err: none }
   }
