@@ -52,7 +52,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, SourceSpan, MatchPattern, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, field_init_node_name, field_init_node_value, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_var_name, field_access_base, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{Node, ExprData, SourceSpan, MatchPattern, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, field_init_node_name, field_init_node_value, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_var_name, field_access_base, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, is_child_accessor_in_model};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::BinOpKind;
@@ -167,47 +167,11 @@ pub fn method_cost_shape(method_name: String) -> Option<Rc<CostShape>> {
 }
 
 // =========================================================================
-// Child accessor table — closed-world set of functions that project
-// into Node.children. Used by container-child descent proof (CX-1).
-// Adding a new accessor = one line here.
+// Child accessor identity is now derived from the IR child layout model
+// in v2_std_core.rs (EXPR_CHILD_ROLES / WRAPPER_CHILD_ROLES). The hardcoded
+// child_accessor_table has been deleted — use is_child_accessor_in_model()
+// imported from v2_std_core instead.
 // =========================================================================
-
-pub fn child_accessor_table() -> HashMap<String, bool> {
-    let mut m = HashMap::new();
-    m.insert("if_condition".to_string(), true);
-    m.insert("if_then_branch".to_string(), true);
-    m.insert("if_else_branch".to_string(), true);
-    m.insert("match_scrutinee".to_string(), true);
-    m.insert("binop_left".to_string(), true);
-    m.insert("binop_right".to_string(), true);
-    m.insert("unaryop_operand".to_string(), true);
-    m.insert("field_access_base".to_string(), true);
-    m.insert("field_access_field".to_string(), true);
-    m.insert("method_receiver".to_string(), true);
-    m.insert("lambda_body".to_string(), true);
-    m.insert("let_value".to_string(), true);
-    m.insert("let_body".to_string(), true);
-    m.insert("cast_expr".to_string(), true);
-    m.insert("cast_target".to_string(), true);
-    m.insert("foreach_collection".to_string(), true);
-    m.insert("foreach_body".to_string(), true);
-    m.insert("index_base".to_string(), true);
-    m.insert("index_expr".to_string(), true);
-    m.insert("slice_base".to_string(), true);
-    m.insert("slice_start".to_string(), true);
-    m.insert("slice_end".to_string(), true);
-    m.insert("return_value".to_string(), true);
-    m.insert("arg_value".to_string(), true);
-    m.insert("arm_body".to_string(), true);
-    m.insert("arm_guard".to_string(), true);
-    m.insert("arm_pattern".to_string(), true);
-    m.insert("field_init_node_value".to_string(), true);
-    m
-}
-
-pub fn is_known_child_accessor(name: String) -> bool {
-    child_accessor_table().contains_key(&name)
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComplexitySummary {
@@ -1721,7 +1685,7 @@ pub fn is_accessor_of_param(expr: Rc<Node>, param_name: String) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let callee = expr_call_func(expr.clone());
-            is_known_child_accessor(callee.clone())
+            is_child_accessor_in_model(callee.clone())
             && expr.children.clone().iter().any(|arg_node| {
                 match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
                     ExprData::ExprVar { .. } => expr_var_name(arg_value(arg_node.clone())) == param_name,

@@ -1130,6 +1130,102 @@ pub fn variant_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
     n.span.clone()
 }
 
+// =========================================================================
+// IR Child Layout Model
+// =========================================================================
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChildRole {
+    pub name: String,
+    pub accessor: String,
+    pub position: i64,
+    pub required: bool,
+}
+
+lazy_static::lazy_static! {
+    pub static ref EXPR_CHILD_ROLES: HashMap<String, Vec<ChildRole>> = {
+        let mut m: HashMap<String, Vec<ChildRole>> = HashMap::new();
+        m.insert("ExprFieldAccess".to_string(), vec![
+            ChildRole { name: "base".to_string(), accessor: "field_access_base".to_string(), position: 0, required: true },
+        ]);
+        m.insert("ExprBinOp".to_string(), vec![
+            ChildRole { name: "left".to_string(), accessor: "binop_left".to_string(), position: 0, required: true },
+            ChildRole { name: "right".to_string(), accessor: "binop_right".to_string(), position: 1, required: true },
+        ]);
+        m.insert("ExprUnaryOp".to_string(), vec![
+            ChildRole { name: "operand".to_string(), accessor: "unaryop_operand".to_string(), position: 0, required: true },
+        ]);
+        m.insert("ExprIf".to_string(), vec![
+            ChildRole { name: "condition".to_string(), accessor: "if_condition".to_string(), position: 0, required: true },
+            ChildRole { name: "then".to_string(), accessor: "if_then_branch".to_string(), position: 1, required: true },
+            ChildRole { name: "else".to_string(), accessor: "if_else_branch".to_string(), position: 2, required: false },
+        ]);
+        m.insert("ExprMatch".to_string(), vec![
+            ChildRole { name: "scrutinee".to_string(), accessor: "match_scrutinee".to_string(), position: 0, required: true },
+        ]);
+        m.insert("ExprLet".to_string(), vec![
+            ChildRole { name: "value".to_string(), accessor: "let_value".to_string(), position: 0, required: true },
+            ChildRole { name: "body".to_string(), accessor: "let_body".to_string(), position: 1, required: false },
+        ]);
+        m.insert("ExprLambda".to_string(), vec![
+            ChildRole { name: "body".to_string(), accessor: "lambda_body".to_string(), position: 0, required: true },
+        ]);
+        m.insert("ExprMethodCall".to_string(), vec![
+            ChildRole { name: "receiver".to_string(), accessor: "method_receiver".to_string(), position: 0, required: true },
+        ]);
+        m.insert("ExprCast".to_string(), vec![
+            ChildRole { name: "expr".to_string(), accessor: "cast_expr".to_string(), position: 0, required: true },
+            ChildRole { name: "target".to_string(), accessor: "cast_target".to_string(), position: 1, required: true },
+        ]);
+        m.insert("ExprForEach".to_string(), vec![
+            ChildRole { name: "collection".to_string(), accessor: "foreach_collection".to_string(), position: 0, required: true },
+            ChildRole { name: "body".to_string(), accessor: "foreach_body".to_string(), position: 1, required: true },
+        ]);
+        m.insert("ExprIndex".to_string(), vec![
+            ChildRole { name: "base".to_string(), accessor: "index_base".to_string(), position: 0, required: true },
+            ChildRole { name: "index".to_string(), accessor: "index_expr".to_string(), position: 1, required: true },
+        ]);
+        m.insert("ExprSlice".to_string(), vec![
+            ChildRole { name: "base".to_string(), accessor: "slice_base".to_string(), position: 0, required: true },
+            ChildRole { name: "start".to_string(), accessor: "slice_start".to_string(), position: 1, required: true },
+            ChildRole { name: "end".to_string(), accessor: "slice_end".to_string(), position: 2, required: true },
+        ]);
+        m.insert("ExprReturn".to_string(), vec![
+            ChildRole { name: "value".to_string(), accessor: "return_value".to_string(), position: 0, required: true },
+        ]);
+        m
+    };
+}
+
+lazy_static::lazy_static! {
+    pub static ref WRAPPER_CHILD_ROLES: HashMap<String, Vec<ChildRole>> = {
+        let mut m: HashMap<String, Vec<ChildRole>> = HashMap::new();
+        m.insert("Arg".to_string(), vec![
+            ChildRole { name: "value".to_string(), accessor: "arg_value".to_string(), position: 0, required: true },
+        ]);
+        m.insert("Arm".to_string(), vec![
+            ChildRole { name: "guard".to_string(), accessor: "arm_guard".to_string(), position: 0, required: false },
+            ChildRole { name: "body".to_string(), accessor: "arm_body".to_string(), position: -1, required: true },
+        ]);
+        m.insert("FieldInit".to_string(), vec![
+            ChildRole { name: "value".to_string(), accessor: "field_init_node_value".to_string(), position: 0, required: true },
+        ]);
+        m
+    };
+}
+
+pub fn is_child_accessor_in_model(name: String) -> bool {
+    EXPR_CHILD_ROLES.values().any(|roles| roles.iter().any(|r| r.accessor == name))
+        || WRAPPER_CHILD_ROLES.values().any(|roles| roles.iter().any(|r| r.accessor == name))
+}
+
+pub fn child_roles_for_variant(variant_name: String) -> Vec<ChildRole> {
+    EXPR_CHILD_ROLES
+        .get(&variant_name)
+        .cloned()
+        .unwrap_or_default()
+}
+
 pub fn if_condition(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 0, "if condition".to_string())
 }

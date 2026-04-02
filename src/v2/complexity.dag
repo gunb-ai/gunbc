@@ -41,7 +41,8 @@ import v2.std.core {
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value,
   expr_call_func, expr_var_name, field_access_base, field_access_field,
-  LiteralValue, LitNull
+  LiteralValue, LitNull,
+  is_child_accessor_in_model
 }
 
 // =========================================================================
@@ -141,32 +142,10 @@ fn method_cost_shape(method_name: String) -> CostShape? {
   lookup(method_cost_shape_table, key: method_name)
 }
 
-// =========================================================================
-// Child accessor table — closed-world set of functions that project
-// into Node.children. Used by container-child descent proof (CX-1).
-// Adding a new accessor = one line here.
-// =========================================================================
-data child_accessor_table: Map<String, Bool> = {
-  "if_condition": true, "if_then_branch": true, "if_else_branch": true,
-  "match_scrutinee": true,
-  "binop_left": true, "binop_right": true,
-  "unaryop_operand": true,
-  "field_access_base": true, "field_access_field": true,
-  "method_receiver": true,
-  "lambda_body": true,
-  "let_value": true, "let_body": true,
-  "cast_expr": true, "cast_target": true,
-  "foreach_collection": true, "foreach_body": true,
-  "index_base": true, "index_expr": true,
-  "slice_base": true, "slice_start": true, "slice_end": true,
-  "return_value": true,
-  "arg_value": true, "arm_body": true, "arm_guard": true, "arm_pattern": true,
-  "field_init_node_value": true
-}
-
-fn is_known_child_accessor(name: String) -> Bool {
-  lookup(child_accessor_table, key: name) != none
-}
+// Child accessor identity is now derived from the IR child layout model
+// in 00_core.dag (expr_child_roles / wrapper_child_roles). The hardcoded
+// child_accessor_table has been deleted — use is_child_accessor_in_model()
+// imported from v2.std.core instead.
 
 // =========================================================================
 // Complexity summary -- the main output type
@@ -1721,7 +1700,7 @@ fn is_accessor_of_param(expr: Node, param_name: String) -> Bool {
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: expr)
-      is_known_child_accessor(name: callee)
+      is_child_accessor_in_model(name: callee)
       && (expr.children |> any(arg_node =>
         match arg_value(n: arg_node).expr_data {
           ExprVar { binding_kind: _ } => expr_var_name(texpr: arg_value(n: arg_node)) == param_name

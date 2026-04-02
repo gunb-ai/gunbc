@@ -22,7 +22,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 |--------|-------|--------|-------|
 | .dag files | 91 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
-| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 316 are indirect-recursion complexity violations |
+| Self-compile diagnostics | 301 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 301 are indirect-recursion complexity violations |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
@@ -32,7 +32,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 315 | 0 | 51 root functions → 315 errors (ratcheted). **Analyzer-language mismatch:** proof model targets variant-field recursion but language uses container-child recursion (Node.children + accessors). Unsound witnesses reverted. See Exploratory Directions for CX lane redesign plan. |
+| Complexity violations | 300 | 0 | Down from 315. CX-0 (dead code deletion) + CX-1 (container-child descent proof) landed. **Next:** CX-M (IR child layout model in 00_core.dag) to eliminate hardcoded accessor table, then CX-2/CX-3. See Exploratory Directions for CX lane plan. |
 
 ---
 
@@ -241,13 +241,15 @@ M1 (every .dag compiles)
                          └→ M7 (dissolve structural bridges)
 
   SIDEBAR (parallel, not blocking):
-  CX: complexity analyzer redesign (I1/I2)
-      CX-0: delete dead infrastructure (RecursiveVariantFieldWitness)
-      CX-1: container-child descent proof
+  CX: complexity analyzer redesign
+      CX-0: delete dead infrastructure (DONE)
+      CX-1: container-child descent proof (DONE, rework pending CX-M)
+      CX-M: IR child layout model in 00_core.dag (prerequisite for CX-1r+)
+      CX-1r: rework descent proof to use model (eliminate duplicate repr)
       CX-2: catamorphism proof (multi-call on disjoint children)
       CX-3: SCC container-child descent
       CX-4: parser if-progress merging
-      CX-5: delete BOOTSTRAP_MODE bypass
+      CX-5: finalize (ratchets → 0)
 ```
 
 **Coercion implementation parallelism:** The coercion design is complete
@@ -1154,40 +1156,39 @@ compiler verifies the SCC has a shared decreasing measure:
 If no shared decreasing measure exists, the SCC is a compilation
 error — same as case 4 above.
 
-**Current state (2026-04-01):** 51 root functions → 315 complexity
-violations (ratcheted). Existing infrastructure:
+**Current state (2026-04-02):** 300 complexity violations (down from
+315). CX-0 (dead variant-field deletion) and CX-1 (container-child
+descent proof) landed on branch `cool-lynx-138`, PR #301.
+
+Existing infrastructure:
 - direct recursion is fail-closed on the actual measured parameter
 - SCC ownership is explicit, so callers into a cycle do not inherit the
   cycle's violation
 - parser progress is parse-owned via typed helper identities
 - unsound `ExprFieldAccess`/`ExprMethodCall` witness arms reverted
   (soundness audit W-1, W-2)
+- container-child descent proof (CX-1) resolves 27 single-function
+  violations via accessor-mediated child recursion
+- BOOTSTRAP_MODE bypass already removed (confirmed: no matches in stage0)
 
-**Audit finding (2026-04-01):** The remaining 315 violations trace to a
+**Audit finding (2026-04-01):** The original 315 violations traced to a
 structural mismatch between the analyzer's proof model and the language's
-actual recursion model:
+actual recursion model. The variant-field proof model has been deleted
+(CX-0). The container-child proof model (CX-1) works but has a design
+flaw: the `child_accessor_table` in `complexity.dag` is a hardcoded
+duplicate of structural facts already defined by accessor functions in
+`00_core.dag`. This duplicate representation can drift.
 
-- **The analyzer assumes variant-field recursion.** `RecursiveVariantFieldWitness`,
-  `structural_param_from_body`, `is_structural_descent_with_param` — all require
-  type T with variant V containing field F of type T, match on T, recurse on
-  pattern bindings from F.
-- **The language uses container-child recursion.** Node has `children: List<Node>`
-  and `expr_data: ExprData` as discriminant. Programs match on `node.expr_data`,
-  recurse on accessor results (`match_scrutinee`, `arm_body`, `if_condition`, etc.)
-  which return elements of `node.children`.
-- **Zero types in the compiler's .dag source have recursive variant fields.**
-  The variant-field proof path fires on zero real functions.
-  `RecursiveVariantFieldWitness` is dead infrastructure.
-- **The `descend` primitive does not exist.** INVARIANTS.md lists it as one of
-  three iteration primitives, but no compiler implementation exists.
-- **BOOTSTRAP_MODE bypasses the complexity gate.** `compile.dag` correctly
-  gates emission on complexity violations, but `stage0/main.rs` sets
-  `BOOTSTRAP_MODE = true` unconditionally, bypassing the gate. The 255
-  violations are hard errors being silently let through.
-- **Review found 9 soundness issues** in the proof patches on the investigation
-  branch. The ratchet drop 315→255 was built on unsound heuristic proofs
-  (fresh-substructure name check, match witness scope leak, single-member
-  finite frontier). That branch should not merge.
+**Design finding (2026-04-02):** The IR child layout exists in three
+independent forms that can drift:
+1. Comment table in `00_core.dag:710-731` (human spec)
+2. Accessor function bodies in `00_core.dag:787-856` (implementation)
+3. `child_accessor_table` in `complexity.dag:149-165` (consumer copy)
+
+Fix: promote the child layout to executable `.dag` data in `00_core.dag`
+(CX-M). The complexity analyzer imports the model — no hardcoded tables.
+Any future consumer of Node structure reads the same model. This is the
+"no duplicate representations" invariant applied to the IR itself.
 
 #### CX lane: complexity analyzer redesign (parallel sidebar)
 
