@@ -31,7 +31,7 @@ fn full_dsl_compiles() {
     );
 
     let dsl_result =
-        v2_compiler::v2_compiler_compile::compile_sources(dsl_sources.clone(), RenderTarget::Rust);
+        v2_compiler::v2_compiler_compile::compile_sources(Rc::new(dsl_sources.clone()), RenderTarget::Rust);
 
     let dsl_diag_count = dsl_result.diagnostics.len() as usize;
     if dsl_diag_count > 0 {

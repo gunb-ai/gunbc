@@ -27,7 +27,7 @@ pub fn read_v2_file(relative_path: &str) -> String {
 
 // ── Tokenize + Parse ─────────────────────────────────────────────────────
 
-pub fn tokenize(source: &str) -> Vec<Rc<Token>> {
+pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
     v2_compiler::v2_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 
@@ -133,7 +133,7 @@ fn extract_imports(source: &str) -> Vec<String> {
     match &result.module {
         Some(module) => {
             v2_compiler::v2_std_core::module_imports(module.clone())
-                .into_iter()
+                .iter()
                 .map(|imp| imp.name.clone())
                 .collect()
         }
@@ -216,7 +216,7 @@ pub fn compile_dag_named(
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
     let sources = resolve_imports_transitively(filename, source, module_index());
-    v2_compiler::v2_compiler_compile::compile_sources(sources, target)
+    v2_compiler::v2_compiler_compile::compile_sources(Rc::new(sources), target)
 }
 
 pub fn compile_multi(files: &[(&str, &str)]) -> Rc<PipelineResult> {
@@ -234,7 +234,7 @@ pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<
         }
     }
     let sources: Vec<Rc<SourceFile>> = all_sources.into_values().collect();
-    v2_compiler::v2_compiler_compile::compile_sources(sources, target)
+    v2_compiler::v2_compiler_compile::compile_sources(Rc::new(sources), target)
 }
 
 // ── Result inspection ────────────────────────────────────────────────────
