@@ -2237,9 +2237,32 @@ fn is_list_shrinkage_descent(body: Node, func_name: String, params: List<Node>) 
 // dimension has Strict descent evidence for ALL self-calls.
 // =========================================================================
 
+// Check if an expression is `param - N` where N is a positive integer literal.
+// Strict arithmetic descent: the value provably decreases by at least 1.
+fn is_arithmetic_descent_expr(expr: Node, param_name: String) -> Bool {
+  match expr.expr_data {
+    ExprBinOp { op: Sub } =>
+      let left = binop_left(texpr: expr)
+      let right = binop_right(texpr: expr)
+      match left.expr_data {
+        ExprVar { binding_kind: _ } =>
+          expr_var_name(texpr: left) == param_name
+          && match right.expr_data {
+            ExprLiteral { value: LitInt { value: n } } => n > 0
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
 fn classify_self_call_evidence(arg_expr: Node, param_name: String, descent_vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> DescentEvidence {
   if check_child && is_child_descent_expr(expr: arg_expr, param_name: param_name) { Strict }
   else if check_list && is_list_shrink_expr(expr: arg_expr, param_name: param_name) { Strict }
+  // Arithmetic descent only when neither tree nor list dimension is active
+  // (prevents n-1 from being misclassified as tree descent)
+  else if check_child == false && check_list == false && is_arithmetic_descent_expr(expr: arg_expr, param_name: param_name) { Strict }
   else {
     match arg_expr.expr_data {
       ExprVar { binding_kind: _ } =>
@@ -2396,7 +2419,14 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
             match list_evidence {
               Some { value: Strict } =>
                 Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
-              _ => none  // ArithmeticValue handled by existing has_arithmetic_descent for now
+              _ =>
+                // Try ArithmeticValue (param - N descent)
+                let arith_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: false)
+                match arith_evidence {
+                  Some { value: Strict } =>
+                    Some { value: TerminationProof { dimensions: [ArithmeticValue { param: pname }] } }
+                  _ => none
+                }
             }
         }
     }
@@ -2408,13 +2438,30 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
   if path_calls == 0 {
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else {
-    // Try proof constructor FIRST — if ALL self-calls descend on children,
-    // the function is O(n) regardless of path_calls, because children are
-    // disjoint subtrees (each node visited at most once).
+    // Try proof constructor FIRST — if ALL self-calls descend on children
+    // (TreeSize/ListLength), the function is O(n) regardless of path_calls,
+    // because children are disjoint subtrees (each node visited once).
+    // ArithmeticValue descent (param - N) is only safe for single-call paths;
+    // with multiple calls (e.g., fib(n-1) + fib(n-2)) it's O(2^n).
     let proof = construct_termination_proof(func_name: func_name, body: body, params: params)
+    let proof_safe_for_branching = match proof {
+      Some { value: p } =>
+        p.dimensions |> all(dim =>
+          match dim {
+            TreeSize { param: _ } => true
+            ListLength { param: _ } => true
+            _ => false
+          }
+        )
+      None => false
+    }
     match proof {
       Some { value: _ } =>
-        LinearRecursion { iteration_var: concat("n_", func_name) }
+        if path_calls == 1 || proof_safe_for_branching {
+          LinearRecursion { iteration_var: concat("n_", func_name) }
+        } else {
+          DivideAndConquer { split_factor: path_calls }
+        }
       None =>
         if path_calls > 1 {
           DivideAndConquer { split_factor: path_calls }

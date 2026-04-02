@@ -2228,6 +2228,28 @@ pub fn is_list_shrinkage_descent(body: Rc<Node>, func_name: String, params: Vec<
 // T2: Unified proof constructor
 // =========================================================================
 
+pub fn is_arithmetic_descent_expr(expr: Rc<Node>, param_name: String) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprBinOp { op: BinOpKind::Sub } => {
+            let left = binop_left(expr.clone());
+            let right = binop_right(expr.clone());
+            match &*left.expr_data {
+                ExprData::ExprVar { .. } => {
+                    expr_var_name(left.clone()) == param_name
+                        && match &*right.expr_data {
+                            ExprData::ExprLiteral { value } => {
+                                matches!(&**value, crate::v2_std_core::LiteralValue::LitInt { value: n } if *n > 0)
+                            }
+                            _ => false,
+                        }
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 pub fn classify_self_call_evidence(
     arg_expr: Rc<Node>,
     param_name: String,
@@ -2238,6 +2260,8 @@ pub fn classify_self_call_evidence(
     if check_child && is_child_descent_expr(arg_expr.clone(), param_name.clone()) {
         DescentEvidence::Strict
     } else if check_list && is_list_shrink_expr(arg_expr.clone(), param_name.clone()) {
+        DescentEvidence::Strict
+    } else if !check_child && !check_list && is_arithmetic_descent_expr(arg_expr.clone(), param_name.clone()) {
         DescentEvidence::Strict
     } else {
         match &*arg_expr.expr_data {
@@ -2434,7 +2458,18 @@ pub fn construct_termination_proof(
                             dimensions: vec![Rc::new(RankingDimension::ListLength { param: pname.clone() })],
                         }))
                     }
-                    _ => None,
+                    _ => {
+                        // Try ArithmeticValue (param - N descent)
+                        let arith_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, false);
+                        match arith_evidence {
+                            Some(DescentEvidence::Strict) => {
+                                Some(Rc::new(TerminationProof {
+                                    dimensions: vec![Rc::new(RankingDimension::ArithmeticValue { param: pname.clone() })],
+                                }))
+                            }
+                            _ => None,
+                        }
+                    }
                 }
             }
         }
@@ -2453,17 +2488,25 @@ pub fn classify_recursion_pattern(
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
     } else {
-        // Try proof constructor FIRST — if ALL self-calls descend on children,
-        // the function is O(n) regardless of path_calls, because children are
-        // disjoint subtrees (each node visited at most once).
+        // Try proof constructor FIRST — if ALL self-calls descend on children
+        // (TreeSize/ListLength), the function is O(n) regardless of path_calls,
+        // because children are disjoint subtrees (each node visited once).
+        // ArithmeticValue descent (param - N) is only safe for single-call paths;
+        // with multiple calls (e.g., fib(n-1) + fib(n-2)) it's O(2^n).
         let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone());
+        let proof_safe_for_branching = match &proof {
+            Some(p) => p.dimensions.iter().all(|dim| {
+                matches!(&**dim, RankingDimension::TreeSize { .. } | RankingDimension::ListLength { .. })
+            }),
+            None => false,
+        };
         match proof {
-            Some(_) => {
+            Some(_) if path_calls == 1 || proof_safe_for_branching => {
                 Rc::new(RecursionPattern::LinearRecursion {
                     iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
                 })
             }
-            None => {
+            _ => {
                 if path_calls > 1 {
                     Rc::new(RecursionPattern::DivideAndConquer {
                         split_factor: path_calls,
