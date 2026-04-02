@@ -87,6 +87,10 @@ type EmitGraphInfo {
   // Used by pattern emission to decide Variant vs Variant { .. }.
   // Keyed by variant name → true if variant has children.
   fielded_variants: Map<String, Bool>
+  // Per-type value context: orthogonal facts about how each named type
+  // is used, keyed by type name. Emitter reads these instead of locally
+  // inspecting resolved children.
+  value_contexts: Map<String, ValueContext>
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -124,7 +128,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_map(),
-    fielded_variants: empty_map()
+    fielded_variants: empty_map(),
+    value_contexts: empty_map()
   }
 }
 

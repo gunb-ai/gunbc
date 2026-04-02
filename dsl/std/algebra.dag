@@ -482,7 +482,6 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
     { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
     { name: "has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" } },
     { name: "map_has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" } },
-    { name: "emit_map_has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" } },
     { name: "map_contains_key", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" } },
     { name: "keys", param_types: [ReceiverSelf], return_type: ListOf { element: ReceiverKey } },
     { name: "map_keys", param_types: [ReceiverSelf], return_type: ListOf { element: ReceiverKey } },

@@ -646,7 +646,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   let item_text = authored_name(env: env, node: item)
   let kind = classify_typed_item(item: item)
   if (kind == TypedItemTypeDef) {
-    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, rc_types: rc_types, env: env)
+    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, rc_types: rc_types, env: env, emit_info: emit_info)
   } else if (kind == TypedItemTypeAlias) {
     concat(rust_visibility_prefix(), "type ", item_text, " = ", emit_node_type_rc(n: rt_type(n: item), target: Rust, rc_types: rc_types), ";")
   } else if (kind == TypedItemTypeDecl) {
@@ -704,12 +704,12 @@ fn emit_type_params(params: List<Node>, source_index: NewlineIndex?) -> String {
   }
 }
 
-fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
+fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let type_params = emit_type_params(params: item.params, source_index: env.source_index)
   let item_text = authored_name(env: env, node: item)
   let is_product = item.connective == Conj
   if is_product {
-    emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types, env: env)
+    emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types, env: env, emit_info: emit_info)
   } else {
     emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types, env: env)
   }
@@ -717,16 +717,14 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>,
 
 // is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
-fn emit_struct_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
+fn emit_struct_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   // Types with fn-typed fields (algebra witnesses) can't derive Debug/PartialEq
   // because dyn Fn doesn't implement those traits. Derive Clone only.
-  // Check the resolved type of each child — callable types have params > 0.
-  let has_fn_fields = children |> any(child =>
-    match child.inferred {
-      Some { value: Resolved { node: rt } } => rt.params |> count > 0
-      _ => false
-    }
-  )
+  // Read from precomputed ValueContext boundary instead of locally inspecting children.
+  let has_fn_fields = match map_get(emit_info.value_contexts, name) {
+    Some { value: vc } => vc.has_fn_fields
+    None => false
+  }
   let derives = if has_fn_fields {
     "#[derive(Clone)]"
   } else if emit_map_has(m: rc_types, key: name) {

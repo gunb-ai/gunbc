@@ -2819,6 +2819,28 @@ fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String
   result
 }
 
+fn child_has_fn_type(child: Node) -> Bool {
+  match child.inferred {
+    Some { value: Resolved { node: rt } } => rt.params |> count > 0
+    _ => false
+  }
+}
+
+fn build_value_contexts(modules: List<TypedModule>) -> Map<String, ValueContext> {
+  modules |> fold(init: empty_map(), f: (acc, m) =>
+    let registry = m.item_registry
+    m.items |> fold(init: acc, f: (inner, item) =>
+      let name = item.name
+      let is_constant = match map_get(registry, name) {
+        Some { value: info } => info.kind == DataItem
+        None => false
+      }
+      let has_fn_fields = item.children |> any(child => child_has_fn_type(child: child))
+      map_insert(inner, name, ValueContext { is_constant: is_constant, has_fn_fields: has_fn_fields })
+    )
+  )
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map()
@@ -2832,10 +2854,12 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     map_merge(acc, m.type_env.recursive_type_set)
   )
   let fielded = build_fielded_variants(modules: modules, type_summaries: built.type_summaries)
+  let value_ctxs = build_value_contexts(modules: modules)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
-    fielded_variants: fielded
+    fielded_variants: fielded,
+    value_contexts: value_ctxs
   }
 }
 
