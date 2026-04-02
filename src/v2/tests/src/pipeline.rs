@@ -1169,8 +1169,10 @@ fn cond_recurse(n: Int, flag: Bool) -> Int {
     );
 }
 
-/// Match where only some arms descend must not be accepted.
-/// `f(match x { A(child) => child, B(_) => x })` has a non-descending arm.
+/// Self-call through a let-bound inner match where one arm returns the
+/// original scrutinee unchanged (Leaf => t) must NOT be accepted as
+/// descent. The non-descending arm means some execution paths recurse
+/// without shrinking the measure.
 #[test]
 fn soundness_partial_match_descent_not_accepted() {
     let source = r#"module soundness_match
@@ -1197,17 +1199,10 @@ fn partial_descent(t: Tree) -> Int {
         .iter()
         .filter(|v| v.func_name == "partial_descent")
         .collect();
-    // This should either be resolved via structural descent (direct match on
-    // recursive child) or remain a violation. It must NOT be resolved via
-    // arithmetic descent or field-access witness on the `arg` binding, since
-    // the match has a non-descending arm (Leaf => t).
-    //
-    // Currently this IS resolved by structural descent because the outer
-    // match on t with self-call on `arg` = inner (a child field) is detected.
-    // This is acceptable -- the test documents the expected behavior.
-    // If structural descent stops recognizing this, it must remain a violation
-    // (not be rescued by partial match witness propagation).
-    let _ = violations; // document-only: no assertion on specific count
+    assert!(
+        !violations.is_empty(),
+        "partial match descent (one arm returns unchanged scrutinee) must NOT be accepted"
+    );
 }
 
 /// Arithmetic descent with n-1 on a single-call path must be accepted.
