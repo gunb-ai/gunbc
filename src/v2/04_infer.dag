@@ -1136,12 +1136,20 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             diagnostics: arg_diags
           }
         } else if func_name == "empty_map" {
-          // Built-in: empty_map() → Map
+          // Built-in: empty_map() → Map. Adopt expected type if it's a
+          // parameterized Map (e.g. from struct field or fold accumulator),
+          // otherwise fall back to bare_map_node().
+          let empty_map_type = match expected {
+            Some { value: exp } =>
+              if exp.name == "Map" && exp.children |> count > 0 { exp }
+              else { bare_map_node() }
+            None => bare_map_node()
+          }
           InferResult {
             typed: make_named_expr_node(
               name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
               children: typed_arg_nodes,
-              inferred: Some { value: Resolved { node: bare_map_node() } },
+              inferred: Some { value: Resolved { node: empty_map_type } },
               span: span
             ),
             diagnostics: arg_diags
@@ -1826,12 +1834,32 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 // -------------------------------------------------------------------------
 
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, scope: InferScope) -> InferResult {
+  // Look up the struct definition to propagate field types as expected context.
+  // This lets empty_map()/empty_list() adopt the declared field type (e.g.
+  // Map<String, Bool>) instead of producing bare containers.
+  let struct_def = match type_name {
+    Some { value: tn } => lookup_type(env: scope.type_env, name: tn)
+    None => none
+  }
+  let struct_fields = match struct_def {
+    Some { value: sd } => sd.children
+    None => []
+  }
   let fi_infer_results = map(field_inits, fi =>
-    let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: none)
+    let fi_name = field_init_node_name(n: fi)
+    let field_expected = match struct_fields |> filter(sf => sf.name == fi_name) |> first {
+      Some { value: sf } =>
+        // Struct definition children store type in inferred (via field_to_child_node),
+        // not in children[0] (which is empty).
+        let ft = rt_type(n: sf)
+        if ft.name != "" { Some { value: ft } } else { none }
+      None => none
+    }
+    let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)
     let ar_typed = ar.typed
     let ar_diags = ar.diagnostics
     FieldInferResult {
-      typed_field: make_field_init_node(name: field_init_node_name(n: fi), value: ar_typed, span: fi.span),
+      typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span),
       infer_result: ar,
       diagnostics: ar_diags
     }
