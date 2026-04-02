@@ -114,10 +114,18 @@ pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
 }
 
 pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
-    Rc::new(SyntaxSpec {
-        item_forms: dag_item_forms(),
-        operators: dag_operators(),
-        keyword_literals: dag_keyword_literals(),
-        keyword_set: dag_keyword_set(),
-    })
+    // Bootstrap patch: thread_local cache — dag_syntax_spec() is called per-token
+    // in the expression parser hot loop. Without caching, each call reconstructs
+    // the spec (including JSON deserialization of operators), causing O(n*k)
+    // overhead where n=tokens and k=JSON parse cost. This makes self-compilation
+    // take hours instead of seconds.
+    thread_local! {
+        static CACHED: Rc<SyntaxSpec> = Rc::new(SyntaxSpec {
+            item_forms: dag_item_forms(),
+            operators: dag_operators(),
+            keyword_literals: dag_keyword_literals(),
+            keyword_set: dag_keyword_set(),
+        });
+    }
+    CACHED.with(|s| s.clone())
 }

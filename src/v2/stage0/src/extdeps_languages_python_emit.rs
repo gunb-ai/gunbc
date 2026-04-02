@@ -26,7 +26,6 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
@@ -48,67 +47,65 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-
-lazy_static::lazy_static! {
-    pub static ref PYTHON_TYPE_MAP: HashMap<String, String> = {
-        let mut __m = HashMap::new();
-        __m.insert("String".to_string(), "str".to_string());
-        __m.insert("Int".to_string(), "int".to_string());
-        __m.insert("Float".to_string(), "float".to_string());
-        __m.insert("Bool".to_string(), "bool".to_string());
-        __m.insert("Bytes".to_string(), "bytes".to_string());
-        __m.insert("Unit".to_string(), "None".to_string());
-        __m.insert("Secret".to_string(), "str".to_string());
-        __m.insert("Json".to_string(), "dict".to_string());
-        __m
-    };
+pub fn python_type_map() -> Rc<HashMap<String, String>> {
+    let mut __m = HashMap::new();
+    __m.insert("String".to_string(), "str".to_string());
+    __m.insert("Int".to_string(), "int".to_string());
+    __m.insert("Float".to_string(), "float".to_string());
+    __m.insert("Bool".to_string(), "bool".to_string());
+    __m.insert("Bytes".to_string(), "bytes".to_string());
+    __m.insert("Unit".to_string(), "None".to_string());
+    __m.insert("Secret".to_string(), "str".to_string());
+    __m.insert("Json".to_string(), "dict".to_string());
+    Rc::new(__m)
 }
 
-lazy_static::lazy_static! {
-    pub static ref PYTHON_KEYWORDS: HashMap<String, String> = {
-        let mut __m = HashMap::new();
-        __m.insert("true".to_string(), "True".to_string());
-        __m.insert("false".to_string(), "False".to_string());
-        __m.insert("null".to_string(), "None".to_string());
-        __m.insert("and".to_string(), "and".to_string());
-        __m.insert("or".to_string(), "or".to_string());
-        __m.insert("not".to_string(), "not ".to_string());
-        __m.insert("div".to_string(), "//".to_string());
-        __m
-    };
+pub fn python_keywords() -> Rc<HashMap<String, String>> {
+    let mut __m = HashMap::new();
+    __m.insert("true".to_string(), "True".to_string());
+    __m.insert("false".to_string(), "False".to_string());
+    __m.insert("null".to_string(), "None".to_string());
+    __m.insert("and".to_string(), "and".to_string());
+    __m.insert("or".to_string(), "or".to_string());
+    __m.insert("not".to_string(), "not ".to_string());
+    __m.insert("div".to_string(), "//".to_string());
+    Rc::new(__m)
 }
 
-lazy_static::lazy_static! {
-    pub static ref PYTHON_CONTAINER_TEMPLATES: HashMap<String, String> = {
-        let mut __m = HashMap::new();
-        __m.insert("list".to_string(), "list[{0}]".to_string());
-        __m.insert("set".to_string(), "set[{0}]".to_string());
-        __m.insert("optional".to_string(), "Optional[{0}]".to_string());
-        __m.insert("map".to_string(), "dict[{0}, {1}]".to_string());
-        __m
-    };
+pub fn python_container_templates() -> Rc<HashMap<String, String>> {
+    let mut __m = HashMap::new();
+    __m.insert("list".to_string(), "list[{0}]".to_string());
+    __m.insert("set".to_string(), "set[{0}]".to_string());
+    __m.insert("non_empty_list".to_string(), "list[{0}]".to_string());
+    __m.insert("non_empty_set".to_string(), "set[{0}]".to_string());
+    __m.insert("optional".to_string(), "Optional[{0}]".to_string());
+    __m.insert("map".to_string(), "dict[{0}, {1}]".to_string());
+    __m.insert("free_monoid".to_string(), "list[{0}]".to_string());
+    __m.insert("partial_function".to_string(), "dict[{0}, {1}]".to_string());
+    __m.insert("boolean_algebra".to_string(), "bool".to_string());
+    Rc::new(__m)
 }
 
-lazy_static::lazy_static! {
-    pub static ref PYTHON_RESERVED: Vec<String> = vec!["False".to_string(), "None".to_string(), "True".to_string(), "and".to_string(), "as".to_string(), "assert".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "class".to_string(), "continue".to_string(), "def".to_string(), "del".to_string(), "elif".to_string(), "else".to_string(), "except".to_string(), "finally".to_string(), "for".to_string(), "from".to_string(), "global".to_string(), "if".to_string(), "import".to_string(), "in".to_string(), "is".to_string(), "lambda".to_string(), "nonlocal".to_string(), "not".to_string(), "or".to_string(), "pass".to_string(), "raise".to_string(), "return".to_string(), "try".to_string(), "while".to_string(), "with".to_string(), "yield".to_string(), "type".to_string(), "match".to_string(), "case".to_string()];
+pub fn python_reserved() -> Rc<Vec<String>> {
+    Rc::new(vec!["False".to_string(), "None".to_string(), "True".to_string(), "and".to_string(), "as".to_string(), "assert".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "class".to_string(), "continue".to_string(), "def".to_string(), "del".to_string(), "elif".to_string(), "else".to_string(), "except".to_string(), "finally".to_string(), "for".to_string(), "from".to_string(), "global".to_string(), "if".to_string(), "import".to_string(), "in".to_string(), "is".to_string(), "lambda".to_string(), "nonlocal".to_string(), "not".to_string(), "or".to_string(), "pass".to_string(), "raise".to_string(), "return".to_string(), "try".to_string(), "while".to_string(), "with".to_string(), "yield".to_string(), "type".to_string(), "match".to_string(), "case".to_string()])
 }
 
-lazy_static::lazy_static! {
-    pub static ref PYTHON_RESERVED_ESCAPE_SUFFIX: String = "_".to_string();
+pub fn python_reserved_escape_suffix() -> String {
+    "_".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref PYTHON_DERIVE_ATTRIBUTE: String = "@dataclass".to_string();
+pub fn python_derive_attribute() -> String {
+    "@dataclass".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref PYTHON_DEFAULT_VALUE: String = "None".to_string();
+pub fn python_default_value() -> String {
+    "None".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref PYTHON_SOURCE_EXTENSION: String = ".py".to_string();
+pub fn python_source_extension() -> String {
+    ".py".to_string()
 }
 
-lazy_static::lazy_static! {
-    pub static ref PYTHON_MODULE_INIT: String = "__init__.py".to_string();
+pub fn python_module_init() -> String {
+    "__init__.py".to_string()
 }

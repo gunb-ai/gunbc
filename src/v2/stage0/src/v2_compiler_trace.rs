@@ -26,7 +26,6 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
@@ -47,23 +46,23 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-
 pub use crate::v2_std_core::{SourceSpan};
 use TraceEvent::*;
 use TraceFilter::*;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpanMapping {
     pub generated_line: i64,
     pub source_span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
 pub enum TraceEvent {
     TraceEnter {
         node_id: String,
         span: Rc<SourceSpan>,
-        inputs: HashMap<String, String>,
+        inputs: Rc<HashMap<String, String>>,
     },
     TraceExit {
         node_id: String,
@@ -93,70 +92,55 @@ impl TraceEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TraceFrame {
     pub func_name: String,
     pub span: Rc<SourceSpan>,
-    pub bindings: HashMap<String, String>,
+    pub bindings: Rc<HashMap<String, String>>,
 }
 
-// Stack<T> — persistent LIFO with O(1) push/pop (cons list).
-// Matches std/stack.dag definition. Will be emitted by compiler after regen.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TraceStack {
-    Empty,
-    Push {
-        top: Rc<TraceFrame>,
-        rest: Rc<TraceStack>,
-    },
-}
-
-impl TraceStack {
-    pub fn push(self: &Rc<Self>, frame: Rc<TraceFrame>) -> Rc<Self> {
-        Rc::new(TraceStack::Push { top: frame, rest: self.clone() })
-    }
-    pub fn pop(self: &Rc<Self>) -> Rc<Self> {
-        match &**self {
-            TraceStack::Empty => self.clone(),
-            TraceStack::Push { rest, .. } => rest.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Trace {
-    pub events: Vec<Rc<TraceEvent>>,
-    pub stack: Rc<TraceStack>,
+    pub events: Rc<Vec<Rc<TraceEvent>>>,
+    pub stack: Rc<Vec<Rc<TraceFrame>>>,
 }
 
 pub fn empty_trace() -> Rc<Trace> {
     Rc::new(Trace {
-    events: vec![],
-    stack: Rc::new(TraceStack::Empty),
+    events: Rc::new(vec![]),
+    stack: Rc::new(vec![]),
 })
 }
 
 pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
     Rc::new(Trace {
-    events: v2_rt::list_push(trace.events.clone(), event.clone()),
+    events: v2_rt::rc_list_push(trace.events.clone(), event.clone()),
     stack: trace.stack.clone(),
 })
 }
 
-// O(1) — cons onto stack
 pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
     Rc::new(Trace {
     events: trace.events.clone(),
-    stack: trace.stack.push(frame),
+    stack: v2_rt::rc_list_push(trace.stack.clone(), frame.clone()),
 })
 }
 
-// O(1) — return tail of stack
 pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
-    Rc::new(Trace {
+    {
+        let n: i64 = (trace.stack.clone().len() as i64);
+if (n.clone() <= 1) {
+            Rc::new(Trace {
     events: trace.events.clone(),
-    stack: trace.stack.pop(),
+    stack: Rc::new(vec![]),
 })
+} else {
+            Rc::new(Trace {
+    events: trace.events.clone(),
+    stack: Rc::new(trace.stack.clone().iter().cloned().take((n.clone() - 1) as usize).collect::<Vec<_>>()),
+})
+}
+}
 }
 
 pub fn event_span(event: Rc<TraceEvent>) -> Rc<SourceSpan> {
@@ -175,7 +159,8 @@ pub fn event_node_id(event: Rc<TraceEvent>) -> String {
 }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
 pub enum TraceFilter {
     FilterByFunc {
         func_name: String,
@@ -189,24 +174,24 @@ pub enum TraceFilter {
 
 pub fn event_matches_span(event: Rc<TraceEvent>, filter_start: i64, filter_end: i64) -> bool {
     {
-        let sp = event_span(event.clone());
+        let sp: Rc<SourceSpan> = event_span(event.clone());
 ((sp.start.clone() >= filter_start.clone()) && (sp.start.clone() < filter_end.clone()))
 }
 }
 
-pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Vec<Rc<TraceEvent>> {
+pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<TraceEvent>>> {
     match (*filter.clone()).clone() {
-    TraceFilter::FilterByFunc { func_name: name, .. } => { let mut __result = Vec::new(); for e in trace.events.iter().cloned() { if (event_node_id(e.clone()) == name.clone()) { __result.push(e); } } __result },
-    TraceFilter::FilterBySpan { start: s, end: e, .. } => { let mut __result = Vec::new(); for ev in trace.events.iter().cloned() { if event_matches_span(ev.clone(), s.clone(), e.clone()) { __result.push(ev); } } __result },
-    TraceFilter::FilterErrors => { let mut __result = Vec::new(); for e in trace.events.iter().cloned() { if match (*e.clone()).clone() {
+    TraceFilter::FilterByFunc { func_name: name, .. } => Rc::new({ let mut __result = Vec::new(); for e in trace.events.clone().iter().cloned() { if (event_node_id(e.clone()).as_str() == name.clone().as_str()) { __result.push(e); } } __result }),
+    TraceFilter::FilterBySpan { start: s, end: e, .. } => Rc::new({ let mut __result = Vec::new(); for ev in trace.events.clone().iter().cloned() { if event_matches_span(ev.clone(), s.clone(), e.clone()) { __result.push(ev); } } __result }),
+    TraceFilter::FilterErrors => Rc::new({ let mut __result = Vec::new(); for e in trace.events.clone().iter().cloned() { if match (*e.clone()).clone() {
     TraceEvent::TraceError { .. } => true,
     _ => false,
-} { __result.push(e); } } __result },
+} { __result.push(e); } } __result }),
 }
 }
 
 pub fn format_span(sp: Rc<SourceSpan>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[".to_string(), v2_rt::to_string(sp.start.clone())), "..".to_string()), v2_rt::to_string(sp.end.clone())), ")".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[".to_string(), (sp.start.clone()).to_string()), "..".to_string()), (sp.end.clone()).to_string()), ")".to_string())
 }
 
 pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
@@ -217,19 +202,19 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
 }
 }
 
-pub fn format_trace(trace: Rc<Trace>) -> Vec<String> {
-    { let mut __result = Vec::new(); for e in trace.events.iter().cloned() { __result.push(format_trace_event(e.clone())); } __result }
+pub fn format_trace(trace: Rc<Trace>) -> Rc<Vec<String>> {
+    Rc::new({ let mut __result = Vec::new(); for e in trace.events.clone().iter().cloned() { __result.push(format_trace_event(e.clone())); } __result })
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReproCase {
     pub func_name: String,
-    pub inputs: HashMap<String, String>,
+    pub inputs: Rc<HashMap<String, String>>,
     pub expected_output: Option<String>,
     pub trace: Option<Rc<Trace>>,
 }
 
-pub fn capture_repro(func_name: String, inputs: HashMap<String, String>, trace: Rc<Trace>) -> Rc<ReproCase> {
+pub fn capture_repro(func_name: String, inputs: Rc<HashMap<String, String>>, trace: Rc<Trace>) -> Rc<ReproCase> {
     Rc::new(ReproCase {
     func_name: func_name.clone(),
     inputs: inputs.clone(),
@@ -238,12 +223,12 @@ pub fn capture_repro(func_name: String, inputs: HashMap<String, String>, trace: 
 })
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceMap {
     pub generated_file: String,
-    pub mappings: Vec<Rc<SpanMapping>>,
+    pub mappings: Rc<Vec<Rc<SpanMapping>>>,
 }
 
 pub fn remap_location(source_map: Rc<SourceMap>, generated_line: i64) -> Option<Rc<SourceSpan>> {
-    { let mut __result = Vec::new(); for m in source_map.mappings.iter().cloned() { if (m.generated_line.clone() <= generated_line.clone()) { __result.push(m); } } __result }.last().cloned().map(|m| m.source_span.clone())
+    Rc::new({ let mut __result = Vec::new(); for m in source_map.mappings.clone().iter().cloned() { if (m.generated_line.clone() <= generated_line.clone()) { __result.push(m); } } __result }).last().cloned().map(|m| m.source_span.clone())
 }

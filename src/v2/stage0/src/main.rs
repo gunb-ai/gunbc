@@ -244,7 +244,7 @@ fn main() {
                 std::process::exit(1);
             };
 
-            let result = v2_compiler_compile::compile_sources(sources, render_target);
+            let result = v2_compiler_compile::compile_sources(Rc::new(sources), render_target);
 
             std::fs::create_dir_all(format!("{}/src", output_dir))
                 .unwrap_or_else(|e| panic!("failed to create output dir: {}", e));
@@ -281,7 +281,7 @@ fn render_diagnostics(result: &PipelineResult) {
 
     // Render all diagnostics. No cascade tree — when a stage produces
     // causal edges, re-add caused_by with both producer and consumer.
-    for d in &result.diagnostics {
+    for d in result.diagnostics.iter() {
         render_one_diagnostic(d, &index_map, "");
     }
 
