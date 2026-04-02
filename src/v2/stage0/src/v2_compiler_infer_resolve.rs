@@ -146,14 +146,13 @@ if has_structure.clone() {
 } else {
             match lookup_type_for(env.clone(), n.clone()) {
     Some(decl) => if ((decl.params.clone().len() as i64) > 0) {
-                if (decl.inferred.clone() != None) {
+                // Container types stay unexpanded (INVARIANTS.md).
+                if is_container_type(n.name.clone()) {
+                    false
+} else if (decl.inferred.clone() != None) {
                     true
 } else {
-                    if is_container_type(n.name.clone()) {
-                        false
-} else {
                         true
-}
 }
 } else {
                 false
