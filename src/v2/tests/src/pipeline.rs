@@ -783,8 +783,12 @@ fn complexity_report_structured() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let class = complexity_class_of(&result, "constant_work");
-    assert_eq!(class.as_deref(), Some("O(1)"),
-        "constant_work should be O(1), got {:?}", class);
+    assert_eq!(
+        class.as_deref(),
+        Some("O(1)"),
+        "constant_work should be O(1), got {:?}",
+        class
+    );
     assert!(
         result.complexity.violations.is_empty(),
         "well-typed simple functions should have 0 complexity violations, got {}",
@@ -1133,7 +1137,12 @@ fn fib_like(n: Int) -> Int {
         fib_violations.len(),
         1,
         "fib_like must remain a branching-recursion violation, got: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
     );
     assert!(
         fib_violations[0].reason.contains("branching recursion"),
@@ -1225,7 +1234,10 @@ fn countdown(n: Int) -> Int {
     assert!(
         violations.is_empty(),
         "arithmetic descent (n-1) on single-call path must be accepted, got: {:?}",
-        violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+        violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -1302,7 +1314,9 @@ fn cost_contains_unknown(expr: &CostExpr) -> bool {
         CostExpr::CostUnknown { .. } => true,
         CostExpr::CostAdd { left, right }
         | CostExpr::CostMul { left, right }
-        | CostExpr::CostMax { left, right } => cost_contains_unknown(left) || cost_contains_unknown(right),
+        | CostExpr::CostMax { left, right } => {
+            cost_contains_unknown(left) || cost_contains_unknown(right)
+        }
         CostExpr::CostSum { body, .. } => cost_contains_unknown(body),
         _ => false,
     }
@@ -1742,8 +1756,11 @@ fn complexity_self_analysis_subset() {
         }
     }
 
-    eprintln!("\nSUMMARY: {} functions, {} violations",
-        summaries.len(), violations.len());
+    eprintln!(
+        "\nSUMMARY: {} functions, {} violations",
+        summaries.len(),
+        violations.len()
+    );
 }
 
 #[test]
@@ -2135,7 +2152,9 @@ fn render(name: String) -> String {
     let content = result
         .files
         .iter()
-        .find(|f| f.path.ends_with(".go") && !f.path.contains("go.mod") && !f.path.contains("_test.go"))
+        .find(|f| {
+            f.path.ends_with(".go") && !f.path.contains("go.mod") && !f.path.contains("_test.go")
+        })
         .expect("Go target should emit a .go file")
         .content
         .clone();
@@ -2380,7 +2399,10 @@ fn descending_recursion_is_allowed() {
     let source = "module countdown_test\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { countdown(n: n - 1) }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    assert!(!result.files.is_empty(), "descending recursion should compile successfully");
+    assert!(
+        !result.files.is_empty(),
+        "descending recursion should compile successfully"
+    );
 }
 
 #[test]
@@ -2400,7 +2422,8 @@ fn ascending_recursion_is_rejected() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("non-descending") || m.contains("unresolvable")),
+        msgs.iter()
+            .any(|m| m.contains("non-descending") || m.contains("unresolvable")),
         "fn spin(n: n+1) must be rejected, got: {:?}",
         msgs
     );
@@ -2413,7 +2436,8 @@ fn multiplicative_recursion_is_rejected() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("non-descending") || m.contains("unresolvable")),
+        msgs.iter()
+            .any(|m| m.contains("non-descending") || m.contains("unresolvable")),
         "fn spin(n: n*n) must be rejected, got: {:?}",
         msgs
     );
@@ -2426,11 +2450,15 @@ fn variable_rethread_recursion_is_rejected() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("non-descending") || m.contains("unresolvable")),
+        msgs.iter()
+            .any(|m| m.contains("non-descending") || m.contains("unresolvable")),
         "fn bounce(n: m) must be rejected without a decreasing witness, got: {:?}",
         msgs
     );
-    assert!(result.files.is_empty(), "variable rethread recursion should block code emission");
+    assert!(
+        result.files.is_empty(),
+        "variable rethread recursion should block code emission"
+    );
 }
 
 #[test]
@@ -2441,7 +2469,10 @@ fn mutual_recursion_is_rejected() {
         !result.diagnostics.is_empty(),
         "mutual recursion (ping<->pong) must produce diagnostics"
     );
-    assert!(result.files.is_empty(), "mutual recursion should block code emission");
+    assert!(
+        result.files.is_empty(),
+        "mutual recursion should block code emission"
+    );
 }
 
 #[test]
@@ -2477,7 +2508,9 @@ fn function_calling_into_cycle_is_not_rejected() {
     // Must NOT be flagged as mutual recursion.
     let source = "module downstream_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\nfn helper(n: Int) -> Int { ping(n: n) }\n";
     let result = compile_dag(source);
-    let diag_names: Vec<String> = result.diagnostics.iter()
+    let diag_names: Vec<String> = result
+        .diagnostics
+        .iter()
         .map(|d| d.module_name.clone())
         .collect();
     // ping and pong should have diagnostics, but helper should NOT
@@ -2490,7 +2523,11 @@ fn function_calling_into_cycle_is_not_rejected() {
         diag_names
     );
     assert!(
-        !result.complexity.violations.iter().any(|v| v.func_name == "helper"),
+        !result
+            .complexity
+            .violations
+            .iter()
+            .any(|v| v.func_name == "helper"),
         "helper() should not inherit the cycle's complexity violation: {:?}",
         result
             .complexity
@@ -2506,7 +2543,10 @@ fn division_descent_is_allowed() {
     let source = "module halve_test\n\nfn halve(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { halve(n: n / 2) }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    assert!(!result.files.is_empty(), "division descent should compile successfully");
+    assert!(
+        !result.files.is_empty(),
+        "division descent should compile successfully"
+    );
 }
 
 // =========================================================================
@@ -3052,7 +3092,34 @@ fn join_ints(xs: List<Int>) -> String {
 }
 
 #[test]
-#[ignore] // requires full structural algebra authority (codex/l1-bootstrap-closure)
+fn empty_map_argument_adopts_expected_key_and_value_types() {
+    let source = r#"module typed_empty_map_arg
+
+fn identity(m: Map<String, Int>) -> Map<String, Int> {
+  m
+}
+
+fn build() -> Map<String, Int> {
+  identity(empty_map())
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn fold_empty_map_accumulator_adopts_contextual_type() {
+    let source = r#"module fold_empty_map_acc
+
+fn index(xs: List<String>) -> Map<String, Int> {
+  fold(xs, init: empty_map(), f: (acc, x) => map_insert(acc, key: x, value: 1))
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
 fn map_wrong_callback_arity_fails_closed() {
     let source = r#"module map_wrong_arity
 
@@ -3070,7 +3137,6 @@ fn broken(xs: List<Int>) -> List<Int> {
 }
 
 #[test]
-#[ignore] // requires full structural algebra authority (codex/l1-bootstrap-closure)
 fn sort_by_wrong_callback_arity_fails_closed() {
     let source = r#"module sort_by_wrong_arity
 
@@ -3110,7 +3176,6 @@ fn broken(xs: List<Int>) -> List<String> {
 }
 
 #[test]
-#[ignore] // requires full structural algebra authority (codex/l1-bootstrap-closure)
 fn flat_map_wrong_callback_return_type_fails_closed() {
     let source = r#"module flat_map_wrong_return
 

@@ -5,7 +5,96 @@
 //! All tests call stage0 functions directly.
 
 use crate::helpers::*;
+use std::rc::Rc;
+use v2_compiler::v2_compiler_parse::{child_inferred_or_empty, node_inferred_to_outputs};
+use v2_compiler::v2_std_core::{
+    field_node_type_expr, leaf_node, Cardinality, Connective, ExprData, Node, SourceSpan,
+};
 use v2_compiler::v2_std_core::{InferredNode, TokenShape};
+
+fn zero_span() -> Rc<SourceSpan> {
+    SourceSpan::new(0, 0)
+}
+
+fn synthetic_node(
+    name: &str,
+    children: Vec<Rc<Node>>,
+    connective: Option<Connective>,
+    inferred: Option<Rc<InferredNode>>,
+) -> Rc<Node> {
+    Rc::new(Node {
+        name: name.to_string(),
+        span: zero_span(),
+        ident_span: None,
+        children,
+        connective,
+        params: vec![],
+        inferred,
+        return_cardinality: Cardinality::Required,
+        uses: vec![],
+        body: None,
+        transport: None,
+        properties: vec![],
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
+
+#[test]
+fn child_inferred_or_empty_fails_closed_for_untyped_child() {
+    let child = synthetic_node("value", vec![], None, None);
+    let inferred = child_inferred_or_empty(child);
+    assert_eq!(inferred.name, "Error");
+}
+
+#[test]
+fn node_inferred_to_outputs_refuses_partial_product_types() {
+    let typed_child = synthetic_node(
+        "ok",
+        vec![],
+        None,
+        Some(Rc::new(InferredNode::Resolved {
+            node: leaf_node("String".to_string()),
+        })),
+    );
+    let untyped_child = synthetic_node("bad", vec![], None, None);
+    let product = synthetic_node(
+        "Outputs",
+        vec![typed_child, untyped_child],
+        Some(Connective::Conj),
+        None,
+    );
+    let outputs = node_inferred_to_outputs(product);
+    assert!(outputs.is_empty(), "partial products must fail closed");
+}
+
+#[test]
+fn node_inferred_to_outputs_preserves_fully_typed_products() {
+    let first = synthetic_node(
+        "name",
+        vec![],
+        None,
+        Some(Rc::new(InferredNode::Resolved {
+            node: leaf_node("String".to_string()),
+        })),
+    );
+    let second = synthetic_node(
+        "count",
+        vec![],
+        None,
+        Some(Rc::new(InferredNode::Resolved {
+            node: leaf_node("Int".to_string()),
+        })),
+    );
+    let product = synthetic_node("Outputs", vec![first, second], Some(Connective::Conj), None);
+    let outputs = node_inferred_to_outputs(product);
+    assert_eq!(outputs.len(), 2);
+    assert_eq!(field_node_type_expr(outputs[0].clone()).name, "String");
+    assert_eq!(field_node_type_expr(outputs[1].clone()).name, "Int");
+}
 
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
 
@@ -72,6 +161,18 @@ fn drop_last(stack: List<Int>) -> List<Int> {
   })
 }"#;
     assert_parses(source, "fold_with_fn_lambda_and_pipe");
+}
+
+#[test]
+fn string_interpolation_accepts_literal_expression_starts() {
+    let source = r#"module interp_literal_starts
+fn demo() -> String {
+  "{1} {"x"} {[1, 2]}"
+}"#;
+    assert_parses(
+        source,
+        "string_interpolation_accepts_literal_expression_starts",
+    );
 }
 
 #[test]

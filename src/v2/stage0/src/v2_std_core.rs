@@ -590,7 +590,10 @@ pub fn lambda_param_names(texpr: Rc<Node>) -> Vec<String> {
         .map(|n| n.name.clone())
         .collect()
 }
-pub fn lambda_param_names_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Vec<String> {
+pub fn lambda_param_names_at(
+    texpr: Rc<Node>,
+    source_index: Option<Rc<NewlineIndex>>,
+) -> Vec<String> {
     texpr
         .children
         .iter()
@@ -1379,6 +1382,15 @@ pub fn find_property_string(props: Vec<Rc<Node>>, prop_name: String) -> Option<S
 // config_property_name, config_property_key, transport_kind_name dissolved.
 // Use direct string literals instead.
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransportKind {
+    RestTransport,
+    ShellTransport,
+    FileTransport,
+    LocalTransport,
+    UnknownTransport,
+}
+
 pub fn is_config_reserved_key(name: String) -> bool {
     (name.clone() == "base_url".to_string())
         || (name.clone() == "base_path".to_string())
@@ -1388,7 +1400,23 @@ pub fn is_config_reserved_key(name: String) -> bool {
 }
 
 // transport_kind_name, transport_kind, is_transport_kind — dissolved.
-// Use direct t.name == "rest" comparison instead.
+// Use structural property detection instead.
+
+pub fn transport_kind(t: Rc<Node>) -> TransportKind {
+    let has_base_url = find_property(t.properties.clone(), "base_url".to_string()).is_some();
+    let has_base_path = find_property(t.properties.clone(), "base_path".to_string()).is_some();
+    if has_base_url {
+        TransportKind::RestTransport
+    } else if has_base_path {
+        TransportKind::FileTransport
+    } else if !t.children.is_empty() {
+        TransportKind::ShellTransport
+    } else if t.properties.is_empty() {
+        TransportKind::LocalTransport
+    } else {
+        TransportKind::UnknownTransport
+    }
+}
 
 pub fn field_init_operation_modifier(field_init: Rc<Node>) -> Option<OperationModifier> {
     let fi_name = field_init_node_name(field_init.clone());
@@ -1416,38 +1444,63 @@ pub fn operation_modifier_name(modifier: OperationModifier) -> String {
 }
 
 pub fn transport_base_url(t: Rc<Node>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), "base_url".to_string())
-}
-
-pub fn transport_auth_token(t: Rc<Node>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), "auth_token".to_string())
-}
-
-pub fn transport_auth_header_name(t: Rc<Node>) -> Option<String> {
-    find_property_string(t.properties.clone(), "auth_header".to_string())
-}
-
-pub fn transport_has_auth(t: Rc<Node>) -> bool {
-    match find_property(t.properties.clone(), "auth_token".to_string()) {
-        Some(_) => true,
-        None => false,
+    match transport_kind(t.clone()) {
+        TransportKind::RestTransport => find_property(t.properties.clone(), "base_url".to_string()),
+        _ => None,
     }
 }
 
-pub fn transport_headers(t: Rc<Node>) -> Vec<Rc<Node>> {
-    {
-        let mut __result = Vec::new();
-        for p in t.properties.clone().iter().cloned() {
-            if !is_config_reserved_key(field_init_node_name(p.clone())) {
-                __result.push(p);
-            }
+pub fn transport_base_path(t: Rc<Node>) -> Option<Rc<Node>> {
+    match transport_kind(t.clone()) {
+        TransportKind::FileTransport => {
+            find_property(t.properties.clone(), "base_path".to_string())
         }
-        __result
+        _ => None,
+    }
+}
+
+pub fn transport_auth_token(t: Rc<Node>) -> Option<Rc<Node>> {
+    match transport_kind(t.clone()) {
+        TransportKind::RestTransport => {
+            find_property(t.properties.clone(), "auth_token".to_string())
+        }
+        _ => None,
+    }
+}
+
+pub fn transport_auth_header_name(t: Rc<Node>) -> Option<String> {
+    match transport_kind(t.clone()) {
+        TransportKind::RestTransport => {
+            find_property_string(t.properties.clone(), "auth_header".to_string())
+        }
+        _ => None,
+    }
+}
+
+pub fn transport_has_auth(t: Rc<Node>) -> bool {
+    transport_auth_token(t.clone()).is_some()
+}
+
+pub fn transport_headers(t: Rc<Node>) -> Vec<Rc<Node>> {
+    match transport_kind(t.clone()) {
+        TransportKind::RestTransport => {
+            let mut __result = Vec::new();
+            for p in t.properties.clone().iter().cloned() {
+                if !is_config_reserved_key(field_init_node_name(p.clone())) {
+                    __result.push(p);
+                }
+            }
+            __result
+        }
+        _ => vec![],
     }
 }
 
 pub fn transport_env(t: Rc<Node>) -> Vec<Rc<Node>> {
-    t.properties.clone()
+    match transport_kind(t.clone()) {
+        TransportKind::ShellTransport => t.properties.clone(),
+        _ => vec![],
+    }
 }
 
 pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) -> Rc<Node> {

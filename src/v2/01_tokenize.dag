@@ -381,14 +381,14 @@ fn scan_string_body(source: SourceRef, pos: Int, acc: List<String>) -> StringSca
 }
 
 // should_start_interpolation: check if { at pos starts an interpolation.
-// Interpolation starts when the character after { is an identifier start
-// character (a-z, A-Z, _) or one of (, !, -.
+// Interpolation starts when the character after { can begin an expression:
+// identifier, number, string literal, list literal, or unary/grouping op.
 fn should_start_interpolation(source: SourceRef, pos: Int) -> Bool {
   if pos + 1 >= string_length(s: source.text) {
     false
   } else {
     let next = char_at(s: source.text, pos: pos + 1)
-    is_ident_start(ch: next) || next == "(" || next == "!" || next == "-"
+    is_ident_start(ch: next) || is_digit(ch: next) || next == "\"" || next == "[" || next == "(" || next == "!" || next == "-"
   }
 }
 

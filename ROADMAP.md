@@ -99,6 +99,13 @@ path). No overlap with Category A.
 - Callback shapes (`fn(Acc, T) -> Acc`) synthesized at inference time,
   not declared as algebra template structure; `CallableOf` abstraction
   missing (M4 Lane 1 Tier 2.5)
+- `source_text_at` / `NewlineIndex` fixed-point gap: `.dag` source still
+  stubs `build_newline_index`, `byte_to_line_col`, `source_line_at`, and
+  `source_text_at`, so authored-name/span recovery still depends on
+  stage0-only Rust behavior (bootstrap/fixed-point health)
+- String interpolation tokenizer only recognized identifier / `(` / `!` /
+  `-` starts; literal-start interpolation (`{1}`, `{"x"}`, `{[1]}`) needed
+  explicit tokenizer support plus direct parser coverage (parser surface)
 
 **External review fix order (2026-04-02):**
 
@@ -108,6 +115,20 @@ path). No overlap with Category A.
 4. Transport/config → one authority (M2 structural debt)
 5. `CallableOf` + clean `partial_function_templates` (M4 L1 Tier 2.5)
 6. Eliminate bare containers at inference boundary (M2 blocker 2)
+
+**Additional review items (2026-04-02, newly surfaced):**
+
+- [ ] Fixed-point text/span recovery: implement `.dag` authority for
+  `build_newline_index`, `byte_to_line_col`, `source_line_at`, and
+  `source_text_at` so `authored_name_at` and diagnostics stop depending
+  on stage0-only Rust helpers.
+- [x] String interpolation literal starts: widen
+  `should_start_interpolation` beyond identifier-starts and add direct
+  parser regression coverage for numeric, string-literal, and list-literal
+  interpolation bodies.
+- [x] Interpolation parse-path audit: `parse_string_interp` in `02_parse.dag`
+  does build `ExprStringInterp`; direct tests now cover that path instead
+  of relying on indirect emitter regressions.
 
 ---
 
@@ -120,6 +141,9 @@ beats further ratchet-chasing.
 Current reality:
 - `std.types` injection is still an ambient bootstrap bridge until FF-9 becomes fully import-driven.
 - Manual stage0 edits are still possible because regeneration is not green; that is the productivity failure we need to eliminate.
+- Text/span recovery is not yet fixed-point clean: `00_core.dag` still
+  stubs newline indexing / source slicing while stage0 Rust provides the
+  live implementation.
 - The next milestone is not “more lane work,” it is “stage0 regeneration is authoritative again.”
 
 Clean-repo workflow:
@@ -571,9 +595,9 @@ Four blocker classes:
    fabricated types. A partially-typed product silently becomes
    Unit-typed. Direct violation of No-fallbacks-that-fabricate.
    (External review 2026-04-02, highest-confidence correctness bug.)
-   - [ ] `child_inferred_or_empty` propagates error state structurally
+   - [x] `child_inferred_or_empty` propagates error state structurally
      (return `error_type` or carry `InferError` forward, not `Unit`)
-   - [ ] `node_inferred_to_outputs` refuses to build outputs from
+   - [x] `node_inferred_to_outputs` refuses to build outputs from
      error-typed children (fail-closed)
 
 2. **Fabricated parameterization** — parameterized types reaching infer
@@ -722,10 +746,11 @@ read them. This tier is a prerequisite for early coercion implementation.
   standalone emitter helper (46 usage sites); it was never a carrier algebra
   operation. Remaining PartialFunction templates are correct (key/value
   operations with proper `ReceiverKey`/`ReceiverValue`/`OptionalOf`/`ListOf`).
-- [ ] Add `CallableOf` variant to `AlgebraTypeTemplate` so `map`/`flat_map`/
+- [x] Add `CallableOf` variant to `AlgebraTypeTemplate` so `map`/`flat_map`/
   `fold` param_types can express their callback shape (`fn(T) -> U`,
   `fn(Acc, T) -> Acc`) instead of relying on downstream `refine_collection_
-  result_type`. Required for full modeling faithfulness.
+  result_type`. Applied in both `.dag` and stage0; lambda arity/return
+  mismatch now fails closed for inline collection callbacks.
 - [x] Delete `is_bridge_placeholder_type_name` in `04_types.dag` — replaced
   hardcoded name checks with structural detection: `collect_named_templates`
   walks AlgebraTypeTemplate trees for NamedTemplate names,

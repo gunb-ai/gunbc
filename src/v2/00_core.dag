@@ -265,6 +265,13 @@ type StringPart
 
 type OperationModifier = Idempotent | Readonly | Hermetic
 
+type TransportKind
+  = RestTransport
+  | ShellTransport
+  | FileTransport
+  | LocalTransport
+  | UnknownTransport
+
 // =========================================================================
 // Compiler output
 //
@@ -932,17 +939,33 @@ fn find_property_string(props: List<Node>, prop_name: String) -> String? {
 // File: has base_path config property (POSIX pathname).
 // Local: no config, no children — direct function call.
 // See extdeps/transports/{rest,shell,file}.dag for transport definitions.
+fn transport_kind(t: Node) -> TransportKind {
+  let has_base_url = find_property(props: t.properties, prop_name: "base_url") != none
+  let has_base_path = find_property(props: t.properties, prop_name: "base_path") != none
+  if has_base_url {
+    RestTransport
+  } else if has_base_path {
+    FileTransport
+  } else if t.children |> count > 0 {
+    ShellTransport
+  } else if t.properties |> count == 0 {
+    LocalTransport
+  } else {
+    UnknownTransport
+  }
+}
+
 fn is_rest_transport(t: Node) -> Bool {
-  t.children |> count == 0 && find_property(props: t.properties, prop_name: "base_url") != none
+  transport_kind(t: t) == RestTransport
 }
 fn is_shell_transport(t: Node) -> Bool {
-  t.children |> count > 0
+  transport_kind(t: t) == ShellTransport
 }
 fn is_file_transport(t: Node) -> Bool {
-  t.children |> count == 0 && find_property(props: t.properties, prop_name: "base_path") != none
+  transport_kind(t: t) == FileTransport
 }
 fn is_local_transport(t: Node) -> Bool {
-  t.properties |> count == 0 && t.children |> count == 0
+  transport_kind(t: t) == LocalTransport
 }
 
 fn field_init_operation_modifier(field_init: Node) -> OperationModifier? {
@@ -962,19 +985,39 @@ fn operation_modifier_name(modifier: OperationModifier) -> String {
 }
 
 fn transport_base_url(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: "base_url")
+  if is_rest_transport(t: t) {
+    find_property(props: t.properties, prop_name: "base_url")
+  } else {
+    none
+  }
+}
+
+fn transport_base_path(t: Node) -> Node? {
+  if is_file_transport(t: t) {
+    find_property(props: t.properties, prop_name: "base_path")
+  } else {
+    none
+  }
 }
 
 fn transport_auth_token(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: "auth_token")
+  if is_rest_transport(t: t) {
+    find_property(props: t.properties, prop_name: "auth_token")
+  } else {
+    none
+  }
 }
 
 fn transport_auth_header_name(t: Node) -> String? {
-  find_property_string(props: t.properties, prop_name: "auth_header")
+  if is_rest_transport(t: t) {
+    find_property_string(props: t.properties, prop_name: "auth_header")
+  } else {
+    none
+  }
 }
 
 fn transport_has_auth(t: Node) -> Bool {
-  match find_property(props: t.properties, prop_name: "auth_token") {
+  match transport_auth_token(t: t) {
     Some { value: _ } => true
     None => false
   }
@@ -986,13 +1029,21 @@ fn is_config_reserved_key(name: String) -> Bool {
 }
 
 fn transport_headers(t: Node) -> List<Node> {
-  t.properties |> filter(p =>
-    !is_config_reserved_key(name: field_init_node_name(n: p))
-  )
+  if is_rest_transport(t: t) {
+    t.properties |> filter(p =>
+      !is_config_reserved_key(name: field_init_node_name(n: p))
+    )
+  } else {
+    []
+  }
 }
 
 fn transport_env(t: Node) -> List<Node> {
-  t.properties
+  if is_shell_transport(t: t) {
+    t.properties
+  } else {
+    []
+  }
 }
 
 // =========================================================================

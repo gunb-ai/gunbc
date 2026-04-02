@@ -74,23 +74,23 @@ pub use crate::v2_std_core::{
     arg_name, arg_value, arm_body, arm_guard, arm_pattern, binop_left, binop_right, cast_expr,
     cast_target, expr_call_func, expr_has_non_tail_self_call, expr_has_self_call, expr_method_name,
     expr_var_name, field_access_base, field_access_field, field_binding_name,
-    field_binding_pattern, field_init_node_name, field_init_node_value, field_node_type_expr, foreach_body,
-    foreach_collection, foreach_variable, has_inferred, if_condition, if_else_branch,
+    field_binding_pattern, field_init_node_name, field_init_node_value, field_node_type_expr,
+    foreach_body, foreach_collection, foreach_variable, has_inferred, if_condition, if_else_branch,
     if_then_branch, import_is_all, import_specific_names, index_base, index_expr,
     is_error_diagnostic, is_import_node, is_kernel_type, lambda_body, lambda_param_names,
     leaf_node, let_binding_name, let_body, let_value, local_transport_node, make_arg_node,
     make_arm_node, make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
-    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
-    make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, module_imports, module_items, module_node, no_span, node_has_structure,
-    node_is_coproduct, node_is_product, param_node_default_value, param_node_name,
-    param_node_type_expr, record_lit_type_name, resource_use_name, resource_use_resource,
-    return_value, rt_node, slice_base, slice_end, slice_start, unaryop_operand,
-    with_optional_cardinality, with_required_cardinality, BinOpKind, CallSemantics, Cardinality,
-    CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData,
-    ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LambdaSemantics,
-    LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node, NodeType, StringPart,
-    UnaryOpKind, VarBindingKind, KERNEL_TYPE_SET,
+    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node,
+    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
+    node_has_structure, node_is_coproduct, node_is_product, param_node_default_value,
+    param_node_name, param_node_type_expr, record_lit_type_name, resource_use_name,
+    resource_use_resource, return_value, rt_node, slice_base, slice_end, slice_start,
+    unaryop_operand, with_optional_cardinality, with_required_cardinality, BinOpKind,
+    CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
+    ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, LambdaSemantics, LiteralValue, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    NodeType, StringPart, UnaryOpKind, VarBindingKind, KERNEL_TYPE_SET,
 };
 // TransportKind::{LocalTransport} dissolved.
 use crate::v2_std_core::BinOpKind::{
@@ -123,8 +123,8 @@ pub use crate::v2_compiler_infer_items::{
 };
 pub use crate::v2_compiler_infer_lookup::{
     field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
-    lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env, resolve_known_method_node,
-    resolve_scrutinee_type_node, KnownMethodResolution,
+    lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
+    resolve_known_method_node, resolve_scrutinee_type_node, KnownMethodResolution,
 };
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type};
 use crate::v2_compiler_infer_patterns::PatternSubject::*;
@@ -148,10 +148,11 @@ pub use crate::v2_compiler_infer_types::{
     bare_map_node, callable_inferred, callable_node, child_inferred_or_name, container_node,
     emit_map_has, enrich_kernel_type, error_type_node, extract_optional_inner_node,
     for_each_element_type_node, infer_binop_type_node, infer_literal_node, is_bool_type_node,
-    is_float_type_node, is_int_type_node, is_string_type_node, map_node,
-    method_receiver_element_node, node_is_container, node_is_leaf, node_is_map, node_is_named_ref,
-    node_is_optional, node_type_compatible, node_type_deps, node_type_equals, node_type_shape,
-    normalize_access_type_node, prefer_specific_type, rt_type, tuple_node,
+    is_bridge_placeholder_type_name, is_float_type_node, is_int_type_node, is_string_type_node,
+    map_node, method_receiver_element_node, node_is_container, node_is_keyed_collection,
+    node_is_leaf, node_is_map, node_is_named_ref, node_is_optional, node_type_compatible,
+    node_type_deps, node_type_equals, node_type_shape, normalize_access_type_node,
+    prefer_specific_type, rt_type, tuple_node,
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 
@@ -210,10 +211,7 @@ pub struct BlockInferState {
 /// any field whose init value is a plain ExprVar gets an entry mapping
 /// that variable name to the struct field's declared type.  O(statements × fields),
 /// computed once per block, not per let-binding.
-fn build_field_expected_map(
-    stmts: &[Rc<Node>],
-    scope: &InferScope,
-) -> HashMap<String, Rc<Node>> {
+fn build_field_expected_map(stmts: &[Rc<Node>], scope: &InferScope) -> HashMap<String, Rc<Node>> {
     let mut map: HashMap<String, Rc<Node>> = HashMap::new();
     for stmt in stmts.iter() {
         collect_field_expectations(stmt, scope, &mut map);
@@ -249,10 +247,16 @@ fn collect_field_expectations(
                             let fi_name = field_init_node_name(fi.clone());
                             if let Some(field_type) = lookup_field_type_node(sn.clone(), fi_name) {
                                 match out.get(&var_name) {
-                                    None => { out.insert(var_name, field_type); }
-                                    Some(existing) if existing.name == field_type.name
-                                        && existing.children.len() == field_type.children.len() => {}
-                                    Some(_) => { out.remove(&var_name); }
+                                    None => {
+                                        out.insert(var_name, field_type);
+                                    }
+                                    Some(existing)
+                                        if existing.name == field_type.name
+                                            && existing.children.len()
+                                                == field_type.children.len() => {}
+                                    Some(_) => {
+                                        out.remove(&var_name);
+                                    }
                                 }
                             }
                         }
@@ -618,10 +622,7 @@ pub fn internal_expr_error_node(message: String, span: Rc<SourceSpan>) -> Rc<Nod
 
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
     match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
-        Some(binding) => match lookup_type_for(
-            scope.type_env.clone(),
-            binding.resolved.clone(),
-        ) {
+        Some(binding) => match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
             Some(parent) => {
                 if node_is_coproduct(parent.clone()) {
                     if {
@@ -1084,6 +1085,7 @@ pub fn infer_method_args_with_fold(
     fold_info: Option<Rc<ArgInferResult>>,
     fold_acc_type: Rc<Node>,
     element_type: Rc<Node>,
+    receiver_type: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> Vec<Rc<ArgInferResult>> {
     let is_fold = method_name_is(method_name.clone(), "fold".to_string());
@@ -1117,35 +1119,65 @@ pub fn infer_method_args_with_fold(
                     if (is_fold && (fold_info.clone() != None)) {
                         // Build synthetic callable expected with acc_type (first) + elem_type (last)
                         let fold_params = vec![
-                            make_param_node("acc".to_string(), fold_acc_type.clone(), None, no_span()),
-                            make_param_node("elem".to_string(), element_type.clone(), None, no_span()),
+                            make_param_node(
+                                "acc".to_string(),
+                                fold_acc_type.clone(),
+                                None,
+                                no_span(),
+                            ),
+                            make_param_node(
+                                "elem".to_string(),
+                                element_type.clone(),
+                                None,
+                                no_span(),
+                            ),
                         ];
-                        let fold_callable = Rc::new(Node {
-                            name: "".to_string(),
-                            span: no_span(),
-                            ident_span: None,
-                            children: vec![],
-                            connective: None,
-                            params: fold_params,
-                            inferred: None,
-                            return_cardinality: Cardinality::Required,
-                            uses: vec![],
-                            body: None,
-                            transport: None,
-                            properties: vec![],
-                            type_annotation: None,
-                            is_self_recursive: false,
-                            has_non_tail_self_call: false,
-                            match_pattern: None,
-                            expr_data: Rc::new(ExprData::NoExprData),
-                        });
-                        let ar = infer_expr(arg_value(a.clone()), scope.clone(), Some(fold_callable));
+                        let fold_callable =
+                            callable_node(fold_params.clone(), fold_acc_type.clone());
+                        let ar =
+                            infer_expr(arg_value(a.clone()), scope.clone(), Some(fold_callable));
                         Rc::new(ArgInferResult {
-                            typed_arg: make_arg_node(arg_name(a.clone()), ar.typed.clone(), a.span.clone()),
+                            typed_arg: make_arg_node(
+                                arg_name(a.clone()),
+                                ar.typed.clone(),
+                                a.span.clone(),
+                            ),
                             diagnostics: ar.diagnostics.clone(),
                         })
                     } else {
-                        infer_arg_with_element_type(a.clone(), element_type.clone(), scope.clone())
+                        match method_name.clone() {
+                            Some(actual_method_name) => match method_arg_expected_type(
+                                receiver_type.clone(),
+                                actual_method_name.clone(),
+                                idx.clone(),
+                            ) {
+                                Some(expected_type) => {
+                                    let ar = infer_expr(
+                                        arg_value(a.clone()),
+                                        scope.clone(),
+                                        Some(expected_type.clone()),
+                                    );
+                                    Rc::new(ArgInferResult {
+                                        typed_arg: make_arg_node(
+                                            arg_name(a.clone()),
+                                            ar.typed.clone(),
+                                            a.span.clone(),
+                                        ),
+                                        diagnostics: ar.diagnostics.clone(),
+                                    })
+                                }
+                                None => infer_arg_with_element_type(
+                                    a.clone(),
+                                    element_type.clone(),
+                                    scope.clone(),
+                                ),
+                            },
+                            None => infer_arg_with_element_type(
+                                a.clone(),
+                                element_type.clone(),
+                                scope.clone(),
+                            ),
+                        }
                     }
                 }
             });
@@ -1264,9 +1296,9 @@ pub fn refine_collection_result_type(
             None
         } else {
             match (*semantics.clone().unwrap()).clone() {
-                MethodSemantics::AlgebraMethodSemantics {
-                    method_def: md, ..
-                } => Some(md.name.clone()),
+                MethodSemantics::AlgebraMethodSemantics { method_def: md, .. } => {
+                    Some(md.name.clone())
+                }
                 _ => None,
             }
         };
@@ -1336,10 +1368,16 @@ pub fn refine_collection_result_type(
                         let acc_has_incomplete_element = match fold_acc.clone() {
                             Some(ref at) => {
                                 // Bare container with no type params (e.g. empty_map() → Map{})
-                                let is_bare_container = crate::v2_std_core::is_container_type(at.name.clone()) && at.children.is_empty();
+                                let is_bare_container =
+                                    crate::v2_std_core::is_container_type(at.name.clone())
+                                        && at.children.is_empty();
                                 let elem = for_each_element_type_node(at.clone());
-                                is_bare_container || elem.name == "Unit" || elem.name == "Dynamic" || elem.name == "Error" || elem.name.is_empty()
-                            },
+                                is_bare_container
+                                    || elem.name == "Unit"
+                                    || elem.name == "Dynamic"
+                                    || elem.name == "Error"
+                                    || elem.name.is_empty()
+                            }
                             None => false,
                         };
                         let lambda_body_type = match {
@@ -1350,7 +1388,10 @@ pub fn refine_collection_result_type(
                                 }
                             }
                             __result
-                        }.first().cloned() {
+                        }
+                        .first()
+                        .cloned()
+                        {
                             Some(lambda_arg) => Some(rt_type(arg_value(lambda_arg.clone()))),
                             None => None,
                         };
@@ -1358,21 +1399,33 @@ pub fn refine_collection_result_type(
                             Some(acc_type) => {
                                 if acc_has_incomplete_element {
                                     match lambda_body_type {
-                                        Some(lbt) if lbt.name != "Unit" && lbt.name != "Error" && lbt.name != "Dynamic" => lbt.clone(),
+                                        Some(lbt)
+                                            if lbt.name != "Unit"
+                                                && lbt.name != "Error"
+                                                && lbt.name != "Dynamic" =>
+                                        {
+                                            lbt.clone()
+                                        }
                                         _ => acc_type.clone(),
                                     }
                                 } else {
                                     acc_type.clone()
                                 }
-                            },
+                            }
                             None => fallback.clone(),
                         }
                     } else {
-                        let list_push_receiver_incomplete = (receiver_type.children.clone().len() as i64) == 0
-                            || match receiver_type.children.clone().first() {
-                                Some(c) => c.name == "Unit" || c.name == "Dynamic" || c.name == "Error" || c.name.is_empty(),
-                                None => false,
-                            };
+                        let list_push_receiver_incomplete =
+                            (receiver_type.children.clone().len() as i64) == 0
+                                || match receiver_type.children.clone().first() {
+                                    Some(c) => {
+                                        c.name == "Unit"
+                                            || c.name == "Dynamic"
+                                            || c.name == "Error"
+                                            || c.name.is_empty()
+                                    }
+                                    None => false,
+                                };
                         if ((method_name_is(method_name.clone(), "list_push".to_string())
                             && ((typed_args.clone().len() as i64) >= 1))
                             && list_push_receiver_incomplete)
@@ -1390,11 +1443,25 @@ pub fn refine_collection_result_type(
                                 None => fallback.clone(),
                             }
                         } else {
-                            let map_insert_receiver_incomplete = (receiver_type.children.clone().len() as i64) == 0
-                                || match receiver_type.children.clone().iter().cloned().skip(1).collect::<Vec<_>>().first() {
-                                    Some(v) => v.name == "Unit" || v.name == "Dynamic" || v.name == "Error" || v.name.is_empty(),
-                                    None => false,
-                                };
+                            let map_insert_receiver_incomplete =
+                                (receiver_type.children.clone().len() as i64) == 0
+                                    || match receiver_type
+                                        .children
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .skip(1)
+                                        .collect::<Vec<_>>()
+                                        .first()
+                                    {
+                                        Some(v) => {
+                                            v.name == "Unit"
+                                                || v.name == "Dynamic"
+                                                || v.name == "Error"
+                                                || v.name.is_empty()
+                                        }
+                                        None => false,
+                                    };
                             if (((method_name_is(method_name.clone(), "map_insert".to_string())
                                 && map_insert_receiver_incomplete)
                                 && receiver_is_map.clone())
@@ -1537,19 +1604,90 @@ pub fn unify_incomplete_type(inferred: Rc<Node>, expected: Rc<Node>) -> Rc<Node>
     })
 }
 
+pub fn method_arg_expected_type(
+    receiver_type: Rc<Node>,
+    method_name: String,
+    arg_index: i64,
+) -> Option<Rc<Node>> {
+    let receiver_is_product = receiver_type.connective == Some(Connective::Conj);
+    let method_product = if receiver_is_product {
+        receiver_type.clone()
+    } else {
+        enrich_kernel_type(receiver_type.name.clone(), receiver_type.clone())
+    };
+    match method_product
+        .children
+        .iter()
+        .find(|c| c.name == method_name)
+        .cloned()
+    {
+        Some(field) => match field.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved {
+                node: callable_type,
+                ..
+            }) => {
+                let expected_index = if receiver_is_product {
+                    arg_index
+                } else {
+                    arg_index + 1
+                };
+                callable_type
+                    .params
+                    .iter()
+                    .skip(expected_index as usize)
+                    .next()
+                    .cloned()
+                    .map(|formal| param_node_type_expr(formal.clone()))
+            }
+            _ => None,
+        },
+        None => None,
+    }
+}
+
+pub fn type_matches_expected_shape(actual: Rc<Node>, expected: Rc<Node>) -> bool {
+    if is_bridge_placeholder_type_name(expected.name.clone()) {
+        return true;
+    }
+    if actual.name != expected.name || actual.return_cardinality != expected.return_cardinality {
+        return false;
+    }
+    if expected.children.is_empty() {
+        return true;
+    }
+    if actual.children.len() != expected.children.len() {
+        return false;
+    }
+    actual
+        .children
+        .iter()
+        .zip(expected.children.iter())
+        .all(|(actual_child, expected_child)| {
+            type_matches_expected_shape(actual_child.clone(), expected_child.clone())
+        })
+}
+
 pub fn infer_arg_with_element_type(
     arg: Rc<Node>,
     element_type: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> Rc<ArgInferResult> {
-    let ar = infer_expr(arg_value(arg.clone()), scope.clone(), Some(element_type.clone()));
+    let ar = infer_expr(
+        arg_value(arg.clone()),
+        scope.clone(),
+        Some(element_type.clone()),
+    );
     Rc::new(ArgInferResult {
         typed_arg: make_arg_node(arg_name(arg.clone()), ar.typed.clone(), arg.span.clone()),
         diagnostics: ar.diagnostics.clone(),
     })
 }
 
-pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<Node>>) -> Rc<InferResult> {
+pub fn infer_expr(
+    texpr: Rc<Node>,
+    scope: Rc<InferScope>,
+    expected: Option<Rc<Node>>,
+) -> Rc<InferResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: lit, .. } => {
@@ -1796,13 +1934,27 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     2,
                     scope.clone(),
                 );
-                let call_fold_acc_type = match call_fold_info.clone() {
+                let call_fold_acc_type_raw = match call_fold_info.clone() {
                     Some(fi) => match (*rt_node(arg_value(fi.typed_arg.clone()))).clone() {
                         NodeType::Typed { node: rt, .. } => rt.clone(),
                         NodeType::InferError { .. } => error_type_node(),
                         NodeType::Untyped => error_type_node(),
                     },
                     None => error_type_node(),
+                };
+                let call_fold_acc_type = if call_fold_info.is_some() {
+                    match expected.clone() {
+                        Some(ref exp)
+                            if (((call_fold_acc_type_raw.children.len() as i64) == 0)
+                                || type_has_incomplete_nested(&call_fold_acc_type_raw))
+                                && (call_fold_acc_type_raw.name == exp.name) =>
+                        {
+                            unify_incomplete_type(call_fold_acc_type_raw.clone(), exp.clone())
+                        }
+                        _ => call_fold_acc_type_raw.clone(),
+                    }
+                } else {
+                    call_fold_acc_type_raw.clone()
                 };
                 let arg_infer_results = if ((has_lambda.clone()
                     && ((call_args.clone().len() as i64) >= 2))
@@ -1820,6 +1972,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                 call_fold_info.clone(),
                                 call_fold_acc_type.clone(),
                                 elem_type.clone(),
+                                first_type.clone(),
                                 scope.clone(),
                             );
                             v2_rt::concat(
@@ -1863,9 +2016,11 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                     Some(p) => param_node_type_expr(p.clone()),
                                     None => leaf_node("Dynamic".to_string()),
                                 };
-                                let is_callable_formal = (formal_param_type.params.clone().len() as i64) > 0;
-                                let expected = if is_callable_formal { Some(formal_param_type.clone()) } else { None };
-                                let ar = infer_expr(arg_value(a.clone()), scope.clone(), expected);
+                                let ar = infer_expr(
+                                    arg_value(a.clone()),
+                                    scope.clone(),
+                                    Some(formal_param_type.clone()),
+                                );
                                 Rc::new(ArgInferResult {
                                     typed_arg: make_arg_node(
                                         arg_name(a.clone()),
@@ -1981,7 +2136,12 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                         } else {
                             if (func_name.clone() == "empty_map".to_string()) {
                                 let empty_map_type = match expected.clone() {
-                                    Some(ref exp) if exp.name == "Map" && !exp.children.is_empty() => exp.clone(),
+                                    Some(ref exp)
+                                        if (exp.name == "Map".to_string())
+                                            || node_is_keyed_collection(exp.clone()) =>
+                                    {
+                                        exp.clone()
+                                    }
                                     _ => bare_map_node(),
                                 };
                                 Rc::new(InferResult {
@@ -2048,9 +2208,10 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                                         receiver_type.clone(),
                                                         scope.type_env.clone(),
                                                     ) {
-                                                        Some(key_type) => {
-                                                            container_node("List".to_string(), key_type.clone())
-                                                        }
+                                                        Some(key_type) => container_node(
+                                                            "List".to_string(),
+                                                            key_type.clone(),
+                                                        ),
                                                         None => resolve_builtin_call_type(
                                                             func_name.clone(),
                                                         ),
@@ -2077,9 +2238,10 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                                         receiver_type.clone(),
                                                         scope.type_env.clone(),
                                                     ) {
-                                                        Some(value_type) => {
-                                                            container_node("List".to_string(), value_type.clone())
-                                                        }
+                                                        Some(value_type) => container_node(
+                                                            "List".to_string(),
+                                                            value_type.clone(),
+                                                        ),
                                                         None => resolve_builtin_call_type(
                                                             func_name.clone(),
                                                         ),
@@ -2116,18 +2278,44 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                             // list_push(receiver, item) → List<ItemType>
                                             // When receiver is Error/Dynamic (e.g. from map_get on bare Map),
                                             // use the item arg's type to build the list element type.
-                                            match typed_args.clone().iter().cloned().skip(1).collect::<Vec<_>>().first().cloned() {
-                                                Some(item_arg) => match (*rt_node(arg_value(item_arg.clone()))).clone() {
-                                                    NodeType::Typed { node: item_type, .. } => {
-                                                        if item_type.name != "Dynamic" && item_type.name != "Error" && !item_type.name.is_empty() {
-                                                            container_node("List".to_string(), item_type.clone())
-                                                        } else {
-                                                            resolve_builtin_call_type(func_name.clone())
+                                            match typed_args
+                                                .clone()
+                                                .iter()
+                                                .cloned()
+                                                .skip(1)
+                                                .collect::<Vec<_>>()
+                                                .first()
+                                                .cloned()
+                                            {
+                                                Some(item_arg) => {
+                                                    match (*rt_node(arg_value(item_arg.clone())))
+                                                        .clone()
+                                                    {
+                                                        NodeType::Typed {
+                                                            node: item_type, ..
+                                                        } => {
+                                                            if item_type.name != "Dynamic"
+                                                                && item_type.name != "Error"
+                                                                && !item_type.name.is_empty()
+                                                            {
+                                                                container_node(
+                                                                    "List".to_string(),
+                                                                    item_type.clone(),
+                                                                )
+                                                            } else {
+                                                                resolve_builtin_call_type(
+                                                                    func_name.clone(),
+                                                                )
+                                                            }
                                                         }
-                                                    },
-                                                    _ => resolve_builtin_call_type(func_name.clone()),
-                                                },
-                                                None => resolve_builtin_call_type(func_name.clone()),
+                                                        _ => resolve_builtin_call_type(
+                                                            func_name.clone(),
+                                                        ),
+                                                    }
+                                                }
+                                                None => {
+                                                    resolve_builtin_call_type(func_name.clone())
+                                                }
                                             }
                                         } else {
                                             resolve_builtin_call_type(func_name.clone())
@@ -2274,8 +2462,10 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 };
                 let fold_acc_type = if fold_info.is_some() {
                     match expected.clone() {
-                        Some(ref exp) if (crate::v2_std_core::is_container_type(fold_acc_type_raw.name.clone()) && fold_acc_type_raw.children.is_empty())
-                            || type_has_incomplete_nested(&fold_acc_type_raw) =>
+                        Some(ref exp)
+                            if (((fold_acc_type_raw.children.len() as i64) == 0)
+                                || type_has_incomplete_nested(&fold_acc_type_raw))
+                                && (fold_acc_type_raw.name == exp.name) =>
                         {
                             unify_incomplete_type(fold_acc_type_raw.clone(), exp.clone())
                         }
@@ -2290,6 +2480,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     fold_info.clone(),
                     fold_acc_type.clone(),
                     recv_elem_type.clone(),
+                    recv_rt.clone(),
                     scope.clone(),
                 );
                 let typed_mc_args = {
@@ -2323,12 +2514,16 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                         // Fallback: check if method is a builtin function used via pipe (x |> map_keys).
                         if (method_name.clone() == "map_keys".to_string()) {
                             match map_key_type_in_env(recv_rt.clone(), scope.type_env.clone()) {
-                                Some(key_type) => container_node("List".to_string(), key_type.clone()),
+                                Some(key_type) => {
+                                    container_node("List".to_string(), key_type.clone())
+                                }
                                 None => recv_rt.clone(),
                             }
                         } else if (method_name.clone() == "map_values".to_string()) {
                             match map_value_type_in_env(recv_rt.clone(), scope.type_env.clone()) {
-                                Some(value_type) => container_node("List".to_string(), value_type.clone()),
+                                Some(value_type) => {
+                                    container_node("List".to_string(), value_type.clone())
+                                }
                                 None => recv_rt.clone(),
                             }
                         } else {
@@ -2581,7 +2776,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 let span = texpr.span.clone();
                 let let_value = let_value(texpr.clone());
                 let let_body = let_body(texpr.clone());
-                
+
                 let val_result = infer_expr(let_value.clone(), scope.clone(), expected.clone());
                 let val_typed = val_result.typed.clone();
                 let val_diags = val_result.diagnostics.clone();
@@ -2606,7 +2801,8 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     {
                         let extended =
                             extend_scope(scope.clone(), let_name.clone(), val_type.clone());
-                        let body_result = infer_expr(let_body.clone().unwrap(), extended.clone(), None);
+                        let body_result =
+                            infer_expr(let_body.clone().unwrap(), extended.clone(), None);
                         let body_typed = body_result.typed.clone();
                         let body_diags = body_result.diagnostics.clone();
                         let let_texpr2 = make_named_expr_node(
@@ -2662,9 +2858,11 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     }
                 } else {
                     match expected.clone() {
-                        Some(ref exp) if exp.name == "List" && !exp.children.is_empty() => {
-                            exp.children.first().cloned().unwrap_or_else(|| leaf_node("Unit".to_string()))
-                        }
+                        Some(ref exp) if exp.name == "List" && !exp.children.is_empty() => exp
+                            .children
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| leaf_node("Unit".to_string())),
                         _ => leaf_node("Unit".to_string()),
                     }
                 };
@@ -2734,18 +2932,39 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 let lam_body = lambda_body(texpr.clone());
                 let lam_param_nodes: Vec<Rc<Node>> =
                     texpr.children.iter().skip(1).cloned().collect();
+                let callable_arity_diags = match expected.clone() {
+                    Some(exp)
+                        if !exp.params.is_empty()
+                            && ((exp.params.len() as i64) != (lam_params.len() as i64)) =>
+                    {
+                        vec![inference_error(
+                            "lambda callback arity mismatch".to_string(),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )]
+                    }
+                    _ => vec![],
+                };
                 // If expected carries a callable type (has params), thread each param type positionally.
                 // Otherwise if expected carries an element type, use it for lambda params.
                 let lam_scope = if expected.is_some() {
                     let exp = expected.clone().unwrap();
                     if (exp.params.clone().len() as i64) > 0 {
                         // Callable expected: thread each param type positionally
-                        lam_params.iter().cloned().enumerate().fold(scope.clone(), |acc, (idx, p)| {
-                            match exp.params.clone().iter().skip(idx).next().cloned() {
+                        lam_params.iter().cloned().enumerate().fold(
+                            scope.clone(),
+                            |acc, (idx, p)| match exp
+                                .params
+                                .clone()
+                                .iter()
+                                .skip(idx)
+                                .next()
+                                .cloned()
+                            {
                                 Some(cp) => extend_scope(acc, p, param_node_type_expr(cp.clone())),
                                 None => extend_scope(acc, p, leaf_node("Dynamic".to_string())),
-                            }
-                        })
+                            },
+                        )
                     } else if (lam_params.clone().len() as i64) == 1 {
                         match lam_params.clone().first().cloned() {
                             Some(p) => extend_scope(scope.clone(), p, exp),
@@ -2753,13 +2972,17 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                         }
                     } else {
                         let param_count = lam_params.clone().len() as i64;
-                        lam_params.iter().cloned().enumerate().fold(scope.clone(), |acc, (i, p)| {
-                            if (i as i64) == param_count - 1 {
-                                extend_scope(acc, p, exp.clone())
-                            } else {
-                                extend_scope(acc, p, leaf_node("Dynamic".to_string()))
-                            }
-                        })
+                        lam_params
+                            .iter()
+                            .cloned()
+                            .enumerate()
+                            .fold(scope.clone(), |acc, (i, p)| {
+                                if (i as i64) == param_count - 1 {
+                                    extend_scope(acc, p, exp.clone())
+                                } else {
+                                    extend_scope(acc, p, leaf_node("Dynamic".to_string()))
+                                }
+                            })
                     }
                 } else {
                     extend_scope_with_params(scope.clone(), lam_params.clone())
@@ -2767,19 +2990,31 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 let body_result = infer_expr(lam_body.clone(), lam_scope.clone(), None);
                 let body_typed = body_result.typed.clone();
                 let body_diags = body_result.diagnostics.clone();
+                let callable_return_diags = match expected.clone() {
+                    Some(exp) if !exp.params.is_empty() => {
+                        let expected_ret = callable_inferred(exp.clone());
+                        if type_matches_expected_shape(
+                            rt_type(body_typed.clone()),
+                            expected_ret.clone(),
+                        ) {
+                            vec![]
+                        } else {
+                            vec![inference_error(
+                                "lambda callback return type mismatch".to_string(),
+                                span.clone(),
+                                scope.module_name.clone(),
+                            )]
+                        }
+                    }
+                    _ => vec![],
+                };
                 let lam_texpr = make_expr_node(
                     Rc::new(ExprData::ExprLambda {
                         semantics: Some(lambda_semantics_from_param_types(
                             lambda_param_types_from_scope(lam_scope.clone(), lam_params.clone()),
                         )),
                     }),
-                    v2_rt::concat(vec![body_typed.clone()], {
-                        let mut __result = Vec::new();
-                        for p in lam_params.clone().iter().cloned() {
-                            __result.push(leaf_node(p.clone()));
-                        }
-                        __result
-                    }),
+                    v2_rt::concat(vec![body_typed.clone()], lam_param_nodes.clone()),
                     Some(Rc::new(InferredNode::Resolved {
                         node: rt_type(body_typed.clone()),
                     })),
@@ -2787,7 +3022,10 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 );
                 Rc::new(InferResult {
                     typed: lam_texpr.clone(),
-                    diagnostics: body_diags.clone(),
+                    diagnostics: v2_rt::concat(
+                        v2_rt::concat(callable_arity_diags.clone(), body_diags.clone()),
+                        callable_return_diags.clone(),
+                    ),
                 })
             }
             ExprData::ExprStringInterp => {
@@ -3392,8 +3630,11 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     {
                         {
                             let fn_scope = scope.clone();
-                            let body_result =
-                                infer_expr(item.body.clone().clone().unwrap(), fn_scope.clone(), None);
+                            let body_result = infer_expr(
+                                item.body.clone().clone().unwrap(),
+                                fn_scope.clone(),
+                                None,
+                            );
                             let body_typed = body_result.typed.clone();
                             let body_diags = body_result.diagnostics.clone();
                             let resolved_ret = rt_type(item.clone());
@@ -3427,8 +3668,11 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             && ((item.params.clone().len() as i64) == 0))
                         {
                             {
-                                let val_result =
-                                    infer_expr(item.body.clone().clone().unwrap(), scope.clone(), None);
+                                let val_result = infer_expr(
+                                    item.body.clone().clone().unwrap(),
+                                    scope.clone(),
+                                    None,
+                                );
                                 let val_typed = val_result.typed.clone();
                                 let val_diags = val_result.diagnostics.clone();
                                 let resolved_ret = if (item.type_annotation.clone() == None) {
@@ -3577,21 +3821,12 @@ pub fn collect_item_recursive_variant_fields(
         if recursive_type_set.get(&item.name).is_none() {
             return <HashMap<_, _>>::new();
         }
-        item
-            .clone()
-            .children
-            .clone()
-            .iter()
-            .cloned()
-            .fold(
-                <HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>::new(),
-                |variant_acc: _, variant_node: Rc<Node>| {
-                variant_node
-                    .children
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .fold(variant_acc.clone(), |field_acc: _, field_node: Rc<Node>| {
+        item.clone().children.clone().iter().cloned().fold(
+            <HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>::new(),
+            |variant_acc: _, variant_node: Rc<Node>| {
+                variant_node.children.clone().iter().cloned().fold(
+                    variant_acc.clone(),
+                    |field_acc: _, field_node: Rc<Node>| {
                         let field_type_name = field_node_type_expr(field_node.clone()).name.clone();
                         if field_type_name == item.name.clone() {
                             put_recursive_variant_field_witness(
@@ -3603,9 +3838,10 @@ pub fn collect_item_recursive_variant_fields(
                         } else {
                             field_acc.clone()
                         }
-                    })
+                    },
+                )
             },
-            )
+        )
     }
 }
 
@@ -3613,18 +3849,15 @@ pub fn build_item_recursive_variant_fields(
     items: Vec<Rc<Node>>,
     recursive_type_set: Rc<HashMap<String, bool>>,
 ) -> HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>> {
-    items
-        .iter()
-        .cloned()
-        .fold(
-            <HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>::new(),
-            |acc: _, item: Rc<Node>| {
+    items.iter().cloned().fold(
+        <HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>::new(),
+        |acc: _, item: Rc<Node>| {
             merge_recursive_variant_fields(
                 acc.clone(),
                 collect_item_recursive_variant_fields(item.clone(), recursive_type_set.clone()),
             )
         },
-        )
+    )
 }
 
 pub fn build_type_env(
@@ -4358,7 +4591,11 @@ pub fn build_type_env_unresolved(
             recursive_variant_fields: Rc::new(<HashMap<_, _>>::new()),
             source_index: source_index.clone(),
         });
-        let merged = merge_envs(vec![kernel.clone(), import_env.clone(), pre_local_env.clone()]);
+        let merged = merge_envs(vec![
+            kernel.clone(),
+            import_env.clone(),
+            pre_local_env.clone(),
+        ]);
         let all_deps_map = v2_rt::map_values(&merged.bindings.clone())
             .iter()
             .cloned()
@@ -4622,21 +4859,38 @@ pub fn build_module_context(
         let imported_enum_names: HashMap<String, bool> = resolved_imports.iter().cloned().fold(
             <HashMap<_, _>>::new(),
             |acc: HashMap<String, bool>, imp: Rc<ResolvedImport>| {
-                imp.specific_names.iter().cloned().fold(acc,
-                    |inner: HashMap<String, bool>, n: String| v2_rt::map_insert(inner, n, true))
-            });
+                imp.specific_names
+                    .iter()
+                    .cloned()
+                    .fold(acc, |inner: HashMap<String, bool>, n: String| {
+                        v2_rt::map_insert(inner, n, true)
+                    })
+            },
+        );
         let variant_fold = v2_rt::map_values(&env.bindings.clone())
-            .iter().cloned().fold(
-                VariantFoldState { locals: <HashMap<_, _>>::new(), collision_errors: vec![] },
+            .iter()
+            .cloned()
+            .fold(
+                VariantFoldState {
+                    locals: <HashMap<_, _>>::new(),
+                    collision_errors: vec![],
+                },
                 |acc: VariantFoldState, binding: Rc<TypeBinding>| {
                     if node_is_coproduct(binding.resolved.clone()) {
-                        let curr_is_imported = imported_enum_names.contains_key(&binding.resolved.name);
-                        binding.resolved.clone().children.clone().iter().cloned().fold(
-                            acc.clone(),
-                            |vacc: VariantFoldState, child: Rc<Node>| {
+                        let curr_is_imported =
+                            imported_enum_names.contains_key(&binding.resolved.name);
+                        binding
+                            .resolved
+                            .clone()
+                            .children
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .fold(acc.clone(), |vacc: VariantFoldState, child: Rc<Node>| {
                                 match v2_rt::map_get(&vacc.locals, child.name.clone()) {
                                     Some(prev) => {
-                                        let prev_is_imported = imported_enum_names.contains_key(&prev.resolved.name);
+                                        let prev_is_imported =
+                                            imported_enum_names.contains_key(&prev.resolved.name);
                                         if curr_is_imported && prev_is_imported {
                                             let mut w = vacc.collision_errors.clone();
                                             w.push(make_error_node(
@@ -4648,24 +4902,44 @@ pub fn build_module_context(
                                                 }),
                                                 module_name.clone(),
                                             ));
-                                            VariantFoldState { locals: vacc.locals.clone(), collision_errors: w }
+                                            VariantFoldState {
+                                                locals: vacc.locals.clone(),
+                                                collision_errors: w,
+                                            }
                                         } else if curr_is_imported {
                                             VariantFoldState {
-                                                locals: v2_rt::map_insert(vacc.locals.clone(), child.name.clone(),
-                                                    Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() })),
+                                                locals: v2_rt::map_insert(
+                                                    vacc.locals.clone(),
+                                                    child.name.clone(),
+                                                    Rc::new(TypeBinding {
+                                                        name: child.name.clone(),
+                                                        resolved: binding.resolved.clone(),
+                                                    }),
+                                                ),
                                                 collision_errors: vacc.collision_errors.clone(),
                                             }
-                                        } else { vacc.clone() }
+                                        } else {
+                                            vacc.clone()
+                                        }
                                     }
                                     None => VariantFoldState {
-                                        locals: v2_rt::map_insert(vacc.locals.clone(), child.name.clone(),
-                                            Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() })),
+                                        locals: v2_rt::map_insert(
+                                            vacc.locals.clone(),
+                                            child.name.clone(),
+                                            Rc::new(TypeBinding {
+                                                name: child.name.clone(),
+                                                resolved: binding.resolved.clone(),
+                                            }),
+                                        ),
                                         collision_errors: vacc.collision_errors.clone(),
-                                    }
+                                    },
                                 }
                             })
-                    } else { acc.clone() }
-                });
+                    } else {
+                        acc.clone()
+                    }
+                },
+            );
         let imported_variant_locals = variant_fold.locals.clone();
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals = variant_locals_from_items(
@@ -5095,24 +5369,43 @@ pub fn collect_parent_envs(
     }
 }
 
-pub fn build_fielded_variants(modules: Vec<Rc<TypedModule>>, type_summaries: HashMap<String, Rc<TypeSummary>>) -> HashMap<String, bool> {
-    let result = modules.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, m| {
-        let items = m.items.clone();
-        items.iter().cloned().fold(acc, |inner, item| {
-            let is_enum = match v2_rt::map_get(&type_summaries, item.name.clone()) {
-                Some(summary) => matches!(*summary.repr, TypeRepr::EnumRepr { .. }),
-                None => false,
-            };
-            if is_enum {
-                let enum_name = item.name.clone();
-                let variants = item.children.clone();
-                variants.iter().cloned().fold(inner, |vacc, variant| {
-                    let has_fields = variant.children.len() > 0;
-                    if has_fields { v2_rt::map_insert(vacc, v2_rt::concat(v2_rt::concat(enum_name.clone(), "::".to_string()), variant.name.clone()), true) } else { vacc }
-                })
-            } else { inner }
-        })
-    });
+pub fn build_fielded_variants(
+    modules: Vec<Rc<TypedModule>>,
+    type_summaries: HashMap<String, Rc<TypeSummary>>,
+) -> HashMap<String, bool> {
+    let result = modules
+        .iter()
+        .cloned()
+        .fold(<HashMap<String, bool>>::new(), |acc, m| {
+            let items = m.items.clone();
+            items.iter().cloned().fold(acc, |inner, item| {
+                let is_enum = match v2_rt::map_get(&type_summaries, item.name.clone()) {
+                    Some(summary) => matches!(*summary.repr, TypeRepr::EnumRepr { .. }),
+                    None => false,
+                };
+                if is_enum {
+                    let enum_name = item.name.clone();
+                    let variants = item.children.clone();
+                    variants.iter().cloned().fold(inner, |vacc, variant| {
+                        let has_fields = variant.children.len() > 0;
+                        if has_fields {
+                            v2_rt::map_insert(
+                                vacc,
+                                v2_rt::concat(
+                                    v2_rt::concat(enum_name.clone(), "::".to_string()),
+                                    variant.name.clone(),
+                                ),
+                                true,
+                            )
+                        } else {
+                            vacc
+                        }
+                    })
+                } else {
+                    inner
+                }
+            })
+        });
     result
 }
 
@@ -5127,13 +5420,15 @@ fn child_has_fn_type(child: &Node) -> bool {
 }
 
 pub fn build_value_contexts(modules: &[Rc<TypedModule>]) -> HashMap<String, Rc<ValueContext>> {
-    modules.iter().fold(<HashMap<String, Rc<ValueContext>>>::new(), |acc, m| {
-        m.items.iter().fold(acc, |mut inner, item| {
-            let has_fn_fields = item.children.iter().any(|child| child_has_fn_type(child));
-            inner.insert(item.name.clone(), Rc::new(ValueContext { has_fn_fields }));
-            inner
+    modules
+        .iter()
+        .fold(<HashMap<String, Rc<ValueContext>>>::new(), |acc, m| {
+            m.items.iter().fold(acc, |mut inner, item| {
+                let has_fn_fields = item.children.iter().any(|child| child_has_fn_type(child));
+                inner.insert(item.name.clone(), Rc::new(ValueContext { has_fn_fields }));
+                inner
+            })
         })
-    })
 }
 
 pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo> {

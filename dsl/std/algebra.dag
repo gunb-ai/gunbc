@@ -348,6 +348,7 @@ type AlgebraTypeTemplate
   | ReceiverKey
   | ReceiverValue
   | NamedTemplate { name: String }
+  | CallableOf { param_types: List<AlgebraTypeTemplate>, return_type: AlgebraTypeTemplate }
   | ReceiverCollectionOf { element: AlgebraTypeTemplate }
   | ListOf { element: AlgebraTypeTemplate }
   | OptionalOf { inner: AlgebraTypeTemplate }
@@ -415,12 +416,12 @@ fn boolean_algebra_collection_templates() -> List<AlgebraFieldTemplate> {
     { name: "diff", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
     { name: "member", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" } },
     { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" } },
-    { name: "filter", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-    { name: "map", param_types: [ReceiverSelf], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } },
-    { name: "flat_map", param_types: [ReceiverSelf], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } },
-    { name: "fold", param_types: [NamedTemplate { name: "FoldAccumulator" }], return_type: NamedTemplate { name: "FoldAccumulator" } },
-    { name: "any", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
-    { name: "all", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
+    { name: "filter", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: ReceiverSelf },
+    { name: "map", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: NamedTemplate { name: "MappedElement" } }], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } },
+    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } }], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } },
+    { name: "fold", param_types: [ReceiverSelf, NamedTemplate { name: "FoldAccumulator" }, CallableOf { param_types: [NamedTemplate { name: "FoldAccumulator" }, ReceiverElement], return_type: NamedTemplate { name: "FoldAccumulator" } }], return_type: NamedTemplate { name: "FoldAccumulator" } },
+    { name: "any", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" } },
+    { name: "all", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" } },
     { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } },
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } }
   ]
@@ -450,18 +451,18 @@ fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
 
 fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
   [
-    { name: "map", param_types: [ReceiverSelf], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } },
-    { name: "filter", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-    { name: "flat_map", param_types: [ReceiverSelf], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } },
-    { name: "fold", param_types: [NamedTemplate { name: "FoldAccumulator" }], return_type: NamedTemplate { name: "FoldAccumulator" } },
-    { name: "any", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
-    { name: "all", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
+    { name: "map", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: NamedTemplate { name: "MappedElement" } }], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } },
+    { name: "filter", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: ReceiverSelf },
+    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } }], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } },
+    { name: "fold", param_types: [ReceiverSelf, NamedTemplate { name: "FoldAccumulator" }, CallableOf { param_types: [NamedTemplate { name: "FoldAccumulator" }, ReceiverElement], return_type: NamedTemplate { name: "FoldAccumulator" } }], return_type: NamedTemplate { name: "FoldAccumulator" } },
+    { name: "any", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" } },
+    { name: "all", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" } },
     { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } },
     { name: "first", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement } },
     { name: "last", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement } },
     { name: "skip", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf },
     { name: "take", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf },
-    { name: "sort_by", param_types: [ReceiverSelf], return_type: ReceiverSelf },
+    { name: "sort_by", param_types: [ReceiverSelf, CallableOf { param_types: [ReceiverElement], return_type: NamedTemplate { name: "SortKey" } }], return_type: ReceiverSelf },
     { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf },
     { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" } },
     { name: "enumerate", param_types: [ReceiverSelf], return_type: ReceiverCollectionOf { element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } } },

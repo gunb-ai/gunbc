@@ -923,12 +923,12 @@ fn is_conj_with_children(n: Node) -> Bool {
   n.connective == Conj && n.children |> count > 0
 }
 
-// Extract the inferred from a child Node, with a fallback.
+// Extract the inferred from a child Node, fail-closed on unresolved shape.
 fn child_inferred_or_empty(ch: Node) -> Node {
   if ch.inferred != none {
-    match rt_node(n: ch) { Typed { node: rt } => rt  InferError { message: _, span: _ } => leaf_type_node(name: "Unit", span: ch.span)  InferVariable { id: _ } => leaf_type_node(name: "Unit", span: ch.span)  Untyped => leaf_type_node(name: "Unit", span: ch.span) }
+    match rt_node(n: ch) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
   } else {
-    leaf_type_node(name: "", span: ch.span)
+    error_type
   }
 }
 
@@ -937,7 +937,17 @@ fn child_inferred_or_empty(ch: Node) -> Node {
 // Otherwise -> single "value" field wrapping the node.
 fn node_inferred_to_outputs(rt: Node) -> List<Node> {
   if is_conj_with_children(n: rt) {
-    rt.children |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span))
+    let typed_children = rt.children |> all(ch =>
+      match rt_node(n: ch) {
+        Typed { node: _ } => true
+        _ => false
+      }
+    )
+    if typed_children {
+      rt.children |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span))
+    } else {
+      []
+    }
   } else {
     [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: rt.span)]
   }

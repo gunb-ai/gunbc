@@ -16,7 +16,7 @@ import std.algebra {
   FreeMonoidScalarProfile,
   FreeMonoidCollectionProfile, PartialFunctionProfile,
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
-  NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf,
+  NamedTemplate, CallableOf, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf,
   AlgebraFieldTemplate,
   kernel_algebra_profile,
   algebra_templates_for_profile,
@@ -182,6 +182,11 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node) -> Node {
     ReceiverKey => key_node
     ReceiverValue => val_node
     NamedTemplate { name: n } => placeholder_type_node(name: n)
+    CallableOf { param_types: params, return_type: ret } =>
+      let callable_params = params |> map(tp =>
+        make_param_node(name: "_", type_expr: instantiate_algebra_type(template: tp, base: base), default_value: none, span: no_span())
+      )
+      callable_node(func_params: callable_params, ret: instantiate_algebra_type(template: ret, base: base))
     ReceiverCollectionOf { element: inner } => container_node(kind_name: base.name, element: instantiate_algebra_type(template: inner, base: base))
     ListOf { element: inner } => container_node(kind_name: "List", element: instantiate_algebra_type(template: inner, base: base))
     OptionalOf { inner: inner } => with_optional_cardinality(n: instantiate_algebra_type(template: inner, base: base))
@@ -661,6 +666,11 @@ fn collect_named_templates(template: AlgebraTypeTemplate, acc: Map<String, Bool>
     ReceiverKey => acc
     ReceiverValue => acc
     NamedTemplate { name: n } => map_insert(acc, n, true)
+    CallableOf { param_types: params, return_type: ret } =>
+      let acc2 = params |> fold(init: acc, f: (inner_acc, param_template) =>
+        collect_named_templates(template: param_template, acc: inner_acc)
+      )
+      collect_named_templates(template: ret, acc: acc2)
     ReceiverCollectionOf { element: inner } => collect_named_templates(template: inner, acc: acc)
     ListOf { element: inner } => collect_named_templates(template: inner, acc: acc)
     OptionalOf { inner: inner } => collect_named_templates(template: inner, acc: acc)

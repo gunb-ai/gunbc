@@ -58,11 +58,11 @@ use crate::v2_std_core::InferredNode::{CompilerError, Resolved};
 use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 use crate::v2_std_core::NodeType::{InferError, Typed, Untyped};
 pub use crate::v2_std_core::{
-    has_inferred, is_container_type, is_kernel_numeric, is_kernel_textual, is_kernel_type, leaf_node,
-    leaf_node_with_span, make_expr_node, make_param_node, no_span, node_has_structure,
-    node_is_coproduct, node_is_product, param_node_type_expr, rt_node,
-    with_optional_cardinality, with_required_cardinality, BinOpKind, Cardinality, Connective,
-    ExprData, InferredNode, LiteralValue, Node, NodeType,
+    has_inferred, is_container_type, is_kernel_numeric, is_kernel_textual, is_kernel_type,
+    leaf_node, leaf_node_with_span, make_expr_node, make_param_node, no_span, node_has_structure,
+    node_is_coproduct, node_is_product, param_node_type_expr, rt_node, with_optional_cardinality,
+    with_required_cardinality, BinOpKind, Cardinality, Connective, ExprData, InferredNode,
+    LiteralValue, Node, NodeType,
 };
 
 pub fn child_inferred_or_name(ch: Rc<Node>) -> Rc<Node> {
@@ -360,10 +360,22 @@ pub enum AlgebraTypeTemplate {
     ReceiverElement,
     ReceiverKey,
     ReceiverValue,
-    NamedTemplate { name: String },
-    ReceiverCollectionOf { element: Box<AlgebraTypeTemplate> },
-    ListOf { element: Box<AlgebraTypeTemplate> },
-    OptionalOf { inner: Box<AlgebraTypeTemplate> },
+    NamedTemplate {
+        name: String,
+    },
+    CallableOf {
+        param_types: Vec<AlgebraTypeTemplate>,
+        return_type: Box<AlgebraTypeTemplate>,
+    },
+    ReceiverCollectionOf {
+        element: Box<AlgebraTypeTemplate>,
+    },
+    ListOf {
+        element: Box<AlgebraTypeTemplate>,
+    },
+    OptionalOf {
+        inner: Box<AlgebraTypeTemplate>,
+    },
     TupleOf {
         first: Box<AlgebraTypeTemplate>,
         second: Box<AlgebraTypeTemplate>,
@@ -558,12 +570,28 @@ pub fn boolean_algebra_collection_templates() -> Vec<AlgebraFieldTemplate> {
         },
         AlgebraFieldTemplate {
             name: "filter".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Bool".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::ReceiverSelf,
         },
         AlgebraFieldTemplate {
             name: "map".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "MappedElement".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
                 element: Box::new(AlgebraTypeTemplate::NamedTemplate {
                     name: "MappedElement".to_string(),
@@ -572,7 +600,17 @@ pub fn boolean_algebra_collection_templates() -> Vec<AlgebraFieldTemplate> {
         },
         AlgebraFieldTemplate {
             name: "flat_map".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+                        element: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                            name: "MappedElement".to_string(),
+                        }),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
                 element: Box::new(AlgebraTypeTemplate::NamedTemplate {
                     name: "MappedElement".to_string(),
@@ -581,23 +619,53 @@ pub fn boolean_algebra_collection_templates() -> Vec<AlgebraFieldTemplate> {
         },
         AlgebraFieldTemplate {
             name: "fold".to_string(),
-            param_types: vec![AlgebraTypeTemplate::NamedTemplate {
-                name: "FoldAccumulator".to_string(),
-            }],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::NamedTemplate {
+                    name: "FoldAccumulator".to_string(),
+                },
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![
+                        AlgebraTypeTemplate::NamedTemplate {
+                            name: "FoldAccumulator".to_string(),
+                        },
+                        AlgebraTypeTemplate::ReceiverElement,
+                    ],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "FoldAccumulator".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::NamedTemplate {
                 name: "FoldAccumulator".to_string(),
             },
         },
         AlgebraFieldTemplate {
             name: "any".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Bool".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::NamedTemplate {
                 name: "Bool".to_string(),
             },
         },
         AlgebraFieldTemplate {
             name: "all".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Bool".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::NamedTemplate {
                 name: "Bool".to_string(),
             },
@@ -763,7 +831,15 @@ pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
     vec![
         AlgebraFieldTemplate {
             name: "map".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "MappedElement".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
                 element: Box::new(AlgebraTypeTemplate::NamedTemplate {
                     name: "MappedElement".to_string(),
@@ -772,12 +848,30 @@ pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
         },
         AlgebraFieldTemplate {
             name: "filter".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Bool".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::ReceiverSelf,
         },
         AlgebraFieldTemplate {
             name: "flat_map".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+                        element: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                            name: "MappedElement".to_string(),
+                        }),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
                 element: Box::new(AlgebraTypeTemplate::NamedTemplate {
                     name: "MappedElement".to_string(),
@@ -786,23 +880,53 @@ pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
         },
         AlgebraFieldTemplate {
             name: "fold".to_string(),
-            param_types: vec![AlgebraTypeTemplate::NamedTemplate {
-                name: "FoldAccumulator".to_string(),
-            }],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::NamedTemplate {
+                    name: "FoldAccumulator".to_string(),
+                },
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![
+                        AlgebraTypeTemplate::NamedTemplate {
+                            name: "FoldAccumulator".to_string(),
+                        },
+                        AlgebraTypeTemplate::ReceiverElement,
+                    ],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "FoldAccumulator".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::NamedTemplate {
                 name: "FoldAccumulator".to_string(),
             },
         },
         AlgebraFieldTemplate {
             name: "any".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Bool".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::NamedTemplate {
                 name: "Bool".to_string(),
             },
         },
         AlgebraFieldTemplate {
             name: "all".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Bool".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::NamedTemplate {
                 name: "Bool".to_string(),
             },
@@ -850,7 +974,15 @@ pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
         },
         AlgebraFieldTemplate {
             name: "sort_by".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "SortKey".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::ReceiverSelf,
         },
         AlgebraFieldTemplate {
@@ -1088,6 +1220,26 @@ pub fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Rc<Node>) -
         AlgebraTypeTemplate::ReceiverKey => key_node.clone(),
         AlgebraTypeTemplate::ReceiverValue => val_node.clone(),
         AlgebraTypeTemplate::NamedTemplate { name } => placeholder_type_node(name.clone()),
+        AlgebraTypeTemplate::CallableOf {
+            param_types,
+            return_type,
+        } => {
+            let callable_params: Vec<Rc<Node>> = param_types
+                .into_iter()
+                .map(|tp| {
+                    make_param_node(
+                        "_".to_string(),
+                        instantiate_algebra_type(tp, base.clone()),
+                        None,
+                        no_span(),
+                    )
+                })
+                .collect();
+            callable_node(
+                callable_params,
+                instantiate_algebra_type((*return_type).clone(), base.clone()),
+            )
+        }
         AlgebraTypeTemplate::ReceiverCollectionOf { element } => container_node(
             base.name.clone(),
             instantiate_algebra_type((*element).clone(), base.clone()),
@@ -1174,7 +1326,9 @@ pub fn node_is_bridge_dynamic_name(n: Rc<Node>) -> bool {
 }
 
 pub fn node_is_collection(n: Rc<Node>) -> bool {
-    ((n.children.clone().len() as i64) > 0) && (n.connective.clone() == None) && is_container_type(n.name.clone())
+    ((n.children.clone().len() as i64) > 0)
+        && (n.connective.clone() == None)
+        && is_container_type(n.name.clone())
 }
 
 pub fn node_is_keyed_collection(n: Rc<Node>) -> bool {
@@ -1331,68 +1485,64 @@ pub fn node_type_compatible(mut left: Rc<Node>, mut right: Rc<Node>) -> bool {
         if (node_is_bridge_error_name(left.clone()) || node_is_bridge_error_name(right.clone())) {
             break true;
         } else {
-                if (left_opt.clone() && (right.name.clone() == "Unit".to_string())) {
+            if (left_opt.clone() && (right.name.clone() == "Unit".to_string())) {
+                break true;
+            } else {
+                if ((left.name.clone() == "Unit".to_string()) && right_opt.clone()) {
                     break true;
                 } else {
-                    if ((left.name.clone() == "Unit".to_string()) && right_opt.clone()) {
-                        break true;
-                    } else {
-                        if (node_is_container(left.clone()) && node_is_container(right.clone())) {
-                            if (left.name.clone() != right.name.clone()) {
-                                break false;
-                            } else {
-                                match left.children.clone().first().cloned() {
-                                    Some(left_el) => {
-                                        match right.children.clone().first().cloned() {
-                                            Some(right_el) => {
-                                                if ((left_el.name.clone() == "Unit".to_string())
-                                                    || (right_el.name.clone()
-                                                        == "Unit".to_string()))
-                                                {
-                                                    break true;
-                                                } else {
-                                                    {
-                                                        let __tco_0 = left_el.clone();
-                                                        let __tco_1 = right_el.clone();
-                                                        left = __tco_0;
-                                                        right = __tco_1;
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                            None => {
-                                                break true;
+                    if (node_is_container(left.clone()) && node_is_container(right.clone())) {
+                        if (left.name.clone() != right.name.clone()) {
+                            break false;
+                        } else {
+                            match left.children.clone().first().cloned() {
+                                Some(left_el) => match right.children.clone().first().cloned() {
+                                    Some(right_el) => {
+                                        if ((left_el.name.clone() == "Unit".to_string())
+                                            || (right_el.name.clone() == "Unit".to_string()))
+                                        {
+                                            break true;
+                                        } else {
+                                            {
+                                                let __tco_0 = left_el.clone();
+                                                let __tco_1 = right_el.clone();
+                                                left = __tco_0;
+                                                right = __tco_1;
+                                                continue;
                                             }
                                         }
                                     }
                                     None => {
                                         break true;
                                     }
+                                },
+                                None => {
+                                    break true;
+                                }
+                            }
+                        }
+                    } else {
+                        if (left_opt.clone() && right_opt.clone()) {
+                            let left_inner = with_required_cardinality(left.clone());
+                            let right_inner = with_required_cardinality(right.clone());
+                            if ((left_inner.name.clone() == "Unit".to_string())
+                                || (right_inner.name.clone() == "Unit".to_string()))
+                            {
+                                break true;
+                            } else {
+                                {
+                                    let __tco_0 = left_inner.clone();
+                                    let __tco_1 = right_inner.clone();
+                                    left = __tco_0;
+                                    right = __tco_1;
+                                    continue;
                                 }
                             }
                         } else {
-                            if (left_opt.clone() && right_opt.clone()) {
-                                let left_inner = with_required_cardinality(left.clone());
-                                let right_inner = with_required_cardinality(right.clone());
-                                if ((left_inner.name.clone() == "Unit".to_string())
-                                    || (right_inner.name.clone() == "Unit".to_string()))
-                                {
-                                    break true;
-                                } else {
-                                    {
-                                        let __tco_0 = left_inner.clone();
-                                        let __tco_1 = right_inner.clone();
-                                        left = __tco_0;
-                                        right = __tco_1;
-                                        continue;
-                                    }
-                                }
+                            if (left_opt.clone() || right_opt.clone()) {
+                                break false;
                             } else {
-                                if (left_opt.clone() || right_opt.clone()) {
-                                    break false;
-                                } else {
-                                    break (left.name.clone() == right.name.clone());
-                                }
+                                break (left.name.clone() == right.name.clone());
                             }
                         }
                     }
@@ -1400,6 +1550,7 @@ pub fn node_type_compatible(mut left: Rc<Node>, mut right: Rc<Node>) -> bool {
             }
         }
     }
+}
 
 pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
     {
@@ -1452,203 +1603,197 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
             {
                 true
             } else {
-                    if (left_opt.clone() && (right.name.clone() == "Unit".to_string())) {
+                if (left_opt.clone() && (right.name.clone() == "Unit".to_string())) {
+                    true
+                } else {
+                    if ((left.name.clone() == "Unit".to_string()) && right_opt.clone()) {
                         true
                     } else {
-                        if ((left.name.clone() == "Unit".to_string()) && right_opt.clone()) {
-                            true
+                        if (left_leaf.clone() && right_leaf.clone()) {
+                            (left.name.clone() == right.name.clone())
                         } else {
-                            if (left_leaf.clone() && right_leaf.clone()) {
-                                (left.name.clone() == right.name.clone())
-                            } else {
-                                if (left_struct.clone() && right_struct.clone()) {
-                                    if (left.name.clone() != right.name.clone()) {
+                            if (left_struct.clone() && right_struct.clone()) {
+                                if (left.name.clone() != right.name.clone()) {
+                                    false
+                                } else {
+                                    if (node_is_product(left.clone())
+                                        != node_is_product(right.clone()))
+                                    {
                                         false
                                     } else {
-                                        if (node_is_product(left.clone())
-                                            != node_is_product(right.clone()))
+                                        if ((left.children.clone().len() as i64)
+                                            != (right.children.clone().len() as i64))
                                         {
                                             false
                                         } else {
-                                            if ((left.children.clone().len() as i64)
-                                                != (right.children.clone().len() as i64))
                                             {
-                                                false
-                                            } else {
+                                                let mut __all = true;
+                                                for pair in left
+                                                    .children
+                                                    .iter()
+                                                    .cloned()
+                                                    .enumerate()
+                                                    .map(|(i, v)| (i as i64, v))
+                                                    .collect::<Vec<_>>()
+                                                    .iter()
+                                                    .cloned()
                                                 {
-                                                    let mut __all = true;
-                                                    for pair in left
+                                                    if !(match right
                                                         .children
                                                         .iter()
                                                         .cloned()
-                                                        .enumerate()
-                                                        .map(|(i, v)| (i as i64, v))
+                                                        .skip(pair.0.clone() as usize)
                                                         .collect::<Vec<_>>()
-                                                        .iter()
+                                                        .first()
                                                         .cloned()
                                                     {
-                                                        if !(match right
-                                                            .children
-                                                            .iter()
-                                                            .cloned()
-                                                            .skip(pair.0.clone() as usize)
-                                                            .collect::<Vec<_>>()
-                                                            .first()
-                                                            .cloned()
-                                                        {
-                                                            Some(right_child) => node_type_equals(
-                                                                pair.1.clone(),
-                                                                right_child.clone(),
-                                                            ),
-                                                            None => false,
-                                                        }) {
-                                                            __all = false;
-                                                            break;
-                                                        }
+                                                        Some(right_child) => node_type_equals(
+                                                            pair.1.clone(),
+                                                            right_child.clone(),
+                                                        ),
+                                                        None => false,
+                                                    }) {
+                                                        __all = false;
+                                                        break;
                                                     }
-                                                    __all
                                                 }
+                                                __all
                                             }
                                         }
                                     }
+                                }
+                            } else {
+                                if (left_leaf.clone() && right_struct.clone()) {
+                                    (left.name.clone() == right.name.clone())
                                 } else {
-                                    if (left_leaf.clone() && right_struct.clone()) {
+                                    if (left_struct.clone() && right_leaf.clone()) {
                                         (left.name.clone() == right.name.clone())
                                     } else {
-                                        if (left_struct.clone() && right_leaf.clone()) {
-                                            (left.name.clone() == right.name.clone())
-                                        } else {
-                                            if (node_is_container(left.clone())
-                                                && node_is_container(right.clone()))
-                                            {
-                                                if (left.name.clone() != right.name.clone()) {
-                                                    false
-                                                } else {
-                                                    match left.children.clone().first().cloned() {
-                                                        Some(left_el) => match right
-                                                            .children
-                                                            .clone()
-                                                            .first()
-                                                            .cloned()
-                                                        {
-                                                            Some(right_el) => node_type_equals(
-                                                                left_el.clone(),
-                                                                right_el.clone(),
-                                                            ),
-                                                            None => false,
-                                                        },
-                                                        None => false,
-                                                    }
-                                                }
+                                        if (node_is_container(left.clone())
+                                            && node_is_container(right.clone()))
+                                        {
+                                            if (left.name.clone() != right.name.clone()) {
+                                                false
                                             } else {
-                                                if (left_opt.clone() && right_opt.clone()) {
-                                                    node_type_equals(
-                                                        with_required_cardinality(left.clone()),
-                                                        with_required_cardinality(right.clone()),
-                                                    )
-                                                } else {
-                                                    if (node_is_map(left.clone())
-                                                        && node_is_map(right.clone()))
+                                                match left.children.clone().first().cloned() {
+                                                    Some(left_el) => match right
+                                                        .children
+                                                        .clone()
+                                                        .first()
+                                                        .cloned()
                                                     {
-                                                        if (((left.children.clone().len() as i64)
-                                                            == 2)
-                                                            && ((right.children.clone().len()
-                                                                as i64)
-                                                                == 2))
+                                                        Some(right_el) => node_type_equals(
+                                                            left_el.clone(),
+                                                            right_el.clone(),
+                                                        ),
+                                                        None => false,
+                                                    },
+                                                    None => false,
+                                                }
+                                            }
+                                        } else {
+                                            if (left_opt.clone() && right_opt.clone()) {
+                                                node_type_equals(
+                                                    with_required_cardinality(left.clone()),
+                                                    with_required_cardinality(right.clone()),
+                                                )
+                                            } else {
+                                                if (node_is_map(left.clone())
+                                                    && node_is_map(right.clone()))
+                                                {
+                                                    if (((left.children.clone().len() as i64) == 2)
+                                                        && ((right.children.clone().len() as i64)
+                                                            == 2))
+                                                    {
                                                         {
+                                                            let left_first = match left
+                                                                .children
+                                                                .clone()
+                                                                .first()
+                                                                .cloned()
                                                             {
-                                                                let left_first = match left
-                                                                    .children
-                                                                    .clone()
-                                                                    .first()
-                                                                    .cloned()
-                                                                {
-                                                                    Some(v) => v.clone(),
-                                                                    None => left.clone(),
-                                                                };
-                                                                let right_first = match right
-                                                                    .children
-                                                                    .clone()
-                                                                    .first()
-                                                                    .cloned()
-                                                                {
-                                                                    Some(v) => v.clone(),
-                                                                    None => right.clone(),
-                                                                };
-                                                                let left_second = match left
-                                                                    .children
-                                                                    .iter()
-                                                                    .cloned()
-                                                                    .skip(1 as usize)
-                                                                    .collect::<Vec<_>>()
-                                                                    .first()
-                                                                    .cloned()
-                                                                {
-                                                                    Some(v) => v.clone(),
-                                                                    None => left.clone(),
-                                                                };
-                                                                let right_second = match right
-                                                                    .children
-                                                                    .iter()
-                                                                    .cloned()
-                                                                    .skip(1 as usize)
-                                                                    .collect::<Vec<_>>()
-                                                                    .first()
-                                                                    .cloned()
-                                                                {
-                                                                    Some(v) => v.clone(),
-                                                                    None => right.clone(),
-                                                                };
-                                                                (node_type_equals(
-                                                                    left_first.clone(),
-                                                                    right_first.clone(),
-                                                                ) && node_type_equals(
-                                                                    left_second.clone(),
-                                                                    right_second.clone(),
-                                                                ))
-                                                            }
-                                                        } else {
-                                                            false
+                                                                Some(v) => v.clone(),
+                                                                None => left.clone(),
+                                                            };
+                                                            let right_first = match right
+                                                                .children
+                                                                .clone()
+                                                                .first()
+                                                                .cloned()
+                                                            {
+                                                                Some(v) => v.clone(),
+                                                                None => right.clone(),
+                                                            };
+                                                            let left_second = match left
+                                                                .children
+                                                                .iter()
+                                                                .cloned()
+                                                                .skip(1 as usize)
+                                                                .collect::<Vec<_>>()
+                                                                .first()
+                                                                .cloned()
+                                                            {
+                                                                Some(v) => v.clone(),
+                                                                None => left.clone(),
+                                                            };
+                                                            let right_second = match right
+                                                                .children
+                                                                .iter()
+                                                                .cloned()
+                                                                .skip(1 as usize)
+                                                                .collect::<Vec<_>>()
+                                                                .first()
+                                                                .cloned()
+                                                            {
+                                                                Some(v) => v.clone(),
+                                                                None => right.clone(),
+                                                            };
+                                                            (node_type_equals(
+                                                                left_first.clone(),
+                                                                right_first.clone(),
+                                                            ) && node_type_equals(
+                                                                left_second.clone(),
+                                                                right_second.clone(),
+                                                            ))
                                                         }
                                                     } else {
-                                                        if ((left.name.clone()
-                                                            == "Callable".to_string())
-                                                            && (right.name.clone()
-                                                                == "Callable".to_string()))
+                                                        false
+                                                    }
+                                                } else {
+                                                    if ((left.name.clone()
+                                                        == "Callable".to_string())
+                                                        && (right.name.clone()
+                                                            == "Callable".to_string()))
+                                                    {
+                                                        if ((left.params.clone().len() as i64)
+                                                            != (right.params.clone().len() as i64))
                                                         {
-                                                            if ((left.params.clone().len() as i64)
-                                                                != (right.params.clone().len()
-                                                                    as i64))
+                                                            false
+                                                        } else {
                                                             {
-                                                                false
-                                                            } else {
-                                                                {
-                                                                    let params_eq = {
-                                                                        let mut __all = true;
-                                                                        for pair in left
-                                                                            .params
-                                                                            .iter()
-                                                                            .cloned()
-                                                                            .enumerate()
-                                                                            .map(|(i, v)| {
-                                                                                (i as i64, v)
-                                                                            })
-                                                                            .collect::<Vec<_>>()
-                                                                            .iter()
-                                                                            .cloned()
-                                                                        {
-                                                                            if !(match right.params.iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>().first().cloned() {
+                                                                let params_eq = {
+                                                                    let mut __all = true;
+                                                                    for pair in left
+                                                                        .params
+                                                                        .iter()
+                                                                        .cloned()
+                                                                        .enumerate()
+                                                                        .map(|(i, v)| (i as i64, v))
+                                                                        .collect::<Vec<_>>()
+                                                                        .iter()
+                                                                        .cloned()
+                                                                    {
+                                                                        if !(match right.params.iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>().first().cloned() {
     Some(right_param) => node_type_equals(param_node_type_expr(pair.1.clone()), param_node_type_expr(right_param.clone())),
     None => false,
 }) { __all = false; break; }
-                                                                        }
-                                                                        __all
-                                                                    };
-                                                                    if (params_eq.clone() == false)
-                                                                    {
-                                                                        false
-                                                                    } else {
-                                                                        match left.inferred.clone().as_deref().cloned() {
+                                                                    }
+                                                                    __all
+                                                                };
+                                                                if (params_eq.clone() == false) {
+                                                                    false
+                                                                } else {
+                                                                    match left.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: left_ret, .. }) => match right.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: right_ret, .. }) => node_type_equals(left_ret.clone(), right_ret.clone()),
     None => false,
@@ -1657,12 +1802,11 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     None => (right.inferred.clone() == None),
     _ => false,
 }
-                                                                    }
                                                                 }
                                                             }
-                                                        } else {
-                                                            false
                                                         }
+                                                    } else {
+                                                        false
                                                     }
                                                 }
                                             }
@@ -1672,6 +1816,7 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
                             }
                         }
                     }
+                }
             }
         }
     })
@@ -1861,5 +2006,10 @@ pub fn emit_map_has(m: HashMap<String, bool>, key: String) -> bool {
 }
 
 pub fn is_bridge_placeholder_type_name(name: String) -> bool {
-    name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+    name == "T"
+        || name == "K"
+        || name == "V"
+        || name == "MappedElement"
+        || name == "FoldAccumulator"
+        || name == "SortKey"
 }

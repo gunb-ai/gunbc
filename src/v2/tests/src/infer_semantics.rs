@@ -9,8 +9,11 @@ use v2_compiler::v2_compiler_infer_types::{
     bare_map_node, container_node, map_node, node_is_keyed_collection,
 };
 use v2_compiler::v2_std_core::{
-    leaf_node, make_arm_node, with_optional_cardinality, Cardinality, ExprData, InferredNode,
-    MatchPattern, Node, NodeType, SourceSpan,
+    file_transport_node, leaf_node, local_transport_node, make_arm_node, make_expr_node,
+    make_field_init_node, rest_transport_node, shell_transport_node, transport_auth_header_name,
+    transport_auth_token, transport_base_path, transport_base_url, transport_env,
+    transport_has_auth, transport_headers, transport_kind, with_optional_cardinality, Cardinality,
+    ExprData, InferredNode, LiteralValue, MatchPattern, Node, NodeType, SourceSpan, TransportKind,
 };
 
 fn zero_span() -> Rc<SourceSpan> {
@@ -19,6 +22,19 @@ fn zero_span() -> Rc<SourceSpan> {
 
 fn unit_expr() -> Rc<Node> {
     leaf_node("Unit".to_string())
+}
+
+fn string_expr(value: &str) -> Rc<Node> {
+    make_expr_node(
+        Rc::new(ExprData::ExprLiteral {
+            value: Rc::new(LiteralValue::LitStr {
+                value: value.to_string(),
+            }),
+        }),
+        vec![],
+        None,
+        zero_span(),
+    )
 }
 
 fn variant_arm(name: &str) -> Rc<Node> {
@@ -280,8 +296,24 @@ fn resolve_node_uses_node_name_for_lookup() {
 fn structural_method_lookup_resolves_all_list_collection_methods() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let expected_methods = [
-        "map", "filter", "flat_map", "fold", "any", "all", "count", "first", "last", "skip",
-        "take", "sort_by", "append", "contains", "enumerate", "reverse", "join", "concat",
+        "map",
+        "filter",
+        "flat_map",
+        "fold",
+        "any",
+        "all",
+        "count",
+        "first",
+        "last",
+        "skip",
+        "take",
+        "sort_by",
+        "append",
+        "contains",
+        "enumerate",
+        "reverse",
+        "join",
+        "concat",
     ];
     for method_name in &expected_methods {
         assert!(
@@ -299,33 +331,25 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
 #[test]
 fn structural_method_any_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        list_int,
-        "any".to_string(),
-    )
-    .expect("any must resolve on List<Int>");
+    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int, "any".to_string())
+        .expect("any must resolve on List<Int>");
     assert_eq!(result.name, "Bool", "any on List<Int> should return Bool");
 }
 
 #[test]
 fn structural_method_all_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        list_int,
-        "all".to_string(),
-    )
-    .expect("all must resolve on List<Int>");
+    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int, "all".to_string())
+        .expect("all must resolve on List<Int>");
     assert_eq!(result.name, "Bool", "all on List<Int> should return Bool");
 }
 
 #[test]
 fn structural_method_sort_by_on_list_returns_self() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        list_int,
-        "sort_by".to_string(),
-    )
-    .expect("sort_by must resolve on List<Int>");
+    let result =
+        v2_compiler_infer_lookup::lookup_structural_method(list_int, "sort_by".to_string())
+            .expect("sort_by must resolve on List<Int>");
     assert_eq!(
         result.name, "List",
         "sort_by on List<Int> should return List (ReceiverSelf)"
@@ -335,11 +359,8 @@ fn structural_method_sort_by_on_list_returns_self() {
 #[test]
 fn structural_method_first_on_list_returns_optional_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        list_int,
-        "first".to_string(),
-    )
-    .expect("first must resolve on List<Int>");
+    let result = v2_compiler_infer_lookup::lookup_structural_method(list_int, "first".to_string())
+        .expect("first must resolve on List<Int>");
     assert_eq!(result.name, "Int", "first on List<Int> should return Int");
     assert!(
         matches!(result.return_cardinality, Cardinality::CardOptional),
@@ -350,11 +371,9 @@ fn structural_method_first_on_list_returns_optional_element() {
 #[test]
 fn structural_method_count_on_list_returns_int() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        list_string,
-        "count".to_string(),
-    )
-    .expect("count must resolve on List<String>");
+    let result =
+        v2_compiler_infer_lookup::lookup_structural_method(list_string, "count".to_string())
+            .expect("count must resolve on List<String>");
     assert_eq!(result.name, "Int", "count should return Int");
 }
 
@@ -378,11 +397,9 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
 #[test]
 fn structural_method_compare_on_int_returns_ordering() {
     let int_node = leaf_node("Int".to_string());
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        int_node,
-        "compare".to_string(),
-    )
-    .expect("compare must resolve on Int");
+    let result =
+        v2_compiler_infer_lookup::lookup_structural_method(int_node, "compare".to_string())
+            .expect("compare must resolve on Int");
     assert_eq!(
         result.name, "Ordering",
         "compare on Int should return Ordering"
@@ -396,16 +413,21 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
         leaf_node("Int".to_string()),
     );
     let expected_methods = [
-        "get", "map_get", "lookup", "map_insert", "map_merge", "has", "keys", "values",
-        "contains", "length",
+        "get",
+        "map_get",
+        "lookup",
+        "map_insert",
+        "map_merge",
+        "has",
+        "keys",
+        "values",
+        "contains",
+        "length",
     ];
     for method_name in &expected_methods {
         assert!(
-            v2_compiler_infer_lookup::lookup_structural_method(
-                m.clone(),
-                method_name.to_string()
-            )
-            .is_some(),
+            v2_compiler_infer_lookup::lookup_structural_method(m.clone(), method_name.to_string())
+                .is_some(),
             "lookup_structural_method should resolve '{}' on Map<String,Int>",
             method_name
         );
@@ -418,12 +440,12 @@ fn structural_method_get_on_map_returns_optional_value() {
         leaf_node("String".to_string()),
         leaf_node("Int".to_string()),
     );
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        m,
-        "get".to_string(),
-    )
-    .expect("get must resolve on Map<String,Int>");
-    assert_eq!(result.name, "Int", "get on Map<String,Int> should return Int");
+    let result = v2_compiler_infer_lookup::lookup_structural_method(m, "get".to_string())
+        .expect("get must resolve on Map<String,Int>");
+    assert_eq!(
+        result.name, "Int",
+        "get on Map<String,Int> should return Int"
+    );
     assert!(
         matches!(result.return_cardinality, Cardinality::CardOptional),
         "get should return Optional"
@@ -436,13 +458,14 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         leaf_node("String".to_string()),
         leaf_node("Int".to_string()),
     );
-    let result = v2_compiler_infer_lookup::lookup_structural_method(
-        m,
-        "keys".to_string(),
-    )
-    .expect("keys must resolve on Map<String,Int>");
+    let result = v2_compiler_infer_lookup::lookup_structural_method(m, "keys".to_string())
+        .expect("keys must resolve on Map<String,Int>");
     assert_eq!(result.name, "List", "keys should return List");
-    assert_eq!(result.children.len(), 1, "keys result should have one child");
+    assert_eq!(
+        result.children.len(),
+        1,
+        "keys result should have one child"
+    );
     assert_eq!(
         result.children[0].name, "String",
         "keys on Map<String,Int> should return List<String>"
@@ -492,10 +515,7 @@ fn keyed_collection_parts_returns_none_for_element_collection() {
 fn keyed_collection_parts_returns_none_for_bare_map() {
     let bare = bare_map_node();
     let parts = v2_compiler_infer_access::keyed_collection_parts(bare);
-    assert!(
-        parts.is_none(),
-        "bare Map (no children) should return None"
-    );
+    assert!(parts.is_none(), "bare Map (no children) should return None");
 }
 
 #[test]
@@ -517,6 +537,76 @@ fn node_is_keyed_collection_false_for_list() {
 fn node_is_keyed_collection_false_for_leaf() {
     let leaf = leaf_node("String".to_string());
     assert!(!node_is_keyed_collection(leaf));
+}
+
+#[test]
+fn rest_transport_helpers_stay_scoped_to_rest() {
+    let rest = rest_transport_node(
+        string_expr("https://api.example.com"),
+        vec![
+            make_field_init_node("auth_token".to_string(), string_expr("secret"), zero_span()),
+            make_field_init_node(
+                "auth_header".to_string(),
+                string_expr("Authorization"),
+                zero_span(),
+            ),
+        ],
+        vec![make_field_init_node(
+            "x-trace".to_string(),
+            string_expr("enabled"),
+            zero_span(),
+        )],
+        zero_span(),
+    );
+
+    assert_eq!(transport_kind(rest.clone()), TransportKind::RestTransport);
+    assert!(transport_base_url(rest.clone()).is_some());
+    assert!(transport_base_path(rest.clone()).is_none());
+    assert!(transport_auth_token(rest.clone()).is_some());
+    assert_eq!(
+        transport_auth_header_name(rest.clone()),
+        Some("Authorization".to_string())
+    );
+    assert!(transport_has_auth(rest.clone()));
+    assert_eq!(transport_headers(rest.clone()).len(), 1);
+    assert!(transport_env(rest.clone()).is_empty());
+}
+
+#[test]
+fn shell_transport_helpers_return_only_env() {
+    let shell = shell_transport_node(
+        vec![string_expr("curl")],
+        vec![make_field_init_node(
+            "TOKEN".to_string(),
+            string_expr("secret"),
+            zero_span(),
+        )],
+        zero_span(),
+    );
+
+    assert_eq!(transport_kind(shell.clone()), TransportKind::ShellTransport);
+    assert!(transport_base_url(shell.clone()).is_none());
+    assert!(transport_base_path(shell.clone()).is_none());
+    assert!(transport_auth_token(shell.clone()).is_none());
+    assert!(transport_headers(shell.clone()).is_empty());
+    assert_eq!(transport_env(shell.clone()).len(), 1);
+}
+
+#[test]
+fn file_and_local_transport_helpers_do_not_cross_authority() {
+    let file = file_transport_node(string_expr("/tmp/out.json"), zero_span());
+    let local = local_transport_node(zero_span());
+
+    assert_eq!(transport_kind(file.clone()), TransportKind::FileTransport);
+    assert!(transport_base_path(file.clone()).is_some());
+    assert!(transport_base_url(file.clone()).is_none());
+    assert!(transport_env(file.clone()).is_empty());
+
+    assert_eq!(transport_kind(local.clone()), TransportKind::LocalTransport);
+    assert!(transport_base_path(local.clone()).is_none());
+    assert!(transport_base_url(local.clone()).is_none());
+    assert!(transport_headers(local.clone()).is_empty());
+    assert!(transport_env(local.clone()).is_empty());
 }
 
 #[test]
@@ -563,4 +653,3 @@ fn map_index_with_wrong_key_type_reports_error() {
         "Map<String,Int>[Int] should report key type mismatch"
     );
 }
-
