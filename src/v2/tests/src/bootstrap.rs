@@ -270,7 +270,11 @@ fn stage0_compile_accepts_dag_target() {
 //     (partial_function_templates, free_monoid_collection_templates, etc.)
 //   - EmitGraphInfo.type_params added to 04_emit_info.dag (was stage0-only)
 //   Remaining 5: 1 E0425 (field_access_base), 4 E0282 (Map<K,List<Unit>> fold)
-const EMITTED_RUST_ERROR_RATCHET: usize = 5;
+//   Fold inference bidirectional unification (Category B) — 4 E0282 → 0.
+//   Block-level lookahead scans record-lit field types; expected type unifies
+//   bare empty_map() init into Map<K,V> so emit produces correct turbofish.
+//   Remaining 1: 1 E0425 (field_access_base)
+const EMITTED_RUST_ERROR_RATCHET: usize = 1;
 
 #[test]
 #[ignore] // Expensive: builds binary + runs full compile + cargo check

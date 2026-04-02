@@ -26,7 +26,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 5 errors | 0 | Down from 8658→99→12→5. Algebra imports fixed, EmitGraphInfo.type_params synced. Remaining: 1 E0425 (field_access_base) + 4 E0282 (bidirectional inference) |
+| Bootstrap emitted Rust (B) | 1 error | 0 | Down from 8658→99→12→5→1. Fold bidirectional unification eliminated 4 E0282. Remaining: 1 E0425 (field_access_base) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
@@ -36,11 +36,12 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 
 ---
 
-## Active: Bootstrap B → 0 (5 errors remaining)
+## Active: Bootstrap B → 0 (1 error remaining)
 
 TypeRendering infrastructure landed. Always-annotate let bindings
 enforced. 10 reviewer violations resolved. Fold inference improved.
-Error count: 99 → 12 → 5 (94 fixed). PR #277.
+Error count: 99 → 12 → 5 → 1 (98 fixed). PR #277, #285, fold
+bidirectional unification.
 
 **Remaining 5 errors (2 independent categories):**
 
@@ -55,14 +56,14 @@ Error count: 99 → 12 → 5 (94 fixed). PR #277.
 
 Remaining 1 E0425: `field_access_base` — separate import fix needed.
 
-### Category B: Nested collection bidirectional inference (4 E0282) — separate branch
+### Category B: Nested collection bidirectional inference (4 E0282) — DONE
 
 `Map<String, List<Unit>>` fold accumulators where the inner
-`List<Unit>` comes from empty `[]` literals inside struct fields.
-The single-pass inference pipeline resolves struct fields top-down
-but can't propagate the actual element type from downstream fold
-body back into the struct's list field type. Needs field-level
-bidirectional type unification.
+`List<Unit>` came from empty `[]` literals inside struct fields.
+Fixed by block-level lookahead that scans subsequent record-lit
+field types for let-bound variables, then threads the expected type
+through ExprLet → ExprMethodCall (fold) → fold_acc_type unification.
+`unify_incomplete_type` merges bare containers with expected types.
 
 Files: `src/v2/stage0/src/v2_compiler_infer.rs` (fold inference
 path). No overlap with Category A.
@@ -1589,7 +1590,7 @@ the first level the language recognizes.
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
 | Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (COMPLEXITY_RATCHET in pipeline.rs) |
-| Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
+| Emitted Rust errors | 1 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
 

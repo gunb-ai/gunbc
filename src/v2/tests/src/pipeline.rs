@@ -1169,10 +1169,10 @@ fn cond_recurse(n: Int, flag: Bool) -> Int {
     );
 }
 
-/// Self-call through a let-bound inner match where one arm returns the
-/// original scrutinee unchanged (Leaf => t) must NOT be accepted as
-/// descent. The non-descending arm means some execution paths recurse
-/// without shrinking the measure.
+/// Match on a separate parameter where one reachable arm passes the
+/// recursive argument unchanged must NOT be accepted as descent.
+/// Both Mode variants are reachable (m is an independent parameter),
+/// and the Shallow arm recurses on `t` without shrinking the measure.
 #[test]
 fn soundness_partial_match_descent_not_accepted() {
     let source = r#"module soundness_match
@@ -1180,15 +1180,17 @@ type Tree
   = Leaf { value: Int }
   | Branch { child: Tree }
 
-fn partial_descent(t: Tree) -> Int {
+type Mode = Shallow | Deep
+
+fn walk(t: Tree, m: Mode) -> Int {
   match t {
     Leaf { value: v } => v
     Branch { child: c } =>
-      let arg = match t {
-        Leaf { value: _ } => t
-        Branch { child: inner } => inner
+      let next = match m {
+        Shallow => t
+        Deep => c
       }
-      partial_descent(t: arg)
+      walk(t: next, m: m)
   }
 }
 "#;
@@ -1197,11 +1199,11 @@ fn partial_descent(t: Tree) -> Int {
         .complexity
         .violations
         .iter()
-        .filter(|v| v.func_name == "partial_descent")
+        .filter(|v| v.func_name == "walk")
         .collect();
     assert!(
         !violations.is_empty(),
-        "partial match descent (one arm returns unchanged scrutinee) must NOT be accepted"
+        "match with reachable non-descending arm (Shallow => t) must NOT be accepted as descent"
     );
 }
 
