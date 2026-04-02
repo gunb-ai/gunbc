@@ -7,12 +7,15 @@ types, truth values, cardinality, product/coproduct — is compositional
 modeling in `.dag`. Languages are coercion targets. Testing is
 compilation.
 
-**Bounded kernel invariant:** Node is the only recursive type in the
-system. All recursive structures are Node trees — recursion lives in
-the data (children list), not in type definitions. Non-Node types are
-flat discriminants and data tables. This makes descent provable by
-construction: any function that walks Node.children is structurally
-bounded, and the complexity analyzer needs exactly one proof rule.
+**Bounded kernel invariant:** Node is the only recursive semantic
+authority in the compiler IR. All durable recursive structures are
+Node trees — recursion lives in the data (children list), not in
+type definitions. Non-Node types are flat discriminants and data
+tables. This does not ban flat helper products (parser result types,
+accumulator structs) — only recursive or authoritative structures
+alongside Node. This makes descent provable by construction: any
+function that walks Node.children is structurally bounded, and the
+complexity analyzer needs exactly one proof rule.
 
 Full thesis: [docs/architecture.md](docs/architecture.md)
 Compiler laws and coercion model: [docs/compiler-laws.md](docs/compiler-laws.md)
@@ -309,11 +312,13 @@ user-owned domain logic, it lives in user `.dag` files.
 into a single IR, but several compiler-internal types still define
 recursion in their type definitions rather than using Node structure.
 
-**Invariant:** Node is the only recursive type. All other types are
-flat (no self-referencing fields). Recursive data is represented as
-Node trees with discriminant metadata. This is not a style preference
-— it is load-bearing for decidability. Every non-Node recursive type
-creates:
+**Invariant:** Node is the only **recursive semantic authority** in
+the compiler IR consumed by resolve/infer/emit/complexity. This does
+NOT ban flat helper products (parser result types, accumulator structs,
+classification enums) — those are fine if they dissolve at construction
+boundaries and never become durable semantic authorities. The problem
+is when another recursive or authoritative semantic structure exists
+**alongside** Node. Every non-Node recursive authority creates:
 - Rc insertion and clone proliferation (14,204 clones across 33 files)
 - Stack overflow guards (59 `stacker::maybe_grow` calls)
 - Cycle detection infrastructure (200+ lines)
@@ -329,7 +334,7 @@ creates:
 | **SizeExpr** | SizeAdd/SizeMax left+right | Node composition in `std/cost.dag` | CX lane |
 | **TypeRendering** | element, key, value, params, return_type, inner, generic_args | Dissolves into coercion engine | M5 |
 | **MatchPattern** | VariantPattern.field_bindings → Node → MatchPattern | Full dissolution into Node metadata | M7 |
-| **InferredNode** | Resolved.node → Node → InferredNode | Collapse into Node field (no separate type) | M7 |
+| **InferredNode** | Resolved.node → Node → InferredNode | Keep wrapper semantics; replace Resolved payload with non-recursive reference/key | M7 |
 
 **CostExpr/SizeExpr dissolution.** Cost expressions are expression
 trees — structurally identical to the expression model `.dag` already
@@ -461,20 +466,15 @@ fn analyze_rc_pattern(n: Node, ...) -> RcPatternAnalysis {
 }
 ```
 
-**InferredNode collapse.** InferredNode exists to wrap a Node with
-resolution state (Resolved, CompilerError, TypeVariable). This is
-metadata about a Node, not a separate recursive structure. Collapse
-into fields on Node itself (resolution state + error info), eliminating
-the indirect Node ↔ InferredNode cycle.
-
-**Caveat:** InferredNode collapse doesn't eliminate Node→Node
-recursion (Node.resolved_type would still point to another Node).
-But it normalizes to the same pattern Node already uses — recursion
-in the data (children list, resolved_type field), not in the type
-system. The complexity analyzer doesn't need a separate proof rule
-for InferredNode; it already handles Node→Node edges. The benefit
-is removing the 16-file surface area of InferredNode pattern matching
-and the Rc<InferredNode> indirection layer, not the recursion itself.
+**InferredNode: keep wrapper, eliminate indirect recursion.**
+InferredNode = Resolved { node } | CompilerError { ... } | TypeVariable
+serves a critical structural purpose: it is the prevention against
+fabricated error states. Collapsing it into raw Node fields would lose
+that boundary. The fix is narrower: replace `Resolved { node: Node }`
+with a non-recursive reference (type key, index, or span-based
+identity) so the InferredNode ↔ Node cycle disappears without losing
+the wrapper semantics that distinguish Resolved from CompilerError
+from TypeVariable.
 
 **Per-file impact assessment (every v2 compiler file accounted for):**
 
@@ -506,7 +506,8 @@ InferredNode (largest scope — 16 .dag files, 15 .rs files):
 - Every emit file: consumes (05_*.dag, 4 files)
 - 02_parse.dag, 03_normalize.dag, compile.dag: consume + produce
 - Plus 15 stage0 .rs mirrors
-- Dissolution: collapse into Node fields (resolution_state + error_info)
+- Dissolution: keep wrapper semantics, replace Resolved payload with
+  non-recursive reference
 - Largest migration. Must wait for bootstrap to be green.
 
 Files with NO non-Node recursive type exposure (clean):
@@ -518,7 +519,36 @@ Files with NO non-Node recursive type exposure (clean):
 1. CostExpr/SizeExpr → Node (isolated, unblocks CX lane, no cross-file impact)
 2. TypeRendering → coercion (already planned M5, limited scope)
 3. MatchPattern → Node discriminant (medium scope, post-bootstrap)
-4. InferredNode → Node fields (largest scope, post-bootstrap, last)
+4. InferredNode → non-recursive reference (largest scope, post-bootstrap, last)
+
+**The kernel thins over time.** Today's Node shape is not final.
+`connective` and `return_cardinality` are M7 bridges that dissolve
+into graph structure. The invariant is: "Node is the only recursive
+carrier during convergence; later, some bridge fields also dissolve."
+
+**Non-recursive authority leaks (same class of unfinished migration):**
+
+Node convergence eliminates recursive type duplication, but the
+compiler also has non-recursive authority leaks — places where
+semantic meaning is carried by strings or local structures instead
+of `.dag` declarations. These are not recursive-type issues but are
+the same deeper problem: the compiler carries meaning that should
+come from `.dag` authorities.
+
+| Leak | Current state | Fix |
+|------|--------------|-----|
+| `Node.name` as semantic authority | accessor layer hides but doesn't replace `.name`; ~256 constructions; `authored_name_at` falls back to `.name` | M4 Lane 2 (structural identity) |
+| Semantic strings: `parent_enum`, `service_name` | `VariantValueBinding { parent_enum: String }`, `ExprRecordLit { parent_enum: String? }`, `ServiceMethodSemantics { service_name: String }` | Structural Node references replace strings |
+| Transport/config duplication | 35+ sites encode transport schema locally: constructors, shape predicates, config-key filtering | One `.dag` transport model authority |
+| Bare/incomplete parameterized types | `bare_map_node()` / `bare_list_node()` still fabricate partial structure | Reject at normalization, not infer |
+| Missing `CallableOf` | Higher-order algebra placeholders; hardcoded T/K/V names | Declaration-driven algebra (M4 Tier 2.5/3) |
+| `MatchPattern` mid-migration | Separate type, field_bindings already Nodes, patterns not yet fully on Node | M7 dissolution |
+
+Node convergence is **necessary but not sufficient**. The full
+architecture requires: one recursive carrier (Node convergence),
+declaration-driven identity (M4), one authority per concept (M4/M5),
+sufficient boundaries (M2 hardening), and emission that only
+translates (E0/M5). These are parallel tracks, not sequential gates.
 
 **Downstream consequences of completion:**
 - Complexity analyzer needs ONE proof rule (Node descent), not per-type rules
