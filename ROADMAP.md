@@ -15,7 +15,9 @@ tables. This does not ban flat helper products (parser result types,
 accumulator structs) — only recursive or authoritative structures
 alongside Node. This makes descent provable by construction: any
 function that walks Node.children is structurally bounded, and the
-complexity analyzer needs exactly one proof rule.
+complexity analyzer needs one primary proof shape (Node descent via child
+accessors), though additional proof rules remain for list length, parser
+token position, set drain, and mixed list×tree ordering.
 
 Full thesis: [docs/architecture.md](docs/architecture.md)
 Compiler laws and coercion model: [docs/compiler-laws.md](docs/compiler-laws.md)
@@ -34,7 +36,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
 | Self-compile diagnostics | 314 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 314 are indirect-recursion complexity violations |
 | Files emitted | 40 | — | Rust target |
-| `full_dsl_compiles` | PASSES (0 diag) | 0 | 92 dsl + 29 v2 files, M1 complete. DSL_COMPLEXITY_RATCHET = 2 allows 2 user-defined recursive union violations (stack_size, fold_stack) — deferred until CX lane completes |
+| `full_dsl_compiles` | PASSES (ratchet 2) | 0 | 92 dsl + 29 v2 files, M1 complete. DSL_COMPLEXITY_RATCHET = 2 tolerates 2 user-defined recursive union violations (stack_size, fold_stack) — deferred until CX lane completes |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
 | Bootstrap emitted Rust (B) | UNVERIFIED (0 known) | 0 | Down from 8658→99→12→5→1→0 known. All E0425/E0282 fixed. Emission blocked by complexity violations; cargo check not yet run on emitted output |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on complexity violations → 0 (emission gate); stage0 emits 40 files but output doesn't compile yet |
@@ -42,7 +44,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 313 | 0 | Down from 315→290 then up to 313 after soundness tightening (W-3/W-4). CX-0 through CX-3 landed. 7 root causes identified: RC-1 emit SCCs (99), RC-2 W-3/if-wrapped (33), RC-3 non-Node types (25), RC-4 iterator catamorphism (12), RC-5 parser (65), RC-6 work-list (11), RC-7 opaque helpers (8). Structural fix: Node convergence dissolves RC-3/RC-7. |
+| Complexity violations | 173 | 0 | Down from 315→313→173 via proof-constructor fixes (LitNull, ExprBlock var propagation, proof-before-branching). Remaining 173 = unfinished concept modeling, not analyzer bugs. Mapped to roadmap: ~60 parser/MatchPattern (M7), ~30 CostExpr/SizeExpr (CX dissolution), ~40 fold/catamorphism/Node.name (M4), ~25 emit/infer SCCs (M5), ~18 work-list/topo (M4/M5). |
 
 ---
 
@@ -53,7 +55,7 @@ enforced. 10 reviewer violations resolved. Fold inference improved.
 Error count: 99 → 12 → 5 → 1 → 0 (99 fixed). PR #277, #285, fold
 bidirectional unification, field_access_base import fix.
 
-**Not yet verified:** emission is blocked by complexity violations (313).
+**Not yet verified:** emission is blocked by complexity violations (173).
 The fail-closed gate in `compile_sources` prevents file emission when
 any infer-stage errors exist, including complexity violations. The
 bootstrap test skips cargo check when blocked by complexity violations
@@ -251,23 +253,26 @@ M1 (every .dag compiles)
                          └→ M7 (dissolve structural bridges)
 
   SIDEBAR (parallel, not blocking):
-  CX: complexity analyzer redesign (315 → 313, PR #301)
+  CX: complexity analyzer (315 → 173, PR #301 + PR #301 follow-ups)
       CX-0: delete dead infrastructure (DONE)
       CX-1: container-child descent proof (DONE)
       CX-M: IR child layout model (DONE — expr_child_roles in 00_core.dag)
-      CX-2: catamorphism + lambda-skip consistency (DONE)
-      CX-3: SCC container-child descent (DONE)
-      ── remaining 313 violations, 7 root causes ──
-      RC-1: emit SCC mixed descent (99) — list×tree product ordering
-      RC-2: W-3 blocks if-wrapped descent (33) — normalize_access_type_node
-      RC-3: non-Node recursive types (25) — CostExpr/SizeExpr/AlgebraTypeTemplate
-      RC-4: iterator-mediated catamorphism (12) — fold/map over children
-      RC-5: parser state advancement (65) — ProgressUnknown edges
-      RC-6: work-list drain (11) — finite set monotonic progress
-      RC-7: opaque helper descent (8) — field_binding_pattern etc.
-      ── structural fix: Node convergence dissolves RC-3/RC-7 (~33) ──
-      CX-4: parser if-progress merging
-      CX-5: finalize (ratchets → 0)
+      CX-2: if→Option→match descent (DONE — LitNull fix, ExprBlock var propagation)
+      CX-3: SCC lexicographic proof (DONE — independent-dim TreeSize×ListLength)
+      CX-4: proof-before-branching (DONE — proof constructor runs before path_calls>1)
+      ── remaining 173 violations = unfinished concept modeling ──
+      The 173 are NOT analyzer bugs. They are symptoms of unfinished
+      concept modeling — the same structural debt the rest of the
+      roadmap tracks. Each maps to a concept-modeling opportunity:
+        ~60: parse_type_expr SCC → MatchPattern dissolution (M7)
+        ~30: CostExpr/SizeExpr walkers → Node dissolution (CX lane)
+        ~40: fold/enumerate catamorphism → Node.name dissolution (M4)
+        ~25: emit/infer SCCs → emission semantics modeling (M5)
+        ~18: work-list drain, topo sort → modeled state (M4/M5)
+      Path to 0: concept modeling dissolves violations structurally.
+      Analyzer heuristics (teaching more patterns) is the wrong direction —
+      it makes the analyzer bigger, which the analyzer then can't prove.
+      CX-5: finalize (ratchets → 0) — blocked on concept modeling above
 ```
 
 **Coercion implementation parallelism:** The coercion design is complete
@@ -316,9 +321,24 @@ recursion in their type definitions rather than using Node structure.
 the compiler IR consumed by resolve/infer/emit/complexity. This does
 NOT ban flat helper products (parser result types, accumulator structs,
 classification enums) — those are fine if they dissolve at construction
-boundaries and never become durable semantic authorities. The problem
-is when another recursive or authoritative semantic structure exists
-**alongside** Node. Every non-Node recursive authority creates:
+boundaries and never become durable semantic authorities. Wrapper types
+like `InferredNode` (`Resolved | CompilerError | TypeVariable`) serve a
+real structural purpose as fail-closed boundaries — they must be preserved,
+not collapsed into raw Node fields. The safe direction is replacing
+recursive payloads with non-recursive references/keys, not flattening
+error state. The problem is when another recursive or authoritative
+semantic structure exists **alongside** Node.
+
+**Scope:** Node convergence solves *recursive type duplication* only. It
+does NOT solve the following non-recursive authority leaks, which require
+separate fixes (see "Non-recursive authority leaks" table below):
+`Node.name` as semantic authority (~256 constructions), `MatchPattern`
+mid-migration, `TypeRendering` (7 recursive fields, interim stepping
+stone), transport/config duplication (35+ sites), bare/incomplete
+parameterized types, semantic strings (`parent_enum`, `service_name`),
+and missing `CallableOf`. These are tracked in their respective milestones.
+
+Every non-Node recursive authority creates:
 - Rc insertion and clone proliferation (14,204 clones across 33 files)
 - Stack overflow guards (59 `stacker::maybe_grow` calls)
 - Cycle detection infrastructure (200+ lines)
@@ -419,17 +439,21 @@ No. Every CostExpr consumer is either:
    tree, already proven. The OUTPUT being cost Nodes is irrelevant.
 3. A formatter (format_cost_inner) → same as case 1.
 
-**What dissolution does NOT solve (remaining root causes):**
-- RC-1 (emit SCCs, 99): list×tree product ordering — unrelated to
-  recursive types; needs composition of two descent dimensions
-- RC-2 (W-3, 33): if-wrapped descent — code-pattern issue, not type issue
-- RC-4 (iterator catamorphism, 12): fold/map over children — needs
-  recognizing `children |> fold(f)` as catamorphism, not type dissolution
-- RC-5 (parser, 65): state-flow composition — unrelated to recursive types
-- RC-6 (work-list, 11): finite set drain — needs new proof rule
+**What dissolution does NOT solve (remaining root causes after 173):**
+- ~60 parser SCC: parse_type_expr mutual recursion — dissolves with
+  MatchPattern→Node (M7), not CostExpr dissolution
+- ~40 fold/enumerate catamorphism: self-calls inside `children |> fold`
+  callbacks — dissolves when functions stop branching on names (M4
+  structural identity), making the patterns structurally provable
+- ~25 emit/infer SCCs: emit_pattern, infer_block_stmts, etc. —
+  dissolves with emission semantics modeling (M5)
+- ~18 work-list drain, topo sort: finite set monotonic progress —
+  dissolves when sort state is modeled explicitly (M4/M5)
 
-Dissolution eliminates RC-3 (~25) and RC-7 (~8) = ~33 violations.
-The other ~280 require proof extensions in the analyzer, not type changes.
+Dissolution eliminates ~30 violations (CostExpr/SizeExpr walkers).
+The other ~143 dissolve via concept modeling across M4/M5/M7.
+Analyzer heuristic extensions are NOT the path — they make the
+analyzer code bigger, which the analyzer itself then can't prove.
 
 **MatchPattern dissolution.** MatchPattern variants (Bind, LitPattern,
 VariantPattern, Wildcard) become ExprData-like discriminants on Node.
@@ -550,8 +574,16 @@ declaration-driven identity (M4), one authority per concept (M4/M5),
 sufficient boundaries (M2 hardening), and emission that only
 translates (E0/M5). These are parallel tracks, not sequential gates.
 
+**Hunting rule:** any codepath that still needs `node.name`, `t.name`,
+source-text recovery, `*_placeholder`, bare containers, `compile_error!`
+safety valves, or target-specific emitter branching is **unfinished
+concept modeling**, not business logic. The fix is always one upstream
+authority consumed as authority, not better heuristics. This is the
+same pattern that drove CX violations from 315→173: the remaining 173
+are concept-modeling debt, not analyzer limitations.
+
 **Downstream consequences of completion:**
-- Complexity analyzer needs ONE proof rule (Node descent), not per-type rules
+- Complexity analyzer needs one primary proof shape (Node descent), not per-type rules — though additional ranking dimensions (TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality) remain as separate proof rules
 - Rc insertion follows ONE pattern (Node.children)
 - Cycle detection simplifies to Node graph cycles only
 - `stacker::maybe_grow` calls reduce to Node-walking boundaries only
@@ -594,8 +626,9 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [x] Mutual recursion detection — SCC analysis now fail-closes
   indirect recursion, accepts bounded mutual descent, and keeps
   helper-into-cycle callers out of the violation set. Remaining work:
-  analyzer redesign to target container-child recursion model (ratchet
-  313, CX-0 through CX-3 landed; see CX lane sidebar + Node convergence)
+  proof constructor with incremental var threading, LitNull fix, ExprBlock
+  propagation, proof-before-branching (ratchet 173, see CX lane sidebar +
+  Node convergence)
 
 *Container sharing (FF-8):*
 - [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
@@ -1437,16 +1470,22 @@ compiler verifies the SCC has a shared decreasing measure:
 If no shared decreasing measure exists, the SCC is a compilation
 error — same as case 4 above.
 
-**Current state (2026-04-02):** 313 complexity violations (down from
-315, after multiple soundness tightenings). PR #301 on `cool-lynx-138`.
+**Current state (2026-04-02):** 173 complexity violations (down from
+315→313→173 via proof-constructor fixes). PR #301 on `cool-lynx-138`.
+Remaining 173 map to concept-modeling debt (see CX lane sidebar).
 
 Landed:
 - CX-0: dead variant-field infrastructure deleted (~350 lines)
 - CX-1: container-child descent proof for single-function recursion
 - CX-M: IR child layout model (`expr_child_roles` / `wrapper_child_roles`
   in `00_core.dag`). Replaces hardcoded `child_accessor_table`.
-- CX-2: catamorphism proof (multi-call on disjoint accessor children)
-- CX-3: SCC container-child descent (ProgressKind edge classification)
+- CX-2: lambda-skip consistency landed; full catamorphism proof (multi-call
+  on disjoint accessor children) deferred — RC-4 iterator-mediated
+  catamorphism (12 violations) still open
+- CX-3: SCC edge classification landed (ProgressKind); descent proof is
+  name-based only (`arg_name == param_name`). Positional self-calls are
+  silently rejected (false-negative, not unsound). `find_node_param_name`
+  stub deleted (was dead code returning `none`).
 - Soundness fixes: skip(N >= 1) check, W-3/W-4 descent_vars path-safety
 - BOOTSTRAP_MODE bypass already removed (confirmed: no matches in stage0)
 
@@ -1540,6 +1579,21 @@ analyzer immediately produces `CostUnknown` with zero recovery. Expected:
 **CX-3: SCC container-child descent.** Extend CX-1/CX-2 to SCC members.
 Expected: ~25 violations resolved.
 
+**Known limitations of current descent proof (CX-1/CX-2/CX-3):**
+- **Positional self-calls unrecognized.** `all_self_calls_descend_inc` and
+  `collect_evidence_incremental` only match when `arg_name == param_name`.
+  Self-calls with positional arguments are silently rejected. This is a
+  false-negative (conservative), not unsound — but it means some valid
+  recursive patterns fail the proof. Fix requires positional-to-parameter
+  mapping from the function signature.
+- **Name-based parameter matching only.** The descent proof identifies the
+  measured parameter by name, not by type or position. This works because
+  `.dag` enforces named arguments at call sites, but it means the proof
+  cannot reason about renamed parameters across SCC members.
+- **`find_node_param_name` deleted.** Was a dead stub (returned `none`
+  unconditionally) with misleading heuristic comments. Callers already
+  enumerate all params and let the descent check fail-closed.
+
 **CX-4: Parser if-progress merging.** When both branches of an
 if-expression return parser state with `ProgressStrict`, the merged
 result is `ProgressStrict`. Expected: 60 violations resolved.
@@ -1586,9 +1640,9 @@ InferredNode) violate this — they introduce recursion that the
 compiler cannot automatically prove bounded.
 
 **Current state:** recursive syntax is sugar that the compiler lowers
-to bounded primitives (`fold`, `descend`, `repeat`). The 313
-violations are analyzer gaps — the programs ARE bounded, the analyzer
-can't prove it yet. Of these, ~33 dissolve when non-Node recursive
+to bounded primitives (`fold`, `descend`, `repeat`). The 173
+violations are concept-modeling debt — the programs ARE bounded, but
+the unfinished modeling prevents structural proofs. Of these, ~30 dissolve when non-Node recursive
 types are eliminated (Node convergence). The remaining ~280 require
 proof extensions for patterns the analyzer doesn't yet recognize
 (list×tree products, parser state flow, work-list drains, iterator
@@ -1881,7 +1935,7 @@ the first level the language recognizes.
 | Self-compile diagnostics | 314 | 0 | `strict_compile_diagnostic_count -- --ignored` (DIAG_RATCHET in bootstrap.rs; all are complexity violations — 7 root causes identified, see CX sidebar) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 313 | 0 | `strict_complexity_violation_count -- --ignored` (7 root causes; Node convergence dissolves ~33, proof extensions resolve rest) |
+| Complexity violations | 173 | 0 | `strict_complexity_violation_count -- --ignored` (concept-modeling debt; dissolves via M4/M5/M7, not analyzer heuristics) |
 | Emitted Rust errors | 0 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` (unverified — emission blocked by complexity violations) |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
