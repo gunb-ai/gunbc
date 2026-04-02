@@ -41,7 +41,7 @@ import v2.std.core {
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value,
   expr_call_func, expr_var_name, field_access_base, field_access_field,
-  LiteralValue, LitNull,
+  LiteralValue, LitNull, LitInt,
   is_child_accessor_in_model
 }
 
@@ -1749,7 +1749,7 @@ fn is_child_descent_expr(expr: Node, param_name: String) -> Bool {
 }
 
 // Check if an expression is a list-shrinking argument:
-// param |> skip(N) where N >= 1.
+// param |> skip(N) where N >= 1 (proven by positive integer literal).
 fn is_list_shrink_expr(expr: Node, param_name: String) -> Bool {
   match expr.expr_data {
     ExprMethodCall { method_semantics: _ } =>
@@ -1758,6 +1758,16 @@ fn is_list_shrink_expr(expr: Node, param_name: String) -> Bool {
       && match method_receiver(texpr: expr).expr_data {
         ExprVar { binding_kind: _ } => expr_var_name(texpr: method_receiver(texpr: expr)) == param_name
         _ => false
+      }
+      // Verify skip amount is a positive integer literal (fail-closed: skip(0) or
+      // non-literal skip amounts are not accepted as descent evidence).
+      && match method_arg_nodes(texpr: expr) |> first {
+        Some { value: arg_node } =>
+          match arg_value(n: arg_node).expr_data {
+            ExprLiteral { value: LitInt { value: n } } => n > 0
+            _ => false
+          }
+        None => false
       }
     _ => false
   }
@@ -1928,12 +1938,16 @@ fn matches_on_expr_data(body: Node, param_name: String) -> Bool {
   }
 }
 
-// CX-1a: Container-child descent. Every self-call passes accessor(param),
+// CX-1a: Container-child descent. Body must match on param.expr_data
+// (discriminant dispatch), and every self-call must pass accessor(param),
 // param.children |> first, or a variable bound to such an expression.
+// Both conditions required: accessor-name-only descent without dispatch
+// is not sufficient (fail-closed).
 fn is_container_child_descent(body: Node, func_name: String, params: List<Node>) -> Bool {
   params |> any(p =>
     let pname = param_node_name(n: p)
-    all_self_calls_descend(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
+    matches_on_expr_data(body: body, param_name: pname)
+    && all_self_calls_descend(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
   )
 }
 

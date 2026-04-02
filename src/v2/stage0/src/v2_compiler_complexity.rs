@@ -1738,7 +1738,7 @@ pub fn is_child_descent_expr(expr: Rc<Node>, param_name: String) -> bool {
 }
 
 // Check if an expression is a list-shrinking argument:
-// param |> skip(N) where N >= 1.
+// param |> skip(N) where N >= 1 (proven by positive integer literal).
 pub fn is_list_shrink_expr(expr: Rc<Node>, param_name: String) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprMethodCall { .. } => {
@@ -1747,6 +1747,25 @@ pub fn is_list_shrink_expr(expr: Rc<Node>, param_name: String) -> bool {
             && match (*method_receiver(expr.clone()).expr_data.clone()).clone() {
                 ExprData::ExprVar { .. } => expr_var_name(method_receiver(expr.clone())) == param_name,
                 _ => false,
+            }
+            // Verify skip amount is a positive integer literal (fail-closed: skip(0) or
+            // non-literal skip amounts are not accepted as descent evidence).
+            && {
+                let args = method_arg_nodes(expr.clone());
+                match args.first() {
+                    Some(arg_node) => {
+                        match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+                            ExprData::ExprLiteral { value } => {
+                                match (*value).clone() {
+                                    crate::v2_std_core::LiteralValue::LitInt { value: n } => n > 0,
+                                    _ => false,
+                                }
+                            },
+                            _ => false,
+                        }
+                    },
+                    None => false,
+                }
             }
         },
         _ => false,
@@ -1942,12 +1961,16 @@ pub fn matches_on_expr_data(body: Rc<Node>, param_name: String) -> bool {
     }
 }
 
-// CX-1a: Container-child descent. Every self-call passes accessor(param),
+// CX-1a: Container-child descent. Body must match on param.expr_data
+// (discriminant dispatch), and every self-call must pass accessor(param),
 // param.children |> first, or a variable bound to such an expression.
+// Both conditions required: accessor-name-only descent without dispatch
+// is not sufficient (fail-closed).
 pub fn is_container_child_descent(body: Rc<Node>, func_name: String, params: Vec<Rc<Node>>) -> bool {
     params.iter().any(|p| {
         let pname = param_node_name(p.clone());
-        all_self_calls_descend(body.clone(), func_name.clone(), pname.clone(), true, false)
+        matches_on_expr_data(body.clone(), pname.clone())
+        && all_self_calls_descend(body.clone(), func_name.clone(), pname.clone(), true, false)
     })
 }
 

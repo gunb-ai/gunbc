@@ -22,9 +22,9 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 |--------|-------|--------|-------|
 | .dag files | 91 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
-| Self-compile diagnostics | 301 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 301 are indirect-recursion complexity violations |
+| Self-compile diagnostics | 324 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 324 are indirect-recursion complexity violations |
 | Files emitted | 40 | — | Rust target |
-| `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
+| `full_dsl_compiles` | PASSES (0 diag) | 0 | 92 dsl + 29 v2 files, M1 complete. DSL_COMPLEXITY_RATCHET = 2 allows 2 user-defined recursive union violations (stack_size, fold_stack) — deferred until CX lane completes |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
 | Bootstrap emitted Rust (B) | UNVERIFIED (0 known) | 0 | Down from 8658→99→12→5→1→0 known. All E0425/E0282 fixed. Emission blocked by complexity violations; cargo check not yet run on emitted output |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on complexity violations → 0 (emission gate); stage0 emits 40 files but output doesn't compile yet |
@@ -32,7 +32,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 300 | 0 | Down from 315. CX-0 (dead code deletion) + CX-1 (container-child descent proof) landed. **Next:** CX-M (IR child layout model in 00_core.dag) to eliminate hardcoded accessor table, then CX-2/CX-3. See Exploratory Directions for CX lane plan. |
+| Complexity violations | 323 | 0 | Up from 300 after tightening unsound proofs (matches_on_expr_data precondition, skip amount >= 1). CX-0/CX-1/CX-M landed. **Next:** CX-2 (catamorphism) + CX-3 (SCC descent). See Exploratory Directions for CX lane plan. |
 
 ---
 
