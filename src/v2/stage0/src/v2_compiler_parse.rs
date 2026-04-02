@@ -8643,7 +8643,7 @@ Rc::new(ExprResult {
 
 pub fn is_uppercase_start(name: String) -> bool {
     {
-        let ch: String = v2_rt::char_at(name.clone(), 0);
+        let ch: String = v2_rt::char_at(&name, 0);
 ((ch.clone() >= "A".to_string()) && (ch.clone() <= "Z".to_string()))
 }
 }
@@ -10720,7 +10720,7 @@ match sh.clone() {
     Some(TokenShape::ShStrBegin) => {
             let prefix: String = tok.clone().unwrap().text.clone();
 let adv: Rc<AdvanceResult> = advance(tokens.clone(), state.clone());
-let parts_init: Rc<Vec<Rc<StringPart>>> = if (v2_rt::string_length(prefix.clone()) > 0) {
+let parts_init: Rc<Vec<Rc<StringPart>>> = if (v2_rt::string_length(&prefix) > 0) {
                 Rc::new(vec![Rc::new(StringPart::Text {
     value: prefix.clone(),
 })])
@@ -10756,7 +10756,7 @@ let interp_sh: Option<TokenShape> = match interp_tok.clone() {
 match interp_sh.clone() {
     Some(TokenShape::ShStrMid) => { let mid: String = interp_tok.clone().unwrap().text.clone();
 let adv: Rc<AdvanceResult> = advance(tokens.clone(), s.clone());
-let mid_parts: Rc<Vec<Rc<StringPart>>> = if (v2_rt::string_length(mid.clone()) > 0) {
+let mid_parts: Rc<Vec<Rc<StringPart>>> = if (v2_rt::string_length(&mid) > 0) {
             v2_rt::rc_list_push(new_parts.clone(), Rc::new(StringPart::Text {
     value: mid.clone(),
 }))
@@ -10776,7 +10776,7 @@ continue;
 } },
     Some(TokenShape::ShStrEnd) => { let suffix: String = interp_tok.clone().unwrap().text.clone();
 let adv: Rc<AdvanceResult> = advance(tokens.clone(), s.clone());
-let final_parts: Rc<Vec<Rc<StringPart>>> = if (v2_rt::string_length(suffix.clone()) > 0) {
+let final_parts: Rc<Vec<Rc<StringPart>>> = if (v2_rt::string_length(&suffix) > 0) {
             v2_rt::rc_list_push(new_parts.clone(), Rc::new(StringPart::Text {
     value: suffix.clone(),
 }))
