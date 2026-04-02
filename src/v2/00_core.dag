@@ -942,11 +942,12 @@ fn find_property_string(props: List<Node>, prop_name: String) -> String? {
 fn transport_kind(t: Node) -> TransportKind {
   let has_base_url = find_property(props: t.properties, prop_name: "base_url") != none
   let has_base_path = find_property(props: t.properties, prop_name: "base_path") != none
-  if has_base_url {
+  let has_children = t.children |> count > 0
+  if has_base_url && has_base_path == false && has_children == false {
     RestTransport
-  } else if has_base_path {
+  } else if has_base_path && has_base_url == false && has_children == false {
     FileTransport
-  } else if t.children |> count > 0 {
+  } else if has_children && has_base_url == false && has_base_path == false {
     ShellTransport
   } else if t.properties |> count == 0 {
     LocalTransport

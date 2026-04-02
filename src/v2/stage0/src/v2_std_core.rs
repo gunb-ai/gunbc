@@ -1405,11 +1405,12 @@ pub fn is_config_reserved_key(name: String) -> bool {
 pub fn transport_kind(t: Rc<Node>) -> TransportKind {
     let has_base_url = find_property(t.properties.clone(), "base_url".to_string()).is_some();
     let has_base_path = find_property(t.properties.clone(), "base_path".to_string()).is_some();
-    if has_base_url {
+    let has_children = !t.children.is_empty();
+    if has_base_url && !has_base_path && !has_children {
         TransportKind::RestTransport
-    } else if has_base_path {
+    } else if has_base_path && !has_base_url && !has_children {
         TransportKind::FileTransport
-    } else if !t.children.is_empty() {
+    } else if has_children && !has_base_url && !has_base_path {
         TransportKind::ShellTransport
     } else if t.properties.is_empty() {
         TransportKind::LocalTransport

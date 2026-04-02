@@ -10,10 +10,11 @@ use v2_compiler::v2_compiler_infer_types::{
 };
 use v2_compiler::v2_std_core::{
     file_transport_node, leaf_node, local_transport_node, make_arm_node, make_expr_node,
-    make_field_init_node, rest_transport_node, shell_transport_node, transport_auth_header_name,
-    transport_auth_token, transport_base_path, transport_base_url, transport_env,
-    transport_has_auth, transport_headers, transport_kind, with_optional_cardinality, Cardinality,
-    ExprData, InferredNode, LiteralValue, MatchPattern, Node, NodeType, SourceSpan, TransportKind,
+    make_field_init_node, make_transport_node, rest_transport_node, shell_transport_node,
+    transport_auth_header_name, transport_auth_token, transport_base_path, transport_base_url,
+    transport_env, transport_has_auth, transport_headers, transport_kind,
+    with_optional_cardinality, Cardinality, ExprData, InferredNode, LiteralValue, MatchPattern,
+    Node, NodeType, SourceSpan, TransportKind,
 };
 
 fn zero_span() -> Rc<SourceSpan> {
@@ -607,6 +608,26 @@ fn file_and_local_transport_helpers_do_not_cross_authority() {
     assert!(transport_base_url(local.clone()).is_none());
     assert!(transport_headers(local.clone()).is_empty());
     assert!(transport_env(local.clone()).is_empty());
+}
+
+#[test]
+fn mixed_transport_shapes_are_unknown_not_guessed() {
+    let mixed = make_transport_node(
+        "mixed".to_string(),
+        vec![make_field_init_node(
+            "base_url".to_string(),
+            string_expr("https://api.example.com"),
+            zero_span(),
+        )],
+        vec![string_expr("curl")],
+        zero_span(),
+    );
+
+    assert_eq!(transport_kind(mixed.clone()), TransportKind::UnknownTransport);
+    assert!(transport_base_url(mixed.clone()).is_none());
+    assert!(transport_base_path(mixed.clone()).is_none());
+    assert!(transport_headers(mixed.clone()).is_empty());
+    assert!(transport_env(mixed.clone()).is_empty());
 }
 
 #[test]

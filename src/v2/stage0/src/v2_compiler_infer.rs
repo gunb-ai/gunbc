@@ -1655,94 +1655,180 @@ pub fn shape_child_type(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
+fn type_match_cardinality_key(cardinality: Cardinality) -> &'static str {
+    match cardinality {
+        Cardinality::Required => "req",
+        Cardinality::CardOptional => "opt",
+    }
+}
+
+fn type_match_connective_key(connective: Option<Connective>) -> &'static str {
+    match connective {
+        Some(Connective::Conj) => "conj",
+        Some(Connective::Disj) => "disj",
+        None => "leaf",
+    }
+}
+
+fn type_match_head_key(n: Rc<Node>) -> String {
+    format!(
+        "{}:{}:{}:{}:{}",
+        n.name,
+        type_match_connective_key(n.connective.clone()),
+        type_match_cardinality_key(n.return_cardinality.clone()),
+        n.params.len(),
+        n.children.len()
+    )
+}
+
+fn type_match_shallow_key(n: Rc<Node>) -> String {
+    let child_keys = n
+        .children
+        .iter()
+        .cloned()
+        .map(|child| {
+            let child_type = shape_child_type(child.clone());
+            format!("{}>{}", child.name, type_match_head_key(child_type))
+        })
+        .collect::<Vec<_>>()
+        .join("|");
+    let param_keys = n
+        .params
+        .iter()
+        .cloned()
+        .map(|param| type_match_head_key(param_node_type_expr(param.clone())))
+        .collect::<Vec<_>>()
+        .join("|");
+    let return_key = match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: ret, .. }) => type_match_head_key(ret.clone()),
+        _ => "-".to_string(),
+    };
+    format!(
+        "{};params=[{}];children=[{}];ret={}",
+        type_match_head_key(n),
+        param_keys,
+        child_keys,
+        return_key
+    )
+}
+
+fn type_matches_expected_shape_inner(
+    actual: Rc<Node>,
+    expected: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+    seen_pairs: HashMap<String, bool>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if is_bridge_placeholder_type_name(expected.name.clone()) {
+            return true;
+        }
+        let resolved_actual = resolve_node(actual.clone(), env.clone(), module_name.clone())
+            .resolved
+            .clone();
+        let resolved_expected = resolve_node(expected.clone(), env.clone(), module_name.clone())
+            .resolved
+            .clone();
+        let pair_key = format!(
+            "{}=>{}",
+            type_match_shallow_key(resolved_actual.clone()),
+            type_match_shallow_key(resolved_expected.clone())
+        );
+        if seen_pairs.contains_key(&pair_key) {
+            return true;
+        }
+        let mut seen_pairs = seen_pairs.clone();
+        seen_pairs.insert(pair_key, true);
+        if resolved_actual.connective == Some(Connective::Conj)
+            && resolved_expected.connective == Some(Connective::Conj)
+        {
+            return resolved_expected.children.iter().all(|expected_child| {
+                match resolved_actual
+                    .children
+                    .iter()
+                    .find(|actual_child| actual_child.name == expected_child.name)
+                    .cloned()
+                {
+                    Some(actual_child) => type_matches_expected_shape_inner(
+                        shape_child_type(actual_child.clone()),
+                        shape_child_type(expected_child.clone()),
+                        env.clone(),
+                        module_name.clone(),
+                        seen_pairs.clone(),
+                    ),
+                    None => false,
+                }
+            });
+        }
+        if !resolved_actual.params.is_empty() && !resolved_expected.params.is_empty() {
+            if resolved_actual.params.len() != resolved_expected.params.len() {
+                return false;
+            }
+            let params_match = resolved_actual
+                .params
+                .iter()
+                .cloned()
+                .zip(resolved_expected.params.iter().cloned())
+                .all(|(actual_param, expected_param)| {
+                    type_matches_expected_shape_inner(
+                        param_node_type_expr(actual_param.clone()),
+                        param_node_type_expr(expected_param.clone()),
+                        env.clone(),
+                        module_name.clone(),
+                        seen_pairs.clone(),
+                    )
+                });
+            if !params_match {
+                return false;
+            }
+            return type_matches_expected_shape_inner(
+                callable_inferred(resolved_actual.clone()),
+                callable_inferred(resolved_expected.clone()),
+                env.clone(),
+                module_name.clone(),
+                seen_pairs.clone(),
+            );
+        }
+        if resolved_actual.name != resolved_expected.name
+            || resolved_actual.return_cardinality != resolved_expected.return_cardinality
+        {
+            return false;
+        }
+        if resolved_expected.children.is_empty() {
+            return true;
+        }
+        if resolved_actual.children.len() != resolved_expected.children.len() {
+            return false;
+        }
+        resolved_actual
+            .children
+            .iter()
+            .zip(resolved_expected.children.iter())
+            .all(|(actual_child, expected_child)| {
+                type_matches_expected_shape_inner(
+                    actual_child.clone(),
+                    expected_child.clone(),
+                    env.clone(),
+                    module_name.clone(),
+                    seen_pairs.clone(),
+                )
+            })
+    })
+}
+
 pub fn type_matches_expected_shape(
     actual: Rc<Node>,
     expected: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> bool {
-    if is_bridge_placeholder_type_name(expected.name.clone()) {
-        return true;
-    }
-    let resolved_actual = resolve_node(actual.clone(), env.clone(), module_name.clone())
-        .resolved
-        .clone();
-    let resolved_expected = resolve_node(expected.clone(), env.clone(), module_name.clone())
-        .resolved
-        .clone();
-    if resolved_actual.connective == Some(Connective::Conj)
-        && resolved_expected.connective == Some(Connective::Conj)
-    {
-        if resolved_actual.children.len() != resolved_expected.children.len() {
-            return false;
-        }
-        return resolved_expected.children.iter().all(|expected_child| {
-            match resolved_actual
-                .children
-                .iter()
-                .find(|actual_child| actual_child.name == expected_child.name)
-                .cloned()
-            {
-                Some(actual_child) => type_matches_expected_shape(
-                    shape_child_type(actual_child.clone()),
-                    shape_child_type(expected_child.clone()),
-                    env.clone(),
-                    module_name.clone(),
-                ),
-                None => false,
-            }
-        });
-    }
-    if !resolved_actual.params.is_empty() && !resolved_expected.params.is_empty() {
-        if resolved_actual.params.len() != resolved_expected.params.len() {
-            return false;
-        }
-        let params_match = resolved_actual
-            .params
-            .iter()
-            .cloned()
-            .zip(resolved_expected.params.iter().cloned())
-            .all(|(actual_param, expected_param)| {
-                type_matches_expected_shape(
-                    param_node_type_expr(actual_param.clone()),
-                    param_node_type_expr(expected_param.clone()),
-                    env.clone(),
-                    module_name.clone(),
-                )
-            });
-        if !params_match {
-            return false;
-        }
-        return type_matches_expected_shape(
-            callable_inferred(resolved_actual.clone()),
-            callable_inferred(resolved_expected.clone()),
-            env.clone(),
-            module_name.clone(),
-        );
-    }
-    if resolved_actual.name != resolved_expected.name
-        || resolved_actual.return_cardinality != resolved_expected.return_cardinality
-    {
-        return false;
-    }
-    if resolved_expected.children.is_empty() {
-        return true;
-    }
-    if resolved_actual.children.len() != resolved_expected.children.len() {
-        return false;
-    }
-    resolved_actual
-        .children
-        .iter()
-        .zip(resolved_expected.children.iter())
-        .all(|(actual_child, expected_child)| {
-            type_matches_expected_shape(
-                actual_child.clone(),
-                expected_child.clone(),
-                env.clone(),
-                module_name.clone(),
-            )
-        })
+    type_matches_expected_shape_inner(
+        actual.clone(),
+        expected.clone(),
+        env.clone(),
+        module_name.clone(),
+        HashMap::new(),
+    )
 }
 
 pub fn infer_arg_with_element_type(

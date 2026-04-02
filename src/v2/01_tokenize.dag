@@ -453,18 +453,22 @@ fn should_start_interpolation(source: SourceRef, pos: Int) -> Bool {
   if pos + 1 >= string_length(s: source.text) {
     false
   } else {
-    let next = char_at(s: source.text, pos: pos + 1)
-    let can_start_expr = is_ident_start(ch: next) || is_digit(ch: next) || next == "\"" || next == "[" || next == "(" || next == "!" || next == "-"
+    let immediate = char_at(s: source.text, pos: pos + 1)
+    let skipped_ws = immediate == " " || immediate == "\t"
+    let next_pos = if skipped_ws { skip_horizontal_ws(s: source.text, start: pos + 1) } else { pos + 1 }
+    let next = char_at(s: source.text, pos: next_pos)
+    let can_start_expr = (skipped_ws == false && is_ident_start(ch: next)) || is_digit(ch: next) || next == "\"" || next == "[" || next == "(" || next == "!" || next == "-"
     if can_start_expr == false {
       false
     } else if next == "\"" {
-      match find_string_literal_end(source: source, pos: pos + 2) {
+      match find_string_literal_end(source: source, pos: next_pos + 1) {
         Some { value: end_quote } =>
-          interpolation_has_valid_end(source: source, pos: end_quote + 1, paren_depth: 0, bracket_depth: 0, brace_depth: 0, saw_top_level_comma: false)
+          let after_quote = skip_horizontal_ws(s: source.text, start: end_quote + 1)
+          char_at(s: source.text, pos: after_quote) == "}"
         None => false
       }
     } else {
-      interpolation_has_valid_end(source: source, pos: pos + 1, paren_depth: 0, bracket_depth: 0, brace_depth: 0, saw_top_level_comma: false)
+      interpolation_has_valid_end(source: source, pos: next_pos, paren_depth: 0, bracket_depth: 0, brace_depth: 0, saw_top_level_comma: false)
     }
   }
 }
