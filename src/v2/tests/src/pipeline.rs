@@ -4267,3 +4267,84 @@ fn type_rendering_equivalence() {
         checked,
     );
 }
+
+// ── Targeted TypeRendering correctness tests ─────────────────────────
+//
+// These test specific bug patterns that the equivalence test cannot catch
+// (since it validates parity with the old renderer, not correctness).
+
+#[test]
+fn type_rendering_bare_list_not_map() {
+    use v2_compiler::v2_compiler_emit::{build_type_rendering, render_type};
+    use v2_compiler::v2_std_core::leaf_node;
+
+    let list_node = leaf_node("List".to_string());
+    let rc_types = Rc::new(HashMap::from([("List".to_string(), true)]));
+    let recursive_types = Rc::new(HashMap::new());
+
+    let tr = build_type_rendering(list_node, rc_types, recursive_types);
+    let rendered = render_type(tr, RenderTarget::Rust);
+
+    // Bare List must render as Vec, not HashMap
+    assert!(
+        rendered.contains("Vec"),
+        "bare List rendered as {:?}, expected Vec<_>",
+        rendered
+    );
+    assert!(
+        !rendered.contains("HashMap"),
+        "bare List incorrectly rendered as HashMap: {:?}",
+        rendered
+    );
+}
+
+#[test]
+fn type_rendering_bare_map_stays_hashmap() {
+    use v2_compiler::v2_compiler_emit::{build_type_rendering, render_type};
+    use v2_compiler::v2_std_core::leaf_node;
+
+    let map_node = leaf_node("Map".to_string());
+    let rc_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
+    let recursive_types = Rc::new(HashMap::new());
+
+    let tr = build_type_rendering(map_node, rc_types, recursive_types);
+    let rendered = render_type(tr, RenderTarget::Rust);
+
+    assert!(
+        rendered.contains("HashMap"),
+        "bare Map rendered as {:?}, expected HashMap<_, _>",
+        rendered
+    );
+}
+
+#[test]
+fn type_rendering_named_conj_with_container_template() {
+    use v2_compiler::v2_compiler_emit::{build_type_rendering, render_type};
+    use v2_compiler::v2_std_core::{leaf_node, Connective};
+
+    // Simulate a resolved FreeMonoid Conj node (after alias expansion,
+    // params are stripped but the name survives).
+    let free_monoid_conj = Rc::new(v2_compiler::v2_std_core::Node {
+        name: "FreeMonoid".to_string(),
+        connective: Connective::Conj,
+        ..(*leaf_node("".to_string())).clone()
+    });
+    let rc_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
+    let recursive_types = Rc::new(HashMap::new());
+
+    let tr = build_type_rendering(free_monoid_conj, rc_types, recursive_types);
+    let rendered = render_type(tr, RenderTarget::Rust);
+
+    // FreeMonoid has container template "Vec<{0}>" — must render through
+    // that template, not as bare "FreeMonoid".
+    assert!(
+        rendered.contains("Vec"),
+        "FreeMonoid Conj rendered as {:?}, expected Vec<_> via container template",
+        rendered
+    );
+    assert!(
+        !rendered.contains("FreeMonoid"),
+        "FreeMonoid Conj rendered bare name instead of container template: {:?}",
+        rendered
+    );
+}

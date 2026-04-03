@@ -917,10 +917,8 @@ pub fn emit_node_type_leaf_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
         {
             // Use is_container_type (name check) not node_is_keyed/element_collection
             // (which require children > 0 and fail for bare containers from empty_map).
-            let has_map_template_early: bool = (target_container_template(target.clone(), "map".to_string()) != None);
-            let bare_is_map: bool = is_container_type(n.name.clone()) && has_map_template_early;
+            let bare_is_map: bool = is_container_type(n.name.clone()) && to_snake(n.name.clone()).as_str() == "map";
 let bare_is_collection: bool = is_container_type(n.name.clone()) && !bare_is_map;
-let has_map_template: bool = (target_container_template(target.clone(), "map".to_string()) != None);
 let has_container_template: bool = (target_container_template(target.clone(), to_snake(n.name.clone())) != None);
 let param_count: i64 = (n.params.clone().len() as i64);
 let base: String = if bare_is_map.clone() {
@@ -1064,11 +1062,23 @@ match target.clone() {
 } else {
             if (n.name.clone().as_str() != "".to_string().as_str()) {
                 {
-                    let mapped: String = emit_primitive_type(n.name.clone(), target.clone());
-if emit_map_has(rc_types.clone(), n.name.clone()) {
-                        wrap_shared_type(target.clone(), mapped.clone())
+                    let snake: String = to_snake(n.name.clone());
+let has_template: bool = (target_container_template(target.clone(), snake.clone()) != None);
+if has_template.clone() {
+                        if snake.clone().as_str() == "map" {
+                            let map_str: String = emit_map_type("_".to_string(), "_".to_string(), target.clone());
+if emit_map_has(rc_types.clone(), n.name.clone()) { wrap_shared_type(target.clone(), map_str.clone()) } else { map_str.clone() }
 } else {
-                        mapped.clone()
+                            let container_str: String = emit_container(snake.clone(), "_".to_string(), target.clone());
+if emit_map_has(rc_types.clone(), n.name.clone()) { wrap_shared_type(target.clone(), container_str.clone()) } else { container_str.clone() }
+}
+} else {
+                        let mapped: String = emit_primitive_type(n.name.clone(), target.clone());
+if emit_map_has(rc_types.clone(), n.name.clone()) {
+                            wrap_shared_type(target.clone(), mapped.clone())
+} else {
+                            mapped.clone()
+}
 }
 }
 } else {
@@ -1255,7 +1265,7 @@ fn build_type_rendering_leaf(
     if n.children.len() == 0 {
         // Bare type (no children)
         let bare_is_map =
-            is_container_type(n.name.clone()) && target_container_template(RenderTarget::Rust, "map".to_string()).is_some();
+            is_container_type(n.name.clone()) && to_snake(n.name.clone()).as_str() == "map";
         let bare_is_collection = is_container_type(n.name.clone()) && !bare_is_map;
         let has_container_template =
             target_container_template(RenderTarget::Rust, to_snake(n.name.clone())).is_some();
@@ -1431,8 +1441,30 @@ fn build_type_rendering_conj(
         });
     }
 
-    // Named product
+    // Named product — check for container template before bare-name fallback.
+    // After alias expansion, resolved Conj nodes like FreeMonoid have their
+    // params stripped. Route through container path so FreeMonoid → Vec<_>.
     if !n.name.is_empty() {
+        let snake = to_snake(n.name.clone());
+        let has_template = target_container_template(RenderTarget::Rust, snake.clone()).is_some();
+        if has_template {
+            if snake.as_str() == "map" {
+                return Rc::new(TypeRendering {
+                    type_name: "map".to_string(),
+                    key: Some(leaf_type_rendering("_".to_string())),
+                    value: Some(leaf_type_rendering("_".to_string())),
+                    shared,
+                    ..tr_default()
+                });
+            } else {
+                return Rc::new(TypeRendering {
+                    type_name: snake,
+                    element: Some(leaf_type_rendering("_".to_string())),
+                    shared,
+                    ..tr_default()
+                });
+            }
+        }
         return Rc::new(TypeRendering {
             type_name: n.name.clone(),
             shared,
@@ -1499,15 +1531,16 @@ fn build_type_rendering_disj(
 pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
     let is_rust = matches!(target, RenderTarget::Rust);
 
-    // Error types
+    // Error types — use error_label for context when available
     if tr.is_error {
+        let label = if tr.error_label.is_empty() { &tr.type_name } else { &tr.error_label };
         return if is_rust {
             format!(
                 "compile_error!(\"unresolved {} type reached emit\")",
-                tr.type_name
+                label
             )
         } else {
-            format!("__EMIT_BUG_UNRESOLVED_{}__", tr.type_name)
+            format!("__EMIT_BUG_UNRESOLVED_{}__", label)
         };
     }
 
