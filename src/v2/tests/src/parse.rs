@@ -322,13 +322,11 @@ fn ownership_parses_strict() {
 }
 
 #[test]
-#[ignore] // slow: covered by full_dsl_compiles
 fn shared_behavioral_parses_strict() {
     assert_parses_strict("dsl/std/behavioral.dag");
 }
 
 #[test]
-#[ignore] // slow: covered by full_dsl_compiles
 fn shared_primitives_parses_strict() {
     assert_parses_strict("dsl/std/primitives.dag");
 }
