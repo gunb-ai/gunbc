@@ -978,7 +978,13 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
+      let type_ann = match v.inferred {
+        Some { value: Resolved { node: rt } } =>
+          let rendered = emit_node_type_rc(n: rt, target: Rust, rc_types: rc_types)
+          if rendered == "" || rendered == "()" { "" } else { concat(": ", rendered) }
+        _ => ""
+      }
+      let let_line = concat("let ", emit_ident(name: n, target: Rust), type_ann, " = ", val_str, ";")
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match inner {
         Some { value: bd } =>
@@ -2808,7 +2814,17 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
 
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-  let let_line = emit_let_binding(name: name, value: val_str, target: Rust)
+  // Emit type annotation when inference provides a resolved type.
+  // This is critical for Rust compilation performance — without annotations,
+  // rustc type inference uses significantly more memory on large generated code.
+  let type_annotation = match value.inferred {
+    Some { value: Resolved { node: rt } } =>
+      let rendered = emit_node_type_rc(n: rt, target: Rust, rc_types: rc_types)
+      if rendered == "" || rendered == "()" { "" }
+      else { concat(": ", rendered) }
+    _ => ""
+  }
+  let let_line = concat("let ", emit_ident(name: name, target: Rust), type_annotation, " = ", val_str, ";")
   match body {
     Some { value: bd } =>
       let next_scope = extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
@@ -3262,7 +3278,15 @@ fn emit_tco_init_stmt(stmt: Node, params: List<Node>, registry: Map<String, Item
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
       let is_param = params |> any(p => param_node_name(n: p) == n)
       if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") }
-      else { emit_let_binding(name: n, value: val_str, target: Rust) }
+      else {
+        let type_ann = match v.inferred {
+          Some { value: Resolved { node: rt } } =>
+            let rendered = emit_node_type_rc(n: rt, target: Rust, rc_types: rc_types)
+            if rendered == "" || rendered == "()" { "" } else { concat(": ", rendered) }
+          _ => ""
+        }
+        concat("let ", emit_ident(name: n, target: Rust), type_ann, " = ", val_str, ";")
+      }
     _ => emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   }
 }
