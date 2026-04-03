@@ -2341,9 +2341,11 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
           }
       }
   }
-  let raw_acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
+  let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
+  // Split: lambda annotation can use "_" for bare containers, but init value
+  // resolution needs the real type for turbofish generation.
   let is_bare_container = acc_type_node.children |> count == 0 && (acc_type_node.name == "List" || acc_type_node.name == "Map" || acc_type_node.name == "Set" || acc_type_node.name == "NonEmptyList" || acc_type_node.name == "NonEmptySet")
-  let acc_type_str = if is_bare_container { "_" } else { raw_acc_type_str }
+  let lambda_acc_type_str = if is_bare_container { "_" } else { acc_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
   let init_str = match args |> first {
     Some { value: init_arg } =>
@@ -2368,7 +2370,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   }
   let fold_fn = match args |> skip(1) |> first {
     Some { value: a } =>
-      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
     None => "compile_error!(\"missing fold function argument\")"
   }
   concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
