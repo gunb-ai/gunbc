@@ -2284,8 +2284,13 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
     ExprLambda { semantics: semantics } =>
       let ps = lambda_param_names_at(texpr: lambda_expr, source_index: scope.type_env.source_index)
       let bd = lambda_body(texpr: lambda_expr)
+      // When the accumulator type contains "()" (unit — indicates unresolved
+      // element type), emit "_" instead. "()" constrains Rust's inference to
+      // the wrong type; "_" lets Rust unify from the fold body and init.
+      let has_unit = acc_type_str |> contains("()")
+      let safe_acc_type = if has_unit && acc_type_str != "()" { "_" } else { acc_type_str }
       let fallback_types = ps |> enumerate |> map(pair =>
-        if pair.first == 0 { acc_type_str } else { elem_type_str }
+        if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
       let param_strs = lambda_param_type_strs(params: ps, semantics: none, fallback_types: fallback_types, rc_types: rc_types)
       let params_str = param_strs |> join(separator: ", ")
