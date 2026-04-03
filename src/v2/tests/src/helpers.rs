@@ -170,10 +170,10 @@ fn resolve_imports_transitively(
                 continue; // already loaded — O(1) check
             }
             if let Some(file_path) = module_index().get(&module_path) {
-                if let Ok(file_content) = std::fs::read_to_string(&file_path) {
+                if let Ok(file_content) = std::fs::read_to_string(file_path) {
                     let rel_path = file_path
                         .strip_prefix(&ws)
-                        .unwrap_or(&file_path)
+                        .unwrap_or(file_path)
                         .to_string_lossy()
                         .to_string();
                     let source = Rc::new(SourceFile {

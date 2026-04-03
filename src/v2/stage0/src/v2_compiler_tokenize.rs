@@ -99,7 +99,10 @@ pub struct ScanResult {
 pub struct SourceRef {
     pub file: String,
     pub source_chars: Rc<Vec<String>>,
-    pub source_len: i64,
+}
+
+fn source_len(source: &SourceRef) -> i64 {
+    source.source_chars.len() as i64
 }
 
 pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
@@ -111,12 +114,9 @@ pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<T
 }
 
 // O(1) character access via pre-computed source_chars list.
+// Panics on OOB — callers must bounds-check against source_len(&source).
 fn source_char(source: &SourceRef, pos: i64) -> String {
-    if pos >= 0 && pos < source.source_len {
-        source.source_chars[pos as usize].clone()
-    } else {
-        String::new()
-    }
+    source.source_chars[pos as usize].clone()
 }
 
 fn source_substring(source: &SourceRef, start: i64, end: i64) -> String {
@@ -131,7 +131,7 @@ fn source_substring(source: &SourceRef, start: i64, end: i64) -> String {
 fn source_scan_while(source: &SourceRef, start: i64, pred: impl Fn(String) -> bool) -> i64 {
     let mut pos = start;
     let chars = &*source.source_chars;
-    while pos < source.source_len {
+    while pos < source_len(&source) {
         if pred(chars[pos as usize].clone()) {
             pos += 1;
         } else {
@@ -144,7 +144,7 @@ fn source_scan_while(source: &SourceRef, start: i64, pred: impl Fn(String) -> bo
 fn source_skip_ws(source: &SourceRef, start: i64) -> i64 {
     let mut pos = start;
     let chars = &*source.source_chars;
-    while pos < source.source_len {
+    while pos < source_len(&source) {
         let ch = &chars[pos as usize];
         if ch == " " || ch == "\t" {
             pos += 1;
@@ -158,19 +158,19 @@ fn source_skip_ws(source: &SourceRef, start: i64) -> i64 {
 fn source_scan_to_eol(source: &SourceRef, start: i64) -> i64 {
     let mut pos = start;
     let chars = &*source.source_chars;
-    while pos < source.source_len {
+    while pos < source_len(&source) {
         if chars[pos as usize] == "\n" {
             return pos;
         }
         pos += 1;
     }
-    source.source_len
+    source_len(&source)
 }
 
 pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
     let c: Vec<String> = source.chars().map(|c| c.to_string()).collect();
-    let source_len = c.len() as i64;
-    let src = Rc::new(SourceRef { file: file.clone(), source_chars: Rc::new(c), source_len });
+    let src = Rc::new(SourceRef { file: file.clone(), source_chars: Rc::new(c) });
+    let source_len = source_len(&src);
     let mut tokens: Vec<Rc<Token>> = Vec::new();
     let mut pos = Rc::new(TokPos { pos: 0, interp_depth: Rc::new(vec![]) });
 
@@ -221,7 +221,7 @@ pub fn tokenize_loop(source: Rc<SourceRef>, tokens: Rc<Vec<Rc<Token>>>, pos: Rc<
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let s: Rc<TokPos> = skip_spaces_and_comments(source.clone(), pos.clone(), fuel.clone());
-if (s.pos.clone() >= source.source_len) {
+if (s.pos.clone() >= source_len(&source)) {
                 return Rc::new(TokenizerState {
     pos: s.pos.clone(),
     tokens: tokens.clone(),
@@ -286,7 +286,7 @@ if is_digit(ch.clone()) {
 if is_ident_start(ch.clone()) {
             return scan_ident(source.clone(), pos.clone())
 }
-let next_ch: String = if ((pos.pos.clone() + 1) < source.source_len) {
+let next_ch: String = if ((pos.pos.clone() + 1) < source_len(&source)) {
             source_char(&source,(pos.pos.clone() + 1))
 } else {
             "".to_string()
@@ -409,7 +409,7 @@ Rc::new(ScanResult {
 pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
         let int_end: i64 = source_scan_while(&source,pos.pos.clone(), is_digit);
-if ((((int_end.clone() + 1) < source.source_len) && (source_char(&source,int_end.clone()).as_str() == ".".to_string().as_str())) && is_digit(source_char(&source,(int_end.clone() + 1)))) {
+if ((((int_end.clone() + 1) < source_len(&source)) && (source_char(&source,int_end.clone()).as_str() == ".".to_string().as_str())) && is_digit(source_char(&source,(int_end.clone() + 1)))) {
             {
                 let frac_end: i64 = source_scan_while(&source,(int_end.clone() + 1), is_digit);
 let text: String = source_substring(&source,pos.pos.clone(), frac_end.clone());
@@ -543,7 +543,7 @@ Rc::new(ScanResult {
 
 pub fn scan_string_body(mut source: Rc<SourceRef>, mut pos: i64, mut acc: Rc<Vec<String>>) -> Rc<StringScanResult> {
     loop {
-        if (pos.clone() >= source.source_len) {
+        if (pos.clone() >= source_len(&source)) {
             break Rc::new(StringScanResult::UnterminatedString {
     content: acc.clone().join(&"".to_string()),
     end_pos: pos.clone(),
@@ -557,7 +557,7 @@ if (ch.clone().as_str() == "\"".to_string().as_str()) {
 });
 } else {
                 if (ch.clone().as_str() == "\\".to_string().as_str()) {
-                    if ((pos.clone() + 1) < source.source_len) {
+                    if ((pos.clone() + 1) < source_len(&source)) {
                         let escaped: String = source_char(&source,(pos.clone() + 1));
 {
                             let __tco_0 = source.clone();
@@ -610,7 +610,7 @@ continue;
 }
 
 pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
-    if ((pos.clone() + 1) >= source.source_len) {
+    if ((pos.clone() + 1) >= source_len(&source)) {
         false
 } else {
         {
@@ -703,7 +703,7 @@ pub fn skip_spaces_and_comments(source: Rc<SourceRef>, pos: Rc<TokPos>, fuel: i6
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let p: i64 = source_skip_ws(&source,pos.pos.clone());
-if ((((p.clone() + 1) < source.source_len) && (source_char(&source,p.clone()).as_str() == "/".to_string().as_str())) && (source_char(&source,(p.clone() + 1)).as_str() == "/".to_string().as_str())) {
+if ((((p.clone() + 1) < source_len(&source)) && (source_char(&source,p.clone()).as_str() == "/".to_string().as_str())) && (source_char(&source,(p.clone() + 1)).as_str() == "/".to_string().as_str())) {
                 {
                     let eol: i64 = source_scan_to_eol(&source,p.clone());
 return skip_spaces_and_comments(source.clone(), Rc::new(TokPos {
