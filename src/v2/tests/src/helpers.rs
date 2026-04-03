@@ -77,6 +77,10 @@ pub fn assert_parses_strict(relative_path: &str) {
 // transitively: parse the entry source, discover its imports, load them
 // from source roots, recurse. Each module is loaded exactly once (memoized
 // by module path). The result is the minimal transitive closure.
+//
+// Module resolution is convention-based: `std.types` → `dsl/std/types.dag`.
+// No upfront scan of all files. Files are found and parsed only when
+// actually imported.
 
 use std::collections::HashMap;
 
@@ -86,43 +90,60 @@ fn source_roots() -> Vec<std::path::PathBuf> {
     let ws = workspace_root();
     vec![
         ws.join("dsl"),       // std.types → dsl/std/types.dag
-        ws.join("src/v2"),    // v2.std.core → src/v2/00_core.dag (needs index)
+        ws.join("src/v2"),    // v2.std.core → src/v2/00_core.dag (needs glob fallback)
     ]
 }
 
-/// Build an index of module_path → file_path by scanning source roots.
-/// Only reads the `module` declaration line from each file — O(files) I/O,
-/// one line per file.
-fn build_module_index() -> HashMap<String, std::path::PathBuf> {
-    let mut index = HashMap::new();
-    for root in source_roots() {
-        if root.exists() {
-            scan_dag_files(&root, &mut index);
-        }
+/// Resolve a module path to a file path using convention, then glob fallback.
+///
+/// Convention: `std.types` → split on `.` → try `<root>/std/types.dag` in each
+/// source root. This handles dsl/ and most of src/v2/.
+///
+/// Fallback: for src/v2/ files with numeric prefixes (e.g. `02_parse.dag`),
+/// glob for `*<last_segment>.dag` in the resolved parent directory.
+fn resolve_module_to_path(module_path: &str) -> Option<std::path::PathBuf> {
+    let segments: Vec<&str> = module_path.split('.').collect();
+    if segments.is_empty() {
+        return None;
     }
-    index
-}
 
-fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            scan_dag_files(&path, index);
-        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            if let Some(module_path) = extract_module_declaration(&path) {
-                index.insert(module_path, path);
+    for root in source_roots() {
+        // Convention: join segments as path, add .dag
+        let mut conventional = root.clone();
+        for seg in &segments {
+            conventional.push(seg);
+        }
+        conventional.set_extension("dag");
+        if conventional.exists() {
+            return Some(conventional);
+        }
+
+        // Glob fallback: directory from all-but-last segments, glob for *<last>.dag
+        // Handles numeric prefixes like 02_parse.dag for module v2.compiler.parse
+        if segments.len() >= 2 {
+            let last = segments.last().unwrap();
+            let mut dir = root.clone();
+            for seg in &segments[..segments.len() - 1] {
+                dir.push(seg);
+            }
+            if dir.is_dir() {
+                let pattern = format!("*{}.dag", last);
+                if let Ok(entries) = std::fs::read_dir(&dir) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name();
+                        let name_str = name.to_string_lossy();
+                        if name_str.ends_with(&format!("{}.dag", last))
+                            && name_str != format!("{}.dag", last)
+                        {
+                            let _ = pattern; // used only for documentation
+                            return Some(entry.path());
+                        }
+                    }
+                }
             }
         }
     }
-}
-
-/// Extract the module declaration path from a .dag file using the parser.
-/// Single authority — no parallel string-scanning implementation.
-fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let result = parse_source(&content);
-    result.module.as_ref().map(|m| m.name.clone())
+    None
 }
 
 /// Extract import module paths using the actual parser — no parallel
@@ -143,11 +164,14 @@ fn extract_imports(source: &str) -> Vec<String> {
 
 /// Resolve imports transitively from an entry source. Returns the minimal
 /// set of SourceFiles needed — each module loaded exactly once.
+///
+/// Uses convention-based file lookup (no upfront global scan). Only parses
+/// files that are actually imported.
 fn resolve_imports_transitively(
     entry_path: &str,
     entry_content: &str,
-    index: &HashMap<String, std::path::PathBuf>,
 ) -> Vec<Rc<SourceFile>> {
+    let ws = workspace_root();
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
     let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)
 
@@ -160,11 +184,11 @@ fn resolve_imports_transitively(
             if seen.contains_key(&module_path) {
                 continue; // already loaded — O(1) check
             }
-            if let Some(file_path) = index.get(&module_path) {
-                if let Ok(file_content) = std::fs::read_to_string(file_path) {
+            if let Some(file_path) = resolve_module_to_path(&module_path) {
+                if let Ok(file_content) = std::fs::read_to_string(&file_path) {
                     let rel_path = file_path
-                        .strip_prefix(workspace_root())
-                        .unwrap_or(file_path)
+                        .strip_prefix(&ws)
+                        .unwrap_or(&file_path)
                         .to_string_lossy()
                         .to_string();
                     let source = Rc::new(SourceFile {
@@ -175,7 +199,7 @@ fn resolve_imports_transitively(
                     queue.push((rel_path, file_content));
                 }
             }
-            // If not found in index, the compiler's resolve stage will
+            // If not found, the compiler's resolve stage will
             // report the unresolved import — no silent fallback.
         }
     }
@@ -188,16 +212,6 @@ fn resolve_imports_transitively(
         content: entry_content.to_string(),
     }));
     sources
-}
-
-// Lazily built module index — shared across all tests in a run.
-// Reads dsl/ and src/v2/ source trees (corpus/integration exception per
-// INVARIANTS.md testing invariants). Built once via OnceLock.
-use std::sync::OnceLock;
-static MODULE_INDEX: OnceLock<HashMap<String, std::path::PathBuf>> = OnceLock::new();
-
-fn module_index() -> &'static HashMap<String, std::path::PathBuf> {
-    MODULE_INDEX.get_or_init(build_module_index)
 }
 
 // ── Full pipeline ────────────────────────────────────────────────────────
@@ -215,7 +229,7 @@ pub fn compile_dag_named(
     source: &str,
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
-    let sources = resolve_imports_transitively(filename, source, module_index());
+    let sources = resolve_imports_transitively(filename, source);
     v2_compiler::v2_compiler_compile::compile_sources(Rc::new(sources), target)
 }
 
@@ -224,11 +238,9 @@ pub fn compile_multi(files: &[(&str, &str)]) -> Rc<PipelineResult> {
 }
 
 pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<PipelineResult> {
-    // For multi-file compilations, resolve imports from all entry files.
-    let index = module_index();
     let mut all_sources: HashMap<String, Rc<SourceFile>> = HashMap::new();
     for (path, content) in files {
-        let resolved = resolve_imports_transitively(path, content, index);
+        let resolved = resolve_imports_transitively(path, content);
         for src in resolved {
             all_sources.entry(src.path.clone()).or_insert(src);
         }
