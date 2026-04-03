@@ -1617,11 +1617,12 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
                 if is_data { concat(to_snake(name: n), "()") }
                 else { emit_ident(name: n, target: Rust) }
               None =>
-                // Zero-arg function references (binding_kind = FunctionValueBinding)
-                // need () in Rust. In .dag, calling a zero-arg function looks like
-                // a variable reference (ExprVar), but Rust needs the call syntax.
+                // Zero-arg function references need () in Rust. Check binding_kind
+                // first, then fall back to resolved function signatures for imported
+                // functions whose binding_kind is None.
                 let is_func_binding = match binding_kind { Some { value: FunctionValueBinding } => true  _ => false }
-                if is_func_binding { concat(emit_ident(name: n, target: Rust), "()") }
+                let is_known_func = match map_get(scope.func_env.signatures, n) { Some { value: _ } => true  None => false }
+                if is_func_binding || is_known_func { concat(emit_ident(name: n, target: Rust), "()") }
                 else { emit_ident(name: n, target: Rust) }
             }
         }
@@ -1989,7 +1990,11 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   // No lookup Rc-wrapping needed: rc_types is the single authority for
   // Rc decisions. Map values are already Rc-wrapped if they're non-Copy
   // types, so lookup/map_get return the correct type directly.
-  call_str
+  // Runtime functions that return bare collections (map_keys, map_values)
+  // need Rc wrapping so their result is Rc<Vec<_>>, matching List<T>.
+  if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
+    concat("Rc::new(", call_str, ")")
+  } else { call_str }
 }
 
 fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
@@ -2290,13 +2295,8 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
     ExprLambda { semantics: semantics } =>
       let ps = lambda_param_names_at(texpr: lambda_expr, source_index: scope.type_env.source_index)
       let bd = lambda_body(texpr: lambda_expr)
-      // When the accumulator type contains "()" (unit — indicates unresolved
-      // element type), emit "_" instead. "()" constrains Rust's inference to
-      // the wrong type; "_" lets Rust unify from the fold body and init.
-      let has_unit = acc_type_str |> contains("()")
-      let safe_acc_type = if has_unit && acc_type_str != "()" { "_" } else { acc_type_str }
       let fallback_types = ps |> enumerate |> map(pair =>
-        if pair.first == 0 { safe_acc_type } else { elem_type_str }
+        if pair.first == 0 { acc_type_str } else { elem_type_str }
       )
       let param_strs = lambda_param_type_strs(params: ps, semantics: none, fallback_types: fallback_types, rc_types: rc_types)
       let params_str = param_strs |> join(separator: ", ")
@@ -2339,7 +2339,9 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
           }
       }
   }
-  let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
+  let raw_acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
+  let is_bare_container = acc_type_node.children |> count == 0 && (acc_type_node.name == "List" || acc_type_node.name == "Map" || acc_type_node.name == "Set" || acc_type_node.name == "NonEmptyList" || acc_type_node.name == "NonEmptySet")
+  let acc_type_str = if is_bare_container { "_" } else { raw_acc_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
   let init_str = match args |> first {
     Some { value: init_arg } =>

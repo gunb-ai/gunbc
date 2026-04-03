@@ -50,7 +50,7 @@ pub use crate::std_types::{SourceSpan};
 pub use crate::v2_std_core::{Node, InferredNode, ErrorNode, make_error_node, diagnostic_to_message, with_optional_cardinality, unit_type, string_type, int_type, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError};
-pub use crate::v2_compiler_infer_types::{normalize_access_type_node, node_type_equals, node_is_keyed_collection};
+pub use crate::v2_compiler_infer_types::{normalize_access_type_node, node_type_equals, node_is_keyed_collection, node_is_element_collection, for_each_element_type_node};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AccessCheckResultNode {
@@ -143,9 +143,15 @@ access_result(with_optional_cardinality(parts.value_type.clone()), key_diags.clo
                     let malformed_diags: Rc<Vec<Rc<ErrorNode>>> = Rc::new(vec![access_error("malformed keyed collection type in index access".to_string(), span.clone(), module_name.clone())]);
 access_result(unit_type(), malformed_diags.clone(), span.clone(), "malformed keyed collection type in index access".to_string())
 }
+} else if node_is_element_collection(normed.clone()) && index_is_int.clone() {
+                // List[Int] → element type (with optional cardinality for bounds safety)
+                {
+                    let elem = for_each_element_type_node(normed.clone());
+access_result(with_optional_cardinality(elem.clone()), Rc::new(vec![]), span.clone(), "list index access".to_string())
+}
 } else {
                 {
-                    let diags: Rc<Vec<Rc<ErrorNode>>> = Rc::new(vec![access_error("indexing is only supported for String and keyed collection values".to_string(), span.clone(), module_name.clone())]);
+                    let diags: Rc<Vec<Rc<ErrorNode>>> = Rc::new(vec![access_error("indexing is only supported for String, keyed collection, and list values".to_string(), span.clone(), module_name.clone())]);
 access_result(unit_type(), diags.clone(), span.clone(), "invalid index access".to_string())
 }
 },
