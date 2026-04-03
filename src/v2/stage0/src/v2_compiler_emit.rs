@@ -863,7 +863,7 @@ if ((n_is_type_var.clone() || n_is_error.clone()) && ((n.children.clone().len() 
                     return v2_rt::concat(v2_rt::concat("__EMIT_BUG_UNRESOLVED_".to_string(), sentinel_label.clone()), "__".to_string())
 }
 }
-if ((n.params.clone().len() as i64) > 0) {
+if (n.name.clone().as_str() == "Callable") {
                 {
                     let param_types: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(emit_node_type_rc(param_node_type_expr(p.clone()), target.clone(), rc_types.clone())); } __result });
 let param_str: String = param_types.clone().join(&", ".to_string());

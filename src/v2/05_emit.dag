@@ -56,13 +56,14 @@ import v2.std.core {
   CardOptional
 }
 
-import v2.compiler.infer_env { TypeEnv, TypeBinding }
+import v2.compiler.infer_env { TypeEnv, TypeBinding, RecursiveVariantFieldWitness }
 import v2.compiler.infer_types { rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection }
+import std.types { is_container_type }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
 }
-import v2.compiler.infer_service { UniqueAccum, is_typed_service_call_receiver, extract_typed_service_name }
+import v2.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
 import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope
@@ -860,8 +861,8 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
       return concat("__EMIT_BUG_UNRESOLVED_", sentinel_label, "__")
     }
   }
-  // Callable: function type rendering (structural — has params)
-  if n.params |> count > 0 {
+  // Callable: function type rendering (structural — name-based check covers 0-param callables)
+  if n.name == "Callable" {
     let param_types = n.params |> map(p => emit_node_type_rc(n: param_node_type_expr(n: p), target: target, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {

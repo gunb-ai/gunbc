@@ -1190,8 +1190,15 @@ let method_receiver: Rc<Node> = match typed_args.clone().first().cloned() {
     Some(ta) => arg_value(ta.clone()),
     None => internal_expr_error_node("method bridge missing receiver".to_string(), span.clone()),
 };
+// Refine fold_acc_type from lambda body when init is under-resolved.
+let refined_call_fold_acc_type: Rc<Node> = if call_fold_info.clone() != None && node_is_keyed_collection(call_fold_acc_type.clone()) && (call_fold_acc_type.children.clone().len() as i64) < 2 {
+    match typed_args.clone().iter().cloned().filter(|a| is_lambda_expr(arg_value(a.clone()))).collect::<Vec<_>>().first().cloned() {
+        Some(lambda_arg) => rt_type(arg_value(lambda_arg.clone())),
+        None => call_fold_acc_type.clone(),
+    }
+} else { call_fold_acc_type.clone() };
 let method_resolution: Rc<KnownMethodResolution> = resolve_known_method_node(method_receiver.clone(), first_arg_type.clone(), func_name.clone(), if (call_fold_info.clone() != None) {
-                        Some(call_fold_acc_type.clone())
+                        Some(refined_call_fold_acc_type.clone())
 } else {
                         None
 }, scope.service_registry.clone());
@@ -1370,8 +1377,15 @@ let fold_acc_type: Rc<Node> = match fold_info.clone() {
 let mc_arg_infer_results: Rc<Vec<Rc<ArgInferResult>>> = infer_method_args_with_fold(mc_method_name.clone(), mc_args.clone(), fold_info.clone(), fold_acc_type.clone(), recv_elem_type.clone(), scope.clone());
 let typed_mc_args: Rc<Vec<Rc<Node>>> = Rc::new({ let mut __result = Vec::new(); for air in mc_arg_infer_results.clone().iter().cloned() { __result.push(air.typed_arg.clone()); } __result });
 let mc_arg_diags: Rc<Vec<Rc<ErrorNode>>> = Rc::new({ let mut __result = Vec::new(); for air in mc_arg_infer_results.clone().iter().cloned() { __result.extend((*air.diagnostics.clone()).iter().cloned()); } __result });
+// Refine fold_acc_type from lambda body when init is under-resolved.
+let refined_fold_acc_type: Rc<Node> = if fold_info.clone() != None && node_is_keyed_collection(fold_acc_type.clone()) && (fold_acc_type.children.clone().len() as i64) < 2 {
+    match typed_mc_args.clone().iter().cloned().filter(|a| is_lambda_expr(arg_value(a.clone()))).collect::<Vec<_>>().first().cloned() {
+        Some(lambda_arg) => rt_type(arg_value(lambda_arg.clone())),
+        None => fold_acc_type.clone(),
+    }
+} else { fold_acc_type.clone() };
 let method_resolution: Rc<KnownMethodResolution> = resolve_known_method_node(recv_typed.clone(), recv_rt.clone(), method_name.clone(), if (fold_info.clone() != None) {
-                Some(fold_acc_type.clone())
+                Some(refined_fold_acc_type.clone())
 } else {
                 None
 }, scope.service_registry.clone());
