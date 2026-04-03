@@ -1967,7 +1967,13 @@ if (value_type_str.clone().as_str() != "".to_string().as_str()) {
 } else {
             emit_typed_call(func.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())
 };
-call_str.clone()
+// Runtime functions returning bare collections need Rc wrapping
+// so their result is Rc<Vec<_>>, matching List<T>.
+if rust_runtime_bridge_wraps_collection_result_in_rc(func.clone()) {
+            v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), call_str.clone()), ")".to_string())
+} else {
+            call_str.clone()
+}
 }
 }
 
@@ -2229,7 +2235,11 @@ pub fn collection_element_type(receiver_type: Option<Rc<InferredNode>>, rc_types
         let __rt_is_container: bool = node_is_element_collection(rt.clone());
 if __rt_is_container.clone() {
             match rt.children.clone().first().cloned() {
-    Some(elem_node) => render_rust_type(elem_node.clone(), rc_types.clone()),
+    Some(elem_node) => {
+        let rendered: String = render_rust_type(elem_node.clone(), rc_types.clone());
+// If element type rendered to compile_error, fall back to _ for Rust inference
+if rendered.contains("compile_error") { "_".to_string() } else { rendered }
+},
     None => "_".to_string(),
 }
 } else {
@@ -2275,7 +2285,13 @@ let param_is_type_var: bool = if (param_type.inferred.clone() != None) {
 if (param_is_type_var.clone() || param_is_error.clone()) {
                 None
 } else {
-                Some(render_rust_type(param_type.clone(), rc_types.clone()))
+                let rendered: String = render_rust_type(param_type.clone(), rc_types.clone());
+// If rendering produced a compile_error sentinel, fall back to element type
+if rendered.contains("compile_error") {
+                    None
+} else {
+                    Some(rendered)
+}
 }
 },
     None => None,
@@ -2683,7 +2699,12 @@ let arg_strs: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for a i
 let all_strs: Rc<Vec<String>> = v2_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs.clone());
 let bridge_name: String = rust_runtime_bridge_name(function_name.clone());
 let lowered: String = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2_rt::".to_string(), emit_ident(bridge_name.clone(), RenderTarget::Rust)), "(".to_string()), all_strs.clone().join(&", ".to_string())), ")".to_string());
-lowered.clone()
+// Runtime functions returning bare collections need Rc wrapping
+if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
+            v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), lowered.clone()), ")".to_string())
+} else {
+            lowered.clone()
+}
 }
 }
 
