@@ -2304,7 +2304,10 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   let acc_type_node = match fold_accumulator_type {
     Some { value: acc_type } =>
       let acc_children_have_unit = acc_type.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
-      if node_is_keyed_collection(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit) {
+      let is_under_resolved_map = node_is_keyed_collection(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit)
+      let is_under_resolved_list = node_is_element_collection(n: acc_type) && acc_type.children |> count == 0
+      let is_under_resolved_non_collection = !node_is_keyed_collection(n: acc_type) && !node_is_element_collection(n: acc_type) && !node_is_collection(n: acc_type)
+      if is_under_resolved_map || is_under_resolved_list || is_under_resolved_non_collection {
         match contextual_acc_type {
           Some { value: concrete_type } => concrete_type
           None => acc_type

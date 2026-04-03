@@ -844,7 +844,13 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
       }
     }
     let acc_under_resolved = match fold_acc {
-      Some { value: acc_type } => node_is_keyed_collection(n: acc_type) && acc_type.children |> count < 2
+      Some { value: acc_type } =>
+        // Map with missing value type
+        (node_is_keyed_collection(n: acc_type) && acc_type.children |> count < 2)
+        // List/collection with missing element type
+        || (node_is_element_collection(n: acc_type) && acc_type.children |> count == 0)
+        // Non-collection init (None or bare value) — always use body return type
+        || (!node_is_keyed_collection(n: acc_type) && !node_is_element_collection(n: acc_type) && !node_is_collection(n: acc_type))
       None => true
     }
     if acc_under_resolved {

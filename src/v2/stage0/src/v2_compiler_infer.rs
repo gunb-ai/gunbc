@@ -66,7 +66,7 @@ use crate::v2_std_core::UnaryOpKind::{Not, Neg};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport};
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, map_node, bare_map_node, callable_inferred, normalize_access_type_node, bridge_placeholder_type_names, is_bridge_placeholder, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, map_node, bare_map_node, callable_inferred, normalize_access_type_node, bridge_placeholder_type_names, is_bridge_placeholder, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type, list_of_element};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, RecursiveVariantFieldWitness, put_recursive_variant_field_witness, merge_recursive_variant_fields};
@@ -885,9 +885,23 @@ named_collection_type(receiver_type_name.clone(), lambda_ret.clone())
     _ => None,
 }
 };
-match fold_acc.clone() {
-    Some(acc_type) => acc_type.clone(),
-    None => fallback.clone(),
+let acc_under_resolved: bool = match fold_acc.clone() {
+    Some(ref acc_type) =>
+        // Map with missing value type
+        (node_is_keyed_collection(acc_type.clone()) && (acc_type.children.clone().len() as i64) < 2)
+        // List/collection with missing element type
+        || (node_is_element_collection(acc_type.clone()) && (acc_type.children.clone().len() as i64) == 0)
+        // Non-collection init (None or bare value) — use body return type
+        || (!node_is_keyed_collection(acc_type.clone()) && !node_is_element_collection(acc_type.clone()) && !node_is_collection(acc_type.clone())),
+    None => true,
+};
+if acc_under_resolved {
+    match typed_args.clone().iter().cloned().filter(|a| is_lambda_expr(arg_value(a.clone()))).collect::<Vec<_>>().first().cloned() {
+        Some(lambda_arg) => rt_type(arg_value(lambda_arg.clone())),
+        None => match fold_acc.clone() { Some(at) => at.clone(), None => fallback.clone() },
+    }
+} else {
+    match fold_acc.clone() { Some(at) => at.clone(), None => fallback.clone() }
 }
 }
 } else {
