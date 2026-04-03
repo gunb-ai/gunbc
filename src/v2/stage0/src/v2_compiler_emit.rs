@@ -58,6 +58,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
 pub use crate::v2_compiler_infer_service::OpEntry;
 pub use crate::v2_compiler_infer_types::{rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection};
+use crate::v2_std_core::is_container_type;
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, is_typed_service_call_receiver, extract_typed_service_name};
@@ -862,7 +863,7 @@ if ((n_is_type_var.clone() || n_is_error.clone()) && ((n.children.clone().len() 
                     return v2_rt::concat(v2_rt::concat("__EMIT_BUG_UNRESOLVED_".to_string(), sentinel_label.clone()), "__".to_string())
 }
 }
-if ((n.params.clone().len() as i64) > 0) {
+if (n.name.clone().as_str() == "Callable") {
                 {
                     let param_types: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(emit_node_type_rc(param_node_type_expr(p.clone()), target.clone(), rc_types.clone())); } __result });
 let param_str: String = param_types.clone().join(&", ".to_string());
@@ -914,8 +915,11 @@ if ((is_conj.clone() == false) && (is_disj.clone() == false)) {
 pub fn emit_node_type_leaf_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {
     if ((n.children.clone().len() as i64) == 0) {
         {
-            let bare_is_map: bool = node_is_keyed_collection(n.clone());
-let bare_is_collection: bool = node_is_element_collection(n.clone());
+            // Use is_container_type (name check) not node_is_keyed/element_collection
+            // (which require children > 0 and fail for bare containers from empty_map).
+            let has_map_template_early: bool = (target_container_template(target.clone(), "map".to_string()) != None);
+            let bare_is_map: bool = is_container_type(n.name.clone()) && has_map_template_early;
+let bare_is_collection: bool = is_container_type(n.name.clone()) && !bare_is_map;
 let has_map_template: bool = (target_container_template(target.clone(), "map".to_string()) != None);
 let has_container_template: bool = (target_container_template(target.clone(), to_snake(n.name.clone())) != None);
 let param_count: i64 = (n.params.clone().len() as i64);
@@ -933,6 +937,9 @@ match param_strs.clone().first().cloned() {
     None => emit_primitive_type(n.name.clone(), target.clone()),
 }
 }
+} else if n.name.clone().as_str() == tuple_type_name().as_str() {
+                        // Bare Tuple with no children
+                        match target.clone() { RenderTarget::Python => "Tuple".to_string(), RenderTarget::Go => "struct{}".to_string(), _ => "()".to_string() }
 } else {
                         emit_primitive_type(n.name.clone(), target.clone())
 }

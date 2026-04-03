@@ -56,6 +56,8 @@ fn prepare_source_tree(workspace_dir: &std::path::Path) {
         "logic", "bit", "integer", "float", "string_type",
         "encoding",
         "syntax",
+        "termination",
+        "coercion",
     ];
     for name in &std_files {
         let src = ws.join(format!("dsl/std/{}.dag", name));

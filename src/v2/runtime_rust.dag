@@ -107,7 +107,6 @@ fn rt_collection_ops() -> String {
 fn rt_scanner_ops() -> String {
   concat(
     "pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {\n",
-    "    let s = s.as_str();\n",
     "    let start = start.max(0) as usize;\n",
     "    if s.is_ascii() {\n",
     "        let bytes = s.as_bytes();\n",
@@ -124,7 +123,6 @@ fn rt_scanner_ops() -> String {
     "    pos as i64\n",
     "}\n\n",
     "pub fn skip_horizontal_ws(s: &str, start: i64) -> i64 {\n",
-    "    let s = s.as_str();\n",
     "    let start = start.max(0) as usize;\n",
     "    if s.is_ascii() {\n",
     "        let bytes = s.as_bytes();\n",
@@ -141,7 +139,6 @@ fn rt_scanner_ops() -> String {
     "    pos as i64\n",
     "}\n\n",
     "pub fn scan_to_eol(s: &str, start: i64) -> i64 {\n",
-    "    let s = s.as_str();\n",
     "    let start = start.max(0) as usize;\n",
     "    if s.is_ascii() {\n",
     "        let bytes = s.as_bytes();\n",
@@ -159,7 +156,6 @@ fn rt_scanner_ops() -> String {
     "    pos as i64\n",
     "}\n\n",
     "pub fn scan_string_end(s: &str, start: i64) -> i64 {\n",
-    "    let s = s.as_str();\n",
     "    let start = start.max(0) as usize;\n",
     "    if s.is_ascii() {\n",
     "        let bytes = s.as_bytes();\n",

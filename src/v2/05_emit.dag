@@ -56,13 +56,14 @@ import v2.std.core {
   CardOptional
 }
 
-import v2.compiler.infer_env { TypeEnv, TypeBinding }
+import v2.compiler.infer_env { TypeEnv, TypeBinding, RecursiveVariantFieldWitness }
 import v2.compiler.infer_types { rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection }
+import std.types { is_container_type }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
 }
-import v2.compiler.infer_service { UniqueAccum, is_typed_service_call_receiver, extract_typed_service_name }
+import v2.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
 import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope
@@ -860,8 +861,8 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
       return concat("__EMIT_BUG_UNRESOLVED_", sentinel_label, "__")
     }
   }
-  // Callable: function type rendering (structural — has params)
-  if n.params |> count > 0 {
+  // Callable: function type rendering (structural — name-based check covers 0-param callables)
+  if n.name == "Callable" {
     let param_types = n.params |> map(p => emit_node_type_rc(n: param_node_type_expr(n: p), target: target, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {
@@ -894,14 +895,16 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
 
 fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
+    // BRIDGE: name-based container check compensates for lost upstream type
+    // structure. Blocked on P1-C structural container-ness on type nodes.
     // Bare container nodes (from empty_map(), etc.) need container templates
     // even without children — emit with "_" placeholders.
-    // Also handles generic types like FreeMonoid<T> / PartialFunction<K,V>
-    // that arrive as bare leaves when type parameters haven't been substituted.
-    let bare_is_map = node_is_keyed_collection(n: n)
-    let bare_is_collection = node_is_element_collection(n: n)
+    // Uses is_container_type (name check) because node_is_keyed/element_collection
+    // require children > 0 and fail for bare containers from empty_map.
     let has_map_template = target_container_template(target: target, kind: "map") != none
     let has_container_template = target_container_template(target: target, kind: to_snake(name: n.name)) != none
+    let bare_is_map = is_container_type(name: n.name) && has_map_template
+    let bare_is_collection = is_container_type(name: n.name) && !bare_is_map
     let param_count = n.params |> count
     let base = if bare_is_map {
       emit_map_type(key_type: "_", val_type: "_", target: target)
@@ -914,6 +917,9 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
         Some { value: inner } => emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
         None => emit_primitive_type(name: n.name, target: target)
       }
+    } else if n.name == tuple_type_name {
+      // Bare Tuple with no children (type params stripped) — emit as generic tuple
+      match target { Python => "Tuple"  Go => "struct{}"  _ => "()" }
     } else {
       emit_primitive_type(name: n.name, target: target)
     }

@@ -3,7 +3,9 @@
 Read these docs before working:
 - `INVARIANTS.md` — governing rules. STOP before violating any invariant.
 - `ROADMAP.md` — architectural thesis, current state, active work, design directions.
-- `MODELING.md` — DSL modeling philosophy.
+- `MODELING.md` — DSL modeling philosophy. **Especially M9: DFS the concept DAG.**
+  Before defining any new type, DFS from `dsl/std/` to find the existing concept
+  it should attach to. See the concept DAG layers in MODELING.md.
 - `src/v2/DESIGN.md` — compiler design principles.
 
 ## Key Commands

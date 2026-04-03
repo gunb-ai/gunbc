@@ -706,33 +706,125 @@ fn variant_node_fields(n: Node) -> List<Node> { n.children }
 fn variant_node_span(n: Node) -> SourceSpan { n.span }
 
 // =========================================================================
+// IR Child Layout Model
+//
+// Executable data table encoding the child structure of each ExprData
+// variant and wrapper node type. This is the single source of truth —
+// accessor functions below implement these projections, and downstream
+// consumers (complexity analyzer, etc.) import this model rather than
+// maintaining hardcoded accessor tables.
+//
+// Adding a new ExprData variant: add an entry to expr_child_roles.
+// Adding a new wrapper node type: add an entry to wrapper_child_roles.
+// Variants with only variadic children (ExprBlock, ExprListLit,
+// ExprCall, ExprRecordLit, ExprStringInterp) or no children (ExprVar,
+// ExprLiteral, ExprError, NoExprData) are not in the table — their
+// children are accessed directly via node.children iteration.
+// =========================================================================
+
+// Bootstrap constraint: `accessor` is a function name (String). In the current
+// .dag type system, function names ARE the structural identity. When .dag supports
+// function references, accessor should become a structural reference.
+type ChildRole {
+  name: String        // role name: "left", "right", "condition"
+  accessor: String    // function that projects this child: "binop_left"
+  position: Int       // index into children (-1 = last)
+  required: Bool      // true = always present, false = optional
+}
+
+// Expression child roles — keyed by ExprData variant name.
+// Each entry lists the fixed named child projections for that variant.
+// This data table IS the source of truth for child layout. The accessor
+// functions below implement the projections declared here. The apparent
+// duplication is intentional: the table provides the model, the functions
+// provide the implementation. Consistency is enforced by construction.
+data expr_child_roles: Map<String, List<ChildRole>> = {
+  "ExprFieldAccess": [
+    ChildRole { name: "base", accessor: "field_access_base", position: 0, required: true }
+  ],
+  "ExprBinOp": [
+    ChildRole { name: "left", accessor: "binop_left", position: 0, required: true },
+    ChildRole { name: "right", accessor: "binop_right", position: 1, required: true }
+  ],
+  "ExprUnaryOp": [
+    ChildRole { name: "operand", accessor: "unaryop_operand", position: 0, required: true }
+  ],
+  "ExprIf": [
+    ChildRole { name: "condition", accessor: "if_condition", position: 0, required: true },
+    ChildRole { name: "then", accessor: "if_then_branch", position: 1, required: true },
+    ChildRole { name: "else", accessor: "if_else_branch", position: 2, required: false }
+  ],
+  "ExprMatch": [
+    ChildRole { name: "scrutinee", accessor: "match_scrutinee", position: 0, required: true }
+  ],
+  "ExprLet": [
+    ChildRole { name: "value", accessor: "let_value", position: 0, required: true },
+    ChildRole { name: "body", accessor: "let_body", position: 1, required: false }
+  ],
+  "ExprLambda": [
+    ChildRole { name: "body", accessor: "lambda_body", position: 0, required: true }
+  ],
+  "ExprMethodCall": [
+    ChildRole { name: "receiver", accessor: "method_receiver", position: 0, required: true }
+  ],
+  "ExprCast": [
+    ChildRole { name: "expr", accessor: "cast_expr", position: 0, required: true },
+    ChildRole { name: "target", accessor: "cast_target", position: 1, required: true }
+  ],
+  "ExprForEach": [
+    ChildRole { name: "collection", accessor: "foreach_collection", position: 0, required: true },
+    ChildRole { name: "body", accessor: "foreach_body", position: 1, required: true }
+  ],
+  "ExprIndex": [
+    ChildRole { name: "base", accessor: "index_base", position: 0, required: true },
+    ChildRole { name: "index", accessor: "index_expr", position: 1, required: true }
+  ],
+  "ExprSlice": [
+    ChildRole { name: "base", accessor: "slice_base", position: 0, required: true },
+    ChildRole { name: "start", accessor: "slice_start", position: 1, required: true },
+    ChildRole { name: "end", accessor: "slice_end", position: 2, required: true }
+  ],
+  "ExprReturn": [
+    ChildRole { name: "value", accessor: "return_value", position: 0, required: true }
+  ]
+}
+
+// Wrapper node child roles (Arg, Arm, FieldInit appear in parent children lists).
+data wrapper_child_roles: Map<String, List<ChildRole>> = {
+  "Arg": [
+    ChildRole { name: "value", accessor: "arg_value", position: 0, required: true }
+  ],
+  "Arm": [
+    ChildRole { name: "guard", accessor: "arm_guard", position: 0, required: false },
+    ChildRole { name: "body", accessor: "arm_body", position: -1, required: true }
+  ],
+  "FieldInit": [
+    ChildRole { name: "value", accessor: "field_init_node_value", position: 0, required: true }
+  ]
+}
+
+// Model query: is a function name a child accessor declared in the model?
+fn is_child_accessor_in_model(name: String) -> Bool {
+  (map_values(expr_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
+  || (map_values(wrapper_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
+}
+
+// Model query: get fixed child roles for an ExprData variant.
+// Returns None if the variant is not in the model (fail-closed: callers
+// must handle missing layout explicitly, not assume "no children").
+fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
+  lookup(expr_child_roles, key: variant_name)
+}
+
+// =========================================================================
 // Compositional child Node accessors (P5.11)
 //
-// Child layout is the single source of truth for expression structure.
+// Implementations of the child projections declared in expr_child_roles
+// and wrapper_child_roles above. The model is the source of truth;
+// these functions implement the projections.
+//
 // Required children return an error node when missing (fail-fast),
 // preventing silent self-recursion from malformed nodes.
-//
-// | Variant         | Children                              | Node.name           |
-// |-----------------|---------------------------------------|---------------------|
-// | ExprVar         | []                                    | variable name (D3)  |
-// | ExprFieldAccess | [base]                                | field name (D3)     |
-// | ExprCall        | [arg0, arg1, ...]                     | func name (D3)      |
-// | ExprMethodCall  | [receiver, arg0, arg1, ...]           | method name (D3)    |
-// | ExprMatch       | [scrutinee, arm0, arm1, ...]          |                     |
-// | ExprIf          | [condition, then, else?]              |                     |
-// | ExprLet         | [value, body?]                        | binding name (D3)   |
-// | ExprRecordLit   | [field_init0, ...]                    | type name (D3)      |
-// | ExprListLit     | [elem0, ...]                          |                     |
-// | ExprBinOp       | [left, right]                         |                     |
-// | ExprUnaryOp     | [operand]                             |                     |
-// | ExprLambda      | [body, param0, param1, ...]           |                     |
-// | ExprStringInterp| [part0, ...]                          |                     |
-// | ExprBlock       | [stmt0, ...]                          |                     |
-// | ExprCast        | [expr, target]                        |                     |
-// | ExprForEach     | [collection, body]                    | loop var name (D3)  |
-// | ExprIndex       | [base, index]                         |                     |
-// | ExprSlice       | [base, start, end]                    |                     |
-// | ExprReturn      | [value]                               |                     |
 // =========================================================================
 
 // Required child at position. Returns error node if missing.

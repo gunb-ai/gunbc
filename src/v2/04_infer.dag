@@ -75,7 +75,7 @@ import v2.std.core {
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  nominal_type_ref, container_node, callable_node, node_is_keyed_collection,
+  nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection,
   map_node, bare_map_node,
   callable_inferred,
   normalize_access_type_node,
@@ -834,16 +834,35 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
     // filter/sort_by/unique/reverse preserve the collection type exactly
     receiver_type
   } else if method_name_is(opt: method_name, expected: "fold") {
-    // fold returns the accumulator type, not the lambda body type.
+    // fold returns the accumulator type. When the init is under-resolved
+    // (e.g., empty_map() with no value type), use the lambda body's return
+    // type instead — it carries the resolved type from the fold body.
     let fold_acc = if semantics == none { none } else {
       match semantics.value {
         AlgebraMethodSemantics { method_def: _, fold_accumulator_type: fat } => fat
         _ => none
       }
     }
-    match fold_acc {
-      Some { value: acc_type } => acc_type
-      None => fallback
+    // BRIDGE: heuristic child-count check compensates for incomplete upstream
+    // container facts. Blocked on CX-C bounded-primitive fold type propagation.
+    let acc_under_resolved = match fold_acc {
+      Some { value: acc_type } =>
+        // Map with missing value type
+        (node_is_keyed_collection(n: acc_type) && acc_type.children |> count < 2)
+        // List/collection with missing element type
+        || (node_is_element_collection(n: acc_type) && acc_type.children |> count == 0)
+        // Non-collection init (None or bare value) — always use body return type
+        || (!node_is_keyed_collection(n: acc_type) && !node_is_element_collection(n: acc_type) && !node_is_collection(n: acc_type))
+      None => true
+    }
+    if acc_under_resolved {
+      // Init type unresolved — use lambda body return type (same pattern as map).
+      match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+        Some { value: lambda_arg } => rt_type(n: arg_value(n: lambda_arg))
+        None => match fold_acc { Some { value: at } => at   None => fallback }
+      }
+    } else {
+      match fold_acc { Some { value: at } => at   None => fallback }
     }
   } else if method_name_is(opt: method_name, expected: "list_push") && typed_args |> count >= 1 && receiver_type.children |> count == 0 {
     match typed_args |> first {
@@ -1108,11 +1127,21 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Some { value: ta } => arg_value(n: ta)
           None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
+        // Refine fold_acc_type from lambda body when init is under-resolved.
+        let call_acc_is_under_resolved = (node_is_keyed_collection(n: call_fold_acc_type) && call_fold_acc_type.children |> count < 2)
+          || (node_is_element_collection(n: call_fold_acc_type) && call_fold_acc_type.children |> count == 0)
+          || (!node_is_keyed_collection(n: call_fold_acc_type) && !node_is_element_collection(n: call_fold_acc_type) && !node_is_collection(n: call_fold_acc_type))
+        let refined_call_fold_acc_type = if call_fold_info != none && call_acc_is_under_resolved {
+          match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+            Some { value: lambda_arg } => rt_type(n: arg_value(n: lambda_arg))
+            None => call_fold_acc_type
+          }
+        } else { call_fold_acc_type }
         let method_resolution = resolve_known_method_node(
           receiver: method_receiver,
           receiver_type: first_arg_type,
           method_name: func_name,
-          fold_accumulator_type: if call_fold_info != none { Some { value: call_fold_acc_type } } else { none },
+          fold_accumulator_type: if call_fold_info != none { Some { value: refined_call_fold_acc_type } } else { none },
           service_registry: scope.service_registry
         )
         let is_known_method = method_resolution.result_type != none
@@ -1286,11 +1315,23 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
+      // Refine fold_acc_type from lambda body when init is under-resolved.
+      // The lambda has been inferred (typed_mc_args), so its body return type
+      // carries the resolved type from the fold body (e.g., map_merge result).
+      let mc_acc_is_under_resolved = (node_is_keyed_collection(n: fold_acc_type) && fold_acc_type.children |> count < 2)
+        || (node_is_element_collection(n: fold_acc_type) && fold_acc_type.children |> count == 0)
+        || (!node_is_keyed_collection(n: fold_acc_type) && !node_is_element_collection(n: fold_acc_type) && !node_is_collection(n: fold_acc_type))
+      let refined_fold_acc_type = if fold_info != none && mc_acc_is_under_resolved {
+        match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+          Some { value: lambda_arg } => rt_type(n: arg_value(n: lambda_arg))
+          None => fold_acc_type
+        }
+      } else { fold_acc_type }
       let method_resolution = resolve_known_method_node(
         receiver: recv_typed,
         receiver_type: recv_rt,
         method_name: method_name,
-        fold_accumulator_type: if fold_info != none { Some { value: fold_acc_type } } else { none },
+        fold_accumulator_type: if fold_info != none { Some { value: refined_fold_acc_type } } else { none },
         service_registry: scope.service_registry
       )
       let base_result_type = match method_resolution.result_type {
