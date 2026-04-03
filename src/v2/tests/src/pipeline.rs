@@ -4104,6 +4104,61 @@ fn make() -> Outer {
     );
 }
 
+// ── DEBUG: Callable field rendering ───────────────────────────────────
+
+#[test]
+fn callable_field_renders_as_fn_type() {
+    let source = "
+module test
+
+type Foo {
+  length: fn() -> Int
+  transform: fn(String) -> String
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    eprintln!("=== EMITTED ===\n{}\n=== END ===", content);
+    assert!(
+        content.contains("Rc<dyn Fn() -> i64>"),
+        "fn() -> Int field should render as Rc<dyn Fn() -> i64>, got:\n{}",
+        content
+    );
+}
+
+#[test]
+fn generic_type_args_preserved_in_rendering() {
+    // Tuple type args
+    let source = "
+module test
+
+type Foo<T> {
+  items: List<Tuple<Int, T>>
+}
+
+type Bar<K, V> {
+  data: Map<K, V>
+  transform: fn(K, V) -> Map<K, V>
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    eprintln!("=== EMITTED ===\n{}\n=== END ===", content);
+    // Tuple renders as (i64, T), not bare Tuple
+    assert!(
+        !content.contains(": Tuple") && !content.contains("<Tuple>"),
+        "Tuple should not appear as bare type name, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("(i64, T)"),
+        "Tuple<Int, T> should render as (i64, T), got:\n{}",
+        content
+    );
+}
+
 // ── TypeRendering equivalence validation ──────────────────────────────
 //
 // Validates that build_type_rendering + render_type produces the same

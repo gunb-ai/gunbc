@@ -3667,10 +3667,26 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 
 pub fn emit_typed_tco_reassign(args: Rc<Vec<Rc<Node>>>, params: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
-        let ordered_args: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024)); } __result });
-let si: Option<Rc<NewlineIndex>> = scope.type_env.clone().source_index.clone();
+        let si: Option<Rc<NewlineIndex>> = scope.type_env.clone().source_index.clone();
 let param_names: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), si.clone()), RenderTarget::Rust)); } __result });
-let all_lines: Rc<Vec<String>> = tco_reassign_core(ordered_args.clone(), param_names.clone(), "__tco_".to_string(), "let ".to_string(), " = ".to_string(), ";".to_string(), "continue;".to_string(), "".to_string());
+// Filter out identity args (arg is just the param variable passed through).
+// This avoids generating .clone() on impl Fn params that don't change.
+let mut filtered_args: Vec<String> = Vec::new();
+let mut filtered_params: Vec<String> = Vec::new();
+for (a, pname) in args.iter().zip(param_names.iter()) {
+    let av = arg_value(a.clone());
+    let is_identity = match (*av.expr_data).clone() {
+        ExprData::ExprVar { .. } => av.name.as_str() == pname.as_str(),
+        _ => false,
+    };
+    if !is_identity {
+        filtered_args.push(emit_typed_expr(av, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024));
+        filtered_params.push(pname.clone());
+    }
+}
+let ordered_args = Rc::new(filtered_args);
+let filtered_param_names = Rc::new(filtered_params);
+let all_lines: Rc<Vec<String>> = tco_reassign_core(ordered_args.clone(), filtered_param_names.clone(), "__tco_".to_string(), "let ".to_string(), " = ".to_string(), ";".to_string(), "continue;".to_string(), "".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n".to_string(), make_indent((depth.clone() + 1))), all_lines.clone().join(&"\n".to_string())), "\n}".to_string())
 }
 }

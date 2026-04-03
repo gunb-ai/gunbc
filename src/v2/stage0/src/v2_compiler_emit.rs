@@ -1003,8 +1003,27 @@ if emit_map_has(rc_types.clone(), n.name.clone()) {
 }
 }
 }
+} else if (n.name.clone().as_str() == tuple_type_name().as_str()) {
+                    {
+                        // Tuple type reference (NoConnective with children)
+                        let child_strs: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(emit_node_type_rc(c.clone(), target.clone(), rc_types.clone())); } __result });
+match target.clone() {
+    RenderTarget::Go => v2_rt::concat(v2_rt::concat("struct{ ".to_string(), child_strs.clone().join(&"; ".to_string())), " }".to_string()),
+    RenderTarget::Python => v2_rt::concat(v2_rt::concat("Tuple[".to_string(), child_strs.clone().join(&", ".to_string())), "]".to_string()),
+    _ => v2_rt::concat(v2_rt::concat("(".to_string(), child_strs.clone().join(&", ".to_string())), ")".to_string()),
+}
+                    }
 } else {
-                    emit_primitive_type(n.name.clone(), target.clone())
+                    {
+                        // Named type with generic args (e.g., PartialFunction<K,V>)
+                        let base: String = emit_primitive_type(n.name.clone(), target.clone());
+let arg_strs: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(emit_node_type_rc(c.clone(), target.clone(), rc_types.clone())); } __result });
+let args_joined: String = arg_strs.clone().join(&", ".to_string());
+match target.clone() {
+    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "[".to_string()), args_joined.clone()), "]".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "<".to_string()), args_joined.clone()), ">".to_string()),
+}
+                    }
 }
 }
 }
@@ -1337,12 +1356,29 @@ fn build_type_rendering_leaf(
                 })
             }
         } else {
-            // Multi-child leaf without map — treat as primitive
-            Rc::new(TypeRendering {
-                type_name: n.name.clone(),
-                shared,
-                ..tr_default()
-            })
+            // Multi-child leaf: named type with generic args (e.g., PartialFunction<K,V>)
+            // or Tuple<A,B> as a type reference (NoConnective).
+            let child_trs: Vec<Rc<TypeRendering>> = n
+                .children
+                .iter()
+                .cloned()
+                .map(|c| build_type_rendering(c, rc_types.clone(), recursive_types.clone()))
+                .collect();
+            if n.name.as_str() == tuple_type_name().as_str() {
+                Rc::new(TypeRendering {
+                    type_name: "Tuple".to_string(),
+                    is_tuple: true,
+                    params: Rc::new(child_trs),
+                    ..tr_default()
+                })
+            } else {
+                Rc::new(TypeRendering {
+                    type_name: n.name.clone(),
+                    generic_args: Rc::new(child_trs),
+                    shared,
+                    ..tr_default()
+                })
+            }
         }
     }
 }
@@ -1489,7 +1525,7 @@ fn render_type_base(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
     let is_rust = matches!(target, RenderTarget::Rust);
 
     // Callable: fn(A, B) -> R
-    if tr.type_name.as_str() == "Callable" && !tr.params.is_empty() {
+    if tr.type_name.as_str() == "Callable" {
         let param_strs: Vec<String> = tr
             .params
             .iter()
@@ -1912,8 +1948,24 @@ pub fn is_self_recursive(name: String, body: Rc<Node>, registry: Rc<HashMap<Stri
 
 pub fn tco_reassign_core(ordered_args: Rc<Vec<String>>, param_names: Rc<Vec<String>>, temp_var_prefix: String, temp_decl_prefix: String, temp_assign_op: String, stmt_terminator: String, continue_str: String, line_prefix: String) -> Rc<Vec<String>> {
     {
-        let temp_lets: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(ordered_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(line_prefix.clone(), temp_decl_prefix.clone()), temp_var_prefix.clone()), (pair.0.clone()).to_string()), temp_assign_op.clone()), pair.1.clone()), stmt_terminator.clone())); } __result });
-let assigns: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(param_names.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(line_prefix.clone(), pair.1.clone()), " = ".to_string()), temp_var_prefix.clone()), (pair.0.clone()).to_string()), stmt_terminator.clone())); } __result });
+        // Skip reassignment when arg == param (parameter passed through unchanged).
+        // This avoids generating `pred.clone()` for impl Fn params in TCO.
+        let changed: Vec<(i64, String, String)> = ordered_args.iter().cloned()
+            .zip(param_names.iter().cloned())
+            .enumerate()
+            .filter(|(_i, (arg, param))| arg.as_str() != param.as_str())
+            .map(|(i, (arg, param))| (i as i64, arg, param))
+            .collect();
+let temp_lets: Rc<Vec<String>> = Rc::new(changed.iter().cloned().map(|(i, arg, _param)| {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
+        line_prefix.clone(), temp_decl_prefix.clone()), temp_var_prefix.clone()),
+        i.to_string()), temp_assign_op.clone()), arg), stmt_terminator.clone())
+}).collect());
+let assigns: Rc<Vec<String>> = Rc::new(changed.iter().cloned().map(|(i, _arg, param)| {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
+        line_prefix.clone(), param), " = ".to_string()),
+        temp_var_prefix.clone()), i.to_string()), stmt_terminator.clone())
+}).collect());
 v2_rt::concat(v2_rt::concat(temp_lets.clone(), assigns.clone()), Rc::new(vec![v2_rt::concat(line_prefix.clone(), continue_str.clone())]))
 }
 }

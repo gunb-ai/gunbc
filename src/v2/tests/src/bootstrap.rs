@@ -390,8 +390,7 @@ fn bootstrap_stage0_to_stage1() {
             eprintln!("  {}", &s[..s.len().min(200)]);
         }
     }
-    // To debug, uncomment:
-    // eprintln!("\n=== FULL CARGO CHECK STDERR ===\n{}\n=== END ===", check_stderr);
+    eprintln!("\n=== FULL CARGO CHECK STDERR ===\n{}\n=== END ===", check_stderr);
 
     assert!(
         error_count <= EMITTED_RUST_ERROR_RATCHET,
@@ -400,9 +399,10 @@ fn bootstrap_stage0_to_stage1() {
         error_count, EMITTED_RUST_ERROR_RATCHET
     );
 
-    // Cleanup
-    let _ = std::fs::remove_dir_all(&sources_dir);
-    let _ = std::fs::remove_dir_all(&stage1_dir);
+    // DEBUG: preserve output for inspection
+    eprintln!("stage1 output preserved at: {}", stage1_dir.display());
+    // let _ = std::fs::remove_dir_all(&sources_dir);
+    // let _ = std::fs::remove_dir_all(&stage1_dir);
 }
 
 // ── 4. bootstrap_fixed_point ────────────────────────────────────────────
