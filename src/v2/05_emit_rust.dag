@@ -1703,7 +1703,7 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
 }
 
 fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
-  map_contains_key(rt_ref_map_functions, function_name)
+  map_contains_key(rt_ref_map_functions(), function_name)
 }
 
 fn rust_runtime_bridge_name(function_name: String) -> String {
@@ -2072,7 +2072,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let callee = lookup_item(registry: registry, name: func)
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
   let is_rt = map_contains_key(rt_functions, func)
-  let is_rt_ref_map = map_contains_key(rt_ref_map_functions, func)
+  let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
