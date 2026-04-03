@@ -937,6 +937,9 @@ match param_strs.clone().first().cloned() {
     None => emit_primitive_type(n.name.clone(), target.clone()),
 }
 }
+} else if n.name.clone().as_str() == tuple_type_name().as_str() {
+                        // Bare Tuple with no children
+                        match target.clone() { RenderTarget::Python => "Tuple".to_string(), RenderTarget::Go => "struct{}".to_string(), _ => "()".to_string() }
 } else {
                         emit_primitive_type(n.name.clone(), target.clone())
 }

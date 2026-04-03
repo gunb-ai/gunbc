@@ -917,6 +917,9 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
         Some { value: inner } => emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
         None => emit_primitive_type(name: n.name, target: target)
       }
+    } else if n.name == tuple_type_name {
+      // Bare Tuple with no children (type params stripped) — emit as generic tuple
+      match target { Python => "Tuple"  Go => "struct{}"  _ => "()" }
     } else {
       emit_primitive_type(name: n.name, target: target)
     }
