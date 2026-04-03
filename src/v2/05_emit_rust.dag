@@ -2295,8 +2295,10 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
     ExprLambda { semantics: semantics } =>
       let ps = lambda_param_names_at(texpr: lambda_expr, source_index: scope.type_env.source_index)
       let bd = lambda_body(texpr: lambda_expr)
+      // BRIDGE: Known unresolved acc type patterns → emit "_" to let Rust infer
+      let safe_acc_type = if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
       let fallback_types = ps |> enumerate |> map(pair =>
-        if pair.first == 0 { acc_type_str } else { elem_type_str }
+        if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
       let param_strs = lambda_param_type_strs(params: ps, semantics: none, fallback_types: fallback_types, rc_types: rc_types)
       let params_str = param_strs |> join(separator: ", ")
@@ -2980,6 +2982,28 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
   }
 }
 
+// Find a struct name from type_summaries whose fields match the given record
+// literal's field names exactly.  Covers record literals inside list literals
+// where the element type name is lost during inference.
+fn find_struct_name_by_fields(field_names: List<String>, type_summaries: Map<String, TypeSummary>) -> String? {
+  let n_fields = field_names |> count
+  if n_fields == 0 { return none }
+  let candidates = map_values(type_summaries) |> filter(summary =>
+    match summary.repr {
+      StructRepr =>
+        let ftm_keys = map_keys(summary.field_type_map)
+        if ftm_keys |> count == n_fields {
+          field_names |> all(fn_name => map_contains_key(summary.field_type_map, fn_name))
+        } else { false }
+      _ => false
+    }
+  )
+  match candidates |> first {
+    Some { value: s } => Some { value: s.name }
+    None => none
+  }
+}
+
 fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: String?, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, rc_types: rc_types)
   let qualified_name = match struct_name {
@@ -3004,11 +3028,26 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             None => "compile_error!(\"empty anonymous record literal\")"
           }
         } else {
-          // Multi-field anonymous record: emit as tuple.
-          let vals = fields |> map(f =>
-            emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-          )
-          concat("(", vals |> join(separator: ", "), ")")
+          // Multi-field anonymous record: try struct name resolution by field matching.
+          let lit_field_names = fields |> map(f => field_init_node_name(n: f))
+          match find_struct_name_by_fields(field_names: lit_field_names, type_summaries: emit_info.type_summaries) {
+            Some { value: resolved_sn } =>
+              let field_strs = fields |> map(f =>
+                let fname = field_init_node_name_at(n: f, source_index: scope.type_env.source_index)
+                let fval = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+                concat("    ", emit_ident(name: fname, target: Rust), ": ", fval, ",")
+              )
+              let body = field_strs |> join(separator: "\n")
+              let struct_lit = concat(resolved_sn, " {\n", body, "\n}")
+              if emit_map_has(m: rc_types, key: resolved_sn) {
+                concat("Rc::new(", struct_lit, ")")
+              } else { struct_lit }
+            None =>
+              let vals = fields |> map(f =>
+                emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+              )
+              concat("(", vals |> join(separator: ", "), ")")
+          }
         }
       } else {
         "compile_error!(\"cannot resolve anonymous record type in emitter\")"

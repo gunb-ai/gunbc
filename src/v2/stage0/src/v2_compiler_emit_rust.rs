@@ -2301,9 +2301,8 @@ pub fn emit_typed_fold_lambda(lambda_expr: Rc<Node>, acc_type_str: String, elem_
     ExprData::ExprLambda { semantics: semantics, .. } => {
         let ps: Rc<Vec<String>> = lambda_param_names_at(lambda_expr.clone(), scope.type_env.clone().source_index.clone());
 let bd: Rc<Node> = lambda_body(lambda_expr.clone());
-// When acc type contains "()" (unit — unresolved element type), emit "_" instead.
-// "()" constrains Rust's inference to the wrong type; "_" lets Rust unify from body.
-let safe_acc_type: String = if v2_rt::string_contains(&acc_type_str, "()".to_string()) && acc_type_str.as_str() != "()" {
+// BRIDGE: Known unresolved acc type patterns → emit "_" to let Rust infer
+let safe_acc_type: String = if acc_type_str.as_str() == "Rc<Vec<()>>" || acc_type_str.as_str() == "Vec<()>" || acc_type_str.as_str() == "Option<()>" {
     "_".to_string()
 } else {
     acc_type_str.clone()
@@ -3152,6 +3151,20 @@ if ((rc_name.clone().as_str() != "".to_string().as_str()) && emit_map_has(rc_typ
 }
 }
 
+pub fn find_struct_name_by_fields(field_names: Rc<Vec<String>>, type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>) -> Option<String> {
+    let n_fields = field_names.len() as i64;
+    if n_fields == 0 { return None; }
+    for summary in v2_rt::map_values(&type_summaries).iter().cloned() {
+        if let TypeRepr::StructRepr = (*summary.repr.clone()).clone() {
+            let ftm_keys: Rc<Vec<String>> = Rc::new(v2_rt::map_keys(&summary.field_type_map));
+            if (ftm_keys.len() as i64) == n_fields && field_names.iter().all(|fn_name| v2_rt::map_contains_key(&summary.field_type_map, fn_name.clone())) {
+                return Some(summary.name.clone());
+            }
+        }
+    }
+    None
+}
+
 pub fn emit_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<Node>>>, parent_enum: Option<String>, resolved_type: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let struct_name: Option<String> = explicit_record_struct_name(type_name.clone(), resolved_type.clone(), rc_types.clone());
@@ -3173,8 +3186,25 @@ if (is_product.clone() && (resolved_type.name.clone().as_str() == "".to_string()
 }
 } else {
                     {
-                        let vals: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(emit_typed_expr(field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024)); } __result });
-v2_rt::concat(v2_rt::concat("(".to_string(), vals.clone().join(&", ".to_string())), ")".to_string())
+                        let lit_field_names: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(field_init_node_name(f.clone())); } __result });
+match find_struct_name_by_fields(lit_field_names.clone(), emit_info.type_summaries.clone()) {
+    Some(resolved_sn) => {
+        let field_strs: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() {
+            let fname: String = field_init_node_name_at(f.clone(), scope.type_env.clone().source_index.clone());
+            let fval: String = emit_typed_expr(field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
+            __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), fval.clone()), ",".to_string()));
+        } __result });
+        let body: String = field_strs.clone().join(&"\n".to_string());
+        let struct_lit: String = v2_rt::concat(v2_rt::concat(v2_rt::concat(resolved_sn.clone(), " {\n".to_string()), body.clone()), "\n}".to_string());
+        if emit_map_has(rc_types.clone(), resolved_sn.clone()) {
+            v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), struct_lit.clone()), ")".to_string())
+        } else { struct_lit.clone() }
+    },
+    None => {
+        let vals: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(emit_typed_expr(field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024)); } __result });
+        v2_rt::concat(v2_rt::concat("(".to_string(), vals.clone().join(&", ".to_string())), ")".to_string())
+    },
+}
 }
 }
 } else {
