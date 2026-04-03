@@ -100,7 +100,7 @@ type ScanResult {
 
 type SourceRef {
   file: String
-  source_chars: List<String>
+  source_chars: List<Int>
 }
 
 // === Token construction helper ===
@@ -116,7 +116,7 @@ fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
 // O(n) per call on non-ASCII UTF-8 input).
 
 fn source_char(source: SourceRef, pos: Int) -> String {
-  source.source_chars[pos]
+  from_code_point(cp: source.source_chars[pos])
 }
 
 fn source_len(source: SourceRef) -> Int {
@@ -127,16 +127,16 @@ fn source_substring(source: SourceRef, start: Int, end: Int) -> String {
   source_substring_acc(chars: source.source_chars, pos: start, end: end, acc: [])
 }
 
-fn source_substring_acc(chars: List<String>, pos: Int, end: Int, acc: List<String>) -> String {
+fn source_substring_acc(chars: List<Int>, pos: Int, end: Int, acc: List<String>) -> String {
   if pos >= end { join(acc, separator: "") }
   else {
-    source_substring_acc(chars: chars, pos: pos + 1, end: end, acc: list_push(acc, chars[pos]))
+    source_substring_acc(chars: chars, pos: pos + 1, end: end, acc: list_push(acc, from_code_point(cp: chars[pos])))
   }
 }
 
 fn source_scan_while(source: SourceRef, start: Int, pred: fn(String) -> Bool) -> Int {
   if start >= source_len(source: source) { source_len(source: source) }
-  else if pred(ch: source.source_chars[start]) {
+  else if pred(ch: from_code_point(cp: source.source_chars[start])) {
     source_scan_while(source: source, start: start + 1, pred: pred)
   } else { start }
 }
@@ -145,14 +145,14 @@ fn source_skip_ws(source: SourceRef, start: Int) -> Int {
   if start >= source_len(source: source) { start }
   else {
     let ch = source.source_chars[start]
-    if ch == " " || ch == "\t" { source_skip_ws(source: source, start: start + 1) }
+    if ch == code_point(" ") || ch == code_point("\t") { source_skip_ws(source: source, start: start + 1) }
     else { start }
   }
 }
 
 fn source_scan_to_eol(source: SourceRef, start: Int) -> Int {
   if start >= source_len(source: source) { source_len(source: source) }
-  else if source.source_chars[start] == "\n" { start }
+  else if source.source_chars[start] == code_point("\n") { start }
   else { source_scan_to_eol(source: source, start: start + 1) }
 }
 

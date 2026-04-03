@@ -2190,7 +2190,8 @@ fn emit_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, sc
   } else if is_map {
     concat("(", base_str, ").get(&", index_str, ").cloned()")
   } else {
-    "panic!(\"internal error: unsupported index base in emitter\")"
+    // List indexing: base[index as usize].clone()
+    concat(base_str, "[(", index_str, ") as usize].clone()")
   }
 }
 

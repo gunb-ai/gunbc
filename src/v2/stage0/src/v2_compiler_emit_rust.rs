@@ -2209,7 +2209,8 @@ if is_rust_string_like(base_node.clone()) {
             if is_map.clone() {
                 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), base_str.clone()), ").get(&".to_string()), index_str.clone()), ").cloned()".to_string())
 } else {
-                "panic!(\"internal error: unsupported index base in emitter\")".to_string()
+                // List indexing: base[index as usize].clone()
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str.clone(), "[(".to_string()), index_str.clone()), ") as usize]".to_string()), ".clone()".to_string())
 }
 }
 }
