@@ -2968,7 +2968,13 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, rc_types: rc_types)
   let qualified_name = match struct_name {
     Some { value: sn } => Some { value: sn }
-    None => none
+    None =>
+      // Fallback: if resolved_type has a name that's a known struct in type_summaries,
+      // use it. This covers record literals nested in list literals where the type
+      // name doesn't propagate from the list element type context.
+      if resolved_type.name != "" && map_contains_key(emit_info.type_summaries, resolved_type.name) {
+        Some { value: resolved_type.name }
+      } else { none }
   }
   match qualified_name {
     None =>

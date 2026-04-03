@@ -3145,7 +3145,10 @@ pub fn emit_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<Node>>
         let struct_name: Option<String> = explicit_record_struct_name(type_name.clone(), resolved_type.clone(), rc_types.clone());
 let qualified_name: Option<String> = match struct_name.clone() {
     Some(sn) => Some(sn.clone()),
-    None => None,
+    None =>
+        if resolved_type.name.clone().as_str() != "" && v2_rt::map_contains_key(&emit_info.type_summaries, resolved_type.name.clone()) {
+            Some(resolved_type.name.clone())
+        } else { None },
 };
 match qualified_name.clone() {
     None => {
