@@ -2389,7 +2389,13 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   }
   // Use iter().cloned().collect() which works for both Rc<Vec<T>> (auto-deref)
   // and bare Vec<T>. Avoids the (*recv).clone() issue with slices.
-  concat("Rc::new({ let mut __sorted: Vec<_> = ", recv_str, ".iter().cloned().collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(a.clone()); let __kb = (", sort_key_fn, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+  // When elem_type_str is "_", omit type annotations and use a.clone() directly
+  // as sort key — avoids the (|name: _| ...)(a.clone()) wrapper that Rust can't infer.
+  if elem_type_str == "_" {
+    concat("Rc::new({ let mut __sorted: Vec<_> = ", recv_str, ".iter().cloned().collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+  } else {
+    concat("Rc::new({ let mut __sorted: Vec<_> = ", recv_str, ".iter().cloned().collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(a.clone()); let __kb = (", sort_key_fn, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+  }
 }
 
 fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
