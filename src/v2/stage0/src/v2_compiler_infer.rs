@@ -885,19 +885,9 @@ named_collection_type(receiver_type_name.clone(), lambda_ret.clone())
     _ => None,
 }
 };
-// fold returns accumulator type. When init is under-resolved
-// (e.g., empty_map() with no value type), use lambda body return type.
-let acc_under_resolved: bool = match fold_acc.clone() {
-    Some(ref acc_type) => node_is_keyed_collection(acc_type.clone()) && (acc_type.children.clone().len() as i64) < 2,
-    None => true,
-};
-if acc_under_resolved {
-    match typed_args.clone().iter().cloned().filter(|a| is_lambda_expr(arg_value(a.clone()))).collect::<Vec<_>>().first().cloned() {
-        Some(lambda_arg) => rt_type(arg_value(lambda_arg.clone())),
-        None => match fold_acc.clone() { Some(at) => at.clone(), None => fallback.clone() },
-    }
-} else {
-    match fold_acc.clone() { Some(at) => at.clone(), None => fallback.clone() }
+match fold_acc.clone() {
+    Some(acc_type) => acc_type.clone(),
+    None => fallback.clone(),
 }
 }
 } else {
