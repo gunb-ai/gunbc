@@ -38,8 +38,8 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (ratchet 2) | 0 | 92 dsl + 29 v2 files, M1 complete. DSL_COMPLEXITY_RATCHET = 2 tolerates 2 user-defined recursive union violations (stack_size, fold_stack) — deferred until CX lane completes |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 6 | 0 | VERIFIED (2026-04-03, PR #307). Down from 23→10→7→6 via TypeRendering switchover + .dag source fixes. Remaining: 4 inference failures (CompilerError types), 2 tokenizer character model. CX gate disabled — emission not blocked. |
-| Stage0 regeneration (C) | RED | GREEN | CX gate disabled in both stage0 and compile.dag. Emission works (40 files). Blocked on 6 emitted-Rust errors, not on CX. |
+| Bootstrap emitted Rust (B) | 3 | 0 | VERIFIED (2026-04-03, PR #307). Down from 23→10→7→6→3 via TypeRendering switchover + map_keys Rc wrapping + CompilerError fold fallback. Remaining: 3 tokenizer character model (codepoint carrier). CX gate disabled — emission not blocked. |
+| Stage0 regeneration (C) | RED | GREEN | CX gate disabled in both stage0 and compile.dag. Emission works (40 files). Blocked on 3 emitted-Rust errors, not on CX. |
 | L1 ratchet | 24 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
@@ -55,7 +55,7 @@ stage0 and `compile.dag` — emission is not blocked by complexity
 violations. The `bootstrap_stage0_to_stage1` test runs end-to-end:
 stage0 binary → compile .dag → emit Rust → `cargo check`.
 
-Error trajectory: 23 → 15 → 14 → 11 → 10 → 7 → 6.
+Error trajectory: 23 → 15 → 14 → 11 → 10 → 7 → 6 → 3.
 
 **TypeRendering switchover (PR #307):** Replaced 23 scattered
 `emit_node_type_rc()` calls in `emit_rust.rs` with centralized
@@ -63,7 +63,7 @@ Error trajectory: 23 → 15 → 14 → 11 → 10 → 7 → 6.
 validated with 0 mismatches. Type rendering bugs now have ONE fix
 site instead of 12+.
 
-### Fixes applied (23 → 6)
+### Fixes applied (23 → 3)
 
 | Fix | Errors | Root cause |
 |-----|--------|-----------|
@@ -74,23 +74,31 @@ site instead of 12+.
 | .dag source: fold init `{}` | 1 | Use `empty_map()` explicitly |
 | .dag source: function call parens | 2 | `rt_ref_map_functions` → `rt_ref_map_functions()` |
 | empty_map fallback | ~40 sentinels | Emit `Rc::new(HashMap::new())`, let Rust infer from annotations |
+| map_keys/map_values Rc wrapping | 1 | v2_rt::map_keys returns Vec, needs Rc<Vec>. Wrapping in both method call and function call paths |
+| CompilerError fold fallback | 2 | collection_element_type rendered error as compile_error! sentinel. Fall back to `_` for Rust inference |
 
-### Remaining 6 errors (3 root causes)
+### Remaining 3 errors (1 root cause: codepoint carrier)
 
-**Inference failures (4 errors: 3 E0308, 1 E0631):** The
-resolver/inference phase produced `CompilerError` instead of a real
-type at several sites. The emitter faithfully renders what inference
-gives it — the fix is upstream in inference, not emission.
+All 3 errors are in `v2_compiler_tokenize.rs`. The `.dag` type model
+declares `source_chars: List<String>` but `chars()` produces
+`List<Int>` (code points). Stage0 manually converts with
+`.chars().map(|c| c.to_string())`. The emitter produces
+`.chars().map(|c| c as i64)` (matching code point semantics used
+elsewhere, e.g. `04_service.dag` uppercase check).
 
-**Tokenizer character model (2 errors: 1 E0282, 1 E0599):** The
-emitter doesn't model character indexing (`source_chars[pos]`).
-Committed stage0 has hand-written code. The emitter emits
-`panic!("unsupported index base")`. Fix: model list indexing
-in the target-language contract (see TLC lane below).
+- **E0282** (line 163): `let ch = panic!("unsupported index base")` —
+  list indexing not modeled in emitter's `emit_typed_index`
+- **E0599** (line 182): `.as_deref()` on `!` type (cascade from above)
+- **E0308** (line 200): `source_chars` expects `Rc<Vec<String>>`, gets
+  `Rc<Vec<i64>>` from chars()
 
-**Not emission modeling gaps.** These are inference-boundary bugs and
-a known stage0/source gap, not the scattered-rendering pattern that
-TypeRendering fixed.
+**Fix path:** This is the codepoint carrier issue (ROADMAP M4 Tier 2.5).
+Two approaches:
+1. **Context-sensitive chars()**: emit `c.to_string()` when target is
+   `List<String>`, `c as i64` when target is `List<Int>`. Requires
+   type-directed emission.
+2. **Uniform model**: change `source_chars: List<Int>` and compare code
+   points throughout tokenizer. Simpler but changes the .dag type model.
 
 **Reviewer-flagged structural debt (tracked, not blocking merge):**
 
