@@ -1548,7 +1548,15 @@ if is_data.clone() {
                                 emit_ident(n.clone(), RenderTarget::Rust)
 }
 },
-    None => emit_ident(n.clone(), RenderTarget::Rust),
+    None => {
+        // Zero-arg function references need () in Rust
+        let is_func_binding: bool = match binding_kind.clone() {
+            Some(ref bk) => matches!(**bk, VarBindingKind::FunctionValueBinding),
+            None => false,
+        };
+        if is_func_binding { v2_rt::concat(emit_ident(n.clone(), RenderTarget::Rust), "()".to_string()) }
+        else { emit_ident(n.clone(), RenderTarget::Rust) }
+    },
 },
 }
 }
@@ -2409,7 +2417,7 @@ let sort_key_fn: String = match args.clone().first().cloned() {
     Some(a) => emit_typed_collection_lambda(arg_value(a.clone()), elem_type_str.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()),
     None => "compile_error!(\"missing sort_by key function argument\")".to_string(),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __sorted: Vec<_> = (*".to_string(), recv_str.clone()), ").clone(); __sorted.sort_by(|a: &".to_string()), elem_type_str.clone()), ", b: &".to_string()), elem_type_str.clone()), "| { let __ka = (".to_string()), sort_key_fn.clone()), ")(a.clone()); let __kb = (".to_string()), sort_key_fn.clone()), ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __sorted: Vec<_> = ".to_string(), recv_str.clone()), ".iter().cloned().collect(); __sorted.sort_by(|a: &".to_string()), elem_type_str.clone()), ", b: &".to_string()), elem_type_str.clone()), "| { let __ka = (".to_string()), sort_key_fn.clone()), ")(a.clone()); let __kb = (".to_string()), sort_key_fn.clone()), ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })".to_string())
 }
 }
 
