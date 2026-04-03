@@ -7,6 +7,18 @@ types, truth values, cardinality, product/coproduct — is compositional
 modeling in `.dag`. Languages are coercion targets. Testing is
 compilation.
 
+**Bounded kernel invariant:** Node is the only recursive semantic
+authority in the compiler IR. All durable recursive structures are
+Node trees — recursion lives in the data (children list), not in
+type definitions. Non-Node types are flat discriminants and data
+tables. This does not ban flat helper products (parser result types,
+accumulator structs) — only recursive or authoritative structures
+alongside Node. This makes descent provable by construction: any
+function that walks Node.children is structurally bounded, and the
+complexity analyzer needs one primary proof shape (Node descent via child
+accessors), though additional proof rules remain for list length, parser
+token position, set drain, and mixed list×tree ordering.
+
 Full thesis: [docs/architecture.md](docs/architecture.md)
 Compiler laws and coercion model: [docs/compiler-laws.md](docs/compiler-laws.md)
 Coercion design (algebra-keyed inhabitants): [docs/coercion-design.md](docs/coercion-design.md)
@@ -22,17 +34,17 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 |--------|-------|--------|-------|
 | .dag files | 91 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
-| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 316 are indirect-recursion complexity violations |
+| Self-compile diagnostics | 314 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 314 are indirect-recursion complexity violations |
 | Files emitted | 40 | — | Rust target |
-| `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
+| `full_dsl_compiles` | PASSES (ratchet 2) | 0 | 92 dsl + 29 v2 files, M1 complete. DSL_COMPLEXITY_RATCHET = 2 tolerates 2 user-defined recursive union violations (stack_size, fold_stack) — deferred until CX lane completes |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 41 | 0 | CX gate bypassed (PR #300). 41 `Rc::new(HashMap::new())` scaffolding replacing `compile_error!("empty_map")` — bare containers reaching emit without resolved value types (M2 blocker 2, fix order #6). |
-| Stage0 regeneration (C) | RED | GREEN | Self-compile: 0 typed errors, 40 files emitted, 297 CX (bypassed). Stage1→stage0 replacement (Bootstrap D) not yet green. |
+| Bootstrap emitted Rust (B) | UNVERIFIED (0 known) | 0 | Down from 8658→99→12→5→1→0 known. All E0425/E0282 fixed. Emission blocked by complexity violations; cargo check not yet run on emitted output |
+| Stage0 regeneration (C) | RED | GREEN | Blocked on complexity violations → 0 (emission gate); stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 24 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 315 | 0 | 51 root functions → 315 errors (ratcheted). **Analyzer-language mismatch:** proof model targets variant-field recursion but language uses container-child recursion (Node.children + accessors). Unsound witnesses reverted. See Exploratory Directions for CX lane redesign plan. |
+| Complexity violations | 164 | 0 | Down from 315→313→173→164 via proof-constructor fixes + arithmetic descent. Remaining 164 = unfinished concept modeling (see Pipeline Algebraic Grounding). ~60 parser/MatchPattern (M7), ~30 CostExpr/SizeExpr (tropical semiring dissolution), ~40 fold/catamorphism (M4), ~25 emit/infer SCCs (M5). |
 
 ---
 
@@ -43,7 +55,7 @@ enforced. 10 reviewer violations resolved. Fold inference improved.
 Error count: 99 → 12 → 5 → 1 → 0 (99 fixed). PR #277, #285, fold
 bidirectional unification, field_access_base import fix.
 
-**Not yet verified:** emission is blocked by complexity violations (311).
+**Not yet verified:** emission is blocked by complexity violations (164).
 The fail-closed gate in `compile_sources` prevents file emission when
 any infer-stage errors exist, including complexity violations. The
 bootstrap test skips cargo check when blocked by complexity violations
@@ -102,12 +114,12 @@ path). No overlap with Category A.
 
 **External review fix order (2026-04-02):**
 
-1. `child_inferred_or_empty` → structural error propagation (M2 blocker 1) — **PARTIAL** (PR #300: InferError/Variable/Untyped→error_type, but None-path still leaks error-typed fields into outputs)
-2. `authored_name_at` semantic fallback → carry names structurally (M4 L2) — **PARTIAL** (PR #300: `_at` accessor wrappers added, but all still call `authored_name_at` — wrapper migration only, not structural)
+1. `child_inferred_or_empty` → structural error propagation (M2 blocker 1)
+2. `authored_name_at` semantic fallback → carry names structurally (M4 L2)
 3. Finish EmitContext/boundary migration → emit consumes, not rediscovers (E0c)
-4. Transport/config → one authority (M2 structural debt) — **PARTIAL** (PR #300: config keys centralized into constants, but transport kind still name-based: `t.name == "rest"/"shell"/"file"`)
+4. Transport/config → one authority (M2 structural debt)
 5. `CallableOf` + clean `partial_function_templates` (M4 L1 Tier 2.5)
-6. **Eliminate bare containers at inference boundary (M2 blocker 2) — ACTIVE BOOTSTRAP BLOCKER (110 errors)**
+6. Eliminate bare containers at inference boundary (M2 blocker 2)
 
 ---
 
@@ -222,82 +234,6 @@ intermediate compilation step becomes a bottleneck.
 
 ---
 
-## Emission Design Debt (2026-04-02 bootstrap triage)
-
-Bootstrap B triage (110 remaining errors after CX gate bypass + serde fix)
-revealed three incomplete abstractions in the emission pipeline. These are
-not bugs to patch — they are design gaps that will hit every new target
-(Spice, English, etc.) and violate "emission is translation, not
-decision-making" (INVARIANTS.md §Emission).
-
-**1. Materialization strategy is not parameterized.**
-Data constants (`data foo: List<T> = [...]`) use three ad-hoc strategies:
-Rust JSON-deserializes nested records (`serde_json::from_value`), Python
-assigns directly, Go assigns directly. The decision to JSON-round-trip is
-embedded in `emit_data_def()` behind `has_nested_records_node()` — other
-targets don't even check. A new target must independently invent its
-materialization pathway. LanguageSpec should declare how each language
-constructs nested values; the emitter should read that declaration.
-
-**2. Sharing × serialization coupling is unmodeled.**
-`build_rc_types()` (Rust emitter) decides what gets Rc-wrapped.
-`SerializationSpec` (language extdep data) decides what derives are applied.
-`emit_data_def()` tries to deserialize into the Rc-wrapped type. These three
-concerns interact but have no coordination point. Serde's `features = ["rc"]`
-papers over Rust, but any target with explicit memory management will
-rediscover this coupling. LanguageSpec's `SharingStrategy` carries
-`wrap_template` (syntax) but not the downstream constraints wrapping imposes
-on construction/serialization.
-
-**3. Type decoration selection leaks into emitters.**
-`SerializationSpec` carries four Rust derive strings (normal/copy × struct/
-enum) plus Python's `@dataclass`. But the selection logic (which derive for
-which type) is embedded in `emit_struct_from_children()` checking `rc_types`
-membership and `has_fn_fields`. This is a per-language rendering fact that
-should be data in LanguageSpec, not code in the emitter.
-
-**Root pattern:** LanguageSpec describes syntax (templates, strings) but not
-semantics (when to apply them, how they interact, what constraints they
-impose). Emitters compensate by embedding semantic decisions as code. The
-INVARIANTS.md table at §Emission lists 8 known violations of this pattern.
-
-**Live bootstrap status:**
-- **Bootstrap B:** 41 `Rc::new(HashMap::new())` scaffolding (defers type proofs).
-- **Bootstrap C (self-compile):** GREEN. Regenerated binary self-compiles with
-  0 typed errors, 40 files emitted, 297 CX diagnostics (bypassed).
-  Four root causes found and fixed:
-  1. `pattern_subject_from_node` checked `inferred` field for TypeVariable
-     instead of `node.name == "Dynamic"` — 730 cascading errors (NOTE: leans
-     on node.name, tracked as D6 debt; should become structural variant)
-  2. Container types expanded via `Map = PartialFunction<K,V>` alias — 80 errors.
-     Fix: `is_container_type` check before alias expansion (per INVARIANTS.md)
-  3. Bool literal patterns not counted in exhaustiveness checker — 1 error
-  4. String interpolation `"{acc}.{r.name}"` mis-parsed `.` as field access — 1 error
-  Plus 3 perf fixes: iterative tokenizer (O(n^2)→O(n)), dag_syntax_spec
-  thread_local cache, shape-based token_shape_to_binop.
-- **Bootstrap D (stage1→stage0 replacement):** NOT YET GREEN. Stage1 compiles
-  as Rust but replacing stage0 requires re-applying bootstrap patches
-  (tokenizer, dag_syntax cache, binop, bare-map scaffolding). Full
-  regeneration loop needs these patches automated or emitter fixed upstream.
-- Fix order #6 (M2 blocker 2) remains: incomplete parameterized types
-  leaking past the inference boundary.
-
-**Next PR direction:**
-- Stay on bootstrap. Do not broaden to #1/#2/#4 completion.
-- Make bootstrap patches unnecessary: fix the emitter so regenerated code
-  doesn't need iterative tokenizer, dag_syntax cache, or shape binop patches.
-- **Root cause of all perf patches**: the Rust emitter generates all values
-  as owned types (`String`, `Rc<Vec<T>>`) with `.clone()` on every reference.
-  Hot paths like `char_at(source.text.clone(), pos)` clone 60KB per character.
-  Without compiler optimizations, this is 93x slower than release mode.
-  The fix is emitting `&str`-based code for read-only string access and
-  `&[T]` for read-only list access — a fundamental emitter architecture change.
-- The `node.name`-based pattern_subject fix is D6 debt — replace with
-  structural InferredNode variant when D6 lands.
-- Core question: do parameterized container facts survive resolve→emit?
-
----
-
 ## Critical Path
 
 ```
@@ -317,14 +253,176 @@ M1 (every .dag compiles)
                          └→ M7 (dissolve structural bridges)
 
   SIDEBAR (parallel, not blocking):
-  CX: complexity analyzer redesign (I1/I2)
-      CX-0: delete dead infrastructure (RecursiveVariantFieldWitness)
-      CX-1: container-child descent proof
-      CX-2: catamorphism proof (multi-call on disjoint children)
-      CX-3: SCC container-child descent
-      CX-4: parser if-progress merging
-      CX-5: delete BOOTSTRAP_MODE bypass
+  CX: complexity analyzer (315 → 164, PR #301 + algebraic grounding)
+      CX-0: delete dead infrastructure (DONE)
+      CX-1: container-child descent proof (DONE)
+      CX-M: IR child layout model (DONE — expr_child_roles in 00_core.dag)
+      CX-2: if→Option→match descent (DONE — LitNull fix, ExprBlock var propagation)
+      CX-3: SCC lexicographic proof (DONE — independent-dim TreeSize×ListLength)
+      CX-4: proof-before-branching (DONE — proof constructor runs before path_calls>1)
+      ── remaining 164 violations = unfinished algebraic grounding ──
+      The 164 are NOT analyzer bugs. They are ungrounded concepts —
+      ad-hoc types that are standard algebraic structures in disguise.
+      DFA triage maps all 164 to four algebraic root causes:
+        ~80: parser SCCs → DescentEvidence lattice (std/termination.dag)
+        ~40: fold/catamorphism → descend primitive (std/iteration.dag)
+        ~30: CostExpr/SizeExpr → tropical semiring (std/algebra.dag)
+        ~14: accessor-on-var → signature-driven fold (std/algebra.dag)
+      Path to 0: ground each concept in std/, dissolve ad-hoc types.
+      CX-A → CX-B → CX-C → CX-D → CX-E (see CX lane below)
 ```
+
+---
+
+## P1: Modeling Consolidation
+
+Programs are applied mathematics with informal names. The compiler
+pipeline contains ~90 redundant types that are standard algebraic
+structures (monads, lattices, free algebras) reimplemented ad-hoc.
+Consolidating them dramatically simplifies the pipeline, reduces the
+stage0 mirror surface, and dissolves complexity violations.
+
+**Thesis:** every new type should derive from an existing std/ algebraic
+structure. If it doesn't, either the structure is missing from std/ (add
+it with an external authority citation) or the type is a reinvention.
+The grounding is permanent — algebraic structures don't need refactoring
+because they ARE the foundation everything else refactors toward.
+
+### P1-A: Result monad unification (58 types → 2)
+
+**Parse stage:** 36 types in `02_parse.dag` with identical shape:
+```
+type FooResult { foo: T, state: ParserState, err: ErrorNode? }
+```
+
+**Resolve/Infer:** 22+ types across `04_resolve.dag`, `04_infer.dag`,
+`03_resolve.dag` with identical shape:
+```
+type BarResult { bar: T, diagnostics: List<ErrorNode> }
+```
+
+**Fix:** Two generic types replace 58:
+```
+type ParseM<T> { value: T, state: ParserState, err: ErrorNode? }
+type DiagM<T> { value: T, diagnostics: List<ErrorNode> }
+```
+
+**Algebraic identity:** Both are `Writer<Errors> × State<ParserState>`
+monads — standard from Moggi (1989). The parse variant threads state;
+the resolve/infer variant only accumulates diagnostics.
+
+**Impact:** ~58 type definitions deleted. ~200 construction sites
+simplified. Stage0 mirror shrinks proportionally. Parser file drops
+from 68 to ~30 type definitions.
+
+**Blocked on:** .dag generic type support (currently limited). May need
+type aliases or a `ParseResult<T>` encoding convention.
+
+### P1-B: Emit parameterization (7,020 lines → ~4,500)
+
+Three language-specific emit files repeat identical control flow with
+different string templates:
+
+| Pattern | Functions per language | Total duplicated |
+|---|---|---|
+| Expression dispatchers | 14 | 42 (3 × 14) |
+| TCO handlers | 6 | 12 (2 × 6, Python + Go) |
+| Block statement handlers | 2 | 6 |
+| Test file generators | 3 | 6 |
+| Data definition emitters | 1 | 3 |
+
+**Fix:** `emit_expr(target: LanguageSpec, ...)` replaces
+`emit_rust_expr`, `emit_py_expr`, `emit_go_expr`. The dispatch reads
+LanguageSpec data tables (already designed in `std/languages.dag`).
+
+**Algebraic identity:** Emission is a homomorphism from the typed graph
+to target-language text. The homomorphism is parameterized by the
+target algebra (LanguageSpec). Three copies of the same homomorphism
+with different parameters = one parameterized homomorphism.
+
+**Impact:** ~2,000-2,500 lines eliminated. Adding a new target language
+requires ZERO new emit functions — only LanguageSpec data. This is the
+M5 direction; P1-B is the mechanical prerequisite.
+
+**Blocked on:** M5-early (coercion via TypeRendering) for type emission.
+Expression/statement emission can be parameterized now.
+
+### P1-C: String identity → structural edges (~200 Map<String, X> sites)
+
+406 total `Map<String, X>` uses across the pipeline. Classification:
+
+| Key semantics | Count | Should be structural? |
+|---|---|---|
+| Type/declaration name | 121 | YES → Node reference |
+| Variable/binding name | 95 | YES → scope edge |
+| Module name | 38 | YES → module graph edge |
+| Set membership (Bool) | 104 | NO → correct as-is |
+| Dispatch/lookup tables | 48 | CONTEXT-DEPENDENT |
+
+**Fix:** M4 (structural identity) dissolves ~200 string-keyed lookups
+into Node edges. The remaining ~150 (set membership + dispatch tables)
+are correct uses of maps.
+
+**Algebraic identity:** String-keyed maps are finite partial functions
+(`PartialFunction<String, V>` from std/algebra.dag) used as identity
+proxies. When identity becomes structural (Node reference), the partial
+function's domain changes from String to Node — same algebra, better key.
+
+**Impact:** ~200 map lookups become edge traversals. Type errors from
+name typos become impossible (structural references are checked at
+construction). This IS M4 Lane 2 (Node.name deletion).
+
+### P1-D: Context/accumulator deduplication (10 types → 4)
+
+| Redundancy | Types | Fix |
+|---|---|---|
+| InferScope ≅ ModuleContext | 2 → 1 | Merge ModuleContext into InferScope |
+| ResolveAccum ≅ BindingsAccum ≅ DuplicateCheckState | 3 → 1 | `DiagAccum<S> { state: S, diagnostics: List<ErrorNode> }` |
+| UniqueAccum pattern (repeated) | 2 → 1 | One `DeduplicatedFold<T>` |
+| InferScopeComponents | 1 → 0 | Constructor function, not stored type |
+
+**Impact:** ~6 types eliminated. Clarifies ownership: one inference
+context type, one accumulator pattern, one deduplication fold.
+
+### P1-E: Non-Node recursive type dissolution (CX lane, see above)
+
+| Type | Variants | Algebra | CX work item |
+|---|---|---|---|
+| AlgebraTypeTemplate | 9 | Type constructor free algebra | CX-A |
+| CostExpr | 7 | Tropical semiring (std/algebra.dag) | CX-B |
+| SizeExpr | 5 | Sub-algebra of CostExpr | CX-B (merges into CostExpr) |
+| MatchPattern | 4 | Discrimination algebra | CX-D (M7 long-term) |
+| TypeRendering | 7 recursive fields | Coercion checkpoint | M5 (dissolves into coercion) |
+| ProgressKind | 3 | ≅ DescentEvidence lattice | CX-D |
+
+**Impact:** ~45 type variants eliminated. ~56 complexity violations
+dissolved. The complexity analyzer handles everything as Node descent.
+
+### P1 dependency graph
+
+```
+P1-A (result monad)     — independent, needs generic type support
+P1-B (emit param)       — depends on M5-early for types, independent for exprs
+P1-C (string→structural) — IS M4 Lane 2
+P1-D (context dedup)     — independent, small
+P1-E (non-Node types)    — CX lane, in progress (CX-A/B/D agents running)
+```
+
+P1-A and P1-D are immediately actionable. P1-B can start with
+expression/statement emission (type emission waits for M5-early).
+P1-C is the M4 roadmap. P1-E is the CX lane.
+
+### Expected total impact
+
+| Metric | Before | After P1 |
+|---|---|---|
+| Type definitions | ~536 | ~430 (~100 eliminated) |
+| Emit lines | 7,020 | ~4,500 (~2,500 eliminated) |
+| String-keyed identity maps | ~200 semantic | ~0 (structural edges) |
+| Complexity violations | 164 | ~80 (P1-E contributes ~56) |
+| Stage0 mirror surface | ~17,000 lines | ~13,000 lines |
+
+---
 
 **Coercion implementation parallelism:** The coercion design is complete
 ([docs/coercion-design.md](docs/coercion-design.md)). Implementation
@@ -361,6 +459,354 @@ users have their own domain models (boutique/application-level) that
 interact with the standard language infrastructure. The boundary matters:
 if a concept belongs to a standard, it should trace to one. If it's
 user-owned domain logic, it lives in user `.dag` files.
+
+### Node convergence: all recursive types dissolve into Node
+
+**Status:** Incomplete. The Node migration unified types and expressions
+into a single IR, but several compiler-internal types still define
+recursion in their type definitions rather than using Node structure.
+
+**Invariant:** Node is the only **recursive semantic authority** in
+the compiler IR consumed by resolve/infer/emit/complexity. This does
+NOT ban flat helper products (parser result types, accumulator structs,
+classification enums) — those are fine if they dissolve at construction
+boundaries and never become durable semantic authorities. Wrapper types
+like `InferredNode` (`Resolved | CompilerError | TypeVariable`) serve a
+real structural purpose as fail-closed boundaries — they must be preserved,
+not collapsed into raw Node fields. The safe direction is replacing
+recursive payloads with non-recursive references/keys, not flattening
+error state. The problem is when another recursive or authoritative
+semantic structure exists **alongside** Node.
+
+**Scope:** Node convergence solves *recursive type duplication* only. It
+does NOT solve the following non-recursive authority leaks, which require
+separate fixes (see "Non-recursive authority leaks" table below):
+`Node.name` as semantic authority (~256 constructions), `MatchPattern`
+mid-migration, `TypeRendering` (7 recursive fields, interim stepping
+stone), transport/config duplication (35+ sites), bare/incomplete
+parameterized types, semantic strings (`parent_enum`, `service_name`),
+and missing `CallableOf`. These are tracked in their respective milestones.
+
+Every non-Node recursive authority creates:
+- Rc insertion and clone proliferation (14,204 clones across 33 files)
+- Stack overflow guards (59 `stacker::maybe_grow` calls)
+- Cycle detection infrastructure (200+ lines)
+- Depth limits (`resolve_node_bounded` hardcodes depth=100)
+- Complexity analyzer failures (analyzer only proves Node descent)
+
+**Remaining recursive types and dissolution path:**
+
+| Type | Recursive fields | Dissolution | Milestone |
+|------|-----------------|-------------|-----------|
+| **Node** | children, params, body, etc. | THE kernel — stays | — |
+| **CostExpr** | CostAdd/CostMul/CostMax left+right, CostSum body | Node composition in `std/cost.dag` (see below) | CX lane |
+| **SizeExpr** | SizeAdd/SizeMax left+right | Node composition in `std/cost.dag` | CX lane |
+| **TypeRendering** | element, key, value, params, return_type, inner, generic_args | Dissolves into coercion engine | M5 |
+| **MatchPattern** | VariantPattern.field_bindings → Node → MatchPattern | Full dissolution into Node metadata | M7 |
+| **InferredNode** | Resolved.node → Node → InferredNode | Keep wrapper semantics; replace Resolved payload with non-recursive reference/key | M7 |
+
+**CostExpr/SizeExpr dissolution.** Cost expressions are expression
+trees — structurally identical to the expression model `.dag` already
+has. `CostAdd { left, right }` is `ExprBinOp { op: Add }` with two
+children. The cost semiring algebra (Add, Mul, Max, Sum, Log) is domain
+knowledge, but its representation should be Node compositions in a
+`std/cost.dag` module, not a parallel recursive type. This means:
+- Cost algebra operations become `.dag` type definitions over Node
+- `simplify_cost`, `normalize_constants`, `format_cost_inner` etc.
+  become Node tree walkers — covered by existing descent proofs
+- New cost operations (Pow, Sqrt, Exp) are data table entries, not
+  new variants requiring exhaustive match updates
+- The semiring laws and formal semantics are preserved — only the
+  representation changes
+
+**Worked example — simplify_cost before/after:**
+
+Before (CostExpr — fails descent proof, RC-3):
+```dag
+fn simplify_cost(expr: CostExpr) -> CostExpr {
+  match expr {
+    CostAdd { left: l, right: r } =>
+      let sl = simplify_cost(expr: l)    // recurse on CostExpr field
+      let sr = simplify_cost(expr: r)    // analyzer: "l" is not a Node accessor
+      match (sl, sr) {                   // → ProgressUnknown → violation
+        (CostConst { value: a }, CostConst { value: b }) => CostConst { value: a + b }
+        _ => CostAdd { left: sl, right: sr }
+      }
+    CostConst { value: v } => expr
+    ...
+  }
+}
+```
+
+After (Node — descent proof works via CX-1):
+```dag
+fn simplify_cost(n: Node) -> Node {
+  match n.expr_data {
+    CostAdd =>
+      let sl = simplify_cost(n: cost_left(n))    // cost_left is in ChildRole model
+      let sr = simplify_cost(n: cost_right(n))   // analyzer: accessor of param → ✓
+      if is_cost_const(sl) && is_cost_const(sr) {
+        make_cost_const(value: cost_const_value(sl) + cost_const_value(sr))
+      } else { make_cost_add(left: sl, right: sr) }
+    CostConst => n
+    ...
+  }
+}
+```
+
+Why it works: `cost_left` and `cost_right` are child accessors in
+the ChildRole model. CX-1 already proves that `self(accessor(param))`
+is structural descent. No new proof rule needed.
+
+**Worked example — cost_of_expr (BUILDER, not walker):**
+
+```dag
+fn cost_of_expr(texpr: Node, ctx: CostContext) -> Node {
+  match texpr.expr_data {
+    ExprBinOp =>
+      let lc = cost_of_expr(texpr: binop_left(texpr), ctx: ctx)
+      let rc = cost_of_expr(texpr: binop_right(texpr), ctx: ctx)
+      make_cost_add(left: lc, right: rc)   // OUTPUT is a cost Node
+    ExprCall =>
+      let callee_cost = lookup_or_compute(ctx: ctx, name: call_name)
+      callee_cost
+    ...
+  }
+}
+```
+
+This function walks expression Nodes (input) and produces cost Nodes
+(output). The descent proof is on the INPUT — `binop_left(texpr)` is
+a child accessor. The output type doesn't matter for termination.
+
+**Edge case: does dissolution FAIL anywhere?**
+
+No. Every CostExpr consumer is either:
+1. A tree walker (simplify_cost, normalize_constants) → becomes Node
+   walker with accessor-based descent. CX-1 proves it.
+2. A tree builder (cost_of_expr) → descent is on the INPUT Node
+   tree, already proven. The OUTPUT being cost Nodes is irrelevant.
+3. A formatter (format_cost_inner) → same as case 1.
+
+**What dissolution does NOT solve (remaining root causes after 164):**
+- ~80 parser SCC: parse_type_expr mutual recursion — dissolves with
+  MatchPattern→Node (M7) or DescentEvidence unification (CX-D)
+- ~40 fold/enumerate catamorphism: self-calls inside `children |> fold`
+  callbacks — dissolves via signature-driven evidence fold (CX-C)
+- ~25 emit/infer SCCs: emit_pattern, infer_block_stmts, etc. —
+  dissolves with emission semantics modeling (M5)
+- ~18 work-list drain, topo sort: finite set monotonic progress —
+  dissolves when sort state is modeled explicitly (M4/M5)
+
+Dissolution eliminates ~30 violations (CostExpr/SizeExpr walkers).
+The other ~143 dissolve via concept modeling across M4/M5/M7.
+Analyzer heuristic extensions are NOT the path — they make the
+analyzer code bigger, which the analyzer itself then can't prove.
+
+**MatchPattern dissolution.** MatchPattern variants (Bind, LitPattern,
+VariantPattern, Wildcard) become ExprData-like discriminants on Node.
+Field bindings are already Nodes. The pattern tree is already stored
+on Node via `match_pattern: MatchPattern?` — dissolution replaces the
+separate type with discriminant metadata, making pattern trees ordinary
+Node subtrees.
+
+Worked example — analyze_rc_pattern before/after:
+
+Before (MatchPattern — fails descent proof, RC-7):
+```dag
+fn analyze_rc_pattern(pattern: MatchPattern, ...) -> RcPatternAnalysis {
+  match pattern {
+    VariantPattern { field_bindings: fbs } =>
+      fbs |> map(fb => analyze_rc_pattern(
+        pattern: field_binding_pattern(fb), ...  // opaque helper → violation
+      ))
+    Bind { name: n } => ...
+  }
+}
+```
+
+After (Node — descent works via CX-1):
+```dag
+fn analyze_rc_pattern(n: Node, ...) -> RcPatternAnalysis {
+  match n.expr_data {  // or pattern_data discriminant
+    PatternVariant =>
+      n.children |> map(fb => analyze_rc_pattern(
+        n: pattern_child(fb), ...  // child accessor in ChildRole model → ✓
+      ))
+    PatternBind => ...
+  }
+}
+```
+
+**InferredNode: keep wrapper, eliminate indirect recursion.**
+InferredNode = Resolved { node } | CompilerError { ... } | TypeVariable
+serves a critical structural purpose: it is the prevention against
+fabricated error states. Collapsing it into raw Node fields would lose
+that boundary. The fix is narrower: replace `Resolved { node: Node }`
+with a non-recursive reference (type key, index, or span-based
+identity) so the InferredNode ↔ Node cycle disappears without losing
+the wrapper semantics that distinguish Resolved from CompilerError
+from TypeVariable.
+
+**Per-file impact assessment (every v2 compiler file accounted for):**
+
+CostExpr/SizeExpr (isolated — complexity.dag only):
+- complexity.dag: defines + consumes + produces. All 30+ match sites rewrite
+- stage0/v2_compiler_complexity.rs: mirror of above
+- No other files touched. Lowest-risk dissolution.
+
+TypeRendering (limited scope — 5 files):
+- 04_emit_info.dag: defines + produces (build_type_rendering)
+- 05_emit.dag: consumes + produces (render_type)
+- stage0/v2_compiler_emit_rust.rs: consumes
+- stage0/v2_compiler_emit.rs: consumes + produces
+- stage0/v2_compiler_languages.rs: consumes
+- Already planned for M5 coercion dissolution.
+
+MatchPattern (medium scope — 9 .dag files, 9 .rs files):
+- 00_core.dag: defines
+- 02_parse.dag: produces (parser constructs patterns)
+- 04_infer.dag, 04_patterns.dag, 04_resolve.dag: consume + produce
+- 05_emit_rust.dag, 05_emit_python.dag, 05_emit_go.dag: consume + produce
+- complexity.dag, compile.dag: consume
+- Plus 9 stage0 .rs mirrors
+- Dissolution: pattern variants become ExprData-like discriminants on Node
+
+InferredNode (largest scope — 16 .dag files, 15 .rs files):
+- 00_core.dag: defines (Node.inferred: InferredNode?)
+- Every resolve/infer file: consumes + produces (04_*.dag, 8 files)
+- Every emit file: consumes (05_*.dag, 4 files)
+- 02_parse.dag, 03_normalize.dag, compile.dag: consume + produce
+- Plus 15 stage0 .rs mirrors
+- Dissolution: keep wrapper semantics, replace Resolved payload with
+  non-recursive reference
+- Largest migration. Must wait for bootstrap to be green.
+
+Files with NO non-Node recursive type exposure (clean):
+- 01_tokenize.dag, 03_resolve.dag, 04_cycle.dag, 04_env.dag,
+  04_method.dag, 04_sigs.dag, artifact.dag, languages.dag,
+  ownership.dag, runtime_rust.dag, trace.dag
+
+**Dissolution ordering (by risk and dependency):**
+1. CostExpr/SizeExpr → Node (isolated, unblocks CX lane, no cross-file impact)
+2. TypeRendering → coercion (already planned M5, limited scope)
+3. MatchPattern → Node discriminant (medium scope, post-bootstrap)
+4. InferredNode → non-recursive reference (largest scope, post-bootstrap, last)
+
+**The kernel thins over time.** Today's Node shape is not final.
+`connective` and `return_cardinality` are M7 bridges that dissolve
+into graph structure. The invariant is: "Node is the only recursive
+carrier during convergence; later, some bridge fields also dissolve."
+
+**Non-recursive authority leaks (same class of unfinished migration):**
+
+Node convergence eliminates recursive type duplication, but the
+compiler also has non-recursive authority leaks — places where
+semantic meaning is carried by strings or local structures instead
+of `.dag` declarations. These are not recursive-type issues but are
+the same deeper problem: the compiler carries meaning that should
+come from `.dag` authorities.
+
+| Leak | Current state | Fix |
+|------|--------------|-----|
+| `Node.name` as semantic authority | accessor layer hides but doesn't replace `.name`; ~256 constructions; `authored_name_at` falls back to `.name` | M4 Lane 2 (structural identity) |
+| Semantic strings: `parent_enum`, `service_name` | `VariantValueBinding { parent_enum: String }`, `ExprRecordLit { parent_enum: String? }`, `ServiceMethodSemantics { service_name: String }` | Structural Node references replace strings |
+| Transport/config duplication | 35+ sites encode transport schema locally: constructors, shape predicates, config-key filtering | One `.dag` transport model authority |
+| Bare/incomplete parameterized types | `bare_map_node()` / `bare_list_node()` still fabricate partial structure | Reject at normalization, not infer |
+| Missing `CallableOf` | Higher-order algebra placeholders; hardcoded T/K/V names | Declaration-driven algebra (M4 Tier 2.5/3) |
+| `MatchPattern` mid-migration | Separate type, field_bindings already Nodes, patterns not yet fully on Node | M7 dissolution |
+
+Node convergence is **necessary but not sufficient**. The full
+architecture requires: one recursive carrier (Node convergence),
+declaration-driven identity (M4), one authority per concept (M4/M5),
+sufficient boundaries (M2 hardening), and emission that only
+translates (E0/M5). These are parallel tracks, not sequential gates.
+
+**Hunting rule:** any codepath that still needs `node.name`, `t.name`,
+source-text recovery, `*_placeholder`, bare containers, `compile_error!`
+safety valves, or target-specific emitter branching is **unfinished
+concept modeling**, not business logic. The fix is always one upstream
+authority consumed as authority, not better heuristics. This is the
+same pattern that drove CX violations from 315→164: the remaining 164
+are ungrounded algebraic concepts, not analyzer limitations.
+
+**Downstream consequences of completion:**
+- Complexity analyzer needs one primary proof shape (Node descent), not per-type rules — though additional ranking dimensions (TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality) remain as separate proof rules
+- Rc insertion follows ONE pattern (Node.children)
+- Cycle detection simplifies to Node graph cycles only
+- `stacker::maybe_grow` calls reduce to Node-walking boundaries only
+- Cost algebra functions become ordinary Node walkers — ~40 violations dissolve
+
+---
+
+## Design Direction: Pipeline Algebraic Grounding
+
+Every type in the compiler pipeline is a mathematical concept in
+disguise. When the concept is named correctly and grounded in std/,
+ad-hoc reimplementations become obvious, composition is free, and the
+complexity analyzer handles everything uniformly (Node descent).
+
+**Thesis:** programs are applied mathematics with informal names. The
+compiler's types — CostExpr, SizeExpr, ProgressKind, AlgebraTypeTemplate,
+MatchPattern, TypeRendering — are all standard algebraic structures
+(semirings, lattices, free algebras, state monads) implemented ad-hoc.
+Grounding them in std/algebra.dag eliminates the ad-hoc implementations
+and makes new capabilities fall out of existing infrastructure.
+
+### Pipeline stage audit
+
+| Stage | File | Key types | Algebraic identity | Grounded in std/? |
+|-------|------|-----------|--------------------|-------------------|
+| Tokenize | 01_tokenize.dag | Token, TokenShape, ParserState | Finite alphabet, ℕ position | YES (std/syntax.dag) |
+| Parse | 02_parse.dag | 68 result types, MatchPattern | State monad `(T, State, Err?)`, discrimination algebra | NO — 68 identical structs, MatchPattern ungrounded |
+| Resolve | 03_resolve.dag | KahnDrainState, DFS/SCC accumulators | Graph algorithms (topological sort, SCC) | NO — ad-hoc graph traversal |
+| Infer | 04_infer.dag | TypeEnv, InferredNode, AlgebraTypeTemplate | Finite map (context), BoundedLattice, type constructor free algebra | PARTIAL — AlgebraTypeTemplate in std/ but recursive |
+| Emit | 05_emit*.dag | TypeRendering, LanguageSpec | Coercion homomorphism, language parameterization | PARTIAL — coercion designed, TypeRendering is bridge |
+| Complexity | complexity.dag | CostExpr, SizeExpr, DescentEvidence, ProgressKind | Tropical semiring, BoundedLattice (×2, duplicated) | NO — 6 types duplicated from std/termination.dag |
+
+### Concrete redundancies
+
+| What | Count | Is actually | Collapses to |
+|------|-------|-------------|-------------|
+| Parse result types | 68 types | State monad `ParseM<T>` | 1 generic type |
+| ProgressKind ≅ DescentEvidence | 2 types | Same BoundedLattice `(Strict > Same > Unknown)` | 1 type from std/termination.dag |
+| CostExpr (7 variants) + SizeExpr (5 variants) | 2 recursive types | Tropical semiring terms (Semiring + Lattice from std/algebra.dag) | Node trees |
+| AlgebraTypeTemplate (9 variants) | 1 recursive type | Type constructor free algebra | Node trees |
+| TypeRendering (7 recursive fields) | 1 recursive type | Coercion checkpoint | Dissolves into std/coercion.dag (M5) |
+| 6 termination types in complexity.dag | 6 types | Duplicates of std/termination.dag | Import from std/ |
+| method_cost_shape_table ≅ PrimitiveContract | 2 data tables | Same authority (operation cost) | Merge into std/primitives.dag |
+
+### Missing std/ concepts (proposed additions)
+
+**`std/discrimination.dag`** (new) — Pattern matching / coproduct elimination.
+The elimination form for Coproduct, dual to construction. MatchPattern
+dissolves into this. External authority: pattern calculus, tree automata.
+
+**`std/graph.dag`** (new) — Directed graph algebra.
+DAG, topological sort, SCC, cycle detection. Resolve stage's Kahn/DFS
+code derives from this. External authority: Cormen "Introduction to
+Algorithms", Tarjan (1972).
+
+**`std/algebra.dag` addition** — Signature + Term.
+A signature declares operation symbols with arities. Terms are Node
+trees conforming to the signature. Folds (catamorphisms) are the
+canonical elimination form. This grounds CostExpr/SizeExpr/
+AlgebraTypeTemplate dissolution. External authority: Baader & Nipkow
+"Term Rewriting and All That", universal algebra.
+
+**`std/termination.dag` note** — ProgressKind unification.
+ParserProgressKind is DescentEvidence applied to TokenPosition. No
+separate type needed.
+
+**`std/types.dag` addition** — Cardinality lattice.
+`Cardinality = Required | Optional | Repeated` as a BoundedLattice.
+Already exists as ReturnCardinality in 00_core.dag; should move to std/.
+
+### Impact estimate
+
+~90 types eliminated or consolidated, ~56 complexity violations dissolved,
+4 new std/ concepts grounded in external authorities. Parser alone drops
+from 68 result types to 1 generic. Complexity drops from 49 types to ~20.
 
 ---
 
@@ -399,8 +845,9 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [x] Mutual recursion detection — SCC analysis now fail-closes
   indirect recursion, accepts bounded mutual descent, and keeps
   helper-into-cycle callers out of the violation set. Remaining work:
-  analyzer redesign to target container-child recursion model (ratchet 255,
-  see I1/I2 in Exploratory Directions)
+  proof constructor with incremental var threading, LitNull fix, ExprBlock
+  propagation, proof-before-branching, arithmetic descent (ratchet 164, see CX lane +
+  Node convergence)
 
 *Container sharing (FF-8):*
 - [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
@@ -539,6 +986,10 @@ Proposed fix: `TypeRendering` — a .dag struct with named edges and
 bits, precomputed at the resolution→emit boundary. Shape is emergent
 from which edges are populated (no tag enum). Named edges prevent
 positional fabrication — you can't confuse key with element.
+**Note (2026-04-02):** TypeRendering has 7 recursive fields — it is
+a non-Node recursive type (bounded kernel violation). It is an
+interim stepping stone; dissolves into coercion engine (M5). See
+Node convergence in Design Direction.
 
 ```
 type TypeRendering {
@@ -699,7 +1150,7 @@ existing emitted-Rust/bootstrap fixed-point gates.
 
 | Bridge | Delete trigger | Latest milestone |
 |--------|---------------|-----------------|
-| `COMPLEXITY_RATCHET = 0` | Analyzer redesign (I1/I2) proves all patterns → 0 violations | Exploratory Directions (CX lane sidebar, not blocking M2) |
+| `COMPLEXITY_RATCHET = 0` | Node convergence (~33) + proof extensions (~280) → 0 violations | CX lane sidebar (parallel, not blocking M2) |
 | Ambient/manual stage0 maintenance | `regenerate-stage0.sh` green + CI diff gate | M2 |
 
 ---
@@ -941,21 +1392,25 @@ Different functions, no conflict.
 *Structural complexity facts (moved from M2 / PR #249):*
 - [x] Replace `ComplexityClassInfo` string bags with structural
   `CostExpr` — `classify_complexity` returns structural `CostExpr`
-  (the single authority); no separate `ComplexityClass` type
+  (the single authority); no separate `ComplexityClass` type.
+  **Note (2026-04-02):** CostExpr is itself a non-Node recursive type
+  (dual IR violation). Interim step: CostExpr replaces strings.
+  Final step: CostExpr dissolves into Node compositions (see Node
+  convergence in Design Direction).
 - [x] `O(...)` strings exist only at formatting boundary —
   `format_complexity_class` is the canonical producer (convention;
   source-audit grep needed to enforce as invariant)
 - [ ] Unknown complexity stays fail-closed; no steady-state `O(?)`
   success output — `is_unknown_class` / `cost_contains_unknown`
   provide structural detection; end-to-end gating wired but bypassed
-  by `BOOTSTRAP_MODE` (delete bypass after CX lane I1/I2 lands)
+  by `BOOTSTRAP_MODE` (already deleted — confirmed: no matches in stage0)
 - [ ] Mutual-recursion cycle errors: `complexity.dag:1579` returns
   only `violations`, omitting the cycle-error diagnostics that
   `detect_mutual_recursion_names` previously supplied. Verify that
   mutual-recursion cycles produce fail-closed diagnostics in the
   pipeline output, not silent omission.
-- [ ] Delete `RecursiveVariantFieldWitness` and variant-field descent
-  infrastructure — dead code, fires on zero real types (audit 2026-04-01)
+- [x] Delete `RecursiveVariantFieldWitness` and variant-field descent
+  infrastructure — dead code, fires on zero real types (CX-0, landed PR #301)
 - [x] `ClassProduct` formatting parenthesizes additive children
   (already done: `parenthesize_additive_cost` pre-existing)
 - [x] Source-audit parity checks use `live_source` /
@@ -1161,11 +1616,10 @@ per primitive and composition is closed.
 
 **Implementation status:** `fold` and `repeat` exist and the analyzer
 handles them. `descend` is conceptual only — no compiler implementation.
-The CX lane targets container-child recursion (the actual pattern) rather
-than variant-field recursion (the assumed pattern). The analyzer proves
-the same bound without requiring a `descend` surface primitive — it
-recognizes the catamorphism directly from accessor-mediated child
-recursion on Node.
+The CX lane (see below) makes `descend` real: a signature-driven fold
+over any Node tree, reading child roles from data tables. The analyzer
+already proves container-child descent (CX-1) via accessor identity from
+`expr_child_roles`. CX-C generalizes this to a generic evidence fold.
 
 **Surface sugar → primitive mapping:**
 
@@ -1202,9 +1656,13 @@ lowers to a primitive:
    The compiler knows accessor functions return sub-children of Node
    (closed-world set defined in `00_core.dag`). Verification is
    mechanical: self-call argument is an accessor result applied to the
-   matched parameter. For user-defined recursive unions (future), same
-   principle: self-call argument is a variant field the type marks as
-   recursive.
+   matched parameter. User-defined recursive unions (`type Tree =
+   Leaf | Branch { left: Tree, right: Tree }`) compile to Node trees
+   with discriminant metadata — same representation, same descent
+   proof. Per the bounded kernel invariant, all recursive types are
+   Node. The ChildRole model extends to user-defined types: variant
+   fields that reference the containing type become child accessors
+   in the model. One proof rule covers compiler-internal and user types.
 
 2. **Recurse with advancing position** → `fold`. The compiler
    verifies the position argument increases monotonically (or the
@@ -1230,115 +1688,130 @@ compiler verifies the SCC has a shared decreasing measure:
 If no shared decreasing measure exists, the SCC is a compilation
 error — same as case 4 above.
 
-**Current state (2026-04-01):** 51 root functions → 315 complexity
-violations (ratcheted). Existing infrastructure:
+**Current state (2026-04-02):** 164 complexity violations (down from
+315→313→173→164 via proof-constructor fixes + arithmetic descent).
+PR #301 on `cool-lynx-138`. Remaining 164 map to four algebraic root
+causes (see CX lane: DFA triage).
+
+Landed:
+- CX-0: dead variant-field infrastructure deleted (~350 lines)
+- CX-1: container-child descent proof for single-function recursion
+- CX-M: IR child layout model (`expr_child_roles` / `wrapper_child_roles`
+  in `00_core.dag`). Replaces hardcoded `child_accessor_table`.
+- CX-2: lambda-skip consistency landed; full catamorphism proof (multi-call
+  on disjoint accessor children) deferred — RC-4 iterator-mediated
+  catamorphism (12 violations) still open
+- CX-3: SCC edge classification landed (ProgressKind); descent proof is
+  name-based only (`arg_name == param_name`). Positional self-calls are
+  silently rejected (false-negative, not unsound). `find_node_param_name`
+  stub deleted (was dead code returning `none`).
+- Soundness fixes: skip(N >= 1) check, W-3/W-4 descent_vars path-safety
+- BOOTSTRAP_MODE bypass already removed (confirmed: no matches in stage0)
+
+Existing infrastructure:
 - direct recursion is fail-closed on the actual measured parameter
 - SCC ownership is explicit, so callers into a cycle do not inherit the
   cycle's violation
 - parser progress is parse-owned via typed helper identities
-- unsound `ExprFieldAccess`/`ExprMethodCall` witness arms reverted
-  (soundness audit W-1, W-2)
+- lambda bodies skipped in descent proof (consistent with path counter)
+- accessor identity derived from IR model, not hardcoded table
 
-**Audit finding (2026-04-01):** The remaining 315 violations trace to a
-structural mismatch between the analyzer's proof model and the language's
-actual recursion model:
+#### CX lane: complexity analyzer — algebraic grounding path
 
-- **The analyzer assumes variant-field recursion.** `RecursiveVariantFieldWitness`,
-  `structural_param_from_body`, `is_structural_descent_with_param` — all require
-  type T with variant V containing field F of type T, match on T, recurse on
-  pattern bindings from F.
-- **The language uses container-child recursion.** Node has `children: List<Node>`
-  and `expr_data: ExprData` as discriminant. Programs match on `node.expr_data`,
-  recurse on accessor results (`match_scrutinee`, `arm_body`, `if_condition`, etc.)
-  which return elements of `node.children`.
-- **Zero types in the compiler's .dag source have recursive variant fields.**
-  The variant-field proof path fires on zero real functions.
-  `RecursiveVariantFieldWitness` is dead infrastructure.
-- **The `descend` primitive does not exist.** INVARIANTS.md lists it as one of
-  three iteration primitives, but no compiler implementation exists.
-- **BOOTSTRAP_MODE bypasses the complexity gate.** `compile.dag` correctly
-  gates emission on complexity violations, but `stage0/main.rs` sets
-  `BOOTSTRAP_MODE = true` unconditionally, bypassing the gate. The 255
-  violations are hard errors being silently let through.
-- **Review found 9 soundness issues** in the proof patches on the investigation
-  branch. The ratchet drop 315→255 was built on unsound heuristic proofs
-  (fresh-substructure name check, match witness scope leak, single-member
-  finite frontier). That branch should not merge.
+**Status:** 164 violations (down from 315). Parallel sidebar, own branch.
+**Gate:** `strict_complexity_violation_count` = 0.
 
-#### CX lane: complexity analyzer redesign (parallel sidebar)
+**Design principle:** The analyzer should be a signature-driven fold,
+not a hand-written per-variant tree walker. Every proof reads from data
+tables (signatures, dimensions), not ad-hoc pattern matching. This
+principle already works for CX-1/CX-M (accessor identity from
+`expr_child_roles`). The remaining work extends it to all proof shapes.
 
-This work runs on its own branch, parallel to the main roadmap. It does
-not block M2/M3/M4/E0c.
+**Retrospective: what the algebraic grounding would have prevented.**
+Of 12 code fixes shipped on this branch, 6 become unnecessary with
+proper grounding, 3 simplify significantly, 3 remain but are cleaner.
+Root cause across all: evidence collection is a hand-written per-variant
+walker instead of a generic `descend` fold over the AST signature.
 
-**Lane rule:** CX branches only touch `complexity.dag` and its stage0
-mirror (`v2_compiler_complexity.rs`), plus the ratchet test. No emission,
-inference, parse, or core changes. Lane exclusivity is structural.
+| Fix | Would be unnecessary? | Why |
+|-----|----------------------|-----|
+| LitNull recognition | YES | One canonical Optional representation |
+| ExprBlock var propagation | YES | Signature-driven fold handles all node types |
+| Proof-before-branching | YES | `descend` is one concept; no branching/non-branching split |
+| Local termination types (T1) | YES | Import from std/termination.dag |
+| Per-dimension code paths (T2, arithmetic) | SIMPLIFIED | Data-driven dimension table |
+| SCC lexicographic proof (T6) | SIMPLIFIED | Generic over dimension list |
+| CX-M (child layout model) | STAYS | IS the right pattern — signature table |
+| CX-1 (container-child descent) | STAYS | Proof reads signature table |
+| Soundness fixes (W-3/W-4) | STAYS | Scope rules handled by fold |
 
-**Design constraint:** No dual IR. The analyzer reads what the language
-provides: `Node.children`, `Node.expr_data`, accessor function identities
-(closed-world set from `00_core.dag`). No invented representations.
+**Remaining 164 violations by algebraic root cause (DFA triage):**
 
-**What to keep** (~1,500 lines of `complexity.dag`):
-- Cost algebra types: `SizeExpr`, `CostExpr`, `CostShape`, `Certainty`
-- Cost evaluation: `cost_of_expr`, `get_or_compute_summary`, `cost_of_method_by_shape`
-- Graph infrastructure: `build_call_graph`, Tarjan's SCC, `dfs_finish_order`
-- Path counting: `max_path_self_calls_with_cont` (correctly handles branch mutual exclusion)
-- Reporting: `simplify_cost`, `normalize_asymptotic`, `classify_complexity`, `build_complexity_report`
+| State | Violations | Root cause | Fix direction |
+|-------|-----------|------------|---------------|
+| D: Parser/SCC | ~80 | Cross-function state advancement | MatchPattern dissolution (M7), ProgressKind→DescentEvidence unification |
+| A+C: Fold/catamorphism | ~40 | Self-call inside fold/all/any on children | `descend` primitive from std/iteration.dag |
+| B+F: Non-Node types | ~30 | CostExpr/SizeExpr/AlgebraTypeTemplate walkers | Tropical semiring dissolution → Node trees |
+| E: Accessor-on-var | ~14 | `accessor(transformed_param)` not `accessor(param)` | Signature-driven fold traces vars through accessors |
 
-**What to delete** (~350 lines):
-- `RecursiveVariantFieldWitness` coupling and variant-field descent functions
-- `recursive_variant_fields` threading through `RecursionContext` and `FuncEntry`
+**Work items (ordered by leverage):**
 
-**What to rebuild** (proof model, simpler than current):
-- `classify_recursion_pattern` — new dispatcher with correct proof order
-- Container-child descent proof — replaces variant-field descent
-- Catamorphism proof — replaces branching-rejection-with-no-recovery
+CX-A: **AlgebraTypeTemplate dissolution** (~14 violations).
+Type constructor terms → Node trees using existing Node constructors.
+AlgebraFieldTemplate.param_types becomes `List<Node>`. instantiate_
+algebra_type and collect_named_templates become standard Node walkers.
+Smallest dissolution; validates the pattern for CX-B.
+Files: std/algebra.dag, 04_types.dag, stage0 mirror.
 
-**Witness soundness audit (2026-04-01).**
+CX-B: **CostExpr + SizeExpr dissolution** (~30 violations).
+Tropical semiring terms → Node trees. SizeExpr merges into CostExpr
+(sub-algebra). Semiring operations (add, mul, max, sum, log) declared
+as a signature table (like `expr_child_roles`). All 14 walker functions
+become Node folds. ProgressKind unified with DescentEvidence (same
+BoundedLattice). 6 duplicated termination types imported from std/.
+Files: complexity.dag, stage0 mirror.
 
-Review identified five classes of unsound witness propagation. The
-governing principle: complexity should consume resolved descent
-witnesses owned by resolve/infer, not recover them from expression
-shape, names, or helper-call patterns.
+CX-C: **Signature-driven evidence fold** (~40 violations).
+Replace hand-written `collect_evidence_incremental` with a generic
+tree fold parameterized by the AST signature. The fold reads
+`expr_child_roles` to know which children exist, threads vars
+through let/match/block structurally, and handles fold/all/any
+callbacks by recognizing the `descend` pattern from std/iteration.dag.
+Eliminates per-variant cases, ExprBlock bugs, and the
+branching/non-branching distinction.
+Files: complexity.dag, stage0 mirror.
 
-| # | Class | Status | What's unsound | Fix |
-|---|-------|--------|---------------|-----|
-| W-1 | `ExprFieldAccess` in `expr_descending_witness_source` | **FIXED** | Any field access propagated descent, but `x.metadata` is not smaller than `x` | Removed arm; CX-1 re-enables via accessor identity |
-| W-2 | `ExprMethodCall` (first/last) in `expr_descending_witness_source` | **FIXED** | Collection extraction treated as descent without proving the collection holds recursive children | Removed arm; CX-1 re-enables via accessor identity |
-| W-3 | `ExprIf`/`ExprMatch` in witness propagation | **Safe** (not propagated) | If either branch yielded a witness, it would be unsound (`if cond { n-1 } else { n }`) | `collect_descending_witness_names` does not propagate through if/match |
-| W-4 | Pattern-binding witness promotion | **Not applicable** | Pattern bindings do not auto-promote to witnesses | If added, must restrict to resolved recursive positions |
-| W-5 | SCC `all_arithmetic` classification | **Documented** | `max_path <= 1 && scc_calls_have_arithmetic_descent` necessary but not sufficient | Design target: CX-3 |
+CX-D: **Parser SCC dissolution** (~80 violations).
+ProgressKind already unified with DescentEvidence in CX-B. Parser
+SCC proof uses TokenPosition dimension from std/termination.dag.
+Long-term: MatchPattern dissolution (M7) eliminates the parser SCC
+entirely. Short-term: cross-function "always-advancing" property
+provable from function body analysis.
+Files: complexity.dag, stage0 mirror. (M7 touches 02_parse.dag.)
 
-Regression tests (on main):
-- `soundness_fib_like_stays_non_linear` — branching recursion stays violation
-- `soundness_conditional_descent_not_accepted` — if/else partial descent rejected
-- `soundness_partial_match_descent_not_accepted` — match partial descent documented
-- `soundness_arithmetic_descent_single_call_accepted` — valid single-call descent works
+CX-E: **Finalize** (0 violations gate).
+Delete old classifier functions (classify_recursion_pattern fallbacks,
+has_arithmetic_descent, self_calls_have_descending_witness, etc.).
+Delete RecursionContext.recursive_type_set (unused). Import
+termination types from std/ (post-bootstrap). Ratchets → 0.
 
-**CX-0: Delete dead infrastructure.** Remove variant-field descent model.
-~350 lines deleted. No behavior change (fires on zero types).
+**Expected results:**
+- CX-A: 164 → ~150 (validates dissolution pattern)
+- CX-B: ~150 → ~120 (CostExpr/SizeExpr gone, ProgressKind unified)
+- CX-C: ~120 → ~80 (signature-driven fold covers catamorphism)
+- CX-D: ~80 → 0 (parser SCC proven or dissolved by M7)
 
-**CX-1: Container-child descent proof.** Recognize when a function
-matches on `param.expr_data` and recurses on accessor results applied
-to `param`. Accessor functions are pure projections into `node.children`
-(closed-world set). Classify as `LinearRecursion`. Expected: ~80
-violations resolved.
+**Deleted infrastructure (already landed):**
+- CX-0: RecursiveVariantFieldWitness, variant-field descent (~350 lines)
+- CX-M: child_accessor_table → expr_child_roles data table
 
-**CX-2: Catamorphism proof.** When multiple self-calls in the same arm
-operate on different accessor results from the same node, classify as
-catamorphism (`LinearRecursion`), not `DivideAndConquer`. Today the
-analyzer immediately produces `CostUnknown` with zero recovery. Expected:
-~40 violations resolved.
+**Soundness regression tests (on main):**
+- `soundness_fib_like_stays_non_linear` — branching arithmetic stays violation
+- `soundness_conditional_descent_not_accepted` — partial descent rejected
+- `soundness_arithmetic_descent_single_call_accepted` — valid n-1 works
 
-**CX-3: SCC container-child descent.** Extend CX-1/CX-2 to SCC members.
-Expected: ~25 violations resolved.
-
-**CX-4: Parser if-progress merging.** When both branches of an
-if-expression return parser state with `ProgressStrict`, the merged
-result is `ProgressStrict`. Expected: 60 violations resolved.
-
-**CX-5: Delete BOOTSTRAP_MODE bypass.** Once ratchet reaches 0, delete
-the `BOOTSTRAP_MODE` flag. `compile.dag` gate becomes authoritative.
+**Witness soundness (W-1..W-5):** W-1, W-2 fixed. W-3, W-4 safe/NA.
+W-5 documented — subsumed by CX-B (proof reads dimension table).
 
 **I3: `while` surface sugar.** (Independent of CX lane.)
 
@@ -1355,8 +1828,10 @@ Blocked on: nothing. Could land first as a standalone language feature.
 **Acceptance criteria (CX lane complete):**
 - Container-child descent proven for all Node tree walkers
 - Catamorphism proof: multi-call arms on disjoint children → O(n)
-- No dual IR: analyzer reads Node.children, Node.expr_data, accessor
-  function identities — nothing invented
+- No dual IR: CostExpr/SizeExpr dissolved into Node compositions;
+  analyzer reads Node.children, Node.expr_data, accessor function
+  identities — nothing invented
+- Node is the only recursive type consumed by complexity analysis
 - Variant-field proof infrastructure deleted
 - Complexity gate: 315 → 0 without suppression or ratchet
 - `BOOTSTRAP_MODE` complexity bypass deleted
@@ -1369,13 +1844,23 @@ it is structurally impossible to write an unbounded expression. The
 language has no primitive for unbounded computation, and composition
 of bounded primitives is closed (bounded + bounded = bounded).
 
+This principle extends to the compiler itself via the bounded kernel
+invariant: Node is the only recursive type, so the compiler's own
+recursive functions walk Node trees — which are structurally bounded.
+Non-Node recursive types (CostExpr, TypeRendering, MatchPattern,
+InferredNode) violate this — they introduce recursion that the
+compiler cannot automatically prove bounded.
+
 **Current state:** recursive syntax is sugar that the compiler lowers
-to bounded primitives (`fold`, `descend`, `repeat`). The 311
-violations are analyzer gaps — the programs ARE bounded, the analyzer
-can't prove it yet. Fixing the analyzer to recognize all descent
-patterns resolves these. Once lowering is complete, `CostUnknown`
-becomes structurally unreachable — not just validated away, but
-impossible to construct.
+to bounded primitives (`fold`, `descend`, `repeat`). The 164
+violations are concept-modeling debt — the programs ARE bounded, but
+unfinished algebraic grounding prevents structural proofs. The DFA
+triage (see CX lane) maps all 164 to four algebraic root causes:
+parser SCCs (~80, DescentEvidence lattice), fold/catamorphism (~40,
+`descend` primitive), non-Node types (~30, tropical semiring), and
+accessor-on-var (~14, signature-driven fold). Once all violations
+resolve, `CostUnknown` becomes structurally unreachable — not just
+validated away, but impossible to construct.
 
 **Cyclic relations, acyclic values, bounded traversals.** See
 INVARIANTS.md §Strict Forward Progress for the full formulation.
@@ -1488,30 +1973,40 @@ associative, commutative (for ⊕), and distributes correctly.
 Unlike a tropical semiring (which uses min/+), this algebra uses
 +/× because we are computing total cost, not shortest paths.
 
-**Current CostExpr variants and their formal semantics:**
+**Current cost operations and their formal semantics:**
 
-| Variant | Formal definition | Function class |
-|---------|------------------|----------------|
-| `CostConst(c)` | f(n) = c | Θ(1) |
-| `CostAdd(f, g)` | f(n) + g(n) | max class of f, g |
-| `CostMul(f, g)` | f(n) · g(n) | product of classes |
-| `CostMax(f, g)` | max(f(n), g(n)) | max class of f, g |
-| `CostSum(i, N, f)` | Σ_{i=0}^{N} f(i) | depends on f: Σ1=N, Σi=N², Σlog=N·log |
-| `CostLog(b, n)` | log_b(n) | Θ(log n) |
-| `CostUnknown(r)` | ⊥ (bottom) | analysis failure — structurally eliminated |
+| Operation | Formal definition | Function class |
+|-----------|------------------|----------------|
+| Const(c) | f(n) = c | Θ(1) |
+| Add(f, g) | f(n) + g(n) | max class of f, g |
+| Mul(f, g) | f(n) · g(n) | product of classes |
+| Max(f, g) | max(f(n), g(n)) | max class of f, g |
+| Sum(i, N, f) | Σ_{i=0}^{N} f(i) | depends on f: Σ1=N, Σi=N², Σlog=N·log |
+| Log(b, n) | log_b(n) | Θ(log n) |
+| Unknown(r) | ⊥ (bottom) | analysis failure — structurally eliminated |
+
+**Note:** These are currently `CostExpr` enum variants (a recursive
+type). Per the Node convergence direction, they will become cost Node
+discriminants — data table entries, not type-level variants. The
+semiring semantics are preserved; only the representation changes.
+Adding a new operation becomes a data table entry, not a new variant
+requiring exhaustive match updates across ~30 call sites.
 
 **Expressible function classes (current):**
 - Θ(1), Θ(log n), Θ(n), Θ(n log n), Θ(n²), Θ(n² log n), Θ(n³)
 - Arbitrary polynomial-logarithmic: Θ(n^a · log^b n) for constant a, b
 - Multi-variable: Θ(n · m), Θ(n · m · log k)
 
-**Planned extensions — new CostExpr variants:**
+**Planned extensions — new cost operations:**
 
-| Variant | Formal definition | Function class | Use case |
-|---------|------------------|----------------|----------|
-| `CostPow(n, k)` | n^k for constant k ∈ ℕ | Θ(n^k) | Explicit polynomial degree (matrix multiply Θ(n³), naive sort Θ(n²)) |
-| `CostSqrt(n)` | n^(1/2) | Θ(√n) | Trial division, block decomposition, Mo's algorithm O((n+q)√n) |
-| `CostExp(b, n)` | b^n for constant b | Θ(b^n) | Detect and REJECT — exponential cost is a compilation error |
+| Operation | Formal definition | Function class | Use case |
+|-----------|------------------|----------------|----------|
+| Pow(n, k) | n^k for constant k ∈ ℕ | Θ(n^k) | Explicit polynomial degree (matrix multiply Θ(n³), naive sort Θ(n²)) |
+| Sqrt(n) | n^(1/2) | Θ(√n) | Trial division, block decomposition, Mo's algorithm O((n+q)√n) |
+| Exp(b, n) | b^n for constant b | Θ(b^n) | Detect and REJECT — exponential cost is a compilation error |
+
+After Node convergence, these are data table rows in `std/cost.dag`,
+not new recursive variants. Cost of change for a new operation: 1 file.
 
 **Recurrence resolution:** Recursive cost follows from the bounded
 iteration primitives. Each primitive declares a recurrence:
@@ -1531,8 +2026,8 @@ tokens. Tree-walker SCCs (children shrink) → descend over tree.
 
 ```
 CostAmortized { 
-  worst_case: CostExpr,      — single-operation worst case
-  amortized: CostExpr,       — per-operation amortized cost
+  worst_case: Node,           — single-operation worst case (cost Node tree)
+  amortized: Node,            — per-operation amortized cost (cost Node tree)
   potential: PotentialFn      — Φ: State → ℝ⁺ (potential function)
 }
 
@@ -1548,14 +2043,14 @@ with Φ = Σ log(subtree_size)).
 
 **Space complexity as a peer dimension:**
 
-The `FunctionSummary` already has `work: CostExpr` and `span: CostExpr`.
-Adding `space: CostExpr` makes it a three-dimensional cost vector:
+The `FunctionSummary` already has `work` and `span` cost trees.
+Adding `space` makes it a three-dimensional cost vector:
 
 ```
 type CostVector {
-  work: CostExpr       — total operations (time)
-  span: CostExpr       — critical path length (parallel time)  
-  space: CostExpr      — peak memory usage
+  work: Node            — total operations (time) — cost Node tree
+  span: Node            — critical path length (parallel time)
+  space: Node           — peak memory usage
 }
 ```
 
@@ -1613,7 +2108,7 @@ in time.
 algebra; access pattern determines representation. Mixed access = type
 error.
 
-**Space complexity as peer dimension.** `space: CostExpr` peer to `work`
+**Space complexity as peer dimension.** `space` cost tree peer to `work`
 and `span`. Currently `output_size` is unpopulated.
 
 **Computed data declarations.** The `.dag` `data` syntax only supports
@@ -1649,11 +2144,11 @@ the first level the language recognizes.
 
 | Ratchet | Current | Target | Command |
 |---------|---------|--------|---------|
-| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count -- --ignored` (DIAG_RATCHET in bootstrap.rs; all are complexity violations from analyzer-language mismatch) |
+| Self-compile diagnostics | 314 | 0 | `strict_compile_diagnostic_count -- --ignored` (DIAG_RATCHET in bootstrap.rs; all are complexity violations — 7 root causes identified, see CX sidebar) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 24 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (51 root functions; resolves with CX lane analyzer redesign) |
-| Emitted Rust errors | 1 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
+| Complexity violations | 164 | 0 | `strict_complexity_violation_count -- --ignored` (ungrounded algebraic concepts; dissolves via CX-A..E, not analyzer heuristics) |
+| Emitted Rust errors | 0 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` (unverified — emission blocked by complexity violations) |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
 
