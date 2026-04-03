@@ -2707,8 +2707,8 @@ fn is_scc_container_child_descent(members: List<String>, func_index: Map<String,
       None => []
     }
   )
-  let all_known = edges |> all(edge => edge.progress != ProgressUnknown)
-  all_known
+  let unknown_edge_count = count_unknown_progress_edges(edges: edges)
+  unknown_edge_count == 0
   && (edges |> count) > 0
   && same_progress_subgraph_has_cycle(members: members, edges: edges) == false
 }

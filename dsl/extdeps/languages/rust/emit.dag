@@ -167,7 +167,7 @@ data rt_functions: Map<String, Bool> = {
 fn rt_ref_map_functions() -> Map<String, Bool> {
   rt_function_registry
     |> filter(f => f.passes_by_ref)
-    |> fold(acc: {}, f => map_insert(acc, f.name, true))
+    |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
 }
 
 data rt_bridge_function_names: Map<String, String> = {
