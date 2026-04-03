@@ -38,8 +38,8 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (ratchet 2) | 0 | 92 dsl + 29 v2 files, M1 complete. DSL_COMPLEXITY_RATCHET = 2 tolerates 2 user-defined recursive union violations (stack_size, fold_stack) — deferred until CX lane completes |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 3 | 0 | VERIFIED (2026-04-03, PR #307). Down from 23→10→7→6→3 via TypeRendering switchover + map_keys Rc wrapping + CompilerError fold fallback. Remaining: 3 tokenizer character model (codepoint carrier). CX gate disabled — emission not blocked. |
-| Stage0 regeneration (C) | RED | GREEN | CX gate disabled in both stage0 and compile.dag. Emission works (40 files). Blocked on 3 emitted-Rust errors, not on CX. |
+| Bootstrap emitted Rust (B) | 0 | 0 | GREEN (2026-04-03, PR #307). Down from 23→10→7→6→3→0. bootstrap_stage0_to_stage1 passes. |
+| Stage0 regeneration (C) | RED | GREEN | CX gate disabled in both stage0 and compile.dag. Emission works (40 files). Bootstrap B green — regeneration is the next gate. |
 | L1 ratchet | 24 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
