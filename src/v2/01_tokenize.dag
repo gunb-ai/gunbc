@@ -91,10 +91,16 @@ type ScanResult {
 // Wraps the source string in a struct so the v1 emitter Rc-wraps it.
 // TCO reassignment of `source: SourceRef` becomes `Rc::clone` (O(1))
 // instead of `String::clone` (O(N) for 200K byte files).
+//
+// source_chars is the single authority for source content. Decomposed
+// from the raw string once at tokenize entry (O(n)). All character
+// access is O(1) list indexing — no runtime is_ascii() gate, no
+// quadratic regression on non-ASCII input.
+// Length is derived via count(source_chars) — no duplicate field.
 
 type SourceRef {
-  text: String
   file: String
+  source_chars: List<String>
 }
 
 // === Token construction helper ===
@@ -103,15 +109,60 @@ fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
   Token { text: text, span: span, shape: shape }
 }
 
+// === Source character access ===
+//
+// O(1) character access via pre-computed source_chars list.
+// Replaces char_at/scan_while/substring on raw string (which are
+// O(n) per call on non-ASCII UTF-8 input).
+
+fn source_char(source: SourceRef, pos: Int) -> String {
+  source.source_chars[pos]
+}
+
+fn source_len(source: SourceRef) -> Int {
+  count(source.source_chars)
+}
+
+fn source_substring(source: SourceRef, start: Int, end: Int) -> String {
+  source_substring_acc(chars: source.source_chars, pos: start, end: end, acc: [])
+}
+
+fn source_substring_acc(chars: List<String>, pos: Int, end: Int, acc: List<String>) -> String {
+  if pos >= end { join(acc, separator: "") }
+  else {
+    source_substring_acc(chars: chars, pos: pos + 1, end: end, acc: list_push(acc, chars[pos]))
+  }
+}
+
+fn source_scan_while(source: SourceRef, start: Int, pred: fn(String) -> Bool) -> Int {
+  if start >= source_len(source: source) { source_len(source: source) }
+  else if pred(ch: source.source_chars[start]) {
+    source_scan_while(source: source, start: start + 1, pred: pred)
+  } else { start }
+}
+
+fn source_skip_ws(source: SourceRef, start: Int) -> Int {
+  if start >= source_len(source: source) { start }
+  else {
+    let ch = source.source_chars[start]
+    if ch == " " || ch == "\t" { source_skip_ws(source: source, start: start + 1) }
+    else { start }
+  }
+}
+
+fn source_scan_to_eol(source: SourceRef, start: Int) -> Int {
+  if start >= source_len(source: source) { source_len(source: source) }
+  else if source.source_chars[start] == "\n" { start }
+  else { source_scan_to_eol(source: source, start: start + 1) }
+}
+
 // === Entry point ===
 
 fn tokenize(source: String, file: String) -> List<Token> {
-  let src = SourceRef { text: source, file: file }
+  let c = chars(source)
+  let src = SourceRef { file: file, source_chars: c }
   let initial = TokPos { pos: 0, interp_depth: [] }
-  // Tokens are passed as a separate TCO parameter so that Rc::try_unwrap
-  // succeeds in the loop (the standalone Rc has refcount 1, unlike a field
-  // inside an Rc-wrapped struct which always has refcount >= 2).
-  let final_state = tokenize_loop(source: src, tokens: [], pos: initial, fuel: string_length(s: src.text) + 1)
+  let final_state = tokenize_loop(source: src, tokens: [], pos: initial, fuel: source_len(source: src) + 1)
   let eof_span = make_file_span(file: src.file, start: final_state.pos, end: final_state.pos)
   list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof))
 }
@@ -120,10 +171,10 @@ fn tokenize(source: String, file: String) -> List<Token> {
 
 fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos, fuel: Int) -> TokenizerState {
   let s = skip_spaces_and_comments(source: source, pos: pos, fuel: fuel)
-  if s.pos >= string_length(s: source.text) {
+  if s.pos >= source_len(source: source) {
     return TokenizerState { pos: s.pos, tokens: tokens, interp_depth: s.interp_depth }
   }
-  let ch = char_at(s: source.text, pos: s.pos)
+  let ch = source_char(source: source, pos: s.pos)
 
   // Newlines are significant (statement separation)
   if ch == "\n" {
@@ -167,8 +218,8 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
   if is_ident_start(ch: ch) { return scan_ident(source: source, pos: pos) }
 
   // Two-character operators (guard against EOF lookahead)
-  let next_ch = if pos.pos + 1 < string_length(s: source.text) {
-    char_at(s: source.text, pos: pos.pos + 1)
+  let next_ch = if pos.pos + 1 < source_len(source: source) {
+    source_char(source: source, pos: pos.pos + 1)
   } else { "" }
 
   if ch == "=" && next_ch == ">" { return emit(pos: pos, shape: ShFatArrow, text: "=>", len: 2, file: source.file) }
@@ -233,23 +284,23 @@ fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) ->
 }
 
 fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
-  let end = scan_while(s: source.text, start: pos.pos, pred: is_ident_char)
-  let text = substring(s: source.text, start: pos.pos, end: end)
+  let end = source_scan_while(source: source, start: pos.pos, pred: is_ident_char)
+  let text = source_substring(source: source, start: pos.pos, end: end)
   let shape = if is_keyword_text(text: text) { ShKeyword } else { ShIdent }
   let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: end), shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
 }
 
 fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
-  let int_end = scan_while(s: source.text, start: pos.pos, pred: is_digit)
+  let int_end = source_scan_while(source: source, start: pos.pos, pred: is_digit)
   // Check for decimal point -> float (guard against EOF)
-  if int_end + 1 < string_length(s: source.text) && char_at(s: source.text, pos: int_end) == "." && is_digit(ch: char_at(s: source.text, pos: int_end + 1)) {
-    let frac_end = scan_while(s: source.text, start: int_end + 1, pred: is_digit)
-    let text = substring(s: source.text, start: pos.pos, end: frac_end)
+  if int_end + 1 < source_len(source: source) && source_char(source: source, pos: int_end) == "." && is_digit(ch: source_char(source: source, pos: int_end + 1)) {
+    let frac_end = source_scan_while(source: source, start: int_end + 1, pred: is_digit)
+    let text = source_substring(source: source, start: pos.pos, end: frac_end)
     let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: frac_end), shape: ShLitFloat)
     return ScanResult { pos: frac_end, token: token, interp_depth: pos.interp_depth }
   }
-  let text = substring(s: source.text, start: pos.pos, end: int_end)
+  let text = source_substring(source: source, start: pos.pos, end: int_end)
   let parsed = parse_int(s: text)
   let shape = match parsed {
     Some { value: _ } => ShLitInt
@@ -349,17 +400,17 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
 // Uses full if/else chains -- return inside if-without-else does not
 // early-return in the DSL evaluator.
 fn scan_string_body(source: SourceRef, pos: Int, acc: List<String>) -> StringScanResult {
-  if pos >= string_length(s: source.text) {
+  if pos >= source_len(source: source) {
     UnterminatedString { content: join(acc, separator: ""), end_pos: pos }
   } else {
-    let ch = char_at(s: source.text, pos: pos)
+    let ch = source_char(source: source, pos: pos)
     if ch == "\"" {
       // Closing quote -- end of string
       ClosedString { content: join(acc, separator: ""), end_pos: pos }
     } else if ch == "\\" {
       // Backslash -- escape sequence, consume two characters raw
-      if pos + 1 < string_length(s: source.text) {
-        let escaped = char_at(s: source.text, pos: pos + 1)
+      if pos + 1 < source_len(source: source) {
+        let escaped = source_char(source: source, pos: pos + 1)
         scan_string_body(source: source, pos: pos + 2, acc: list_push(list_push(acc, "\\"), escaped))
       } else {
         // Trailing backslash at EOF
@@ -384,10 +435,10 @@ fn scan_string_body(source: SourceRef, pos: Int, acc: List<String>) -> StringSca
 // Interpolation starts when the character after { is an identifier start
 // character (a-z, A-Z, _) or one of (, !, -.
 fn should_start_interpolation(source: SourceRef, pos: Int) -> Bool {
-  if pos + 1 >= string_length(s: source.text) {
+  if pos + 1 >= source_len(source: source) {
     false
   } else {
-    let next = char_at(s: source.text, pos: pos + 1)
+    let next = source_char(source: source, pos: pos + 1)
     is_ident_start(ch: next) || next == "(" || next == "!" || next == "-"
   }
 }
@@ -450,9 +501,9 @@ fn replace_last(stack: List<Int>, value: Int) -> List<Int> {
 // Skip spaces and tabs (NOT newlines -- those are tokens).
 // Also skip line comments (// to end of line).
 fn skip_spaces_and_comments(source: SourceRef, pos: TokPos, fuel: Int) -> TokPos {
-  let p = skip_horizontal_ws(s: source.text, start: pos.pos)
-  if p + 1 < string_length(s: source.text) && char_at(s: source.text, pos: p) == "/" && char_at(s: source.text, pos: p + 1) == "/" {
-    let eol = scan_to_eol(s: source.text, start: p)
+  let p = source_skip_ws(source: source, start: pos.pos)
+  if p + 1 < source_len(source: source) && source_char(source: source, pos: p) == "/" && source_char(source: source, pos: p + 1) == "/" {
+    let eol = source_scan_to_eol(source: source, start: p)
     return skip_spaces_and_comments(source: source, pos: TokPos {
       pos: eol, interp_depth: pos.interp_depth
     }, fuel: fuel - 1)
