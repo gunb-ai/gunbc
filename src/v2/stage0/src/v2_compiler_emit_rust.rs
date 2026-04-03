@@ -3966,16 +3966,17 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 } else {
                         {
                             let val_str: String = emit_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-let is_record: bool = match (*value.expr_data.clone()).clone() {
+let is_already_wrapped: bool = match (*value.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => true,
+    ExprData::ExprListLit => true,
     _ => false,
 };
-let wrap_start: String = if (needs_rc.clone() && !is_record.clone()) {
+let wrap_start: String = if (needs_rc.clone() && !is_already_wrapped.clone()) {
                                 "Rc::new(".to_string()
 } else {
                                 "".to_string()
 };
-let wrap_end: String = if (needs_rc.clone() && !is_record.clone()) {
+let wrap_end: String = if (needs_rc.clone() && !is_already_wrapped.clone()) {
                                 ")".to_string()
 } else {
                                 "".to_string()

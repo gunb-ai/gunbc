@@ -3695,11 +3695,11 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     }
     } else {
       let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      // Record literals are already Rc-wrapped by emit_rust_expr_record_lit.
-      // Only add Rc::new() for non-record expressions to avoid double-wrapping.
-      let is_record = match value.expr_data { ExprRecordLit { parent_enum: _ } => true  _ => false }
-      let wrap_start = if needs_rc && !is_record { "Rc::new(" } else { "" }
-      let wrap_end = if needs_rc && !is_record { ")" } else { "" }
+      // Record and list literals are already Rc-wrapped by their emitters.
+      // Only add Rc::new() for other expressions to avoid double-wrapping.
+      let is_already_wrapped = match value.expr_data { ExprRecordLit { parent_enum: _ } => true  ExprListLit => true  _ => false }
+      let wrap_start = if needs_rc && !is_already_wrapped { "Rc::new(" } else { "" }
+      let wrap_end = if needs_rc && !is_already_wrapped { ")" } else { "" }
       concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
         "    ", wrap_start, val_str, wrap_end, "\n",
         "}")
