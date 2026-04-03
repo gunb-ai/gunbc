@@ -63,7 +63,7 @@ pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope};
-pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering};
+pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering, leaf_type_rendering_shared};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Python, Dag};
 pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
@@ -1111,6 +1111,498 @@ if is_rust.clone() {
 }
 }
 }
+}
+
+// ── TypeRendering builder ─────────────────────────────────────────────
+//
+// Builds a target-agnostic TypeRendering from a type Node.
+// Parallels emit_node_type_rc but produces structured data instead of strings.
+// The rc_types and recursive_types maps come from EmitGraphInfo.
+
+fn tr_default() -> TypeRendering {
+    TypeRendering {
+        type_name: String::new(),
+        element: None,
+        key: None,
+        value: None,
+        params: Rc::new(vec![]),
+        return_type: None,
+        inner: None,
+        generic_args: Rc::new(vec![]),
+        shared: false,
+        boxed: false,
+        is_tuple: false,
+        is_error: false,
+        error_label: String::new(),
+    }
+}
+
+pub fn build_type_rendering(
+    n: Rc<Node>,
+    rc_types: Rc<HashMap<String, bool>>,
+    recursive_types: Rc<HashMap<String, bool>>,
+) -> Rc<TypeRendering> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let n_is_error = if n.inferred.clone() != None {
+            is_compiler_error(n.inferred.clone().unwrap())
+        } else {
+            false
+        };
+        let n_is_type_var = if n.inferred.clone() != None {
+            is_type_variable(n.inferred.clone().unwrap())
+        } else {
+            false
+        };
+
+        // Error / unresolved type variable
+        if (n_is_type_var || n_is_error) && (n.children.len() == 0) {
+            return Rc::new(TypeRendering {
+                type_name: if n_is_error {
+                    "CompilerError".to_string()
+                } else {
+                    "TypeVariable".to_string()
+                },
+                is_error: true,
+                error_label: n.name.clone(),
+                ..tr_default()
+            });
+        }
+
+        // Callable: fn(A, B) -> R
+        if n.name.as_str() == "Callable" {
+            let param_renderings: Vec<Rc<TypeRendering>> = n
+                .params
+                .iter()
+                .cloned()
+                .map(|p| {
+                    build_type_rendering(
+                        param_node_type_expr(p),
+                        rc_types.clone(),
+                        recursive_types.clone(),
+                    )
+                })
+                .collect();
+            let ret = match n.inferred.as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rt, .. }) => Some(build_type_rendering(
+                    rt,
+                    rc_types.clone(),
+                    recursive_types.clone(),
+                )),
+                _ => None,
+            };
+            return Rc::new(TypeRendering {
+                type_name: "Callable".to_string(),
+                params: Rc::new(param_renderings),
+                return_type: ret,
+                ..tr_default()
+            });
+        }
+
+        // Optional wrapping
+        let is_optional = n.return_cardinality == Cardinality::CardOptional;
+        if is_optional {
+            let inner_tr = build_type_rendering(
+                with_required_cardinality(n.clone()),
+                rc_types.clone(),
+                recursive_types.clone(),
+            );
+            return Rc::new(TypeRendering {
+                type_name: "optional".to_string(),
+                inner: Some(inner_tr),
+                ..tr_default()
+            });
+        }
+
+        // Dispatch on connective
+        let is_conj = n.connective == Connective::Conj;
+        let is_disj = n.connective == Connective::Disj;
+        if !is_conj && !is_disj {
+            build_type_rendering_leaf(n, rc_types, recursive_types)
+        } else if is_conj {
+            build_type_rendering_conj(n, rc_types, recursive_types)
+        } else {
+            build_type_rendering_disj(n, rc_types, recursive_types)
+        }
+    })
+}
+
+fn build_type_rendering_leaf(
+    n: Rc<Node>,
+    rc_types: Rc<HashMap<String, bool>>,
+    recursive_types: Rc<HashMap<String, bool>>,
+) -> Rc<TypeRendering> {
+    let shared = emit_map_has(rc_types.clone(), n.name.clone());
+
+    if n.children.len() == 0 {
+        // Bare type (no children)
+        let bare_is_map =
+            is_container_type(n.name.clone()) && target_container_template(RenderTarget::Rust, "map".to_string()).is_some();
+        let bare_is_collection = is_container_type(n.name.clone()) && !bare_is_map;
+        let has_container_template =
+            target_container_template(RenderTarget::Rust, to_snake(n.name.clone())).is_some();
+        let param_count = n.params.len();
+
+        if bare_is_map {
+            // Bare map: Map with no type args
+            Rc::new(TypeRendering {
+                type_name: "map".to_string(),
+                key: Some(leaf_type_rendering("_".to_string())),
+                value: Some(leaf_type_rendering("_".to_string())),
+                shared,
+                ..tr_default()
+            })
+        } else if bare_is_collection {
+            // Bare collection: List/Set with no type args
+            Rc::new(TypeRendering {
+                type_name: to_snake(n.name.clone()),
+                element: Some(leaf_type_rendering("_".to_string())),
+                shared,
+                ..tr_default()
+            })
+        } else if has_container_template && param_count == 1 {
+            // Generic container with type param (e.g., FreeMonoid<T>)
+            let inner = match n.params.first().cloned() {
+                Some(p) => build_type_rendering(
+                    param_node_type_expr(p),
+                    rc_types.clone(),
+                    recursive_types.clone(),
+                ),
+                None => leaf_type_rendering("_".to_string()),
+            };
+            Rc::new(TypeRendering {
+                type_name: to_snake(n.name.clone()),
+                element: Some(inner),
+                shared,
+                ..tr_default()
+            })
+        } else if n.name.as_str() == tuple_type_name().as_str() {
+            // Bare Tuple with no children
+            Rc::new(TypeRendering {
+                type_name: "Tuple".to_string(),
+                is_tuple: true,
+                shared,
+                ..tr_default()
+            })
+        } else {
+            // Primitive or named type
+            Rc::new(TypeRendering {
+                type_name: n.name.clone(),
+                shared,
+                ..tr_default()
+            })
+        }
+    } else {
+        // Leaf with children: container or generic type
+        let is_map = node_is_keyed_collection(n.clone());
+        if is_map {
+            let k = match n.children.first().cloned() {
+                Some(kn) => build_type_rendering(kn, rc_types.clone(), recursive_types.clone()),
+                None => leaf_type_rendering("_".to_string()),
+            };
+            let v = match n.children.iter().cloned().skip(1).next() {
+                Some(vn) => build_type_rendering(vn, rc_types.clone(), recursive_types.clone()),
+                None => leaf_type_rendering("_".to_string()),
+            };
+            Rc::new(TypeRendering {
+                type_name: n.name.clone(),
+                key: Some(k),
+                value: Some(v),
+                shared,
+                ..tr_default()
+            })
+        } else if n.children.len() == 1 {
+            let child_tr = match n.children.first().cloned() {
+                Some(child) => build_type_rendering(
+                    child,
+                    rc_types.clone(),
+                    recursive_types.clone(),
+                ),
+                None => leaf_type_rendering("_".to_string()),
+            };
+            let is_container = node_is_collection(n.clone());
+            if is_container {
+                Rc::new(TypeRendering {
+                    type_name: to_snake(n.name.clone()),
+                    element: Some(child_tr),
+                    shared,
+                    ..tr_default()
+                })
+            } else {
+                // Generic type with one type arg (e.g., NonEmptyVec<T>)
+                Rc::new(TypeRendering {
+                    type_name: n.name.clone(),
+                    generic_args: Rc::new(vec![child_tr]),
+                    shared,
+                    ..tr_default()
+                })
+            }
+        } else {
+            // Multi-child leaf without map — treat as primitive
+            Rc::new(TypeRendering {
+                type_name: n.name.clone(),
+                shared,
+                ..tr_default()
+            })
+        }
+    }
+}
+
+fn build_type_rendering_conj(
+    n: Rc<Node>,
+    rc_types: Rc<HashMap<String, bool>>,
+    recursive_types: Rc<HashMap<String, bool>>,
+) -> Rc<TypeRendering> {
+    let shared = emit_map_has(rc_types.clone(), n.name.clone());
+
+    // Refined: unwrap to base type
+    if n.name.as_str() == "Refined" {
+        return match n.children.first().cloned() {
+            Some(base) => build_type_rendering(base, rc_types, recursive_types),
+            None => Rc::new(TypeRendering {
+                type_name: "Refined".to_string(),
+                ..tr_default()
+            }),
+        };
+    }
+
+    // Tuple
+    if n.name.as_str() == tuple_type_name().as_str() {
+        let first = match n.children.first().cloned() {
+            Some(c) => {
+                if c.inferred.is_some() {
+                    build_type_rendering(rt_type(c), rc_types.clone(), recursive_types.clone())
+                } else {
+                    build_type_rendering(c, rc_types.clone(), recursive_types.clone())
+                }
+            }
+            None => leaf_type_rendering("_".to_string()),
+        };
+        let second = match n.children.iter().cloned().skip(1).next() {
+            Some(c) => {
+                if c.inferred.is_some() {
+                    build_type_rendering(rt_type(c), rc_types.clone(), recursive_types.clone())
+                } else {
+                    build_type_rendering(c, rc_types.clone(), recursive_types.clone())
+                }
+            }
+            None => leaf_type_rendering("_".to_string()),
+        };
+        return Rc::new(TypeRendering {
+            type_name: "Tuple".to_string(),
+            is_tuple: true,
+            params: Rc::new(vec![first, second]),
+            ..tr_default()
+        });
+    }
+
+    // Named product
+    if !n.name.is_empty() {
+        return Rc::new(TypeRendering {
+            type_name: n.name.clone(),
+            shared,
+            ..tr_default()
+        });
+    }
+
+    // Anonymous product — render children as tuple elements
+    let field_renderings: Vec<Rc<TypeRendering>> = n
+        .children
+        .iter()
+        .cloned()
+        .map(|child| {
+            if child.inferred.is_some() {
+                build_type_rendering(rt_type(child), rc_types.clone(), recursive_types.clone())
+            } else {
+                Rc::new(TypeRendering {
+                    type_name: String::new(),
+                    is_error: true,
+                    error_label: "anonymous product field missing inferred".to_string(),
+                    ..tr_default()
+                })
+            }
+        })
+        .collect();
+    Rc::new(TypeRendering {
+        type_name: String::new(),
+        params: Rc::new(field_renderings),
+        is_tuple: true,
+        ..tr_default()
+    })
+}
+
+fn build_type_rendering_disj(
+    n: Rc<Node>,
+    rc_types: Rc<HashMap<String, bool>>,
+    _recursive_types: Rc<HashMap<String, bool>>,
+) -> Rc<TypeRendering> {
+    let shared = emit_map_has(rc_types.clone(), n.name.clone());
+
+    if !n.name.is_empty() {
+        // Named coproduct
+        Rc::new(TypeRendering {
+            type_name: n.name.clone(),
+            shared,
+            ..tr_default()
+        })
+    } else {
+        // Anonymous coproduct — error
+        Rc::new(TypeRendering {
+            type_name: String::new(),
+            is_error: true,
+            error_label: "anonymous coproduct reached TypeRendering builder".to_string(),
+            ..tr_default()
+        })
+    }
+}
+
+// ── TypeRendering renderer ────────────────────────────────────────────
+//
+// Pure function: TypeRendering × RenderTarget → String.
+// No Node access. No HashMap lookups. Reads only the TypeRendering fields.
+
+pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
+    let is_rust = matches!(target, RenderTarget::Rust);
+
+    // Error types
+    if tr.is_error {
+        return if is_rust {
+            format!(
+                "compile_error!(\"unresolved {} type reached emit\")",
+                tr.type_name
+            )
+        } else {
+            format!("__EMIT_BUG_UNRESOLVED_{}__", tr.type_name)
+        };
+    }
+
+    let base = render_type_base(tr.clone(), target.clone());
+
+    // Apply sharing wrapper
+    if tr.shared {
+        wrap_shared_type(target, base)
+    } else {
+        base
+    }
+}
+
+fn render_type_base(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
+    let is_rust = matches!(target, RenderTarget::Rust);
+
+    // Callable: fn(A, B) -> R
+    if tr.type_name.as_str() == "Callable" && !tr.params.is_empty() {
+        let param_strs: Vec<String> = tr
+            .params
+            .iter()
+            .map(|p| render_type(p.clone(), target.clone()))
+            .collect();
+        let param_str = param_strs.join(", ");
+        let ret_str = match &tr.return_type {
+            Some(rt) => render_type(rt.clone(), target.clone()),
+            None => match target {
+                RenderTarget::Go => String::new(),
+                RenderTarget::Python => "None".to_string(),
+                _ => "()".to_string(),
+            },
+        };
+        return match target {
+            RenderTarget::Go => {
+                let suffix = if ret_str.is_empty() {
+                    String::new()
+                } else {
+                    format!(" {}", ret_str)
+                };
+                format!("func({}){}", param_str, suffix)
+            }
+            RenderTarget::Python => format!("Callable[[{}], {}]", param_str, ret_str),
+            RenderTarget::Rust => format!("Rc<dyn Fn({}) -> {}>", param_str, ret_str),
+            _ => format!("Fn({}) -> {}", param_str, ret_str),
+        };
+    }
+
+    // Optional: Option<T> / Optional[T] / *T
+    if tr.type_name.as_str() == "optional" {
+        if let Some(ref inner) = tr.inner {
+            let inner_str = render_type(inner.clone(), target.clone());
+            return emit_container("optional".to_string(), inner_str, target);
+        }
+    }
+
+    // Tuple: (A, B)
+    if tr.is_tuple {
+        if !tr.params.is_empty() {
+            let parts: Vec<String> = tr
+                .params
+                .iter()
+                .map(|p| render_type(p.clone(), target.clone()))
+                .collect();
+            return match target {
+                RenderTarget::Go => {
+                    if parts.len() == 2 {
+                        format!("struct{{ First {}; Second {} }}", parts[0], parts[1])
+                    } else {
+                        format!("struct{{ {} }}", parts.join("; "))
+                    }
+                }
+                RenderTarget::Python => format!("Tuple[{}]", parts.join(", ")),
+                _ => format!("({})", parts.join(", ")),
+            };
+        } else {
+            // Bare Tuple with no children
+            return match target {
+                RenderTarget::Python => "Tuple".to_string(),
+                RenderTarget::Go => "struct{}".to_string(),
+                _ => "()".to_string(),
+            };
+        }
+    }
+
+    // Map: HashMap<K, V> / Dict[K, V] / map[K]V
+    if let (Some(ref k), Some(ref v)) = (&tr.key, &tr.value) {
+        let key_str = render_type(k.clone(), target.clone());
+        let val_str = render_type(v.clone(), target.clone());
+        return emit_map_type(key_str, val_str, target);
+    }
+
+    // Container: Vec<T> / List[T] / []T
+    if let Some(ref elem) = tr.element {
+        let inner_str = render_type(elem.clone(), target.clone());
+        return emit_container(tr.type_name.clone(), inner_str, target);
+    }
+
+    // Generic type with type args: FooType<A, B>
+    if !tr.generic_args.is_empty() {
+        let base = emit_primitive_type(tr.type_name.clone(), target.clone());
+        let arg_strs: Vec<String> = tr
+            .generic_args
+            .iter()
+            .map(|a| render_type(a.clone(), target.clone()))
+            .collect();
+        let args_joined = arg_strs.join(", ");
+        return match target {
+            RenderTarget::Python => format!("{}[{}]", base, args_joined),
+            _ => format!("{}<{}>", base, args_joined),
+        };
+    }
+
+    // Anonymous product (e.g., single-field anonymous struct)
+    if tr.type_name.is_empty() && !tr.params.is_empty() {
+        // Anonymous product rendered as tuple
+        let parts: Vec<String> = tr
+            .params
+            .iter()
+            .map(|p| render_type(p.clone(), target.clone()))
+            .collect();
+        if is_rust {
+            if parts.len() == 1 {
+                return parts[0].clone();
+            }
+            return format!("({})", parts.join(", "));
+        }
+        return "__EMIT_BUG_ANONYMOUS_CONJ__".to_string();
+    }
+
+    // Leaf / named type
+    emit_primitive_type(tr.type_name.clone(), target)
 }
 
 pub fn is_type_alias_return_node(n: Rc<Node>) -> bool {

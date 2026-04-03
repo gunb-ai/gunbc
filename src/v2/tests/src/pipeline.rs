@@ -2,6 +2,7 @@
 
 use crate::helpers::*;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
@@ -4100,5 +4101,114 @@ fn make() -> Outer {
         content.contains("label: String"),
         "String field should not be Rc-wrapped, got:\n{}",
         content
+    );
+}
+
+// ── TypeRendering equivalence validation ──────────────────────────────
+//
+// Validates that build_type_rendering + render_type produces the same
+// output as the old emit_node_type_rc path for all types in the DSL.
+// This is the safety net for the TypeRendering switchover.
+
+#[test]
+fn type_rendering_equivalence() {
+    use v2_compiler::v2_compiler_emit::{
+        build_type_rendering, render_type, emit_node_type_rc,
+    };
+    use v2_compiler::v2_compiler_emit_rust::build_rc_types;
+    use v2_compiler::v2_compiler_infer::build_emit_graph_info;
+    use v2_compiler::v2_std_core::Node;
+
+    let ws = workspace_root();
+    let dsl_dir = ws.join("dsl");
+    let mut dsl_sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect_dag_sources(&ws, &dsl_dir, &mut dsl_sources);
+
+    // Run the pipeline to get the resolved graph
+    let frontend = v2_compiler::v2_compiler_compile::front_end_sources(
+        Rc::new(dsl_sources),
+    );
+    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let norm = v2_compiler::v2_compiler_normalize::normalize_graph(graph);
+    let source_indices = Rc::new(HashMap::new());
+    let typed = v2_compiler::v2_compiler_infer::reconcile(
+        norm.graph.clone(),
+        source_indices,
+    );
+
+    // Build emit info and rc_types
+    let emit_info = build_emit_graph_info(typed.modules.clone());
+    let rc_types = build_rc_types(emit_info.clone());
+    let recursive_types = emit_info.recursive_type_set.clone();
+
+    // Walk all type nodes and validate
+    let mut checked = 0usize;
+    let mut mismatches: Vec<String> = Vec::new();
+
+    fn walk_type_nodes(
+        node: &Rc<Node>,
+        rc_types: &Rc<HashMap<String, bool>>,
+        recursive_types: &Rc<HashMap<String, bool>>,
+        checked: &mut usize,
+        mismatches: &mut Vec<String>,
+    ) {
+        if !node.name.is_empty() || !node.children.is_empty() {
+            let old = emit_node_type_rc(
+                node.clone(),
+                RenderTarget::Rust,
+                rc_types.clone(),
+            );
+            let tr = build_type_rendering(
+                node.clone(),
+                rc_types.clone(),
+                recursive_types.clone(),
+            );
+            let new = render_type(tr, RenderTarget::Rust);
+            *checked += 1;
+            if old != new {
+                mismatches.push(format!(
+                    "  '{}': old={:?} new={:?}",
+                    node.name, old, new
+                ));
+            }
+        }
+        for child in node.children.iter() {
+            walk_type_nodes(child, rc_types, recursive_types, checked, mismatches);
+        }
+    }
+
+    for module in typed.modules.iter() {
+        for item in module.items.iter() {
+            walk_type_nodes(
+                item,
+                &rc_types,
+                &recursive_types,
+                &mut checked,
+                &mut mismatches,
+            );
+        }
+    }
+
+    eprintln!(
+        "TypeRendering equivalence: checked {} type nodes, {} mismatches",
+        checked,
+        mismatches.len()
+    );
+    if !mismatches.is_empty() {
+        for m in mismatches.iter().take(20) {
+            eprintln!("{}", m);
+        }
+        eprintln!(
+            "({} total mismatches out of {} checked)",
+            mismatches.len(),
+            checked
+        );
+    }
+    assert!(
+        mismatches.is_empty(),
+        "TypeRendering produced {} mismatches out of {} checked — \
+         build_type_rendering + render_type must match emit_node_type_rc exactly",
+        mismatches.len(),
+        checked,
     );
 }
