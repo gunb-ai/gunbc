@@ -514,7 +514,7 @@ v2_rt::concat(v2_rt::concat("[".to_string(), el_strs.clone().join(&", ".to_strin
 v2_rt::concat(v2_rt::concat("{".to_string(), field_strs.clone().join(&", ".to_string())), "}".to_string())
 },
     ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(expr_var_name_at(value.clone(), source_index.clone()))), "\"".to_string()),
-    _ => "<<<UNSUPPORTED_MOCK_EXPR>>>".to_string(),
+    _ => "\"__UNSUPPORTED_MOCK_EXPR__\"".to_string(),
 }
     })
 }
@@ -2129,7 +2129,7 @@ pub fn emit_error_expr(message: String, target: RenderTarget) -> String {
     {
         let msg: String = emit_string_literal(message.clone(), "".to_string());
 match target.clone() {
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("compile_error!(".to_string(), msg.clone()), ")".to_string()),
+    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("panic!(".to_string(), msg.clone()), ")".to_string()),
     RenderTarget::Go => v2_rt::concat(v2_rt::concat("panic(".to_string(), msg.clone()), ")".to_string()),
     RenderTarget::Python => v2_rt::concat(v2_rt::concat("raise RuntimeError(".to_string(), msg.clone()), ")".to_string()),
     RenderTarget::Dag => v2_rt::concat(v2_rt::concat("error(".to_string(), msg.clone()), ")".to_string()),
