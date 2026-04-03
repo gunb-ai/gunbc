@@ -2550,9 +2550,8 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
   }
   let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info))
   let all_strs = concat([recv_str], arg_strs)
-  let lowered = concat("v2_rt::", emit_ident(name: function_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
-  // No bridge Rc-wrapping needed: rc_types is the single authority.
-  // Map values are already Rc-wrapped for non-Copy types.
+  let bridge_name = rust_runtime_bridge_name(function_name: function_name)
+  let lowered = concat("v2_rt::", emit_ident(name: bridge_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
   lowered
 }
 

@@ -2646,7 +2646,8 @@ let recv_str: String = if rust_runtime_bridge_passes_receiver_by_ref(function_na
 };
 let arg_strs: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_cloned_arg(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())); } __result });
 let all_strs: Rc<Vec<String>> = v2_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs.clone());
-let lowered: String = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2_rt::".to_string(), emit_ident(function_name.clone(), RenderTarget::Rust)), "(".to_string()), all_strs.clone().join(&", ".to_string())), ")".to_string());
+let bridge_name: String = rust_runtime_bridge_name(function_name.clone());
+let lowered: String = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2_rt::".to_string(), emit_ident(bridge_name.clone(), RenderTarget::Rust)), "(".to_string()), all_strs.clone().join(&", ".to_string())), ")".to_string());
 lowered.clone()
 }
 }
