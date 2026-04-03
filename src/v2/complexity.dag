@@ -2882,13 +2882,20 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
         // Merge into 2D proof edges
         let all_keys = concat(map_keys(tree_edge_map), map_keys(list_edge_map))
         let unique_keys = all_keys |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, true))
+        // Build caller/callee lookup from original edges
+        let edge_names = entry.params |> flat_map(p =>
+          let pname = param_node_name(n: p)
+          let tvars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false)
+          collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tvars, target_set: scc_name_set)
+        )
+        let name_map = edge_names |> fold(init: empty_map(), f: (acc, pe) =>
+          map_insert(acc, concat(pe.caller, concat("->", pe.callee)), pe)
+        )
         map_keys(unique_keys) |> map(key =>
           let tree_ev = match map_get(tree_edge_map, key) { Some { value: ev } => ev   None => DescentUnknown }
           let list_ev = match map_get(list_edge_map, key) { Some { value: ev } => ev   None => DescentUnknown }
-          // Parse caller/callee from key
-          let parts = split(key, "->")
-          let caller_name = match parts |> first { Some { value: c } => c   None => name }
-          let callee_name = match parts |> skip(1) |> first { Some { value: c } => c   None => name }
+          let caller_name = match map_get(name_map, key) { Some { value: pe } => pe.caller   None => name }
+          let callee_name = match map_get(name_map, key) { Some { value: pe } => pe.callee   None => name }
           ProofEdge { caller: caller_name, callee: callee_name, evidence: [tree_ev, list_ev] }
         )
       None => []
