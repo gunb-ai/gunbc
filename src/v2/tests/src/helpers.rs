@@ -97,18 +97,18 @@ fn source_roots() -> Vec<std::path::PathBuf> {
 /// Resolve a module path to a file path using convention, then glob fallback.
 ///
 /// Convention: `std.types` → split on `.` → try `<root>/std/types.dag` in each
-/// source root. This handles dsl/ and most of src/v2/.
+/// source root. This handles dsl/ where directory structure mirrors module path.
 ///
-/// Fallback: for src/v2/ files with numeric prefixes (e.g. `02_parse.dag`),
-/// glob for `*<last_segment>.dag` in the resolved parent directory.
+/// Flat fallback: for roots with flat layouts (src/v2/), glob for
+/// `*<last_segment>.dag` directly in the root. Handles numeric prefixes
+/// like `02_parse.dag` for `module v2.compiler.parse`.
 fn resolve_module_to_path(module_path: &str) -> Option<std::path::PathBuf> {
     let segments: Vec<&str> = module_path.split('.').collect();
     if segments.is_empty() {
         return None;
     }
-
     for root in source_roots() {
-        // Convention: join segments as path, add .dag
+        // Convention: join all segments as subdirectories, add .dag
         let mut conventional = root.clone();
         for seg in &segments {
             conventional.push(seg);
@@ -118,27 +118,36 @@ fn resolve_module_to_path(module_path: &str) -> Option<std::path::PathBuf> {
             return Some(conventional);
         }
 
-        // Glob fallback: directory from all-but-last segments, glob for *<last>.dag
-        // Handles numeric prefixes like 02_parse.dag for module v2.compiler.parse
-        if segments.len() >= 2 {
-            let last = segments.last().unwrap();
-            let mut dir = root.clone();
-            for seg in &segments[..segments.len() - 1] {
-                dir.push(seg);
-            }
-            if dir.is_dir() {
-                let pattern = format!("*{}.dag", last);
-                if let Ok(entries) = std::fs::read_dir(&dir) {
-                    for entry in entries.flatten() {
-                        let name = entry.file_name();
-                        let name_str = name.to_string_lossy();
-                        if name_str.ends_with(&format!("{}.dag", last))
-                            && name_str != format!("{}.dag", last)
-                        {
-                            let _ = pattern; // used only for documentation
-                            return Some(entry.path());
-                        }
+        // Fallback: scan the root directory for a file whose `module`
+        // declaration matches. Handles flat layouts with numeric prefixes
+        // (src/v2/02_parse.dag for module v2.compiler.parse). Only reads
+        // the first non-comment line from each .dag file — no full parse.
+        if let Some(found) = find_module_in_dir(&root, module_path) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// Find a file in `dir` whose `module` declaration matches `module_path`.
+/// Only reads the first `module` line from candidate files — no full parse.
+fn find_module_in_dir(dir: &std::path::Path, module_path: &str) -> Option<std::path::PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let expected = format!("module {}", module_path);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                // Scan for `module X` line — skip comments and blanks.
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() || trimmed.starts_with("//") {
+                        continue;
                     }
+                    if trimmed == expected || trimmed.starts_with(&format!("{} ", expected)) {
+                        return Some(path);
+                    }
+                    break; // first non-comment line wasn't a module decl
                 }
             }
         }
