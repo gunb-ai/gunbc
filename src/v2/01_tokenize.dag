@@ -92,14 +92,12 @@ type ScanResult {
 // TCO reassignment of `source: SourceRef` becomes `Rc::clone` (O(1))
 // instead of `String::clone` (O(N) for 200K byte files).
 //
-// source_chars: pre-computed character list for O(1) indexed access.
-// Eliminates the O(n^2) regression when source contains non-ASCII
-// characters (the runtime's is_ascii() gate is whole-string, so one
-// em-dash in a comment drops every char_at/scan_while to O(n)).
-// The decomposition is O(n) once at tokenize entry.
+// source_chars is the single authority for source content. Decomposed
+// from the raw string once at tokenize entry (O(n)). All character
+// access is O(1) list indexing — no runtime is_ascii() gate, no
+// quadratic regression on non-ASCII input.
 
 type SourceRef {
-  text: String
   file: String
   source_chars: List<String>
   source_len: Int
@@ -160,7 +158,7 @@ fn source_scan_to_eol(source: SourceRef, start: Int) -> Int {
 
 fn tokenize(source: String, file: String) -> List<Token> {
   let c = chars(source)
-  let src = SourceRef { text: source, file: file, source_chars: c, source_len: count(c) }
+  let src = SourceRef { file: file, source_chars: c, source_len: count(c) }
   let initial = TokPos { pos: 0, interp_depth: [] }
   let final_state = tokenize_loop(source: src, tokens: [], pos: initial, fuel: src.source_len + 1)
   let eof_span = make_file_span(file: src.file, start: final_state.pos, end: final_state.pos)

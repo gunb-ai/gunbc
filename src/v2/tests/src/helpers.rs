@@ -78,81 +78,59 @@ pub fn assert_parses_strict(relative_path: &str) {
 // from source roots, recurse. Each module is loaded exactly once (memoized
 // by module path). The result is the minimal transitive closure.
 //
-// Module resolution is convention-based: `std.types` → `dsl/std/types.dag`.
-// No upfront scan of all files. Files are found and parsed only when
-// actually imported.
+// Module identity comes from the parser (single authority). The module
+// index is built once via OnceLock and maps module_path → file_path.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
-/// Source roots where .dag files can be found. Module path segments map
-/// to directory structure: `std.types` → `<root>/std/types.dag`.
+/// Source roots where .dag files can be found.
 fn source_roots() -> Vec<std::path::PathBuf> {
     let ws = workspace_root();
     vec![
-        ws.join("dsl"),       // std.types → dsl/std/types.dag
-        ws.join("src/v2"),    // v2.std.core → src/v2/00_core.dag (needs glob fallback)
+        ws.join("dsl"),
+        ws.join("src/v2"),
     ]
 }
 
-/// Resolve a module path to a file path using convention, then glob fallback.
-///
-/// Convention: `std.types` → split on `.` → try `<root>/std/types.dag` in each
-/// source root. This handles dsl/ where directory structure mirrors module path.
-///
-/// Flat fallback: for roots with flat layouts (src/v2/), glob for
-/// `*<last_segment>.dag` directly in the root. Handles numeric prefixes
-/// like `02_parse.dag` for `module v2.compiler.parse`.
-fn resolve_module_to_path(module_path: &str) -> Option<std::path::PathBuf> {
-    let segments: Vec<&str> = module_path.split('.').collect();
-    if segments.is_empty() {
-        return None;
-    }
+/// Build module index using the parser as single authority for module names.
+/// Scans source roots recursively, tokenizes+parses each .dag file to
+/// extract the module declaration. Built once via OnceLock.
+fn build_module_index() -> HashMap<String, std::path::PathBuf> {
+    let mut index = HashMap::new();
     for root in source_roots() {
-        // Convention: join all segments as subdirectories, add .dag
-        let mut conventional = root.clone();
-        for seg in &segments {
-            conventional.push(seg);
-        }
-        conventional.set_extension("dag");
-        if conventional.exists() {
-            return Some(conventional);
-        }
-
-        // Fallback: scan the root directory for a file whose `module`
-        // declaration matches. Handles flat layouts with numeric prefixes
-        // (src/v2/02_parse.dag for module v2.compiler.parse). Only reads
-        // the first non-comment line from each .dag file — no full parse.
-        if let Some(found) = find_module_in_dir(&root, module_path) {
-            return Some(found);
+        if root.exists() {
+            scan_dag_files(&root, &mut index);
         }
     }
-    None
+    index
 }
 
-/// Find a file in `dir` whose `module` declaration matches `module_path`.
-/// Only reads the first `module` line from candidate files — no full parse.
-fn find_module_in_dir(dir: &std::path::Path, module_path: &str) -> Option<std::path::PathBuf> {
-    let entries = std::fs::read_dir(dir).ok()?;
-    let expected = format!("module {}", module_path);
+fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                // Scan for `module X` line — skip comments and blanks.
-                for line in content.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() || trimmed.starts_with("//") {
-                        continue;
-                    }
-                    if trimmed == expected || trimmed.starts_with(&format!("{} ", expected)) {
-                        return Some(path);
-                    }
-                    break; // first non-comment line wasn't a module decl
-                }
+        if path.is_dir() {
+            scan_dag_files(&path, index);
+        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            if let Some(module_path) = extract_module_declaration(&path) {
+                index.insert(module_path, path);
             }
         }
     }
-    None
+}
+
+/// Extract module declaration using the parser — single authority.
+fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let result = parse_source(&content);
+    result.module.as_ref().map(|m| m.name.clone())
+}
+
+static MODULE_INDEX: OnceLock<HashMap<String, std::path::PathBuf>> = OnceLock::new();
+
+fn module_index() -> &'static HashMap<String, std::path::PathBuf> {
+    MODULE_INDEX.get_or_init(build_module_index)
 }
 
 /// Extract import module paths using the actual parser — no parallel
@@ -173,9 +151,7 @@ fn extract_imports(source: &str) -> Vec<String> {
 
 /// Resolve imports transitively from an entry source. Returns the minimal
 /// set of SourceFiles needed — each module loaded exactly once.
-///
-/// Uses convention-based file lookup (no upfront global scan). Only parses
-/// files that are actually imported.
+/// Lookups use the cached module index (parser-backed, built once).
 fn resolve_imports_transitively(
     entry_path: &str,
     entry_content: &str,
@@ -193,7 +169,7 @@ fn resolve_imports_transitively(
             if seen.contains_key(&module_path) {
                 continue; // already loaded — O(1) check
             }
-            if let Some(file_path) = resolve_module_to_path(&module_path) {
+            if let Some(file_path) = module_index().get(&module_path) {
                 if let Ok(file_content) = std::fs::read_to_string(&file_path) {
                     let rel_path = file_path
                         .strip_prefix(&ws)

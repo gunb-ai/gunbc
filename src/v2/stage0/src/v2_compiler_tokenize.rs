@@ -97,7 +97,6 @@ pub struct ScanResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRef {
-    pub text: String,
     pub file: String,
     pub source_chars: Rc<Vec<String>>,
     pub source_len: i64,
@@ -171,7 +170,7 @@ fn source_scan_to_eol(source: &SourceRef, start: i64) -> i64 {
 pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
     let c: Vec<String> = source.chars().map(|c| c.to_string()).collect();
     let source_len = c.len() as i64;
-    let src = Rc::new(SourceRef { text: source.clone(), file: file.clone(), source_chars: Rc::new(c), source_len });
+    let src = Rc::new(SourceRef { file: file.clone(), source_chars: Rc::new(c), source_len });
     let mut tokens: Vec<Rc<Token>> = Vec::new();
     let mut pos = Rc::new(TokPos { pos: 0, interp_depth: Rc::new(vec![]) });
 
