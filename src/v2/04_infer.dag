@@ -843,6 +843,8 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
         _ => none
       }
     }
+    // BRIDGE: heuristic child-count check compensates for incomplete upstream
+    // container facts. Blocked on CX-C bounded-primitive fold type propagation.
     let acc_under_resolved = match fold_acc {
       Some { value: acc_type } =>
         // Map with missing value type

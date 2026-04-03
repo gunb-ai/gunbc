@@ -2854,16 +2854,24 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
 // Merge a single ParserProgressEdge into an evidence map, keeping the best
 // evidence per caller->callee key. Extracted from collect_scc_independent_dim_edges
 // to avoid nested fold inference limits in stage0.
-fn merge_edge_evidence(best_map: Map<String, DescentEvidence>, pe: ParserProgressEdge) -> Map<String, DescentEvidence> {
+fn merge_edge_evidence(acc_map: Map<String, DescentEvidence>, pe: ParserProgressEdge) -> Map<String, DescentEvidence> {
   let key = concat(pe.caller, concat("->", pe.callee))
-  let existing = map_get(best_map, key)
+  let existing = map_get(acc_map, key)
   let new_ev = progress_to_evidence(pk: pe.progress)
-  let best_ev = match existing {
+  // Conservative (meet in lattice): keep WORST evidence per edge.
+  // Multiple call sites between the same caller→callee must ALL be
+  // non-increasing for the edge to be non-increasing. Keeping the best
+  // would mask unknown edges and produce false-positive termination proofs.
+  let merged_ev = match existing {
     Some { value: prev } =>
-      match new_ev { Strict => Strict   NonIncreasing => match prev { DescentUnknown => NonIncreasing  _ => prev }  DescentUnknown => prev }
+      match prev {
+        Strict => match new_ev { Strict => Strict  NonIncreasing => NonIncreasing  DescentUnknown => DescentUnknown }
+        NonIncreasing => match new_ev { Strict => NonIncreasing  NonIncreasing => NonIncreasing  DescentUnknown => DescentUnknown }
+        DescentUnknown => DescentUnknown
+      }
     None => new_ev
   }
-  map_insert(best_map, key, best_ev)
+  map_insert(acc_map, key, merged_ev)
 }
 
 // For each SCC call edge, independently find the best evidence for
@@ -2935,8 +2943,14 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
     } else {
       // Lexicographic: independently find best tree dim and best list dim per edge
       let lex_edges = collect_scc_independent_dim_edges(members: members, func_index: func_index, scc_name_set: scc_name_set)
+      // Lexicographic descent requires the LEADING dimension to be known.
+      // An edge like [DescentUnknown, Strict] has unconstrained first dim
+      // and must not pass — the primary measure could increase.
       let lex_all_known = lex_edges |> all(e =>
-        e.evidence |> any(ev => match ev { DescentUnknown => false   _ => true })
+        match e.evidence |> first {
+          Some { value: ev } => match ev { DescentUnknown => false  _ => true }
+          None => false
+        }
       )
       if lex_all_known && (lex_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: lex_edges) == false {
         Some { value: TerminationProof { dimensions: [TreeSize { param: "scc" }, ListLength { param: "scc" }] } }

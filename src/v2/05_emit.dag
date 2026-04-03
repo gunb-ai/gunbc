@@ -895,12 +895,12 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
 
 fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
+    // BRIDGE: name-based container check compensates for lost upstream type
+    // structure. Blocked on P1-C structural container-ness on type nodes.
     // Bare container nodes (from empty_map(), etc.) need container templates
     // even without children — emit with "_" placeholders.
-    // Also handles generic types like FreeMonoid<T> / PartialFunction<K,V>
-    // that arrive as bare leaves when type parameters haven't been substituted.
-    // Use is_container_type (name check) not node_is_keyed/element_collection
-    // (which require children > 0 and fail for bare containers from empty_map).
+    // Uses is_container_type (name check) because node_is_keyed/element_collection
+    // require children > 0 and fail for bare containers from empty_map.
     let has_map_template = target_container_template(target: target, kind: "map") != none
     let has_container_template = target_container_template(target: target, kind: to_snake(name: n.name)) != none
     let bare_is_map = is_container_type(name: n.name) && has_map_template

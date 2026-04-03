@@ -258,7 +258,7 @@ M1 (every .dag compiles)
       CX-1: container-child descent proof (DONE)
       CX-M: IR child layout model (DONE — expr_child_roles in 00_core.dag)
       CX-2: if→Option→match descent (DONE — LitNull fix, ExprBlock var propagation)
-      CX-3: SCC lexicographic proof (DONE — independent-dim TreeSize×ListLength)
+      CX-3: SCC lexicographic proof (partial — independent-dim landed; merge+lex soundness fixed)
       CX-4: proof-before-branching (DONE — proof constructor runs before path_calls>1)
       ── remaining 164 violations = unfinished algebraic grounding ──
       The 164 are NOT analyzer bugs. They are ungrounded concepts —
@@ -371,6 +371,10 @@ function's domain changes from String to Node — same algebra, better key.
 **Impact:** ~200 map lookups become edge traversals. Type errors from
 name typos become impossible (structural references are checked at
 construction). This IS M4 Lane 2 (Node.name deletion).
+Cleanup (when P1-C lands):
+  - Remove `is_container_type` name check in 05_emit.dag (PR #304 A3)
+  - Remove `string_contains` inline bridge in 05_emit_rust.dag (PR #304 A4)
+  - Remove String fields in dsl/std/termination.dag (PR #304 C2)
 
 ### P1-D: Context/accumulator deduplication (10 types → 4)
 
@@ -1780,6 +1784,10 @@ callbacks by recognizing the `descend` pattern from std/iteration.dag.
 Eliminates per-variant cases, ExprBlock bugs, and the
 branching/non-branching distinction.
 Files: complexity.dag, stage0 mirror.
+Cleanup (when CX-C lands):
+  - Remove `acc_under_resolved` heuristic in 04_infer.dag (PR #304 A1)
+  - Remove fold lambda `acc_type_str` fallback in 05_emit_rust.dag (PR #304 A2)
+  - Remove `ListMethodKind` string dispatch in complexity.dag (PR #304 B2)
 
 CX-D: **Parser SCC dissolution** (~80 violations).
 ProgressKind already unified with DescentEvidence in CX-B. Parser

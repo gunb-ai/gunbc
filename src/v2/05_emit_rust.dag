@@ -2275,8 +2275,10 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
 
 // Emit a fold lambda with typed accumulator and element parameters.
 // The accumulator type is always emitted as `_` because the reconciler's inferred
-// type for fold accumulators is often wrong (e.g. bare Map<String, String> instead
-// of Map<String, Rc<T>>). Rust can infer the correct type from the init value and body.
+// BRIDGE: emitter compensation — uses acc_type_str as fallback for fold lambda
+// accumulator annotation. Blocked on inference fold accuracy (CX-C).
+// The inferred type for fold accumulators is often wrong (e.g. bare Map<String, String>
+// instead of Map<String, Rc<T>>). Rust can infer the correct type from init and body.
 fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda { semantics: semantics } =>
@@ -2616,6 +2618,9 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
         concat("Rc::new(", recv_str, ".chars().map(|c| c as i64).collect::<Vec<_>>())")
       } else if method_name == "string_contains" {
+        // BRIDGE: inline lowering duplicates generic bridge path. Should route
+        // through emit_rust_generic_method_call once by-ref receiver handling
+        // is unified. Blocked on P1-C structural method bridge lookup.
         let by_ref = rust_runtime_bridge_passes_receiver_by_ref(function_name: "string_contains")
         let recv_str = if by_ref { concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)) } else { emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024) }
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
