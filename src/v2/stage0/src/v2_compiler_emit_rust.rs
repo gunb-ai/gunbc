@@ -2294,7 +2294,7 @@ pub fn emit_typed_fold_lambda(lambda_expr: Rc<Node>, acc_type_str: String, elem_
         let ps: Rc<Vec<String>> = lambda_param_names_at(lambda_expr.clone(), scope.type_env.clone().source_index.clone());
 let bd: Rc<Node> = lambda_body(lambda_expr.clone());
 let fallback_types: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(ps.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push(if (pair.0.clone() == 0) {
-            "_".to_string()
+            acc_type_str.clone()
 } else {
             elem_type_str.clone()
 }); } __result });
