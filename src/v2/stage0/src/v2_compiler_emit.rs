@@ -149,10 +149,10 @@ pub struct TestProjection {
 }
 
 pub fn has_mock_prefix(name: String) -> bool {
-    if (v2_rt::string_length(name.clone()) < 5) {
+    if (v2_rt::string_length(&name) < 5) {
         false
 } else {
-        (v2_rt::substring(name.clone(), 0, 5).as_str() == "mock_".to_string().as_str())
+        (v2_rt::substring(&name, 0, 5).as_str() == "mock_".to_string().as_str())
 }
 }
 

@@ -40,6 +40,7 @@ debug = 0
 # If hand-written debug_assert! is ever added to stage0, revisit this.
 [profile.dev.package.v2-compiler]
 debug-assertions = false
+opt-level = 2
 
 [profile.release]
 debug = 0

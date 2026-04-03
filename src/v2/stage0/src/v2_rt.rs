@@ -20,7 +20,7 @@ impl<T> V2Concat for Vec<T> {
 
 pub fn concat<T: V2Concat>(a: T, b: T) -> T { a.v2_concat(b) }
 
-pub fn char_at(s: String, pos: i64) -> String {
+pub fn char_at(s: &str, pos: i64) -> String {
     let pos = pos.max(0) as usize;
     if s.is_ascii() {
         let bytes = s.as_bytes();
@@ -30,11 +30,11 @@ pub fn char_at(s: String, pos: i64) -> String {
     s.chars().nth(pos).map(|ch| ch.to_string()).unwrap_or_default()
 }
 
-pub fn string_length(s: String) -> i64 {
+pub fn string_length(s: &str) -> i64 {
     if s.is_ascii() { s.len() as i64 } else { s.chars().count() as i64 }
 }
 
-pub fn substring(s: String, start: i64, end: i64) -> String {
+pub fn substring(s: &str, start: i64, end: i64) -> String {
     let start = start.max(0) as usize;
     let end = end.max(0) as usize;
     if end <= start { return String::new(); }
@@ -46,7 +46,7 @@ pub fn substring(s: String, start: i64, end: i64) -> String {
     s.chars().skip(start).take(end.saturating_sub(start)).collect()
 }
 
-pub fn string_contains(s: String, sub: String) -> bool {
+pub fn string_contains(s: &str, sub: String) -> bool {
     s.contains(&*sub)
 }
 
@@ -96,8 +96,7 @@ pub fn map_has<V>(m: &HashMap<String, V>, key: String) -> bool {
     m.contains_key(&key)
 }
 
-pub fn scan_while(s: String, start: i64, pred: impl Fn(String) -> bool) -> i64 {
-    let s = s.as_str();
+pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {
     let start = start.max(0) as usize;
     if s.is_ascii() {
         let bytes = s.as_bytes();
@@ -114,8 +113,7 @@ pub fn scan_while(s: String, start: i64, pred: impl Fn(String) -> bool) -> i64 {
     pos as i64
 }
 
-pub fn skip_horizontal_ws(s: String, start: i64) -> i64 {
-    let s = s.as_str();
+pub fn skip_horizontal_ws(s: &str, start: i64) -> i64 {
     let start = start.max(0) as usize;
     if s.is_ascii() {
         let bytes = s.as_bytes();
@@ -132,8 +130,7 @@ pub fn skip_horizontal_ws(s: String, start: i64) -> i64 {
     pos as i64
 }
 
-pub fn scan_to_eol(s: String, start: i64) -> i64 {
-    let s = s.as_str();
+pub fn scan_to_eol(s: &str, start: i64) -> i64 {
     let start = start.max(0) as usize;
     if s.is_ascii() {
         let bytes = s.as_bytes();
@@ -151,8 +148,7 @@ pub fn scan_to_eol(s: String, start: i64) -> i64 {
     pos as i64
 }
 
-pub fn scan_string_end(s: String, start: i64) -> i64 {
-    let s = s.as_str();
+pub fn scan_string_end(s: &str, start: i64) -> i64 {
     let start = start.max(0) as usize;
     if s.is_ascii() {
         let bytes = s.as_bytes();

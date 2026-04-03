@@ -110,14 +110,14 @@ type RuntimeFunction {
 
 data rt_function_registry: List<RuntimeFunction> = [
   { name: "concat",             bridge_name: "concat",           passes_by_ref: false },
-  { name: "char_at",            bridge_name: "char_at",          passes_by_ref: false },
-  { name: "string_length",      bridge_name: "string_length",    passes_by_ref: false },
-  { name: "substring",          bridge_name: "substring",        passes_by_ref: false },
-  { name: "string_contains",    bridge_name: "string_contains",  passes_by_ref: false },
-  { name: "scan_while",         bridge_name: "scan_while",       passes_by_ref: false },
-  { name: "skip_horizontal_ws", bridge_name: "skip_horizontal_ws", passes_by_ref: false },
-  { name: "scan_to_eol",        bridge_name: "scan_to_eol",      passes_by_ref: false },
-  { name: "scan_string_end",    bridge_name: "scan_string_end",  passes_by_ref: false },
+  { name: "char_at",            bridge_name: "char_at",          passes_by_ref: true },
+  { name: "string_length",      bridge_name: "string_length",    passes_by_ref: true },
+  { name: "substring",          bridge_name: "substring",        passes_by_ref: true },
+  { name: "string_contains",    bridge_name: "string_contains",  passes_by_ref: true },
+  { name: "scan_while",         bridge_name: "scan_while",       passes_by_ref: true },
+  { name: "skip_horizontal_ws", bridge_name: "skip_horizontal_ws", passes_by_ref: true },
+  { name: "scan_to_eol",        bridge_name: "scan_to_eol",      passes_by_ref: true },
+  { name: "scan_string_end",    bridge_name: "scan_string_end",  passes_by_ref: true },
   { name: "code_point",         bridge_name: "code_point",       passes_by_ref: false },
   { name: "from_code_point",    bridge_name: "from_code_point",  passes_by_ref: false },
   { name: "lookup",             bridge_name: "lookup",           passes_by_ref: true },
@@ -163,9 +163,11 @@ data rt_functions: Map<String, Bool> = {
   "reverse": true, "replace": true
 }
 
-data rt_ref_map_functions: Map<String, Bool> = {
-  "map_get": true, "map_keys": true, "map_values": true,
-  "lookup": true, "map_contains_key": true, "map_has": true
+// Derived from rt_function_registry — single authority for passes_by_ref.
+fn rt_ref_map_functions() -> Map<String, Bool> {
+  rt_function_registry
+    |> filter(f => f.passes_by_ref)
+    |> fold(acc: {}, f => map_insert(acc, f.name, true))
 }
 
 data rt_bridge_function_names: Map<String, String> = {
@@ -189,5 +191,5 @@ fn rt_bridge_name(name: String) -> String {
 }
 
 fn rt_passes_by_ref(name: String) -> Bool {
-  map_contains_key(rt_ref_map_functions, name)
+  map_contains_key(rt_ref_map_functions(), name)
 }

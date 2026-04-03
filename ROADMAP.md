@@ -28,7 +28,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
 | Bootstrap emitted Rust (B) | 41 | 0 | CX gate bypassed (PR #300). 41 `Rc::new(HashMap::new())` scaffolding replacing `compile_error!("empty_map")` — bare containers reaching emit without resolved value types (M2 blocker 2, fix order #6). |
 | Stage0 regeneration (C) | RED | GREEN | Self-compile: 0 typed errors, 40 files emitted, 297 CX (bypassed). Stage1→stage0 replacement (Bootstrap D) not yet green. |
-| L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
+| L1 ratchet | 24 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
@@ -286,6 +286,12 @@ INVARIANTS.md table at §Emission lists 8 known violations of this pattern.
 - Stay on bootstrap. Do not broaden to #1/#2/#4 completion.
 - Make bootstrap patches unnecessary: fix the emitter so regenerated code
   doesn't need iterative tokenizer, dag_syntax cache, or shape binop patches.
+- **Root cause of all perf patches**: the Rust emitter generates all values
+  as owned types (`String`, `Rc<Vec<T>>`) with `.clone()` on every reference.
+  Hot paths like `char_at(source.text.clone(), pos)` clone 60KB per character.
+  Without compiler optimizations, this is 93x slower than release mode.
+  The fix is emitting `&str`-based code for read-only string access and
+  `&[T]` for read-only list access — a fundamental emitter architecture change.
 - The `node.name`-based pattern_subject fix is D6 debt — replace with
   structural InferredNode variant when D6 lands.
 - Core question: do parameterized container facts survive resolve→emit?
@@ -727,7 +733,7 @@ works. 9 scrambled-name tests in CI. Parse/emit round-trip smoke test.
 
 ### M4: Compiler Knows Zero Type Names (L1 = 0)
 
-**Status:** L1 = 21. Depends on M2. Two exclusive lanes. Current Lane 1
+**Status:** L1 = 24. Depends on M2. Two exclusive lanes. Current Lane 1
 direction: finish declaration-driven structural algebra, then remove
 the remaining bootstrap/stage0 bridge work. Current FF-9 state is an
 ambient `std.types` bootstrap bridge, not the final import-only
@@ -1645,7 +1651,7 @@ the first level the language recognizes.
 |---------|---------|--------|---------|
 | Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count -- --ignored` (DIAG_RATCHET in bootstrap.rs; all are complexity violations from analyzer-language mismatch) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
-| L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
+| L1 type knowledge | 24 | 0 | `scripts/l1-ratchet.sh --check` |
 | Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (51 root functions; resolves with CX lane analyzer redesign) |
 | Emitted Rust errors | 1 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
