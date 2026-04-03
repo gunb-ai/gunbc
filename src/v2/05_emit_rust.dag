@@ -2614,9 +2614,10 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
         concat("Rc::new(", recv_str, ".chars().map(|c| c as i64).collect::<Vec<_>>())")
       } else if method_name == "string_contains" {
-        let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+        let by_ref = rust_runtime_bridge_passes_receiver_by_ref(function_name: "string_contains")
+        let recv_str = if by_ref { concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)) } else { emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024) }
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
-        concat("v2_rt::string_contains(&", recv_str, ", ", first_arg_str, ")")
+        concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
       } else if method_name == "concat" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
         let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024))

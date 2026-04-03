@@ -2736,7 +2736,8 @@ v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), recv_str.clone()), ".chars()
 } else {
                                                                             if (method_name.clone().as_str() == "string_contains".to_string().as_str()) {
                                                                                 {
-                                                                                    let recv_str: String = v2_rt::concat("&".to_string(), emit_typed_expr_base(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()));
+                                                                                    let by_ref: bool = rust_runtime_bridge_passes_receiver_by_ref("string_contains".to_string());
+let recv_str: String = if by_ref { v2_rt::concat("&".to_string(), emit_typed_expr_base(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())) } else { emit_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024) };
 let first_arg_str: String = emit_typed_first_arg(args.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2_rt::string_contains(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string())
 }

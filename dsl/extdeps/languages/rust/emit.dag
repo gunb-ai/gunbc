@@ -163,9 +163,11 @@ data rt_functions: Map<String, Bool> = {
   "reverse": true, "replace": true
 }
 
-data rt_ref_map_functions: Map<String, Bool> = {
-  "map_get": true, "map_keys": true, "map_values": true,
-  "lookup": true, "map_contains_key": true, "map_has": true
+// Derived from rt_function_registry — single authority for passes_by_ref.
+fn rt_ref_map_functions() -> Map<String, Bool> {
+  rt_function_registry
+    |> filter(f => f.passes_by_ref)
+    |> fold(acc: {}, f => map_insert(acc, f.name, true))
 }
 
 data rt_bridge_function_names: Map<String, String> = {
@@ -189,5 +191,5 @@ fn rt_bridge_name(name: String) -> String {
 }
 
 fn rt_passes_by_ref(name: String) -> Bool {
-  map_contains_key(rt_ref_map_functions, name)
+  map_contains_key(rt_ref_map_functions(), name)
 }

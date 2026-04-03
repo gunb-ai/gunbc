@@ -183,22 +183,14 @@ pub fn rt_functions() -> Rc<HashMap<String, bool>> {
     Rc::new(__m)
 }
 
+// Derived from rt_function_registry — single authority for passes_by_ref.
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     let mut __m = HashMap::new();
-    __m.insert("map_get".to_string(), true);
-    __m.insert("map_keys".to_string(), true);
-    __m.insert("map_values".to_string(), true);
-    __m.insert("lookup".to_string(), true);
-    __m.insert("map_contains_key".to_string(), true);
-    __m.insert("map_has".to_string(), true);
-    __m.insert("char_at".to_string(), true);
-    __m.insert("string_length".to_string(), true);
-    __m.insert("substring".to_string(), true);
-    __m.insert("string_contains".to_string(), true);
-    __m.insert("scan_while".to_string(), true);
-    __m.insert("skip_horizontal_ws".to_string(), true);
-    __m.insert("scan_to_eol".to_string(), true);
-    __m.insert("scan_string_end".to_string(), true);
+    for f in rt_function_registry().iter() {
+        if f.passes_by_ref {
+            __m.insert(f.name.clone(), true);
+        }
+    }
     Rc::new(__m)
 }
 
