@@ -475,7 +475,7 @@ fn emit_data_value_json(value: Node, source_index: NewlineIndex?) -> String {
       concat("{", field_strs |> join(separator: ", "), "}")
     }
     ExprVar { binding_kind: _ } => concat("\"", escape_json_string(s: expr_var_name_at(texpr: value, source_index: source_index)), "\"")
-    _ => "<<<UNSUPPORTED_MOCK_EXPR>>>"
+    _ => "\"__UNSUPPORTED_MOCK_EXPR__\""
   }
 }
 
@@ -1529,7 +1529,7 @@ fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> St
 fn emit_error_expr(message: String, target: RenderTarget) -> String {
   let msg = emit_string_literal(s: message, suffix: "")
   match target {
-    Rust => concat("compile_error!(", msg, ")")
+    Rust => concat("panic!(", msg, ")")
     Go => concat("panic(", msg, ")")
     Python => concat("raise RuntimeError(", msg, ")")
     Dag => concat("error(", msg, ")")

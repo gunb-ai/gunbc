@@ -2214,7 +2214,11 @@ fn collection_element_type(receiver_type: InferredNode?, rc_types: Map<String, B
       let __rt_is_container = node_is_element_collection(n: rt)
       if __rt_is_container {
         match rt.children |> first {
-          Some { value: elem_node } => emit_node_type_rc(n: elem_node, target: Rust, rc_types: rc_types)
+          Some { value: elem_node } =>
+            // If element type is CompilerError, fall back to _ for Rust inference
+            let elem_is_error = if elem_node.inferred != none { is_compiler_error(inferred: elem_node.inferred.value) } else { false }
+            let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
+            if elem_is_error || elem_is_type_var { "_" } else { emit_node_type_rc(n: elem_node, target: Rust, rc_types: rc_types) }
           None => "_"
         }
       } else { "_" }
@@ -2583,7 +2587,10 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
   let all_strs = concat([recv_str], arg_strs)
   let bridge_name = rust_runtime_bridge_name(function_name: function_name)
   let lowered = concat("v2_rt::", emit_ident(name: bridge_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
-  lowered
+  // Runtime functions returning bare collections need Rc wrapping
+  if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: function_name) {
+    concat("Rc::new(", lowered, ")")
+  } else { lowered }
 }
 
 fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, result_type: InferredNode?, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
