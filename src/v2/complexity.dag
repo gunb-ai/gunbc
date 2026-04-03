@@ -2886,14 +2886,14 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
           let pname = param_node_name(n: p)
           let tree_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false)
           let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set)
-          param_edges |> fold(init: best_map, f: (bm, pe) => merge_edge_evidence(best_map: bm, pe: pe))
+          param_edges |> fold(init: best_map, f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
         )
         // Collect list-dim edges (best param for list)
         let list_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
           let pname = param_node_name(n: p)
           let list_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: false, check_list: true)
           let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: list_vars, target_set: scc_name_set)
-          param_edges |> fold(init: best_map, f: (bm, pe) => merge_edge_evidence(best_map: bm, pe: pe))
+          param_edges |> fold(init: best_map, f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
         )
         // Merge into 2D proof edges
         let all_keys = concat(map_keys(tree_edge_map), map_keys(list_edge_map))
