@@ -196,12 +196,14 @@ type BlockInferState {
 // parameter (Rc refcount=1) so list_push avoids deep clone.
 fn infer_block_stmts(remaining: List<Node>, scope: InferScope,
     typed_stmts: List<Node>, diag_chunks: List<List<ErrorNode>>,
-    last_type: Node) -> BlockInferState {
+    last_type: Node, expected: Node?) -> BlockInferState {
   match remaining |> first {
     None => BlockInferState { scope: scope, diag_chunks: diag_chunks,
                               last_type: last_type, typed_stmts: typed_stmts }
     Some { value: stmt } =>
-      let stmt_result = infer_expr(texpr: stmt, scope: scope, expected: none)
+      let is_last = (remaining |> count) == 1
+      let stmt_expected = if is_last { expected } else { none }
+      let stmt_result = infer_expr(texpr: stmt, scope: scope, expected: stmt_expected)
       let stmt_typed = stmt_result.typed
       let stmt_diags = stmt_result.diagnostics
       let stmt_rt = rt_type(n: stmt_typed)
@@ -215,7 +217,8 @@ fn infer_block_stmts(remaining: List<Node>, scope: InferScope,
         scope: next_scope,
         typed_stmts: list_push(typed_stmts, stmt_typed),
         diag_chunks: list_push(diag_chunks, stmt_diags),
-        last_type: stmt_rt
+        last_type: stmt_rt,
+        expected: expected
       )
   }
 }
@@ -1088,8 +1091,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Some { value: p } => param_node_type_expr(n: p)
             None => type_variable_node(id: "callable_param")
           }
-          let is_callable_formal = formal_param_type.params |> count > 0
-          let expected = if is_callable_formal { Some { value: formal_param_type } } else { none }
+          let has_formal = sig != none
+          let expected = if has_formal { Some { value: formal_param_type } } else { none }
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
           ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
         )
@@ -1384,7 +1387,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         } else {
           none
         }
-        let body_result = infer_expr(texpr: arm_b, scope: arm_scope, expected: none)
+        let body_result = infer_expr(texpr: arm_b, scope: arm_scope, expected: expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
         let guard_unwrapped = match guard_result {
@@ -1445,12 +1448,12 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let cond_result = infer_expr(texpr: cond, scope: scope, expected: none)
       let cond_typed = cond_result.typed
       let cond_diags = cond_result.diagnostics
-      let then_result = infer_expr(texpr: then_expr, scope: scope, expected: none)
+      let then_result = infer_expr(texpr: then_expr, scope: scope, expected: expected)
       let then_typed = then_result.typed
       let then_diags = then_result.diagnostics
       match else_expr {
         Some { value: else_branch } =>
-          let else_result = infer_expr(texpr: else_branch, scope: scope, expected: none)
+          let else_result = infer_expr(texpr: else_branch, scope: scope, expected: expected)
           let else_typed = else_result.typed
           let else_diags = else_result.diagnostics
           let then_rt = rt_type(n: then_typed)
@@ -1545,10 +1548,22 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => unit_type
         }
       }
+      let empty_list_diags = if count(elem_results) == 0 {
+        match expected {
+          Some { value: exp } =>
+            if node_is_element_collection(n: exp) {
+              match exp.children |> first {
+                Some { value: _ } => []
+                None => [inference_error(message: "empty list literal: expected type has no element type", span: span, module_name: scope.module_name)]
+              }
+            } else { [inference_error(message: "empty list literal: expected type is not a collection", span: span, module_name: scope.module_name)] }
+          None => []
+        }
+      } else { [] }
       let ll_texpr = make_expr_node(expr_data: ExprListLit, children: typed_elements, inferred: Some { value: Resolved { node: named_collection_type(kind_name: "List", element: elem_type_node) } }, span: span)
       InferResult {
         typed: ll_texpr,
-        diagnostics: elem_diags
+        diagnostics: concat(elem_diags, empty_list_diags)
       }
 
     ExprBinOp { op: op } =>
@@ -1682,7 +1697,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         let state = infer_block_stmts(
           remaining: stmts, scope: scope,
           typed_stmts: [], diag_chunks: [],
-          last_type: unit_type
+          last_type: unit_type, expected: expected
         )
         let blk_texpr = make_expr_node(expr_data: ExprBlock, children: state.typed_stmts, inferred: Some { value: Resolved { node: state.last_type } }, span: span)
         InferResult {
@@ -2015,7 +2030,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
       extend_scope(scope: s, name: resource_use_name(n: u), resolved: resource_use_resource(n: u))
     )
-    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: none)
+    let fn_return_expected = if item.inferred != none { Some { value: rt_type(n: item) } } else { none }
+    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: fn_return_expected)
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
     let resolved_ret = if item.inferred == none {
@@ -2040,7 +2056,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   // Must be checked BEFORE data definition to avoid misclassifying `fn foo() -> T { ... }` as data.
   else if item.body != none && item.params |> count == 0 && item.inferred != none {
     let fn_scope = scope
-    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: none)
+    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: Some { value: rt_type(n: item) })
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
     let resolved_ret = rt_type(n: item)
@@ -2057,7 +2073,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   // Data definition: has body but no params, has type_annotation
   else if item.body != none && item.params |> count == 0 {
-    let val_result = infer_expr(texpr: item.body.value, scope: scope, expected: none)
+    let data_expected = if item.type_annotation != none { Some { value: item.type_annotation.value } } else { none }
+    let val_result = infer_expr(texpr: item.body.value, scope: scope, expected: data_expected)
     let val_typed = val_result.typed
     let val_diags = val_result.diagnostics
     let resolved_ret = if item.type_annotation == none { rt_type(n: val_typed) } else { item.type_annotation.value }

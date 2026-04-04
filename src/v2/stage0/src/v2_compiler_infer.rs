@@ -132,7 +132,7 @@ pub struct BlockInferState {
     pub typed_stmts: Rc<Vec<Rc<Node>>>,
 }
 
-pub fn infer_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut scope: Rc<InferScope>, mut typed_stmts: Rc<Vec<Rc<Node>>>, mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>, mut last_type: Rc<Node>) -> Rc<BlockInferState> {
+pub fn infer_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut scope: Rc<InferScope>, mut typed_stmts: Rc<Vec<Rc<Node>>>, mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>, mut last_type: Rc<Node>, expected: Option<Rc<Node>>) -> Rc<BlockInferState> {
     loop {
         match remaining.clone().first().cloned() {
     None => { break Rc::new(BlockInferState {
@@ -141,7 +141,9 @@ pub fn infer_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut scope: Rc<InferSc
     last_type: last_type.clone(),
     typed_stmts: typed_stmts.clone(),
 }); },
-    Some(stmt) => { let stmt_result = infer_expr(stmt.clone(), scope.clone(), None);
+    Some(stmt) => { let is_last = (remaining.clone().len() as i64) == 1;
+let stmt_expected: Option<Rc<Node>> = if is_last { expected.clone() } else { None };
+let stmt_result = infer_expr(stmt.clone(), scope.clone(), stmt_expected);
 let stmt_typed = stmt_result.typed.clone();
 let stmt_diags = stmt_result.diagnostics.clone();
 let stmt_rt = rt_type(stmt_typed.clone());
@@ -1163,8 +1165,8 @@ let formal_param_type = match Rc::new(sig_params.clone().iter().cloned().skip(pa
     Some(p) => param_node_type_expr(p.clone()),
     None => type_variable_node("callable_param".to_string()),
 };
-let is_callable_formal = ((formal_param_type.params.clone().len() as i64) > 0);
-let expected = if is_callable_formal.clone() {
+let has_formal = (sig.clone() != None);
+let expected = if has_formal.clone() {
                         Some(formal_param_type.clone())
 } else {
                         None
@@ -1464,7 +1466,7 @@ let guard_result = if (arm_g.clone() != None) {
 } else {
                     None
 };
-let body_result = infer_expr(arm_b.clone(), arm_scope.clone(), None);
+let body_result = infer_expr(arm_b.clone(), arm_scope.clone(), expected.clone());
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
 let guard_unwrapped = match guard_result.clone() {
@@ -1521,12 +1523,12 @@ let else_expr = if_else_branch(texpr.clone());
 let cond_result = infer_expr(cond.clone(), scope.clone(), None);
 let cond_typed = cond_result.typed.clone();
 let cond_diags = cond_result.diagnostics.clone();
-let then_result = infer_expr(then_expr.clone(), scope.clone(), None);
+let then_result = infer_expr(then_expr.clone(), scope.clone(), expected.clone());
 let then_typed = then_result.typed.clone();
 let then_diags = then_result.diagnostics.clone();
 match else_expr.clone() {
     Some(else_branch) => {
-                let else_result = infer_expr(else_branch.clone(), scope.clone(), None);
+                let else_result = infer_expr(else_branch.clone(), scope.clone(), expected.clone());
 let else_typed = else_result.typed.clone();
 let else_diags = else_result.diagnostics.clone();
 let then_rt = rt_type(then_typed.clone());
@@ -1620,12 +1622,27 @@ let elem_type_node = if ((elem_results.clone().len() as i64) > 0) {
     None => unit_type(),
 }
 };
+let empty_list_diags: Rc<Vec<Rc<ErrorNode>>> = if ((elem_results.clone().len() as i64) == 0) {
+                match expected.clone() {
+    Some(exp) => if node_is_element_collection(exp.clone()) {
+                    match exp.children.clone().first().cloned() {
+    Some(_) => Rc::new(vec![]),
+    None => Rc::new(vec![inference_error("empty list literal: expected type has no element type".to_string(), span.clone(), scope.module_name.clone())]),
+}
+} else {
+                    Rc::new(vec![inference_error("empty list literal: expected type is not a collection".to_string(), span.clone(), scope.module_name.clone())])
+},
+    None => Rc::new(vec![]),
+}
+} else {
+                Rc::new(vec![])
+};
 let ll_texpr = make_expr_node(Rc::new(ExprData::ExprListLit), typed_elements.clone(), Some(Rc::new(InferredNode::Resolved {
     node: named_collection_type("List".to_string(), elem_type_node.clone()),
 })), span.clone());
 Rc::new(InferResult {
     typed: ll_texpr.clone(),
-    diagnostics: elem_diags.clone(),
+    diagnostics: Rc::new({ let mut __result = Vec::new(); for __item in elem_diags.iter().cloned() { __result.push(__item); } for __item in empty_list_diags.iter().cloned() { __result.push(__item); } __result }),
 })
 },
     ExprData::ExprBinOp { op: op, .. } => {
@@ -1748,7 +1765,7 @@ Rc::new(InferResult {
 let stmts = texpr.children.clone();
 if ((stmts.clone().len() as i64) > 0) {
                 {
-                    let state = infer_block_stmts(stmts.clone(), scope.clone(), Rc::new(vec![]), Rc::new(vec![]), unit_type());
+                    let state = infer_block_stmts(stmts.clone(), scope.clone(), Rc::new(vec![]), Rc::new(vec![]), unit_type(), expected.clone());
 let blk_texpr = make_expr_node(Rc::new(ExprData::ExprBlock), state.typed_stmts.clone(), Some(Rc::new(InferredNode::Resolved {
     node: state.last_type.clone(),
 })), span.clone());
@@ -2098,7 +2115,8 @@ if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clo
                     {
                         let fn_scope = build_params_scope(scope.clone(), item.params.clone());
 let fn_scope = item.uses.clone().iter().cloned().fold(fn_scope.clone(), |s: Rc<InferScope>, u: Rc<Node>| extend_scope(s.clone(), resource_use_name(u.clone()), resource_use_resource(u.clone())));
-let body_result = infer_expr(item.body.clone().clone().unwrap(), fn_scope.clone(), None);
+let fn_return_expected: Option<Rc<Node>> = if (item.inferred.clone() != None) { Some(rt_type(item.clone())) } else { None };
+let body_result = infer_expr(item.body.clone().clone().unwrap(), fn_scope.clone(), fn_return_expected);
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
 let resolved_ret = if (item.inferred.clone() == None) {
@@ -2135,7 +2153,7 @@ Rc::new(TypedItemResult {
                     if (((item.body.clone() != None) && ((item.params.clone().len() as i64) == 0)) && (item.inferred.clone() != None)) {
                         {
                             let fn_scope = scope.clone();
-let body_result = infer_expr(item.body.clone().clone().unwrap(), fn_scope.clone(), None);
+let body_result = infer_expr(item.body.clone().clone().unwrap(), fn_scope.clone(), Some(rt_type(item.clone())));
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
 let resolved_ret = rt_type(item.clone());
@@ -2167,7 +2185,8 @@ Rc::new(TypedItemResult {
 } else {
                         if ((item.body.clone() != None) && ((item.params.clone().len() as i64) == 0)) {
                             {
-                                let val_result = infer_expr(item.body.clone().clone().unwrap(), scope.clone(), None);
+                                let data_expected: Option<Rc<Node>> = if (item.type_annotation.clone() != None) { Some(item.type_annotation.clone().clone().unwrap()) } else { None };
+let val_result = infer_expr(item.body.clone().clone().unwrap(), scope.clone(), data_expected);
 let val_typed = val_result.typed.clone();
 let val_diags = val_result.diagnostics.clone();
 let resolved_ret = if (item.type_annotation.clone() == None) {

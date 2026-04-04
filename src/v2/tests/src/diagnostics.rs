@@ -178,6 +178,49 @@ fn parameterized_container_no_false_positive() {
     );
 }
 
+// ── Empty list without type context ────────────────────────────────────
+
+#[test]
+fn empty_list_wrong_expected_type() {
+    // [] in result position where expected type is non-collection → diagnostic.
+    let source = "module elist\nfn make_stuff() -> String {\n  []\n}\n";
+    let result = compile_multi(&[("elist.dag", source)]);
+
+    let internal_diags: Vec<_> = result.diagnostics.iter().filter(|d| {
+        d.module_name == "elist" && match &*d.diagnostic {
+            CompilerDiagnostic::InternalError { message, .. } =>
+                message.contains("empty list literal"),
+            _ => false,
+        }
+    }).collect();
+
+    assert!(
+        !internal_diags.is_empty(),
+        "expected diagnostic for empty list with non-collection expected type, got: {:?}",
+        diagnostic_messages(&result)
+    );
+}
+
+#[test]
+fn empty_list_with_type_context_no_false_positive() {
+    let source = "module elist_ok\nimport std.types { List }\nfn make_list() -> List<String> {\n  []\n}\n";
+    let result = compile_multi(&[("elist_ok.dag", source)]);
+
+    let empty_list_diags: Vec<_> = result.diagnostics.iter().filter(|d| {
+        d.module_name == "elist_ok" && match &*d.diagnostic {
+            CompilerDiagnostic::InternalError { message, .. } =>
+                message.contains("empty list literal"),
+            _ => false,
+        }
+    }).collect();
+
+    assert!(
+        empty_list_diags.is_empty(),
+        "empty list with type context should not trigger diagnostic, got: {:?}",
+        diagnostic_messages(&result)
+    );
+}
+
 // ── No false positives ─────────────────────────────────────────────────
 
 #[test]
