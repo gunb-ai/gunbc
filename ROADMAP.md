@@ -391,8 +391,8 @@ DFA triage maps all 164 to four algebraic root causes:
   `dsl/std/termination.dag`. Expected: 164 → ~150.
 - **CX-B**: CostExpr/SizeExpr dissolution — cost expressions become flat
   products of SizeBounds from `std/computation.dag`'s lowering table.
-  RecursionPattern → LoweringTarget. UnresolvableRecursion deleted (no
-  rejected patterns). See [migration phases](docs/cx-computation-model.md#migration-phases).
+  Planned: RecursionPattern → LoweringTarget, UnresolvableRecursion
+  deleted. See [migration phases](docs/cx-computation-model.md#migration-phases).
   Expected: ~150 → ~120.
 - **CX-C**: Signature-driven fold evidence — self-calls inside
   `children |> fold` callbacks get structural descent proofs.

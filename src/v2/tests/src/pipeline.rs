@@ -1364,6 +1364,35 @@ fn sum_tree(t: Tree) -> Int {
     );
 }
 
+/// CX-B negative test: variant fields reconstructed into a same-size value
+/// must NOT prove descent. `l` and `r` are subparts of `t`, but `Node { left: r, right: l }`
+/// is the same size as `t` — the measure does not decrease.
+#[test]
+fn soundness_variant_field_reconstruction_not_descent() {
+    let source = r#"module soundness_rebuild
+type Tree = Leaf { value: Int } | Node { left: Tree, right: Tree }
+
+fn rebuild(t: Tree) -> Tree {
+  match t {
+    Leaf { value: v } => Leaf { value: v }
+    Node { left: l, right: r } =>
+      let swapped = Node { left: r, right: l }
+      rebuild(t: swapped)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let violations: Vec<_> = complexity
+        .violations
+        .iter()
+        .filter(|v| v.func_name == "rebuild")
+        .collect();
+    assert!(
+        !violations.is_empty(),
+        "variant fields reconstructed into same-size value must NOT prove descent"
+    );
+}
+
 // ── Complexity class coverage ─────────────────────────────────────────
 //
 // These tests verify that the analyzer produces the correct cost formula

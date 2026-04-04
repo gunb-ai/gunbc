@@ -40,9 +40,12 @@ and the compiler lowers it all to the above.
 | FoldBodyCall             | (already fold) | (inherited)           |
 | SameArgumentCall         | repeat         | Forever               |
 
-No pattern is rejected. `SameArgumentCall → repeat(Forever)` is the
-bounded truth principle: in a Bit/Word64 system, "always" = 2^63-1
-iterations. True is a Bit, not infinity.
+**Proposed direction**: no pattern is rejected.
+`SameArgumentCall → repeat(Forever)` is the bounded truth principle:
+in a Bit/Word64 system, "always" = 2^63-1 iterations. True is a Bit,
+not infinity. This row requires an explicit update to INVARIANTS.md
+(which currently says unchanged-argument self-calls are compilation
+errors) before it becomes active in the analyzer.
 
 ### Cost = product of bounds
 
@@ -127,7 +130,11 @@ the model should tell it.
 
 - `"children"`, `"expr_data"` → reference model's structural children spec
 - `"fold"`, `"map"`, `"filter"`, `"flat_map"` → reference MethodSemantics
+  (partially done: `is_algebra_iteration_method` reads AlgebraMethodSemantics)
 - `"state"`, `"skip"`, `"first"`, `"last"` → reference parser field spec
+- `lambda_param_names |> last` convention → read element-parameter position
+  from AlgebraMethodSemantics or fold signature (currently assumes element
+  is always the last lambda parameter)
 
 ### Phase 4: Flatten CostExpr/SizeExpr (high value, deferred)
 
@@ -172,7 +179,9 @@ Requires Phase 1-3 to stabilize first. This eliminates:
 ## PR scope
 
 **This PR**: Concept DAG model (computation.dag, iteration.dag updates)
-+ this design doc. No code migration yet.
++ this design doc. No computation-model-to-code migration yet — the
+analyzer changes in this PR (CX-A/C/D) are separate work items that
+do not yet use CallPattern/LoweringTarget.
 
 **Next PR (Phase 1 + partial Phase 2)**:
 1. Delete duplicate types from primitives.dag
