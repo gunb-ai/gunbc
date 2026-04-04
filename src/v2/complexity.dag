@@ -27,7 +27,7 @@ import v2.std.core {
   ExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprBinOp, ExprUnaryOp, BinOp, Sub, Div,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn,
+  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda,
   MatchPattern, Bind, VariantPattern,
   field_init_node_name, field_init_node_value,
   arg_name, arg_value, arm_body, arm_guard, arm_pattern,
@@ -42,7 +42,8 @@ import v2.std.core {
   method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value,
   expr_call_func, expr_var_name, field_access_base, field_access_field,
   LiteralValue, LitNull, LitInt,
-  is_child_accessor_in_model
+  is_child_accessor_in_model,
+  lambda_param_names, lambda_body
 }
 
 // =========================================================================

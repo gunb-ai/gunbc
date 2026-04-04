@@ -475,6 +475,7 @@ fn emit_data_value_json(value: Node, source_index: NewlineIndex?) -> String {
       concat("{", field_strs |> join(separator: ", "), "}")
     }
     ExprVar { binding_kind: _ } => concat("\"", escape_json_string(s: expr_var_name_at(texpr: value, source_index: source_index)), "\"")
+    ExprUnaryOp { op: Neg } => concat("-", emit_data_value_json(value: unaryop_operand(texpr: value), source_index: source_index))
     _ => "\"compile_error!(unsupported mock expression)\""
   }
 }
