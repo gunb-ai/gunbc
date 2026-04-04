@@ -1080,16 +1080,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             []
         }
       } else {
-        // Infer each arg with formal param type as expected context.
-        // Empty collections (empty_map(), []) and lambdas use expected to
-        // adopt the correct type; other expressions ignore it (advisory).
+        // Infer each arg; for lambdas where the formal param is Callable,
+        // thread the Callable's param types to the lambda (P4.7e).
         call_args |> enumerate |> map(pair =>
           let a = pair.second
           let formal_param_type = match sig_params |> skip(pair.first) |> first {
             Some { value: p } => param_node_type_expr(n: p)
             None => type_variable_node(id: "callable_param")
           }
-          let expected = Some { value: formal_param_type }
+          let is_callable_formal = formal_param_type.params |> count > 0
+          let expected = if is_callable_formal { Some { value: formal_param_type } } else { none }
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
           ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
         )

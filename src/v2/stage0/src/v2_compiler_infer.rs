@@ -66,7 +66,7 @@ use crate::v2_std_core::UnaryOpKind::{Not, Neg};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport};
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, map_node, bare_map_node, callable_inferred, normalize_access_type_node, bridge_placeholder_type_names, is_bridge_placeholder, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, map_node, callable_inferred, normalize_access_type_node, bridge_placeholder_type_names, is_bridge_placeholder, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type, list_of_element};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, RecursiveVariantFieldWitness, put_recursive_variant_field_witness, merge_recursive_variant_fields};
@@ -344,9 +344,9 @@ pub fn nominal_type_binding(name: String) -> Rc<TypeBinding> {
 pub fn collect_item_recursive_variant_fields(item: Rc<Node>, recursive_type_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>> {
     match item.connective.clone() {
     Connective::Disj => if (v2_rt::map_get(&recursive_type_set, item.name.clone()) == None) {
-        Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */
+        v2_rt::rc_empty_map::<compile_error!("unresolved TypeVariable type reached emit")>()
 } else {
-        item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(), |variant_acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, variant_node: Rc<Node>| variant_node.children.clone().iter().cloned().fold(variant_acc.clone(), |field_acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, field_node: Rc<Node>| {
+        item.children.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |variant_acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, variant_node: Rc<Node>| variant_node.children.clone().iter().cloned().fold(variant_acc.clone(), |field_acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, field_node: Rc<Node>| {
             let field_type_name = field_node_type_expr(field_node.clone()).name.clone();
 if (field_type_name.clone().as_str() == item.name.clone().as_str()) {
                 put_recursive_variant_field_witness(field_acc.clone(), item.name.clone(), variant_node.name.clone(), field_node.name.clone())
@@ -355,12 +355,12 @@ if (field_type_name.clone().as_str() == item.name.clone().as_str()) {
 }
 }))
 },
-    _ => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
+    _ => v2_rt::rc_empty_map::<compile_error!("unresolved TypeVariable type reached emit")>(),
 }
 }
 
 pub fn build_item_recursive_variant_fields(items: Rc<Vec<Rc<Node>>>, recursive_type_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>> {
-    items.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, item: Rc<Node>| merge_recursive_variant_fields(acc.clone(), collect_item_recursive_variant_fields(item.clone(), recursive_type_set.clone())))
+    items.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, item: Rc<Node>| merge_recursive_variant_fields(acc.clone(), collect_item_recursive_variant_fields(item.clone(), recursive_type_set.clone())))
 }
 
 pub fn nominal_ref_node(name: String, span: Rc<SourceSpan>, ident_span: Option<Rc<SourceSpan>>) -> Rc<Node> {
@@ -1163,7 +1163,12 @@ let formal_param_type = match Rc::new(sig_params.clone().iter().cloned().skip(pa
     Some(p) => param_node_type_expr(p.clone()),
     None => type_variable_node("callable_param".to_string()),
 };
-let expected = Some(formal_param_type.clone());
+let is_callable_formal = ((formal_param_type.params.clone().len() as i64) > 0);
+let expected = if is_callable_formal.clone() {
+                        Some(formal_param_type.clone())
+} else {
+                        None
+};
 let ar = infer_expr(arg_value(a.clone()), scope.clone(), expected.clone());
 Rc::new(ArgInferResult {
     typed_arg: make_arg_node(arg_name(a.clone()), ar.typed.clone(), a.span.clone()),
@@ -1240,9 +1245,9 @@ Rc::new(InferResult {
     Some(exp) => if node_is_keyed_collection(exp.clone()) {
                                     exp.clone()
 } else {
-                                    bare_map_node()
+                                    map_node(type_variable_node("map_key".to_string()), type_variable_node("map_value".to_string()))
 },
-    None => bare_map_node(),
+    None => map_node(type_variable_node("map_key".to_string()), type_variable_node("map_value".to_string())),
 };
 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -2278,7 +2283,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
         let placeholder_names = bridge_placeholder_type_names();
 let zero_span = make_span(0, 0);
 let source_index = v2_rt::map_get(&source_indices, module.module.clone().span.clone().file.clone());
-let kernel_bindings_base = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
+let kernel_bindings_base = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
     name: name.clone(),
     resolved: Rc::new(Node {
     name: name.clone(),
@@ -2406,7 +2411,7 @@ let imported_parent_envs = Rc::new({ let mut __result = Vec::new(); for imp in m
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs.clone());
-let std_import_bindings = std_types_parent_env.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| Rc::new(v2_rt::map_keys(&env.bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: _, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
+let std_import_bindings = std_types_parent_env.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, env: Rc<TypeEnv>| Rc::new(v2_rt::map_keys(&env.bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
             bacc.clone()
 } else {
             match v2_rt::map_get(&env.bindings.clone(), name.clone()) {
@@ -2414,9 +2419,9 @@ let std_import_bindings = std_types_parent_env.clone().iter().cloned().fold(Rc::
     None => bacc.clone(),
 }
 }));
-let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_import_bindings.clone(), |acc: _, imp: Rc<ResolvedImport>| match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
+let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_import_bindings.clone(), |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, imp: Rc<ResolvedImport>| match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
     Some(typed_parent) => if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) {
-            Rc::new(v2_rt::map_keys(&typed_parent.type_env.clone().bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: _, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
+            Rc::new(v2_rt::map_keys(&typed_parent.type_env.clone().bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
                 bacc.clone()
 } else {
                 match v2_rt::map_get(&typed_parent.type_env.clone().bindings.clone(), name.clone()) {
@@ -2430,8 +2435,8 @@ let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_i
     None => acc.clone(),
 });
 let import_recursive = parent_envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
-let import_recursive_set = parent_envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
-let import_recursive_variant_fields = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
+let import_recursive_set = parent_envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
+let import_recursive_variant_fields = parent_envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
 let import_env = Rc::new(TypeEnv {
     bindings: import_bindings.clone(),
     recursive_types: import_recursive.clone(),
@@ -2446,7 +2451,7 @@ let import_diags = Rc::new({ let mut __result = Vec::new(); for imp in module.re
     span: imp.target_module.clone().clone().unwrap().span.clone(),
 }), module.module.clone().name.clone())]),
 }).iter().cloned()); } __result });
-let local_bindings = module_items(module.module.clone()).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, item: Rc<Node>| {
+let local_bindings = module_items(module.module.clone()).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, item: Rc<Node>| {
             let has_structure = (item.connective.clone() != Connective::NoConnective);
 if has_structure.clone() {
                 {
@@ -2548,21 +2553,21 @@ v2_rt::rc_map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
 }
 }
 });
-let param_bindings = module_items(module.module.clone()).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, item: Rc<Node>| {
+let param_bindings = module_items(module.module.clone()).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, item: Rc<Node>| {
             let is_type_decl = match v2_rt::map_get(&local_bindings, item.name.clone()) {
     Some(_) => true,
     None => false,
 };
 if (((item.params.clone().len() as i64) > 0) && is_type_decl.clone()) {
                 {
-                    let result = item.params.clone().iter().cloned().fold(acc.clone(), |pacc: _, p: Rc<Node>| v2_rt::rc_map_insert(pacc.clone(), p.name.clone(), nominal_type_binding(p.name.clone())));
+                    let result = item.params.clone().iter().cloned().fold(acc.clone(), |pacc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, p: Rc<Node>| v2_rt::rc_map_insert(pacc.clone(), p.name.clone(), nominal_type_binding(p.name.clone())));
 result.clone()
 }
 } else {
                 acc.clone()
 }
 });
-let local_name_set = Rc::new(v2_rt::map_keys(&local_bindings)).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: _| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let local_name_set = Rc::new(v2_rt::map_keys(&local_bindings)).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: _| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let all_local_bindings = v2_rt::rc_map_merge(local_bindings.clone(), param_bindings.clone());
 let pre_local_env = Rc::new(TypeEnv {
     bindings: all_local_bindings.clone(),
@@ -2572,9 +2577,9 @@ let pre_local_env = Rc::new(TypeEnv {
     source_index: source_index.clone(),
 });
 let merged = merge_envs(Rc::new(vec![kernel.clone(), import_env.clone(), pre_local_env.clone()]));
-let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone())));
+let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone())));
 let cycle_set = detect_type_cycles_kahn(all_deps_map.clone(), merged.bindings.clone());
-let cycle_map = cycle_set.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let cycle_map = cycle_set.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let local_recursive_variant_fields = build_item_recursive_variant_fields(module_items(module.module.clone()), cycle_map.clone());
 let merged_recursive_variant_fields = merge_recursive_variant_fields(merged.recursive_variant_fields.clone(), local_recursive_variant_fields.clone());
 let unresolved_env = Rc::new(TypeEnv {
@@ -2606,7 +2611,7 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
         let placeholder_names = bridge_placeholder_type_names();
 let zero_span = make_span(0, 0);
 let source_index = v2_rt::map_get(&source_indices, module.module.clone().span.clone().file.clone());
-let kernel_bindings = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
+let kernel_bindings = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
     name: name.clone(),
     resolved: Rc::new(Node {
     name: name.clone(),
@@ -2712,7 +2717,7 @@ let imported_parent_envs = Rc::new({ let mut __result = Vec::new(); for imp in m
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs.clone());
-let std_import_bindings = std_types_parent_env.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| Rc::new(v2_rt::map_keys(&env.bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: _, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
+let std_import_bindings = std_types_parent_env.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, env: Rc<TypeEnv>| Rc::new(v2_rt::map_keys(&env.bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
             bacc.clone()
 } else {
             match v2_rt::map_get(&env.bindings.clone(), name.clone()) {
@@ -2720,9 +2725,9 @@ let std_import_bindings = std_types_parent_env.clone().iter().cloned().fold(Rc::
     None => bacc.clone(),
 }
 }));
-let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_import_bindings.clone(), |acc: _, imp: Rc<ResolvedImport>| match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
+let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_import_bindings.clone(), |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, imp: Rc<ResolvedImport>| match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
     Some(typed_parent) => if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) {
-            Rc::new(v2_rt::map_keys(&typed_parent.type_env.clone().bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: _, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
+            Rc::new(v2_rt::map_keys(&typed_parent.type_env.clone().bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
                 bacc.clone()
 } else {
                 match v2_rt::map_get(&typed_parent.type_env.clone().bindings.clone(), name.clone()) {
@@ -2736,8 +2741,8 @@ let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_i
     None => acc.clone(),
 });
 let import_recursive = parent_envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
-let import_recursive_set = parent_envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
-let import_recursive_variant_fields = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
+let import_recursive_set = parent_envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
+let import_recursive_variant_fields = parent_envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
 let import_env = Rc::new(TypeEnv {
     bindings: import_bindings.clone(),
     recursive_types: import_recursive.clone(),
@@ -2745,7 +2750,7 @@ let import_env = Rc::new(TypeEnv {
     recursive_variant_fields: import_recursive_variant_fields.clone(),
     source_index: source_index.clone(),
 });
-let local_bindings = module_items(module.module.clone()).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, item: Rc<Node>| {
+let local_bindings = module_items(module.module.clone()).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, item: Rc<Node>| {
             let has_structure = (item.connective.clone() != Connective::NoConnective);
 if has_structure.clone() {
                 {
@@ -2827,9 +2832,9 @@ let pre_local_env = Rc::new(TypeEnv {
     source_index: source_index.clone(),
 });
 let merged = merge_envs(Rc::new(vec![kernel.clone(), import_env.clone(), pre_local_env.clone()]));
-let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone())));
+let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone())));
 let cycle_set = detect_type_cycles_kahn(all_deps_map.clone(), merged.bindings.clone());
-let cycle_map = cycle_set.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let cycle_map = cycle_set.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let local_recursive_variant_fields = build_item_recursive_variant_fields(module_items(module.module.clone()), cycle_map.clone());
 let merged_recursive_variant_fields = merge_recursive_variant_fields(merged.recursive_variant_fields.clone(), local_recursive_variant_fields.clone());
 let unresolved_env = Rc::new(TypeEnv {
@@ -2988,8 +2993,8 @@ continue;
 
 pub fn build_module_context(contributions: Rc<Vec<Rc<ItemContribution>>>, parent_index: Rc<HashMap<String, Rc<TypedModule>>>, resolved_imports: Rc<Vec<Rc<ResolvedImport>>>, env: Rc<TypeEnv>, module_name: String) -> Rc<ModuleContext> {
     {
-        let local = fold_module_contributions(contributions.clone(), Rc::new(vec![]), v2_rt::rc_empty_map::<Rc<DeclaredFuncSig>>(), v2_rt::rc_empty_map::<Rc<Vec<Rc<OpEntry>>>>(), v2_rt::rc_empty_map::<Rc<TypeBinding>>(), v2_rt::rc_empty_map::<Rc<ItemInfo>>(), Rc::new(vec![]));
-let imported_enum_names = resolved_imports.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, imp: Rc<ResolvedImport>| imp.specific_names.clone().iter().cloned().fold(acc.clone(), |inner: _, n: String| v2_rt::rc_map_insert(inner.clone(), n.clone(), true)));
+        let local = fold_module_contributions(contributions.clone(), Rc::new(vec![]), v2_rt::rc_empty_map::<compile_error!("unresolved TypeVariable type reached emit")>(), v2_rt::rc_empty_map::<compile_error!("unresolved TypeVariable type reached emit")>(), v2_rt::rc_empty_map::<compile_error!("unresolved TypeVariable type reached emit")>(), v2_rt::rc_empty_map::<compile_error!("unresolved TypeVariable type reached emit")>(), Rc::new(vec![]));
+let imported_enum_names = resolved_imports.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, imp: Rc<ResolvedImport>| imp.specific_names.clone().iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, n: String| v2_rt::rc_map_insert(inner.clone(), n.clone(), true)));
 let variant_fold = Rc::new(v2_rt::map_values(&env.bindings.clone())).iter().cloned().fold(Rc::new(VariantFoldState {
     locals: v2_rt::rc_empty_map::<Rc<TypeBinding>>(),
     collision_errors: Rc::new(vec![]),
@@ -3041,7 +3046,7 @@ if (curr_is_imported.clone() && prev_is_imported.clone()) {
 let imported_variant_locals = variant_fold.locals.clone();
 let variant_collision_errors = variant_fold.collision_errors.clone();
 let env_variant_locals = variant_locals_from_items(local.resolved_items.clone(), imported_variant_locals.clone());
-let merged_scope = merge_scope_from_imports(resolved_imports.clone(), parent_index.clone(), env.clone(), v2_rt::rc_empty_map::<Rc<DeclaredFuncSig>>(), local.svc_registry.clone(), local.svc_locals.clone());
+let merged_scope = merge_scope_from_imports(resolved_imports.clone(), parent_index.clone(), env.clone(), v2_rt::rc_empty_map::<compile_error!("unresolved TypeVariable type reached emit")>(), local.svc_registry.clone(), local.svc_locals.clone());
 let all_declared_sigs = v2_rt::rc_map_merge(merged_scope.func_sigs.clone(), local.func_sigs.clone());
 let resolve_result = resolve_func_sigs(all_declared_sigs.clone(), local.resolved_items.clone(), module_name.clone());
 let all_locals = Rc::new(v2_rt::map_values(&merged_scope.svc_locals.clone())).iter().cloned().fold(env_variant_locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), binding.name.clone(), binding.clone()));
@@ -3150,7 +3155,7 @@ pub fn topo_resolve_types(mut remaining: Rc<Vec<String>>, mut env: Rc<TypeEnv>, 
     diagnostics: diagnostics.clone(),
 })
 }
-let remaining_set = remaining.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let remaining_set = remaining.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let ready = Rc::new({ let mut __result = Vec::new(); for name in remaining.clone().iter().cloned() { if match v2_rt::map_get(&deps_map, name.clone()) {
     Some(deps) => { let mut __all = true; for dep in deps.clone().iter().cloned() { if !(((((is_kernel_type(dep.clone()) || (dep.clone().as_str() == "None".to_string().as_str())) || (dep.clone().as_str() == "".to_string().as_str())) || is_recursive_type(env.clone(), dep.clone())) || (emit_map_has(remaining_set.clone(), dep.clone()) == false))) { __all = false; break; } } __all },
     None => true,
@@ -3201,7 +3206,7 @@ Rc::new(BindingsAccum {
 },
     None => acc.clone(),
 });
-let ready_set = ready.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let ready_set = ready.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let next_remaining = Rc::new({ let mut __result = Vec::new(); for name in remaining.clone().iter().cloned() { if (emit_map_has(ready_set.clone(), name.clone()) == false) { __result.push(name); } } __result });
 {
             let __tco_0 = next_remaining.clone();
@@ -3251,9 +3256,9 @@ Rc::new(ParentModulesResult {
 
 pub fn build_fielded_variants(modules: Rc<Vec<Rc<TypedModule>>>, type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>) -> Rc<HashMap<String, bool>> {
     {
-        let result = modules.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, m: Rc<TypedModule>| {
+        let result = modules.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, m: Rc<TypedModule>| {
             let items = m.items.clone();
-items.clone().iter().cloned().fold(acc.clone(), |inner: _, item: Rc<Node>| {
+items.clone().iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, item: Rc<Node>| {
                 let is_enum = match v2_rt::map_get(&type_summaries, item.name.clone()) {
     Some(summary) => match (*summary.repr.clone()).clone() {
     TypeRepr::EnumRepr { .. } => true,
@@ -3265,7 +3270,7 @@ if is_enum.clone() {
                     {
                         let enum_name = item.name.clone();
 let variants = item.children.clone();
-variants.clone().iter().cloned().fold(inner.clone(), |vacc: _, variant: Rc<Node>| {
+variants.clone().iter().cloned().fold(inner.clone(), |vacc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, variant: Rc<Node>| {
                             let has_fields = ((variant.children.clone().len() as i64) > 0);
 if has_fields.clone() {
                                 v2_rt::rc_map_insert(vacc.clone(), v2_rt::concat(v2_rt::concat(enum_name.clone(), "::".to_string()), variant.name.clone()), true)
@@ -3291,7 +3296,7 @@ pub fn child_has_fn_type(child: Rc<Node>) -> bool {
 }
 
 pub fn build_value_contexts(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<ValueContext>>> {
-    modules.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(acc.clone(), |inner: _, item: Rc<Node>| {
+    modules.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, item: Rc<Node>| {
         let has_fn_fields = { let mut __found = false; for child in item.children.clone().iter().cloned() { if child_has_fn_type(child.clone()) { __found = true; break; } } __found };
 v2_rt::rc_map_insert(inner.clone(), item.name.clone(), Rc::new(ValueContext {
     has_fn_fields: has_fn_fields.clone(),
@@ -3305,7 +3310,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
     type_summaries: v2_rt::rc_empty_map::<Rc<TypeSummary>>(),
 });
 let built = modules.clone().iter().cloned().fold(init.clone(), |state: Rc<EmitInfoBuildState>, typed_module: Rc<TypedModule>| typed_module.items.clone().iter().cloned().fold(state.clone(), |inner_state: Rc<EmitInfoBuildState>, item: Rc<Node>| add_emit_item_summary(inner_state.clone(), item.clone())));
-let all_recursive = modules.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, m: Rc<TypedModule>| v2_rt::rc_map_merge(acc.clone(), m.type_env.clone().recursive_type_set.clone()));
+let all_recursive = modules.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */, |acc: Rc<HashMap<compile_error!("unresolved TypeVariable type reached emit"), compile_error!("unresolved TypeVariable type reached emit")>>, m: Rc<TypedModule>| v2_rt::rc_map_merge(acc.clone(), m.type_env.clone().recursive_type_set.clone()));
 let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
 let value_ctxs = build_value_contexts(modules.clone());
 Rc::new(EmitGraphInfo {
@@ -3318,7 +3323,7 @@ Rc::new(EmitGraphInfo {
 }
 
 pub fn typecheck(graph: Rc<ModuleGraph>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<TypedGraph> {
-    typecheck_modules(graph.modules.clone(), Rc::new(vec![]), v2_rt::rc_empty_map::<Rc<TypedModule>>(), v2_rt::rc_empty_map::<Rc<ItemInfo>>(), Rc::new(vec![]), source_indices.clone())
+    typecheck_modules(graph.modules.clone(), Rc::new(vec![]), v2_rt::rc_empty_map::<compile_error!("unresolved TypeVariable type reached emit")>(), v2_rt::rc_empty_map::<compile_error!("unresolved TypeVariable type reached emit")>(), Rc::new(vec![]), source_indices.clone())
 }
 
 pub fn typecheck_modules(mut remaining: Rc<Vec<Rc<ResolvedModule>>>, mut modules: Rc<Vec<Rc<TypedModule>>>, mut module_index: Rc<HashMap<String, Rc<TypedModule>>>, mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>, mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<TypedGraph> {
