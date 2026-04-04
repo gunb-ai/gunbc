@@ -1177,6 +1177,9 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
         }
         init_bad || last_bad
       }
+    ExprReturn =>
+      // return expr: the returned expression is always in tail position.
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: true))
     NoExprData =>
       // Wrapper nodes (arg, arm, field-init) -- recurse through children preserving tail context.
       texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail))

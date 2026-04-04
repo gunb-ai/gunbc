@@ -1709,6 +1709,19 @@ fn emit_shared_tco_expr(
       } else {
         emit_non_self_call(frame)
       }
+    ExprReturn =>
+      // Unwrap return and process inner expression as TCO candidate.
+      let inner = return_value(texpr: frame.expr)
+      emit_shared_tco_expr(
+        frame: TcoFrame { expr: inner, scope: frame.scope, depth: frame.depth },
+        fn_name: fn_name,
+        emit_self_call_reassign: emit_self_call_reassign,
+        emit_non_self_call: emit_non_self_call,
+        emit_if: emit_if,
+        emit_match: emit_match,
+        emit_let: emit_let,
+        emit_block: emit_block,
+        emit_default_return: emit_default_return)
     ExprIf =>
       emit_if(frame)
     ExprMatch =>
@@ -1725,6 +1738,8 @@ fn emit_shared_tco_expr(
 fn is_tco_candidate(texpr: Node, func_name: String, source_index: NewlineIndex?) -> Bool {
   match texpr.expr_data {
     ExprCall { call_semantics: _ } => expr_call_func_at(texpr: texpr, source_index: source_index) == func_name
+    ExprReturn =>
+      is_tco_candidate(texpr: return_value(texpr: texpr), func_name: func_name, source_index: source_index)
     ExprIf =>
       // children = [condition, then, else?]. Check branches.
       let then_cand = is_tco_candidate(texpr: if_then_branch(texpr: texpr), func_name: func_name, source_index: source_index)
