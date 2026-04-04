@@ -98,6 +98,7 @@ pub struct ScanResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRef {
     pub file: String,
+    pub text: String,
     pub source_chars: Rc<Vec<String>>,
 }
 
@@ -120,12 +121,7 @@ fn source_char(source: &SourceRef, pos: i64) -> String {
 }
 
 fn source_substring(source: &SourceRef, start: i64, end: i64) -> String {
-    let start = start.max(0) as usize;
-    let end = end.max(0) as usize;
-    let len = source.source_chars.len();
-    let end = end.min(len);
-    let start = start.min(end);
-    source.source_chars[start..end].join("")
+    v2_rt::substring(&source.text, start, end)
 }
 
 fn source_scan_while(source: &SourceRef, start: i64, pred: impl Fn(String) -> bool) -> i64 {
@@ -169,7 +165,7 @@ fn source_scan_to_eol(source: &SourceRef, start: i64) -> i64 {
 
 pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
     let c: Vec<String> = source.chars().map(|c| c.to_string()).collect();
-    let src = Rc::new(SourceRef { file: file.clone(), source_chars: Rc::new(c) });
+    let src = Rc::new(SourceRef { file: file.clone(), text: source.clone(), source_chars: Rc::new(c) });
     let source_len = source_len(&src);
     let mut tokens: Vec<Rc<Token>> = Vec::new();
     let mut pos = Rc::new(TokPos { pos: 0, interp_depth: Rc::new(vec![]) });
