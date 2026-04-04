@@ -926,24 +926,30 @@ fn is_conj_with_children(n: Node) -> Bool {
 }
 
 // Extract the inferred type from a child Node.
-// Error states propagate structurally (error_type), not as fabricated Unit.
+// Typed: use resolved type. Error/Variable: propagate error_type.
+// Untyped: use the child's own structure as the type authority.
+// Note: node_inferred_to_outputs gate ensures only Typed children reach here.
 fn child_inferred_or_empty(ch: Node) -> Node {
   match rt_node(n: ch) {
     Typed { node: rt } => rt
     InferError { message: _, span: _ } => error_type
     InferVariable { id: _ } => error_type
-    Untyped => error_type
+    Untyped => ch
   }
 }
 
 // Convert a Node return type to output fields.
-// Conj node with children -> extract children as fields (error-typed children filtered out).
-// Otherwise -> single "value" field wrapping the node.
+// Fail-closed: if ANY child is not fully typed, return [] (no partial boundaries).
+// Otherwise -> Conj with children extracts fields, scalar wraps as single "value" field.
 fn node_inferred_to_outputs(rt: Node) -> List<Node> {
   if is_conj_with_children(n: rt) {
-    rt.children
-      |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span))
-      |> filter(f => match field_node_type_expr(n: f).inferred { Some { value: inf } => !is_compiler_error(inferred: inf)  None => false })
+    let all_children_typed = rt.children |> all(ch => match rt_node(n: ch) { Typed { node: _ } => true  _ => false })
+    if all_children_typed {
+      rt.children
+        |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span))
+    } else {
+      []
+    }
   } else {
     [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: rt.span)]
   }

@@ -97,14 +97,22 @@ pub fn node_is_element_collection(n: Rc<Node>) -> bool {
 }
 
 pub fn is_fully_resolved(n: Rc<Node>) -> bool {
-    if node_is_keyed_collection(n.clone()) {
+    let self_is_type_var = match n.inferred.clone() {
+    Some(inf) => is_type_variable(inf.clone()),
+    None => false,
+};
+    let has_type_var_child = n.children.clone().iter().cloned().any(|ch| match ch.inferred.clone() {
+    Some(inf) => is_type_variable(inf.clone()),
+    None => false,
+});
+    if self_is_type_var || has_type_var_child {
+        false
+} else if node_is_keyed_collection(n.clone()) {
         ((n.children.clone().len() as i64) >= 2)
+} else if node_is_element_collection(n.clone()) {
+        ((n.children.clone().len() as i64) > 0)
 } else {
-        if node_is_element_collection(n.clone()) {
-            ((n.children.clone().len() as i64) > 0)
-} else {
-            node_is_collection(n.clone())
-}
+        true
 }
 }
 
