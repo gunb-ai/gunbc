@@ -372,6 +372,14 @@ fn classify_list_method(name: String) -> ListMethodKind? {
   else { none }
 }
 
+// CX-C: Check if a method name is a collection iteration method whose
+// callback receives each element. Closed set — only methods that take
+// a lambda and iterate the receiver element-by-element.
+fn is_lambda_iteration_method(method_name: String) -> Bool {
+  method_name == "fold" || method_name == "map" || method_name == "flat_map"
+  || method_name == "filter" || method_name == "any" || method_name == "all"
+}
+
 // Merge two descent evidences (from two branches of if/match).
 // Conservative: if EITHER branch is unknown, result is unknown.
 // Lattice: DescentUnknown < NonIncreasing < Strict
@@ -1876,6 +1884,30 @@ fn is_children_of_param(expr: Node, param_name: String) -> Bool {
   }
 }
 
+// CX-C: Check if an expression is structural children of the parameter
+// or a known descent variable. Handles:
+// - param.children / descent_var.children
+// - param.children |> skip(N) / descent_var.children |> skip(N)
+fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool>) -> Bool {
+  is_children_of_param(expr: expr, param_name: param_name)
+  || match expr.expr_data {
+    ExprFieldAccess =>
+      let base = field_access_base(texpr: expr)
+      let field = field_access_field(texpr: expr)
+      field == "children"
+      && match base.expr_data {
+        ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name(texpr: base))
+        _ => false
+      }
+    ExprMethodCall { method_semantics: _ } =>
+      match classify_list_method(name: expr_call_func(texpr: expr)) {
+        Some { value: SkipMethod } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        _ => false
+      }
+    _ => false
+  }
+}
+
 // Check if an expression is a child-descending argument: either
 // accessor(param), param.children |> first/last, or a let-bound alias.
 fn is_child_descent_expr(expr: Node, param_name: String) -> Bool {
@@ -2171,6 +2203,34 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
       && (body.children |> all(child =>
         all_self_calls_descend_inc(body: child, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
       ))
+    ExprMethodCall { method_semantics: _ } =>
+      // CX-C: if iterating over structural children, the iteration
+      // parameter is a descent variable (standard structural induction).
+      let mname = expr_call_func(texpr: body)
+      let receiver = method_receiver(texpr: body)
+      let is_iter = is_lambda_iteration_method(method_name: mname)
+      let is_struct = is_structural_children(expr: receiver, param_name: param_name, vars: vars)
+      if is_iter && is_struct {
+        let recv_ok = all_self_calls_descend_inc(body: receiver, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+        let args_ok = method_arg_nodes(texpr: body) |> all(arg_node =>
+          let arg_val = arg_value(n: arg_node)
+          match arg_val.expr_data {
+            ExprLambda { semantics: _ } =>
+              match lambda_param_names(texpr: arg_val) |> last {
+                Some { value: iter_name } =>
+                  let ext_vars = map_insert(vars, iter_name, true)
+                  all_self_calls_descend_inc(body: lambda_body(texpr: arg_val), func_name: func_name, param_name: param_name, vars: ext_vars, check_child: check_child, check_list: check_list)
+                None => true
+              }
+            _ => all_self_calls_descend_inc(body: arg_val, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          }
+        )
+        recv_ok && args_ok
+      } else {
+        body.children |> all(child =>
+          all_self_calls_descend_inc(body: child, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+        )
+      }
     _ =>
       body.children |> all(child =>
         all_self_calls_descend_inc(body: child, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
@@ -2409,6 +2469,36 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         EvidenceBlockAcc { evidence: merge_optional_evidence(a: acc.evidence, b: stmt_ev), vars: next_vars }
       )
       result.evidence
+    ExprMethodCall { method_semantics: _ } =>
+      // CX-C: if iterating over structural children, the iteration
+      // parameter is a descent variable — enter lambda body with evidence.
+      let mname = expr_call_func(texpr: body)
+      let receiver = method_receiver(texpr: body)
+      let is_iter = is_lambda_iteration_method(method_name: mname)
+      let is_struct = is_structural_children(expr: receiver, param_name: param_name, vars: vars)
+      if is_iter && is_struct {
+        let recv_ev = collect_evidence_incremental(body: receiver, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+        let args_ev = method_arg_nodes(texpr: body) |> fold(init: none, f: (acc, arg_node) =>
+          let arg_val = arg_value(n: arg_node)
+          let ev = match arg_val.expr_data {
+            ExprLambda { semantics: _ } =>
+              match lambda_param_names(texpr: arg_val) |> last {
+                Some { value: iter_name } =>
+                  let ext_vars = map_insert(vars, iter_name, true)
+                  collect_evidence_incremental(body: lambda_body(texpr: arg_val), func_name: func_name, param_name: param_name, vars: ext_vars, check_child: check_child, check_list: check_list)
+                None => none
+              }
+            _ => collect_evidence_incremental(body: arg_val, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          }
+          merge_optional_evidence(a: acc, b: ev)
+        )
+        merge_optional_evidence(a: recv_ev, b: args_ev)
+      } else {
+        body.children |> fold(init: none, f: (acc, child) =>
+          let ce = collect_evidence_incremental(body: child, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          merge_optional_evidence(a: acc, b: ce)
+        )
+      }
     _ =>
       body.children |> fold(init: none, f: (acc, child) =>
         let ce = collect_evidence_incremental(body: child, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
@@ -2686,6 +2776,34 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set)
       )
       concat(own_edges, child_edges)
+    ExprMethodCall { method_semantics: _ } =>
+      // CX-C: if iterating over structural children, the iteration
+      // parameter is a descent variable for SCC edge classification.
+      let mname = expr_call_func(texpr: body)
+      let receiver = method_receiver(texpr: body)
+      let is_iter = is_lambda_iteration_method(method_name: mname)
+      let is_struct = is_structural_children(expr: receiver, param_name: param_name, vars: descent_vars)
+      if is_iter && is_struct {
+        let recv_edges = collect_scc_child_edges(body: receiver, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set)
+        let args_edges = method_arg_nodes(texpr: body) |> flat_map(arg_node =>
+          let arg_val = arg_value(n: arg_node)
+          match arg_val.expr_data {
+            ExprLambda { semantics: _ } =>
+              match lambda_param_names(texpr: arg_val) |> last {
+                Some { value: iter_name } =>
+                  let ext_vars = map_insert(descent_vars, iter_name, true)
+                  collect_scc_child_edges(body: lambda_body(texpr: arg_val), caller: caller, param_name: param_name, descent_vars: ext_vars, target_set: target_set)
+                None => []
+              }
+            _ => collect_scc_child_edges(body: arg_val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set)
+          }
+        )
+        concat(recv_edges, args_edges)
+      } else {
+        body.children |> flat_map(child =>
+          collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set)
+        )
+      }
     _ =>
       body.children |> flat_map(child =>
         collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set)
@@ -2816,6 +2934,34 @@ fn collect_scc_multidim_edges(body: Node, caller: String, param_name: String, tr
         collect_scc_multidim_edges(body: child, caller: caller, param_name: param_name, tree_vars: tree_vars, list_vars: list_vars, target_set: target_set)
       )
       concat(own_edges, child_edges)
+    ExprMethodCall { method_semantics: _ } =>
+      // CX-C: if iterating over structural children, the iteration
+      // parameter is a tree-descent variable for 2D proof edges.
+      let mname = expr_call_func(texpr: body)
+      let receiver = method_receiver(texpr: body)
+      let is_iter = is_lambda_iteration_method(method_name: mname)
+      let is_struct = is_structural_children(expr: receiver, param_name: param_name, vars: tree_vars)
+      if is_iter && is_struct {
+        let recv_edges = collect_scc_multidim_edges(body: receiver, caller: caller, param_name: param_name, tree_vars: tree_vars, list_vars: list_vars, target_set: target_set)
+        let args_edges = method_arg_nodes(texpr: body) |> flat_map(arg_node =>
+          let arg_val = arg_value(n: arg_node)
+          match arg_val.expr_data {
+            ExprLambda { semantics: _ } =>
+              match lambda_param_names(texpr: arg_val) |> last {
+                Some { value: iter_name } =>
+                  let ext_tree = map_insert(tree_vars, iter_name, true)
+                  collect_scc_multidim_edges(body: lambda_body(texpr: arg_val), caller: caller, param_name: param_name, tree_vars: ext_tree, list_vars: list_vars, target_set: target_set)
+                None => []
+              }
+            _ => collect_scc_multidim_edges(body: arg_val, caller: caller, param_name: param_name, tree_vars: tree_vars, list_vars: list_vars, target_set: target_set)
+          }
+        )
+        concat(recv_edges, args_edges)
+      } else {
+        body.children |> flat_map(child =>
+          collect_scc_multidim_edges(body: child, caller: caller, param_name: param_name, tree_vars: tree_vars, list_vars: list_vars, target_set: target_set)
+        )
+      }
     _ =>
       body.children |> flat_map(child =>
         collect_scc_multidim_edges(body: child, caller: caller, param_name: param_name, tree_vars: tree_vars, list_vars: list_vars, target_set: target_set)
