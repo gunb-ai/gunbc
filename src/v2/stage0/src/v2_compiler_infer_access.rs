@@ -143,7 +143,7 @@ access_result(with_optional_cardinality(parts.value_type.clone()), key_diags.clo
                     let malformed_diags: Rc<Vec<Rc<ErrorNode>>> = Rc::new(vec![access_error("malformed keyed collection type in index access".to_string(), span.clone(), module_name.clone())]);
 access_result(unit_type(), malformed_diags.clone(), span.clone(), "malformed keyed collection type in index access".to_string())
 }
-} else if node_is_element_collection(normed.clone()) && index_is_int.clone() {
+} else if normed.name.as_str() == "List" && node_is_element_collection(normed.clone()) && index_is_int.clone() {
                 // List[Int] → element type (with optional cardinality for bounds safety)
                 {
                     let elem = for_each_element_type_node(normed.clone());
