@@ -200,37 +200,37 @@ type IterationPrimitive
 fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   match pattern {
     ChildAccessorCall { accessor: a } =>
-      { primitive: Descend,
+      LoweringTarget { primitive: Descend,
         bound: TreeSize { param: a },
         evidence: Strict }
 
     CollectionShrinkCall { amount: _ } =>
-      { primitive: Fold,
+      LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "collection" },
         evidence: Strict }
 
     ArithmeticDescentCall { op: _, by: _ } =>
-      { primitive: Repeat,
+      LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: "n" },
         evidence: Strict }
 
     ParserAdvanceCall { witness: _ } =>
-      { primitive: Fold,
+      LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "tokens" },
         evidence: Strict }
 
     WorklistDrainCall { element: _ } =>
-      { primitive: Fold,
+      LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "worklist" },
         evidence: Strict }
 
     FoldBodyCall =>
-      { primitive: Fold,
+      LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "outer_collection" },
         evidence: NonIncreasing }
 
     SameArgumentCall =>
-      { primitive: Repeat,
+      LoweringTarget { primitive: Repeat,
         bound: Forever,
         evidence: Strict }
   }

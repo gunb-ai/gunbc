@@ -3036,12 +3036,10 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
           let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best, candidate: param_map)
         )
-        // Derive caller/callee from key format "caller->callee"
-        let prefix_len = string_length(s: name) + 2
-        map_keys(best_map) |> map(key =>
-          let ev = match map_get(best_map, key) { Some { value: e } => e   None => DescentUnknown }
-          let callee_name = substring(s: key, start: prefix_len, end: string_length(s: key))
-          ProofEdge { caller: name, callee: callee_name, evidence: [ev] }
+        // Map keys are callee names — caller is `name` from the outer loop.
+        map_keys(best_map) |> map(callee =>
+          let ev = match map_get(best_map, callee) { Some { value: e } => e   None => DescentUnknown }
+          ProofEdge { caller: name, callee: callee, evidence: [ev] }
         )
       None => []
     }
@@ -3053,8 +3051,8 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
 // caller→callee through one param must ALL descend. Cross-param selection
 // uses pick_best_param_edges (single best param) instead.
 fn merge_edge_evidence(acc_map: Map<String, DescentEvidence>, pe: ParserProgressEdge) -> Map<String, DescentEvidence> {
-  let key = concat(pe.caller, concat("->", pe.callee))
-  let existing = map_get(acc_map, key)
+  // Key by callee only — caller is always the same within a per-member loop.
+  let existing = map_get(acc_map, pe.callee)
   let new_ev = progress_to_evidence(pk: pe.progress)
   let merged_ev = match existing {
     Some { value: prev } =>
@@ -3065,7 +3063,7 @@ fn merge_edge_evidence(acc_map: Map<String, DescentEvidence>, pe: ParserProgress
       }
     None => new_ev
   }
-  map_insert(acc_map, key, merged_ev)
+  map_insert(acc_map, pe.callee, merged_ev)
 }
 
 // Count edges with known evidence (not DescentUnknown) in an edge map.
@@ -3108,17 +3106,15 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
           let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best_map, candidate: param_map)
         )
-        // Merge into 2D proof edges — derive caller/callee from key format "caller->callee".
+        // Merge into 2D proof edges — map keys are callee names.
         // Note: map_keys order is nondeterministic (HashMap-backed), but consumers
         // (all(), proof_has_non_descending_cycle) are order-independent.
         let all_keys = concat(map_keys(tree_edge_map), map_keys(list_edge_map))
         let unique_keys = all_keys |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, true))
-        let prefix_len = string_length(s: name) + 2
-        map_keys(unique_keys) |> map(key =>
-          let tree_ev = match map_get(tree_edge_map, key) { Some { value: ev } => ev   None => DescentUnknown }
-          let list_ev = match map_get(list_edge_map, key) { Some { value: ev } => ev   None => DescentUnknown }
-          let callee_name = substring(s: key, start: prefix_len, end: string_length(s: key))
-          ProofEdge { caller: name, callee: callee_name, evidence: [tree_ev, list_ev] }
+        map_keys(unique_keys) |> map(callee =>
+          let tree_ev = match map_get(tree_edge_map, callee) { Some { value: ev } => ev   None => DescentUnknown }
+          let list_ev = match map_get(list_edge_map, callee) { Some { value: ev } => ev   None => DescentUnknown }
+          ProofEdge { caller: name, callee: callee, evidence: [tree_ev, list_ev] }
         )
       None => []
     }
@@ -3157,17 +3153,15 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
           // Parser dimension: filter shared edges to this caller
           let my_parser_edges = all_parser_edges |> filter(pe => pe.caller == name)
           let parser_edge_map = my_parser_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
-          // Merge into 2D proof edges — derive caller/callee from key.
+          // Merge into 2D proof edges — map keys are callee names.
           // Note: map_keys order is nondeterministic (HashMap-backed), but consumers
           // (all(), proof_has_non_descending_cycle) are order-independent.
           let all_keys = concat(map_keys(tree_edge_map), map_keys(parser_edge_map))
           let unique_keys = all_keys |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, true))
-          let prefix_len = string_length(s: name) + 2
-          map_keys(unique_keys) |> map(key =>
-            let tree_ev = match map_get(tree_edge_map, key) { Some { value: ev } => ev   None => DescentUnknown }
-            let parser_ev = match map_get(parser_edge_map, key) { Some { value: ev } => ev   None => DescentUnknown }
-            let callee_name = substring(s: key, start: prefix_len, end: string_length(s: key))
-            ProofEdge { caller: name, callee: callee_name, evidence: [tree_ev, parser_ev] }
+          map_keys(unique_keys) |> map(callee =>
+            let tree_ev = match map_get(tree_edge_map, callee) { Some { value: ev } => ev   None => DescentUnknown }
+            let parser_ev = match map_get(parser_edge_map, callee) { Some { value: ev } => ev   None => DescentUnknown }
+            ProofEdge { caller: name, callee: callee, evidence: [tree_ev, parser_ev] }
           )
         None => []
       }

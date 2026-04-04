@@ -2773,16 +2773,14 @@ let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pnam
 let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
 pick_best_param_edges(best.clone(), param_map.clone())
 });
-let prefix_len = (v2_rt::string_length(&name) + 2);
-Rc::new({ let mut __result = Vec::new(); for key in Rc::new(v2_rt::map_keys(&best_map)).iter().cloned() { __result.push({
-            let ev = match v2_rt::map_get(&best_map, key.clone()) {
+Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v2_rt::map_keys(&best_map)).iter().cloned() { __result.push({
+            let ev = match v2_rt::map_get(&best_map, callee.clone()) {
     Some(e) => e.clone(),
     None => DescentEvidence::DescentUnknown,
 };
-let callee_name = v2_rt::substring(&key, prefix_len.clone(), v2_rt::string_length(&key));
 Rc::new(ProofEdge {
     caller: name.clone(),
-    callee: callee_name.clone(),
+    callee: callee.clone(),
     evidence: Rc::new(vec![ev.clone()]),
 })
 }); } __result })
@@ -2793,8 +2791,7 @@ Rc::new(ProofEdge {
 
 pub fn merge_edge_evidence(acc_map: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>) -> Rc<HashMap<String, DescentEvidence>> {
     {
-        let key = v2_rt::concat(pe.caller.clone(), v2_rt::concat("->".to_string(), pe.callee.clone()));
-let existing = v2_rt::map_get(&acc_map, key.clone());
+        let existing = v2_rt::map_get(&acc_map, pe.callee.clone());
 let new_ev = progress_to_evidence(pe.progress.clone());
 let merged_ev = match existing {
     Some(prev) => match prev.clone() {
@@ -2812,7 +2809,7 @@ let merged_ev = match existing {
 },
     None => new_ev,
 };
-v2_rt::rc_map_insert(acc_map.clone(), key.clone(), merged_ev)
+v2_rt::rc_map_insert(acc_map.clone(), pe.callee.clone(), merged_ev)
 }
 }
 
@@ -2850,20 +2847,18 @@ pick_best_param_edges(best_map.clone(), param_map.clone())
 });
 let all_keys = v2_rt::concat(Rc::new(v2_rt::map_keys(&tree_edge_map)), Rc::new(v2_rt::map_keys(&list_edge_map)));
 let unique_keys = all_keys.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, k: String| v2_rt::rc_map_insert(acc.clone(), k.clone(), true));
-let prefix_len = (v2_rt::string_length(&name) + 2);
-Rc::new({ let mut __result = Vec::new(); for key in Rc::new(v2_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
-            let tree_ev = match v2_rt::map_get(&tree_edge_map, key.clone()) {
+Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v2_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
+            let tree_ev = match v2_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
     None => DescentEvidence::DescentUnknown,
 };
-let list_ev = match v2_rt::map_get(&list_edge_map, key.clone()) {
+let list_ev = match v2_rt::map_get(&list_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
     None => DescentEvidence::DescentUnknown,
 };
-let callee_name = v2_rt::substring(&key, prefix_len.clone(), v2_rt::string_length(&key));
 Rc::new(ProofEdge {
     caller: name.clone(),
-    callee: callee_name.clone(),
+    callee: callee.clone(),
     evidence: Rc::new(vec![tree_ev.clone(), list_ev.clone()]),
 })
 }); } __result })
@@ -2898,20 +2893,18 @@ let my_parser_edges = Rc::new({ let mut __result = Vec::new(); for pe in all_par
 let parser_edge_map = my_parser_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
 let all_keys = v2_rt::concat(Rc::new(v2_rt::map_keys(&tree_edge_map)), Rc::new(v2_rt::map_keys(&parser_edge_map)));
 let unique_keys = all_keys.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, k: String| v2_rt::rc_map_insert(acc.clone(), k.clone(), true));
-let prefix_len = (v2_rt::string_length(&name) + 2);
-Rc::new({ let mut __result = Vec::new(); for key in Rc::new(v2_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
-                    let tree_ev = match v2_rt::map_get(&tree_edge_map, key.clone()) {
+Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v2_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
+                    let tree_ev = match v2_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
     None => DescentEvidence::DescentUnknown,
 };
-let parser_ev = match v2_rt::map_get(&parser_edge_map, key.clone()) {
+let parser_ev = match v2_rt::map_get(&parser_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
     None => DescentEvidence::DescentUnknown,
 };
-let callee_name = v2_rt::substring(&key, prefix_len.clone(), v2_rt::string_length(&key));
 Rc::new(ProofEdge {
     caller: name.clone(),
-    callee: callee_name.clone(),
+    callee: callee.clone(),
     evidence: Rc::new(vec![tree_ev.clone(), parser_ev.clone()]),
 })
 }); } __result })
