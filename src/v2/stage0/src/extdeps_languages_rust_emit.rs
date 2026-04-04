@@ -184,7 +184,7 @@ pub fn rt_functions() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
-    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.passes_by_ref.clone() { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
+    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.passes_by_ref.clone() { __result.push(f); } } __result }).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
 }
 
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {

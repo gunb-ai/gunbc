@@ -171,7 +171,7 @@ pub fn leaf_type_rendering_shared(name: String) -> Rc<TypeRendering> {
 
 pub fn variant_has_fields(emit_info: Rc<EmitGraphInfo>, enum_name: String, variant_name: String) -> bool {
     {
-        let key: String = v2_rt::concat(v2_rt::concat(enum_name.clone(), "::".to_string()), variant_name.clone());
+        let key = v2_rt::concat(v2_rt::concat(enum_name.clone(), "::".to_string()), variant_name.clone());
 match v2_rt::map_get(&emit_info.fielded_variants.clone(), key.clone()) {
     Some(v) => v.clone(),
     None => false,
@@ -184,7 +184,7 @@ pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: String)
 }
 
 pub fn derive_variant_to_enum(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>) -> Rc<HashMap<String, String>> {
-    Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(Rc::new(HashMap::new()), |acc: _, summary: Rc<TypeSummary>| match (*summary.repr.clone()).clone() {
+    Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, summary: Rc<TypeSummary>| match (*summary.repr.clone()).clone() {
     TypeRepr::EnumRepr { .. } => Rc::new(v2_rt::map_keys(&summary.variant_name_set.clone())).iter().cloned().fold(acc.clone(), |inner: _, vn: String| match v2_rt::map_get(&inner, vn.clone()) {
     Some(_) => inner.clone(),
     None => v2_rt::rc_map_insert(inner.clone(), vn.clone(), summary.name.clone()),
@@ -226,8 +226,8 @@ pub fn find_variant_parent(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 
 pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
     {
-        let normed: Rc<Node> = normalize_access_type_node(type_node.clone());
-let is_optional: bool = (normed.return_cardinality.clone() == Cardinality::CardOptional);
+        let normed = normalize_access_type_node(type_node.clone());
+let is_optional = (normed.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional.clone() {
             FieldValueShape::OptionalValue
 } else {
@@ -260,12 +260,12 @@ pub fn pair_access_style(field_name: String) -> FieldAccessStyle {
 
 pub fn build_struct_field_summaries(children: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Rc<FieldSummary>>> {
     {
-        let is_pair: bool = is_pair_children(children.clone());
-children.clone().iter().cloned().fold(Rc::new(HashMap::new()), |acc: _, child: Rc<Node>| if (child.inferred.clone() == None) {
+        let is_pair = is_pair_children(children.clone());
+children.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, child: Rc<Node>| if (child.inferred.clone() == None) {
             acc.clone()
 } else {
             {
-                let style: FieldAccessStyle = if is_pair.clone() {
+                let style = if is_pair.clone() {
                     pair_access_style(child.name.clone())
 } else {
                     FieldAccessStyle::StoredField
@@ -302,16 +302,16 @@ pub fn enum_field_type_consistent(variants: Rc<Vec<Rc<Node>>>, field_name: Strin
 
 pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Rc<FieldSummary>>> {
     {
-        let first_field_names: Rc<Vec<String>> = match variants.clone().first().cloned() {
+        let first_field_names = match variants.clone().first().cloned() {
     Some(first_variant) => Rc::new({ let mut __result = Vec::new(); for f in first_variant.children.clone().iter().cloned() { __result.push(f.name.clone()); } __result }),
     None => Rc::new(vec![]),
 };
-let shared: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for field_name in first_field_names.clone().iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone()) { __result.push(field_name); } } __result });
-let consistent: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for field_name in shared.clone().iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone()) {
+let shared = Rc::new({ let mut __result = Vec::new(); for field_name in first_field_names.clone().iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone()) { __result.push(field_name); } } __result });
+let consistent = Rc::new({ let mut __result = Vec::new(); for field_name in shared.clone().iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone()) {
     Some(first_field) => enum_field_type_consistent(variants.clone(), field_name.clone(), child_inferred_or_name(first_field.clone())),
     None => false,
 } { __result.push(field_name); } } __result });
-consistent.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc: _, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone()) {
+consistent.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone()) {
     Some(first_field) => v2_rt::rc_map_insert(acc.clone(), field_name.clone(), Rc::new(FieldSummary {
     access_style: FieldAccessStyle::EnumAccessor,
     value_shape: field_value_shape_from_type_node(child_inferred_or_name(first_field.clone())),
@@ -322,10 +322,10 @@ consistent.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(
 }
 
 pub fn build_field_type_map(children: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, String>> {
-    children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: _, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
+    children.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: ft, .. }) => {
-        let resolved_name: String = normalize_access_type_node(ft.clone()).name.clone();
-let ft_is_type_var: bool = if (ft.inferred.clone() != None) {
+        let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
+let ft_is_type_var = if (ft.inferred.clone() != None) {
             is_type_variable(ft.inferred.clone().clone().unwrap())
 } else {
             false
@@ -345,8 +345,8 @@ pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
         if ((item.connective.clone() == Connective::NoConnective) || (item.transport.clone() != None)) {
             return None
 }
-let gpn: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result });
-let is_product: bool = (item.connective.clone() == Connective::Conj);
+let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result });
+let is_product = (item.connective.clone() == Connective::Conj);
 if is_product.clone() {
             Some(Rc::new(TypeSummary {
     name: item.name.clone(),
@@ -358,7 +358,7 @@ if is_product.clone() {
 }))
 } else {
             {
-                let unit_only: bool = { let mut __all = true; for child in item.children.clone().iter().cloned() { if !(((child.children.clone().len() as i64) == 0)) { __all = false; break; } } __all };
+                let unit_only = { let mut __all = true; for child in item.children.clone().iter().cloned() { if !(((child.children.clone().len() as i64) == 0)) { __all = false; break; } } __all };
 Some(Rc::new(TypeSummary {
     name: item.name.clone(),
     repr: Rc::new(TypeRepr::EnumRepr {
@@ -366,7 +366,7 @@ Some(Rc::new(TypeSummary {
 }),
     field_summaries: build_enum_field_summaries(item.children.clone()),
     field_type_map: v2_rt::rc_empty_map::<String>(),
-    variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: _, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), child.name.clone(), true)),
+    variant_name_set: item.children.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), child.name.clone(), true)),
     generic_param_names: gpn.clone(),
 }))
 }
@@ -377,8 +377,8 @@ Some(Rc::new(TypeSummary {
 pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> Rc<EmitInfoBuildState> {
     match build_type_summary(item.clone()) {
     Some(summary) => {
-        let with_variants: Rc<HashMap<String, Rc<TypeSummary>>> = match (*summary.repr.clone()).clone() {
-    TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.type_summaries.clone(), |acc: _, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
+        let with_variants = match (*summary.repr.clone()).clone() {
+    TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.type_summaries.clone(), |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
             v2_rt::rc_map_insert(acc.clone(), variant.name.clone(), Rc::new(TypeSummary {
     name: variant.name.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
@@ -392,7 +392,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
 }),
     _ => state.type_summaries.clone(),
 };
-let next_summaries: Rc<HashMap<String, Rc<TypeSummary>>> = v2_rt::rc_map_insert(with_variants.clone(), summary.name.clone(), summary.clone());
+let next_summaries = v2_rt::rc_map_insert(with_variants.clone(), summary.name.clone(), summary.clone());
 Rc::new(EmitInfoBuildState {
     type_summaries: next_summaries.clone(),
 })

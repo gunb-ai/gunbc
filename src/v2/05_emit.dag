@@ -1272,7 +1272,7 @@ fn render_type(tr: TypeRendering, target: RenderTarget) -> String {
   if tr.is_error {
     let label = if tr.error_label == "" { tr.type_name } else { tr.error_label }
     match target {
-      Rust => concat("panic!(\"unresolved ", label, " type reached emit\")")
+      Rust => concat("compile_error!(\"unresolved ", label, " type reached emit\")")
       _ => concat("__EMIT_BUG_UNRESOLVED_", label, "__")
     }
   } else {

@@ -63,63 +63,63 @@ pub struct Semigroup<T> {
 #[derive(Clone)]
 pub struct Monoid<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
-    pub identity: T,
+    pub identity: Box<T>,
 }
 
 #[derive(Clone)]
 pub struct CommutativeMonoid<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
-    pub identity: T,
+    pub identity: Box<T>,
 }
 
 #[derive(Clone)]
 pub struct Group<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
-    pub identity: T,
+    pub identity: Box<T>,
     pub inverse: Rc<dyn Fn(T) -> T>,
 }
 
 #[derive(Clone)]
 pub struct AbelianGroup<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
-    pub identity: T,
+    pub identity: Box<T>,
     pub inverse: Rc<dyn Fn(T) -> T>,
 }
 
 #[derive(Clone)]
 pub struct Semiring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
-    pub zero: T,
+    pub zero: Box<T>,
     pub mul: Rc<dyn Fn(T, T) -> T>,
-    pub one: T,
+    pub one: Box<T>,
 }
 
 #[derive(Clone)]
 pub struct Ring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
-    pub zero: T,
+    pub zero: Box<T>,
     pub negate: Rc<dyn Fn(T) -> T>,
     pub mul: Rc<dyn Fn(T, T) -> T>,
-    pub one: T,
+    pub one: Box<T>,
 }
 
 #[derive(Clone)]
 pub struct OrderedRing<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
-    pub zero: T,
+    pub zero: Box<T>,
     pub negate: Rc<dyn Fn(T) -> T>,
     pub mul: Rc<dyn Fn(T, T) -> T>,
-    pub one: T,
+    pub one: Box<T>,
     pub compare: Rc<dyn Fn(T, T) -> Ordering>,
 }
 
 #[derive(Clone)]
 pub struct Field<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
-    pub zero: T,
+    pub zero: Box<T>,
     pub negate: Rc<dyn Fn(T) -> T>,
     pub mul: Rc<dyn Fn(T, T) -> T>,
-    pub one: T,
+    pub one: Box<T>,
     pub reciprocal: Rc<dyn Fn(T) -> T>,
     pub compare: Rc<dyn Fn(T, T) -> Ordering>,
 }
@@ -134,8 +134,8 @@ pub struct Lattice<T> {
 pub struct BoundedLattice<T> {
     pub meet: Rc<dyn Fn(T, T) -> T>,
     pub join: Rc<dyn Fn(T, T) -> T>,
-    pub top: T,
-    pub bottom: T,
+    pub top: Box<T>,
+    pub bottom: Box<T>,
 }
 
 #[derive(Clone)]
@@ -143,32 +143,32 @@ pub struct BooleanAlgebra<T> {
     pub meet: Rc<dyn Fn(T, T) -> T>,
     pub join: Rc<dyn Fn(T, T) -> T>,
     pub complement: Rc<dyn Fn(T) -> T>,
-    pub top: T,
-    pub bottom: T,
+    pub top: Box<T>,
+    pub bottom: Box<T>,
 }
 
 #[derive(Clone)]
 pub struct FreeMonoid<T> {
-    pub concat: Rc<dyn Fn(Rc<Vec<T>>, Rc<Vec<T>>) -> Rc<Vec<T>>>,
+    pub concat: Rc<dyn Fn(Rc<FreeMonoid<T>>, Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>>>,
     pub empty: Rc<FreeMonoid<T>>,
-    pub append: Rc<dyn Fn(T) -> Rc<Vec<T>>>,
+    pub append: Rc<dyn Fn(T) -> Rc<FreeMonoid<T>>>,
     pub index: Rc<dyn Fn(i64) -> T>,
-    pub slice: Rc<dyn Fn(i64, i64) -> Rc<Vec<T>>>,
+    pub slice: Rc<dyn Fn(i64, i64) -> Rc<FreeMonoid<T>>>,
     pub length: Rc<dyn Fn() -> i64>,
     pub count: Rc<dyn Fn() -> i64>,
     pub first: Rc<dyn Fn() -> Option<T>>,
     pub last: Rc<dyn Fn() -> Option<T>>,
-    pub map: Rc<dyn Fn(Rc<dyn Fn(T) -> T>) -> Rc<Vec<T>>>,
-    pub filter: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> Rc<Vec<T>>>,
+    pub map: Rc<dyn Fn(Rc<dyn Fn(T) -> T>) -> Rc<FreeMonoid<T>>>,
+    pub filter: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> Rc<FreeMonoid<T>>>,
     pub fold: Rc<dyn Fn(T, Rc<dyn Fn(T, T) -> T>) -> T>,
-    pub flat_map: Rc<dyn Fn(Rc<dyn Fn(T) -> Rc<Vec<T>>>) -> Rc<Vec<T>>>,
+    pub flat_map: Rc<dyn Fn(Rc<dyn Fn(T) -> Rc<FreeMonoid<T>>>) -> Rc<FreeMonoid<T>>>,
     pub any: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> bool>,
     pub all: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> bool>,
-    pub enumerate: Rc<dyn Fn() -> Rc<Vec<(i64, T)>>>,
-    pub reverse: Rc<dyn Fn() -> Rc<Vec<T>>>,
-    pub skip: Rc<dyn Fn(i64) -> Rc<Vec<T>>>,
-    pub take: Rc<dyn Fn(i64) -> Rc<Vec<T>>>,
-    pub sort_by: Rc<dyn Fn(Rc<dyn Fn(T, T) -> i64>) -> Rc<Vec<T>>>,
+    pub enumerate: Rc<dyn Fn() -> Rc<FreeMonoid<(i64, T)>>>,
+    pub reverse: Rc<dyn Fn() -> Rc<FreeMonoid<T>>>,
+    pub skip: Rc<dyn Fn(i64) -> Rc<FreeMonoid<T>>>,
+    pub take: Rc<dyn Fn(i64) -> Rc<FreeMonoid<T>>>,
+    pub sort_by: Rc<dyn Fn(Rc<dyn Fn(T, T) -> i64>) -> Rc<FreeMonoid<T>>>,
     pub contains: Rc<dyn Fn(T) -> bool>,
 }
 
@@ -179,8 +179,8 @@ pub struct PartialFunction<K, V> {
     pub get: Rc<dyn Fn(K) -> Option<V>>,
     pub insert: Rc<dyn Fn(K, V) -> Rc<PartialFunction<K, V>>>,
     pub merge: Rc<dyn Fn(Rc<PartialFunction<K, V>>) -> Rc<PartialFunction<K, V>>>,
-    pub keys: Rc<dyn Fn() -> Rc<Vec<K>>>,
-    pub values: Rc<dyn Fn() -> Rc<Vec<V>>>,
+    pub keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
+    pub values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
     pub has: Rc<dyn Fn(K) -> bool>,
     pub contains_key: Rc<dyn Fn(K) -> bool>,
     pub size: Rc<dyn Fn() -> i64>,

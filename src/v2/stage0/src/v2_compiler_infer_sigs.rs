@@ -93,9 +93,9 @@ pub fn collect_func_call_edges(items: Rc<Vec<Rc<Node>>>, local_func_set: Rc<Hash
 pub fn collect_calls_in_expr(caller: String, texpr: Rc<Node>, local_func_set: Rc<HashMap<String, bool>>) -> Rc<Vec<Rc<CallEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
-            let this_edges: Rc<Vec<Rc<CallEdge>>> = match (*texpr.expr_data.clone()).clone() {
+            let this_edges = match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-                let f: String = expr_call_func(texpr.clone());
+                let f = expr_call_func(texpr.clone());
 if emit_map_has(local_func_set.clone(), f.clone()) {
                     Rc::new(vec![Rc::new(CallEdge {
     caller: caller.clone(),
@@ -107,8 +107,8 @@ if emit_map_has(local_func_set.clone(), f.clone()) {
 },
     _ => Rc::new(vec![]),
 };
-let child_edges: Rc<Vec<Rc<CallEdge>>> = Rc::new({ let mut __result = Vec::new(); for child in texpr.children.clone().iter().cloned() { __result.extend((*collect_calls_in_expr(caller.clone(), child.clone(), local_func_set.clone())).iter().cloned()); } __result });
-let result: Rc<Vec<Rc<CallEdge>>> = v2_rt::concat(this_edges.clone(), child_edges.clone());
+let child_edges = Rc::new({ let mut __result = Vec::new(); for child in texpr.children.clone().iter().cloned() { __result.extend((*collect_calls_in_expr(caller.clone(), child.clone(), local_func_set.clone())).iter().cloned()); } __result });
+let result = v2_rt::concat(this_edges.clone(), child_edges.clone());
 result.clone()
 }
     })
@@ -120,8 +120,8 @@ pub fn func_reaches_self(root: String, current: String, call_edges: Rc<Vec<Rc<Ca
             false
 } else {
             {
-                let next_visited: Rc<HashMap<String, bool>> = v2_rt::rc_map_insert(visited.clone(), current.clone(), true);
-let callees: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for e in Rc::new({ let mut __result = Vec::new(); for e in call_edges.clone().iter().cloned() { if (e.caller.clone().as_str() == current.clone().as_str()) { __result.push(e); } } __result }).iter().cloned() { __result.push(e.callee.clone()); } __result });
+                let next_visited = v2_rt::rc_map_insert(visited.clone(), current.clone(), true);
+let callees = Rc::new({ let mut __result = Vec::new(); for e in Rc::new({ let mut __result = Vec::new(); for e in call_edges.clone().iter().cloned() { if (e.caller.clone().as_str() == current.clone().as_str()) { __result.push(e); } } __result }).iter().cloned() { __result.push(e.callee.clone()); } __result });
 { let mut __found = false; for c in callees.clone().iter().cloned() { if if (c.clone().as_str() == root.clone().as_str()) {
                     true
 } else {
@@ -142,7 +142,7 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
 }
 
 pub fn merge_remaining_declared(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
-    Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(resolved.clone(), |acc: _, dsig: Rc<DeclaredFuncSig>| if (dsig.inferred.clone() != None) {
+    Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(resolved.clone(), |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| if (dsig.inferred.clone() != None) {
         v2_rt::rc_map_insert(acc.clone(), dsig.name.clone(), declared_to_resolved(dsig.clone()))
 } else {
         acc.clone()
@@ -153,7 +153,7 @@ pub fn topo_resolve_loop(mut remaining: Rc<Vec<String>>, mut resolved: Rc<HashMa
     loop {
         if ((remaining.clone().len() as i64) == 0) {
             {
-                let all_resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>> = Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(resolved.clone(), |acc: _, dsig: Rc<DeclaredFuncSig>| if (dsig.inferred.clone() != None) {
+                let all_resolved = Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(resolved.clone(), |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| if (dsig.inferred.clone() != None) {
                     v2_rt::rc_map_insert(acc.clone(), dsig.name.clone(), declared_to_resolved(dsig.clone()))
 } else {
                     acc.clone()
@@ -166,16 +166,16 @@ return Rc::new(ResolveFuncSigsResult {
 })
 }
 }
-let ready: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for fn_name in remaining.clone().iter().cloned() { if {
-            let local_callees: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for c in Rc::new({ let mut __result = Vec::new(); for e in Rc::new({ let mut __result = Vec::new(); for e in call_edges.clone().iter().cloned() { if (e.caller.clone().as_str() == fn_name.clone().as_str()) { __result.push(e); } } __result }).iter().cloned() { __result.push(e.callee.clone()); } __result }).iter().cloned() { if emit_map_has(local_func_set.clone(), c.clone()) { __result.push(c); } } __result });
+let ready = Rc::new({ let mut __result = Vec::new(); for fn_name in remaining.clone().iter().cloned() { if {
+            let local_callees = Rc::new({ let mut __result = Vec::new(); for c in Rc::new({ let mut __result = Vec::new(); for e in Rc::new({ let mut __result = Vec::new(); for e in call_edges.clone().iter().cloned() { if (e.caller.clone().as_str() == fn_name.clone().as_str()) { __result.push(e); } } __result }).iter().cloned() { __result.push(e.callee.clone()); } __result }).iter().cloned() { if emit_map_has(local_func_set.clone(), c.clone()) { __result.push(c); } } __result });
 { let mut __all = true; for c in local_callees.clone().iter().cloned() { if !((v2_rt::map_get(&resolved, c.clone()) != None)) { __all = false; break; } } __all }
 } { __result.push(fn_name); } } __result });
 if ((ready.clone().len() as i64) == 0) {
             {
-                let cycle_accum: Rc<SigsAccum> = remaining.clone().iter().cloned().fold(Rc::new(SigsAccum {
+                let cycle_accum = remaining.clone().iter().cloned().fold(Rc::new(SigsAccum {
     signatures: resolved.clone(),
     diagnostics: Rc::new(vec![]),
-}), |acc: _, fn_name: String| match v2_rt::map_get(&declared_sigs, fn_name.clone()) {
+}), |acc: Rc<SigsAccum>, fn_name: String| match v2_rt::map_get(&declared_sigs, fn_name.clone()) {
     Some(dsig) => if (dsig.inferred.clone() != None) {
                     Rc::new(SigsAccum {
     signatures: v2_rt::rc_map_insert(acc.signatures.clone(), fn_name.clone(), declared_to_resolved(dsig.clone())),
@@ -193,7 +193,7 @@ if ((ready.clone().len() as i64) == 0) {
 },
     None => acc.clone(),
 });
-let all_resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>> = Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(cycle_accum.signatures.clone(), |acc: _, dsig: Rc<DeclaredFuncSig>| if (dsig.inferred.clone() != None) {
+let all_resolved = Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(cycle_accum.signatures.clone(), |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| if (dsig.inferred.clone() != None) {
                     v2_rt::rc_map_insert(acc.clone(), dsig.name.clone(), declared_to_resolved(dsig.clone()))
 } else {
                     acc.clone()
@@ -206,10 +206,10 @@ return Rc::new(ResolveFuncSigsResult {
 })
 }
 }
-let ready_accum: Rc<SigsAccum> = ready.clone().iter().cloned().fold(Rc::new(SigsAccum {
+let ready_accum = ready.clone().iter().cloned().fold(Rc::new(SigsAccum {
     signatures: resolved.clone(),
     diagnostics: diagnostics.clone(),
-}), |acc: _, fn_name: String| match v2_rt::map_get(&declared_sigs, fn_name.clone()) {
+}), |acc: Rc<SigsAccum>, fn_name: String| match v2_rt::map_get(&declared_sigs, fn_name.clone()) {
     Some(dsig) => if (dsig.inferred.clone() != None) {
             Rc::new(SigsAccum {
     signatures: v2_rt::rc_map_insert(acc.signatures.clone(), fn_name.clone(), declared_to_resolved(dsig.clone())),
@@ -227,8 +227,8 @@ let ready_accum: Rc<SigsAccum> = ready.clone().iter().cloned().fold(Rc::new(Sigs
 },
     None => acc.clone(),
 });
-let ready_set: Rc<HashMap<String, bool>> = ready.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: _, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
-let next_remaining: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for fn_name in remaining.clone().iter().cloned() { if (emit_map_has(ready_set.clone(), fn_name.clone()) == false) { __result.push(fn_name); } } __result });
+let ready_set = ready.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
+let next_remaining = Rc::new({ let mut __result = Vec::new(); for fn_name in remaining.clone().iter().cloned() { if (emit_map_has(ready_set.clone(), fn_name.clone()) == false) { __result.push(fn_name); } } __result });
 {
             let __tco_0 = next_remaining.clone();
 let __tco_1 = ready_accum.signatures.clone();
@@ -253,10 +253,10 @@ continue;
 
 pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, items: Rc<Vec<Rc<Node>>>, module_name: String) -> Rc<ResolveFuncSigsResult> {
     {
-        let local_func_names: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) { __result.push(item); } } __result }).iter().cloned() { __result.push(item.name.clone()); } __result });
-let local_func_set: Rc<HashMap<String, bool>> = local_func_names.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: _, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
-let call_edges: Rc<Vec<Rc<CallEdge>>> = collect_func_call_edges(items.clone(), local_func_set.clone());
-let parent_resolved: Rc<HashMap<_, _>> = Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(Rc::new(HashMap::new()), |acc: _, dsig: Rc<DeclaredFuncSig>| if emit_map_has(local_func_set.clone(), dsig.name.clone()) {
+        let local_func_names = Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) { __result.push(item); } } __result }).iter().cloned() { __result.push(item.name.clone()); } __result });
+let local_func_set = local_func_names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
+let call_edges = collect_func_call_edges(items.clone(), local_func_set.clone());
+let parent_resolved = Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, dsig: Rc<DeclaredFuncSig>| if emit_map_has(local_func_set.clone(), dsig.name.clone()) {
             acc.clone()
 } else {
             if (dsig.inferred.clone() != None) {

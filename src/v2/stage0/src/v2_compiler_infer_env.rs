@@ -78,7 +78,7 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, name: String) -> bool {
 
 pub fn lookup_type(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     {
-        let canonical: String = name.clone();
+        let canonical = name.clone();
 match v2_rt::map_get(&env.bindings.clone(), canonical.clone()) {
     Some(binding) => Some(binding.resolved.clone()),
     None => None,
@@ -111,7 +111,7 @@ pub fn is_recursive_variant_field(env: Rc<TypeEnv>, type_name: String, variant_n
 
 pub fn put_recursive_variant_field_witness(fields: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, type_name: String, variant_name: String, field_name: String) -> Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>> {
     {
-        let existing: Rc<Vec<Rc<RecursiveVariantFieldWitness>>> = match v2_rt::map_get(&fields, type_name.clone()) {
+        let existing = match v2_rt::map_get(&fields, type_name.clone()) {
     Some(witnesses) => witnesses.clone(),
     None => Rc::new(vec![]),
 };
@@ -123,9 +123,9 @@ v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing.c
 }
 
 pub fn merge_recursive_variant_fields(left: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, right: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>) -> Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>> {
-    Rc::new(v2_rt::map_keys(&right)).iter().cloned().fold(left.clone(), |acc: _, type_name: String| match v2_rt::map_get(&right, type_name.clone()) {
+    Rc::new(v2_rt::map_keys(&right)).iter().cloned().fold(left.clone(), |acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, type_name: String| match v2_rt::map_get(&right, type_name.clone()) {
     Some(incoming) => {
-        let existing: Rc<Vec<Rc<RecursiveVariantFieldWitness>>> = match v2_rt::map_get(&acc, type_name.clone()) {
+        let existing = match v2_rt::map_get(&acc, type_name.clone()) {
     Some(witnesses) => witnesses.clone(),
     None => Rc::new(vec![]),
 };
@@ -137,11 +137,11 @@ v2_rt::rc_map_insert(acc.clone(), type_name.clone(), v2_rt::concat(existing.clon
 
 pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
     {
-        let merged_bindings: Rc<HashMap<String, Rc<TypeBinding>>> = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<TypeBinding>>(), |acc: _, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.bindings.clone()));
+        let merged_bindings = envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.bindings.clone()));
 let merged_recursive = envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
-let merged_recursive_set: Rc<HashMap<String, bool>> = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: _, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
-let merged_recursive_variant_fields: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>> = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(), |acc: _, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
-let source_index: Option<Rc<NewlineIndex>> = envs.clone().iter().cloned().fold(None, |acc: _, env: Rc<TypeEnv>| if (env.source_index.clone() != None) {
+let merged_recursive_set = envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
+let merged_recursive_variant_fields = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
+let source_index = envs.clone().iter().cloned().fold(None, |acc: Option<Rc<NewlineIndex>>, env: Rc<TypeEnv>| if (env.source_index.clone() != None) {
             env.source_index.clone()
 } else {
             acc.clone()

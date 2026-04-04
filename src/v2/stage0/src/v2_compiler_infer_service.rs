@@ -78,8 +78,8 @@ pub struct ServiceMethodResult {
 pub fn is_typed_service_call_receiver(receiver: Rc<Node>) -> bool {
     match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
-        let f: String = field_access_field(receiver.clone());
-let b: Rc<Node> = field_access_base(receiver.clone());
+        let f = field_access_field(receiver.clone());
+let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => match Rc::new(f.clone().chars().map(|c| c as i64).collect::<Vec<_>>()).first().cloned() {
     Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
@@ -95,11 +95,11 @@ match (*b.expr_data.clone()).clone() {
 pub fn extract_typed_service_name(receiver: Rc<Node>) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
-        let f: String = field_access_field(receiver.clone());
-let b: Rc<Node> = field_access_base(receiver.clone());
+        let f = field_access_field(receiver.clone());
+let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-            let ns: String = expr_var_name(b.clone());
+            let ns = expr_var_name(b.clone());
 Some(v2_rt::concat(v2_rt::concat(ns.clone(), ".".to_string()), f.clone()))
 },
     _ => None,
@@ -111,7 +111,7 @@ Some(v2_rt::concat(v2_rt::concat(ns.clone(), ".".to_string()), f.clone()))
 
 pub fn collect_typed_service_calls(texpr: Rc<Node>) -> Rc<Vec<String>> {
     {
-        let result: Rc<UniqueAccum> = collect_typed_service_calls_into(texpr.clone(), Rc::new(UniqueAccum {
+        let result = collect_typed_service_calls_into(texpr.clone(), Rc::new(UniqueAccum {
     seen: v2_rt::rc_empty_map::<bool>(),
     result: Rc::new(vec![]),
 }));
@@ -122,9 +122,9 @@ result.result.clone()
 pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
-            let this_acc: Rc<UniqueAccum> = match (*texpr.expr_data.clone()).clone() {
+            let this_acc = match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprMethodCall { .. } => {
-                let r: Rc<Node> = method_receiver(texpr.clone());
+                let r = method_receiver(texpr.clone());
 if is_typed_service_call_receiver(r.clone()) {
                     match extract_typed_service_name(r.clone()) {
     Some(service_name) => if emit_map_has(acc.seen.clone(), service_name.clone()) {
@@ -143,7 +143,7 @@ if is_typed_service_call_receiver(r.clone()) {
 },
     _ => acc.clone(),
 };
-let result: Rc<UniqueAccum> = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: _, child: Rc<Node>| collect_typed_service_calls_into(child.clone(), a.clone()));
+let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_typed_service_calls_into(child.clone(), a.clone()));
 result.clone()
 }
     })
@@ -152,9 +152,9 @@ result.clone()
 pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
-            let this_acc: Rc<UniqueAccum> = match (*texpr.expr_data.clone()).clone() {
+            let this_acc = match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-                let f: String = expr_call_func(texpr.clone());
+                let f = expr_call_func(texpr.clone());
 if emit_map_has(acc.seen.clone(), f.clone()) {
                     acc.clone()
 } else {
@@ -166,7 +166,7 @@ if emit_map_has(acc.seen.clone(), f.clone()) {
 },
     _ => acc.clone(),
 };
-let result: Rc<UniqueAccum> = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: _, child: Rc<Node>| collect_called_func_names_into(child.clone(), a.clone()));
+let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_called_func_names_into(child.clone(), a.clone()));
 result.clone()
 }
     })
@@ -174,7 +174,7 @@ result.clone()
 
 pub fn collect_called_func_names(texpr: Rc<Node>) -> Rc<Vec<String>> {
     {
-        let result: Rc<UniqueAccum> = collect_called_func_names_into(texpr.clone(), Rc::new(UniqueAccum {
+        let result = collect_called_func_names_into(texpr.clone(), Rc::new(UniqueAccum {
     seen: v2_rt::rc_empty_map::<bool>(),
     result: Rc::new(vec![]),
 }));
@@ -184,11 +184,11 @@ result.result.clone()
 
 pub fn expand_transitive_services_once(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     {
-        let all_items: Rc<Vec<Rc<Node>>> = Rc::new({ let mut __result = Vec::new(); for m in modules.clone().iter().cloned() { __result.extend((*m.items.clone()).iter().cloned()); } __result });
-all_items.clone().iter().cloned().fold(registry.clone(), |reg: _, item: Rc<Node>| match v2_rt::map_get(&reg, item.name.clone()) {
+        let all_items = Rc::new({ let mut __result = Vec::new(); for m in modules.clone().iter().cloned() { __result.extend((*m.items.clone()).iter().cloned()); } __result });
+all_items.clone().iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| match v2_rt::map_get(&reg, item.name.clone()) {
     Some(info) => {
-            let is_not_func: bool = (info.kind.clone() != ItemKind::FuncItem);
-let has_no_body: bool = (item.body.clone() == None);
+            let is_not_func = (info.kind.clone() != ItemKind::FuncItem);
+let has_no_body = (item.body.clone() == None);
 if is_not_func.clone() {
                 reg.clone()
 } else {
@@ -196,17 +196,17 @@ if is_not_func.clone() {
                     reg.clone()
 } else {
                     {
-                        let called: Rc<Vec<String>> = collect_called_func_names(item.body.clone().clone().unwrap());
-let extra: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&reg, callee_name.clone()) {
+                        let called = collect_called_func_names(item.body.clone().clone().unwrap());
+let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&reg, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
-let merged: Rc<Vec<String>> = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: _, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone().as_str() == svc.clone().as_str()) { __found = true; break; } } __found } {
+let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone().as_str() == svc.clone().as_str()) { __found = true; break; } } __found } {
                             svc_list.clone()
 } else {
                             v2_rt::rc_list_push(svc_list.clone(), svc.clone())
 });
-let same_count: bool = ((merged.clone().len() as i64) == (info.service_names.clone().len() as i64));
+let same_count = ((merged.clone().len() as i64) == (info.service_names.clone().len() as i64));
 if same_count.clone() {
                             reg.clone()
 } else {
@@ -230,7 +230,7 @@ if same_count.clone() {
 }
 
 pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
-    Rc::new(v2_rt::map_values(&registry)).iter().cloned().fold(0, |acc: _, info: Rc<ItemInfo>| (acc.clone() + (info.service_names.clone().len() as i64)))
+    Rc::new(v2_rt::map_values(&registry)).iter().cloned().fold(0, |acc: i64, info: Rc<ItemInfo>| (acc.clone() + (info.service_names.clone().len() as i64)))
 }
 
 pub fn expand_transitive_services(mut modules: Rc<Vec<Rc<TypedModule>>>, mut registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut remaining_passes: i64) -> Rc<HashMap<String, Rc<ItemInfo>>> {
@@ -238,9 +238,9 @@ pub fn expand_transitive_services(mut modules: Rc<Vec<Rc<TypedModule>>>, mut reg
         if (remaining_passes.clone() <= 0) {
             break registry.clone();
 } else {
-            let before: i64 = total_service_count(registry.clone());
-let next: Rc<HashMap<String, Rc<ItemInfo>>> = expand_transitive_services_once(modules.clone(), registry.clone());
-let after: i64 = total_service_count(next.clone());
+            let before = total_service_count(registry.clone());
+let next = expand_transitive_services_once(modules.clone(), registry.clone());
+let after = total_service_count(next.clone());
 if (before.clone() == after.clone()) {
                 break registry.clone();
 } else {
@@ -261,7 +261,7 @@ continue;
 pub fn check_service_field_access_node(base_type: Rc<Node>, field: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<Node>> {
     if ((base_type.connective.clone() == Connective::NoConnective) && ((base_type.children.clone().len() as i64) == 0)) {
         {
-            let path: String = v2_rt::concat(v2_rt::concat(base_type.name.clone(), ".".to_string()), field.clone());
+            let path = v2_rt::concat(v2_rt::concat(base_type.name.clone(), ".".to_string()), field.clone());
 match v2_rt::map_get(&service_registry, path.clone()) {
     Some(_) => Some(nominal_type_ref(path.clone())),
     None => None,
@@ -276,7 +276,7 @@ pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: String, s
     if ((receiver_type.connective.clone() == Connective::NoConnective) && ((receiver_type.children.clone().len() as i64) == 0)) {
         match v2_rt::map_get(&service_registry, receiver_type.name.clone()) {
     Some(ops) => {
-            let matching: Rc<Vec<Rc<OpEntry>>> = Rc::new({ let mut __result = Vec::new(); for op in ops.clone().iter().cloned() { if (op.name.clone().as_str() == method.clone().as_str()) { __result.push(op); } } __result });
+            let matching = Rc::new({ let mut __result = Vec::new(); for op in ops.clone().iter().cloned() { if (op.name.clone().as_str() == method.clone().as_str()) { __result.push(op); } } __result });
 match matching.clone().first().cloned() {
     Some(op) => if ((op.outputs.clone().len() as i64) == 0) {
                 Some(Rc::new(ServiceMethodResult {

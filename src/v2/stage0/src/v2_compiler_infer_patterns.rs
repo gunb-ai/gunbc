@@ -47,15 +47,15 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, ExprData, InferredNode, is_compiler_error, NodeType, Cardinality, Connective, ErrorNode, make_error_node, MatchPattern, arm_pattern, leaf_node, with_optional_cardinality, none_type, error_type, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, ExprData, InferredNode, is_compiler_error, NodeType, Cardinality, Connective, ErrorNode, make_error_node, MatchPattern, arm_pattern, LiteralValue, leaf_node, with_optional_cardinality, none_type, error_type, CompilerDiagnostic};
 use crate::v2_std_core::ExprData::{NoExprData};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::Connective::{Disj, NoConnective};
 use crate::v2_std_core::CompilerDiagnostic::{VariantNotFound, FieldNotFound, NonExhaustiveMatch};
-use crate::v2_std_core::MatchPattern::*;
-use crate::v2_std_core::LiteralValue;
+use crate::v2_std_core::MatchPattern::{LitPattern};
+use crate::v2_std_core::LiteralValue::{LitBool};
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, extract_optional_inner_node, emit_map_has};
 pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type};
 use NodeLookupStatus::*;
@@ -105,8 +105,8 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
-        let inner: Rc<Node> = extract_optional_inner_node(scrut.clone());
-let value_field: Rc<Node> = Rc::new(Node {
+        let inner = extract_optional_inner_node(scrut.clone());
+let value_field = Rc::new(Node {
     name: "value".to_string(),
     span: scrut.span.clone(),
     ident_span: None,
@@ -127,7 +127,7 @@ let value_field: Rc<Node> = Rc::new(Node {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 });
-let some_node: Rc<Node> = Rc::new(Node {
+let some_node = Rc::new(Node {
     name: "Some".to_string(),
     span: scrut.span.clone(),
     ident_span: None,
@@ -151,21 +151,17 @@ some_node.clone()
 }
 
 pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
-    {
-        // Check node name, not inferred field. Nodes like Optional.Some.value have
-        // inferred: TypeVariable but are structurally valid pattern subjects.
-        if (n.name.clone().as_str() == "Dynamic") {
-            Rc::new(PatternSubject::PatternDynamic {
+    if (n.name.clone().as_str() == "Dynamic".to_string().as_str()) {
+        Rc::new(PatternSubject::PatternDynamic {
     span: n.span.clone(),
 })
 } else {
-            if (n.name.clone().as_str() == "Error") {
-                Rc::new(PatternSubject::PatternLookupBlocked)
+        if (n.name.clone().as_str() == "Error".to_string().as_str()) {
+            Rc::new(PatternSubject::PatternLookupBlocked)
 } else {
-                Rc::new(PatternSubject::PatternResolved {
+            Rc::new(PatternSubject::PatternResolved {
     node: n.clone(),
 })
-}
 }
 }
 }
@@ -227,13 +223,13 @@ pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: String, m
     span: dynamic_span.clone(),
 }), module_name.clone())])),
     PatternSubject::PatternResolved { node: scrut_node, .. } => {
-        let scrut_opt: bool = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
+        let scrut_opt = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
 if (((scrut_node.connective.clone() == Connective::NoConnective) && ((scrut_node.children.clone().len() as i64) == 0)) && (scrut_opt.clone() == false)) {
             node_lookup_failed(Rc::new(vec![]))
 } else {
             {
-                let direct_match: Option<Rc<Node>> = Rc::new({ let mut __result = Vec::new(); for c in scrut_node.children.clone().iter().cloned() { if (c.name.clone().as_str() == variant_name.clone().as_str()) { __result.push(c); } } __result }).first().cloned();
-let fallback: Rc<NodeLookupResult> = if (scrut_opt.clone() && (variant_name.clone().as_str() == "Some".to_string().as_str())) {
+                let direct_match = Rc::new({ let mut __result = Vec::new(); for c in scrut_node.children.clone().iter().cloned() { if (c.name.clone().as_str() == variant_name.clone().as_str()) { __result.push(c); } } __result }).first().cloned();
+let fallback = if (scrut_opt.clone() && (variant_name.clone().as_str() == "Some".to_string().as_str())) {
                     node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
 } else {
                     if (scrut_opt.clone() && (variant_name.clone().as_str() == "None".to_string().as_str())) {
@@ -262,7 +258,7 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, 
 }), module_name.clone())])),
     PatternSubject::PatternResolved { node: variant_node, .. } => match Rc::new({ let mut __result = Vec::new(); for c in variant_node.children.clone().iter().cloned() { if (c.name.clone().as_str() == field_name.clone().as_str()) { __result.push(c); } } __result }).first().cloned() {
     Some(field_child) => {
-        let resolved: Rc<Node> = child_inferred_or_name(field_child.clone());
+        let resolved = child_inferred_or_name(field_child.clone());
 node_lookup_resolved(resolved.clone())
 },
     None => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
@@ -276,9 +272,9 @@ node_lookup_resolved(resolved.clone())
 
 pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>, span: Rc<SourceSpan>, module_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let scrut_is_optional: bool = (scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional);
-let has_structure: bool = (scrutinee_type.connective.clone() != Connective::NoConnective);
-let resolved_raw: Rc<Node> = if has_structure.clone() {
+        let scrut_is_optional = (scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional);
+let has_structure = (scrutinee_type.connective.clone() != Connective::NoConnective);
+let resolved_raw = if has_structure.clone() {
             scrutinee_type.clone()
 } else {
             match lookup_type(env.clone(), scrutinee_type.name.clone()) {
@@ -286,21 +282,21 @@ let resolved_raw: Rc<Node> = if has_structure.clone() {
     None => scrutinee_type.clone(),
 }
 };
-let resolved: Rc<Node> = if scrut_is_optional.clone() {
+let resolved = if scrut_is_optional.clone() {
             with_optional_cardinality(resolved_raw.clone())
 } else {
             resolved_raw.clone()
 };
-let is_coproduct: bool = (resolved.connective.clone() == Connective::Disj);
-let resolved_is_optional: bool = (resolved.return_cardinality.clone() == Cardinality::CardOptional);
+let is_coproduct = (resolved.connective.clone() == Connective::Disj);
+let resolved_is_optional = (resolved.return_cardinality.clone() == Cardinality::CardOptional);
 if (is_coproduct.clone() || resolved_is_optional.clone()) {
             {
-                let variant_names: Rc<Vec<String>> = if resolved_is_optional.clone() {
+                let variant_names = if resolved_is_optional.clone() {
                     Rc::new(vec!["Some".to_string(), "None".to_string()])
 } else {
                     Rc::new({ let mut __result = Vec::new(); for c in resolved.children.clone().iter().cloned() { __result.push(c.name.clone()); } __result })
 };
-let has_catch_all: bool = { let mut __found = false; for arm in arms.clone().iter().cloned() { if match (*arm_pattern(arm.clone())).clone() {
+let has_catch_all = { let mut __found = false; for arm in arms.clone().iter().cloned() { if match (*arm_pattern(arm.clone())).clone() {
     MatchPattern::Wildcard => true,
     MatchPattern::Bind { .. } => true,
     _ => false,
@@ -309,19 +305,20 @@ if has_catch_all.clone() {
                     Rc::new(vec![])
 } else {
                     {
-                        let covered_set: Rc<HashMap<String, bool>> = arms.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: _, arm: Rc<Node>| match (*arm_pattern(arm.clone())).clone() {
+                        let covered_set = arms.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, arm: Rc<Node>| match (*arm_pattern(arm.clone())).clone() {
     MatchPattern::VariantPattern { name: n, .. } => v2_rt::rc_map_insert(acc.clone(), n.clone(), true),
-    // Bool literals cover the corresponding Bool variants (true → True, false → False).
-    MatchPattern::LitPattern { value: v } => match (*v).clone() {
-        LiteralValue::LitBool { value: true } => v2_rt::rc_map_insert(acc.clone(), "True".to_string(), true),
-        LiteralValue::LitBool { value: false } => v2_rt::rc_map_insert(acc.clone(), "False".to_string(), true),
-        _ => acc.clone(),
-    },
+    MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
+    LiteralValue::LitBool { value: b, .. } => if b.clone() {
+                            v2_rt::rc_map_insert(acc.clone(), "True".to_string(), true)
+} else {
+                            v2_rt::rc_map_insert(acc.clone(), "False".to_string(), true)
+},
+    _ => acc.clone(),
+},
     _ => acc.clone(),
 });
-let uncovered: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for v in variant_names.clone().iter().cloned() { if (emit_map_has(covered_set.clone(), v.clone()) == false) { __result.push(v); } } __result });
+let uncovered = Rc::new({ let mut __result = Vec::new(); for v in variant_names.clone().iter().cloned() { if (emit_map_has(covered_set.clone(), v.clone()) == false) { __result.push(v); } } __result });
 if ((uncovered.clone().len() as i64) > 0) {
-                            eprintln!("[DEBUG] non-exhaustive: missing={:?}, scrutinee={}, module={}", uncovered, scrutinee_type.name, module_name);
                             Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::NonExhaustiveMatch {
     missing: uncovered.clone(),
     span: span.clone(),

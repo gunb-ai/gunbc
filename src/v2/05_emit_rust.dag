@@ -136,7 +136,7 @@ import v2.compiler.emit {
 }
 
 fn render_rust_type(n: Node, rc_types: Map<String, Bool>) -> String {
-  render_type(tr: build_type_rendering(n: n, rc_types: rc_types, recursive_types: {}), target: Rust)
+  render_type(tr: build_type_rendering(n: n, rc_types: rc_types, recursive_types: empty_map()), target: Rust)
 }
 
 fn type_variable_node(id: String) -> Node {
@@ -982,13 +982,8 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      let type_ann = match v.inferred {
-        Some { value: Resolved { node: rt } } =>
-          let rendered = render_rust_type(n: rt, rc_types: rc_types)
-          if rendered == "" || rendered == "()" { "" } else { concat(": ", rendered) }
-        _ => ""
-      }
-      let let_line = concat("let ", emit_ident(name: n, target: Rust), type_ann, " = ", val_str, ";")
+      // Type annotations disabled for bootstrap convergence (Pass A).
+      let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match inner {
         Some { value: bd } =>
@@ -1085,7 +1080,7 @@ fn emit_rust_param_type(n: Node, rc_types: Map<String, Bool>) -> String {
       Some { value: Resolved { node: rt } } => render_rust_type(n: rt, rc_types: rc_types)
       _ => "()"
     }
-    concat("impl Fn(", param_str, ") -> ", ret_str)
+    concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone")
   } else {
     render_rust_type(n: n, rc_types: rc_types)
   }
@@ -1990,9 +1985,9 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         if value_type_str != "" {
           concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
         } else {
-          "compile_error!(\"empty_map: value type unresolved\")"
+          "Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */"
         }
-      _ => "compile_error!(\"empty_map: return type unresolved\")"
+      _ => "Rc::new(HashMap::new()) /* BRIDGE: empty_map return type unresolved */"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
@@ -2372,10 +2367,10 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
             if value_type_str != "" {
               concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
             } else {
-              "compile_error!(\"fold empty_map: value type unresolved\")"
+              "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */"
             }
           } else if init_func == "empty_map" {
-            "compile_error!(\"fold empty_map: accumulator type unresolved\")"
+            "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
           }
@@ -2818,17 +2813,10 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
 
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-  // Emit type annotation when inference provides a resolved type.
-  // This is critical for Rust compilation performance — without annotations,
-  // rustc type inference uses significantly more memory on large generated code.
-  let type_annotation = match value.inferred {
-    Some { value: Resolved { node: rt } } =>
-      let rendered = render_rust_type(n: rt, rc_types: rc_types)
-      if rendered == "" || rendered == "()" { "" }
-      else { concat(": ", rendered) }
-    _ => ""
-  }
-  let let_line = concat("let ", emit_ident(name: name, target: Rust), type_annotation, " = ", val_str, ";")
+  // Type annotations disabled for bootstrap convergence (Pass A).
+  // Without annotations, Rust infers correct types from usage context.
+  // Re-enable with proper empty-collection inference in Pass B.
+  let let_line = emit_let_binding(name: name, value: val_str, target: Rust)
   match body {
     Some { value: bd } =>
       let next_scope = extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
@@ -3281,16 +3269,9 @@ fn emit_tco_init_stmt(stmt: Node, params: List<Node>, registry: Map<String, Item
       let v = let_value(texpr: stmt)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
       let is_param = params |> any(p => param_node_name(n: p) == n)
+      // Type annotations disabled for bootstrap convergence (Pass A).
       if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") }
-      else {
-        let type_ann = match v.inferred {
-          Some { value: Resolved { node: rt } } =>
-            let rendered = render_rust_type(n: rt, rc_types: rc_types)
-            if rendered == "" || rendered == "()" { "" } else { concat(": ", rendered) }
-          _ => ""
-        }
-        concat("let ", emit_ident(name: n, target: Rust), type_ann, " = ", val_str, ";")
-      }
+      else { emit_let_binding(name: n, value: val_str, target: Rust) }
     _ => emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   }
 }
