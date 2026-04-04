@@ -570,7 +570,7 @@ This is incremental. No big-bang rewrite.
 | `rust_type_map` | `TypeCheckpoint` → `build_type_rendering` | Structured checkpoint with Copy/default |
 | `rust_container_templates` | `InhabitantDecl` → `build_type_rendering` | Keyed by algebra, not container name |
 | `build_rc_types` | ValueContext × `is_copy` | Structural derivation, not name-based |
-| `emit_node_type_rc` | `TypeRendering` match | Pure translation from resolved descriptor |
+| `render_type` | `TypeRendering` match | Pure translation from resolved descriptor |
 | `emit_primitive_type` | `TypeCheckpoint` lookup | Fail-closed, no pass-through |
 | `emit_container` | `InhabitantDecl` template application | `apply_template(D.template, inner_types)` |
 

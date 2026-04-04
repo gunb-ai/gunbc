@@ -59,10 +59,6 @@ pub use crate::extdeps_languages_go_emit::{go_type_map, go_keywords, go_containe
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
-use ServiceBindingStrategy::*;
-use CaseStyle::*;
-use IndentStyle::*;
-use ImportGroupStyle::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 
@@ -144,104 +140,24 @@ pub struct ImportRule {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PrimitiveLowering {
-    pub dag_name: String,
-    pub target_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AlgebraicLowering {
-    pub dag_name: String,
-    pub target_template: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TypeWellFormedness {
-    pub primitive_lowerings: Rc<Vec<Rc<PrimitiveLowering>>>,
-    pub algebraic_lowerings: Rc<Vec<Rc<AlgebraicLowering>>>,
-    pub callable_template: String,
-    pub generic_params_from_dag: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ServiceBindingStrategy {
-    ParamInjection,
-    ConstructInBody,
-    GlobalSingleton,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ExprWellFormedness {
-    pub async_propagation: bool,
-    pub statement_terminator: String,
-    pub brace_escape_in_format: bool,
-    pub service_binding: ServiceBindingStrategy,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum CaseStyle {
-    PascalCaseStyle,
-    SnakeCaseStyle,
-    CamelCaseStyle,
-    ScreamingSnakeStyle,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NamingConvention {
-    pub type_names: CaseStyle,
-    pub function_names: CaseStyle,
-    pub module_names: CaseStyle,
-    pub constant_names: CaseStyle,
-    pub enum_variant_names: CaseStyle,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum IndentStyle {
-    SpaceIndent {
-        width: i64,
-    },
-    TabIndent,
-}
-impl IndentStyle {
-    pub fn width(&self) -> i64 {
-        match self {
-            IndentStyle::SpaceIndent { width: __val, .. } => __val.clone(),
-            IndentStyle::TabIndent => panic!("no width on unit variant"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ImportGroupStyle {
-    StdExternalLocal,
-    NoGrouping,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FormatModel {
-    pub indent: Rc<IndentStyle>,
-    pub max_line_width: Option<i64>,
-    pub import_grouping: ImportGroupStyle,
-    pub trailing_newline: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LintModel {
-    pub name: String,
-    pub import_rules: Rc<Vec<Rc<ImportRule>>>,
-    pub type_rules: Rc<TypeWellFormedness>,
-    pub expr_rules: Rc<ExprWellFormedness>,
-    pub naming: Rc<NamingConvention>,
-    pub formatting: Rc<FormatModel>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SharingStrategy {
     pub wrap_template: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct IndexingSemantics {
+    pub list_index: String,
+    pub map_index: String,
+    pub string_index: String,
+    pub list_slice: Option<String>,
+    pub string_slice: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AnnotationRequirements {
+    pub let_binding_inferred: String,
+    pub lambda_param_typed: String,
+    pub lambda_param_untyped: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -253,6 +169,8 @@ pub struct LanguageSpec {
     pub test_conventions: Rc<TestConventions>,
     pub top_level_visibility: String,
     pub sharing: Rc<SharingStrategy>,
+    pub indexing: Rc<IndexingSemantics>,
+    pub annotations: Rc<AnnotationRequirements>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -291,6 +209,18 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     top_level_visibility: rust_visibility(),
     sharing: Rc::new(SharingStrategy {
     wrap_template: "Rc<{0}>".to_string(),
+}),
+    indexing: Rc::new(IndexingSemantics {
+    list_index: "{0}[({1}) as usize].clone()".to_string(),
+    map_index: "({0}).get(&{1}).cloned()".to_string(),
+    string_index: "v2_rt::char_at(&{0}, {1})".to_string(),
+    list_slice: None,
+    string_slice: Some("v2_rt::substring(&{0}, {1}, {2})".to_string()),
+}),
+    annotations: Rc::new(AnnotationRequirements {
+    let_binding_inferred: "let {0} = {1};".to_string(),
+    lambda_param_typed: "{0}: {1}".to_string(),
+    lambda_param_untyped: "{0}".to_string(),
 }),
 })
 }
@@ -332,6 +262,18 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     sharing: Rc::new(SharingStrategy {
     wrap_template: "{0}".to_string(),
 }),
+    indexing: Rc::new(IndexingSemantics {
+    list_index: "{0}[{1}]".to_string(),
+    map_index: "{0}[{1}]".to_string(),
+    string_index: "{0}[{1}]".to_string(),
+    list_slice: Some("{0}[{1}:{2}]".to_string()),
+    string_slice: Some("{0}[{1}:{2}]".to_string()),
+}),
+    annotations: Rc::new(AnnotationRequirements {
+    let_binding_inferred: "{0} = {1}".to_string(),
+    lambda_param_typed: "{0}: {1}".to_string(),
+    lambda_param_untyped: "{0}".to_string(),
+}),
 })
 }
 
@@ -371,6 +313,18 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
     wrap_template: "{0}".to_string(),
+}),
+    indexing: Rc::new(IndexingSemantics {
+    list_index: "{0}[{1}]".to_string(),
+    map_index: "{0}[{1}]".to_string(),
+    string_index: "{0}[{1}]".to_string(),
+    list_slice: Some("{0}[{1}:{2}]".to_string()),
+    string_slice: Some("{0}[{1}:{2}]".to_string()),
+}),
+    annotations: Rc::new(AnnotationRequirements {
+    let_binding_inferred: "{0} := {1}".to_string(),
+    lambda_param_typed: "{0} {1}".to_string(),
+    lambda_param_untyped: "{0} interface{}".to_string(),
 }),
 })
 }
