@@ -198,6 +198,10 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node) -> Node {
       first: instantiate_algebra_type(template: first, base: base),
       second: instantiate_algebra_type(template: second, base: base)
     )
+    CallableOf { params: p, return_type: r } => callable_node(
+      func_params: p |> map(tp => instantiate_algebra_type(template: tp, base: base)),
+      ret: instantiate_algebra_type(template: r, base: base)
+    )
   }
 }
 
@@ -676,6 +680,9 @@ fn collect_named_templates(template: AlgebraTypeTemplate, acc: Map<String, Bool>
     TupleOf { first: f, second: s } =>
       let acc2 = collect_named_templates(template: f, acc: acc)
       collect_named_templates(template: s, acc: acc2)
+    CallableOf { params: p, return_type: r } =>
+      let acc2 = p |> fold(init: acc, f: (a, tp) => collect_named_templates(template: tp, acc: a))
+      collect_named_templates(template: r, acc: acc2)
   }
 }
 

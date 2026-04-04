@@ -352,6 +352,7 @@ type AlgebraTypeTemplate
   | ListOf { element: AlgebraTypeTemplate }
   | OptionalOf { inner: AlgebraTypeTemplate }
   | TupleOf { first: AlgebraTypeTemplate, second: AlgebraTypeTemplate }
+  | CallableOf { params: List<AlgebraTypeTemplate>, return_type: AlgebraTypeTemplate }
 
 type AlgebraFieldTemplate {
   name: String
