@@ -141,6 +141,43 @@ fn duplicate_module_detected() {
     assert!(msg.contains("dup"), "should name the duplicate module: {}", msg);
 }
 
+// ── Bare container types ───────────────────────────────────────────────
+
+#[test]
+fn bare_container_type_detected() {
+    let source = "module bare\nimport std.types { List }\ntype Foo { items: List }\n";
+    let result = compile_multi(&[("bare.dag", source)]);
+
+    let arity_diags: Vec<_> = result.diagnostics.iter().filter(|d| {
+        matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. })
+    }).collect();
+
+    assert!(
+        !arity_diags.is_empty(),
+        "expected ArityMismatch diagnostic for bare List, got: {:?}",
+        diagnostic_messages(&result)
+    );
+
+    let msg = diagnostic_to_message(arity_diags[0].diagnostic.clone());
+    assert!(msg.contains("List"), "should name the bare container type: {}", msg);
+}
+
+#[test]
+fn parameterized_container_no_false_positive() {
+    let source = "module param\nimport std.types { List }\ntype Foo { items: List<Int> }\n";
+    let result = compile_multi(&[("param.dag", source)]);
+
+    let arity_diags: Vec<_> = result.diagnostics.iter().filter(|d| {
+        matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. })
+    }).collect();
+
+    assert!(
+        arity_diags.is_empty(),
+        "parameterized List<Int> should not trigger ArityMismatch, got: {:?}",
+        diagnostic_messages(&result)
+    );
+}
+
 // ── No false positives ─────────────────────────────────────────────────
 
 #[test]
