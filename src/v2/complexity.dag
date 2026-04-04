@@ -1322,24 +1322,26 @@ fn same_progress_subgraph_has_cycle(members: List<String>, edges: List<ParserPro
   }
 }
 
-fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<String, FuncEntry>) -> RecursionPattern? {
-  let scc_name_set = members |> fold(init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, true)
-  )
-  let has_parser_state = members |> all(name =>
+// Shared authority for parser-edge collection within an SCC.
+// Validates that all members carry parser state, computes the
+// parser_always_advancing set, and collects ParserProgressEdge
+// values for every member->callee pair inside the SCC.
+// Returns empty list when any member lacks parser state.
+fn collect_parser_edges_for_scc(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>) -> List<ParserProgressEdge> {
+  let all_have_state = members |> all(name =>
     match map_get(func_index, name) {
       Some { value: entry } => parser_state_param(params: entry.params) != none
       None => false
     }
   )
-  if has_parser_state == false {
-    none
+  if all_have_state == false {
+    []
   } else {
     let parser_always_advancing = infer_parser_always_advancing_members(
       members: parser_function_names(func_index: func_index),
       func_index: func_index
     )
-    let edges = members |> flat_map(name =>
+    members |> flat_map(name =>
       match map_get(func_index, name) {
         Some { value: entry } =>
           match parser_state_param(params: entry.params) {
@@ -1358,6 +1360,17 @@ fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<
         None => []
       }
     )
+  }
+}
+
+fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<String, FuncEntry>) -> RecursionPattern? {
+  let scc_name_set = members |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, true)
+  )
+  let edges = collect_parser_edges_for_scc(members: members, func_index: func_index, scc_name_set: scc_name_set)
+  if (edges |> count) == 0 {
+    none
+  } else {
     let all_known = edges |> all(edge => edge.progress != ProgressUnknown)
     if all_known && same_progress_subgraph_has_cycle(members: members, edges: edges) == false {
       Some { value: LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) } }
@@ -3082,98 +3095,44 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
 }
 
 // CX-A: Collect parser-dimension proof edges for SCC TokenPosition analysis.
-// Wraps the existing parser progress infrastructure, converting
-// ParserProgressEdge results to ProofEdge format for the unified checker.
+// Delegates to collect_parser_edges_for_scc (single authority) then
+// converts ParserProgressEdge results to ProofEdge format.
 fn collect_scc_parser_proof_edges(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>) -> List<ProofEdge> {
-  let all_have_state = members |> all(name =>
-    match map_get(func_index, name) {
-      Some { value: entry } => parser_state_param(params: entry.params) != none
-      None => false
-    }
-  )
-  if all_have_state == false {
-    []
-  } else {
-    let parser_always_advancing = infer_parser_always_advancing_members(
-      members: parser_function_names(func_index: func_index),
-      func_index: func_index
-    )
-    let edges = members |> flat_map(name =>
-      match map_get(func_index, name) {
-        Some { value: entry } =>
-          match parser_state_param(params: entry.params) {
-            Some { value: state_param } =>
-              collect_parser_progress_edges(
-                caller: name,
-                body: entry.body,
-                state_param: state_param,
-                scc_name_set: scc_name_set,
-                env: empty_parser_progress_env(),
-                parser_always_advancing: parser_always_advancing,
-                consumed_true_set: empty_map()
-              )
-            None => []
-          }
-        None => []
-      }
-    )
-    edges |> map(pe => progress_edge_to_proof_edge(pe: pe))
-  }
+  let edges = collect_parser_edges_for_scc(members: members, func_index: func_index, scc_name_set: scc_name_set)
+  edges |> map(pe => progress_edge_to_proof_edge(pe: pe))
 }
 
 // CX-A: For each SCC call edge, independently find the best evidence for
 // TreeSize and TokenPosition. TreeSize uses the existing child-descent
-// infrastructure; TokenPosition uses the parser progress infrastructure.
-// Produces 2-slot ProofEdge values: [tree_ev, parser_ev].
+// infrastructure; TokenPosition uses collect_parser_edges_for_scc (single
+// authority). Produces 2-slot ProofEdge values: [tree_ev, parser_ev].
 fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>) -> List<ProofEdge> {
-  let all_have_state = members |> all(name =>
-    match map_get(func_index, name) {
-      Some { value: entry } => parser_state_param(params: entry.params) != none
-      None => false
-    }
-  )
-  if all_have_state == false {
+  // Parser dimension: delegate to shared authority
+  let all_parser_edges = collect_parser_edges_for_scc(members: members, func_index: func_index, scc_name_set: scc_name_set)
+  if (all_parser_edges |> count) == 0 {
     []
   } else {
-    let parser_always_advancing = infer_parser_always_advancing_members(
-      members: parser_function_names(func_index: func_index),
-      func_index: func_index
-    )
     members |> flat_map(name =>
       match map_get(func_index, name) {
         Some { value: entry } =>
           // Tree dimension: best evidence across all params
-          let tree_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
+          let tree_edges_raw = entry.params |> flat_map(p =>
             let pname = param_node_name(n: p)
             let tree_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false)
-            let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set)
-            param_edges |> fold(init: best_map, f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
+            collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set)
           )
-          // Parser dimension: uses parser progress infrastructure
-          let parser_edge_map = match parser_state_param(params: entry.params) {
-            Some { value: state_param } =>
-              let parser_edges = collect_parser_progress_edges(
-                caller: name,
-                body: entry.body,
-                state_param: state_param,
-                scc_name_set: scc_name_set,
-                env: empty_parser_progress_env(),
-                parser_always_advancing: parser_always_advancing,
-                consumed_true_set: empty_map()
-              )
-              parser_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
-            None => empty_map()
-          }
+          let tree_edge_map = tree_edges_raw |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
+          // Parser dimension: filter shared edges to this caller
+          let my_parser_edges = all_parser_edges |> filter(pe => pe.caller == name)
+          let parser_edge_map = my_parser_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           // Merge into 2D proof edges
           let all_keys = concat(map_keys(tree_edge_map), map_keys(parser_edge_map))
           let unique_keys = all_keys |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, true))
-          // Build caller/callee lookup from tree edges
-          let edge_names = entry.params |> flat_map(p =>
-            let pname = param_node_name(n: p)
-            let tvars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false)
-            collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tvars, target_set: scc_name_set)
-          )
-          let name_map = edge_names |> fold(init: empty_map(), f: (acc, pe) =>
+          // Build caller/callee lookup from BOTH tree and parser edges.
+          // Parser edges carry correct identity; omitting them would
+          // fabricate self-edges for parser-only call pairs.
+          let all_identity_edges = concat(tree_edges_raw, my_parser_edges)
+          let name_map = all_identity_edges |> fold(init: empty_map(), f: (acc, pe) =>
             map_insert(acc, concat(pe.caller, concat("->", pe.callee)), pe)
           )
           map_keys(unique_keys) |> map(key =>
