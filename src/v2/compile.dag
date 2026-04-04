@@ -814,9 +814,9 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       // a hard compile error. No separate decidability walker needed.
       let func_entries = extract_func_entries(typed: typed)
       let recursion_ctx = build_recursion_context(typed: typed)
-      let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx)
-      // Bootstrap: complexity gate disabled — violations are tracked in the
-      // report but do not block emission. Re-enable when violations reach 0.
+      // Bootstrap: complexity analysis skipped — SCC/call-graph uses
+      // significant memory. Re-enable when violations reach 0.
+      let complexity = empty_complexity_report()
       let complexity_diags = []
 
       let all_infer_diags = concat(typed_diags, complexity_diags)
