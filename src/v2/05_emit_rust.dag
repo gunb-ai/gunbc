@@ -121,7 +121,7 @@ import v2.compiler.emit {
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name, test_function_name,
-  apply_type_template1, apply_type_template2, apply_type_template3,
+  apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template,
   language_spec,
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
@@ -2670,6 +2670,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
       // BRIDGE: reads method_def.name until Lane C provides per-method
       // rendering from language extdeps keyed by the definition node.
       let method_name = method_def.name
+      // Procedural methods: require structural inspection beyond template substitution.
       if method_name == "fold" {
         emit_rust_fold_method_call(fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
       } else if method_name == "sort_by" {
@@ -2688,59 +2689,30 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
         emit_rust_get_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
       } else if method_name == "with" {
         emit_rust_with_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
-      } else if method_name == "count" {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        concat("(", recv_str, ".len() as i64)")
-      } else if method_name == "join" {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
-        concat(recv_str, ".join(&", first_arg_str, ")")
-      } else if method_name == "split" {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
-        concat("Rc::new(", recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>())")
-      } else if method_name == "last" {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        concat(recv_str, ".last().cloned()")
-      } else if method_name == "first" {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        concat(recv_str, ".first().cloned()")
-      } else if method_name == "enumerate" {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        concat("Rc::new(", recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>())")
-      } else if method_name == "chars" {
-        // TODO: should be a runtime bridge function (v2_rt::chars) instead of hardcoded Rust lowering.
-        // No chars() function exists in runtime_rust.dag yet; add one and route through generic bridge.
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        concat("Rc::new(", recv_str, ".chars().map(|c| c as i64).collect::<Vec<_>>())")
       } else if method_name == "string_contains" {
-        // BRIDGE: inline lowering duplicates generic bridge path. Should route
-        // through emit_rust_generic_method_call once by-ref receiver handling
-        // is unified. Blocked on P1-C structural method bridge lookup.
-        let by_ref = rust_runtime_bridge_passes_receiver_by_ref(function_name: "string_contains")
-        let recv_str = if by_ref { concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)) } else { emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024) }
-        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
-        concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
+        emit_rust_generic_method_call(method_name: "string_contains", receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
       } else if method_name == "concat" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
         let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024))
         let all_arg_strs = concat([recv_str], arg_strs)
         emit_nested_rt_concat(remaining: all_arg_strs, acc: "", rc_types: rc_types)
-      } else if method_name == "skip" {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
-        concat("Rc::new(", recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>())")
-      } else if method_name == "take" {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
-        concat("Rc::new(", recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>())")
-      } else if method_name == "append" {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
-        concat("v2_rt::rc_list_push(", recv_str, ", ", first_arg_str, ")")
       } else {
-        // Generic bridge method: v2_rt::method_name(receiver, args...)
-        emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+        // Template-driven methods: lookup in language extdep data.
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+        let spec = language_spec(target: Rust)
+        match spec.method_templates {
+          Some { value: templates } => match map_get(templates, method_name) {
+            Some { value: tmpl } =>
+              let bindings = empty_map() |> map_insert("recv", recv_str) |> map_insert("arg", first_arg_str)
+              apply_named_template(template: tmpl, bindings: bindings)
+            None =>
+              // Generic bridge method: v2_rt::method_name(receiver, args...)
+              emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+          }
+          None =>
+            emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+        }
       }
     }
     PlainMethodSemantics =>
