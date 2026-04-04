@@ -812,7 +812,7 @@ fn emit_go_typed_slice(base: Node, start: Node, end: Node, registry: Map<String,
   let end_str = emit_go_typed_expr(texpr: end, registry: registry, scope: scope, depth: 0, fuel: 1024)
   match spec.indexing.list_slice {
     Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
-    None => "panic(\"internal error: unsupported slice in Go emitter\")"
+    None => emit_error_expr(message: "unsupported slice for target", target: Go)
   }
 }
 

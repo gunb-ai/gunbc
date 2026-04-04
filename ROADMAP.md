@@ -164,8 +164,10 @@ suffix/name scans to recover ownership. Fallback count promoted to CI.
 ## E-track: Emit Boundary + LanguageSpec (Lane 2)
 
 **Status:** TypeRendering boundary established (emit_node_type_rc deleted).
-TLC-3 and TLC-4 complete (IndexingSemantics + AnnotationRequirements in
-LanguageSpec). TLC-1 and TLC-2 remain, blocked on upstream pipeline work.
+TLC-3 and TLC-4 data models landed in LanguageSpec; Rust emitter consumes
+both. Go/Python still use list_index/list_slice unconditionally (TLC-3 not
+fully dispatched). Annotated-let path introduced but has no consumer yet
+(TLC-4 not end-to-end). TLC-1 and TLC-2 blocked on upstream pipeline work.
 
 **Root cause:** Emission rediscovers facts available upstream.
 TypeRendering is the boundary fix. LanguageSpec/coercion is the
@@ -198,13 +200,15 @@ LanguageSpec authority, not emitter special cases.
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
   *Blocked: requires M5 coercion engine for type/wrap authority.*
-- [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
+- [ ] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
-  All three backends read from `spec.indexing`.
-- [x] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
+  Rust dispatches on collection type; Go/Python still route through `list_index`
+  unconditionally. *Remaining: Go/Python per-collection dispatch.*
+- [ ] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
   in LanguageSpec — let binding templates (inferred/annotated), lambda param
-  templates (typed/untyped). `emit_let_binding`, `emit_lambda_params`, and
-  Rust `lambda_param_type_strs` read from `spec.annotations`.
+  templates (typed/untyped). Inferred-let and lambda params consume spec;
+  `emit_let_binding_annotated` introduced but no caller yet.
+  *Remaining: annotated-let consumer must land in same change.*
 
 ### M5-early: coercion via TypeRendering
 

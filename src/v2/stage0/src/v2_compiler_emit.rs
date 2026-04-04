@@ -687,11 +687,23 @@ pub fn apply_type_template1(template: String, arg0: String) -> String {
 }
 
 pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
-    Rc::new(Rc::new(template.clone().split(&"{0}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&arg0.clone()).split(&"{1}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&arg1.clone())
+    {
+        let parts = Rc::new(template.clone().split(&"{0}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+let replaced = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(Rc::new(p.clone().split(&"{1}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&arg1.clone())); } __result });
+replaced.clone().join(&arg0.clone())
+}
 }
 
 pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
-    Rc::new(Rc::new(Rc::new(template.clone().split(&"{0}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&arg0.clone()).split(&"{1}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&arg1.clone()).split(&"{2}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&arg2.clone())
+    {
+        let parts0 = Rc::new(template.clone().split(&"{0}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+let replaced = Rc::new({ let mut __result = Vec::new(); for p0 in parts0.clone().iter().cloned() { __result.push({
+            let parts1 = Rc::new(p0.clone().split(&"{1}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+let inner = Rc::new({ let mut __result = Vec::new(); for p1 in parts1.clone().iter().cloned() { __result.push(Rc::new(p1.clone().split(&"{2}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&arg2.clone())); } __result });
+inner.clone().join(&arg1.clone())
+}); } __result });
+replaced.clone().join(&arg0.clone())
+}
 }
 
 pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {

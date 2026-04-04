@@ -666,16 +666,27 @@ fn apply_type_template1(template: String, arg0: String) -> String {
 }
 
 // Apply a two-argument template: replaces {0} and {1}.
+// Split-then-join: split on {0} first, replace {1} inside each segment
+// (which is only original template text), then join with arg0.
+// This prevents arg0 containing "{1}" from being corrupted by the second pass.
 fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
-  template |> split(delimiter: "{0}") |> join(separator: arg0)
-    |> split(delimiter: "{1}") |> join(separator: arg1)
+  let parts = template |> split(delimiter: "{0}")
+  let replaced = parts |> map(p => p |> split(delimiter: "{1}") |> join(separator: arg1))
+  replaced |> join(separator: arg0)
 }
 
 // Apply a three-argument template: replaces {0}, {1}, and {2}.
+// Nested split-then-join: split on {0}, then within each segment split on {1},
+// then within each sub-segment replace {2}. Joins inside-out so no inserted
+// argument is ever re-scanned for a higher-numbered placeholder.
 fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
-  template |> split(delimiter: "{0}") |> join(separator: arg0)
-    |> split(delimiter: "{1}") |> join(separator: arg1)
-    |> split(delimiter: "{2}") |> join(separator: arg2)
+  let parts0 = template |> split(delimiter: "{0}")
+  let replaced = parts0 |> map(p0 =>
+    let parts1 = p0 |> split(delimiter: "{1}")
+    let inner = parts1 |> map(p1 => p1 |> split(delimiter: "{2}") |> join(separator: arg2))
+    inner |> join(separator: arg1)
+  )
+  replaced |> join(separator: arg0)
 }
 
 fn language_spec(target: RenderTarget) -> LanguageSpec {

@@ -789,7 +789,7 @@ let start_str = emit_go_typed_expr(start.clone(), registry.clone(), scope.clone(
 let end_str = emit_go_typed_expr(end.clone(), registry.clone(), scope.clone(), 0, 1024);
 match spec.indexing.clone().list_slice.clone() {
     Some(tmpl) => apply_type_template3(tmpl.clone(), base_str.clone(), start_str.clone(), end_str.clone()),
-    None => "panic(\"internal error: unsupported slice in Go emitter\")".to_string(),
+    None => emit_error_expr("unsupported slice for target".to_string(), RenderTarget::Go),
 }
 }
 }

@@ -2222,12 +2222,12 @@ let base_node = normalize_access_type_node(rt_type(base.clone()));
 if is_rust_string_like(base_node.clone()) {
             match spec.indexing.clone().string_slice.clone() {
     Some(tmpl) => apply_type_template3(tmpl.clone(), base_str.clone(), start_str.clone(), end_str.clone()),
-    None => "panic!(\"internal error: unsupported string slice in emitter\")".to_string(),
+    None => emit_error_expr("unsupported string slice for target".to_string(), RenderTarget::Rust),
 }
 } else {
             match spec.indexing.clone().list_slice.clone() {
     Some(tmpl) => apply_type_template3(tmpl.clone(), base_str.clone(), start_str.clone(), end_str.clone()),
-    None => "panic!(\"internal error: unsupported list slice in emitter\")".to_string(),
+    None => emit_error_expr("unsupported list slice for target".to_string(), RenderTarget::Rust),
 }
 }
 }
