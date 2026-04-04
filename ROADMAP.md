@@ -39,7 +39,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | `full_dsl_compiles` | PASSES (ratchet 2) | 0 | 92 dsl + 29 v2 files, M1 complete. DSL_COMPLEXITY_RATCHET = 2 tolerates 2 user-defined recursive union violations (stack_size, fold_stack) — deferred until CX lane completes |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
 | Bootstrap emitted Rust (B) | 0 | 0 | GREEN (2026-04-03, PR #307). Down from 23→10→7→6→3→0. `bootstrap_stage0_to_stage1` test still `#[ignore]` — not yet a live CI gate. |
-| Stage0 regeneration (C) | RED | GREEN | CX gate disabled. Emission works (40 files). Regenerated binary OOMs on self-compile (tokenizer O(n^2) fixed, dag_syntax_spec + 25 type errors remain). |
+| Stage0 regeneration (C) | GREEN | GREEN | Regenerated binary self-compiles: 40 files, 0 diagnostics (PR #308). 1 perf-only bootstrap patch remains: `dag_syntax_spec` thread_local cache. |
 | L1 ratchet | 24 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
@@ -83,20 +83,18 @@ Bootstrap B is GREEN. All 23 errors fixed via TypeRendering switchover
 and .dag source fixes. Tokenizer codepoint carrier (`List<Int>` vs
 `List<String>`) resolved by porting to `List<Int>` uniformly.
 
-### Bootstrap C blockers (regenerated binary self-compiling)
+### Bootstrap C: GREEN (PR #308)
 
-The regenerated stage0 binary compiles as Rust but fails to self-compile .dag:
+Regenerated stage0 binary self-compiles: 40 files, 0 diagnostics.
 
-1. **Tokenizer OOM** (FIXED): `source_substring_acc` used `list_push`
-   per character = O(n^2). Fixed by adding `text: String` to SourceRef
-   and using `substring` builtin.
-2. **dag_syntax_spec panic**: Emitter serializes data-def function fields
-   as JSON strings (`"dag_item_forms"`) instead of calling them. Also
-   missing thread_local cache (per-token call = O(n*k)).
-3. **25 type errors**: Callable unresolved in algebra, algebra template
-   functions not in scope, List<Int> indexing not recognized, Bool
-   pattern exhaustiveness. Root cause: regenerated inference code
-   diverges from committed stage0 hand-fixes.
+Fixes landed:
+1. **Tokenizer substring OOM** (PR #307): O(n²) `source_substring_acc` → `substring` builtin
+2. **Tokenizer loop OOM** (PR #308): TCO fix for `return` expressions; `tokenize_loop` now emits as `loop { continue }` instead of `stacker::maybe_grow` recursion
+3. **dag_syntax_spec panic** (PR #308): `data_value_has_cross_refs` guard skips JSON path for data defs referencing other data defs
+4. **25 type errors** (PR #308): ported Callable resolution, List indexing, Bool exhaustiveness to .dag source
+
+**Remaining bootstrap patch** (perf-only, not correctness):
+- `dag_syntax_spec` `thread_local!` cache: called per-token in parser hot loop. Emitter doesn't produce caching constructs for `data` defs. Tracked in perf lane — needs either emitter optimization or language-level `data` memoization.
 
 **Reviewer-flagged structural debt (tracked, not blocking merge):**
 
