@@ -41,7 +41,7 @@ $STAGE0_CMD compile \
     echo ''
     echo '#![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, unreachable_patterns, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]'
     echo ''
-    for f in $(ls "$OUTPUT_DIR"/src/*.rs | sort); do
+    for f in $(ls "$OUTPUT_DIR"/src/*.rs | LC_ALL=C sort); do
         mod=$(basename "$f" .rs)
         [ "$mod" = "lib" ] && continue
         [ "$mod" = "main" ] && continue
