@@ -238,6 +238,7 @@ pub enum VarBindingKind {
     VariantValueBinding {
         parent_enum: String,
     },
+    MatchBoundBinding,
 }
 impl VarBindingKind {
     pub fn parent_enum(&self) -> String {
@@ -245,6 +246,7 @@ impl VarBindingKind {
             VarBindingKind::LocalValueBinding => panic!("no parent_enum on unit variant"),
             VarBindingKind::FunctionValueBinding => panic!("no parent_enum on unit variant"),
             VarBindingKind::VariantValueBinding { parent_enum: __val, .. } => __val.clone(),
+            VarBindingKind::MatchBoundBinding => panic!("no parent_enum on unit variant"),
         }
     }
 }
@@ -699,7 +701,7 @@ Rc::new(Node {
     name: "".to_string(),
     span: span,
     ident_span: None,
-    children: children.clone(),
+    children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -871,7 +873,7 @@ Rc::new(Node {
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: children.clone(),
+    children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -955,7 +957,7 @@ Rc::new(Node {
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: children.clone(),
+    children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -963,7 +965,7 @@ Rc::new(Node {
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: props.clone(),
+    properties: props,
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -1361,8 +1363,8 @@ pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
 pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let url_field = make_field_init_node(transport_url_key(), base_url, make_span(0, 0));
-let props = v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field.clone()]), auth_props), headers);
-make_transport_node("rest".to_string(), props.clone(), Rc::new(vec![]), span)
+let props = v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), auth_props), headers);
+make_transport_node("rest".to_string(), props, Rc::new(vec![]), span)
 }
 }
 
@@ -1373,7 +1375,7 @@ pub fn shell_transport_node(argv: Rc<Vec<Rc<Node>>>, env: Rc<Vec<Rc<Node>>>, spa
 pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let path_field = make_field_init_node(transport_path_key(), base_path, make_span(0, 0));
-make_transport_node("file".to_string(), Rc::new(vec![path_field.clone()]), Rc::new(vec![]), span)
+make_transport_node("file".to_string(), Rc::new(vec![path_field]), Rc::new(vec![]), span)
 }
 }
 
@@ -1527,12 +1529,12 @@ let else_bad = match if_else_branch(texpr.clone()) {
     Some(e) => expr_has_non_tail_self_call(e.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
 };
-((cond_bad.clone() || then_bad.clone()) || else_bad.clone())
+((cond_bad || then_bad) || else_bad)
 },
     ExprData::ExprMatch => {
             let scrut_bad = expr_has_non_tail_self_call(match_scrutinee(texpr.clone()), fn_name.clone(), false);
 let arms_bad = { let mut __found = false; for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() { if expr_has_non_tail_self_call(arm_body(arm_node.clone()), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found };
-(scrut_bad.clone() || arms_bad.clone())
+(scrut_bad || arms_bad)
 },
     ExprData::ExprLet => {
             let val_bad = expr_has_non_tail_self_call(let_value(texpr.clone()), fn_name.clone(), false);
@@ -1540,7 +1542,7 @@ let body_bad = match let_body(texpr.clone()) {
     Some(b) => expr_has_non_tail_self_call(b.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
 };
-(val_bad.clone() || body_bad.clone())
+(val_bad || body_bad)
 },
     ExprData::ExprBlock => {
             let ss = texpr.children.clone();
@@ -1554,7 +1556,7 @@ let last_bad = match ss.clone().last().cloned() {
     Some(last_expr) => expr_has_non_tail_self_call(last_expr.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
 };
-(init_bad.clone() || last_bad.clone())
+(init_bad || last_bad)
 }
 }
 },
@@ -1581,7 +1583,7 @@ let retry_prop = match retry {
     Some(r) => Rc::new(vec![make_field_init_node("svc_retry".to_string(), r.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop.clone(), auth_prop.clone()), rate_prop.clone()), retry_prop.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop, auth_prop), rate_prop), retry_prop)
 }
 }
 
@@ -1624,7 +1626,7 @@ Rc::new(Node {
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: Rc::new(vec![marker.clone()]),
+    properties: Rc::new(vec![marker]),
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -1662,7 +1664,7 @@ Rc::new(Node {
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: v2_rt::concat(Rc::new(vec![import_prop.clone()]), all_prop.clone()),
+    properties: v2_rt::concat(Rc::new(vec![import_prop]), all_prop),
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -1944,14 +1946,14 @@ pub struct NewlineIndex {
 pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
     {
         let char_codes = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
-let offsets = Rc::new(char_codes.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(Rc::new(vec![]), |acc: _, pair: (i64, i64)| if (pair.1.clone() == 10) {
+let offsets = Rc::new(char_codes.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(Rc::new(vec![]), |acc: _, pair: (i64, i64)| if (pair.1.clone() == 10) {
             v2_rt::rc_list_push(acc.clone(), pair.0.clone())
 } else {
             acc.clone()
 });
 Rc::new(NewlineIndex {
     file: file,
-    offsets: offsets.clone(),
+    offsets: offsets,
     source: source.clone(),
 })
 }
@@ -1973,10 +1975,10 @@ let line_start = if (line.clone() <= 1) {
     None => 0,
 }
 };
-let col = ((clamped.clone() - line_start.clone()) + 1);
+let col = ((clamped.clone() - line_start) + 1);
 Rc::new(LineCol {
     line: line.clone(),
-    col: col.clone(),
+    col: col,
 })
 }
 }
@@ -1996,7 +1998,7 @@ let line_end = match Rc::new(index.offsets.clone().iter().cloned().skip((line.cl
     Some(o) => o.clone(),
     None => src_len.clone(),
 };
-v2_rt::substring(&index.source.clone(), line_start.clone(), line_end.clone())
+v2_rt::substring(&index.source.clone(), line_start, line_end)
 }
 }
 

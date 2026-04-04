@@ -242,6 +242,7 @@ fn var_binding_kind_name(value: VarBindingKind) -> String {
     LocalValueBinding => "LocalValueBinding"
     FunctionValueBinding => "FunctionValueBinding"
     VariantValueBinding { parent_enum: _ } => "VariantValueBinding"
+    MatchBoundBinding => "MatchBoundBinding"
   }
 }
 

@@ -79,7 +79,7 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, name: String) -> bool {
 pub fn lookup_type(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     {
         let canonical = name;
-match v2_rt::map_get(&env.bindings.clone(), canonical.clone()) {
+match v2_rt::map_get(&env.bindings.clone(), canonical) {
     Some(binding) => Some(binding.resolved.clone()),
     None => None,
 }
@@ -115,7 +115,7 @@ pub fn put_recursive_variant_field_witness(fields: Rc<HashMap<String, Rc<Vec<Rc<
     Some(witnesses) => witnesses.clone(),
     None => Rc::new(vec![]),
 };
-v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing.clone(), Rc::new(vec![Rc::new(RecursiveVariantFieldWitness {
+v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing, Rc::new(vec![Rc::new(RecursiveVariantFieldWitness {
     variant_name: variant_name,
     field_name: field_name,
 })])))
@@ -147,11 +147,11 @@ let source_index = envs.clone().iter().cloned().fold(None, |acc: Option<Rc<Newli
             acc.clone()
 });
 Rc::new(TypeEnv {
-    bindings: merged_bindings.clone(),
-    recursive_types: merged_recursive.clone(),
-    recursive_type_set: merged_recursive_set.clone(),
-    recursive_variant_fields: merged_recursive_variant_fields.clone(),
-    source_index: source_index.clone(),
+    bindings: merged_bindings,
+    recursive_types: merged_recursive,
+    recursive_type_set: merged_recursive_set,
+    recursive_variant_fields: merged_recursive_variant_fields,
+    source_index: source_index,
 })
 }
 }

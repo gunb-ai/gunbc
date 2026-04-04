@@ -32,7 +32,7 @@ import v2.std.core {
   LambdaSemantics,
   FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
-  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
+  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
@@ -354,7 +354,7 @@ fn build_ownership_index(modules: List<TypedModule>) -> Map<String, Map<String, 
   modules |> fold(init: empty_map(), f: (acc, m) =>
     m.items |> filter(item => item.body != None) |> fold(init: acc, f: (inner_acc, item) =>
       let proof = analyze_ownership(func_name: item.name, params: item.params, body: item.body.value)
-      map_insert(inner_acc, item.name, build_movable_set(proof: proof, params: item.params))
+      map_insert(inner_acc, item.name, build_movable_set(proof: proof))
     )
   )
 }

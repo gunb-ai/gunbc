@@ -114,7 +114,7 @@ let value_field = Rc::new(Node {
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: inner.clone(),
+    node: inner,
 })),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -131,7 +131,7 @@ let some_node = Rc::new(Node {
     name: "Some".to_string(),
     span: scrut.span.clone(),
     ident_span: None,
-    children: Rc::new(vec![value_field.clone()]),
+    children: Rc::new(vec![value_field]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -146,7 +146,7 @@ let some_node = Rc::new(Node {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 });
-some_node.clone()
+some_node
 }
 }
 
@@ -238,9 +238,9 @@ let fallback = if (scrut_opt.clone() && (variant_name.clone().as_str() == "Some"
                         variant_not_found_result(scrut_node.clone(), variant_name.clone(), module_name)
 }
 };
-match direct_match.clone() {
+match direct_match {
     Some(v) => node_lookup_resolved(v.clone()),
-    None => fallback.clone(),
+    None => fallback,
 }
 }
 }
@@ -259,7 +259,7 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, 
     PatternSubject::PatternResolved { node: variant_node, .. } => match Rc::new({ let mut __result = Vec::new(); for c in variant_node.children.clone().iter().cloned() { if (c.name.clone().as_str() == field_name.clone().as_str()) { __result.push(c); } } __result }).first().cloned() {
     Some(field_child) => {
         let resolved = child_inferred_or_name(field_child.clone());
-node_lookup_resolved(resolved.clone())
+node_lookup_resolved(resolved)
 },
     None => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
     field: field_name.clone(),
@@ -274,7 +274,7 @@ pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<Node
     {
         let scrut_is_optional = (scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional);
 let has_structure = (scrutinee_type.connective.clone() != Connective::NoConnective);
-let resolved_raw = if has_structure.clone() {
+let resolved_raw = if has_structure {
             scrutinee_type.clone()
 } else {
             match lookup_type(env, scrutinee_type.name.clone()) {
@@ -282,14 +282,14 @@ let resolved_raw = if has_structure.clone() {
     None => scrutinee_type.clone(),
 }
 };
-let resolved = if scrut_is_optional.clone() {
-            with_optional_cardinality(resolved_raw.clone())
+let resolved = if scrut_is_optional {
+            with_optional_cardinality(resolved_raw)
 } else {
-            resolved_raw.clone()
+            resolved_raw
 };
 let is_coproduct = (resolved.connective.clone() == Connective::Disj);
 let resolved_is_optional = (resolved.return_cardinality.clone() == Cardinality::CardOptional);
-if (is_coproduct.clone() || resolved_is_optional.clone()) {
+if (is_coproduct || resolved_is_optional.clone()) {
             {
                 let variant_names = if resolved_is_optional.clone() {
                     Rc::new(vec!["Some".to_string(), "None".to_string()])
@@ -301,7 +301,7 @@ let has_catch_all = { let mut __found = false; for arm in arms.clone().iter().cl
     MatchPattern::Bind { .. } => true,
     _ => false,
 } { __found = true; break; } } __found };
-if has_catch_all.clone() {
+if has_catch_all {
                     Rc::new(vec![])
 } else {
                     {
@@ -317,7 +317,7 @@ if has_catch_all.clone() {
 },
     _ => acc.clone(),
 });
-let uncovered = Rc::new({ let mut __result = Vec::new(); for v in variant_names.clone().iter().cloned() { if (emit_map_has(covered_set.clone(), v.clone()) == false) { __result.push(v); } } __result });
+let uncovered = Rc::new({ let mut __result = Vec::new(); for v in variant_names.iter().cloned() { if (emit_map_has(covered_set.clone(), v.clone()) == false) { __result.push(v); } } __result });
 if ((uncovered.clone().len() as i64) > 0) {
                             Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::NonExhaustiveMatch {
     missing: uncovered.clone(),

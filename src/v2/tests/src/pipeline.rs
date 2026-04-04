@@ -1679,6 +1679,25 @@ fn compile_sources_returns_ownership_proofs() {
     );
 }
 
+/// Match-bound variables are references (&T from destructuring), so they
+/// must always be cloned — never moved — even when used exactly once.
+/// Regression: without MatchBoundBinding in VarBindingKind, the ownership
+/// analysis treated match-bound names as LocalValueBinding and would
+/// incorrectly move them, causing rustc E0308 (expected Rc<T>, found &Rc<T>).
+#[test]
+fn match_bound_variable_always_cloned() {
+    let source = "module match_own\n\nfn extract(x: String?) -> String {\n  match x {\n    Some { value: v } => v\n    None => \"default\"\n  }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/match_own.rs");
+    // The match-bound variable `v` must be cloned, not moved.
+    assert!(
+        content.contains("v.clone()"),
+        "match-bound variable should be cloned, not moved:\n{}",
+        content,
+    );
+}
+
 // ── Compiler self-analysis (subset) ───────────────────────────────────
 //
 // Compile a subset of the compiler's own .dag source and show the

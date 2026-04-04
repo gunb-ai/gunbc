@@ -466,6 +466,6 @@ pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     {
         let tmpl = sharing_for_target(target).wrap_template.clone();
-v2_rt::replace(tmpl.clone(), "{0}".to_string(), inner)
+v2_rt::replace(tmpl, "{0}".to_string(), inner)
 }
 }

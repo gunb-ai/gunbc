@@ -185,6 +185,7 @@ type VarBindingKind
   = LocalValueBinding
   | FunctionValueBinding
   | VariantValueBinding { parent_enum: String }
+  | MatchBoundBinding
 
 type CallSemantics
   = PlainCallSemantics

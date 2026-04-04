@@ -112,10 +112,10 @@ pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSp
     InferredNode::TypeVariable { .. } => Rc::new(vec![]),
     InferredNode::Resolved { node: rt, .. } => {
             let has_structure = (rt.connective.clone() != Connective::NoConnective);
-if has_structure.clone() {
+if has_structure {
                 {
                     let is_product = (rt.connective.clone() == Connective::Conj);
-if is_product.clone() {
+if is_product {
                         if (rt.name.clone().as_str() == "".to_string().as_str()) {
                             Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
                                 let child_type = child_inferred_or_name(child.clone());
@@ -167,7 +167,7 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
 }
 }
 };
-kind.clone()
+kind
 }
 }
 

@@ -81,7 +81,7 @@ pub fn is_typed_service_call_receiver(receiver: Rc<Node>) -> bool {
         let f = field_access_field(receiver.clone());
 let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => match Rc::new(f.clone().chars().map(|c| c as i64).collect::<Vec<_>>()).first().cloned() {
+    ExprData::ExprVar { .. } => match Rc::new(f.chars().map(|c| c as i64).collect::<Vec<_>>()).first().cloned() {
     Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
     None => false,
 },
@@ -100,7 +100,7 @@ let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
             let ns = expr_var_name(b.clone());
-Some(v2_rt::concat(v2_rt::concat(ns.clone(), ".".to_string()), f.clone()))
+Some(v2_rt::concat(v2_rt::concat(ns, ".".to_string()), f))
 },
     _ => None,
 }
@@ -144,7 +144,7 @@ if is_typed_service_call_receiver(r.clone()) {
     _ => acc.clone(),
 };
 let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_typed_service_calls_into(child.clone(), a.clone()));
-result.clone()
+result
 }
     })
 }
@@ -167,7 +167,7 @@ if emit_map_has(acc.seen.clone(), f.clone()) {
     _ => acc.clone(),
 };
 let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_called_func_names_into(child.clone(), a.clone()));
-result.clone()
+result
 }
     })
 }
@@ -185,7 +185,7 @@ result.result.clone()
 pub fn expand_transitive_services_once(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     {
         let all_items = Rc::new({ let mut __result = Vec::new(); for m in modules.iter().cloned() { __result.extend((*m.items.clone()).iter().cloned()); } __result });
-all_items.clone().iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| match v2_rt::map_get(&reg, item.name.clone()) {
+all_items.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| match v2_rt::map_get(&reg, item.name.clone()) {
     Some(info) => {
             let is_not_func = (info.kind.clone() != ItemKind::FuncItem);
 let has_no_body = (item.body.clone() == None);
@@ -277,7 +277,7 @@ pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: String, s
         match v2_rt::map_get(&service_registry, receiver_type.name.clone()) {
     Some(ops) => {
             let matching = Rc::new({ let mut __result = Vec::new(); for op in ops.clone().iter().cloned() { if (op.name.clone().as_str() == method.clone().as_str()) { __result.push(op); } } __result });
-match matching.clone().first().cloned() {
+match matching.first().cloned() {
     Some(op) => if ((op.outputs.clone().len() as i64) == 0) {
                 Some(Rc::new(ServiceMethodResult {
     result_type: unit_type(),

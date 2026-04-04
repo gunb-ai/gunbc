@@ -108,8 +108,8 @@ if emit_map_has(local_func_set.clone(), f.clone()) {
     _ => Rc::new(vec![]),
 };
 let child_edges = Rc::new({ let mut __result = Vec::new(); for child in texpr.children.clone().iter().cloned() { __result.extend((*collect_calls_in_expr(caller.clone(), child.clone(), local_func_set.clone())).iter().cloned()); } __result });
-let result = v2_rt::concat(this_edges.clone(), child_edges.clone());
-result.clone()
+let result = v2_rt::concat(this_edges, child_edges);
+result
 }
     })
 }
@@ -122,7 +122,7 @@ pub fn func_reaches_self(root: String, current: String, call_edges: Rc<Vec<Rc<Ca
             {
                 let next_visited = v2_rt::rc_map_insert(visited.clone(), current.clone(), true);
 let callees = Rc::new({ let mut __result = Vec::new(); for e in Rc::new({ let mut __result = Vec::new(); for e in call_edges.clone().iter().cloned() { if (e.caller.clone().as_str() == current.clone().as_str()) { __result.push(e); } } __result }).iter().cloned() { __result.push(e.callee.clone()); } __result });
-{ let mut __found = false; for c in callees.clone().iter().cloned() { if if (c.clone().as_str() == root.clone().as_str()) {
+{ let mut __found = false; for c in callees.iter().cloned() { if if (c.clone().as_str() == root.clone().as_str()) {
                     true
 } else {
                     func_reaches_self(root.clone(), c.clone(), call_edges.clone(), next_visited.clone())
@@ -265,6 +265,6 @@ let parent_resolved = Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned()
                 acc.clone()
 }
 });
-topo_resolve_loop(local_func_names.clone(), parent_resolved.clone(), declared_sigs.clone(), call_edges.clone(), local_func_set.clone(), module_name, Rc::new(vec![]), (local_func_names.clone().len() as i64))
+topo_resolve_loop(local_func_names.clone(), parent_resolved, declared_sigs.clone(), call_edges, local_func_set.clone(), module_name, Rc::new(vec![]), (local_func_names.clone().len() as i64))
 }
 }

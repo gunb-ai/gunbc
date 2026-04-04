@@ -312,6 +312,7 @@ fn empty_emit_scope() -> InferScope {
     type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: none },
     func_env: ResolvedFuncEnv { signatures: empty_map() },
     locals: empty_map(),
+    match_bound_names: empty_map(),
     module_name: "",
     service_registry: empty_map(),
     item_registry: empty_map()
@@ -323,6 +324,7 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
     locals: empty_map(),
+    match_bound_names: empty_map(),
     module_name: typed_module.module.name,
     service_registry: empty_map(),
     item_registry: typed_module.item_registry

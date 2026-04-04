@@ -176,7 +176,7 @@ pub fn leaf_type_rendering_shared(name: String) -> Rc<TypeRendering> {
 pub fn variant_has_fields(emit_info: Rc<EmitGraphInfo>, enum_name: String, variant_name: String) -> bool {
     {
         let key = v2_rt::concat(v2_rt::concat(enum_name, "::".to_string()), variant_name);
-match v2_rt::map_get(&emit_info.fielded_variants.clone(), key.clone()) {
+match v2_rt::map_get(&emit_info.fielded_variants.clone(), key) {
     Some(v) => v.clone(),
     None => false,
 }
@@ -232,7 +232,7 @@ pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape 
     {
         let normed = normalize_access_type_node(type_node);
 let is_optional = (normed.return_cardinality.clone() == Cardinality::CardOptional);
-if is_optional.clone() {
+if is_optional {
             FieldValueShape::OptionalValue
 } else {
             FieldValueShape::PlainValue
@@ -310,12 +310,12 @@ pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<Str
     Some(first_variant) => Rc::new({ let mut __result = Vec::new(); for f in first_variant.children.clone().iter().cloned() { __result.push(f.name.clone()); } __result }),
     None => Rc::new(vec![]),
 };
-let shared = Rc::new({ let mut __result = Vec::new(); for field_name in first_field_names.clone().iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone()) { __result.push(field_name); } } __result });
-let consistent = Rc::new({ let mut __result = Vec::new(); for field_name in shared.clone().iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone()) {
+let shared = Rc::new({ let mut __result = Vec::new(); for field_name in first_field_names.iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone()) { __result.push(field_name); } } __result });
+let consistent = Rc::new({ let mut __result = Vec::new(); for field_name in shared.iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone()) {
     Some(first_field) => enum_field_type_consistent(variants.clone(), field_name.clone(), child_inferred_or_name(first_field.clone())),
     None => false,
 } { __result.push(field_name); } } __result });
-consistent.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone()) {
+consistent.iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone()) {
     Some(first_field) => v2_rt::rc_map_insert(acc.clone(), field_name.clone(), Rc::new(FieldSummary {
     access_style: FieldAccessStyle::EnumAccessor,
     value_shape: field_value_shape_from_type_node(child_inferred_or_name(first_field.clone())),
@@ -351,14 +351,14 @@ pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
 }
 let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result });
 let is_product = (item.connective.clone() == Connective::Conj);
-if is_product.clone() {
+if is_product {
             Some(Rc::new(TypeSummary {
     name: item.name.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(item.children.clone()),
     field_type_map: build_field_type_map(item.children.clone()),
     variant_name_set: v2_rt::rc_empty_map::<bool>(),
-    generic_param_names: gpn.clone(),
+    generic_param_names: gpn,
 }))
 } else {
             {
@@ -366,12 +366,12 @@ if is_product.clone() {
 Some(Rc::new(TypeSummary {
     name: item.name.clone(),
     repr: Rc::new(TypeRepr::EnumRepr {
-    unit_only: unit_only.clone(),
+    unit_only: unit_only,
 }),
     field_summaries: build_enum_field_summaries(item.children.clone()),
     field_type_map: v2_rt::rc_empty_map::<String>(),
     variant_name_set: item.children.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), child.name.clone(), true)),
-    generic_param_names: gpn.clone(),
+    generic_param_names: gpn,
 }))
 }
 }
@@ -396,9 +396,9 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
 }),
     _ => state.type_summaries.clone(),
 };
-let next_summaries = v2_rt::rc_map_insert(with_variants.clone(), summary.name.clone(), summary.clone());
+let next_summaries = v2_rt::rc_map_insert(with_variants, summary.name.clone(), summary.clone());
 Rc::new(EmitInfoBuildState {
-    type_summaries: next_summaries.clone(),
+    type_summaries: next_summaries,
 })
 },
     None => state,
