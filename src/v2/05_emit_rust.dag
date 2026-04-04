@@ -3761,6 +3761,16 @@ fn emit_capability_method(cap_node: Node, rc_types: Map<String, Bool>, env: Type
 // lazy_static or a function that returns the value.
 // =========================================================================
 
+fn data_value_has_cross_refs(value: Node) -> Bool {
+  match value.expr_data {
+    ExprVar { binding_kind: _ } => true
+    ExprListLit => value.children |> any(c => data_value_has_cross_refs(value: c))
+    ExprRecordLit { parent_enum: _ } =>
+      value.children |> any(f => data_value_has_cross_refs(value: field_init_node_value(n: f)))
+    _ => false
+  }
+}
+
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   // Data defs emit as constructor functions. Use rc_types for type
   // rendering so returned types match the sharing model (e.g., Rc<Node>).
@@ -3770,7 +3780,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   if is_simple_type_node(n: type_node) {
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
     concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
-  } else if has_nested_records_node(n: type_node) {
+  } else if has_nested_records_node(n: type_node) && !data_value_has_cross_refs(value: value) {
     let json_str = emit_data_value_json(value: value, source_index: scope.type_env.source_index)
     concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
       "    serde_json::from_value(serde_json::json!(", json_str, "))\n",

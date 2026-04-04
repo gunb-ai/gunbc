@@ -19,7 +19,8 @@ import v2.std.core {
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,
-  node_type_equals, node_is_keyed_collection
+  node_type_equals, node_is_keyed_collection,
+  node_is_element_collection, for_each_element_type_node
 }
 
 // =========================================================================
@@ -96,8 +97,11 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
         if node_is_keyed_collection(n: normed) {
           let malformed_diags = [access_error(message: "malformed keyed collection type in index access", span: span, module_name: module_name)]
           access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed keyed collection type in index access")
+        } else if node_is_element_collection(n: normed) && index_is_int {
+          let elem = for_each_element_type_node(n: normed)
+          access_result(inferred: with_optional_cardinality(n: elem), diagnostics: [], span: span, fallback_message: "list index access")
         } else {
-          let diags = [access_error(message: "indexing is only supported for String and keyed collection values", span: span, module_name: module_name)]
+          let diags = [access_error(message: "indexing is only supported for String, keyed collection, and list values", span: span, module_name: module_name)]
           access_result(inferred: unit_type, diagnostics: diags, span: span, fallback_message: "invalid index access")
         }
     }

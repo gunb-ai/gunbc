@@ -4033,6 +4033,15 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 }
 
+pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
+    match (*value.expr_data.clone()).clone() {
+        ExprData::ExprVar { .. } => true,
+        ExprData::ExprListLit => value.children.iter().any(|c| data_value_has_cross_refs(c.clone())),
+        ExprData::ExprRecordLit { .. } => value.children.iter().any(|f| data_value_has_cross_refs(field_init_node_value(f.clone()))),
+        _ => false,
+    }
+}
+
 pub fn emit_data_def(name: String, type_node: Rc<Node>, value: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let ty_str: String = render_rust_type(type_node.clone(), rc_types.clone());
@@ -4044,7 +4053,7 @@ if is_simple_type_node(type_node.clone()) {
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name.clone()), "() -> ".to_string()), ty_str.clone()), " { ".to_string()), val_str.clone()), " }".to_string())
 }
 } else {
-            if has_nested_records_node(type_node.clone()) {
+            if has_nested_records_node(type_node.clone()) && !data_value_has_cross_refs(value.clone()) {
                 {
                     let json_str: String = emit_data_value_json(value.clone(), scope.type_env.clone().source_index.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name.clone()), "() -> ".to_string()), ty_str.clone()), " {\n".to_string()), "    serde_json::from_value(serde_json::json!(".to_string()), json_str.clone()), "))\n".to_string()), "        .expect(\"valid data definition\")\n".to_string()), "}".to_string())
