@@ -2659,12 +2659,7 @@ param_edges.clone().iter().cloned().fold(best_map.clone(), |bm: Rc<HashMap<Strin
 });
 let all_keys = v2_rt::concat(Rc::new(v2_rt::map_keys(&tree_edge_map)), Rc::new(v2_rt::map_keys(&list_edge_map)));
 let unique_keys = all_keys.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, k: String| v2_rt::rc_map_insert(acc.clone(), k.clone(), true));
-let edge_names = Rc::new({ let mut __result = Vec::new(); for p in entry.params.clone().iter().cloned() { __result.extend((*{
-            let pname = param_node_name(p.clone());
-let tvars = collect_descent_vars(entry.body.clone(), pname.clone(), Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, true, false);
-collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tvars.clone(), scc_name_set.clone())
-}).iter().cloned()); } __result });
-let name_map = edge_names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, pe: Rc<ParserProgressEdge>| v2_rt::rc_map_insert(acc.clone(), v2_rt::concat(pe.caller.clone(), v2_rt::concat("->".to_string(), pe.callee.clone())), pe.clone()));
+let prefix_len = v2_rt::string_length(&name) + 2;
 Rc::new({ let mut __result = Vec::new(); for key in Rc::new(v2_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
             let tree_ev = match v2_rt::map_get(&tree_edge_map, key.clone()) {
     Some(ev) => ev.clone(),
@@ -2674,16 +2669,9 @@ let list_ev = match v2_rt::map_get(&list_edge_map, key.clone()) {
     Some(ev) => ev.clone(),
     None => DescentEvidence::DescentUnknown,
 };
-let caller_name = match v2_rt::map_get(&name_map, key.clone()) {
-    Some(pe) => panic!("error type cascade"),
-    None => name.clone(),
-};
-let callee_name = match v2_rt::map_get(&name_map, key.clone()) {
-    Some(pe) => panic!("error type cascade"),
-    None => name.clone(),
-};
+let callee_name = v2_rt::substring(&key, prefix_len, v2_rt::string_length(&key));
 Rc::new(ProofEdge {
-    caller: caller_name.clone(),
+    caller: name.clone(),
     callee: callee_name.clone(),
     evidence: Rc::new(vec![tree_ev.clone(), list_ev.clone()]),
 })

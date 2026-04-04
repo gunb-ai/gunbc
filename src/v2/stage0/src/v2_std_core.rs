@@ -1055,7 +1055,7 @@ pub fn expr_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
 }
 
 pub fn wrapper_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
-    serde_json::from_value(serde_json::json!({"Arg": [{"name": "value", "accessor": "arg_value", "position": 0, "required": true}], "Arm": [{"name": "guard", "accessor": "arm_guard", "position": 0, "required": false}, {"name": "body", "accessor": "arm_body", "position": "compile_error!(unsupported mock expression)", "required": true}], "FieldInit": [{"name": "value", "accessor": "field_init_node_value", "position": 0, "required": true}]}))
+    serde_json::from_value(serde_json::json!({"Arg": [{"name": "value", "accessor": "arg_value", "position": 0, "required": true}], "Arm": [{"name": "guard", "accessor": "arm_guard", "position": 0, "required": false}, {"name": "body", "accessor": "arm_body", "position": -1, "required": true}], "FieldInit": [{"name": "value", "accessor": "field_init_node_value", "position": 0, "required": true}]}))
         .expect("valid data definition")
 }
 
