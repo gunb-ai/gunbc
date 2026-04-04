@@ -163,6 +163,10 @@ suffix/name scans to recover ownership. Fallback count promoted to CI.
 
 ## E-track: Emit Boundary + LanguageSpec (Lane 2)
 
+**Status:** TypeRendering boundary established (emit_node_type_rc deleted).
+TLC-3 and TLC-4 complete (IndexingSemantics + AnnotationRequirements in
+LanguageSpec). TLC-1 and TLC-2 remain, blocked on upstream pipeline work.
+
 **Root cause:** Emission rediscovers facts available upstream.
 TypeRendering is the boundary fix. LanguageSpec/coercion is the
 authority fix. TLC-1 through TLC-4 are the concrete expression-level
@@ -188,10 +192,12 @@ LanguageSpec authority, not emitter special cases.
 - [ ] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
   must render as `name()`, not bare `name`. The callable-vs-value
   distinction must survive from resolution through emit.
+  *Blocked: requires callable identity to flow through pipeline (M2 Lane 1).*
 - [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
+  *Blocked: requires M5 coercion engine for type/wrap authority.*
 - [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
   All three backends read from `spec.indexing`.
