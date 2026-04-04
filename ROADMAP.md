@@ -127,7 +127,7 @@ from fabricated types. Highest-confidence correctness bug (reviewer
 2026-04-02).
 
 - [x] `child_inferred_or_empty` propagates error state structurally
-- [x] `node_inferred_to_outputs` refuses error-typed children (fail-closed)
+- [ ] `node_inferred_to_outputs` refuses error-typed children (fail-closed) — current impl drops individual bad fields, not all-or-nothing; partial boundary is lossy
 
 ### Incomplete parameterization and bidirectional inference
 
@@ -145,7 +145,7 @@ Symptoms:
 Open items:
 - [ ] Incomplete parameterized types rejected at normalization, not infer
 - [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit
-- [x] Thread `expected` to all formal params, not just callable ones
+- [ ] Thread `expected` to all formal params, not just callable ones — currently only threaded to fold init + literal special cases, not general parameter inference
 - [x] Refine fold accumulators structurally via `is_fully_resolved`
 - [ ] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
