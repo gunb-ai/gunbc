@@ -245,6 +245,23 @@ pub struct SharingStrategy {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct IndexingSemantics {
+    pub list_index: String,
+    pub map_index: String,
+    pub string_index: String,
+    pub list_slice: Option<String>,
+    pub string_slice: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AnnotationRequirements {
+    pub let_binding_inferred: String,
+    pub let_binding_annotated: String,
+    pub lambda_param_typed: String,
+    pub lambda_param_untyped: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,
@@ -253,6 +270,8 @@ pub struct LanguageSpec {
     pub test_conventions: Rc<TestConventions>,
     pub top_level_visibility: String,
     pub sharing: Rc<SharingStrategy>,
+    pub indexing: Rc<IndexingSemantics>,
+    pub annotations: Rc<AnnotationRequirements>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -291,6 +310,19 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     top_level_visibility: rust_visibility(),
     sharing: Rc::new(SharingStrategy {
     wrap_template: "Rc<{0}>".to_string(),
+}),
+    indexing: Rc::new(IndexingSemantics {
+    list_index: "{0}[({1}) as usize].clone()".to_string(),
+    map_index: "({0}).get(&{1}).cloned()".to_string(),
+    string_index: "v2_rt::char_at(&{0}, {1})".to_string(),
+    list_slice: None,
+    string_slice: Some("v2_rt::substring(&{0}, {1}, {2})".to_string()),
+}),
+    annotations: Rc::new(AnnotationRequirements {
+    let_binding_inferred: "let {0} = {1};".to_string(),
+    let_binding_annotated: "let {0}: {1} = {2};".to_string(),
+    lambda_param_typed: "{0}: {1}".to_string(),
+    lambda_param_untyped: "{0}".to_string(),
 }),
 })
 }
@@ -332,6 +364,19 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     sharing: Rc::new(SharingStrategy {
     wrap_template: "{0}".to_string(),
 }),
+    indexing: Rc::new(IndexingSemantics {
+    list_index: "{0}[{1}]".to_string(),
+    map_index: "{0}[{1}]".to_string(),
+    string_index: "{0}[{1}]".to_string(),
+    list_slice: Some("{0}[{1}:{2}]".to_string()),
+    string_slice: Some("{0}[{1}:{2}]".to_string()),
+}),
+    annotations: Rc::new(AnnotationRequirements {
+    let_binding_inferred: "{0} = {1}".to_string(),
+    let_binding_annotated: "{0}: {1} = {2}".to_string(),
+    lambda_param_typed: "{0}: {1}".to_string(),
+    lambda_param_untyped: "{0}".to_string(),
+}),
 })
 }
 
@@ -371,6 +416,19 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
     wrap_template: "{0}".to_string(),
+}),
+    indexing: Rc::new(IndexingSemantics {
+    list_index: "{0}[{1}]".to_string(),
+    map_index: "{0}[{1}]".to_string(),
+    string_index: "{0}[{1}]".to_string(),
+    list_slice: Some("{0}[{1}:{2}]".to_string()),
+    string_slice: Some("{0}[{1}:{2}]".to_string()),
+}),
+    annotations: Rc::new(AnnotationRequirements {
+    let_binding_inferred: "{0} := {1}".to_string(),
+    let_binding_annotated: "var {0} {1} = {2}".to_string(),
+    lambda_param_typed: "{0} {1}".to_string(),
+    lambda_param_untyped: "{0} interface{}".to_string(),
 }),
 })
 }

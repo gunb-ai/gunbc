@@ -48,7 +48,7 @@ M4 follows Lanes 1+2 (needs structural facts + clean render path)
 | **A** | GREEN | 0 diagnostics | PR #264 |
 | **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_stage0_to_stage1` still `#[ignore]` |
 | **C** | GREEN | regen binary self-compiles | PR #308. 1 perf-only bootstrap patch: `dag_syntax_spec` cache |
-| **D** | GREEN | `regenerate-stage0.sh && git diff --exit-code` | PR #308. Freshness gate blocking in CI. Root cause was .dag source using legacy `emit_node_type_rc` while stage0 used `render_rust_type` |
+| **D** | GREEN | `regenerate-stage0.sh && git diff --exit-code` | PR #308. Freshness gate blocking in CI. `emit_node_type_rc` deleted; single authority via `build_type_rendering` + `render_type` |
 
 **Bootstrap D** = regenerated code replaces committed stage0 with zero
 manual patches, AND the regenerated binary produces identical output
@@ -170,11 +170,12 @@ gaps.
 
 ### TypeRendering boundary (E0c)
 
-`build_type_rendering` + `render_type` replaces scattered
-`emit_node_type_rc()`. 2757 nodes validated with 0 mismatches.
-Dual authority remains (`emit_node_type_rc` still live).
+`build_type_rendering` + `render_type` is the sole type rendering
+authority. `emit_node_type_rc` deleted (2757 nodes validated at 0
+mismatches before removal). `emit_node_type` routes through
+`build_type_rendering` + `render_type`.
 
-- [ ] Delete `emit_node_type_rc` / old type rendering path
+- [x] Delete `emit_node_type_rc` / old type rendering path
 - [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
 - [ ] `emit_primitive_type` fail-closed (no pass-through on miss)
 - [ ] TypeRendering dissolves into coercion engine (M5)
@@ -191,12 +192,13 @@ LanguageSpec authority, not emitter special cases.
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
-- [ ] **TLC-3: Indexing / character access semantics.** List indexing
-  must be declared as a target-language fact, not fabricated in the
-  emitter.
-- [ ] **TLC-4: Explicit annotation requirements.** Target languages
-  with incomplete inference (Rust turbofish) should model annotation
-  needs as LanguageSpec properties.
+- [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
+  in LanguageSpec — per-collection-type templates (list/map/string index/slice).
+  All three backends read from `spec.indexing`.
+- [x] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
+  in LanguageSpec — let binding templates (inferred/annotated), lambda param
+  templates (typed/untyped). `emit_let_binding`, `emit_lambda_params`, and
+  Rust `lambda_param_type_strs` read from `spec.annotations`.
 
 ### M5-early: coercion via TypeRendering
 
