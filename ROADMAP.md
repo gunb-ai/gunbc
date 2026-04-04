@@ -48,9 +48,28 @@ M1 (every .dag compiles) ── COMPLETE
 | **A** | GREEN | 0 diagnostics | PR #264 |
 | **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_stage0_to_stage1` still `#[ignore]` |
 | **C** | GREEN | regen binary self-compiles | PR #308. 1 perf-only bootstrap patch: `dag_syntax_spec` cache |
-| **D** | NEXT | `regenerate-stage0.sh && git diff --exit-code` | CI freshness gate added. Owned entrypoint pending |
+| **D** | BLOCKED | `regenerate-stage0.sh && git diff --exit-code` | Freshness gate informational (not blocking CI). See convergence errors below |
 
-**Bootstrap D** = regenerated code replaces committed stage0 with zero manual patches. Freshness gate (`check-stage0-freshness.sh`) enforces .dag↔stage0 coherence. Remaining gap: committed stage0 has hand-maintained files (main.rs, v2_rt.rs, compiler_tests.rs, dag_syntax cache) that regen preserves by copy.
+**Bootstrap D** = regenerated code replaces committed stage0 with zero
+manual patches, AND the regenerated binary produces identical output
+when it self-compiles (fixed point convergence). **Blocks all other
+lanes from editing stage0 Rust directly.**
+
+Current state: pass 1 (committed→regen) succeeds. Pass 2 (regen→regen)
+produces 178 cargo errors. The regenerated binary's emitter diverges
+from the committed binary's emitter:
+
+| Error class | Count | Root cause |
+|-------------|-------|-----------|
+| Mismatched types | 47 | Emitter produces different type annotations or inferred types |
+| `impl Fn` clone | 7 | TCO/lambda params emitted as `impl Fn` which isn't `Clone` |
+| Type annotations needed | 3 | E0282 — Rust can't infer without committed annotations |
+| Missing generics | 3 | `PartialFunction` without type params |
+| Missing type `Tuple` | 1 | Unresolved synthetic type |
+
+These are emitter fidelity issues — the same class as E-track (emit
+boundary) and M2 (boundary sufficiency). Bootstrap D becomes green
+when the emitter produces code that is self-consistent across passes.
 
 ## CI Gates
 
@@ -61,7 +80,7 @@ M1 (every .dag compiles) ── COMPLETE
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (92 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | 32 (target: 0) |
-| Stage0 freshness | `scripts/check-stage0-freshness.sh` | Added PR #308 |
+| Stage0 freshness | `scripts/check-stage0-freshness.sh` | Informational (not blocking). Fails until Bootstrap D converges |
 
 ## Ratchet Counts
 

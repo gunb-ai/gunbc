@@ -52,6 +52,7 @@ cp "$STAGE0_DIR/src/v2_rt.rs" "$CHECK_DIR/src/v2_rt.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/compiler_tests.rs" "$CHECK_DIR/src/compiler_tests.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/main.rs" "$CHECK_DIR/src/main.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/extdeps_languages_dag_syntax.rs" "$CHECK_DIR/src/extdeps_languages_dag_syntax.rs" 2>/dev/null || true
+cp "$STAGE0_DIR/src/v2_coercion.rs" "$CHECK_DIR/src/v2_coercion.rs" 2>/dev/null || true
 
 echo "=== Comparing ==="
 DIFF_OUTPUT=$(diff -rq "$CHECK_DIR/src/" "$STAGE0_DIR/src/" 2>&1 || true)

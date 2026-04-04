@@ -59,6 +59,7 @@ cp "$STAGE0_DIR/src/v2_rt.rs" "$OUTPUT_DIR/src/v2_rt.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/compiler_tests.rs" "$OUTPUT_DIR/src/compiler_tests.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/main.rs" "$OUTPUT_DIR/src/main.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/extdeps_languages_dag_syntax.rs" "$OUTPUT_DIR/src/extdeps_languages_dag_syntax.rs" 2>/dev/null || true
+cp "$STAGE0_DIR/src/v2_coercion.rs" "$OUTPUT_DIR/src/v2_coercion.rs" 2>/dev/null || true
 
 echo "=== Copying to stage0 ==="
 for f in "$OUTPUT_DIR"/src/*.rs; do
