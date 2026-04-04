@@ -56,16 +56,15 @@ use crate::v2_std_core::Cardinality::{CardOptional};
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
-pub use crate::v2_compiler_infer_service::OpEntry;
 pub use crate::v2_compiler_infer_types::{rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection};
-use crate::v2_std_core::is_container_type;
+pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
-pub use crate::v2_compiler_infer_service::{UniqueAccum, is_typed_service_call_receiver, extract_typed_service_name};
+pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope};
-pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering, leaf_type_rendering_shared};
+pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering};
 pub use crate::v2_compiler_artifact::{RenderTarget};
-use crate::v2_compiler_artifact::RenderTarget::{Python, Dag};
+use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
@@ -171,8 +170,8 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
 
 pub fn derive_module_imports(items: Rc<Vec<Rc<Node>>>, import_rules: Rc<Vec<Rc<ImportRule>>>, target: RenderTarget) -> Rc<Vec<String>> {
     {
-        let has_async: bool = { let mut __found = false; for item in items.clone().iter().cloned() { if ((item.uses.clone().len() as i64) > 0) { __found = true; break; } } __found };
-let type_names: Rc<Vec<String>> = collect_type_names_from_items(items.clone());
+        let has_async = { let mut __found = false; for item in items.clone().iter().cloned() { if ((item.uses.clone().len() as i64) > 0) { __found = true; break; } } __found };
+let type_names = collect_type_names_from_items(items.clone());
 Rc::new({ let mut __result = Vec::new(); for path in Rc::new({ let mut __result = Vec::new(); for rule in Rc::new({ let mut __result = Vec::new(); for rule in import_rules.clone().iter().cloned() { if match (*rule.trigger.clone()).clone() {
     ImportTrigger::TypeUsageTrigger { type_name: t, .. } => { let mut __found = false; for n in type_names.clone().iter().cloned() { if (n.clone().as_str() == t.clone().as_str()) { __found = true; break; } } __found },
     ImportTrigger::TraitImplTrigger { .. } => false,
@@ -190,12 +189,12 @@ pub fn collect_type_names_from_items(items: Rc<Vec<Rc<Node>>>) -> Rc<Vec<String>
 pub fn collect_type_names_from_node(n: Rc<Node>) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
-            let self_name: Rc<Vec<String>> = if (n.name.clone().as_str() != "".to_string().as_str()) {
+            let self_name = if (n.name.clone().as_str() != "".to_string().as_str()) {
                 Rc::new(vec![n.name.clone()])
 } else {
                 Rc::new(vec![])
 };
-let child_names: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*collect_type_names_from_node(child.clone())).iter().cloned()); } __result });
+let child_names = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*collect_type_names_from_node(child.clone())).iter().cloned()); } __result });
 v2_rt::concat(self_name.clone(), child_names.clone())
 }
     })
@@ -214,8 +213,8 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget, source_index: Opti
     ExprData::ExprError { message: message, .. } => emit_error_expr(message.clone(), target.clone()),
     ExprData::ExprVar { .. } => emit_ident(expr_var_name_at(expr.clone(), source_index.clone()), target.clone()),
     ExprData::ExprFieldAccess { .. } => {
-            let f: String = expr.name.clone();
-let b: Rc<Node> = field_access_base(expr.clone());
+            let f = expr.name.clone();
+let b = field_access_base(expr.clone());
 if is_typed_service_call_receiver(expr.clone()) {
                 match extract_typed_service_name(expr.clone()) {
     Some(svc_name) => service_var_name(svc_name.clone()),
@@ -226,7 +225,7 @@ if is_typed_service_call_receiver(expr.clone()) {
 }
 },
     ExprData::ExprStringInterp => {
-            let ps: Rc<Vec<Rc<StringPart>>> = Rc::new({ let mut __result = Vec::new(); for child in expr.children.clone().iter().cloned() { __result.push(match (*child.expr_data.clone()).clone() {
+            let ps = Rc::new({ let mut __result = Vec::new(); for child in expr.children.clone().iter().cloned() { __result.push(match (*child.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: text, .. } = value.as_ref() else { unreachable!() }; Rc::new(StringPart::Text {
     value: text.clone(),
 }) },
@@ -243,15 +242,15 @@ emit_simple_string_interp(ps.clone(), target.clone(), source_index.clone())
 
 pub fn emit_simple_string_interp(parts: Rc<Vec<Rc<StringPart>>>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let has_interpolations: bool = { let mut __found = false; for p in parts.clone().iter().cloned() { if match (*p.clone()).clone() {
+        let has_interpolations = { let mut __found = false; for p in parts.clone().iter().cloned() { if match (*p.clone()).clone() {
     StringPart::Interpolation { .. } => true,
     _ => false,
 } { __found = true; break; } } __found };
 match target.clone() {
     RenderTarget::Rust => {
-            let fmt_parts: Rc<Vec<Rc<InterpPart>>> = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
+            let fmt_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
     StringPart::Text { value: v, .. } => {
-                let escaped: String = if has_interpolations.clone() {
+                let escaped = if has_interpolations.clone() {
                     escape_rust_interp_text(v.clone())
 } else {
                     escape_string_literal_body(v.clone())
@@ -266,21 +265,21 @@ Rc::new(InterpPart {
     arg_expr: emit_simple_expr(e.clone(), target.clone(), source_index.clone()),
 }),
 }); } __result });
-let fmt_str: String = Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.format_segment.clone()); } __result }).join(&"".to_string());
-let args: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for a in Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.arg_expr.clone()); } __result }).iter().cloned() { if (a.clone().as_str() != "".to_string().as_str()) { __result.push(a); } } __result });
+let fmt_str = Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.format_segment.clone()); } __result }).join(&"".to_string());
+let args = Rc::new({ let mut __result = Vec::new(); for a in Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.arg_expr.clone()); } __result }).iter().cloned() { if (a.clone().as_str() != "".to_string().as_str()) { __result.push(a); } } __result });
 if ((args.clone().len() as i64) == 0) {
                 v2_rt::concat(v2_rt::concat("\"".to_string(), fmt_str.clone()), "\".to_string()".to_string())
 } else {
                 {
-                    let args_str: String = args.clone().join(&", ".to_string());
+                    let args_str = args.clone().join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("format!(\"".to_string(), fmt_str.clone()), "\", ".to_string()), args_str.clone()), ")".to_string())
 }
 }
 },
     RenderTarget::Go => {
-            let fmt_parts: Rc<Vec<Rc<InterpPart>>> = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
+            let fmt_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
     StringPart::Text { value: v, .. } => {
-                let escaped: String = if has_interpolations.clone() {
+                let escaped = if has_interpolations.clone() {
                     escape_go_interp_text(v.clone())
 } else {
                     escape_string_literal_body(v.clone())
@@ -295,19 +294,19 @@ Rc::new(InterpPart {
     arg_expr: emit_simple_expr(e.clone(), target.clone(), source_index.clone()),
 }),
 }); } __result });
-let fmt_str: String = Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.format_segment.clone()); } __result }).join(&"".to_string());
-let args: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for a in Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.arg_expr.clone()); } __result }).iter().cloned() { if (a.clone().as_str() != "".to_string().as_str()) { __result.push(a); } } __result });
+let fmt_str = Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.format_segment.clone()); } __result }).join(&"".to_string());
+let args = Rc::new({ let mut __result = Vec::new(); for a in Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.arg_expr.clone()); } __result }).iter().cloned() { if (a.clone().as_str() != "".to_string().as_str()) { __result.push(a); } } __result });
 if ((args.clone().len() as i64) == 0) {
                 v2_rt::concat(v2_rt::concat("\"".to_string(), fmt_str.clone()), "\"".to_string())
 } else {
                 {
-                    let args_str: String = args.clone().join(&", ".to_string());
+                    let args_str = args.clone().join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("fmt.Sprintf(\"".to_string(), fmt_str.clone()), "\", ".to_string()), args_str.clone()), ")".to_string())
 }
 }
 },
     RenderTarget::Python => {
-            let segments: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
+            let segments = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
     StringPart::Text { value: v, .. } => if has_interpolations.clone() {
                 escape_python_interp_text(v.clone())
 } else {
@@ -355,11 +354,11 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
 pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {
     match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprLet => {
-        let ch: Rc<Vec<Rc<Node>>> = texpr.children.clone();
-let has_body: bool = ((ch.clone().len() as i64) > 1);
+        let ch = texpr.children.clone();
+let has_body = ((ch.clone().len() as i64) > 1);
 if (has_body.clone() == false) {
             {
-                let value: Rc<Node> = let_value(texpr.clone());
+                let value = let_value(texpr.clone());
 extend_scope(scope.clone(), let_binding_name_at(texpr.clone(), scope.type_env.clone().source_index.clone()), rt_type(value.clone()))
 }
 } else {
@@ -380,7 +379,7 @@ pub fn lookup_func_sig_in_scope(scope: Rc<InferScope>, name: String) -> Option<R
 
 pub fn typed_named_arg_matches(arg: Rc<Node>, name: String) -> bool {
     {
-        let n: Option<String> = arg_name(arg.clone());
+        let n = arg_name(arg.clone());
 if (n.clone() == None) {
             false
 } else {
@@ -391,28 +390,28 @@ if (n.clone() == None) {
 
 pub fn order_typed_call_args(args: Rc<Vec<Rc<Node>>>, func: String, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
     {
-        let has_unnamed: bool = { let mut __found = false; for arg in args.clone().iter().cloned() { if (arg_name(arg.clone()) == None) { __found = true; break; } } __found };
+        let has_unnamed = { let mut __found = false; for arg in args.clone().iter().cloned() { if (arg_name(arg.clone()) == None) { __found = true; break; } } __found };
 if has_unnamed.clone() {
             args.clone()
 } else {
             match lookup_func_sig_in_scope(scope.clone(), func.clone()) {
     None => args.clone(),
     Some(sig) => {
-                let arg_map: Rc<HashMap<String, Rc<Node>>> = args.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: _, arg: Rc<Node>| {
-                    let n: Option<String> = arg_name(arg.clone());
+                let arg_map = args.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, arg: Rc<Node>| {
+                    let n = arg_name(arg.clone());
 if (n.clone() != None) {
                         v2_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
 } else {
                         acc.clone()
 }
 });
-let param_name_set: Rc<HashMap<String, bool>> = sig.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: _, param: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name(param.clone()), true));
-let ordered: Rc<Vec<Rc<Node>>> = Rc::new({ let mut __result = Vec::new(); for param in sig.params.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&arg_map, param_node_name(param.clone())) {
+let param_name_set = sig.params.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, param: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name(param.clone()), true));
+let ordered = Rc::new({ let mut __result = Vec::new(); for param in sig.params.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&arg_map, param_node_name(param.clone())) {
     Some(arg) => Rc::new(vec![arg.clone()]),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
-let leftovers: Rc<Vec<Rc<Node>>> = Rc::new({ let mut __result = Vec::new(); for arg in args.clone().iter().cloned() { if {
-                    let n: Option<String> = arg_name(arg.clone());
+let leftovers = Rc::new({ let mut __result = Vec::new(); for arg in args.clone().iter().cloned() { if {
+                    let n = arg_name(arg.clone());
 if (n.clone() == None) {
                         true
 } else {
@@ -428,10 +427,10 @@ v2_rt::concat(ordered.clone(), leftovers.clone())
 
 pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
-        let result: Rc<UniqueAccum> = items.clone().iter().cloned().fold(Rc::new(UniqueAccum {
+        let result = items.clone().iter().cloned().fold(Rc::new(UniqueAccum {
     seen: v2_rt::rc_empty_map::<bool>(),
     result: Rc::new(vec![]),
-}), |acc: _, item: String| if emit_map_has(acc.seen.clone(), item.clone()) {
+}), |acc: Rc<UniqueAccum>, item: String| if emit_map_has(acc.seen.clone(), item.clone()) {
             acc.clone()
 } else {
             Rc::new(UniqueAccum {
@@ -445,13 +444,13 @@ result.result.clone()
 
 pub fn has_nested_records_node(mut n: Rc<Node>) -> bool {
     loop {
-        let is_product: bool = (n.connective.clone() == Connective::Conj);
-let is_coproduct: bool = (n.connective.clone() == Connective::Disj);
+        let is_product = (n.connective.clone() == Connective::Conj);
+let is_coproduct = (n.connective.clone() == Connective::Disj);
 if is_product.clone() {
             break true;
 } else {
             if is_coproduct.clone() {
-                let is_optional: bool = (n.return_cardinality.clone() == Cardinality::CardOptional);
+                let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional.clone() {
                     {
                         let __tco_0 = with_required_cardinality(n.clone());
@@ -462,7 +461,7 @@ continue;
                     break false;
 }
 } else {
-                let is_map: bool = node_is_keyed_collection(n.clone());
+                let is_map = node_is_keyed_collection(n.clone());
 if is_map.clone() {
                     match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
     Some(val_child) => { {
@@ -506,11 +505,11 @@ pub fn emit_data_value_json(value: Rc<Node>, source_index: Option<Rc<NewlineInde
     LiteralValue::LitNull => "null".to_string(),
 },
     ExprData::ExprListLit => {
-            let el_strs: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for e in value.children.clone().iter().cloned() { __result.push(emit_data_value_json(e.clone(), source_index.clone())); } __result });
+            let el_strs = Rc::new({ let mut __result = Vec::new(); for e in value.children.clone().iter().cloned() { __result.push(emit_data_value_json(e.clone(), source_index.clone())); } __result });
 v2_rt::concat(v2_rt::concat("[".to_string(), el_strs.clone().join(&", ".to_string())), "]".to_string())
 },
     ExprData::ExprRecordLit { .. } => {
-            let field_strs: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for f in value.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(field_init_node_name(f.clone()))), "\": ".to_string()), emit_data_value_json(field_init_node_value(f.clone()), source_index.clone()))); } __result });
+            let field_strs = Rc::new({ let mut __result = Vec::new(); for f in value.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(field_init_node_name(f.clone()))), "\": ".to_string()), emit_data_value_json(field_init_node_value(f.clone()), source_index.clone()))); } __result });
 v2_rt::concat(v2_rt::concat("{".to_string(), field_strs.clone().join(&", ".to_string())), "}".to_string())
 },
     ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(expr_var_name_at(value.clone(), source_index.clone()))), "\"".to_string()),
@@ -546,7 +545,7 @@ pub fn to_string(value: i64) -> String {
                 "0".to_string()
 } else {
                 {
-                    let digit_chars: Rc<Vec<String>> = Rc::new(vec!["0".to_string(), "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(), "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(), "9".to_string()]);
+                    let digit_chars = Rc::new(vec!["0".to_string(), "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(), "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(), "9".to_string()]);
 to_string_helper(value.clone(), Rc::new(vec![])).join(&"".to_string())
 }
 }
@@ -559,10 +558,10 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
         if (value.clone() == 0) {
             break acc.clone();
 } else {
-            let digit: i64 = (value.clone() % 10);
-let rest: i64 = ((value.clone() - digit.clone()) / 10);
-let digit_chars: Rc<Vec<String>> = Rc::new(vec!["0".to_string(), "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(), "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(), "9".to_string()]);
-let ch: String = match Rc::new({ let mut __result = Vec::new(); for p in Rc::new(digit_chars.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() == digit.clone()) { __result.push(p); } } __result }).first().cloned() {
+            let digit = (value.clone() % 10);
+let rest = ((value.clone() - digit.clone()) / 10);
+let digit_chars = Rc::new(vec!["0".to_string(), "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(), "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(), "9".to_string()]);
+let ch = match Rc::new({ let mut __result = Vec::new(); for p in Rc::new(digit_chars.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() == digit.clone()) { __result.push(p); } } __result }).first().cloned() {
     Some(p) => p.1.clone(),
     None => "?".to_string(),
 };
@@ -579,10 +578,10 @@ continue;
 
 pub fn to_snake(name: String) -> String {
     {
-        let chars_list: Rc<Vec<i64>> = Rc::new(name.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
-let result: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(chars_list.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
-            let idx: i64 = pair.0.clone();
-let ch: i64 = pair.1.clone();
+        let chars_list = Rc::new(name.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
+let result = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(chars_list.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
+            let idx = pair.0.clone();
+let ch = pair.1.clone();
 if is_upper(ch.clone()) {
                 if (idx.clone() == 0) {
                     to_lower_char(ch.clone())
@@ -599,7 +598,7 @@ result.clone().join(&"".to_string())
 
 pub fn to_screaming_snake(name: String) -> String {
     {
-        let snake: String = to_snake(name.clone());
+        let snake = to_snake(name.clone());
 Rc::new({ let mut __result = Vec::new(); for ch in Rc::new(snake.clone().chars().map(|c| c as i64).collect::<Vec<_>>()).iter().cloned() { __result.push(to_upper_char(ch.clone())); } __result }).join(&"".to_string())
 }
 }
@@ -610,10 +609,10 @@ pub fn is_upper(ch: i64) -> bool {
 
 pub fn to_lower_char(ch: i64) -> String {
     {
-        let cp: i64 = ch.clone();
+        let cp = ch.clone();
 if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
             {
-                let lower_cp: i64 = (cp.clone() + 32);
+                let lower_cp = (cp.clone() + 32);
 v2_rt::from_code_point(lower_cp.clone())
 }
 } else {
@@ -624,10 +623,10 @@ v2_rt::from_code_point(lower_cp.clone())
 
 pub fn to_upper_char(ch: i64) -> String {
     {
-        let cp: i64 = ch.clone();
+        let cp = ch.clone();
 if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
             {
-                let upper_cp: i64 = (cp.clone() - 32);
+                let upper_cp = (cp.clone() - 32);
 v2_rt::from_code_point(upper_cp.clone())
 }
 } else {
@@ -638,15 +637,15 @@ v2_rt::from_code_point(upper_cp.clone())
 
 pub fn sanitize_service_name(name: String) -> String {
     {
-        let parts: Rc<Vec<String>> = Rc::new(name.clone().split(&".".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
-let pascal_parts: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(capitalize_first(p.clone())); } __result });
+        let parts = Rc::new(name.clone().split(&".".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+let pascal_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(capitalize_first(p.clone())); } __result });
 pascal_parts.clone().join(&"".to_string())
 }
 }
 
 pub fn capitalize_first(s: String) -> String {
     {
-        let chars_list: Rc<Vec<i64>> = Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
+        let chars_list = Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
 if ((chars_list.clone().len() as i64) == 0) {
             "".to_string()
 } else {
@@ -661,9 +660,9 @@ if ((chars_list.clone().len() as i64) == 0) {
 
 pub fn to_pascal(name: String) -> String {
     {
-        let snake: String = to_snake(name.clone());
-let parts: Rc<Vec<String>> = Rc::new(snake.clone().split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
-let pascal_parts: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(capitalize_first(p.clone())); } __result });
+        let snake = to_snake(name.clone());
+let parts = Rc::new(snake.clone().split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+let pascal_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(capitalize_first(p.clone())); } __result });
 pascal_parts.clone().join(&"".to_string())
 }
 }
@@ -674,8 +673,8 @@ pub fn service_var_name(service_name: String) -> String {
 
 pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
     {
-        let conventions: Rc<TestConventions> = test_conventions_for_target(target.clone());
-let formatted: String = match conventions.name_style.clone() {
+        let conventions = test_conventions_for_target(target.clone());
+let formatted = match conventions.name_style.clone() {
     TestNameStyle::SnakeCaseTestNames => v2_rt::concat(v2_rt::concat(to_snake(sanitize_service_name(projection.service_name.clone())), "_".to_string()), to_snake(projection.operation_name.clone())),
     TestNameStyle::PascalCaseTestNames => v2_rt::concat(to_pascal(sanitize_service_name(projection.service_name.clone())), to_pascal(projection.operation_name.clone())),
 };
@@ -711,17 +710,17 @@ pub fn reserved_suffix(target: RenderTarget) -> String {
 
 pub fn escape_string_literal_body(s: String) -> String {
     {
-        let escaped_backslash: String = Rc::new(s.clone().split(&"\\".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"\\\\".to_string());
-let escaped_quote: String = Rc::new(escaped_backslash.clone().split(&"\"".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"\\\"".to_string());
-let escaped_newline: String = Rc::new(escaped_quote.clone().split(&"\n".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"\\n".to_string());
-let escaped_return: String = Rc::new(escaped_newline.clone().split(&"\\r".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"\\r".to_string());
+        let escaped_backslash = Rc::new(s.clone().split(&"\\".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"\\\\".to_string());
+let escaped_quote = Rc::new(escaped_backslash.clone().split(&"\"".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"\\\"".to_string());
+let escaped_newline = Rc::new(escaped_quote.clone().split(&"\n".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"\\n".to_string());
+let escaped_return = Rc::new(escaped_newline.clone().split(&"\\r".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"\\r".to_string());
 Rc::new(escaped_return.clone().split(&"\t".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"\\t".to_string())
 }
 }
 
 pub fn escape_rust_interp_text(s: String) -> String {
     {
-        let escaped: String = Rc::new(escape_string_literal_body(s.clone()).split(&"{".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"{{".to_string());
+        let escaped = Rc::new(escape_string_literal_body(s.clone()).split(&"{".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"{{".to_string());
 Rc::new(escaped.clone().split(&"}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"}}".to_string())
 }
 }
@@ -732,7 +731,7 @@ pub fn escape_go_interp_text(s: String) -> String {
 
 pub fn escape_python_interp_text(s: String) -> String {
     {
-        let escaped: String = Rc::new(escape_string_literal_body(s.clone()).split(&"{".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"{{".to_string());
+        let escaped = Rc::new(escape_string_literal_body(s.clone()).split(&"{".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"{{".to_string());
 Rc::new(escaped.clone().split(&"}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&"}}".to_string())
 }
 }
@@ -769,7 +768,7 @@ pub fn emit_keyword(key: String, target: RenderTarget) -> String {
 pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
     match (*value.clone()).clone() {
     LiteralValue::LitStr { value: s, .. } => {
-        let suffix: String = match target.clone() {
+        let suffix = match target.clone() {
     RenderTarget::Rust => ".to_string()".to_string(),
     _ => "".to_string(),
 };
@@ -827,27 +826,27 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
 }
 
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
-    emit_node_type_rc(n.clone(), target.clone(), Rc::new(HashMap::new()))
+    emit_node_type_rc(n.clone(), target.clone(), Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */)
 }
 
 pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
-            let is_rust: bool = match target.clone() {
+            let is_rust = match target.clone() {
     RenderTarget::Rust => true,
     _ => false,
 };
-let n_is_error: bool = if (n.inferred.clone() != None) {
+let n_is_error = if (n.inferred.clone() != None) {
                 is_compiler_error(n.inferred.clone().clone().unwrap())
 } else {
                 false
 };
-let n_is_type_var: bool = if (n.inferred.clone() != None) {
+let n_is_type_var = if (n.inferred.clone() != None) {
                 is_type_variable(n.inferred.clone().clone().unwrap())
 } else {
                 false
 };
-let sentinel_label: String = if n_is_error.clone() {
+let sentinel_label = if n_is_error.clone() {
                 "CompilerError".to_string()
 } else {
                 if n_is_type_var.clone() {
@@ -863,11 +862,11 @@ if ((n_is_type_var.clone() || n_is_error.clone()) && ((n.children.clone().len() 
                     return v2_rt::concat(v2_rt::concat("__EMIT_BUG_UNRESOLVED_".to_string(), sentinel_label.clone()), "__".to_string())
 }
 }
-if (n.name.clone().as_str() == "Callable") {
+if (n.name.clone().as_str() == "Callable".to_string().as_str()) {
                 {
-                    let param_types: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(emit_node_type_rc(param_node_type_expr(p.clone()), target.clone(), rc_types.clone())); } __result });
-let param_str: String = param_types.clone().join(&", ".to_string());
-let ret_str: String = match n.inferred.clone().as_deref().cloned() {
+                    let param_types = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(emit_node_type_rc(param_node_type_expr(p.clone()), target.clone(), rc_types.clone())); } __result });
+let param_str = param_types.clone().join(&", ".to_string());
+let ret_str = match n.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => emit_node_type_rc(rt.clone(), target.clone(), rc_types.clone()),
     _ => match target.clone() {
     RenderTarget::Go => "".to_string(),
@@ -888,13 +887,13 @@ match target.clone() {
 }
 } else {
                 {
-                    let is_optional: bool = (n.return_cardinality.clone() == Cardinality::CardOptional);
+                    let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional.clone() {
                         emit_container("optional".to_string(), emit_node_type_rc(with_required_cardinality(n.clone()), target.clone(), rc_types.clone()), target.clone())
 } else {
                         {
-                            let is_conj: bool = (n.connective.clone() == Connective::Conj);
-let is_disj: bool = (n.connective.clone() == Connective::Disj);
+                            let is_conj = (n.connective.clone() == Connective::Conj);
+let is_disj = (n.connective.clone() == Connective::Disj);
 if ((is_conj.clone() == false) && (is_disj.clone() == false)) {
                                 emit_node_type_leaf_rc(n.clone(), target.clone(), rc_types.clone())
 } else {
@@ -915,13 +914,11 @@ if ((is_conj.clone() == false) && (is_disj.clone() == false)) {
 pub fn emit_node_type_leaf_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {
     if ((n.children.clone().len() as i64) == 0) {
         {
-            // Use is_container_type (name check) not node_is_keyed/element_collection
-            // (which require children > 0 and fail for bare containers from empty_map).
-            let bare_is_map: bool = is_container_type(n.name.clone()) && to_snake(n.name.clone()).as_str() == "map";
-let bare_is_collection: bool = is_container_type(n.name.clone()) && !bare_is_map;
-let has_container_template: bool = (target_container_template(target.clone(), to_snake(n.name.clone())) != None);
-let param_count: i64 = (n.params.clone().len() as i64);
-let base: String = if bare_is_map.clone() {
+            let has_container_template = (target_container_template(target.clone(), to_snake(n.name.clone())) != None);
+let bare_is_map = (is_container_type(n.name.clone()) && (to_snake(n.name.clone()).as_str() == "map".to_string().as_str()));
+let bare_is_collection = (is_container_type(n.name.clone()) && !bare_is_map.clone());
+let param_count = (n.params.clone().len() as i64);
+let base = if bare_is_map.clone() {
                 emit_map_type("_".to_string(), "_".to_string(), target.clone())
 } else {
                 if bare_is_collection.clone() {
@@ -929,17 +926,22 @@ let base: String = if bare_is_map.clone() {
 } else {
                     if (has_container_template.clone() && (param_count.clone() == 1)) {
                         {
-                            let param_strs: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(emit_node_type_rc(param_node_type_expr(p.clone()), target.clone(), rc_types.clone())); } __result });
+                            let param_strs = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(emit_node_type_rc(param_node_type_expr(p.clone()), target.clone(), rc_types.clone())); } __result });
 match param_strs.clone().first().cloned() {
     Some(inner) => emit_container(to_snake(n.name.clone()), inner.clone(), target.clone()),
     None => emit_primitive_type(n.name.clone(), target.clone()),
 }
 }
-} else if n.name.clone().as_str() == tuple_type_name().as_str() {
-                        // Bare Tuple with no children
-                        match target.clone() { RenderTarget::Python => "Tuple".to_string(), RenderTarget::Go => "struct{}".to_string(), _ => "()".to_string() }
 } else {
-                        emit_primitive_type(n.name.clone(), target.clone())
+                        if (n.name.clone().as_str() == tuple_type_name().as_str()) {
+                            match target.clone() {
+    RenderTarget::Python => "Tuple".to_string(),
+    RenderTarget::Go => "struct{}".to_string(),
+    _ => "()".to_string(),
+}
+} else {
+                            emit_primitive_type(n.name.clone(), target.clone())
+}
 }
 }
 };
@@ -951,18 +953,18 @@ if emit_map_has(rc_types.clone(), n.name.clone()) {
 }
 } else {
         {
-            let is_map: bool = node_is_keyed_collection(n.clone());
+            let is_map = node_is_keyed_collection(n.clone());
 if is_map.clone() {
                 {
-                    let k: String = match n.children.clone().first().cloned() {
+                    let k = match n.children.clone().first().cloned() {
     Some(kn) => emit_node_type_rc(kn.clone(), target.clone(), rc_types.clone()),
     None => "__EMIT_BUG_MISSING_MAP_KEY__".to_string(),
 };
-let v: String = match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+let v = match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
     Some(vn) => emit_node_type_rc(vn.clone(), target.clone(), rc_types.clone()),
     None => "__EMIT_BUG_MISSING_MAP_VALUE__".to_string(),
 };
-let map_str: String = emit_map_type(k.clone(), v.clone(), target.clone());
+let map_str = emit_map_type(k.clone(), v.clone(), target.clone());
 if emit_map_has(rc_types.clone(), n.name.clone()) {
                         wrap_shared_type(target.clone(), map_str.clone())
 } else {
@@ -972,14 +974,14 @@ if emit_map_has(rc_types.clone(), n.name.clone()) {
 } else {
                 if ((n.children.clone().len() as i64) == 1) {
                     {
-                        let inner: String = match n.children.clone().first().cloned() {
+                        let inner = match n.children.clone().first().cloned() {
     Some(child) => emit_node_type_rc(child.clone(), target.clone(), rc_types.clone()),
     None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__".to_string(),
 };
-let is_container: bool = node_is_collection(n.clone());
+let is_container = node_is_collection(n.clone());
 if is_container.clone() {
                             {
-                                let container_str: String = emit_container(to_snake(n.name.clone()), inner.clone(), target.clone());
+                                let container_str = emit_container(to_snake(n.name.clone()), inner.clone(), target.clone());
 if emit_map_has(rc_types.clone(), n.name.clone()) {
                                     wrap_shared_type(target.clone(), container_str.clone())
 } else {
@@ -988,8 +990,8 @@ if emit_map_has(rc_types.clone(), n.name.clone()) {
 }
 } else {
                             {
-                                let base: String = emit_primitive_type(n.name.clone(), target.clone());
-let wrapped: String = match target.clone() {
+                                let base = emit_primitive_type(n.name.clone(), target.clone());
+let wrapped = match target.clone() {
     RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "[".to_string()), inner.clone()), "]".to_string()),
     _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "<".to_string()), inner.clone()), ">".to_string()),
 };
@@ -1001,27 +1003,21 @@ if emit_map_has(rc_types.clone(), n.name.clone()) {
 }
 }
 }
-} else if (n.name.clone().as_str() == tuple_type_name().as_str()) {
-                    {
-                        // Tuple type reference (NoConnective with children)
-                        let child_strs: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(emit_node_type_rc(c.clone(), target.clone(), rc_types.clone())); } __result });
-match target.clone() {
-    RenderTarget::Go => v2_rt::concat(v2_rt::concat("struct{ ".to_string(), child_strs.clone().join(&"; ".to_string())), " }".to_string()),
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat("Tuple[".to_string(), child_strs.clone().join(&", ".to_string())), "]".to_string()),
-    _ => v2_rt::concat(v2_rt::concat("(".to_string(), child_strs.clone().join(&", ".to_string())), ")".to_string()),
-}
-                    }
 } else {
                     {
-                        // Named type with generic args (e.g., PartialFunction<K,V>)
-                        let base: String = emit_primitive_type(n.name.clone(), target.clone());
-let arg_strs: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(emit_node_type_rc(c.clone(), target.clone(), rc_types.clone())); } __result });
-let args_joined: String = arg_strs.clone().join(&", ".to_string());
-match target.clone() {
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "[".to_string()), args_joined.clone()), "]".to_string()),
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "<".to_string()), args_joined.clone()), ">".to_string()),
+                        let child_strs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(emit_node_type_rc(c.clone(), target.clone(), rc_types.clone())); } __result });
+let inner = child_strs.clone().join(&", ".to_string());
+let base = emit_primitive_type(n.name.clone(), target.clone());
+let wrapped = match target.clone() {
+    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "[".to_string()), inner.clone()), "]".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "<".to_string()), inner.clone()), ">".to_string()),
+};
+if emit_map_has(rc_types.clone(), n.name.clone()) {
+                            wrap_shared_type(target.clone(), wrapped.clone())
+} else {
+                            wrapped.clone()
 }
-                    }
+}
 }
 }
 }
@@ -1037,7 +1033,7 @@ pub fn emit_node_type_conj_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
 } else {
         if (n.name.clone().as_str() == tuple_type_name().as_str()) {
             {
-                let first_str: String = match n.children.clone().first().cloned() {
+                let first_str = match n.children.clone().first().cloned() {
     Some(c) => if (c.inferred.clone() != None) {
                     emit_node_type_rc(rt_type(c.clone()), target.clone(), rc_types.clone())
 } else {
@@ -1045,7 +1041,7 @@ pub fn emit_node_type_conj_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
 },
     None => "__EMIT_BUG_MISSING_TUPLE_FIRST__".to_string(),
 };
-let second_str: String = match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+let second_str = match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
     Some(c) => if (c.inferred.clone() != None) {
                     emit_node_type_rc(rt_type(c.clone()), target.clone(), rc_types.clone())
 } else {
@@ -1062,28 +1058,35 @@ match target.clone() {
 } else {
             if (n.name.clone().as_str() != "".to_string().as_str()) {
                 {
-                    let snake: String = to_snake(n.name.clone());
-let has_template: bool = (target_container_template(target.clone(), snake.clone()) != None);
+                    let snake = to_snake(n.name.clone());
+let has_template = (target_container_template(target.clone(), snake.clone()) != None);
 if has_template.clone() {
-                        if snake.clone().as_str() == "map" {
-                            let map_str: String = emit_map_type("_".to_string(), "_".to_string(), target.clone());
-if emit_map_has(rc_types.clone(), n.name.clone()) { wrap_shared_type(target.clone(), map_str.clone()) } else { map_str.clone() }
+                        {
+                            let base = if (snake.clone().as_str() == "map".to_string().as_str()) {
+                                emit_map_type("_".to_string(), "_".to_string(), target.clone())
 } else {
-                            let container_str: String = emit_container(snake.clone(), "_".to_string(), target.clone());
-if emit_map_has(rc_types.clone(), n.name.clone()) { wrap_shared_type(target.clone(), container_str.clone()) } else { container_str.clone() }
+                                emit_container(snake.clone(), "_".to_string(), target.clone())
+};
+if emit_map_has(rc_types.clone(), n.name.clone()) {
+                                wrap_shared_type(target.clone(), base.clone())
+} else {
+                                base.clone()
+}
 }
 } else {
-                        let mapped: String = emit_primitive_type(n.name.clone(), target.clone());
+                        {
+                            let mapped = emit_primitive_type(n.name.clone(), target.clone());
 if emit_map_has(rc_types.clone(), n.name.clone()) {
-                            wrap_shared_type(target.clone(), mapped.clone())
+                                wrap_shared_type(target.clone(), mapped.clone())
 } else {
-                            mapped.clone()
+                                mapped.clone()
+}
 }
 }
 }
 } else {
                 {
-                    let is_rust: bool = match target.clone() {
+                    let is_rust = match target.clone() {
     RenderTarget::Rust => true,
     _ => false,
 };
@@ -1099,12 +1102,12 @@ if is_rust.clone() {
 }
 } else {
                             {
-                                let field_types: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(if (child.inferred.clone() != None) {
+                                let field_types = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(if (child.inferred.clone() != None) {
                                     emit_node_type_rc(rt_type(child.clone()), target.clone(), rc_types.clone())
 } else {
                                     "compile_error!(\"anonymous product field missing inferred\")".to_string()
 }); } __result });
-let result: String = v2_rt::concat(v2_rt::concat("(".to_string(), field_types.clone().join(&", ".to_string())), ")".to_string());
+let result = v2_rt::concat(v2_rt::concat("(".to_string(), field_types.clone().join(&", ".to_string())), ")".to_string());
 result.clone()
 }
 }
@@ -1120,7 +1123,7 @@ result.clone()
 pub fn emit_node_type_disj_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {
     if (n.name.clone().as_str() != "".to_string().as_str()) {
         {
-            let mapped: String = emit_primitive_type(n.name.clone(), target.clone());
+            let mapped = emit_primitive_type(n.name.clone(), target.clone());
 if emit_map_has(rc_types.clone(), n.name.clone()) {
                 wrap_shared_type(target.clone(), mapped.clone())
 } else {
@@ -1129,7 +1132,7 @@ if emit_map_has(rc_types.clone(), n.name.clone()) {
 }
 } else {
         {
-            let is_rust: bool = match target.clone() {
+            let is_rust = match target.clone() {
     RenderTarget::Rust => true,
     _ => false,
 };
@@ -1142,536 +1145,677 @@ if is_rust.clone() {
 }
 }
 
-// ── TypeRendering builder ─────────────────────────────────────────────
-//
-// Builds a target-agnostic TypeRendering from a type Node.
-// Parallels emit_node_type_rc but produces structured data instead of strings.
-// The rc_types and recursive_types maps come from EmitGraphInfo.
-
-fn tr_default() -> TypeRendering {
-    TypeRendering {
-        type_name: String::new(),
-        element: None,
-        key: None,
-        value: None,
-        params: Rc::new(vec![]),
-        return_type: None,
-        inner: None,
-        generic_args: Rc::new(vec![]),
-        shared: false,
-        boxed: false,
-        is_tuple: false,
-        is_error: false,
-        error_label: String::new(),
-    }
-}
-
-pub fn build_type_rendering(
-    n: Rc<Node>,
-    rc_types: Rc<HashMap<String, bool>>,
-    recursive_types: Rc<HashMap<String, bool>>,
-) -> Rc<TypeRendering> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let n_is_error = if n.inferred.clone() != None {
-            is_compiler_error(n.inferred.clone().unwrap())
-        } else {
-            false
-        };
-        let n_is_type_var = if n.inferred.clone() != None {
-            is_type_variable(n.inferred.clone().unwrap())
-        } else {
-            false
-        };
-
-        // Error / unresolved type variable
-        if (n_is_type_var || n_is_error) && (n.children.len() == 0) {
-            return Rc::new(TypeRendering {
-                type_name: if n_is_error {
-                    "CompilerError".to_string()
-                } else {
-                    "TypeVariable".to_string()
-                },
-                is_error: true,
-                error_label: n.name.clone(),
-                ..tr_default()
-            });
-        }
-
-        // Callable: fn(A, B) -> R
-        if n.name.as_str() == "Callable" {
-            let param_renderings: Vec<Rc<TypeRendering>> = n
-                .params
-                .iter()
-                .cloned()
-                .map(|p| {
-                    build_type_rendering(
-                        param_node_type_expr(p),
-                        rc_types.clone(),
-                        recursive_types.clone(),
-                    )
-                })
-                .collect();
-            let ret = match n.inferred.as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => Some(build_type_rendering(
-                    rt,
-                    rc_types.clone(),
-                    recursive_types.clone(),
-                )),
-                _ => None,
-            };
-            return Rc::new(TypeRendering {
-                type_name: "Callable".to_string(),
-                params: Rc::new(param_renderings),
-                return_type: ret,
-                ..tr_default()
-            });
-        }
-
-        // Optional wrapping
-        let is_optional = n.return_cardinality == Cardinality::CardOptional;
-        if is_optional {
-            let inner_tr = build_type_rendering(
-                with_required_cardinality(n.clone()),
-                rc_types.clone(),
-                recursive_types.clone(),
-            );
-            return Rc::new(TypeRendering {
-                type_name: "optional".to_string(),
-                inner: Some(inner_tr),
-                ..tr_default()
-            });
-        }
-
-        // Dispatch on connective
-        let is_conj = n.connective == Connective::Conj;
-        let is_disj = n.connective == Connective::Disj;
-        if !is_conj && !is_disj {
-            build_type_rendering_leaf(n, rc_types, recursive_types)
-        } else if is_conj {
-            build_type_rendering_conj(n, rc_types, recursive_types)
-        } else {
-            build_type_rendering_disj(n, rc_types, recursive_types)
-        }
-    })
-}
-
-fn build_type_rendering_leaf(
-    n: Rc<Node>,
-    rc_types: Rc<HashMap<String, bool>>,
-    recursive_types: Rc<HashMap<String, bool>>,
-) -> Rc<TypeRendering> {
-    let shared = emit_map_has(rc_types.clone(), n.name.clone());
-
-    if n.children.len() == 0 {
-        // Bare type (no children)
-        let bare_is_map =
-            is_container_type(n.name.clone()) && to_snake(n.name.clone()).as_str() == "map";
-        let bare_is_collection = is_container_type(n.name.clone()) && !bare_is_map;
-        let has_container_template =
-            target_container_template(RenderTarget::Rust, to_snake(n.name.clone())).is_some();
-        let param_count = n.params.len();
-
-        if bare_is_map {
-            // Bare map: Map with no type args
-            Rc::new(TypeRendering {
-                type_name: "map".to_string(),
-                key: Some(leaf_type_rendering("_".to_string())),
-                value: Some(leaf_type_rendering("_".to_string())),
-                shared,
-                ..tr_default()
-            })
-        } else if bare_is_collection {
-            // Bare collection: List/Set with no type args
-            Rc::new(TypeRendering {
-                type_name: to_snake(n.name.clone()),
-                element: Some(leaf_type_rendering("_".to_string())),
-                shared,
-                ..tr_default()
-            })
-        } else if has_container_template && param_count == 1 {
-            // Generic container with type param (e.g., FreeMonoid<T>)
-            let inner = match n.params.first().cloned() {
-                Some(p) => build_type_rendering(
-                    param_node_type_expr(p),
-                    rc_types.clone(),
-                    recursive_types.clone(),
-                ),
-                None => leaf_type_rendering("_".to_string()),
-            };
-            Rc::new(TypeRendering {
-                type_name: to_snake(n.name.clone()),
-                element: Some(inner),
-                shared,
-                ..tr_default()
-            })
-        } else if n.name.as_str() == tuple_type_name().as_str() {
-            // Bare Tuple with no children
-            Rc::new(TypeRendering {
-                type_name: "Tuple".to_string(),
-                is_tuple: true,
-                shared,
-                ..tr_default()
-            })
-        } else {
-            // Primitive or named type
-            Rc::new(TypeRendering {
-                type_name: n.name.clone(),
-                shared,
-                ..tr_default()
-            })
-        }
-    } else {
-        // Leaf with children: container or generic type
-        let is_map = node_is_keyed_collection(n.clone());
-        if is_map {
-            let k = match n.children.first().cloned() {
-                Some(kn) => build_type_rendering(kn, rc_types.clone(), recursive_types.clone()),
-                None => leaf_type_rendering("_".to_string()),
-            };
-            let v = match n.children.iter().cloned().skip(1).next() {
-                Some(vn) => build_type_rendering(vn, rc_types.clone(), recursive_types.clone()),
-                None => leaf_type_rendering("_".to_string()),
-            };
-            Rc::new(TypeRendering {
-                type_name: n.name.clone(),
-                key: Some(k),
-                value: Some(v),
-                shared,
-                ..tr_default()
-            })
-        } else if n.children.len() == 1 {
-            let child_tr = match n.children.first().cloned() {
-                Some(child) => build_type_rendering(
-                    child,
-                    rc_types.clone(),
-                    recursive_types.clone(),
-                ),
-                None => leaf_type_rendering("_".to_string()),
-            };
-            let is_container = node_is_collection(n.clone());
-            if is_container {
-                Rc::new(TypeRendering {
-                    type_name: to_snake(n.name.clone()),
-                    element: Some(child_tr),
-                    shared,
-                    ..tr_default()
-                })
-            } else {
-                // Generic type with one type arg (e.g., NonEmptyVec<T>)
-                Rc::new(TypeRendering {
-                    type_name: n.name.clone(),
-                    generic_args: Rc::new(vec![child_tr]),
-                    shared,
-                    ..tr_default()
-                })
-            }
-        } else {
-            // Multi-child leaf: named type with generic args (e.g., PartialFunction<K,V>)
-            // or Tuple<A,B> as a type reference (NoConnective).
-            let child_trs: Vec<Rc<TypeRendering>> = n
-                .children
-                .iter()
-                .cloned()
-                .map(|c| build_type_rendering(c, rc_types.clone(), recursive_types.clone()))
-                .collect();
-            if n.name.as_str() == tuple_type_name().as_str() {
-                Rc::new(TypeRendering {
-                    type_name: "Tuple".to_string(),
-                    is_tuple: true,
-                    params: Rc::new(child_trs),
-                    ..tr_default()
-                })
-            } else {
-                Rc::new(TypeRendering {
-                    type_name: n.name.clone(),
-                    generic_args: Rc::new(child_trs),
-                    shared,
-                    ..tr_default()
-                })
-            }
-        }
-    }
-}
-
-fn build_type_rendering_conj(
-    n: Rc<Node>,
-    rc_types: Rc<HashMap<String, bool>>,
-    recursive_types: Rc<HashMap<String, bool>>,
-) -> Rc<TypeRendering> {
-    let shared = emit_map_has(rc_types.clone(), n.name.clone());
-
-    // Refined: unwrap to base type
-    if n.name.as_str() == "Refined" {
-        return match n.children.first().cloned() {
-            Some(base) => build_type_rendering(base, rc_types, recursive_types),
-            None => Rc::new(TypeRendering {
-                type_name: "Refined".to_string(),
-                ..tr_default()
-            }),
-        };
-    }
-
-    // Tuple
-    if n.name.as_str() == tuple_type_name().as_str() {
-        let first = match n.children.first().cloned() {
-            Some(c) => {
-                if c.inferred.is_some() {
-                    build_type_rendering(rt_type(c), rc_types.clone(), recursive_types.clone())
-                } else {
-                    build_type_rendering(c, rc_types.clone(), recursive_types.clone())
-                }
-            }
-            None => leaf_type_rendering("_".to_string()),
-        };
-        let second = match n.children.iter().cloned().skip(1).next() {
-            Some(c) => {
-                if c.inferred.is_some() {
-                    build_type_rendering(rt_type(c), rc_types.clone(), recursive_types.clone())
-                } else {
-                    build_type_rendering(c, rc_types.clone(), recursive_types.clone())
-                }
-            }
-            None => leaf_type_rendering("_".to_string()),
-        };
-        return Rc::new(TypeRendering {
-            type_name: "Tuple".to_string(),
-            is_tuple: true,
-            params: Rc::new(vec![first, second]),
-            ..tr_default()
-        });
-    }
-
-    // Named product — check for container template before bare-name fallback.
-    // After alias expansion, resolved Conj nodes like FreeMonoid have their
-    // params stripped. Route through container path so FreeMonoid → Vec<_>.
-    if !n.name.is_empty() {
-        let snake = to_snake(n.name.clone());
-        let has_template = target_container_template(RenderTarget::Rust, snake.clone()).is_some();
-        if has_template {
-            if snake.as_str() == "map" {
-                return Rc::new(TypeRendering {
-                    type_name: "map".to_string(),
-                    key: Some(leaf_type_rendering("_".to_string())),
-                    value: Some(leaf_type_rendering("_".to_string())),
-                    shared,
-                    ..tr_default()
-                });
-            } else {
-                return Rc::new(TypeRendering {
-                    type_name: snake,
-                    element: Some(leaf_type_rendering("_".to_string())),
-                    shared,
-                    ..tr_default()
-                });
-            }
-        }
-        return Rc::new(TypeRendering {
-            type_name: n.name.clone(),
-            shared,
-            ..tr_default()
-        });
-    }
-
-    // Anonymous product — render children as tuple elements
-    let field_renderings: Vec<Rc<TypeRendering>> = n
-        .children
-        .iter()
-        .cloned()
-        .map(|child| {
-            if child.inferred.is_some() {
-                build_type_rendering(rt_type(child), rc_types.clone(), recursive_types.clone())
-            } else {
-                Rc::new(TypeRendering {
-                    type_name: String::new(),
-                    is_error: true,
-                    error_label: "anonymous product field missing inferred".to_string(),
-                    ..tr_default()
-                })
-            }
-        })
-        .collect();
+pub fn tr_default() -> Rc<TypeRendering> {
     Rc::new(TypeRendering {
-        type_name: String::new(),
-        params: Rc::new(field_renderings),
-        is_tuple: true,
-        ..tr_default()
+    type_name: "".to_string(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+
+pub fn build_type_rendering(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        {
+            let n_is_error = if (n.inferred.clone() != None) {
+                is_compiler_error(n.inferred.clone().clone().unwrap())
+} else {
+                false
+};
+let n_is_type_var = if (n.inferred.clone() != None) {
+                is_type_variable(n.inferred.clone().clone().unwrap())
+} else {
+                false
+};
+if ((n_is_type_var.clone() || n_is_error.clone()) && ((n.children.clone().len() as i64) == 0)) {
+                return Rc::new(TypeRendering {
+    type_name: if n_is_error.clone() {
+                    "CompilerError".to_string()
+} else {
+                    "TypeVariable".to_string()
+},
+    is_error: true,
+    error_label: n.name.clone(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_tuple: false,
+})
+}
+if (n.name.clone().as_str() == "Callable".to_string().as_str()) {
+                {
+                    let param_renderings = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(build_type_rendering(param_node_type_expr(p.clone()), rc_types.clone(), recursive_types.clone())); } __result });
+let ret = match n.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => Some(build_type_rendering(rt.clone(), rc_types.clone(), recursive_types.clone())),
+    _ => None,
+};
+return Rc::new(TypeRendering {
+    type_name: "Callable".to_string(),
+    params: param_renderings.clone(),
+    return_type: ret.clone(),
+    element: None,
+    key: None,
+    value: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+}
+let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+if is_optional.clone() {
+                {
+                    let inner_tr = build_type_rendering(with_required_cardinality(n.clone()), rc_types.clone(), recursive_types.clone());
+return Rc::new(TypeRendering {
+    type_name: "optional".to_string(),
+    inner: Some(inner_tr.clone()),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+}
+let is_conj = (n.connective.clone() == Connective::Conj);
+let is_disj = (n.connective.clone() == Connective::Disj);
+if (!is_conj.clone() && !is_disj.clone()) {
+                build_type_rendering_leaf(n.clone(), rc_types.clone(), recursive_types.clone())
+} else {
+                if is_conj.clone() {
+                    build_type_rendering_conj(n.clone(), rc_types.clone(), recursive_types.clone())
+} else {
+                    build_type_rendering_disj(n.clone(), rc_types.clone())
+}
+}
+}
     })
 }
 
-fn build_type_rendering_disj(
-    n: Rc<Node>,
-    rc_types: Rc<HashMap<String, bool>>,
-    _recursive_types: Rc<HashMap<String, bool>>,
-) -> Rc<TypeRendering> {
-    let shared = emit_map_has(rc_types.clone(), n.name.clone());
-
-    if !n.name.is_empty() {
-        // Named coproduct
-        Rc::new(TypeRendering {
-            type_name: n.name.clone(),
-            shared,
-            ..tr_default()
-        })
-    } else {
-        // Anonymous coproduct — error
-        Rc::new(TypeRendering {
-            type_name: String::new(),
-            is_error: true,
-            error_label: "anonymous coproduct reached TypeRendering builder".to_string(),
-            ..tr_default()
-        })
-    }
+pub fn build_type_rendering_leaf(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
+    {
+        let shared = emit_map_has(rc_types.clone(), n.name.clone());
+if ((n.children.clone().len() as i64) == 0) {
+            {
+                let bare_is_map = (is_container_type(n.name.clone()) && (to_snake(n.name.clone()).as_str() == "map".to_string().as_str()));
+let bare_is_collection = (is_container_type(n.name.clone()) && !bare_is_map.clone());
+let has_container_template = match target_container_template(RenderTarget::Rust, to_snake(n.name.clone())) {
+    Some(_) => true,
+    None => false,
+};
+let param_count = (n.params.clone().len() as i64);
+if bare_is_map.clone() {
+                    Rc::new(TypeRendering {
+    type_name: "map".to_string(),
+    key: Some(leaf_type_rendering("_".to_string())),
+    value: Some(leaf_type_rendering("_".to_string())),
+    shared: shared.clone(),
+    element: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+} else {
+                    if bare_is_collection.clone() {
+                        Rc::new(TypeRendering {
+    type_name: to_snake(n.name.clone()),
+    element: Some(leaf_type_rendering("_".to_string())),
+    shared: shared.clone(),
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+} else {
+                        if (has_container_template.clone() && (param_count.clone() == 1)) {
+                            {
+                                let inner = match n.params.clone().first().cloned() {
+    Some(p) => build_type_rendering(param_node_type_expr(p.clone()), rc_types.clone(), recursive_types.clone()),
+    None => leaf_type_rendering("_".to_string()),
+};
+Rc::new(TypeRendering {
+    type_name: to_snake(n.name.clone()),
+    element: Some(inner.clone()),
+    shared: shared.clone(),
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+} else {
+                            if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
+                                Rc::new(TypeRendering {
+    type_name: "Tuple".to_string(),
+    is_tuple: true,
+    shared: shared.clone(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+} else {
+                                Rc::new(TypeRendering {
+    type_name: n.name.clone(),
+    shared: shared.clone(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+}
+}
+}
+}
+} else {
+            {
+                let is_map = node_is_keyed_collection(n.clone());
+if is_map.clone() {
+                    {
+                        let k = match n.children.clone().first().cloned() {
+    Some(kn) => build_type_rendering(kn.clone(), rc_types.clone(), recursive_types.clone()),
+    None => leaf_type_rendering("_".to_string()),
+};
+let v = match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(vn) => build_type_rendering(vn.clone(), rc_types.clone(), recursive_types.clone()),
+    None => leaf_type_rendering("_".to_string()),
+};
+Rc::new(TypeRendering {
+    type_name: n.name.clone(),
+    key: Some(k.clone()),
+    value: Some(v.clone()),
+    shared: shared.clone(),
+    element: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+} else {
+                    if ((n.children.clone().len() as i64) == 1) {
+                        {
+                            let child_tr = match n.children.clone().first().cloned() {
+    Some(child) => build_type_rendering(child.clone(), rc_types.clone(), recursive_types.clone()),
+    None => leaf_type_rendering("_".to_string()),
+};
+let is_container = node_is_collection(n.clone());
+if is_container.clone() {
+                                Rc::new(TypeRendering {
+    type_name: to_snake(n.name.clone()),
+    element: Some(child_tr.clone()),
+    shared: shared.clone(),
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+} else {
+                                Rc::new(TypeRendering {
+    type_name: n.name.clone(),
+    generic_args: Rc::new(vec![child_tr.clone()]),
+    shared: shared.clone(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+}
+} else {
+                        {
+                            let child_trs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(build_type_rendering(c.clone(), rc_types.clone(), recursive_types.clone())); } __result });
+if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
+                                Rc::new(TypeRendering {
+    type_name: "Tuple".to_string(),
+    is_tuple: true,
+    params: child_trs.clone(),
+    element: None,
+    key: None,
+    value: None,
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+} else {
+                                Rc::new(TypeRendering {
+    type_name: n.name.clone(),
+    generic_args: child_trs.clone(),
+    shared: shared.clone(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+}
+}
+}
+}
+}
+}
 }
 
-// ── TypeRendering renderer ────────────────────────────────────────────
-//
-// Pure function: TypeRendering × RenderTarget → String.
-// No Node access. No HashMap lookups. Reads only the TypeRendering fields.
+pub fn build_type_rendering_conj(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
+    {
+        let shared = emit_map_has(rc_types.clone(), n.name.clone());
+if (n.name.clone().as_str() == "Refined".to_string().as_str()) {
+            return match n.children.clone().first().cloned() {
+    Some(base) => build_type_rendering(base.clone(), rc_types.clone(), recursive_types.clone()),
+    None => Rc::new(TypeRendering {
+    type_name: "Refined".to_string(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+}),
+}
+}
+if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
+            {
+                let first_child = match n.children.clone().first().cloned() {
+    Some(c) => if (c.inferred.clone() != None) {
+                    build_type_rendering(rt_type(c.clone()), rc_types.clone(), recursive_types.clone())
+} else {
+                    build_type_rendering(c.clone(), rc_types.clone(), recursive_types.clone())
+},
+    None => leaf_type_rendering("_".to_string()),
+};
+let second_child = match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(c) => if (c.inferred.clone() != None) {
+                    build_type_rendering(rt_type(c.clone()), rc_types.clone(), recursive_types.clone())
+} else {
+                    build_type_rendering(c.clone(), rc_types.clone(), recursive_types.clone())
+},
+    None => leaf_type_rendering("_".to_string()),
+};
+return Rc::new(TypeRendering {
+    type_name: "Tuple".to_string(),
+    is_tuple: true,
+    params: Rc::new(vec![first_child.clone(), second_child.clone()]),
+    element: None,
+    key: None,
+    value: None,
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+}
+if (n.name.clone().as_str() != "".to_string().as_str()) {
+            {
+                let snake = to_snake(n.name.clone());
+let has_template = match target_container_template(RenderTarget::Rust, snake.clone()) {
+    Some(_) => true,
+    None => false,
+};
+if has_template.clone() {
+                    if (snake.clone().as_str() == "map".to_string().as_str()) {
+                        return Rc::new(TypeRendering {
+    type_name: "map".to_string(),
+    key: Some(leaf_type_rendering("_".to_string())),
+    value: Some(leaf_type_rendering("_".to_string())),
+    shared: shared.clone(),
+    element: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+} else {
+                        return Rc::new(TypeRendering {
+    type_name: snake.clone(),
+    element: Some(leaf_type_rendering("_".to_string())),
+    shared: shared.clone(),
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+}
+return Rc::new(TypeRendering {
+    type_name: n.name.clone(),
+    shared: shared.clone(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+}
+let field_renderings = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(if (child.inferred.clone() != None) {
+            build_type_rendering(rt_type(child.clone()), rc_types.clone(), recursive_types.clone())
+} else {
+            Rc::new(TypeRendering {
+    type_name: "".to_string(),
+    is_error: true,
+    error_label: "anonymous product field missing inferred".to_string(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_tuple: false,
+})
+}); } __result });
+Rc::new(TypeRendering {
+    type_name: "".to_string(),
+    params: field_renderings.clone(),
+    is_tuple: true,
+    element: None,
+    key: None,
+    value: None,
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+}
+}
+
+pub fn build_type_rendering_disj(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
+    {
+        let shared = emit_map_has(rc_types.clone(), n.name.clone());
+if (n.name.clone().as_str() != "".to_string().as_str()) {
+            Rc::new(TypeRendering {
+    type_name: n.name.clone(),
+    shared: shared.clone(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: "".to_string(),
+})
+} else {
+            Rc::new(TypeRendering {
+    type_name: "".to_string(),
+    is_error: true,
+    error_label: "anonymous coproduct reached TypeRendering builder".to_string(),
+    element: None,
+    key: None,
+    value: None,
+    params: Rc::new(vec![]),
+    return_type: None,
+    inner: None,
+    generic_args: Rc::new(vec![]),
+    shared: false,
+    boxed: false,
+    is_tuple: false,
+})
+}
+}
+}
 
 pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
-    let is_rust = matches!(target, RenderTarget::Rust);
-
-    // Error types — use error_label for context when available
-    if tr.is_error {
-        let label = if tr.error_label.is_empty() { &tr.type_name } else { &tr.error_label };
-        return if is_rust {
-            format!(
-                "compile_error!(\"unresolved {} type reached emit\")",
-                label
-            )
-        } else {
-            format!("__EMIT_BUG_UNRESOLVED_{}__", label)
-        };
-    }
-
-    let base = render_type_base(tr.clone(), target.clone());
-
-    // Apply sharing wrapper
-    if tr.shared {
-        wrap_shared_type(target, base)
-    } else {
-        base
-    }
+    if tr.is_error.clone() {
+        {
+            let label = if (tr.error_label.clone().as_str() == "".to_string().as_str()) {
+                tr.type_name.clone()
+} else {
+                tr.error_label.clone()
+};
+match target.clone() {
+    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("compile_error!(\"unresolved ".to_string(), label.clone()), " type reached emit\")".to_string()),
+    _ => v2_rt::concat(v2_rt::concat("__EMIT_BUG_UNRESOLVED_".to_string(), label.clone()), "__".to_string()),
+}
+}
+} else {
+        {
+            let base = render_type_base(tr.clone(), target.clone());
+if tr.shared.clone() {
+                wrap_shared_type(target.clone(), base.clone())
+} else {
+                base.clone()
+}
+}
+}
 }
 
-fn render_type_base(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
-    let is_rust = matches!(target, RenderTarget::Rust);
-
-    // Callable: fn(A, B) -> R
-    if tr.type_name.as_str() == "Callable" {
-        let param_strs: Vec<String> = tr
-            .params
-            .iter()
-            .map(|p| render_type(p.clone(), target.clone()))
-            .collect();
-        let param_str = param_strs.join(", ");
-        let ret_str = match &tr.return_type {
-            Some(rt) => render_type(rt.clone(), target.clone()),
-            None => match target {
-                RenderTarget::Go => String::new(),
-                RenderTarget::Python => "None".to_string(),
-                _ => "()".to_string(),
-            },
-        };
-        return match target {
-            RenderTarget::Go => {
-                let suffix = if ret_str.is_empty() {
-                    String::new()
-                } else {
-                    format!(" {}", ret_str)
-                };
-                format!("func({}){}", param_str, suffix)
-            }
-            RenderTarget::Python => format!("Callable[[{}], {}]", param_str, ret_str),
-            RenderTarget::Rust => format!("Rc<dyn Fn({}) -> {}>", param_str, ret_str),
-            _ => format!("Fn({}) -> {}", param_str, ret_str),
-        };
-    }
-
-    // Optional: Option<T> / Optional[T] / *T
-    if tr.type_name.as_str() == "optional" {
-        if let Some(ref inner) = tr.inner {
-            let inner_str = render_type(inner.clone(), target.clone());
-            return emit_container("optional".to_string(), inner_str, target);
-        }
-    }
-
-    // Tuple: (A, B)
-    if tr.is_tuple {
-        if !tr.params.is_empty() {
-            let parts: Vec<String> = tr
-                .params
-                .iter()
-                .map(|p| render_type(p.clone(), target.clone()))
-                .collect();
-            return match target {
-                RenderTarget::Go => {
-                    if parts.len() == 2 {
-                        format!("struct{{ First {}; Second {} }}", parts[0], parts[1])
-                    } else {
-                        format!("struct{{ {} }}", parts.join("; "))
-                    }
-                }
-                RenderTarget::Python => format!("Tuple[{}]", parts.join(", ")),
-                _ => format!("({})", parts.join(", ")),
-            };
-        } else {
-            // Bare Tuple with no children
-            return match target {
-                RenderTarget::Python => "Tuple".to_string(),
-                RenderTarget::Go => "struct{}".to_string(),
-                _ => "()".to_string(),
-            };
-        }
-    }
-
-    // Map: HashMap<K, V> / Dict[K, V] / map[K]V
-    if let (Some(ref k), Some(ref v)) = (&tr.key, &tr.value) {
-        let key_str = render_type(k.clone(), target.clone());
-        let val_str = render_type(v.clone(), target.clone());
-        return emit_map_type(key_str, val_str, target);
-    }
-
-    // Container: Vec<T> / List[T] / []T
-    if let Some(ref elem) = tr.element {
-        let inner_str = render_type(elem.clone(), target.clone());
-        return emit_container(tr.type_name.clone(), inner_str, target);
-    }
-
-    // Generic type with type args: FooType<A, B>
-    if !tr.generic_args.is_empty() {
-        let base = emit_primitive_type(tr.type_name.clone(), target.clone());
-        let arg_strs: Vec<String> = tr
-            .generic_args
-            .iter()
-            .map(|a| render_type(a.clone(), target.clone()))
-            .collect();
-        let args_joined = arg_strs.join(", ");
-        return match target {
-            RenderTarget::Python => format!("{}[{}]", base, args_joined),
-            _ => format!("{}<{}>", base, args_joined),
-        };
-    }
-
-    // Anonymous product (e.g., single-field anonymous struct)
-    if tr.type_name.is_empty() && !tr.params.is_empty() {
-        // Anonymous product rendered as tuple
-        let parts: Vec<String> = tr
-            .params
-            .iter()
-            .map(|p| render_type(p.clone(), target.clone()))
-            .collect();
-        if is_rust {
-            if parts.len() == 1 {
-                return parts[0].clone();
-            }
-            return format!("({})", parts.join(", "));
-        }
-        return "__EMIT_BUG_ANONYMOUS_CONJ__".to_string();
-    }
-
-    // Leaf / named type
-    emit_primitive_type(tr.type_name.clone(), target)
+pub fn render_type_base(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
+    {
+        if (tr.type_name.clone().as_str() == "Callable".to_string().as_str()) {
+            {
+                let param_strs = Rc::new({ let mut __result = Vec::new(); for p in tr.params.clone().iter().cloned() { __result.push(render_type(p.clone(), target.clone())); } __result });
+let param_str = param_strs.clone().join(&", ".to_string());
+let ret_str = match tr.return_type.clone() {
+    Some(rt) => render_type(rt.clone(), target.clone()),
+    None => match target.clone() {
+    RenderTarget::Go => "".to_string(),
+    RenderTarget::Python => "None".to_string(),
+    _ => "()".to_string(),
+},
+};
+return match target.clone() {
+    RenderTarget::Go => if (ret_str.clone().as_str() == "".to_string().as_str()) {
+                    v2_rt::concat(v2_rt::concat("func(".to_string(), param_str.clone()), ")".to_string())
+} else {
+                    v2_rt::concat(v2_rt::concat(v2_rt::concat("func(".to_string(), param_str.clone()), ") ".to_string()), ret_str.clone())
+},
+    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Callable[[".to_string(), param_str.clone()), "], ".to_string()), ret_str.clone()), "]".to_string()),
+    RenderTarget::Rust => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc<dyn Fn(".to_string(), param_str.clone()), ") -> ".to_string()), ret_str.clone()), ">".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat("Fn(".to_string(), param_str.clone()), ") -> ".to_string()), ret_str.clone()),
+}
+}
+}
+if (tr.type_name.clone().as_str() == "optional".to_string().as_str()) {
+            match tr.inner.clone() {
+    Some(inner) => {
+                let inner_str = render_type(inner.clone(), target.clone());
+return emit_container("optional".to_string(), inner_str.clone(), target.clone())
+},
+    None => {
+                
+},
+}
+}
+if tr.is_tuple.clone() {
+            if ((tr.params.clone().len() as i64) > 0) {
+                {
+                    let parts = Rc::new({ let mut __result = Vec::new(); for p in tr.params.clone().iter().cloned() { __result.push(render_type(p.clone(), target.clone())); } __result });
+return match target.clone() {
+    RenderTarget::Go => if ((parts.clone().len() as i64) == 2) {
+                        match parts.clone().first().cloned() {
+    Some(first_part) => match Rc::new(parts.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(second_part) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("struct{ First ".to_string(), first_part.clone()), "; Second ".to_string()), second_part.clone()), " }".to_string()),
+    None => v2_rt::concat(v2_rt::concat("struct{ ".to_string(), parts.clone().join(&"; ".to_string())), " }".to_string()),
+},
+    None => v2_rt::concat(v2_rt::concat("struct{ ".to_string(), parts.clone().join(&"; ".to_string())), " }".to_string()),
+}
+} else {
+                        v2_rt::concat(v2_rt::concat("struct{ ".to_string(), parts.clone().join(&"; ".to_string())), " }".to_string())
+},
+    RenderTarget::Python => v2_rt::concat(v2_rt::concat("Tuple[".to_string(), parts.clone().join(&", ".to_string())), "]".to_string()),
+    _ => v2_rt::concat(v2_rt::concat("(".to_string(), parts.clone().join(&", ".to_string())), ")".to_string()),
+}
+}
+} else {
+                return match target.clone() {
+    RenderTarget::Python => "Tuple".to_string(),
+    RenderTarget::Go => "struct{}".to_string(),
+    _ => "()".to_string(),
+}
+}
+}
+match tr.key.clone() {
+    Some(k) => match tr.value.clone() {
+    Some(v) => {
+            let key_str = render_type(k.clone(), target.clone());
+let val_str = render_type(v.clone(), target.clone());
+return emit_map_type(key_str.clone(), val_str.clone(), target.clone())
+},
+    None => {
+            
+},
+},
+    None => {
+            
+},
+}
+match tr.element.clone() {
+    Some(elem) => {
+            let inner_str = render_type(elem.clone(), target.clone());
+return emit_container(tr.type_name.clone(), inner_str.clone(), target.clone())
+},
+    None => {
+            
+},
+}
+if ((tr.generic_args.clone().len() as i64) > 0) {
+            {
+                let base = emit_primitive_type(tr.type_name.clone(), target.clone());
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in tr.generic_args.clone().iter().cloned() { __result.push(render_type(a.clone(), target.clone())); } __result });
+let args_joined = arg_strs.clone().join(&", ".to_string());
+return match target.clone() {
+    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "[".to_string()), args_joined.clone()), "]".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "<".to_string()), args_joined.clone()), ">".to_string()),
+}
+}
+}
+if ((tr.type_name.clone().as_str() == "".to_string().as_str()) && ((tr.params.clone().len() as i64) > 0)) {
+            {
+                let parts = Rc::new({ let mut __result = Vec::new(); for p in tr.params.clone().iter().cloned() { __result.push(render_type(p.clone(), target.clone())); } __result });
+match target.clone() {
+    RenderTarget::Rust => if ((parts.clone().len() as i64) == 1) {
+                    match parts.clone().first().cloned() {
+    Some(single) => return single.clone(),
+    None => {
+                        
+},
+}
+} else {
+                    return v2_rt::concat(v2_rt::concat("(".to_string(), parts.clone().join(&", ".to_string())), ")".to_string())
+},
+    _ => return "__EMIT_BUG_ANONYMOUS_CONJ__".to_string(),
+}
+}
+}
+emit_primitive_type(tr.type_name.clone(), target.clone())
+}
 }
 
 pub fn is_type_alias_return_node(n: Rc<Node>) -> bool {
@@ -1703,8 +1847,8 @@ pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> R
 
 pub fn service_has_rest(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
     {
-        let from_fallback: bool = is_rest_transport(fallback_transport.clone());
-let from_ops: bool = { let mut __found = false; for op in op_children.clone().iter().cloned() { if if (op.transport.clone() != None) {
+        let from_fallback = is_rest_transport(fallback_transport.clone());
+let from_ops = { let mut __found = false; for op in op_children.clone().iter().cloned() { if if (op.transport.clone() != None) {
             is_rest_transport(op.transport.clone().clone().unwrap())
 } else {
             false
@@ -1715,8 +1859,8 @@ let from_ops: bool = { let mut __found = false; for op in op_children.clone().it
 
 pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
     {
-        let from_fallback: bool = is_shell_transport(fallback_transport.clone());
-let from_ops: bool = { let mut __found = false; for op in op_children.clone().iter().cloned() { if if (op.transport.clone() != None) {
+        let from_fallback = is_shell_transport(fallback_transport.clone());
+let from_ops = { let mut __found = false; for op in op_children.clone().iter().cloned() { if if (op.transport.clone() != None) {
             is_shell_transport(op.transport.clone().clone().unwrap())
 } else {
             false
@@ -1727,8 +1871,8 @@ let from_ops: bool = { let mut __found = false; for op in op_children.clone().it
 
 pub fn service_has_file(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
     {
-        let from_fallback: bool = is_file_transport(fallback_transport.clone());
-let from_ops: bool = { let mut __found = false; for op in op_children.clone().iter().cloned() { if if (op.transport.clone() != None) {
+        let from_fallback = is_file_transport(fallback_transport.clone());
+let from_ops = { let mut __found = false; for op in op_children.clone().iter().cloned() { if if (op.transport.clone() != None) {
             is_file_transport(op.transport.clone().clone().unwrap())
 } else {
             false
@@ -1739,15 +1883,15 @@ let from_ops: bool = { let mut __found = false; for op in op_children.clone().it
 
 pub fn service_has_rest_auth(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
     {
-        let fallback_is_rest: bool = is_rest_transport(fallback_transport.clone());
-let from_fallback: bool = if fallback_is_rest.clone() {
+        let fallback_is_rest = is_rest_transport(fallback_transport.clone());
+let from_fallback = if fallback_is_rest.clone() {
             transport_has_auth(fallback_transport.clone())
 } else {
             false
 };
-let from_ops: bool = { let mut __found = false; for op in op_children.clone().iter().cloned() { if if (op.transport.clone() != None) {
+let from_ops = { let mut __found = false; for op in op_children.clone().iter().cloned() { if if (op.transport.clone() != None) {
             {
-                let t: Rc<Node> = op.transport.clone().clone().unwrap();
+                let t = op.transport.clone().clone().unwrap();
 if is_rest_transport(t.clone()) {
                     transport_has_auth(t.clone())
 } else {
@@ -1770,9 +1914,9 @@ pub fn extract_modifier_names(properties: Rc<Vec<Rc<Node>>>) -> Rc<Vec<String>> 
 
 pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
     {
-        let item_has_structure: bool = (item.connective.clone() != Connective::NoConnective);
-let is_bare_leaf: bool = (((((item_has_structure.clone() == false) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0));
-let kind: TypedItemKind = if (is_bare_leaf.clone() && is_type_alias_return_node(rt_type(item.clone()))) {
+        let item_has_structure = (item.connective.clone() != Connective::NoConnective);
+let is_bare_leaf = (((((item_has_structure.clone() == false) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0));
+let kind = if (is_bare_leaf.clone() && is_type_alias_return_node(rt_type(item.clone()))) {
             TypedItemKind::TypedItemTypeAlias
 } else {
             if (is_bare_leaf.clone() && !is_type_alias_return_node(rt_type(item.clone()))) {
@@ -1867,9 +2011,9 @@ pub enum FuncBodyShape {
 pub fn classify_func_body(body: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<FuncBodyShape> {
     match (*body.expr_data.clone()).clone() {
     ExprData::ExprLet => {
-        let n: String = let_binding_name_at(body.clone(), source_index.clone());
-let v: Rc<Node> = let_value(body.clone());
-let rest: Option<Rc<Node>> = let_body(body.clone());
+        let n = let_binding_name_at(body.clone(), source_index.clone());
+let v = let_value(body.clone());
+let rest = let_body(body.clone());
 Rc::new(FuncBodyShape::FuncBodyLet {
     name: n.clone(),
     value: v.clone(),
@@ -1921,9 +2065,9 @@ pub fn classify_tco_expr(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>
     args: texpr.children.clone(),
 }),
     ExprData::ExprIf => {
-        let c: Rc<Node> = if_condition(texpr.clone());
-let t: Rc<Node> = if_then_branch(texpr.clone());
-let e: Option<Rc<Node>> = if_else_branch(texpr.clone());
+        let c = if_condition(texpr.clone());
+let t = if_then_branch(texpr.clone());
+let e = if_else_branch(texpr.clone());
 Rc::new(TcoExprShape::TcoIf {
     condition: c.clone(),
     then_branch: t.clone(),
@@ -1931,17 +2075,17 @@ Rc::new(TcoExprShape::TcoIf {
 })
 },
     ExprData::ExprMatch => {
-        let scrut: Rc<Node> = match_scrutinee(texpr.clone());
-let arm_list: Rc<Vec<Rc<Node>>> = match_arm_nodes(texpr.clone());
+        let scrut = match_scrutinee(texpr.clone());
+let arm_list = match_arm_nodes(texpr.clone());
 Rc::new(TcoExprShape::TcoMatch {
     scrutinee: scrut.clone(),
     arms: arm_list.clone(),
 })
 },
     ExprData::ExprLet => {
-        let n: String = let_binding_name_at(texpr.clone(), source_index.clone());
-let v: Rc<Node> = let_value(texpr.clone());
-let bd: Option<Rc<Node>> = let_body(texpr.clone());
+        let n = let_binding_name_at(texpr.clone(), source_index.clone());
+let v = let_value(texpr.clone());
+let bd = let_body(texpr.clone());
 Rc::new(TcoExprShape::TcoLet {
     name: n.clone(),
     value: v.clone(),
@@ -1981,50 +2125,56 @@ pub fn is_self_recursive(name: String, body: Rc<Node>, registry: Rc<HashMap<Stri
 
 pub fn tco_reassign_core(ordered_args: Rc<Vec<String>>, param_names: Rc<Vec<String>>, temp_var_prefix: String, temp_decl_prefix: String, temp_assign_op: String, stmt_terminator: String, continue_str: String, line_prefix: String) -> Rc<Vec<String>> {
     {
-        // Skip reassignment when arg == param (parameter passed through unchanged).
-        // This avoids generating `pred.clone()` for impl Fn params in TCO.
-        let changed: Vec<(i64, String, String)> = ordered_args.iter().cloned()
-            .zip(param_names.iter().cloned())
-            .enumerate()
-            .filter(|(_i, (arg, param))| arg.as_str() != param.as_str())
-            .map(|(i, (arg, param))| (i as i64, arg, param))
-            .collect();
-let temp_lets: Rc<Vec<String>> = Rc::new(changed.iter().cloned().map(|(i, arg, _param)| {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
-        line_prefix.clone(), temp_decl_prefix.clone()), temp_var_prefix.clone()),
-        i.to_string()), temp_assign_op.clone()), arg), stmt_terminator.clone())
-}).collect());
-let assigns: Rc<Vec<String>> = Rc::new(changed.iter().cloned().map(|(i, _arg, param)| {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
-        line_prefix.clone(), param), " = ".to_string()),
-        temp_var_prefix.clone()), i.to_string()), stmt_terminator.clone())
-}).collect());
+        let temp_lets = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(ordered_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(line_prefix.clone(), temp_decl_prefix.clone()), temp_var_prefix.clone()), (pair.0.clone()).to_string()), temp_assign_op.clone()), pair.1.clone()), stmt_terminator.clone())); } __result });
+let assigns = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(param_names.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(line_prefix.clone(), pair.1.clone()), " = ".to_string()), temp_var_prefix.clone()), (pair.0.clone()).to_string()), stmt_terminator.clone())); } __result });
 v2_rt::concat(v2_rt::concat(temp_lets.clone(), assigns.clone()), Rc::new(vec![v2_rt::concat(line_prefix.clone(), continue_str.clone())]))
 }
 }
 
-pub fn emit_shared_tco_expr(frame: Rc<TcoFrame>, fn_name: String, emit_self_call_reassign: impl Fn(Rc<TcoReassignInput>) -> String, emit_non_self_call: impl Fn(Rc<TcoFrame>) -> String, emit_if: impl Fn(Rc<TcoFrame>) -> String, emit_match: impl Fn(Rc<TcoFrame>) -> String, emit_let: impl Fn(Rc<TcoFrame>) -> String, emit_block: impl Fn(Rc<TcoFrame>) -> String, emit_default_return: impl Fn(Rc<TcoFrame>) -> String) -> String {
-    {
-        let si: Option<Rc<NewlineIndex>> = frame.scope.clone().type_env.clone().source_index.clone();
+pub fn emit_shared_tco_expr(mut frame: Rc<TcoFrame>, mut fn_name: String, mut emit_self_call_reassign: impl Fn(Rc<TcoReassignInput>) -> String + Clone, mut emit_non_self_call: impl Fn(Rc<TcoFrame>) -> String + Clone, mut emit_if: impl Fn(Rc<TcoFrame>) -> String + Clone, mut emit_match: impl Fn(Rc<TcoFrame>) -> String + Clone, mut emit_let: impl Fn(Rc<TcoFrame>) -> String + Clone, mut emit_block: impl Fn(Rc<TcoFrame>) -> String + Clone, mut emit_default_return: impl Fn(Rc<TcoFrame>) -> String + Clone) -> String {
+    loop {
+        let si = frame.scope.clone().type_env.clone().source_index.clone();
 match (*frame.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => if (expr_call_func_at(frame.expr.clone(), si.clone()).as_str() == fn_name.clone().as_str()) {
-            emit_self_call_reassign(Rc::new(TcoReassignInput {
+    ExprData::ExprCall { .. } => { if (expr_call_func_at(frame.expr.clone(), si.clone()).as_str() == fn_name.clone().as_str()) {
+            break emit_self_call_reassign(Rc::new(TcoReassignInput {
     args: frame.expr.clone().children.clone(),
     scope: frame.scope.clone(),
     depth: frame.depth.clone(),
-}))
+}));
 } else {
-            emit_non_self_call(frame.clone())
-},
-    ExprData::ExprReturn => {
-            let inner = return_value(frame.expr.clone());
-            emit_shared_tco_expr(Rc::new(TcoFrame { expr: inner, scope: frame.scope.clone(), depth: frame.depth.clone() }), fn_name.clone(), emit_self_call_reassign, emit_non_self_call, emit_if, emit_match, emit_let, emit_block, emit_default_return)
-    },
-    ExprData::ExprIf => emit_if(frame.clone()),
-    ExprData::ExprMatch => emit_match(frame.clone()),
-    ExprData::ExprLet => emit_let(frame.clone()),
-    ExprData::ExprBlock => emit_block(frame.clone()),
-    _ => emit_default_return(frame.clone()),
+            break emit_non_self_call(frame.clone());
+} },
+    ExprData::ExprReturn => { let inner = return_value(frame.expr.clone());
+{
+            let __tco_0 = Rc::new(TcoFrame {
+    expr: inner.clone(),
+    scope: frame.scope.clone(),
+    depth: frame.depth.clone(),
+});
+let __tco_1 = fn_name.clone();
+let __tco_2 = emit_self_call_reassign.clone();
+let __tco_3 = emit_non_self_call.clone();
+let __tco_4 = emit_if.clone();
+let __tco_5 = emit_match.clone();
+let __tco_6 = emit_let.clone();
+let __tco_7 = emit_block.clone();
+let __tco_8 = emit_default_return.clone();
+frame = __tco_0;
+fn_name = __tco_1;
+emit_self_call_reassign = __tco_2;
+emit_non_self_call = __tco_3;
+emit_if = __tco_4;
+emit_match = __tco_5;
+emit_let = __tco_6;
+emit_block = __tco_7;
+emit_default_return = __tco_8;
+continue;
+} },
+    ExprData::ExprIf => { break emit_if(frame.clone()); },
+    ExprData::ExprMatch => { break emit_match(frame.clone()); },
+    ExprData::ExprLet => { break emit_let(frame.clone()); },
+    ExprData::ExprBlock => { break emit_block(frame.clone()); },
+    _ => { break emit_default_return(frame.clone()); },
 }
 }
 }
@@ -2035,8 +2185,8 @@ pub fn is_tco_candidate(texpr: Rc<Node>, func_name: String, source_index: Option
     ExprData::ExprCall { .. } => (expr_call_func_at(texpr.clone(), source_index.clone()).as_str() == func_name.clone().as_str()),
     ExprData::ExprReturn => is_tco_candidate(return_value(texpr.clone()), func_name.clone(), source_index.clone()),
     ExprData::ExprIf => {
-            let then_cand: bool = is_tco_candidate(if_then_branch(texpr.clone()), func_name.clone(), source_index.clone());
-let else_cand: bool = match if_else_branch(texpr.clone()) {
+            let then_cand = is_tco_candidate(if_then_branch(texpr.clone()), func_name.clone(), source_index.clone());
+let else_cand = match if_else_branch(texpr.clone()) {
     Some(e) => is_tco_candidate(e.clone(), func_name.clone(), source_index.clone()),
     None => false,
 };
@@ -2057,7 +2207,7 @@ let else_cand: bool = match if_else_branch(texpr.clone()) {
 pub fn emit_ident(name: String, target: RenderTarget) -> String {
     match target.clone() {
     RenderTarget::Rust => {
-        let snake: String = to_snake(name.clone());
+        let snake = to_snake(name.clone());
 if { let mut __found = false; for r in language_spec(RenderTarget::Rust).reserved_words.clone().keywords.clone().iter().cloned() { if (r.clone().as_str() == snake.clone().as_str()) { __found = true; break; } } __found } {
             v2_rt::concat(reserved_prefix(RenderTarget::Rust), snake.clone())
 } else {
@@ -2065,17 +2215,17 @@ if { let mut __found = false; for r in language_spec(RenderTarget::Rust).reserve
 }
 },
     RenderTarget::Go => {
-        let parts: Rc<Vec<String>> = Rc::new(name.clone().split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+        let parts = Rc::new(name.clone().split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
 if ((parts.clone().len() as i64) == 0) {
             name.clone()
 } else {
             {
-                let first_part: String = match parts.clone().first().cloned() {
+                let first_part = match parts.clone().first().cloned() {
     Some(p) => Rc::new({ let mut __result = Vec::new(); for c in Rc::new(p.clone().chars().map(|c| c as i64).collect::<Vec<_>>()).iter().cloned() { __result.push(to_lower_char(c.clone())); } __result }).join(&"".to_string()),
     None => "".to_string(),
 };
-let rest_parts: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(parts.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() > 0) { __result.push(pair); } } __result }).iter().cloned() { __result.push(capitalize_first(pair.1.clone())); } __result });
-let camel: String = v2_rt::concat(first_part.clone(), rest_parts.clone().join(&"".to_string()));
+let rest_parts = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(parts.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() > 0) { __result.push(pair); } } __result }).iter().cloned() { __result.push(capitalize_first(pair.1.clone())); } __result });
+let camel = v2_rt::concat(first_part.clone(), rest_parts.clone().join(&"".to_string()));
 if { let mut __found = false; for r in language_spec(RenderTarget::Go).reserved_words.clone().keywords.clone().iter().cloned() { if (r.clone().as_str() == camel.clone().as_str()) { __found = true; break; } } __found } {
                     v2_rt::concat(camel.clone(), reserved_suffix(RenderTarget::Go))
 } else {
@@ -2085,7 +2235,7 @@ if { let mut __found = false; for r in language_spec(RenderTarget::Go).reserved_
 }
 },
     RenderTarget::Python => {
-        let snake: String = to_snake(name.clone());
+        let snake = to_snake(name.clone());
 if { let mut __found = false; for r in language_spec(RenderTarget::Python).reserved_words.clone().keywords.clone().iter().cloned() { if (r.clone().as_str() == snake.clone().as_str()) { __found = true; break; } } __found } {
             v2_rt::concat(snake.clone(), reserved_suffix(RenderTarget::Python))
 } else {
@@ -2132,7 +2282,7 @@ pub fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -
 
 pub fn emit_error_expr(message: String, target: RenderTarget) -> String {
     {
-        let msg: String = emit_string_literal(message.clone(), "".to_string());
+        let msg = emit_string_literal(message.clone(), "".to_string());
 match target.clone() {
     RenderTarget::Rust => v2_rt::concat(v2_rt::concat("panic!(".to_string(), msg.clone()), ")".to_string()),
     RenderTarget::Go => v2_rt::concat(v2_rt::concat("panic(".to_string(), msg.clone()), ")".to_string()),
@@ -2144,7 +2294,7 @@ match target.clone() {
 
 pub fn emit_lambda_params(param_names: Rc<Vec<String>>, target: RenderTarget) -> String {
     {
-        let param_strs: Rc<Vec<String>> = match target.clone() {
+        let param_strs = match target.clone() {
     RenderTarget::Go => Rc::new({ let mut __result = Vec::new(); for p in param_names.clone().iter().cloned() { __result.push(v2_rt::concat(emit_ident(p.clone(), RenderTarget::Go), " interface{}".to_string())); } __result }),
     _ => Rc::new({ let mut __result = Vec::new(); for p in param_names.clone().iter().cloned() { __result.push(emit_ident(p.clone(), target.clone())); } __result }),
 };
@@ -2162,7 +2312,7 @@ pub fn emit_list_lit_expr(element_strs: Rc<Vec<String>>, target: RenderTarget) -
 }
 } else {
         {
-            let els_str: String = element_strs.clone().join(&", ".to_string());
+            let els_str = element_strs.clone().join(&", ".to_string());
 match target.clone() {
     RenderTarget::Rust => v2_rt::concat(v2_rt::concat("Rc::new(vec![".to_string(), els_str.clone()), "])".to_string()),
     RenderTarget::Python => v2_rt::concat(v2_rt::concat("[".to_string(), els_str.clone()), "]".to_string()),
@@ -2182,7 +2332,7 @@ pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) ->
 }
 }
 
-pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>, wrap_result: impl Fn(String) -> String, recurse: impl Fn(Rc<Node>) -> String, emit_var: impl Fn(Rc<Node>) -> String, emit_field_access: impl Fn(Rc<Node>) -> String, emit_call: impl Fn(Rc<Node>) -> String, emit_method_call: impl Fn(Rc<Node>) -> String, emit_match: impl Fn(Rc<Node>) -> String, emit_if: impl Fn(Rc<Node>) -> String, emit_let: impl Fn(Rc<Node>) -> String, emit_record_lit: impl Fn(Rc<Node>) -> String, emit_string_interp: impl Fn(Rc<Node>) -> String, emit_block: impl Fn(Rc<Node>) -> String, emit_cast: impl Fn(Rc<Node>) -> String, emit_for_each: impl Fn(Rc<Node>) -> String, emit_index: impl Fn(Rc<Node>) -> String, emit_slice: impl Fn(Rc<Node>) -> String, emit_bin_op: impl Fn(Rc<Node>) -> String) -> String {
+pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>, wrap_result: impl Fn(String) -> String + Clone, recurse: impl Fn(Rc<Node>) -> String + Clone, emit_var: impl Fn(Rc<Node>) -> String + Clone, emit_field_access: impl Fn(Rc<Node>) -> String + Clone, emit_call: impl Fn(Rc<Node>) -> String + Clone, emit_method_call: impl Fn(Rc<Node>) -> String + Clone, emit_match: impl Fn(Rc<Node>) -> String + Clone, emit_if: impl Fn(Rc<Node>) -> String + Clone, emit_let: impl Fn(Rc<Node>) -> String + Clone, emit_record_lit: impl Fn(Rc<Node>) -> String + Clone, emit_string_interp: impl Fn(Rc<Node>) -> String + Clone, emit_block: impl Fn(Rc<Node>) -> String + Clone, emit_cast: impl Fn(Rc<Node>) -> String + Clone, emit_for_each: impl Fn(Rc<Node>) -> String + Clone, emit_index: impl Fn(Rc<Node>) -> String + Clone, emit_slice: impl Fn(Rc<Node>) -> String + Clone, emit_bin_op: impl Fn(Rc<Node>) -> String + Clone) -> String {
     match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprLiteral { value: v, .. } => wrap_result(emit_literal(v.clone(), target.clone())),
     ExprData::ExprError { message: message, .. } => wrap_result(emit_error_expr(message.clone(), target.clone())),
@@ -2196,11 +2346,11 @@ pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, source_index: Opt
     ExprData::ExprRecordLit { .. } => emit_record_lit(texpr.clone()),
     ExprData::ExprBinOp { .. } => emit_bin_op(texpr.clone()),
     ExprData::ExprUnaryOp { op: op, .. } => {
-        let operand: Rc<Node> = unaryop_operand(texpr.clone());
+        let operand = unaryop_operand(texpr.clone());
 wrap_result(emit_unary_op(op.clone(), recurse(operand.clone()), target.clone()))
 },
     ExprData::ExprLambda { .. } => {
-        let body: Rc<Node> = lambda_body(texpr.clone());
+        let body = lambda_body(texpr.clone());
 wrap_result(emit_lambda(emit_lambda_params(lambda_param_names_at(texpr.clone(), source_index.clone()), target.clone()), recurse(body.clone()), target.clone()))
 },
     ExprData::ExprStringInterp => emit_string_interp(texpr.clone()),
@@ -2211,25 +2361,25 @@ wrap_result(emit_lambda(emit_lambda_params(lambda_param_names_at(texpr.clone(), 
     ExprData::ExprSlice => emit_slice(texpr.clone()),
     ExprData::ExprListLit => wrap_result(emit_list_lit_expr(Rc::new({ let mut __result = Vec::new(); for el in texpr.children.clone().iter().cloned() { __result.push(recurse(el.clone())); } __result }), target.clone())),
     ExprData::ExprReturn => {
-        let ret_val: Rc<Node> = return_value(texpr.clone());
+        let ret_val = return_value(texpr.clone());
 wrap_result(emit_return(recurse(ret_val.clone()), target.clone()))
 },
     ExprData::NoExprData => wrap_result("".to_string()),
 }
 }
 
-pub fn emit_default_bin_op(texpr: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String, wrap_result: impl Fn(String) -> String) -> String {
+pub fn emit_default_bin_op(texpr: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, wrap_result: impl Fn(String) -> String + Clone) -> String {
     match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprBinOp { op: op, .. } => {
-        let left: Rc<Node> = binop_left(texpr.clone());
-let right: Rc<Node> = binop_right(texpr.clone());
-let left_str: String = recurse(left.clone());
-let right_str: String = recurse(right.clone());
+        let left = binop_left(texpr.clone());
+let right = binop_right(texpr.clone());
+let left_str = recurse(left.clone());
+let right_str = recurse(right.clone());
 if is_null_coalesce(op.clone()) {
             wrap_result(emit_null_coalesce(left_str.clone(), right_str.clone(), target.clone()))
 } else {
             {
-                let op_str: String = emit_bin_op_symbol(op.clone(), target.clone());
+                let op_str = emit_bin_op_symbol(op.clone(), target.clone());
 wrap_result(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), left_str.clone()), " ".to_string()), op_str.clone()), " ".to_string()), right_str.clone()), ")".to_string()))
 }
 }

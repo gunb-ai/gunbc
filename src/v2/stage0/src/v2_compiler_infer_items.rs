@@ -111,14 +111,14 @@ pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSp
     InferredNode::CompilerError { .. } => Rc::new(vec![]),
     InferredNode::TypeVariable { .. } => Rc::new(vec![]),
     InferredNode::Resolved { node: rt, .. } => {
-            let has_structure: bool = (rt.connective.clone() != Connective::NoConnective);
+            let has_structure = (rt.connective.clone() != Connective::NoConnective);
 if has_structure.clone() {
                 {
-                    let is_product: bool = (rt.connective.clone() == Connective::Conj);
+                    let is_product = (rt.connective.clone() == Connective::Conj);
 if is_product.clone() {
                         if (rt.name.clone().as_str() == "".to_string().as_str()) {
                             Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
-                                let child_type: Rc<Node> = child_inferred_or_name(child.clone());
+                                let child_type = child_inferred_or_name(child.clone());
 make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone())
 }); } __result })
 } else {
@@ -142,7 +142,7 @@ make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, N
 
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
-        let kind: ItemKind = if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None)) {
+        let kind = if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None)) {
             ItemKind::TypeItem
 } else {
             if (item.transport.clone() != None) {
@@ -172,10 +172,10 @@ kind.clone()
 }
 
 pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<String, Rc<TypeBinding>>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    items.clone().iter().cloned().fold(init.clone(), |acc: _, item: Rc<Node>| {
-        let is_coproduct: bool = (item.connective.clone() == Connective::Disj);
+    items.clone().iter().cloned().fold(init.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
+        let is_coproduct = (item.connective.clone() == Connective::Disj);
 if is_coproduct.clone() {
-            item.children.clone().iter().cloned().fold(acc.clone(), |vacc: _, child: Rc<Node>| v2_rt::rc_map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {
+            item.children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| v2_rt::rc_map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {
     name: child.name.clone(),
     resolved: item.clone(),
 })))

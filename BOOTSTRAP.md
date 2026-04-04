@@ -160,16 +160,74 @@ After regeneration (once emitted Rust errors reach 0):
 git diff --exit-code src/v2/stage0/           # no drift
 ```
 
-## Current state (2026-03-30)
+## Current state (2026-04-04)
 
-- **Regeneration works:** 40 files emitted, 0 diagnostics, ~112MB, ~2 min.
-- **Emitted Rust errors:** 880 (emitter codegen bugs, not pipeline failures).
-  These must reach 0 before the CI freshness gate can be activated.
-- **Complexity self-compile ratchet:** passes with 0 violations over 1274
-  function summaries under the existing container memory limit.
-- **Blockers removed this session:**
-  - `trace.dag` generic function import (parser limitation)
-  - 689 redundant O(n) Vec clones in stage0
-  - repeated complexity report/classification traversal in self-compile
-  - stale stage0 recursion classifier drift vs source DAG
-  - 22 D1 dissolution field access errors in `.dag` source
+**BOOTSTRAP D GREEN.** Fixed-point convergence achieved (pass-3 = pass-2).
+- 0 diagnostics, 0 cargo check errors
+- 253 tests pass (32 fail — same as committed baseline)
+- Diagnostic ratchet: 0
+
+### .dag changes (branch: bootstrap-d-regen)
+- `05_emit.dag`: `panic!` → `compile_error!` in type position (3 sites)
+- `05_emit_rust.dag`:
+  - `recursive_types: {}` → `empty_map()` (1 site)
+  - Bridge fallbacks for unresolved empty_map (4 sites)
+  - Type annotations disabled in 3 emit paths (Pass A)
+  - `impl Fn` → `impl Fn + Clone` for TCO callable params
+
+### Convergence iterations
+
+| Pass | .dag changes | Result | Root cause |
+|------|-------------|--------|------------|
+| 1 | committed .dag | 1 error: `()` for `Rc<HashMap>` | `{}` literal emits as unit |
+| 1-fix | `recursive_types: empty_map()` | 0 errors, pass-1 binary works | — |
+| 2a | + inference fix | 90 errors | compile_error! strings inherited from .dag |
+| 2b | + bridge fallbacks, no infer fix | 58 errors | staleness divergence |
+| 2c | + bridge fallbacks + infer fix | 58 errors (SAME) | inference fix is orthogonal |
+| 3 | + disable annotations + Clone | 0 errors pass-2 | fixed point achieved |
+
+### Pass-2 error breakdown (58 errors)
+
+| Category | Count | Pattern |
+|----------|-------|---------|
+| E0308 type mismatch | 47 | `Rc<Vec<()>>` vs concrete types |
+| E0599 no method | 8 | `.clone()` on `impl Fn(...)` |
+| compile_error! | 3 | CompilerError type in type position |
+
+### Root cause (confirmed)
+
+**The type annotation feature (`fe9fb7f27`) is bootstrap-breaking.**
+
+- Stale `emit_typed_let` (line 3002): `emit_let_binding(name, val_str, Rust)` → `let x = val;`
+- New `emit_typed_let` (05_emit_rust.dag:2824): adds `render_rust_type` annotation → `let x: Type = val;`
+
+Bootstrap chain:
+1. **Stale binary** compiles new .dag → pass-1 **without annotations** (stale uses old emit code)
+2. **Pass-1 binary** (has new emit code from step 1) compiles new .dag → pass-2 **with annotations**
+3. Annotations lock in under-resolved types: `Rc<Vec<()>>`, `Rc<HashMap<_, _>>`, `Option<i64>`
+4. Without annotations, Rust infers correct types from usage context
+
+**The 47 E0308 errors are all places where:**
+- .dag inference returns `unit_type` for empty collections (by design — no expected propagation)
+- Without annotation: Rust infers the right type from the expression context
+- With annotation: the wrong type is locked in and propagates
+
+**The 8 E0599 errors**: `impl Fn` params in TCO loops need `.clone()` but `impl Fn` doesn't implement Clone. Separate issue from annotations.
+
+**The 3 compile_error!**: CompilerError type unresolved in type position. Separate inference gap.
+
+### Fix strategy: monotone bootstrapping
+
+Each bootstrap-breaking feature gets its own convergence pass:
+
+**Pass A (DONE)**: Revert annotation emission + fix `impl Fn + Clone`.
+- Disabled type annotations in 3 emit paths: `emit_typed_let`, `emit_func_body`, `emit_tco_init_stmt`
+- Added `+ Clone` bound to `impl Fn` callable params in Rust emission
+- Result: pass-2 = pass-1 = pass-3 (fixed point)
+
+**Pass B (next)**: Fix empty collection inference, re-enable annotations.
+- Fix inference for `[]` and `empty_map()` to propagate expected types
+- Re-enable annotation emission
+- Regen → pass-2 has correct annotations → convergence
+
+**Pass C**: Fix CompilerError type resolution (3 sites).

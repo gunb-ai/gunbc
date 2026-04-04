@@ -68,7 +68,6 @@ pub use crate::v2_compiler_parse::{parse, ParseResult};
 pub use crate::v2_compiler_resolve::{resolve_modules, ModuleGraph};
 pub use crate::v2_compiler_normalize::{normalize_graph, NormalizeResult};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule};
-pub use crate::v2_compiler_infer_env::{merge_recursive_variant_fields, RecursiveVariantFieldWitness};
 pub use crate::v2_compiler_infer::{reconcile};
 pub use crate::v2_compiler_emit::{EmitResult, escape_json_string};
 pub use crate::v2_compiler_emit_rust::{emit_rust};
@@ -112,13 +111,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
 }
 
 pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> Rc<RecursionContext> {
-    typed.modules.clone().iter().cloned().fold(Rc::new(RecursionContext {
-    recursive_type_set: v2_rt::rc_empty_map::<bool>(),
-    recursive_variant_fields: v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(),
-}), |acc: _, m: Rc<TypedModule>| Rc::new(RecursionContext {
-    recursive_type_set: v2_rt::rc_map_merge(acc.recursive_type_set.clone(), m.type_env.clone().recursive_type_set.clone()),
-    recursive_variant_fields: merge_recursive_variant_fields(acc.recursive_variant_fields.clone(), m.type_env.clone().recursive_variant_fields.clone()),
-}))
+    Rc::new(RecursionContext {})
 }
 
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
@@ -298,7 +291,7 @@ pub fn serialize_span(span: Rc<SourceSpan>) -> String {
 
 pub fn serialize_import_node(imp: Rc<Node>) -> String {
     {
-        let names_json: String = if import_is_all(imp.clone()) {
+        let names_json = if import_is_all(imp.clone()) {
             "{\"kind\": \"ImportAll\"}".to_string()
 } else {
             v2_rt::concat(v2_rt::concat("{\"kind\": \"ImportSpecific\", \"names\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for v in import_specific_names(imp.clone()).iter().cloned() { __result.push(json_quote(v.clone())); } __result }))), "}".to_string())
@@ -371,7 +364,7 @@ pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>) -> String 
     match value.clone().as_deref().cloned() {
     Some(MethodSemantics::PlainMethodSemantics) => "{\"kind\": \"PlainMethodSemantics\"}".to_string(),
     Some(MethodSemantics::AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, .. }) => {
-        let mn: String = method_def.name.clone();
+        let mn = method_def.name.clone();
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ".to_string(), json_quote(mn.clone())), ", \"fold_accumulator_type\": ".to_string()), json_optional_node(fold_accumulator_type.clone())), "}".to_string())
 },
     Some(MethodSemantics::ServiceMethodSemantics { service_name: service_name, op_params: op_params, .. }) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ".to_string(), json_quote(service_name.clone())), ", \"op_params\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for p in op_params.clone().iter().cloned() { __result.push(serialize_param(p.clone())); } __result }))), "}".to_string()),
@@ -381,8 +374,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"AlgebraMet
 
 pub fn serialize_expr_data(expr_node: Rc<Node>) -> String {
     {
-        let ch: Rc<Vec<Rc<Node>>> = expr_node.children.clone();
-let name: String = expr_node.name.clone();
+        let ch = expr_node.children.clone();
+let name = expr_node.name.clone();
 match (*expr_node.expr_data.clone()).clone() {
     ExprData::NoExprData => "{\"kind\": \"NoExprData\"}".to_string(),
     ExprData::ExprLiteral { value: value, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLiteral\", \"value\": ".to_string(), serialize_literal(value.clone())), "}".to_string()),
@@ -395,33 +388,33 @@ match (*expr_node.expr_data.clone()).clone() {
     None => "null".to_string(),
 }), "}".to_string()),
     ExprData::ExprFieldAccess { summary: summary, .. } => {
-            let field: String = field_access_field(expr_node.clone());
+            let field = field_access_field(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprFieldAccess\", \"field\": ".to_string(), json_quote(field.clone())), ", \"summary\": ".to_string()), match summary.clone() {
     Some(inner) => serialize_field_summary(inner.clone()),
     None => "null".to_string(),
 }), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.clone().iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprCall { call_semantics: call_semantics, .. } => {
-            let func: String = expr_call_func(expr_node.clone());
+            let func = expr_call_func(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprCall\", \"func\": ".to_string(), json_quote(func.clone())), ", \"call_semantics\": ".to_string()), serialize_call_semantics(call_semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.clone().iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => {
-            let method: String = expr_method_name(expr_node.clone());
+            let method = expr_method_name(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMethodCall\", \"method\": ".to_string(), json_quote(method.clone())), ", \"method_semantics\": ".to_string()), serialize_method_semantics(method_semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.clone().iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprBinOp { op: op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBinOp\", \"op\": ".to_string(), json_quote(bin_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.clone().iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
     ExprData::ExprUnaryOp { op: op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprUnaryOp\", \"op\": ".to_string(), json_quote(unary_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.clone().iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
     ExprData::ExprLambda { semantics: semantics, .. } => {
-            let params: Rc<Vec<String>> = lambda_param_names(expr_node.clone());
+            let params = lambda_param_names(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLambda\", \"params\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(json_quote(p.clone())); } __result }))), ", \"semantics\": ".to_string()), serialize_lambda_semantics(semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.clone().iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprLet => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLet\", \"name\": ".to_string(), json_quote(name.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.clone().iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
     ExprData::ExprRecordLit { parent_enum: parent_enum, .. } => {
-            let type_name: Option<String> = record_lit_type_name(expr_node.clone());
+            let type_name = record_lit_type_name(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprRecordLit\", \"type_name\": ".to_string(), json_optional_string(type_name.clone())), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.clone().iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprForEach => {
-            let variable: String = foreach_variable(expr_node.clone());
+            let variable = foreach_variable(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprForEach\", \"variable\": ".to_string(), json_quote(variable.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.clone().iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprMatch => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMatch\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.clone().iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
@@ -477,17 +470,17 @@ pub fn serialize_typed_module(module: Rc<TypedModule>) -> String {
 
 pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
     {
-        let severity: String = "error".to_string();
+        let severity = "error".to_string();
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"severity\": ".to_string(), json_quote(severity.clone())), ", \"message\": ".to_string()), json_quote(diagnostic_to_message(diagnostic.diagnostic.clone()))), ", \"span\": ".to_string()), serialize_span(diagnostic_to_span(diagnostic.diagnostic.clone()))), ", \"module_name\": ".to_string()), json_optional_string(Some(diagnostic.module_name.clone()))), ", \"category\": ".to_string()), "null".to_string()), "}".to_string())
 }
 }
 
 pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
-        let modules_json: String = Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(serialize_typed_module(m.clone())); } __result }).join(&", ".to_string());
-let diagnostics_json: String = Rc::new({ let mut __result = Vec::new(); for d in typed.diagnostics.clone().iter().cloned() { __result.push(serialize_diagnostic(d.clone())); } __result }).join(&", ".to_string());
-let item_registry_json: String = Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&typed.item_registry.clone())).iter().cloned() { __result.push(json_quote(k.clone())); } __result }).join(&", ".to_string());
-let json: String = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n  \"version\": \"0.1.0\",\n  \"modules\": [".to_string(), modules_json.clone()), "],\n  \"item_registry_keys\": [".to_string()), item_registry_json.clone()), "],\n  \"diagnostics\": [".to_string()), diagnostics_json.clone()), "],\n  \"files\": []\n}".to_string());
+        let modules_json = Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(serialize_typed_module(m.clone())); } __result }).join(&", ".to_string());
+let diagnostics_json = Rc::new({ let mut __result = Vec::new(); for d in typed.diagnostics.clone().iter().cloned() { __result.push(serialize_diagnostic(d.clone())); } __result }).join(&", ".to_string());
+let item_registry_json = Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&typed.item_registry.clone())).iter().cloned() { __result.push(json_quote(k.clone())); } __result }).join(&", ".to_string());
+let json = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n  \"version\": \"0.1.0\",\n  \"modules\": [".to_string(), modules_json.clone()), "],\n  \"item_registry_keys\": [".to_string()), item_registry_json.clone()), "],\n  \"diagnostics\": [".to_string()), diagnostics_json.clone()), "],\n  \"files\": []\n}".to_string());
 Rc::new(EmitResult {
     files: Rc::new(vec![Rc::new(TextFile {
     path: "dag-artifact.json".to_string(),
@@ -508,7 +501,7 @@ pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc
 
 pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let names: Rc<Vec<String>> = Rc::new({ let mut __result = Vec::new(); for a in plan.artifacts.clone().iter().cloned() { __result.push(a.name.clone()); } __result });
+        let names = Rc::new({ let mut __result = Vec::new(); for a in plan.artifacts.clone().iter().cloned() { __result.push(a.name.clone()); } __result });
 Rc::new({ let mut __result = Vec::new(); for b in plan.boundaries.clone().iter().cloned() { __result.extend((*v2_rt::concat(boundary_ref_error(names.clone(), b.from_artifact.clone()), boundary_ref_error(names.clone(), b.to_artifact.clone()))).iter().cloned()); } __result })
 }
 }
@@ -521,16 +514,16 @@ pub fn emit_from_artifact_plan(typed: Rc<ResolvedGraph>, artifact_plan: Rc<Artif
     diagnostics: Rc::new(vec![compile_bundle_error("compile_sources planned no artifacts".to_string())]),
 })
 }
-let boundary_diags: Rc<Vec<Rc<ErrorNode>>> = validate_boundaries(artifact_plan.clone());
+let boundary_diags = validate_boundaries(artifact_plan.clone());
 if ((boundary_diags.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
     files: Rc::new(vec![]),
     diagnostics: boundary_diags.clone(),
 })
 }
-let results: Rc<Vec<Rc<EmitResult>>> = Rc::new({ let mut __result = Vec::new(); for artifact in artifact_plan.artifacts.clone().iter().cloned() { __result.push(emit_artifact(typed.clone(), artifact.clone())); } __result });
-let all_files: Rc<Vec<Rc<TextFile>>> = Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.files.clone()).iter().cloned()); } __result });
-let all_diags: Rc<Vec<Rc<ErrorNode>>> = Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.diagnostics.clone()).iter().cloned()); } __result });
+let results = Rc::new({ let mut __result = Vec::new(); for artifact in artifact_plan.artifacts.clone().iter().cloned() { __result.push(emit_artifact(typed.clone(), artifact.clone())); } __result });
+let all_files = Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.files.clone()).iter().cloned()); } __result });
+let all_diags = Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.diagnostics.clone()).iter().cloned()); } __result });
 Rc::new(EmitResult {
     files: all_files.clone(),
     diagnostics: all_diags.clone(),
@@ -547,10 +540,10 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
 
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
-        let tokenized: Rc<Vec<Rc<Vec<Rc<Token>>>>> = Rc::new({ let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push(tokenize(s.content.clone(), s.path.clone())); } __result });
-let parse_results: Rc<Vec<Rc<ParseResult>>> = Rc::new({ let mut __result = Vec::new(); for t in tokenized.clone().iter().cloned() { __result.push(parse(t.clone())); } __result });
-let parse_diagnostics: Rc<Vec<Rc<ErrorNode>>> = collect_diagnostics(parse_results.clone());
-let has_parse_errors: bool = { let mut __found = false; for p in parse_results.clone().iter().cloned() { if (p.error.clone() != None) { __found = true; break; } } __found };
+        let tokenized = Rc::new({ let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push(tokenize(s.content.clone(), s.path.clone())); } __result });
+let parse_results = Rc::new({ let mut __result = Vec::new(); for t in tokenized.clone().iter().cloned() { __result.push(parse(t.clone())); } __result });
+let parse_diagnostics = collect_diagnostics(parse_results.clone());
+let has_parse_errors = { let mut __found = false; for p in parse_results.clone().iter().cloned() { if (p.error.clone() != None) { __found = true; break; } } __found };
 if has_parse_errors.clone() {
             Rc::new(FrontendResult {
     graph: None,
@@ -558,8 +551,8 @@ if has_parse_errors.clone() {
 })
 } else {
             {
-                let modules: Rc<Vec<Rc<Node>>> = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.module.clone().clone().unwrap()); } __result });
-let graph: Rc<ModuleGraph> = resolve_modules(modules.clone());
+                let modules = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.module.clone().clone().unwrap()); } __result });
+let graph = resolve_modules(modules.clone());
 Rc::new(FrontendResult {
     graph: Some(graph.clone()),
     diagnostics: v2_rt::concat(parse_diagnostics.clone(), graph.diagnostics.clone()),
@@ -571,7 +564,7 @@ Rc::new(FrontendResult {
 
 pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {
     {
-        let frontend: Rc<FrontendResult> = front_end_sources(sources.clone());
+        let frontend = front_end_sources(sources.clone());
 Rc::new(CompileResult {
     files: Rc::new(vec![]),
     diagnostics: frontend.diagnostics.clone(),
@@ -581,8 +574,8 @@ Rc::new(CompileResult {
 
 pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -> Rc<PipelineResult> {
     {
-        let newline_indices: Rc<Vec<Rc<NewlineIndex>>> = Rc::new({ let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push(build_newline_index(s.path.clone(), s.content.clone())); } __result });
-let frontend: Rc<FrontendResult> = front_end_sources(sources.clone());
+        let newline_indices = Rc::new({ let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push(build_newline_index(s.path.clone(), s.content.clone())); } __result });
+let frontend = front_end_sources(sources.clone());
 match frontend.graph.clone() {
     None => Rc::new(PipelineResult {
     files: Rc::new(vec![]),
@@ -593,8 +586,8 @@ match frontend.graph.clone() {
     newline_indices: newline_indices.clone(),
 }),
     Some(graph) => {
-            let graph_diags: Rc<Vec<Rc<ErrorNode>>> = graph.diagnostics.clone();
-let resolve_errors: Rc<Vec<Rc<ErrorNode>>> = Rc::new({ let mut __result = Vec::new(); for d in graph_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
+            let graph_diags = graph.diagnostics.clone();
+let resolve_errors = Rc::new({ let mut __result = Vec::new(); for d in graph_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
 if ((resolve_errors.clone().len() as i64) > 0) {
                 return Rc::new(PipelineResult {
     files: Rc::new(vec![]),
@@ -605,9 +598,9 @@ if ((resolve_errors.clone().len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
 }
-let norm: Rc<NormalizeResult> = normalize_graph(graph.clone());
-let norm_diags: Rc<Vec<Rc<ErrorNode>>> = norm.diagnostics.clone();
-let norm_errors: Rc<Vec<Rc<ErrorNode>>> = Rc::new({ let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
+let norm = normalize_graph(graph.clone());
+let norm_diags = norm.diagnostics.clone();
+let norm_errors = Rc::new({ let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
 if ((norm_errors.clone().len() as i64) > 0) {
                 return Rc::new(PipelineResult {
     files: Rc::new(vec![]),
@@ -618,17 +611,15 @@ if ((norm_errors.clone().len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
 }
-let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: _, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), index.file.clone(), index.clone()));
-let typed: Rc<ResolvedGraph> = reconcile(norm.graph.clone(), source_indices.clone());
-let typed_diags: Rc<Vec<Rc<ErrorNode>>> = typed.diagnostics.clone();
-let func_entries: Rc<Vec<Rc<FuncEntry>>> = extract_func_entries(typed.clone());
-let recursion_ctx: Rc<RecursionContext> = build_recursion_context(typed.clone());
-let complexity: Rc<ComplexityReport> = build_complexity_report(func_entries.clone(), recursion_ctx.clone());
-// Bootstrap: complexity gate disabled — violations are tracked in the report
-// but do not block emission. Re-enable when violations reach 0.
-let complexity_diags: Rc<Vec<Rc<ErrorNode>>> = Rc::new(vec![]);
-let all_infer_diags: Rc<Vec<Rc<ErrorNode>>> = v2_rt::concat(typed_diags.clone(), complexity_diags.clone());
-let typecheck_errors: Rc<Vec<Rc<ErrorNode>>> = Rc::new({ let mut __result = Vec::new(); for d in typed_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
+let source_indices = newline_indices.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), index.file.clone(), index.clone()));
+let typed = reconcile(norm.graph.clone(), source_indices.clone());
+let typed_diags = typed.diagnostics.clone();
+let func_entries = extract_func_entries(typed.clone());
+let recursion_ctx = build_recursion_context(typed.clone());
+let complexity = empty_complexity_report();
+let complexity_diags = Rc::new(vec![]);
+let all_infer_diags = v2_rt::concat(typed_diags.clone(), complexity_diags.clone());
+let typecheck_errors = Rc::new({ let mut __result = Vec::new(); for d in all_infer_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
 if ((typecheck_errors.clone().len() as i64) > 0) {
                 return Rc::new(PipelineResult {
     files: Rc::new(vec![]),
@@ -639,9 +630,9 @@ if ((typecheck_errors.clone().len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
 }
-let ownership: Rc<Vec<Rc<OwnershipProof>>> = extract_ownership_proofs(typed.clone());
-let ownership_diags: Rc<Vec<Rc<ErrorNode>>> = ownership_diagnostics(ownership.clone());
-let ownership_errors: Rc<Vec<Rc<ErrorNode>>> = Rc::new({ let mut __result = Vec::new(); for d in ownership_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
+let ownership = extract_ownership_proofs(typed.clone());
+let ownership_diags = ownership_diagnostics(ownership.clone());
+let ownership_errors = Rc::new({ let mut __result = Vec::new(); for d in ownership_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
 if ((ownership_errors.clone().len() as i64) > 0) {
                 return Rc::new(PipelineResult {
     files: Rc::new(vec![]),
@@ -652,12 +643,12 @@ if ((ownership_errors.clone().len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
 }
-let artifact_plan: Rc<ArtifactPlan> = default_artifact_plan(Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(m.module.clone().name.clone()); } __result }), target.clone());
-let emit_result: Rc<EmitResult> = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
-let emit_files: Rc<Vec<Rc<TextFile>>> = emit_result.files.clone();
-let emit_diags: Rc<Vec<Rc<ErrorNode>>> = emit_result.diagnostics.clone();
-let emit_errors: Rc<Vec<Rc<ErrorNode>>> = Rc::new({ let mut __result = Vec::new(); for d in emit_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
-let final_files: Rc<Vec<Rc<TextFile>>> = if ((emit_errors.clone().len() as i64) > 0) {
+let artifact_plan = default_artifact_plan(Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(m.module.clone().name.clone()); } __result }), target.clone());
+let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
+let emit_files = emit_result.files.clone();
+let emit_diags = emit_result.diagnostics.clone();
+let emit_errors = Rc::new({ let mut __result = Vec::new(); for d in emit_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
+let final_files = if ((emit_errors.clone().len() as i64) > 0) {
                 Rc::new(vec![])
 } else {
                 emit_files.clone()

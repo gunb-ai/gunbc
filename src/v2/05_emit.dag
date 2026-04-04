@@ -973,7 +973,16 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
         else { wrapped }
       }
     } else {
-      emit_primitive_type(name: n.name, target: target)
+      // Multi-child leaf: render as generic type Name<A, B, ...>
+      let child_strs = n.children |> map(c => emit_node_type_rc(n: c, target: target, rc_types: rc_types))
+      let inner = child_strs |> join(separator: ", ")
+      let base = emit_primitive_type(name: n.name, target: target)
+      let wrapped = match target {
+        Python => concat(base, "[", inner, "]")
+        _ => concat(base, "<", inner, ">")
+      }
+      if emit_map_has(m: rc_types, key: n.name) { wrap_shared_type(target: target, inner: wrapped) }
+      else { wrapped }
     }
   }
 }
@@ -1272,7 +1281,7 @@ fn render_type(tr: TypeRendering, target: RenderTarget) -> String {
   if tr.is_error {
     let label = if tr.error_label == "" { tr.type_name } else { tr.error_label }
     match target {
-      Rust => concat("panic!(\"unresolved ", label, " type reached emit\")")
+      Rust => concat("compile_error!(\"unresolved ", label, " type reached emit\")")
       _ => concat("__EMIT_BUG_UNRESOLVED_", label, "__")
     }
   } else {

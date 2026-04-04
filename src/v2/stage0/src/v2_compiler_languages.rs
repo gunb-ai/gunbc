@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::v2_compiler_artifact::{RenderTarget};
-use crate::v2_compiler_artifact::RenderTarget::{Python, Dag};
+use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::v2_std_core::{BinOp, LiteralValue};
 use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::v2_std_core::LiteralValue::*;
@@ -465,7 +465,7 @@ pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     {
-        let tmpl: String = sharing_for_target(target.clone()).wrap_template.clone();
+        let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
 v2_rt::replace(tmpl.clone(), "{0}".to_string(), inner.clone())
 }
 }

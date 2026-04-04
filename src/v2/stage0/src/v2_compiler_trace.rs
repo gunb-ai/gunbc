@@ -128,7 +128,7 @@ pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
 
 pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
     {
-        let n: i64 = (trace.stack.clone().len() as i64);
+        let n = (trace.stack.clone().len() as i64);
 if (n.clone() <= 1) {
             Rc::new(Trace {
     events: trace.events.clone(),
@@ -174,7 +174,7 @@ pub enum TraceFilter {
 
 pub fn event_matches_span(event: Rc<TraceEvent>, filter_start: i64, filter_end: i64) -> bool {
     {
-        let sp: Rc<SourceSpan> = event_span(event.clone());
+        let sp = event_span(event.clone());
 ((sp.start.clone() >= filter_start.clone()) && (sp.start.clone() < filter_end.clone()))
 }
 }

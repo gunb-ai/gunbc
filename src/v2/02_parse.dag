@@ -2696,8 +2696,11 @@ fn modifiers_to_props(modifiers: List<OperationModifier>, span: SourceSpan) -> L
 // Extract a string key from a status/exit code expression.
 fn status_expr_to_str(expr: Node) -> String {
   match expr.expr_data {
-    ExprLiteral { value: LitInt { value: n } } => int_to_string(value: n)
-    ExprLiteral { value: LitStr { value: s } } => s
+    ExprLiteral { value: v } => match v {
+      LitInt { value: n } => int_to_string(value: n)
+      LitStr { value: s } => s
+      _ => "_"
+    }
     ExprVar { binding_kind: _ } => expr_var_name(texpr: expr)
     _ => "_"
   }

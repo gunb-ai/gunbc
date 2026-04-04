@@ -663,7 +663,7 @@ pub fn make_expr_error_node(kind: ExprErrorKind, message: String, span: Rc<Sourc
 
 pub fn make_arg_node(name: Option<String>, value: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let arg_name: String = match name.clone() {
+        let arg_name = match name.clone() {
     Some(n) => n.clone(),
     None => "".to_string(),
 };
@@ -691,7 +691,7 @@ Rc::new(Node {
 
 pub fn make_arm_node(pattern: Rc<MatchPattern>, guard: Option<Rc<Node>>, body: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let children: Rc<Vec<Rc<Node>>> = match guard.clone() {
+        let children = match guard.clone() {
     Some(g) => Rc::new(vec![g.clone(), body.clone()]),
     None => Rc::new(vec![body.clone()]),
 };
@@ -863,7 +863,7 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
 
 pub fn make_param_node(name: String, type_expr: Rc<Node>, default_value: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let children: Rc<Vec<Rc<Node>>> = match default_value.clone() {
+        let children = match default_value.clone() {
     Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
     None => Rc::new(vec![type_expr.clone()]),
 };
@@ -906,7 +906,7 @@ pub fn authored_name_at(source_index: Option<Rc<NewlineIndex>>, node: Rc<Node>) 
     Some(span) => match source_index.clone() {
     Some(index) => if (span.file.clone().as_str() == index.file.clone().as_str()) {
         {
-            let text: String = source_text_at(index.clone(), span.clone());
+            let text = source_text_at(index.clone(), span.clone());
 if (text.clone().as_str() == "".to_string().as_str()) {
                 node.name.clone()
 } else {
@@ -943,11 +943,11 @@ pub fn param_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
 
 pub fn make_field_node(name: String, type_expr: Rc<Node>, cardinality: Cardinality, default_value: Option<Rc<Node>>, from_key: Option<String>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let children: Rc<Vec<Rc<Node>>> = match default_value.clone() {
+        let children = match default_value.clone() {
     Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
     None => Rc::new(vec![type_expr.clone()]),
 };
-let props: Rc<Vec<Rc<Node>>> = match from_key.clone() {
+let props = match from_key.clone() {
     Some(fk) => Rc::new(vec![leaf_node(fk.clone())]),
     None => Rc::new(vec![]),
 };
@@ -1041,6 +1041,32 @@ pub fn variant_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
     n.span.clone()
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ChildRole {
+    pub name: String,
+    pub accessor: String,
+    pub position: i64,
+    pub required: bool,
+}
+
+pub fn expr_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
+    serde_json::from_value(serde_json::json!({"ExprFieldAccess": [{"name": "base", "accessor": "field_access_base", "position": 0, "required": true}], "ExprBinOp": [{"name": "left", "accessor": "binop_left", "position": 0, "required": true}, {"name": "right", "accessor": "binop_right", "position": 1, "required": true}], "ExprUnaryOp": [{"name": "operand", "accessor": "unaryop_operand", "position": 0, "required": true}], "ExprIf": [{"name": "condition", "accessor": "if_condition", "position": 0, "required": true}, {"name": "then", "accessor": "if_then_branch", "position": 1, "required": true}, {"name": "else", "accessor": "if_else_branch", "position": 2, "required": false}], "ExprMatch": [{"name": "scrutinee", "accessor": "match_scrutinee", "position": 0, "required": true}], "ExprLet": [{"name": "value", "accessor": "let_value", "position": 0, "required": true}, {"name": "body", "accessor": "let_body", "position": 1, "required": false}], "ExprLambda": [{"name": "body", "accessor": "lambda_body", "position": 0, "required": true}], "ExprMethodCall": [{"name": "receiver", "accessor": "method_receiver", "position": 0, "required": true}], "ExprCast": [{"name": "expr", "accessor": "cast_expr", "position": 0, "required": true}, {"name": "target", "accessor": "cast_target", "position": 1, "required": true}], "ExprForEach": [{"name": "collection", "accessor": "foreach_collection", "position": 0, "required": true}, {"name": "body", "accessor": "foreach_body", "position": 1, "required": true}], "ExprIndex": [{"name": "base", "accessor": "index_base", "position": 0, "required": true}, {"name": "index", "accessor": "index_expr", "position": 1, "required": true}], "ExprSlice": [{"name": "base", "accessor": "slice_base", "position": 0, "required": true}, {"name": "start", "accessor": "slice_start", "position": 1, "required": true}, {"name": "end", "accessor": "slice_end", "position": 2, "required": true}], "ExprReturn": [{"name": "value", "accessor": "return_value", "position": 0, "required": true}]}))
+        .expect("valid data definition")
+}
+
+pub fn wrapper_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
+    serde_json::from_value(serde_json::json!({"Arg": [{"name": "value", "accessor": "arg_value", "position": 0, "required": true}], "Arm": [{"name": "guard", "accessor": "arm_guard", "position": 0, "required": false}, {"name": "body", "accessor": "arm_body", "position": "compile_error!(unsupported mock expression)", "required": true}], "FieldInit": [{"name": "value", "accessor": "field_init_node_value", "position": 0, "required": true}]}))
+        .expect("valid data definition")
+}
+
+pub fn is_child_accessor_in_model(name: String) -> bool {
+    ({ let mut __found = false; for roles in Rc::new(v2_rt::map_values(&expr_child_roles())).iter().cloned() { if { let mut __found = false; for r in roles.clone().iter().cloned() { if (r.accessor.clone().as_str() == name.clone().as_str()) { __found = true; break; } } __found } { __found = true; break; } } __found } || { let mut __found = false; for roles in Rc::new(v2_rt::map_values(&wrapper_child_roles())).iter().cloned() { if { let mut __found = false; for r in roles.clone().iter().cloned() { if (r.accessor.clone().as_str() == name.clone().as_str()) { __found = true; break; } } __found } { __found = true; break; } } __found })
+}
+
+pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
+    v2_rt::lookup(&expr_child_roles(), variant_name.clone())
+}
+
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
     match Rc::new(texpr.children.clone().iter().cloned().skip(index.clone() as usize).collect::<Vec<_>>()).first().cloned() {
     Some(v) => v.clone(),
@@ -1058,7 +1084,7 @@ pub fn arg_name(n: Rc<Node>) -> Option<String> {
 
 pub fn arg_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
     {
-        let name: String = authored_name_at(source_index.clone(), n.clone());
+        let name = authored_name_at(source_index.clone(), n.clone());
 if (name.clone().as_str() == "".to_string().as_str()) {
             None
 } else {
@@ -1277,7 +1303,7 @@ pub fn record_lit_type_name(texpr: Rc<Node>) -> Option<String> {
 
 pub fn record_lit_type_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
     {
-        let name: String = authored_name_at(source_index.clone(), texpr.clone());
+        let name = authored_name_at(source_index.clone(), texpr.clone());
 if (name.clone().as_str() == "".to_string().as_str()) {
             None
 } else {
@@ -1334,8 +1360,8 @@ pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
 
 pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let url_field: Rc<Node> = make_field_init_node(transport_url_key(), base_url.clone(), make_span(0, 0));
-let props: Rc<Vec<Rc<Node>>> = v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field.clone()]), auth_props.clone()), headers.clone());
+        let url_field = make_field_init_node(transport_url_key(), base_url.clone(), make_span(0, 0));
+let props = v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field.clone()]), auth_props.clone()), headers.clone());
 make_transport_node("rest".to_string(), props.clone(), Rc::new(vec![]), span.clone())
 }
 }
@@ -1346,7 +1372,7 @@ pub fn shell_transport_node(argv: Rc<Vec<Rc<Node>>>, env: Rc<Vec<Rc<Node>>>, spa
 
 pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let path_field: Rc<Node> = make_field_init_node(transport_path_key(), base_path.clone(), make_span(0, 0));
+        let path_field = make_field_init_node(transport_path_key(), base_path.clone(), make_span(0, 0));
 make_transport_node("file".to_string(), Rc::new(vec![path_field.clone()]), Rc::new(vec![]), span.clone())
 }
 }
@@ -1386,7 +1412,7 @@ pub fn is_local_transport(t: Rc<Node>) -> bool {
 
 pub fn field_init_operation_modifier(field_init: Rc<Node>) -> Option<OperationModifier> {
     {
-        let fi_name: String = field_init_node_name(field_init.clone());
+        let fi_name = field_init_node_name(field_init.clone());
 if (fi_name.clone().as_str() == "idempotent".to_string().as_str()) {
             Some(OperationModifier::Idempotent)
 } else {
@@ -1442,7 +1468,7 @@ pub fn transport_env(t: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     t.properties.clone()
 }
 
-pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) -> Rc<Node> {
+pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + Clone) -> Rc<Node> {
     Rc::new(Node {
     name: node.name.clone(),
     span: node.span.clone(),
@@ -1495,36 +1521,36 @@ pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: String, in_tail: bo
     ExprData::ExprFieldAccess { .. } => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
     ExprData::ExprMethodCall { .. } => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
     ExprData::ExprIf => {
-            let cond_bad: bool = expr_has_non_tail_self_call(if_condition(texpr.clone()), fn_name.clone(), false);
-let then_bad: bool = expr_has_non_tail_self_call(if_then_branch(texpr.clone()), fn_name.clone(), in_tail.clone());
-let else_bad: bool = match if_else_branch(texpr.clone()) {
+            let cond_bad = expr_has_non_tail_self_call(if_condition(texpr.clone()), fn_name.clone(), false);
+let then_bad = expr_has_non_tail_self_call(if_then_branch(texpr.clone()), fn_name.clone(), in_tail.clone());
+let else_bad = match if_else_branch(texpr.clone()) {
     Some(e) => expr_has_non_tail_self_call(e.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
 };
 ((cond_bad.clone() || then_bad.clone()) || else_bad.clone())
 },
     ExprData::ExprMatch => {
-            let scrut_bad: bool = expr_has_non_tail_self_call(match_scrutinee(texpr.clone()), fn_name.clone(), false);
-let arms_bad: bool = { let mut __found = false; for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() { if expr_has_non_tail_self_call(arm_body(arm_node.clone()), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found };
+            let scrut_bad = expr_has_non_tail_self_call(match_scrutinee(texpr.clone()), fn_name.clone(), false);
+let arms_bad = { let mut __found = false; for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() { if expr_has_non_tail_self_call(arm_body(arm_node.clone()), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found };
 (scrut_bad.clone() || arms_bad.clone())
 },
     ExprData::ExprLet => {
-            let val_bad: bool = expr_has_non_tail_self_call(let_value(texpr.clone()), fn_name.clone(), false);
-let body_bad: bool = match let_body(texpr.clone()) {
+            let val_bad = expr_has_non_tail_self_call(let_value(texpr.clone()), fn_name.clone(), false);
+let body_bad = match let_body(texpr.clone()) {
     Some(b) => expr_has_non_tail_self_call(b.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
 };
 (val_bad.clone() || body_bad.clone())
 },
     ExprData::ExprBlock => {
-            let ss: Rc<Vec<Rc<Node>>> = texpr.children.clone();
-let ss_count: i64 = (ss.clone().len() as i64);
+            let ss = texpr.children.clone();
+let ss_count = (ss.clone().len() as i64);
 if (ss_count.clone() == 0) {
                 false
 } else {
                 {
-                    let init_bad: bool = { let mut __found = false; for p in Rc::new({ let mut __result = Vec::new(); for p in Rc::new(ss.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }).iter().cloned() { if expr_has_non_tail_self_call(p.1.clone(), fn_name.clone(), false) { __found = true; break; } } __found };
-let last_bad: bool = match ss.clone().last().cloned() {
+                    let init_bad = { let mut __found = false; for p in Rc::new({ let mut __result = Vec::new(); for p in Rc::new(ss.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }).iter().cloned() { if expr_has_non_tail_self_call(p.1.clone(), fn_name.clone(), false) { __found = true; break; } } __found };
+let last_bad = match ss.clone().last().cloned() {
     Some(last_expr) => expr_has_non_tail_self_call(last_expr.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
 };
@@ -1541,17 +1567,17 @@ let last_bad: bool = match ss.clone().last().cloned() {
 
 pub fn service_config_properties(endpoint: Rc<Node>, auth: Option<Rc<Node>>, rate_limit: Option<Rc<Node>>, retry: Option<Rc<Node>>) -> Rc<Vec<Rc<Node>>> {
     {
-        let zero_span: Rc<SourceSpan> = make_span(0, 0);
-let ep_prop: Rc<Vec<Rc<Node>>> = Rc::new(vec![make_field_init_node("svc_endpoint".to_string(), endpoint.clone(), zero_span.clone())]);
-let auth_prop: Rc<Vec<Rc<Node>>> = match auth.clone() {
+        let zero_span = make_span(0, 0);
+let ep_prop = Rc::new(vec![make_field_init_node("svc_endpoint".to_string(), endpoint.clone(), zero_span.clone())]);
+let auth_prop = match auth.clone() {
     Some(a) => Rc::new(vec![make_field_init_node("svc_auth".to_string(), a.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
-let rate_prop: Rc<Vec<Rc<Node>>> = match rate_limit.clone() {
+let rate_prop = match rate_limit.clone() {
     Some(r) => Rc::new(vec![make_field_init_node("svc_rate_limit".to_string(), r.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
-let retry_prop: Rc<Vec<Rc<Node>>> = match retry.clone() {
+let retry_prop = match retry.clone() {
     Some(r) => Rc::new(vec![make_field_init_node("svc_retry".to_string(), r.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
@@ -1581,7 +1607,7 @@ pub fn service_config_retry(n: Rc<Node>) -> Option<Rc<Node>> {
 
 pub fn module_node(name: String, imports: Rc<Vec<Rc<Node>>>, items: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let marker: Rc<Node> = make_field_init_node("__is_module".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
+        let marker = make_field_init_node("__is_module".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
     value: Rc::new(LiteralValue::LitStr {
     value: "true".to_string(),
 }),
@@ -1610,12 +1636,12 @@ Rc::new(Node {
 
 pub fn import_node(module_path: String, is_all: bool, specific_names: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let import_prop: Rc<Node> = make_field_init_node("__is_import".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
+        let import_prop = make_field_init_node("__is_import".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
     value: Rc::new(LiteralValue::LitStr {
     value: "true".to_string(),
 }),
 }), Rc::new(vec![]), None, make_span(0, 0)), make_span(0, 0));
-let all_prop: Rc<Vec<Rc<Node>>> = if is_all.clone() {
+let all_prop = if is_all.clone() {
             Rc::new(vec![make_field_init_node("__import_all".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
     value: Rc::new(LiteralValue::LitStr {
     value: "true".to_string(),
@@ -1916,54 +1942,62 @@ pub struct NewlineIndex {
 }
 
 pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
-    // Bootstrap patch: real implementation (regenerated stub was empty).
-    let mut offsets = Vec::new();
-    for (i, b) in source.as_bytes().iter().enumerate() {
-        if *b == b'\n' {
-            offsets.push(i as i64);
-        }
-    }
-    Rc::new(NewlineIndex {
-        file,
-        offsets: Rc::new(offsets),
-        source,
-    })
+    {
+        let char_codes = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
+let offsets = Rc::new(char_codes.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(Rc::new(vec![]), |acc: _, pair: (i64, i64)| if (pair.1.clone() == 10) {
+            v2_rt::rc_list_push(acc.clone(), pair.0.clone())
+} else {
+            acc.clone()
+});
+Rc::new(NewlineIndex {
+    file: file.clone(),
+    offsets: offsets.clone(),
+    source: source.clone(),
+})
+}
 }
 
 pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> Rc<LineCol> {
-    // Bootstrap patch: real implementation (regenerated stub returned 1,1).
-    let offset = offset.max(0) as usize;
-    let offsets = &*index.offsets;
-    // Binary search for the line containing this byte offset.
-    let line = match offsets.binary_search(&(offset as i64)) {
-        Ok(i) => i + 1,   // exactly on a newline → that line (1-indexed)
-        Err(i) => i + 1,   // between newlines → line after the preceding newline
-    };
-    let line_start = if line <= 1 { 0 } else { offsets[line - 2] as usize + 1 };
-    let col = offset.saturating_sub(line_start) + 1;
-    Rc::new(LineCol {
-        line: line as i64,
-        col: col as i64,
-    })
+    {
+        let clamped = if (offset.clone() < 0) {
+            0
+} else {
+            offset.clone()
+};
+let line = ((Rc::new({ let mut __result = Vec::new(); for o in index.offsets.clone().iter().cloned() { if (o.clone() < clamped.clone()) { __result.push(o); } } __result }).len() as i64) + 1);
+let line_start = if (line.clone() <= 1) {
+            0
+} else {
+            match Rc::new(index.offsets.clone().iter().cloned().skip((line.clone() - 2) as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(o) => (o.clone() + 1),
+    None => 0,
+}
+};
+let col = ((clamped.clone() - line_start.clone()) + 1);
+Rc::new(LineCol {
+    line: line.clone(),
+    col: col.clone(),
+})
+}
 }
 
 pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
-    // Bootstrap patch: real implementation (regenerated stub returned "").
-    if line < 1 { return String::new(); }
-    let line_idx = (line - 1) as usize;
-    let offsets = &*index.offsets;
-    let start = if line_idx == 0 { 0 } else {
-        match offsets.get(line_idx - 1) {
-            Some(&off) => (off + 1) as usize,
-            None => return String::new(),
-        }
-    };
-    let end = match offsets.get(line_idx) {
-        Some(&off) => off as usize,
-        None => index.source.len(),
-    };
-    if start > index.source.len() || end > index.source.len() { return String::new(); }
-    index.source[start..end].to_string()
+    {
+        let src_len = v2_rt::string_length(&index.source.clone());
+let line_start = if (line.clone() <= 1) {
+            0
+} else {
+            match Rc::new(index.offsets.clone().iter().cloned().skip((line.clone() - 2) as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(o) => (o.clone() + 1),
+    None => src_len.clone(),
+}
+};
+let line_end = match Rc::new(index.offsets.clone().iter().cloned().skip((line.clone() - 1) as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(o) => o.clone(),
+    None => src_len.clone(),
+};
+v2_rt::substring(&index.source.clone(), line_start.clone(), line_end.clone())
+}
 }
 
 pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> String {
