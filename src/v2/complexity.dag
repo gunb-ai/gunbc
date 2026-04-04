@@ -2084,7 +2084,11 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
                   _ => inner
                 }
               )
-            Bind { name: binding_name } => map_insert(acc, binding_name, true)
+            // Bare Bind is an alias, not a structural subpart.
+            // Only promote when scrutinee is already a descent expression,
+            // never when it is just the parameter itself.
+            Bind { name: binding_name } =>
+              if scrut_is_descent { map_insert(acc, binding_name, true) } else { acc }
             _ => acc
           }
         )
@@ -2174,7 +2178,9 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
                   _ => inner
                 }
               )
-            Bind { name: binding_name } => map_insert(vars, binding_name, true)
+            // Bare Bind is an alias, not descent. Only promote under scrut_is_descent.
+            Bind { name: binding_name } =>
+              if scrut_is_descent { map_insert(vars, binding_name, true) } else { vars }
             _ => vars
           }
         } else { vars }
@@ -2427,7 +2433,9 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
                   _ => inner
                 }
               )
-            Bind { name: binding_name } => map_insert(vars, binding_name, true)
+            // Bare Bind is an alias, not descent. Only promote under scrut_is_descent.
+            Bind { name: binding_name } =>
+              if scrut_is_descent { map_insert(vars, binding_name, true) } else { vars }
             _ => vars
           }
         } else { vars }
