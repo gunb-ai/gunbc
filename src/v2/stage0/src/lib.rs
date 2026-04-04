@@ -38,6 +38,7 @@ pub mod v2_compiler_runtime_rust;
 pub mod v2_compiler_tokenize;
 pub mod v2_compiler_trace;
 pub mod v2_std_core;
+pub mod v2_coercion;
 pub mod v2_rt;
 
 #[cfg(test)]

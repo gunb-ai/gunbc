@@ -27,11 +27,13 @@ Modeling guidelines: [MODELING.md](MODELING.md)
             ┌─ Lane 1: M2 (boundary sufficiency) ──┐
 M1 COMPLETE─┤                                       ├→ M4 (structural identity)
 Bootstrap D ┼─ Lane 2: E-track (emit + LanguageSpec)┘       └→ M5 → M6 → M7
-  COMPLETE  └─ Lane 3: CX (164 → 0)
+  COMPLETE  ├─ Lane 3: CX (164 → 0)
+            └─ PERF (continuous — parallel to all lanes)
 
 Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
 Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, languages
 Lane 3 owns: complexity, dsl/std/
+PERF owns: performance ratchets, bootstrap convergence tests, timing budgets
 M4 follows Lanes 1+2 (needs structural facts + clean render path)
 ```
 
@@ -64,7 +66,7 @@ M5-full (language plugin extraction).
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (285 pass, 0 fail, 22 ignored) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (271 pass, 0 fail, 36 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | 32 (target: 0) |
@@ -312,12 +314,55 @@ DFA triage maps all 164 to four algebraic root causes:
 - **CX-D**: MatchPattern dissolution + remaining concept grounding.
   Expected: ~80 → 0.
 - **CX-E**: Re-enable complexity gate — remove `complexity_diags = []`,
-  un-ignore 6 recursion rejection tests.
+  un-ignore 14 complexity tests (10 `complexity_*`, 3 `soundness_*`,
+  1 `structural_classify_*`; all `#[ignore]` with "CX track" comment).
 
 ### Acceptance
 
 0 violations without suppression. CX gate re-enabled. Node is the only
 recursive type consumed by complexity analysis.
+
+---
+
+## PERF: Compiler & Test Performance (parallel track)
+
+**Goal:** Continuous visibility into compiler and test performance so
+regressions are caught before they compound. Runs in parallel with all
+lanes — any lane can introduce a regression.
+
+### Existing infrastructure
+
+| What | Where | Status |
+|------|-------|--------|
+| Self-compile time ratchet | `bootstrap::performance_ratchet` | `#[ignore]`, 30s budget (~6.5s actual) |
+| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]` |
+| Full DSL compile | `pipeline::full_dsl_compiles` | `#[ignore]`, GREEN |
+| Stage0 freshness gate | `scripts/check-stage0-freshness.sh` | CI blocking |
+| Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, 314 |
+
+### Work items
+
+- **PERF-1**: Un-ignore `performance_ratchet` in CI. Currently 30s
+  budget with ~6.5s actual. Gate on this to catch O(n^2) regressions
+  early. Requires CI runner has `cargo build --release` capacity.
+- **PERF-2**: Un-ignore `bootstrap_stage0_to_stage1` in CI. This is
+  the full regen + convergence test. Proves pass-1 = pass-2 on every PR.
+- **PERF-3**: Track self-compile memory. The CX OOM root cause was
+  repeated complexity classification on large compiles, not raw budget.
+  Add a memory-usage ratchet or at minimum log peak RSS during
+  `performance_ratchet`.
+- **PERF-4**: Test suite wall-clock ratchet. Current: ~270s for 271
+  tests. Budget TBD. Individual tests >2s are suspect (per project
+  convention). Add per-test timing visibility.
+- **PERF-5**: Operation-count contracts. Test performance via structural
+  operation counts (node visits, inference passes, emit calls) rather
+  than wall-clock time. More deterministic, catches algorithmic
+  regressions independent of machine load.
+
+### Acceptance
+
+`performance_ratchet` and `bootstrap_stage0_to_stage1` running in CI.
+No test >2s without justification. Self-compile time tracked per-PR.
 
 ---
 

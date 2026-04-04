@@ -46,8 +46,10 @@ $STAGE0_CMD compile \
         [ "$mod" = "lib" ] && continue
         [ "$mod" = "main" ] && continue
         [ "$mod" = "v2_rt" ] && continue
+        [ "$mod" = "v2_coercion" ] && continue
         echo "pub mod $mod;"
     done
+    echo 'pub mod v2_coercion;'
     echo 'pub mod v2_rt;'
     echo ''
     echo '#[cfg(test)]'
