@@ -195,7 +195,6 @@ type IndexingSemantics {
 // Ref: std.languages StatementSyntax (let_binding / let_binding_inferred).
 type AnnotationRequirements {
   let_binding_inferred: String     // e.g. "let {0} = {1};" / "{0} := {1}" / "{0} = {1}"
-  let_binding_annotated: String    // e.g. "let {0}: {1} = {2};" / "var {0} {1} = {2}"
   lambda_param_typed: String       // e.g. "{0}: {1}" (Rust/Py) / "{0} {1}" (Go)
   lambda_param_untyped: String     // e.g. "{0}" (Rust/Py) / "{0} interface{}" (Go)
 }
@@ -261,7 +260,6 @@ fn rust_spec() -> LanguageSpec {
     },
     annotations: AnnotationRequirements {
       let_binding_inferred: "let {0} = {1};",
-      let_binding_annotated: "let {0}: {1} = {2};",
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
     }
@@ -312,7 +310,6 @@ fn python_spec() -> LanguageSpec {
     },
     annotations: AnnotationRequirements {
       let_binding_inferred: "{0} = {1}",
-      let_binding_annotated: "{0}: {1} = {2}",
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
     }
@@ -363,7 +360,6 @@ fn go_spec() -> LanguageSpec {
     },
     annotations: AnnotationRequirements {
       let_binding_inferred: "{0} := {1}",
-      let_binding_annotated: "var {0} {1} = {2}",
       lambda_param_typed: "{0} {1}",
       lambda_param_untyped: "{0} interface{}"
     }

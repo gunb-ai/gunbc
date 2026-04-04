@@ -1956,16 +1956,6 @@ apply_type_template2(spec.annotations.clone().let_binding_inferred.clone(), emit
 }
 }
 
-pub fn emit_let_binding_annotated(name: String, type_str: String, value: String, target: RenderTarget) -> String {
-    match target.clone() {
-    RenderTarget::Dag => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), name.clone()), ": ".to_string()), type_str.clone()), " = ".to_string()), value.clone()),
-    _ => {
-        let spec = language_spec(target.clone());
-apply_type_template3(spec.annotations.clone().let_binding_annotated.clone(), emit_ident(name.clone(), target.clone()), type_str.clone(), value.clone())
-},
-}
-}
-
 pub fn emit_return(value: String, target: RenderTarget) -> String {
     match target.clone() {
     RenderTarget::Rust => v2_rt::concat("return ".to_string(), value.clone()),

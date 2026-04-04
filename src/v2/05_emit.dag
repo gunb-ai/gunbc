@@ -1587,14 +1587,6 @@ fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String
   }
 }
 
-fn emit_let_binding_annotated(name: String, type_str: String, value: String, target: RenderTarget) -> String {
-  match target {
-    Dag => concat("let ", name, ": ", type_str, " = ", value)
-    _ =>
-      let spec = language_spec(target: target)
-      apply_type_template3(template: spec.annotations.let_binding_annotated, arg0: emit_ident(name: name, target: target), arg1: type_str, arg2: value)
-  }
-}
 
 fn emit_return(value: String, target: RenderTarget) -> String {
   match target {
