@@ -107,10 +107,6 @@ pub fn go_method_templates() -> Rc<HashMap<String, String>> {
     __m.insert("count".to_string(), "len({recv})".to_string());
     __m.insert("join".to_string(), "strings.Join({recv}, {arg})".to_string());
     __m.insert("split".to_string(), "strings.Split({recv}, {arg})".to_string());
-    __m.insert("last".to_string(), "{recv}[len({recv})-1]".to_string());
-    __m.insert("first".to_string(), "{recv}[0]".to_string());
-    __m.insert("enumerate".to_string(), "{recv}".to_string());
-    __m.insert("chars".to_string(), "strings.Split({recv}, \"\")".to_string());
     __m.insert("string_contains".to_string(), "strings.Contains({recv}, {arg})".to_string());
     __m.insert("concat".to_string(), "append({recv}, {arg}...)".to_string());
     __m.insert("map".to_string(), "v2rt.Map({recv}, {arg})".to_string());

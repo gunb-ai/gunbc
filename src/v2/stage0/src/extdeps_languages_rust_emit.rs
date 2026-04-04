@@ -90,14 +90,13 @@ pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     let mut __m = HashMap::new();
     __m.insert("count".to_string(), "({recv}.len() as i64)".to_string());
     __m.insert("join".to_string(), "{recv}.join(&{arg})".to_string());
-    __m.insert("split".to_string(), "Rc::new({recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>())".to_string());
+    __m.insert("split".to_string(), "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()".to_string());
     __m.insert("last".to_string(), "{recv}.last().cloned()".to_string());
     __m.insert("first".to_string(), "{recv}.first().cloned()".to_string());
-    __m.insert("enumerate".to_string(), "Rc::new({recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>())".to_string());
-    __m.insert("chars".to_string(), "Rc::new({recv}.chars().map(|c| c as i64).collect::<Vec<_>>())".to_string());
-    __m.insert("skip".to_string(), "Rc::new({recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>())".to_string());
-    __m.insert("take".to_string(), "Rc::new({recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>())".to_string());
-    __m.insert("append".to_string(), "v2_rt::rc_list_push({recv}, {arg})".to_string());
+    __m.insert("enumerate".to_string(), "{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()".to_string());
+    __m.insert("chars".to_string(), "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()".to_string());
+    __m.insert("skip".to_string(), "{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()".to_string());
+    __m.insert("take".to_string(), "{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()".to_string());
     Rc::new(__m)
 }
 

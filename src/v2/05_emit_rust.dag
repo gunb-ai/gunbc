@@ -1781,7 +1781,7 @@ fn rust_empty_map_value_type_str(map_type: Node, rc_types: Map<String, Bool>) ->
 // for non-Copy types. lookup/map_get return the correct type directly.
 
 fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> Bool {
-  function_name == "map_keys" || function_name == "map_values"
+  function_name == "map_keys" || function_name == "map_values" || function_name == "split" || function_name == "enumerate" || function_name == "chars" || function_name == "skip" || function_name == "take" || function_name == "append"
 }
 
 fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: InferredNode?) -> Bool {
@@ -2705,7 +2705,11 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
           Some { value: templates } => match map_get(templates, method_name) {
             Some { value: tmpl } =>
               let bindings = empty_map() |> map_insert("recv", recv_str) |> map_insert("arg", first_arg_str)
-              apply_named_template(template: tmpl, bindings: bindings)
+              let raw = apply_named_template(template: tmpl, bindings: bindings)
+              // Rc wrapping comes from sharing authority, not templates
+              if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method_name) {
+                concat("Rc::new(", raw, ")")
+              } else { raw }
             None =>
               // Generic bridge method: v2_rt::method_name(receiver, args...)
               emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)

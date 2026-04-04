@@ -1750,7 +1750,7 @@ if (rendered.clone().as_str() == "".to_string().as_str()) {
 }
 
 pub fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> bool {
-    ((function_name.clone().as_str() == "map_keys".to_string().as_str()) || (function_name.clone().as_str() == "map_values".to_string().as_str()))
+    ((((((((function_name.clone().as_str() == "map_keys".to_string().as_str()) || (function_name.clone().as_str() == "map_values".to_string().as_str())) || (function_name.clone().as_str() == "split".to_string().as_str())) || (function_name.clone().as_str() == "enumerate".to_string().as_str())) || (function_name.clone().as_str() == "chars".to_string().as_str())) || (function_name.clone().as_str() == "skip".to_string().as_str())) || (function_name.clone().as_str() == "take".to_string().as_str())) || (function_name.clone().as_str() == "append".to_string().as_str()))
 }
 
 pub fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: Option<Rc<InferredNode>>) -> bool {
@@ -2825,7 +2825,12 @@ match spec.method_templates.clone() {
     Some(templates) => match v2_rt::map_get(&templates, method_name.clone()) {
     Some(tmpl) => {
                                                                 let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "recv".to_string(), recv_str), "arg".to_string(), first_arg_str);
-apply_named_template(tmpl.clone(), bindings)
+let raw = apply_named_template(tmpl.clone(), bindings);
+if rust_runtime_bridge_wraps_collection_result_in_rc(method_name.clone()) {
+                                                                    v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
+} else {
+                                                                    raw
+}
 },
     None => emit_rust_generic_method_call(method_name.clone(), receiver.clone(), args.clone(), result_type, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()),
 },

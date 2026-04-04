@@ -51,14 +51,13 @@ data rust_container_templates: Map<String, String> = {
 data rust_method_templates: Map<String, String> = {
   "count": "(\{recv\}.len() as i64)",
   "join": "\{recv\}.join(&\{arg\})",
-  "split": "Rc::new(\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>())",
+  "split": "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",
   "last": "\{recv\}.last().cloned()",
   "first": "\{recv\}.first().cloned()",
-  "enumerate": "Rc::new(\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>())",
-  "chars": "Rc::new(\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>())",
-  "skip": "Rc::new(\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>())",
-  "take": "Rc::new(\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>())",
-  "append": "v2_rt::rc_list_push(\{recv\}, \{arg\})"
+  "enumerate": "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",
+  "chars": "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",
+  "skip": "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",
+  "take": "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()"
 }
 
 // -- Reserved words ------------------------------------------------------

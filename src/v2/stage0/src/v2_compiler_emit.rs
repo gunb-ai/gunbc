@@ -725,7 +725,7 @@ match v2_rt::map_get(&bindings, key.clone()) {
 let processed = Rc::new({ let mut __result = Vec::new(); for part in parts.iter().cloned() { __result.push(apply_named_template_nested(part.clone(), bindings.clone(), rest.clone())); } __result });
 processed.join(&val.clone())
 },
-    None => apply_named_template_nested(template, bindings.clone(), rest.clone()),
+    None => v2_rt::concat("TEMPLATE_ERROR_MISSING_BINDING_".to_string(), key.clone()),
 }
 },
 }

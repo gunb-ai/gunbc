@@ -118,7 +118,7 @@ pub fn python_method_templates() -> Rc<HashMap<String, String>> {
     __m.insert("last".to_string(), "{recv}[-1] if {recv} else None".to_string());
     __m.insert("first".to_string(), "{recv}[0] if {recv} else None".to_string());
     __m.insert("enumerate".to_string(), "list(enumerate({recv}))".to_string());
-    __m.insert("chars".to_string(), "list({recv})".to_string());
+    __m.insert("chars".to_string(), "[ord(c) for c in {recv}]".to_string());
     __m.insert("string_contains".to_string(), "{arg} in {recv}".to_string());
     __m.insert("concat".to_string(), "{recv} + {arg}".to_string());
     __m.insert("map".to_string(), "[{arg}(x) for x in {recv}]".to_string());
