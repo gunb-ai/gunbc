@@ -2018,22 +2018,27 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
         None => next_vars
       }
     ExprMatch =>
-      // If scrutinee is a descent expr or a descent var,
-      // then Some { value: x } bindings are also descent.
+      // If scrutinee is a descent expr, a descent var, or the parameter itself,
+      // then variant field bindings are structural parts (descent).
+      // CX-B: generalized from Some-only to all variant patterns.
       let scrut = match_scrutinee(texpr: body)
       let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
-      let with_patterns = if scrut_is_descent {
+      let scrut_is_param = match scrut.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let sname = expr_var_name(texpr: scrut)
+          sname == param_name || set_has(m: vars, key: sname)
+        _ => false
+      }
+      let with_patterns = if scrut_is_descent || scrut_is_param {
         match_arm_nodes(texpr: body) |> fold(init: vars, f: (acc, arm_node) =>
           match arm_pattern(n: arm_node) {
-            VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
-              if vname == "Some" {
-                bindings |> fold(init: acc, f: (inner, fb) =>
-                  match field_binding_pattern(n: fb) {
-                    Bind { name: binding_name } => map_insert(inner, binding_name, true)
-                    _ => inner
-                  }
-                )
-              } else { acc }
+            VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+              bindings |> fold(init: acc, f: (inner, fb) =>
+                match field_binding_pattern(n: fb) {
+                  Bind { name: binding_name } => map_insert(inner, binding_name, true)
+                  _ => inner
+                }
+              )
             Bind { name: binding_name } => map_insert(acc, binding_name, true)
             _ => acc
           }
@@ -2105,19 +2110,25 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
       let scrut = match_scrutinee(texpr: body)
       let scrut_ok = all_self_calls_descend_inc(body: scrut, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
       let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+      // CX-B: scrutinee IS the parameter or a known descent var —
+      // variant field bindings are structural parts (standard induction).
+      let scrut_is_param = match scrut.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let sname = expr_var_name(texpr: scrut)
+          sname == param_name || set_has(m: vars, key: sname)
+        _ => false
+      }
       // Each arm gets INDEPENDENT vars — arm-local bindings don't leak to siblings
       let arms_ok = match_arm_nodes(texpr: body) |> all(arm_node =>
-        let arm_vars = if scrut_is_descent {
+        let arm_vars = if scrut_is_descent || scrut_is_param {
           match arm_pattern(n: arm_node) {
-            VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
-              if vname == "Some" {
-                bindings |> fold(init: vars, f: (inner, fb) =>
-                  match field_binding_pattern(n: fb) {
-                    Bind { name: binding_name } => map_insert(inner, binding_name, true)
-                    _ => inner
-                  }
-                )
-              } else { vars }
+            VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+              bindings |> fold(init: vars, f: (inner, fb) =>
+                match field_binding_pattern(n: fb) {
+                  Bind { name: binding_name } => map_insert(inner, binding_name, true)
+                  _ => inner
+                }
+              )
             Bind { name: binding_name } => map_insert(vars, binding_name, true)
             _ => vars
           }
@@ -2325,19 +2336,24 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
       let scrut = match_scrutinee(texpr: body)
       let scrut_ev = collect_evidence_incremental(body: scrut, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
       let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+      // CX-B: scrutinee IS the parameter or a known descent var
+      let scrut_is_param = match scrut.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let sname = expr_var_name(texpr: scrut)
+          sname == param_name || set_has(m: vars, key: sname)
+        _ => false
+      }
       // Each arm gets INDEPENDENT vars — arm-local bindings don't leak
       let arms_ev = match_arm_nodes(texpr: body) |> fold(init: none, f: (acc, arm_node) =>
-        let arm_vars = if scrut_is_descent {
+        let arm_vars = if scrut_is_descent || scrut_is_param {
           match arm_pattern(n: arm_node) {
-            VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
-              if vname == "Some" {
-                bindings |> fold(init: vars, f: (inner, fb) =>
-                  match field_binding_pattern(n: fb) {
-                    Bind { name: binding_name } => map_insert(inner, binding_name, true)
-                    _ => inner
-                  }
-                )
-              } else { vars }
+            VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+              bindings |> fold(init: vars, f: (inner, fb) =>
+                match field_binding_pattern(n: fb) {
+                  Bind { name: binding_name } => map_insert(inner, binding_name, true)
+                  _ => inner
+                }
+              )
             Bind { name: binding_name } => map_insert(vars, binding_name, true)
             _ => vars
           }
