@@ -135,7 +135,7 @@ it was lost, (4) fix the rendering to exploit the guarantee.
 
 | # | Fact | Computed at | Lost during | Compensation | Cost | Status |
 |---|------|-------------|-------------|--------------|------|--------|
-| FF-1 | Binding fan-out (use-count) | .dag AST (lexical scope) | v1 emitter rendering to Rust | Rc-wrap all types, clone every use | Every fold O(n²). 20-min self-compile. | **FIXED.** Match-arm count bug (max→add) was root cause of ~50 false single-use classifications. Full fan-out model: clone only at fan-out > 1. Reconcile: 20min → 244ms. |
+| FF-1 | Binding fan-out (use-count) | .dag AST (lexical scope) | v1 emitter rendering to Rust | Rc-wrap all types, clone every use | Every fold O(n²). 20-min self-compile. | **FIXED.** Match-arm count bug (max→add) was root cause of ~50 false single-use classifications. Full fan-out model: clone only at fan-out > 1. Reconcile: 20min → 244ms. v2 ownership analysis (`ownership.dag`) wired into Rust emitter — function params with fan-out=1 move instead of clone. Let-bindings and match-bound variables blocked on VarBindingKind propagation. |
 | FF-2 | Resolved structural type | Infer (`.inferred`) | Bare name references at stage boundary | Emit re-resolves through TypeEnv | 12+ re-resolution sites | **FIXED** (C-series) |
 | FF-3 | Expression children | Parse (construction) | ExprData variant fields | 12 manual walks (~1800 lines) | Every analysis needs full ExprData match | **FIXED** (P5.11) |
 | FF-4 | Module dependency order | Resolve (topo sort) | `dep_order` field + re-sort | Extra field, unnecessary sort pass | Minor | **FIXED** (P5.2) |
@@ -815,7 +815,7 @@ the compiler should have caught the gap before reaching emission.
 | Decision | Current state | LanguageSpec target |
 |----------|--------------|---------------------|
 | Sharing/wrapping | `rc_types` map (Rust only). Go emits bare value-type structs. | `sharing_wrap_template`, `sharing_construct_template` per language |
-| Clone semantics | Hardcoded `.clone()` in Rust emitter | Language-level clone/copy strategy |
+| Clone semantics | Hardcoded `.clone()` in Rust emitter; ownership analysis elides for fan-out=1 function params | Language-level clone/copy strategy in LanguageSpec |
 | Option/absence | Emitter heuristic | Absence variant spec in LanguageSpec |
 | Async/await | Hardcoded `"async fn"` in Rust emitter | Async syntax template |
 | Import generation | Per-emitter logic | Module system spec |

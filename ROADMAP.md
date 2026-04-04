@@ -152,7 +152,10 @@ Open items:
 ### Explicit ownership and identity
 
 - [x] Ownership analysis wired into Rust emitter: fan-out=1 function params move instead of clone
-- [ ] Extend movable set to let-bindings and match-bound variables (requires scoped analysis)
+- [ ] VarBindingKind flows through ownership analysis to emission (FF-1 completion)
+  - Unblocks let-binding moves (name collision with lambda params in flat movable map)
+  - Unblocks match-bound variable handling (&T vs Rc<T> distinction)
+- [ ] Clone semantics in LanguageSpec (Rust `.clone()` is hardcoded, not data-driven)
 - [ ] Explicit parent-enum ownership facts through resolve/infer/emit
 - [ ] Transport/config: one `.dag` authority for transport schema (35+ redundant sites)
 

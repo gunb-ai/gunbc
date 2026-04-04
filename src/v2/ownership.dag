@@ -9,6 +9,39 @@
 //   unclassified             -> completeness bug in this analysis
 //
 // One pass over each function body. No heuristics, no fallbacks.
+//
+// Clone elision (FF-1 exploitation):
+//
+// The .dag language guarantees fan-out is a syntactic property (INVARIANTS.md
+// "Facts Flow Forward"). This analysis computes binding_fan_out and the emitter
+// reads it: fan-out=0 → dead code, fan-out=1 → move, fan-out>1 → Rc + clone.
+//
+// Current scope: function parameters only. Three binding classes exist in the
+// emitted Rust, each with different Rust-level representations:
+//
+//   1. Function parameters  → Rc<T> values, unique names      → SAFE to move
+//   2. Let-bindings         → Rc<T> values, may shadow lambda  → BLOCKED on scoping
+//   3. Match-bound variables → &T references (from .as_ref())  → BLOCKED on VarBindingKind
+//
+// Class 2 is blocked because the movable set is name-based (Map<String, Bool>),
+// but lambda parameters can shadow let-bindings. When the outer `f` and the
+// lambda's `f` share a name, the flat map conflates them. The fix is positional
+// identity — either de Bruijn indices, or passing VarBindingKind through to
+// emit_var_ref so the emitter knows which `f` it's looking at. VarBindingKind
+// already distinguishes LocalValueBinding vs FunctionValueBinding (00_core.dag).
+//
+// Class 3 is blocked because match arms on Rc values use .as_ref() +
+// destructuring, producing &T bindings. Skipping .clone() on &T gives E0308
+// (type mismatch: expected T, got &T). The fix is to read VarBindingKind at
+// the emit site — match-bound variables are LocalValueBinding and the emitter
+// already has binding_kind: VarBindingKind? in emit_var_ref. The ownership
+// analysis needs to be aware that "move" for a match-bound &T means a
+// different Rust operation (no-op deref + clone vs Rc move).
+//
+// Both blockers converge on the same upstream fix: VarBindingKind must flow
+// from resolve through the ownership analysis to emission. This is a
+// "Facts Flow Forward" instance — the binding's origin (parameter, let, match)
+// is known at parse/resolve time but lost before the ownership decision.
 
 module v2.compiler.ownership
 
