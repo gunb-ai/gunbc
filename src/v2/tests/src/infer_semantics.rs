@@ -47,7 +47,7 @@ fn assert_compiler_error(inferred: &Option<Rc<InferredNode>>, message_fragment: 
 }
 
 #[test]
-fn invalid_list_index_returns_compiler_error_type() {
+fn list_int_index_returns_optional_element_type() {
     let result = v2_compiler_infer_access::check_index_access_node(
         container_node("List".to_string(), leaf_node("Int".to_string())),
         leaf_node("Int".to_string()),
@@ -55,8 +55,8 @@ fn invalid_list_index_returns_compiler_error_type() {
         "test".to_string(),
     );
 
-    assert_eq!(result.diagnostics.len(), 1);
-    assert_compiler_error(&result.inferred, "indexing is only supported");
+    assert_eq!(result.diagnostics.len(), 0, "List<Int> indexed by Int should succeed");
+    assert!(result.inferred.is_some(), "List<Int> index should produce a type");
 }
 
 #[test]
