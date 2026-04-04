@@ -75,7 +75,7 @@ import v2.std.core {
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection,
+  nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved,
   map_node, bare_map_node,
   callable_inferred,
   normalize_access_type_node,
@@ -845,16 +845,10 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
         _ => none
       }
     }
-    // BRIDGE: heuristic child-count check compensates for incomplete upstream
-    // container facts. Blocked on CX-C bounded-primitive fold type propagation.
+    // BRIDGE: fallback to lambda body return type when fold init is under-resolved.
+    // Blocked on CX-C bounded-primitive fold type propagation.
     let acc_under_resolved = match fold_acc {
-      Some { value: acc_type } =>
-        // Map with missing value type
-        (node_is_keyed_collection(n: acc_type) && acc_type.children |> count < 2)
-        // List/collection with missing element type
-        || (node_is_element_collection(n: acc_type) && acc_type.children |> count == 0)
-        // Non-collection init (None or bare value) — always use body return type
-        || (!node_is_keyed_collection(n: acc_type) && !node_is_element_collection(n: acc_type) && !node_is_collection(n: acc_type))
+      Some { value: acc_type } => !is_fully_resolved(n: acc_type)
       None => true
     }
     if acc_under_resolved {
@@ -1130,9 +1124,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
         // Refine fold_acc_type from lambda body when init is under-resolved.
-        let call_acc_is_under_resolved = (node_is_keyed_collection(n: call_fold_acc_type) && call_fold_acc_type.children |> count < 2)
-          || (node_is_element_collection(n: call_fold_acc_type) && call_fold_acc_type.children |> count == 0)
-          || (!node_is_keyed_collection(n: call_fold_acc_type) && !node_is_element_collection(n: call_fold_acc_type) && !node_is_collection(n: call_fold_acc_type))
+        let call_acc_is_under_resolved = !is_fully_resolved(n: call_fold_acc_type)
         let refined_call_fold_acc_type = if call_fold_info != none && call_acc_is_under_resolved {
           match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
             Some { value: lambda_arg } => rt_type(n: arg_value(n: lambda_arg))
@@ -1320,9 +1312,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // Refine fold_acc_type from lambda body when init is under-resolved.
       // The lambda has been inferred (typed_mc_args), so its body return type
       // carries the resolved type from the fold body (e.g., map_merge result).
-      let mc_acc_is_under_resolved = (node_is_keyed_collection(n: fold_acc_type) && fold_acc_type.children |> count < 2)
-        || (node_is_element_collection(n: fold_acc_type) && fold_acc_type.children |> count == 0)
-        || (!node_is_keyed_collection(n: fold_acc_type) && !node_is_element_collection(n: fold_acc_type) && !node_is_collection(n: fold_acc_type))
+      let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type)
       let refined_fold_acc_type = if fold_info != none && mc_acc_is_under_resolved {
         match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
           Some { value: lambda_arg } => rt_type(n: arg_value(n: lambda_arg))

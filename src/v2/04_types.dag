@@ -98,6 +98,12 @@ fn node_is_element_collection(n: Node) -> Bool {
   node_is_collection(n: n) && (n.children |> count) == 1
 }
 
+fn is_fully_resolved(n: Node) -> Bool {
+  if node_is_keyed_collection(n: n) { n.children |> count >= 2 }
+  else if node_is_element_collection(n: n) { n.children |> count > 0 }
+  else { node_is_collection(n: n) }
+}
+
 fn container_node(kind_name: String, element: Node) -> Node {
   Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: none, children: [element], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }

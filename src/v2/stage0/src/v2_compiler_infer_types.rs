@@ -96,6 +96,18 @@ pub fn node_is_element_collection(n: Rc<Node>) -> bool {
     (node_is_collection(n.clone()) && ((n.children.clone().len() as i64) == 1))
 }
 
+pub fn is_fully_resolved(n: Rc<Node>) -> bool {
+    if node_is_keyed_collection(n.clone()) {
+        ((n.children.clone().len() as i64) >= 2)
+} else {
+        if node_is_element_collection(n.clone()) {
+            ((n.children.clone().len() as i64) > 0)
+} else {
+            node_is_collection(n.clone())
+}
+}
+}
+
 pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: kind_name.clone(),
