@@ -24,17 +24,15 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 ## Critical Path
 
 ```
-M1 (every .dag compiles) ── COMPLETE
- └→ M2 (boundary sufficiency)
-     ├→ E-track (emit boundary + LanguageSpec) ─── parallel with M4
-     └→ M4 (structural identity, L1 = 0)
-         └→ M5-full (language plugin extraction)
-             └→ M6 (parse-emit symmetry)
-                 └→ M7 (dissolve structural bridges)
+            ┌─ Lane 1: M2 (boundary sufficiency) ──┐
+M1 COMPLETE─┤                                       ├→ M4 (structural identity)
+Bootstrap D ┼─ Lane 2: E-track (emit + LanguageSpec)┘       └→ M5 → M6 → M7
+  COMPLETE  └─ Lane 3: CX (164 → 0)
 
-  PARALLEL (not blocking):
-  CX: complexity analyzer (164 → 0, algebraic grounding)
-  Bootstrap D: CI-enforced regeneration
+Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
+Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, languages
+Lane 3 owns: complexity, dsl/std/
+M4 follows Lanes 1+2 (needs structural facts + clean render path)
 ```
 
 ---
@@ -48,39 +46,29 @@ M1 (every .dag compiles) ── COMPLETE
 | **A** | GREEN | 0 diagnostics | PR #264 |
 | **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_stage0_to_stage1` still `#[ignore]` |
 | **C** | GREEN | regen binary self-compiles | PR #308. 1 perf-only bootstrap patch: `dag_syntax_spec` cache |
-| **D** | BLOCKED | `regenerate-stage0.sh && git diff --exit-code` | Freshness gate informational (not blocking CI). See convergence errors below |
+| **D** | GREEN | `regenerate-stage0.sh && git diff --exit-code` | PR #308. Freshness gate blocking in CI. Root cause was .dag source using legacy `emit_node_type_rc` while stage0 used `render_rust_type` |
 
 **Bootstrap D** = regenerated code replaces committed stage0 with zero
 manual patches, AND the regenerated binary produces identical output
 when it self-compiles (fixed point convergence). **Blocks all other
 lanes from editing stage0 Rust directly.**
 
-Current state: pass 1 (committed→regen) succeeds. Pass 2 (regen→regen)
-produces 178 cargo errors. The regenerated binary's emitter diverges
-from the committed binary's emitter:
-
-| Error class | Count | Root cause |
-|-------------|-------|-----------|
-| Mismatched types | 47 | Emitter produces different type annotations or inferred types |
-| `impl Fn` clone | 7 | TCO/lambda params emitted as `impl Fn` which isn't `Clone` |
-| Type annotations needed | 3 | E0282 — Rust can't infer without committed annotations |
-| Missing generics | 3 | `PartialFunction` without type params |
-| Missing type `Tuple` | 1 | Unresolved synthetic type |
-
-These are emitter fidelity issues — the same class as E-track (emit
-boundary) and M2 (boundary sufficiency). Bootstrap D becomes green
-when the emitter produces code that is self-consistent across passes.
+Note: "zero manual patches" means zero patches to *generated* files.
+Five hand-maintained files are still copied during regeneration
+(main.rs, v2_rt.rs, compiler_tests.rs, extdeps_languages_dag_syntax.rs,
+v2_coercion.rs). Eliminating these is tracked as future work under
+M5-full (language plugin extraction).
 
 ## CI Gates
 
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (284 pass, 0 fail, 22 ignored) |
-| Full DSL | `full_dsl_compiles -- --ignored` | GREEN (92 dsl + 29 v2) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (285 pass, 0 fail, 22 ignored) |
+| Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | 32 (target: 0) |
-| Stage0 freshness | `scripts/check-stage0-freshness.sh` | Informational (not blocking). Fails until Bootstrap D converges |
+| Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
 ## Ratchet Counts
 
@@ -121,9 +109,9 @@ a standalone emitter patch.
 # Layer 2: Root-Cause Tracks
 
 Four named architectural problems. Each has one root cause and one
-definition of done. All four can run in parallel.
+definition of done. Lanes 1–3 run in parallel; M4 follows.
 
-## M2: Boundary Sufficiency
+## M2: Boundary Sufficiency (Lane 1)
 
 **Root cause:** The resolution→emit boundary does not carry enough
 structure. Emit compensates with heuristics. Every remaining workaround
@@ -171,7 +159,7 @@ suffix/name scans to recover ownership. Fallback count promoted to CI.
 
 ---
 
-## E-track: Emit Boundary + LanguageSpec
+## E-track: Emit Boundary + LanguageSpec (Lane 2)
 
 **Root cause:** Emission rediscovers facts available upstream.
 TypeRendering is the boundary fix. LanguageSpec/coercion is the
@@ -248,11 +236,13 @@ passes — every new fact layer must have a consumer in the same change.
 
 ---
 
-## M4: Structural Identity (L1 = 0)
+## M4: Structural Identity (L1 = 0) — follows Lanes 1+2
 
 **Root cause:** The compiler uses `Node.name` (a string) as semantic
 authority. ~256 constructions, ~32 name-based comparisons. Deletion
 requires declaration-driven identity and structural algebra.
+Blocked on M2 (structural facts in resolve/infer files) and E-track
+(clean render path in emit files).
 
 ### Lane 1: Declaration-driven algebra
 
@@ -293,7 +283,7 @@ then deleted. `Node.name` field deleted.
 
 ---
 
-## CX: Complexity Analyzer (164 → 0)
+## CX: Complexity Analyzer (164 → 0) (Lane 3)
 
 **Root cause:** 164 violations are ungrounded algebraic concepts, not
 analyzer bugs. The path to 0 is grounding each concept in std/, not
