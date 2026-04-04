@@ -4251,3 +4251,80 @@ fn type_rendering_named_conj_with_container_template() {
     assert!(rendered.contains("Vec"), "FreeMonoid Conj rendered as {:?}, expected Vec<_> via container template", rendered);
     assert!(!rendered.contains("FreeMonoid"), "FreeMonoid Conj rendered bare name instead of container template: {:?}", rendered);
 }
+
+// ── apply_named_template correctness ────────────────────────────────────
+
+#[test]
+fn apply_named_template_does_not_rescan_substituted_values() {
+    use v2_compiler::v2_compiler_emit::apply_named_template;
+
+    // Value for "recv" contains literal "{arg}" — must NOT be rewritten
+    // by the second placeholder pass.
+    let template = "{recv}.join(&{arg})".to_string();
+    let mut bindings = HashMap::new();
+    bindings.insert("recv".to_string(), "expr_with_{arg}_literal".to_string());
+    bindings.insert("arg".to_string(), "sep".to_string());
+    let result = apply_named_template(template, Rc::new(bindings));
+
+    assert_eq!(
+        result, "expr_with_{arg}_literal.join(&sep)",
+        "substituted value containing {{arg}} was incorrectly rewritten"
+    );
+}
+
+#[test]
+fn apply_named_template_arg_value_containing_recv_placeholder() {
+    use v2_compiler::v2_compiler_emit::apply_named_template;
+
+    // Value for "arg" contains literal "{recv}" — must NOT be rewritten.
+    let template = "{recv}.call({arg})".to_string();
+    let mut bindings = HashMap::new();
+    bindings.insert("recv".to_string(), "receiver".to_string());
+    bindings.insert("arg".to_string(), "has_{recv}_inside".to_string());
+    let result = apply_named_template(template, Rc::new(bindings));
+
+    assert_eq!(
+        result, "receiver.call(has_{recv}_inside)",
+        "substituted value containing {{recv}} was incorrectly rewritten"
+    );
+}
+
+// ── Higher-order method emission (map, filter, fold) ────────────────────
+
+#[test]
+fn higher_order_map_emits_closure_rust() {
+    let source = "module test_ho\nfn double_all(xs: List<Int>) -> List<Int> { xs |> map(x => x * 2) }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_ho.rs");
+    // map with lambda must emit iteration over elements, not just {recv}/{arg} splicing
+    assert!(
+        content.contains(".iter()") && content.contains("__result"),
+        "map with lambda should emit iteration with accumulator: {content}"
+    );
+}
+
+#[test]
+fn higher_order_filter_emits_closure_rust() {
+    let source = "module test_ho2\nfn positives(xs: List<Int>) -> List<Int> { xs |> filter(x => x > 0) }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_ho2.rs");
+    // filter with lambda must emit conditional accumulation, not just {recv}/{arg} splicing
+    assert!(
+        content.contains("__result") && content.contains("push"),
+        "filter with lambda should emit conditional accumulator: {content}"
+    );
+}
+
+#[test]
+fn higher_order_fold_emits_accumulator_rust() {
+    let source = "module test_ho3\nfn sum(xs: List<Int>) -> Int { xs |> fold(init: 0, f: (acc, x) => acc + x) }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_ho3.rs");
+    assert!(
+        content.contains(".fold(") || content.contains("fold"),
+        "fold should emit accumulator pattern: {content}"
+    );
+}

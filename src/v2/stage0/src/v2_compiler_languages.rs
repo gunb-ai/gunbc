@@ -161,13 +161,6 @@ pub struct AnnotationRequirements {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct MethodTemplate {
-    pub lambda: String,
-    pub fn_ref: String,
-    pub simple: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,

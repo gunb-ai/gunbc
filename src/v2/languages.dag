@@ -126,16 +126,12 @@ type AnnotationRequirements {
   lambda_param_untyped: String     // e.g. "{0}" (Rust/Py) / "{0} interface{}" (Go)
 }
 
-// -- Method templates: per-method rendering for algebra method calls ---------
-// Templates use named placeholders: {recv}, {arg}, {param}, {body}, etc.
-// Applied via apply_named_template in shared emit.
-// The emitter selects lambda/fn_ref/simple based on argument shape,
-// then applies named template substitution.
-type MethodTemplate {
-  lambda: String       // template when arg is inline lambda
-  fn_ref: String       // template when arg is function reference
-  simple: String?      // template when no callable arg (count, first, etc.)
-}
+// -- Method templates: per-method rendering for simple algebra method calls ---
+// Map<String, String> keyed by method name, value is a template string with
+// {recv} and {arg} named placeholders. Applied via apply_named_template.
+// Only covers methods whose rendering is pure string substitution on receiver
+// and first argument. Higher-order methods (map, filter, fold, etc.) that need
+// lambda/closure structure remain as dedicated emitter functions.
 
 type LanguageSpec {
   target_name: String
