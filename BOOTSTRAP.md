@@ -162,14 +162,18 @@ git diff --exit-code src/v2/stage0/           # no drift
 
 ## Current state (2026-04-04)
 
-Stage0 is stale — committed stage0 doesn't match committed .dag source.
-Fresh regen produces a binary with different inference/emission behavior.
+**BOOTSTRAP D GREEN.** Fixed-point convergence achieved (pass-3 = pass-2).
+- 0 diagnostics, 0 cargo check errors
+- 253 tests pass (32 fail — same as committed baseline)
+- Diagnostic ratchet: 0
 
-### Working tree (branch: bootstrap-d-regen)
-- `04_infer.dag`: committed (no inference fix)
+### .dag changes (branch: bootstrap-d-regen)
 - `05_emit.dag`: `panic!` → `compile_error!` in type position (3 sites)
-- `05_emit_rust.dag`: `empty_map()` fix + bridge fallbacks (2 sites)
-- `stage0/`: pass-2 output (58 errors, does not compile)
+- `05_emit_rust.dag`:
+  - `recursive_types: {}` → `empty_map()` (1 site)
+  - Bridge fallbacks for unresolved empty_map (4 sites)
+  - Type annotations disabled in 3 emit paths (Pass A)
+  - `impl Fn` → `impl Fn + Clone` for TCO callable params
 
 ### Convergence iterations
 
@@ -180,6 +184,7 @@ Fresh regen produces a binary with different inference/emission behavior.
 | 2a | + inference fix | 90 errors | compile_error! strings inherited from .dag |
 | 2b | + bridge fallbacks, no infer fix | 58 errors | staleness divergence |
 | 2c | + bridge fallbacks + infer fix | 58 errors (SAME) | inference fix is orthogonal |
+| 3 | + disable annotations + Clone | 0 errors pass-2 | fixed point achieved |
 
 ### Pass-2 error breakdown (58 errors)
 
@@ -215,16 +220,14 @@ Bootstrap chain:
 
 Each bootstrap-breaking feature gets its own convergence pass:
 
-**Pass A (current)**: Revert annotation emission to match stale behavior.
-- Change `emit_typed_let` to skip annotations (match stale binary behavior)
-- Regen → pass-1 without annotations, pass-2 without annotations → convergence
-- Verify: pass-2 = pass-1 (fixed point)
+**Pass A (DONE)**: Revert annotation emission + fix `impl Fn + Clone`.
+- Disabled type annotations in 3 emit paths: `emit_typed_let`, `emit_func_body`, `emit_tco_init_stmt`
+- Added `+ Clone` bound to `impl Fn` callable params in Rust emission
+- Result: pass-2 = pass-1 = pass-3 (fixed point)
 
 **Pass B (next)**: Fix empty collection inference, re-enable annotations.
 - Fix inference for `[]` and `empty_map()` to propagate expected types
 - Re-enable annotation emission
 - Regen → pass-2 has correct annotations → convergence
 
-**Pass C**: Fix `impl Fn` clone issue (TCO callable handling).
-
-**Pass D**: Fix CompilerError type resolution.
+**Pass C**: Fix CompilerError type resolution (3 sites).

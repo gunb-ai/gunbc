@@ -2004,8 +2004,8 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
         "callable aliases should stay in type-position-safe Rc<dyn Fn> form: {content}"
     );
     assert!(
-        content.contains("fn apply(f: impl Fn(i64) -> i64, x: i64) -> i64"),
-        "callable params should use impl Fn in Rust signatures: {content}"
+        content.contains("fn apply(f: impl Fn(i64) -> i64 + Clone, x: i64) -> i64"),
+        "callable params should use impl Fn + Clone in Rust signatures: {content}"
     );
 }
 
