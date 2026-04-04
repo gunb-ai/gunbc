@@ -5,7 +5,9 @@
 # No manual file lists. The compiler follows imports and loads only
 # what's needed.
 #
-# Usage: ./scripts/regenerate-stage0.sh
+# Usage:
+#   ./scripts/regenerate-stage0.sh              # regenerate in-place
+#   ./scripts/regenerate-stage0.sh --output-dir DIR  # regenerate to DIR (no copy, no verify)
 
 set -euo pipefail
 
@@ -13,12 +15,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 STAGE0_DIR="$ROOT/src/v2/stage0"
 
+# Parse args
+OUTPUT_ONLY=""
+if [ "${1:-}" = "--output-dir" ]; then
+    OUTPUT_ONLY="${2:?--output-dir requires a path}"
+fi
+
 echo "=== Building stage0 (v2-compiler) ==="
 cargo build -p v2-compiler --release
 
 STAGE0_CMD="cargo run -p v2-compiler --release --"
 
-OUTPUT_DIR="$ROOT/.regen-output"
+OUTPUT_DIR="${OUTPUT_ONLY:-$ROOT/.regen-output}"
 rm -rf "$OUTPUT_DIR"
 
 echo "=== Compiling .dag source with v2 compiler (FF-9: import-driven resolution) ==="
@@ -60,6 +68,12 @@ cp "$STAGE0_DIR/src/compiler_tests.rs" "$OUTPUT_DIR/src/compiler_tests.rs" 2>/de
 cp "$STAGE0_DIR/src/main.rs" "$OUTPUT_DIR/src/main.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/extdeps_languages_dag_syntax.rs" "$OUTPUT_DIR/src/extdeps_languages_dag_syntax.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/v2_coercion.rs" "$OUTPUT_DIR/src/v2_coercion.rs" 2>/dev/null || true
+
+# --output-dir mode: leave output in place, caller handles it
+if [ -n "$OUTPUT_ONLY" ]; then
+    echo "=== Regeneration output in $OUTPUT_DIR ==="
+    exit 0
+fi
 
 echo "=== Copying to stage0 ==="
 for f in "$OUTPUT_DIR"/src/*.rs; do
