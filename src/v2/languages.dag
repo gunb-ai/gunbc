@@ -1,10 +1,11 @@
-// Compiler-local language-spec shim used by the emitted compiler.
+// Compiler-local language-spec projection.
 //
-// `dsl/std/languages.dag` is the broader declarative language model, but the
-// generated stage0 crate only materializes modules under `src/v2`. This module
-// mirrors the compiler-consumed subset and sources concrete values from the
-// extdep emit facts so shared emit can depend on a single authority that also
-// exists inside stage0.
+// Imports shared types from `dsl/std/languages.dag` (the single authority for
+// language facts) and adds compiler-specific types (SerializationSpec,
+// TestConventions, SharingStrategy, IndexingSemantics, AnnotationRequirements)
+// that the emitter needs but that are not (yet) in std.
+//
+// Accessor functions route RenderTarget → concrete extdep data.
 
 module v2.compiler.languages
 
@@ -94,83 +95,6 @@ type ImportTrigger
 type ImportRule {
   trigger: ImportTrigger
   import_path: String
-}
-
-// -- Type well-formedness: rules for valid type declarations ---------------
-
-type PrimitiveLowering {
-  dag_name: String
-  target_name: String
-}
-
-type AlgebraicLowering {
-  dag_name: String
-  target_template: String
-}
-
-type TypeWellFormedness {
-  primitive_lowerings: List<PrimitiveLowering>
-  algebraic_lowerings: List<AlgebraicLowering>
-  callable_template: String
-  generic_params_from_dag: Bool
-}
-
-// -- Expression well-formedness: rules for valid expressions ---------------
-
-type ServiceBindingStrategy
-  = ParamInjection
-  | ConstructInBody
-  | GlobalSingleton
-
-type ExprWellFormedness {
-  async_propagation: Bool
-  statement_terminator: String
-  brace_escape_in_format: Bool
-  service_binding: ServiceBindingStrategy
-}
-
-// -- Naming conventions: identifier casing per language --------------------
-
-type CaseStyle
-  = PascalCaseStyle
-  | SnakeCaseStyle
-  | CamelCaseStyle
-  | ScreamingSnakeStyle
-
-type NamingConvention {
-  type_names: CaseStyle
-  function_names: CaseStyle
-  module_names: CaseStyle
-  constant_names: CaseStyle
-  enum_variant_names: CaseStyle
-}
-
-// -- Formatting model: indentation, line width, grouping ------------------
-
-type IndentStyle
-  = SpaceIndent { width: Int }
-  | TabIndent
-
-type ImportGroupStyle
-  = StdExternalLocal
-  | NoGrouping
-
-type FormatModel {
-  indent: IndentStyle
-  max_line_width: Int?
-  import_grouping: ImportGroupStyle
-  trailing_newline: Bool
-}
-
-// -- LintModel: the complete validity model per language -------------------
-
-type LintModel {
-  name: String
-  import_rules: List<ImportRule>
-  type_rules: TypeWellFormedness
-  expr_rules: ExprWellFormedness
-  naming: NamingConvention
-  formatting: FormatModel
 }
 
 type SharingStrategy {

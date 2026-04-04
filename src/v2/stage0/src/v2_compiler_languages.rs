@@ -59,10 +59,6 @@ pub use crate::extdeps_languages_go_emit::{go_type_map, go_keywords, go_containe
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
-use ServiceBindingStrategy::*;
-use CaseStyle::*;
-use IndentStyle::*;
-use ImportGroupStyle::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 
@@ -141,102 +137,6 @@ pub enum ImportTrigger {
 pub struct ImportRule {
     pub trigger: Rc<ImportTrigger>,
     pub import_path: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PrimitiveLowering {
-    pub dag_name: String,
-    pub target_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AlgebraicLowering {
-    pub dag_name: String,
-    pub target_template: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TypeWellFormedness {
-    pub primitive_lowerings: Rc<Vec<Rc<PrimitiveLowering>>>,
-    pub algebraic_lowerings: Rc<Vec<Rc<AlgebraicLowering>>>,
-    pub callable_template: String,
-    pub generic_params_from_dag: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ServiceBindingStrategy {
-    ParamInjection,
-    ConstructInBody,
-    GlobalSingleton,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ExprWellFormedness {
-    pub async_propagation: bool,
-    pub statement_terminator: String,
-    pub brace_escape_in_format: bool,
-    pub service_binding: ServiceBindingStrategy,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum CaseStyle {
-    PascalCaseStyle,
-    SnakeCaseStyle,
-    CamelCaseStyle,
-    ScreamingSnakeStyle,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NamingConvention {
-    pub type_names: CaseStyle,
-    pub function_names: CaseStyle,
-    pub module_names: CaseStyle,
-    pub constant_names: CaseStyle,
-    pub enum_variant_names: CaseStyle,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum IndentStyle {
-    SpaceIndent {
-        width: i64,
-    },
-    TabIndent,
-}
-impl IndentStyle {
-    pub fn width(&self) -> i64 {
-        match self {
-            IndentStyle::SpaceIndent { width: __val, .. } => __val.clone(),
-            IndentStyle::TabIndent => panic!("no width on unit variant"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ImportGroupStyle {
-    StdExternalLocal,
-    NoGrouping,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FormatModel {
-    pub indent: Rc<IndentStyle>,
-    pub max_line_width: Option<i64>,
-    pub import_grouping: ImportGroupStyle,
-    pub trailing_newline: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LintModel {
-    pub name: String,
-    pub import_rules: Rc<Vec<Rc<ImportRule>>>,
-    pub type_rules: Rc<TypeWellFormedness>,
-    pub expr_rules: Rc<ExprWellFormedness>,
-    pub naming: Rc<NamingConvention>,
-    pub formatting: Rc<FormatModel>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
