@@ -1160,11 +1160,11 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
         } else if func_name == "empty_map" {
           // Built-in: empty_map() → Map. Adopt expected type if it's a
-          // parameterized Map (e.g. from struct field or fold accumulator),
-          // otherwise fall back to bare_map_node().
+          // fully parameterized keyed collection (e.g. Map<K,V> from struct
+          // field or fold accumulator), otherwise fall back to bare_map_node().
           let empty_map_type = match expected {
             Some { value: exp } =>
-              if exp.name == "Map" && exp.children |> count > 0 { exp }
+              if node_is_keyed_collection(n: exp) { exp }
               else { bare_map_node() }
             None => bare_map_node()
           }

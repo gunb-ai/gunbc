@@ -67,6 +67,7 @@ use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy};
 pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, is_value_type, is_string_like, target_primitive_type};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
+pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, rt_type, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv};
@@ -2387,7 +2388,7 @@ if ((is_under_resolved_map.clone() || is_under_resolved_list.clone()) || is_unde
 },
 };
 let acc_type_str = render_rust_type(acc_type_node.clone(), rc_types.clone());
-let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0) && (((((acc_type_node.name.clone().as_str() == "List".to_string().as_str()) || (acc_type_node.name.clone().as_str() == "Map".to_string().as_str())) || (acc_type_node.name.clone().as_str() == "Set".to_string().as_str())) || (acc_type_node.name.clone().as_str() == "NonEmptyList".to_string().as_str())) || (acc_type_node.name.clone().as_str() == "NonEmptySet".to_string().as_str())));
+let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0) && is_container_type(acc_type_node.name.clone()));
 let lambda_acc_type_str = if is_bare_container.clone() {
             "_".to_string()
 } else {

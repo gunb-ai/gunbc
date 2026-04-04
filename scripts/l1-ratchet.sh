@@ -83,7 +83,7 @@ echo "  CollectionKind:                $collection_kind_count"
 # infer uses exp.name=="Map" — documented D6 debt)
 # 2026-04-03: 24→32 (Bootstrap C: n_is_special Callable/Dynamic/Error in resolve,
 # n.name=="List" in access, hardcoded True/False in patterns — tracked for M4)
-L1_RATCHET=32
+L1_RATCHET=30
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

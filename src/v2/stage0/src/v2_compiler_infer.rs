@@ -1237,7 +1237,7 @@ Rc::new(InferResult {
                         if (func_name.clone().as_str() == "empty_map".to_string().as_str()) {
                             {
                                 let empty_map_type = match expected.clone() {
-    Some(exp) => if ((exp.name.clone().as_str() == "Map".to_string().as_str()) && ((exp.children.clone().len() as i64) > 0)) {
+    Some(exp) => if node_is_keyed_collection(exp.clone()) {
                                     exp.clone()
 } else {
                                     bare_map_node()

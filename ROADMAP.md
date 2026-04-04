@@ -126,8 +126,8 @@ of propagating error state. `node_inferred_to_outputs` builds outputs
 from fabricated types. Highest-confidence correctness bug (reviewer
 2026-04-02).
 
-- [ ] `child_inferred_or_empty` propagates error state structurally
-- [ ] `node_inferred_to_outputs` refuses error-typed children (fail-closed)
+- [x] `child_inferred_or_empty` propagates error state structurally
+- [x] `node_inferred_to_outputs` refuses error-typed children (fail-closed)
 
 ### Incomplete parameterization and bidirectional inference
 
@@ -145,8 +145,8 @@ Symptoms:
 Open items:
 - [ ] Incomplete parameterized types rejected at normalization, not infer
 - [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit
-- [ ] Thread `expected` to all formal params, not just callable ones
-- [ ] Refine fold accumulators structurally via `is_fully_resolved`
+- [x] Thread `expected` to all formal params, not just callable ones
+- [x] Refine fold accumulators structurally via `is_fully_resolved`
 - [ ] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
 ### Explicit ownership and identity

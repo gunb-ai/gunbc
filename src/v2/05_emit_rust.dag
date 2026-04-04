@@ -75,6 +75,7 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 
+import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import v2.compiler.infer_types {
   normalize_access_type_node, for_each_element_type_node,
@@ -2354,7 +2355,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   let acc_type_str = render_rust_type(n: acc_type_node, rc_types: rc_types)
   // Split: lambda annotation can use "_" for bare containers, but init value
   // resolution needs the real type for turbofish generation.
-  let is_bare_container = acc_type_node.children |> count == 0 && (acc_type_node.name == "List" || acc_type_node.name == "Map" || acc_type_node.name == "Set" || acc_type_node.name == "NonEmptyList" || acc_type_node.name == "NonEmptySet")
+  let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_node.name)
   let lambda_acc_type_str = if is_bare_container { "_" } else { acc_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
   let init_str = match args |> first {
