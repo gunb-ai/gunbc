@@ -58,7 +58,7 @@ pub struct NormalizeResult {
 
 pub fn normalize_graph(graph: Rc<ModuleGraph>) -> Rc<NormalizeResult> {
     Rc::new(NormalizeResult {
-    graph: graph.clone(),
+    graph: graph,
     diagnostics: Rc::new(vec![]),
 })
 }

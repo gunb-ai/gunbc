@@ -66,16 +66,16 @@ pub struct KeyedCollectionParts {
 
 pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<ErrorNode> {
     make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: message.clone(),
-    span: span.clone(),
-}), module_name.clone())
+    message: message,
+    span: span,
+}), module_name)
 }
 
 pub fn access_result(inferred: Rc<Node>, diagnostics: Rc<Vec<Rc<ErrorNode>>>, span: Rc<SourceSpan>, fallback_message: String) -> Rc<AccessCheckResultNode> {
     if ((diagnostics.clone().len() as i64) == 0) {
         Rc::new(AccessCheckResultNode {
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: inferred.clone(),
+    node: inferred,
 })),
     diagnostics: diagnostics.clone(),
 })
@@ -83,12 +83,12 @@ pub fn access_result(inferred: Rc<Node>, diagnostics: Rc<Vec<Rc<ErrorNode>>>, sp
         {
             let message = match diagnostics.clone().first().cloned() {
     Some(diag) => diagnostic_to_message(diag.diagnostic.clone()),
-    None => fallback_message.clone(),
+    None => fallback_message,
 };
 Rc::new(AccessCheckResultNode {
     inferred: Some(Rc::new(InferredNode::CompilerError {
     message: message.clone(),
-    span: span.clone(),
+    span: span,
 })),
     diagnostics: diagnostics.clone(),
 })
@@ -115,8 +115,8 @@ pub fn keyed_collection_parts(n: Rc<Node>) -> Option<Rc<KeyedCollectionParts>> {
 
 pub fn check_index_access_node(base_type: Rc<Node>, index_type: Rc<Node>, span: Rc<SourceSpan>, module_name: String) -> Rc<AccessCheckResultNode> {
     {
-        let normed = normalize_access_type_node(base_type.clone());
-let normed_index = normalize_access_type_node(index_type.clone());
+        let normed = normalize_access_type_node(base_type);
+let normed_index = normalize_access_type_node(index_type);
 let base_is_string = node_type_equals(normed.clone(), string_type());
 let index_is_int = node_type_equals(normed_index.clone(), int_type());
 if base_is_string.clone() {
@@ -124,7 +124,7 @@ if base_is_string.clone() {
                 let diags = if index_is_int.clone() {
                     Rc::new(vec![])
 } else {
-                    Rc::new(vec![access_error("string index requires an Int index".to_string(), span.clone(), module_name.clone())])
+                    Rc::new(vec![access_error("string index requires an Int index".to_string(), span.clone(), module_name)])
 };
 access_result(string_type(), diags.clone(), span.clone(), "invalid string index access".to_string())
 }
@@ -134,13 +134,13 @@ access_result(string_type(), diags.clone(), span.clone(), "invalid string index 
                 let key_diags = if node_type_equals(parts.key_type.clone(), normed_index.clone()) {
                     Rc::new(vec![])
 } else {
-                    Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name.clone())])
+                    Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name)])
 };
 access_result(with_optional_cardinality(parts.value_type.clone()), key_diags.clone(), span.clone(), "invalid keyed collection index access".to_string())
 },
     None => if node_is_keyed_collection(normed.clone()) {
                 {
-                    let malformed_diags = Rc::new(vec![access_error("malformed keyed collection type in index access".to_string(), span.clone(), module_name.clone())]);
+                    let malformed_diags = Rc::new(vec![access_error("malformed keyed collection type in index access".to_string(), span.clone(), module_name)]);
 access_result(unit_type(), malformed_diags.clone(), span.clone(), "malformed keyed collection type in index access".to_string())
 }
 } else {
@@ -151,7 +151,7 @@ access_result(with_optional_cardinality(elem.clone()), Rc::new(vec![]), span.clo
 }
 } else {
                     {
-                        let diags = Rc::new(vec![access_error("indexing is only supported for String, keyed collection, and list values".to_string(), span.clone(), module_name.clone())]);
+                        let diags = Rc::new(vec![access_error("indexing is only supported for String, keyed collection, and list values".to_string(), span.clone(), module_name)]);
 access_result(unit_type(), diags.clone(), span.clone(), "invalid index access".to_string())
 }
 }
@@ -163,20 +163,20 @@ access_result(unit_type(), diags.clone(), span.clone(), "invalid index access".t
 
 pub fn check_slice_access_node(base_type: Rc<Node>, start_type: Rc<Node>, end_type: Rc<Node>, span: Rc<SourceSpan>, module_name: String) -> Rc<AccessCheckResultNode> {
     {
-        let normed_base = normalize_access_type_node(base_type.clone());
+        let normed_base = normalize_access_type_node(base_type);
 let base_is_string = node_type_equals(normed_base.clone(), string_type());
 let base_diags = if base_is_string.clone() {
             Rc::new(vec![])
 } else {
             Rc::new(vec![access_error("slice is only supported for String values".to_string(), span.clone(), module_name.clone())])
 };
-let normed_start = normalize_access_type_node(start_type.clone());
+let normed_start = normalize_access_type_node(start_type);
 let start_diags = if node_type_equals(normed_start.clone(), int_type()) {
             Rc::new(vec![])
 } else {
             Rc::new(vec![access_error("slice start requires an Int index".to_string(), span.clone(), module_name.clone())])
 };
-let normed_end = normalize_access_type_node(end_type.clone());
+let normed_end = normalize_access_type_node(end_type);
 let end_diags = if node_type_equals(normed_end.clone(), int_type()) {
             Rc::new(vec![])
 } else {

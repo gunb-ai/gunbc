@@ -119,7 +119,7 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
 }
 
 pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({ let mut __result = Vec::new(); for proof in proofs.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for decision in proof.decisions.clone().iter().cloned() { __result.extend((*match (*decision.clone()).clone() {
+    Rc::new({ let mut __result = Vec::new(); for proof in proofs.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for decision in proof.decisions.clone().iter().cloned() { __result.extend((*match (*decision.clone()).clone() {
     OwnershipDecision::SharedError { binding: binding, consumer_count: count, sites: sites, .. } => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::OwnershipViolation {
     binding: binding.clone(),
     fn_name: proof.func_name.clone(),
@@ -146,58 +146,58 @@ pub fn empty_artifact_plan() -> Rc<ArtifactPlan> {
 
 pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
     make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: message.clone(),
+    message: message,
     span: no_span(),
 }), "".to_string())
 }
 
 pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
     match artifact.target.clone() {
-    RenderTarget::Rust => emit_rust(typed.clone()),
-    RenderTarget::Python => emit_python(typed.clone()),
-    RenderTarget::Go => emit_go(typed.clone()),
-    RenderTarget::Dag => emit_dag_artifact(typed.clone()),
+    RenderTarget::Rust => emit_rust(typed),
+    RenderTarget::Python => emit_python(typed),
+    RenderTarget::Go => emit_go(typed),
+    RenderTarget::Dag => emit_dag_artifact(typed),
 }
 }
 
 pub fn json_quote(s: String) -> String {
-    v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(s.clone())), "\"".to_string())
+    v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(s)), "\"".to_string())
 }
 
 pub fn json_list(items: Rc<Vec<String>>) -> String {
-    v2_rt::concat(v2_rt::concat("[".to_string(), items.clone().join(&", ".to_string())), "]".to_string())
+    v2_rt::concat(v2_rt::concat("[".to_string(), items.join(&", ".to_string())), "]".to_string())
 }
 
 pub fn json_optional_string(value: Option<String>) -> String {
-    match value.clone() {
+    match value {
     Some(inner) => json_quote(inner.clone()),
     None => "null".to_string(),
 }
 }
 
 pub fn json_optional_node(value: Option<Rc<Node>>) -> String {
-    match value.clone() {
+    match value {
     Some(inner) => serialize_node(inner.clone()),
     None => "null".to_string(),
 }
 }
 
 pub fn json_optional_inferred_node(value: Option<Rc<InferredNode>>) -> String {
-    match value.clone() {
+    match value {
     Some(inner) => serialize_inferred_node(inner.clone()),
     None => "null".to_string(),
 }
 }
 
 pub fn json_optional_span(value: Option<Rc<SourceSpan>>) -> String {
-    match value.clone() {
+    match value {
     Some(inner) => serialize_span(inner.clone()),
     None => "null".to_string(),
 }
 }
 
 pub fn json_bool(value: bool) -> String {
-    if value.clone() {
+    if value {
         "true".to_string()
 } else {
         "false".to_string()
@@ -205,7 +205,7 @@ pub fn json_bool(value: bool) -> String {
 }
 
 pub fn connective_name(value: Connective) -> String {
-    match value.clone() {
+    match value {
     Connective::Conj => "Conj".to_string(),
     Connective::Disj => "Disj".to_string(),
     Connective::NoConnective => "NoConnective".to_string(),
@@ -213,14 +213,14 @@ pub fn connective_name(value: Connective) -> String {
 }
 
 pub fn cardinality_name(value: Cardinality) -> String {
-    match value.clone() {
+    match value {
     Cardinality::Required => "Required".to_string(),
     Cardinality::CardOptional => "CardOptional".to_string(),
 }
 }
 
 pub fn field_access_style_name(value: FieldAccessStyle) -> String {
-    match value.clone() {
+    match value {
     FieldAccessStyle::StoredField => "StoredField".to_string(),
     FieldAccessStyle::EnumAccessor => "EnumAccessor".to_string(),
     FieldAccessStyle::OptionalUnwrap => "OptionalUnwrap".to_string(),
@@ -230,14 +230,14 @@ pub fn field_access_style_name(value: FieldAccessStyle) -> String {
 }
 
 pub fn field_value_shape_name(value: FieldValueShape) -> String {
-    match value.clone() {
+    match value {
     FieldValueShape::PlainValue => "PlainValue".to_string(),
     FieldValueShape::OptionalValue => "OptionalValue".to_string(),
 }
 }
 
 pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
-    match (*value.clone()).clone() {
+    match (*value).clone() {
     VarBindingKind::LocalValueBinding => "LocalValueBinding".to_string(),
     VarBindingKind::FunctionValueBinding => "FunctionValueBinding".to_string(),
     VarBindingKind::VariantValueBinding { .. } => "VariantValueBinding".to_string(),
@@ -245,14 +245,14 @@ pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
 }
 
 pub fn call_semantics_name(value: CallSemantics) -> String {
-    match value.clone() {
+    match value {
     CallSemantics::PlainCallSemantics => "PlainCallSemantics".to_string(),
     CallSemantics::LookupCallSemantics => "LookupCallSemantics".to_string(),
 }
 }
 
 pub fn expr_error_kind_name(value: ExprErrorKind) -> String {
-    match value.clone() {
+    match value {
     ExprErrorKind::ParseRecoveryError => "ParseRecoveryError".to_string(),
     ExprErrorKind::SemanticExprError => "SemanticExprError".to_string(),
     ExprErrorKind::InternalExprError => "InternalExprError".to_string(),
@@ -260,7 +260,7 @@ pub fn expr_error_kind_name(value: ExprErrorKind) -> String {
 }
 
 pub fn bin_op_name(value: BinOp) -> String {
-    match value.clone() {
+    match value {
     BinOp::Add => "Add".to_string(),
     BinOp::Sub => "Sub".to_string(),
     BinOp::Mul => "Mul".to_string(),
@@ -279,7 +279,7 @@ pub fn bin_op_name(value: BinOp) -> String {
 }
 
 pub fn unary_op_name(value: UnaryOpKind) -> String {
-    match value.clone() {
+    match value {
     UnaryOpKind::Not => "Not".to_string(),
     UnaryOpKind::Neg => "Neg".to_string(),
 }
@@ -305,7 +305,7 @@ pub fn serialize_field_summary(summary: Rc<FieldSummary>) -> String {
 }
 
 pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
-    match (*value.clone()).clone() {
+    match (*value).clone() {
     LiteralValue::LitStr { value: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"LitStr\", \"value\": ".to_string(), json_quote(inner.clone())), "}".to_string()),
     LiteralValue::LitInt { value: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"LitInt\", \"value\": ".to_string(), (inner.clone()).to_string()), "}".to_string()),
     LiteralValue::LitFloat { value: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"LitFloat\", \"value\": ".to_string(), json_quote(inner.clone())), "}".to_string()),
@@ -319,7 +319,7 @@ pub fn serialize_field_binding(binding: Rc<Node>) -> String {
 }
 
 pub fn serialize_match_pattern(pattern: Rc<MatchPattern>) -> String {
-    match (*pattern.clone()).clone() {
+    match (*pattern).clone() {
     MatchPattern::Bind { name: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Bind\", \"name\": ".to_string(), json_quote(inner.clone())), "}".to_string()),
     MatchPattern::LitPattern { value: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"LitPattern\", \"value\": ".to_string(), serialize_literal(inner.clone())), "}".to_string()),
     MatchPattern::VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"VariantPattern\", \"name\": ".to_string(), json_quote(inner.clone())), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"field_bindings\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { __result.push(serialize_field_binding(fb.clone())); } __result }))), "}".to_string()),
@@ -340,28 +340,28 @@ pub fn serialize_field_init(field_init: Rc<Node>) -> String {
 }
 
 pub fn serialize_string_part(part: Rc<StringPart>) -> String {
-    match (*part.clone()).clone() {
+    match (*part).clone() {
     StringPart::Text { value: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Text\", \"value\": ".to_string(), json_quote(inner.clone())), "}".to_string()),
     StringPart::Interpolation { expr: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Interpolation\", \"expr\": ".to_string(), serialize_node(inner.clone())), "}".to_string()),
 }
 }
 
 pub fn serialize_call_semantics(value: Option<CallSemantics>) -> String {
-    match value.clone() {
+    match value {
     Some(inner) => v2_rt::concat(v2_rt::concat("{\"kind\": ".to_string(), json_quote(call_semantics_name(inner.clone()))), "}".to_string()),
     None => "null".to_string(),
 }
 }
 
 pub fn serialize_lambda_semantics(value: Option<Rc<LambdaSemantics>>) -> String {
-    match value.clone() {
+    match value {
     Some(inner) => v2_rt::concat(v2_rt::concat("{\"param_types\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in inner.param_types.clone().iter().cloned() { __result.push(serialize_node(p.clone())); } __result }))), "}".to_string()),
     None => "null".to_string(),
 }
 }
 
 pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>) -> String {
-    match value.clone().as_deref().cloned() {
+    match value.as_deref().cloned() {
     Some(MethodSemantics::PlainMethodSemantics) => "{\"kind\": \"PlainMethodSemantics\"}".to_string(),
     Some(MethodSemantics::AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, .. }) => {
         let mn = method_def.name.clone();
@@ -431,7 +431,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprForEac
 }
 
 pub fn serialize_inferred_node(inferred: Rc<InferredNode>) -> String {
-    match (*inferred.clone()).clone() {
+    match (*inferred).clone() {
     InferredNode::Resolved { node: node, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Resolved\", \"node\": ".to_string(), serialize_node(node.clone())), "}".to_string()),
     InferredNode::CompilerError { message: message, span: span, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"CompilerError\", \"message\": ".to_string(), json_quote(message.clone())), ", \"span\": ".to_string()), serialize_span(span.clone())), "}".to_string()),
     InferredNode::TypeVariable { id: id, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"TypeVariable\", \"id\": ".to_string(), json_quote(id.clone())), "}".to_string()),
@@ -492,7 +492,7 @@ Rc::new(EmitResult {
 }
 
 pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
-    if { let mut __found = false; for n in names.clone().iter().cloned() { if (n.clone().as_str() == ref_name.clone().as_str()) { __found = true; break; } } __found } {
+    if { let mut __found = false; for n in names.iter().cloned() { if (n.clone().as_str() == ref_name.clone().as_str()) { __found = true; break; } } __found } {
         Rc::new(vec![])
 } else {
         Rc::new(vec![compile_bundle_error(v2_rt::concat(v2_rt::concat("boundary references unknown artifact '".to_string(), ref_name.clone()), "'".to_string()))])
@@ -532,7 +532,7 @@ Rc::new(EmitResult {
 }
 
 pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<ErrorNode>>> {
-    parse_results.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, pr: Rc<ParseResult>| match pr.error.clone() {
+    parse_results.iter().cloned().fold(Rc::new(vec![]), |acc: _, pr: Rc<ParseResult>| match pr.error.clone() {
     Some(diag) => v2_rt::rc_list_push(acc.clone(), diag.clone()),
     None => acc.clone(),
 })
@@ -540,7 +540,7 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
 
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
-        let tokenized = Rc::new({ let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push(tokenize(s.content.clone(), s.path.clone())); } __result });
+        let tokenized = Rc::new({ let mut __result = Vec::new(); for s in sources.iter().cloned() { __result.push(tokenize(s.content.clone(), s.path.clone())); } __result });
 let parse_results = Rc::new({ let mut __result = Vec::new(); for t in tokenized.clone().iter().cloned() { __result.push(parse(t.clone())); } __result });
 let parse_diagnostics = collect_diagnostics(parse_results.clone());
 let has_parse_errors = { let mut __found = false; for p in parse_results.clone().iter().cloned() { if (p.error.clone() != None) { __found = true; break; } } __found };
@@ -564,7 +564,7 @@ Rc::new(FrontendResult {
 
 pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {
     {
-        let frontend = front_end_sources(sources.clone());
+        let frontend = front_end_sources(sources);
 Rc::new(CompileResult {
     files: Rc::new(vec![]),
     diagnostics: frontend.diagnostics.clone(),
@@ -643,7 +643,7 @@ if ((ownership_errors.clone().len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
 }
-let artifact_plan = default_artifact_plan(Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(m.module.clone().name.clone()); } __result }), target.clone());
+let artifact_plan = default_artifact_plan(Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(m.module.clone().name.clone()); } __result }), target);
 let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
 let emit_files = emit_result.files.clone();
 let emit_diags = emit_result.diagnostics.clone();

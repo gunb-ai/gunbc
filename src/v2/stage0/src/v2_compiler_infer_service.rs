@@ -111,7 +111,7 @@ Some(v2_rt::concat(v2_rt::concat(ns.clone(), ".".to_string()), f.clone()))
 
 pub fn collect_typed_service_calls(texpr: Rc<Node>) -> Rc<Vec<String>> {
     {
-        let result = collect_typed_service_calls_into(texpr.clone(), Rc::new(UniqueAccum {
+        let result = collect_typed_service_calls_into(texpr, Rc::new(UniqueAccum {
     seen: v2_rt::rc_empty_map::<bool>(),
     result: Rc::new(vec![]),
 }));
@@ -174,7 +174,7 @@ result.clone()
 
 pub fn collect_called_func_names(texpr: Rc<Node>) -> Rc<Vec<String>> {
     {
-        let result = collect_called_func_names_into(texpr.clone(), Rc::new(UniqueAccum {
+        let result = collect_called_func_names_into(texpr, Rc::new(UniqueAccum {
     seen: v2_rt::rc_empty_map::<bool>(),
     result: Rc::new(vec![]),
 }));
@@ -184,7 +184,7 @@ result.result.clone()
 
 pub fn expand_transitive_services_once(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     {
-        let all_items = Rc::new({ let mut __result = Vec::new(); for m in modules.clone().iter().cloned() { __result.extend((*m.items.clone()).iter().cloned()); } __result });
+        let all_items = Rc::new({ let mut __result = Vec::new(); for m in modules.iter().cloned() { __result.extend((*m.items.clone()).iter().cloned()); } __result });
 all_items.clone().iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| match v2_rt::map_get(&reg, item.name.clone()) {
     Some(info) => {
             let is_not_func = (info.kind.clone() != ItemKind::FuncItem);
@@ -261,7 +261,7 @@ continue;
 pub fn check_service_field_access_node(base_type: Rc<Node>, field: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<Node>> {
     if ((base_type.connective.clone() == Connective::NoConnective) && ((base_type.children.clone().len() as i64) == 0)) {
         {
-            let path = v2_rt::concat(v2_rt::concat(base_type.name.clone(), ".".to_string()), field.clone());
+            let path = v2_rt::concat(v2_rt::concat(base_type.name.clone(), ".".to_string()), field);
 match v2_rt::map_get(&service_registry, path.clone()) {
     Some(_) => Some(nominal_type_ref(path.clone())),
     None => None,

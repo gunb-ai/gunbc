@@ -70,7 +70,7 @@ pub struct RecursiveVariantFieldWitness {
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, name: String) -> bool {
-    match v2_rt::map_get(&env.recursive_type_set.clone(), name.clone()) {
+    match v2_rt::map_get(&env.recursive_type_set.clone(), name) {
     Some(_) => true,
     _ => false,
 }
@@ -78,7 +78,7 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, name: String) -> bool {
 
 pub fn lookup_type(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     {
-        let canonical = name.clone();
+        let canonical = name;
 match v2_rt::map_get(&env.bindings.clone(), canonical.clone()) {
     Some(binding) => Some(binding.resolved.clone()),
     None => None,
@@ -87,26 +87,26 @@ match v2_rt::map_get(&env.bindings.clone(), canonical.clone()) {
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
-    authored_name_at(env.source_index.clone(), node.clone())
+    authored_name_at(env.source_index.clone(), node)
 }
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
-    lookup_type(env.clone(), node.name.clone())
+    lookup_type(env, node.name.clone())
 }
 
 pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
-    is_recursive_type(env.clone(), node.name.clone())
+    is_recursive_type(env, node.name.clone())
 }
 
 pub fn recursive_variant_field_witnesses(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<RecursiveVariantFieldWitness>>> {
-    match v2_rt::map_get(&env.recursive_variant_fields.clone(), type_name.clone()) {
+    match v2_rt::map_get(&env.recursive_variant_fields.clone(), type_name) {
     Some(witnesses) => witnesses.clone(),
     None => Rc::new(vec![]),
 }
 }
 
 pub fn is_recursive_variant_field(env: Rc<TypeEnv>, type_name: String, variant_name: String, field_name: String) -> bool {
-    { let mut __found = false; for witness in recursive_variant_field_witnesses(env.clone(), type_name.clone()).iter().cloned() { if ((witness.variant_name.clone().as_str() == variant_name.clone().as_str()) && (witness.field_name.clone().as_str() == field_name.clone().as_str())) { __found = true; break; } } __found }
+    { let mut __found = false; for witness in recursive_variant_field_witnesses(env, type_name).iter().cloned() { if ((witness.variant_name.clone().as_str() == variant_name.clone().as_str()) && (witness.field_name.clone().as_str() == field_name.clone().as_str())) { __found = true; break; } } __found }
 }
 
 pub fn put_recursive_variant_field_witness(fields: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, type_name: String, variant_name: String, field_name: String) -> Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>> {
@@ -116,8 +116,8 @@ pub fn put_recursive_variant_field_witness(fields: Rc<HashMap<String, Rc<Vec<Rc<
     None => Rc::new(vec![]),
 };
 v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing.clone(), Rc::new(vec![Rc::new(RecursiveVariantFieldWitness {
-    variant_name: variant_name.clone(),
-    field_name: field_name.clone(),
+    variant_name: variant_name,
+    field_name: field_name,
 })])))
 }
 }

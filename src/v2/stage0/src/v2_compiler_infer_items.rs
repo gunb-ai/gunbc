@@ -172,7 +172,7 @@ kind.clone()
 }
 
 pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<String, Rc<TypeBinding>>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    items.clone().iter().cloned().fold(init.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
+    items.iter().cloned().fold(init.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
         let is_coproduct = (item.connective.clone() == Connective::Disj);
 if is_coproduct.clone() {
             item.children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| v2_rt::rc_map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {

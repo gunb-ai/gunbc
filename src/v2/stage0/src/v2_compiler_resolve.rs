@@ -85,7 +85,7 @@ pub struct ResolveAccum {
 }
 
 pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
-    match v2_rt::map_get(&m, key.clone()) {
+    match v2_rt::map_get(&m, key) {
     Some(_) => true,
     None => false,
 }
@@ -139,7 +139,7 @@ Rc::new(ModuleGraph {
 }
 
 pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) -> Option<Rc<Node>> {
-    v2_rt::map_get(&module_index, path.clone())
+    v2_rt::map_get(&module_index, path)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -168,7 +168,7 @@ pub struct ImportResolveResult {
 
 pub fn resolve_import(import: Rc<Node>, module_index: Rc<HashMap<String, Rc<Node>>>, importing_module: String, export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>) -> Rc<ImportResolveResult> {
     {
-        let target = find_module(module_index.clone(), import.name.clone());
+        let target = find_module(module_index, import.name.clone());
 match target.clone() {
     None => {
             let diag = make_error_node(Rc::new(CompilerDiagnostic::UnresolvedImport {
@@ -251,7 +251,7 @@ pub struct DuplicateCheckState {
 
 pub fn check_duplicate_modules(modules: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let result = modules.clone().iter().cloned().fold(Rc::new(DuplicateCheckState {
+        let result = modules.iter().cloned().fold(Rc::new(DuplicateCheckState {
     seen_names: v2_rt::rc_empty_map::<bool>(),
     diagnostics: Rc::new(vec![]),
 }), |state: Rc<DuplicateCheckState>, m: Rc<Node>| {
@@ -287,7 +287,7 @@ pub fn adjacency_add_edge(adjacency: Rc<HashMap<String, Rc<Vec<String>>>>, from_
     Some(lst) => lst.clone(),
     None => Rc::new(vec![]),
 };
-v2_rt::rc_map_insert(adjacency.clone(), from_module.clone(), v2_rt::rc_list_push(existing.clone(), to_module.clone()))
+v2_rt::rc_map_insert(adjacency.clone(), from_module.clone(), v2_rt::rc_list_push(existing.clone(), to_module))
 }
 }
 

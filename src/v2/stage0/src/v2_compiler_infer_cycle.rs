@@ -50,7 +50,7 @@ pub use crate::v2_compiler_infer_env::{TypeBinding};
 
 pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     {
-        let result = match v2_rt::map_get(&m, key.clone()) {
+        let result = match v2_rt::map_get(&m, key) {
     Some(_) => true,
     None => false,
 };
@@ -60,7 +60,7 @@ result.clone()
 
 pub fn compute_in_graph_deps(all_names: Rc<Vec<String>>, deps_map: Rc<HashMap<String, Rc<Vec<String>>>>, name_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
-        let result = all_names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| match v2_rt::map_get(&deps_map, name.clone()) {
+        let result = all_names.iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| match v2_rt::map_get(&deps_map, name.clone()) {
     Some(deps) => {
             let local = Rc::new({ let mut __result = Vec::new(); for d in deps.clone().iter().cloned() { if ((d.clone().as_str() != name.clone().as_str()) && set_has(name_set.clone(), d.clone())) { __result.push(d); } } __result });
 v2_rt::rc_map_insert(acc.clone(), name.clone(), local.clone())
@@ -72,7 +72,7 @@ result.clone()
 }
 
 pub fn build_reverse_adj(all_names: Rc<Vec<String>>, local_deps: Rc<HashMap<String, Rc<Vec<String>>>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    all_names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| match v2_rt::map_get(&local_deps, name.clone()) {
+    all_names.iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| match v2_rt::map_get(&local_deps, name.clone()) {
     Some(deps) => deps.clone().iter().cloned().fold(acc.clone(), |inner_acc: _, dep: String| {
         let existing = match v2_rt::map_get(&inner_acc, dep.clone()) {
     Some(v) => v.clone(),
@@ -85,7 +85,7 @@ v2_rt::rc_map_insert(inner_acc.clone(), dep.clone(), v2_rt::rc_list_push(existin
 }
 
 pub fn build_in_degree(all_names: Rc<Vec<String>>, local_deps: Rc<HashMap<String, Rc<Vec<String>>>>) -> Rc<HashMap<String, i64>> {
-    all_names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| {
+    all_names.iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| {
         let deg = match v2_rt::map_get(&local_deps, name.clone()) {
     Some(deps) => (deps.clone().len() as i64),
     None => 0,

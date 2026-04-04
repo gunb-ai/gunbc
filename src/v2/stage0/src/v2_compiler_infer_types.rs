@@ -61,7 +61,7 @@ use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
-    match (*inferred.clone()).clone() {
+    match (*inferred).clone() {
     InferredNode::TypeVariable { .. } => true,
     _ => false,
 }
@@ -76,7 +76,7 @@ pub fn child_inferred_or_name(ch: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn rt_type(n: Rc<Node>) -> Rc<Node> {
-    match (*rt_node(n.clone())).clone() {
+    match (*rt_node(n)).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
     NodeType::InferError { .. } => unit_type(),
     NodeType::InferVariable { .. } => unit_type(),
@@ -98,10 +98,10 @@ pub fn node_is_element_collection(n: Rc<Node>) -> bool {
 
 pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
-    name: kind_name.clone(),
+    name: kind_name,
     span: make_span(0, 0),
     ident_span: None,
-    children: Rc::new(vec![element.clone()]),
+    children: Rc::new(vec![element]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -131,7 +131,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: first.clone(),
+    node: first,
 })),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -151,7 +151,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: second.clone(),
+    node: second,
 })),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -185,7 +185,7 @@ pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
     name: "Map".to_string(),
     span: make_span(0, 0),
     ident_span: None,
-    children: Rc::new(vec![key.clone(), value.clone()]),
+    children: Rc::new(vec![key, value]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -226,14 +226,14 @@ pub fn bare_map_node() -> Rc<Node> {
 
 pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
-    name: name.clone(),
+    name: name,
     span: no_span(),
     ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: type_node.clone(),
+    node: type_node,
 })),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -250,16 +250,16 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
 
 pub fn algebra_method_field(name: String, param_types: Rc<Vec<Rc<Node>>>, return_type: Rc<Node>) -> Rc<Node> {
     {
-        let params = Rc::new({ let mut __result = Vec::new(); for t in param_types.clone().iter().cloned() { __result.push(make_param_node("_".to_string(), t.clone(), None, no_span())); } __result });
+        let params = Rc::new({ let mut __result = Vec::new(); for t in param_types.iter().cloned() { __result.push(make_param_node("_".to_string(), t.clone(), None, no_span())); } __result });
 Rc::new(Node {
-    name: name.clone(),
+    name: name,
     span: no_span(),
     ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: callable_node(params.clone(), return_type.clone()),
+    node: callable_node(params.clone(), return_type),
 })),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -277,10 +277,10 @@ Rc::new(Node {
 
 pub fn enrich_base_with_fields(name: String, base: Rc<Node>, fields: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
     Rc::new(Node {
-    name: name.clone(),
+    name: name,
     span: base.span.clone(),
     ident_span: base.ident_span.clone(),
-    children: fields.clone(),
+    children: fields,
     connective: Connective::Conj,
     params: base.params.clone(),
     inferred: base.inferred.clone(),
@@ -298,11 +298,11 @@ pub fn enrich_base_with_fields(name: String, base: Rc<Node>, fields: Rc<Vec<Rc<N
 }
 
 pub fn placeholder_type_node(name: String) -> Rc<Node> {
-    nominal_type_ref(name.clone())
+    nominal_type_ref(name)
 }
 
 pub fn nominal_type_ref(name: String) -> Rc<Node> {
-    leaf_node_with_span(name.clone(), make_span(0, 0))
+    leaf_node_with_span(name, make_span(0, 0))
 }
 
 pub fn algebra_child_or_placeholder(base: Rc<Node>, child_index: i64, placeholder: String) -> Rc<Node> {
@@ -318,7 +318,7 @@ pub fn instantiate_algebra_type(template: Rc<AlgebraTypeTemplate>, base: Rc<Node
             let elem = algebra_child_or_placeholder(base.clone(), 0, "T".to_string());
 let key_node = algebra_child_or_placeholder(base.clone(), 0, "K".to_string());
 let val_node = algebra_child_or_placeholder(base.clone(), 1, "V".to_string());
-match (*template.clone()).clone() {
+match (*template).clone() {
     AlgebraTypeTemplate::ReceiverSelf => base.clone(),
     AlgebraTypeTemplate::ReceiverElement => elem.clone(),
     AlgebraTypeTemplate::ReceiverKey => key_node.clone(),
@@ -365,9 +365,9 @@ pub fn callable_node(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> 
     ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
-    params: func_params.clone(),
+    params: func_params,
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: ret.clone(),
+    node: ret,
 })),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -868,7 +868,7 @@ if ((n.name.clone().as_str() != "".to_string().as_str()) && (is_kernel_type(n.na
 }
 
 pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
-    match (*lit.clone()).clone() {
+    match (*lit).clone() {
     LiteralValue::LitStr { .. } => string_type(),
     LiteralValue::LitInt { .. } => int_type(),
     LiteralValue::LitFloat { .. } => float_type(),
@@ -908,7 +908,7 @@ if is_optional.clone() {
 }
 
 pub fn binop_algebra_field(op: BinOp) -> String {
-    match op.clone() {
+    match op {
     BinOp::Add => "add".to_string(),
     BinOp::Sub => "add".to_string(),
     BinOp::Mul => "mul".to_string(),
@@ -967,7 +967,7 @@ match matching.clone().first().cloned() {
 
 pub fn for_each_element_type_node(n: Rc<Node>) -> Rc<Node> {
     {
-        let normed = normalize_access_type_node(n.clone());
+        let normed = normalize_access_type_node(n);
 let is_single_child = ((normed.connective.clone() == Connective::NoConnective) && ((normed.children.clone().len() as i64) == 1));
 let extracted = if is_single_child.clone() {
             normed.children.clone().first().cloned()
@@ -986,7 +986,7 @@ match extracted.clone() {
 }
 
 pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
-    match v2_rt::map_get(&m, key.clone()) {
+    match v2_rt::map_get(&m, key) {
     Some(_) => true,
     None => false,
 }
@@ -994,17 +994,17 @@ pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
 
 pub fn collect_named_templates(template: Rc<AlgebraTypeTemplate>, acc: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, bool>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*template.clone()).clone() {
-    AlgebraTypeTemplate::ReceiverSelf => acc.clone(),
-    AlgebraTypeTemplate::ReceiverElement => acc.clone(),
-    AlgebraTypeTemplate::ReceiverKey => acc.clone(),
-    AlgebraTypeTemplate::ReceiverValue => acc.clone(),
-    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => v2_rt::rc_map_insert(acc.clone(), n.clone(), true),
-    AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => collect_named_templates(inner.clone(), acc.clone()),
-    AlgebraTypeTemplate::ListOf { element: inner, .. } => collect_named_templates(inner.clone(), acc.clone()),
-    AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => collect_named_templates(inner.clone(), acc.clone()),
+        match (*template).clone() {
+    AlgebraTypeTemplate::ReceiverSelf => acc,
+    AlgebraTypeTemplate::ReceiverElement => acc,
+    AlgebraTypeTemplate::ReceiverKey => acc,
+    AlgebraTypeTemplate::ReceiverValue => acc,
+    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => v2_rt::rc_map_insert(acc, n.clone(), true),
+    AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => collect_named_templates(inner.clone(), acc),
+    AlgebraTypeTemplate::ListOf { element: inner, .. } => collect_named_templates(inner.clone(), acc),
+    AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => collect_named_templates(inner.clone(), acc),
     AlgebraTypeTemplate::TupleOf { first: f, second: s, .. } => {
-            let acc2 = collect_named_templates(f.clone(), acc.clone());
+            let acc2 = collect_named_templates(f.clone(), acc);
 collect_named_templates(s.clone(), acc2.clone())
 },
 }
@@ -1012,7 +1012,7 @@ collect_named_templates(s.clone(), acc2.clone())
 }
 
 pub fn collect_field_template_names(templates: Rc<Vec<Rc<AlgebraFieldTemplate>>>, acc: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, bool>> {
-    templates.clone().iter().cloned().fold(acc.clone(), |a: Rc<HashMap<String, bool>>, t: Rc<AlgebraFieldTemplate>| {
+    templates.iter().cloned().fold(acc.clone(), |a: Rc<HashMap<String, bool>>, t: Rc<AlgebraFieldTemplate>| {
         let a2 = t.param_types.clone().iter().cloned().fold(a.clone(), |pa: Rc<HashMap<String, bool>>, pt: Rc<AlgebraTypeTemplate>| collect_named_templates(pt.clone(), pa.clone()));
 collect_named_templates(t.return_type.clone(), a2.clone())
 })
@@ -1038,7 +1038,7 @@ Rc::new(v2_rt::map_keys(&all_template_names)).iter().cloned().fold(type_params.c
 }
 
 pub fn is_bridge_placeholder(placeholder_names: Rc<HashMap<String, bool>>, name: String) -> bool {
-    match v2_rt::map_get(&placeholder_names, name.clone()) {
+    match v2_rt::map_get(&placeholder_names, name) {
     Some(_) => true,
     None => false,
 }

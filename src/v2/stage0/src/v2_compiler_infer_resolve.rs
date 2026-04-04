@@ -62,7 +62,7 @@ pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, lookup_type, lookup
 use AliasKind::*;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
-    match (*inferred.clone()).clone() {
+    match (*inferred).clone() {
     InferredNode::TypeVariable { .. } => true,
     _ => false,
 }
@@ -135,7 +135,7 @@ pub struct ResourceUseResult {
 }
 
 pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NodeResolveResult> {
-    resolve_node_bounded(n.clone(), env.clone(), module_name.clone(), 0)
+    resolve_node_bounded(n, env, module_name, 0)
 }
 
 pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
@@ -144,7 +144,7 @@ pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
 if has_structure.clone() {
             false
 } else {
-            match lookup_type_for(env.clone(), n.clone()) {
+            match lookup_type_for(env, n.clone()) {
     Some(decl) => if ((decl.params.clone().len() as i64) > 0) {
                 if is_container_type(n.name.clone()) {
                     false
@@ -251,8 +251,8 @@ if (((target.children.clone().len() as i64) > 0) && nc.clone()) {
 
 pub fn resolve_alias_target(target: Rc<Node>, env: Rc<TypeEnv>, module_name: String, depth: i64) -> Rc<Node> {
     match classify_alias(target.clone()) {
-    AliasKind::AliasParameterized => resolve_node_bounded(target.clone(), env.clone(), module_name.clone(), (depth.clone() + 1)).resolved.clone(),
-    AliasKind::AliasLeaf => match lookup_type(env.clone(), target.name.clone()) {
+    AliasKind::AliasParameterized => resolve_node_bounded(target.clone(), env, module_name, (depth + 1)).resolved.clone(),
+    AliasKind::AliasLeaf => match lookup_type(env, target.name.clone()) {
     Some(env_target) => env_target.clone(),
     None => target.clone(),
 },
@@ -753,13 +753,13 @@ pub fn resolve_optional_node(n: Option<Rc<InferredNode>>, env: Rc<TypeEnv>, modu
 })
 } else {
         match (*n.clone().unwrap()).clone() {
-    InferredNode::Resolved { node: inner, .. } => resolve_node(inner.clone(), env.clone(), module_name.clone()),
+    InferredNode::Resolved { node: inner, .. } => resolve_node(inner.clone(), env, module_name),
     InferredNode::CompilerError { message: msg, span: sp, .. } => Rc::new(NodeResolveResult {
     resolved: make_expr_error_node(ExprErrorKind::SemanticExprError, msg.clone(), sp.clone()),
     diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: msg.clone(),
     span: sp.clone(),
-}), module_name.clone())]),
+}), module_name)]),
 }),
     InferredNode::TypeVariable { .. } => Rc::new(NodeResolveResult {
     resolved: unit_type(),
@@ -817,7 +817,7 @@ Rc::new(ParamResult {
 
 pub fn resolve_resource_use(ru: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<ResourceUseResult> {
     {
-        let type_result = resolve_node(resource_use_resource(ru.clone()), env.clone(), module_name.clone());
+        let type_result = resolve_node(resource_use_resource(ru.clone()), env, module_name);
 let type_resolved = type_result.resolved.clone();
 let type_diags = type_result.diagnostics.clone();
 Rc::new(ResourceUseResult {
@@ -829,7 +829,7 @@ Rc::new(ResourceUseResult {
 
 pub fn resolve_named_arg(arg: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NamedArgResolveResult> {
     {
-        let value_result = resolve_expr_types(arg_value(arg.clone()), env.clone(), module_name.clone());
+        let value_result = resolve_expr_types(arg_value(arg.clone()), env, module_name);
 let value_expr = value_result.expr.clone();
 let value_diags = value_result.diagnostics.clone();
 Rc::new(NamedArgResolveResult {
@@ -841,7 +841,7 @@ Rc::new(NamedArgResolveResult {
 
 pub fn resolve_field_init(field_init: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<FieldInitResolveResult> {
     {
-        let value_result = resolve_expr_types(field_init_node_value(field_init.clone()), env.clone(), module_name.clone());
+        let value_result = resolve_expr_types(field_init_node_value(field_init.clone()), env, module_name);
 let value_expr = value_result.expr.clone();
 let value_diags = value_result.diagnostics.clone();
 Rc::new(FieldInitResolveResult {
@@ -876,7 +876,7 @@ Rc::new(MatchArmResolveResult {
 }
 
 pub fn resolve_string_part(part: Rc<StringPart>, env: Rc<TypeEnv>, module_name: String) -> Rc<StringPartResolveResult> {
-    match (*part.clone()).clone() {
+    match (*part).clone() {
     StringPart::Text { value: value, .. } => Rc::new(StringPartResolveResult {
     part: Rc::new(StringPart::Text {
     value: value.clone(),
@@ -884,7 +884,7 @@ pub fn resolve_string_part(part: Rc<StringPart>, env: Rc<TypeEnv>, module_name: 
     diagnostics: Rc::new(vec![]),
 }),
     StringPart::Interpolation { expr: expr, .. } => {
-        let expr_result = resolve_expr_types(expr.clone(), env.clone(), module_name.clone());
+        let expr_result = resolve_expr_types(expr.clone(), env, module_name);
 let resolved_expr = expr_result.expr.clone();
 let expr_diags = expr_result.diagnostics.clone();
 Rc::new(StringPartResolveResult {

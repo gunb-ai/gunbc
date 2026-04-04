@@ -119,7 +119,7 @@ impl PartitionRule {
 }
 
 pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
-    match (*rule.clone()).clone() {
+    match (*rule).clone() {
     PartitionRule::Explicit { artifacts: arts, .. } => Rc::new(ArtifactPlan {
     artifacts: arts.clone(),
     boundaries: Rc::new(vec![]),
@@ -138,8 +138,8 @@ pub fn default_artifact_plan(root_modules: Rc<Vec<String>>, target: RenderTarget
     artifacts: Rc::new(vec![Rc::new(Artifact {
     name: "default".to_string(),
     kind: ArtifactKind::ServiceBinary,
-    target: target.clone(),
-    entry_modules: root_modules.clone(),
+    target: target,
+    entry_modules: root_modules,
     dependencies: Rc::new(vec![]),
 })]),
 }))

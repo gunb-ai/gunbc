@@ -151,6 +151,8 @@ Open items:
 
 ### Explicit ownership and identity
 
+- [x] Ownership analysis wired into Rust emitter: fan-out=1 function params move instead of clone
+- [ ] Extend movable set to let-bindings and match-bound variables (requires scoped analysis)
 - [ ] Explicit parent-enum ownership facts through resolve/infer/emit
 - [ ] Transport/config: one `.dag` authority for transport schema (35+ redundant sites)
 

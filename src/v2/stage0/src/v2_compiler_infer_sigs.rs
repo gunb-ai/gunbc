@@ -83,7 +83,7 @@ pub struct CallEdge {
 }
 
 pub fn collect_func_call_edges(items: Rc<Vec<Rc<Node>>>, local_func_set: Rc<HashMap<String, bool>>) -> Rc<Vec<Rc<CallEdge>>> {
-    Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { __result.extend((*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
+    Rc::new({ let mut __result = Vec::new(); for item in items.iter().cloned() { __result.extend((*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
         collect_calls_in_expr(item.name.clone(), item.body.clone().clone().unwrap(), local_func_set.clone())
 } else {
         Rc::new(vec![])
@@ -265,6 +265,6 @@ let parent_resolved = Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned()
                 acc.clone()
 }
 });
-topo_resolve_loop(local_func_names.clone(), parent_resolved.clone(), declared_sigs.clone(), call_edges.clone(), local_func_set.clone(), module_name.clone(), Rc::new(vec![]), (local_func_names.clone().len() as i64))
+topo_resolve_loop(local_func_names.clone(), parent_resolved.clone(), declared_sigs.clone(), call_edges.clone(), local_func_set.clone(), module_name, Rc::new(vec![]), (local_func_names.clone().len() as i64))
 }
 }
