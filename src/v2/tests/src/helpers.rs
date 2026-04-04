@@ -152,7 +152,7 @@ fn extract_imports(source: &str) -> Vec<String> {
 /// Resolve imports transitively from an entry source. Returns the minimal
 /// set of SourceFiles needed — each module loaded exactly once.
 /// Lookups use the cached module index (parser-backed, built once).
-fn resolve_imports_transitively(
+pub fn resolve_imports_transitively(
     entry_path: &str,
     entry_content: &str,
 ) -> Vec<Rc<SourceFile>> {

@@ -1237,6 +1237,133 @@ fn countdown(n: Int) -> Int {
     );
 }
 
+// ── CX-A / CX-C regression tests ─────────────────────────────────────
+//
+// These tests exercise the TokenPosition dimension (CX-A) and the
+// lambda-iteration descent path (CX-C) added for parser/tree proofs.
+//
+// Note: The bootstrap pipeline skips complexity analysis (compile.dag §817).
+// We call build_complexity_report directly to get real complexity results.
+
+fn compile_dag_with_complexity(source: &str) -> Rc<v2_compiler::v2_compiler_complexity::ComplexityReport> {
+    use v2_compiler::v2_compiler_compile::{extract_func_entries, build_recursion_context, front_end_sources};
+    use v2_compiler::v2_compiler_complexity::build_complexity_report;
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
+    use v2_compiler::v2_compiler_infer::reconcile;
+    let sources = resolve_imports_transitively("test.dag", source);
+    let frontend = front_end_sources(Rc::new(sources));
+    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let norm = normalize_graph(graph);
+    let source_indices = Rc::new(HashMap::new());
+    let typed = reconcile(norm.graph.clone(), source_indices);
+    let func_entries = extract_func_entries(typed.clone());
+    let recursion_ctx = build_recursion_context(typed);
+    build_complexity_report(func_entries, recursion_ctx)
+}
+
+#[test]
+fn soundness_bare_alias_match_stays_rejected() {
+    let source = r#"module soundness_bind
+fn f(n: Int) -> Int {
+  if n <= 0 { 0 } else { match n { x => f(n: x) } }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let violations: Vec<_> = complexity
+        .violations
+        .iter()
+        .filter(|v| v.func_name == "f")
+        .collect();
+    assert!(
+        !violations.is_empty(),
+        "bare alias bind `match n {{ x => f(n: x) }}` must stay rejected as unresolvable recursion"
+    );
+}
+
+#[test]
+fn soundness_parser_token_position_scc_accepted() {
+    let source = r#"module parser_scc
+type ParserState { pos: Int }
+type ParseResult { state: ParserState, value: Int }
+
+fn advance(state: ParserState) -> ParseResult {
+  ParseResult { state: ParserState { pos: state.pos + 1 }, value: 0 }
+}
+
+fn parse_items(state: ParserState) -> ParseResult {
+  if state.pos > 100 {
+    ParseResult { state: state, value: 0 }
+  } else {
+    let r = advance(state: state)
+    parse_items(state: r.state)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let violations: Vec<_> = complexity
+        .violations
+        .iter()
+        .filter(|v| v.func_name == "parse_items")
+        .collect();
+    assert!(
+        violations.is_empty(),
+        "single-function parser with advance + .state must be accepted via parser progress, got: {:?}",
+        violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn soundness_parser_scc_no_advance_rejected() {
+    let source = r#"module parser_no_advance
+type ParserState { pos: Int }
+type ParseResult { state: ParserState, value: Int }
+
+fn parse_a(state: ParserState) -> ParseResult {
+  parse_b(state: state)
+}
+
+fn parse_b(state: ParserState) -> ParseResult {
+  parse_a(state: state)
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let violations: Vec<_> = complexity
+        .violations
+        .iter()
+        .filter(|v| v.func_name == "parse_a" || v.func_name == "parse_b")
+        .collect();
+    assert!(
+        !violations.is_empty(),
+        "parser SCC without advance must be rejected — passing state through is not descent"
+    );
+}
+
+#[test]
+fn soundness_lambda_fold_children_accepted() {
+    let source = r#"module lambda_fold
+type Tree = Leaf { value: Int } | Branch { value: Int, children: List<Tree> }
+
+fn sum_tree(t: Tree) -> Int {
+  match t {
+    Leaf { value: v } => v
+    Branch { value: v, children: _ } =>
+      v + (t.children |> fold(init: 0, f: (acc, child) => acc + sum_tree(t: child)))
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let violations: Vec<_> = complexity
+        .violations
+        .iter()
+        .filter(|v| v.func_name == "sum_tree")
+        .collect();
+    assert!(
+        violations.is_empty(),
+        "fold over t.children with self-call passing child must be accepted, got: {:?}",
+        violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+    );
+}
+
 // ── Complexity class coverage ─────────────────────────────────────────
 //
 // These tests verify that the analyzer produces the correct cost formula
