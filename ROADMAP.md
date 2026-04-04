@@ -389,6 +389,9 @@ DFA triage maps all 164 to four algebraic root causes:
 - **CX-A**: DescentEvidence lattice unification — parser mutual recursion
   gets structural termination proofs. Files: `complexity.dag`,
   `dsl/std/termination.dag`. Expected: 164 → ~150.
+  Progress: TokenPosition dimension added to SCC proof constructor;
+  single-function parser recursion verified. SCC parser-proof path
+  not yet covered by end-to-end test.
 - **CX-B**: CostExpr/SizeExpr dissolution — cost expressions become flat
   products of SizeBounds from `std/computation.dag`'s lowering table.
   Planned: RecursionPattern → LoweringTarget, UnresolvableRecursion
@@ -397,6 +400,10 @@ DFA triage maps all 164 to four algebraic root causes:
 - **CX-C**: Signature-driven fold evidence — self-calls inside
   `children |> fold` callbacks get structural descent proofs.
   Expected: ~120 → ~80.
+  Progress: `is_algebra_iteration_method` reads `AlgebraMethodSemantics`
+  from ExprMethodCall; structural children iteration produces descent
+  evidence. Lambda element position still uses `last` convention
+  (Phase 3 blocker).
 - **CX-D**: MatchPattern dissolution + remaining concept grounding.
   Expected: ~80 → 0.
 - **CX-E**: Re-enable complexity gate — remove `complexity_diags = []`,
