@@ -67,20 +67,24 @@
 //
 //     descend(expr, f: (node, processed_children) => ...)
 //
-//   If the compiler cannot lower a recursive function to a bounded
-//   primitive, compilation fails. This is not a heuristic — it is a
-//   structural analysis of the call pattern:
+//   The compiler classifies call patterns and lowers each to a
+//   bounded primitive. This is not a heuristic — it is a structural
+//   analysis of the call pattern. The lowering is EXHAUSTIVE: every
+//   possible call pattern maps to a bounded primitive.
 //
-//   | Call pattern                      | Lowers to           |
-//   |-----------------------------------|---------------------|
-//   | Self-call on child of input       | descend (tree fold) |
-//   | Self-call inside fold body        | Already bounded     |
-//   | Self-call with n - 1              | repeat(n, ...)      |
-//   | Self-call with same argument      | REJECTED            |
+//   | Call pattern                      | Lowers to              |
+//   |-----------------------------------|------------------------|
+//   | Self-call on child of input       | descend (tree fold)    |
+//   | Self-call inside fold body        | Already bounded        |
+//   | Self-call with n - 1              | repeat(n, ...)         |
+//   | Self-call with same argument      | repeat(Forever, ...)   |
 //
-//   "REJECTED" means the function cannot be expressed as bounded
-//   iteration. This is a compiler error, not a user error — the
-//   language does not have unbounded recursion as a concept.
+//   No pattern is rejected. The "same argument" case lowers to
+//   repeat(Forever, ...) because in a Bit/Word64 system, "forever"
+//   means "2^63 - 1 iterations" — the largest representable value.
+//   The cost algebra reports this bound honestly.
+//
+//   See std/computation.dag for the complete lowering table.
 //
 // RELATIONSHIP TO COMPOSITION STACK:
 //

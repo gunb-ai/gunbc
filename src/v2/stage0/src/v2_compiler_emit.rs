@@ -515,6 +515,7 @@ v2_rt::concat(v2_rt::concat("[".to_string(), el_strs.join(&", ".to_string())), "
 v2_rt::concat(v2_rt::concat("{".to_string(), field_strs.join(&", ".to_string())), "}".to_string())
 },
     ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(expr_var_name_at(value.clone(), source_index.clone()))), "\"".to_string()),
+    ExprData::ExprUnaryOp { op: UnaryOpKind::Neg, .. } => v2_rt::concat("-".to_string(), emit_data_value_json(unaryop_operand(value.clone()), source_index.clone())),
     _ => "\"compile_error!(unsupported mock expression)\"".to_string(),
 }
     })
