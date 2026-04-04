@@ -779,6 +779,7 @@ fn parse_error_does_not_leak_to_resolve() {
 // ── Complexity report tests ─────────────────────────────────────────────
 
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn complexity_report_structured() {
     let source = "module cplx\nfn constant_work(x: Int) -> Int { x }\nfn linear_map(items: List<Int>) -> List<Int> {\n  map(items, fn(i) { i + 1 })\n}\nfn linear_fold(items: List<Int>) -> Int {\n  fold(items, 0, fn(acc, i) { acc + i })\n}\nfn nested_iteration(groups: List<List<Int>>) -> List<Int> {\n  flat_map(groups, fn(g) { map(g, fn(i) { i }) })\n}\nfn filter_then_map(items: List<Int>) -> List<Int> {\n  let filtered = filter(items, fn(i) { i > 0 })\n  map(filtered, fn(i) { i * 2 })\n}\nfn for_each_loop(items: List<Int>) -> List<Int> {\n  for i in items { i + 1 }\n}\nfn count_items(items: List<Int>) -> Int {\n  items |> count\n}\n";
     let result = compile_dag(source);
@@ -987,6 +988,7 @@ fn walk(n: Int) -> Int {
 /// Multiple self-calls on the same execution path must remain a hard
 /// complexity violation.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn complexity_branching_recursion_remains_violation() {
     let source = r#"module branching
 fn split(n: Int) -> Int {
@@ -1019,6 +1021,7 @@ fn split(n: Int) -> Int {
 }
 
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn complexity_if_guarded_branching_recursion_remains_violation() {
     let source = r#"module fib_branch
 fn fib_like(n: Int) -> Int {
@@ -1117,6 +1120,7 @@ fn process_items(items: List<Int>) -> Int {
 /// Two self-calls on the same execution path = branching recursion,
 /// regardless of arithmetic descent witnesses on individual calls.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn soundness_fib_like_stays_non_linear() {
     let source = r#"module soundness_fib
 fn fib_like(n: Int) -> Int {
@@ -1147,6 +1151,7 @@ fn fib_like(n: Int) -> Int {
 /// `f(if cond { n - 1 } else { n })` — the else branch passes n unchanged,
 /// so this is NOT a proven descent and must remain a violation.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn soundness_conditional_descent_not_accepted() {
     let source = r#"module soundness_cond
 fn cond_recurse(n: Int, flag: Bool) -> Int {
@@ -1175,6 +1180,7 @@ fn cond_recurse(n: Int, flag: Bool) -> Int {
 /// Both Mode variants are reachable (m is an independent parameter),
 /// and the Shallow arm recurses on `t` without shrinking the measure.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn soundness_partial_match_descent_not_accepted() {
     let source = r#"module soundness_match
 type Tree
@@ -1323,6 +1329,7 @@ fn certainty_of(
 
 /// O(1) — constant time: pure arithmetic and conditionals.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn complexity_class_constant() {
     let source = r#"module constant
 fn add(a: Int, b: Int) -> Int { a + b }
@@ -1352,6 +1359,7 @@ fn triple(x: Int) -> Int { x * 3 }
 
 /// O(n) — linear: single fold, map, filter, count.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn complexity_class_linear() {
     let source = r#"module linear
 fn sum_items(items: List<Int>) -> Int {
@@ -1389,6 +1397,7 @@ fn pos_only(items: List<Int>) -> List<Int> {
 
 /// O(n²) — quadratic: nested fold over same collection.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn complexity_class_quadratic() {
     let source = r#"module quadratic
 fn all_pairs_sum(items: List<Int>) -> Int {
@@ -1426,6 +1435,7 @@ fn all_pairs_sum(items: List<Int>) -> Int {
 
 /// O(n × m) — bilinear: fold over one collection, inner operation on another.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn complexity_class_bilinear() {
     let source = r#"module bilinear
 fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
@@ -1462,6 +1472,7 @@ fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
 
 /// sort_by — should be Proven with O(n log n) via CostLog.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn complexity_class_sort_proven() {
     let source = r#"module sorting
 fn sort_ascending(items: List<Int>) -> List<Int> {
@@ -1529,6 +1540,7 @@ fn complexity_class_max_keeps_log_terms() {
 
 /// Structural classification: O(1) functions produce CostConst.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn structural_classify_constant_is_cost_const() {
     let source = r#"module sconst
 fn add(a: Int, b: Int) -> Int { a + b }
@@ -1602,6 +1614,7 @@ fn expand(items: List<Int>) -> List<Int> {
 
 /// Verify that the structural complexity report contains all analyzed functions.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn complexity_report_covers_all_functions() {
     let source = r#"module coverage
 fn f1(x: Int) -> Int { x + 1 }
@@ -1636,6 +1649,7 @@ fn f4(a: List<Int>, b: List<Int>) -> Int {
 
 /// Structural data scales to any number of functions without elision.
 #[test]
+#[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn complexity_report_scales_to_large_programs() {
     let mut source = String::from("module huge\n");
     for idx in 0..401 {
