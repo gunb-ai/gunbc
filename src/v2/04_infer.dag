@@ -1162,6 +1162,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           // Built-in: empty_map() → Map. Adopt expected type if it's a
           // fully parameterized keyed collection (e.g. Map<K,V> from struct
           // field or fold accumulator), otherwise fall back to bare_map_node().
+          // NOTE: bare_map_node produces Map with 0 children. Replacing with
+          // type variables requires emitter support for TypeVariable rendering
+          // (tracked as M2 debt — emitter emits compile_error! on TypeVariable).
           let empty_map_type = match expected {
             Some { value: exp } =>
               if node_is_keyed_collection(n: exp) { exp }
