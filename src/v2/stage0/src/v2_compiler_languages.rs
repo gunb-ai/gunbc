@@ -53,7 +53,7 @@ use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge,
 use crate::v2_std_core::LiteralValue::*;
 pub use crate::std_syntax::{ItemForm, OperatorSpec, SyntaxSpec, BodyKind};
 use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
-pub use crate::extdeps_languages_rust_emit::{rust_type_map, rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_value_types, rust_string_types};
+pub use crate::extdeps_languages_rust_emit::{rust_type_map, rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_value_types, rust_string_types, rust_clone_expr, rust_deref_clone_expr, rust_field_clone_expr, rust_iterator_clone_suffix};
 pub use crate::extdeps_languages_python_emit::{python_type_map, python_keywords, python_container_templates, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init};
 pub use crate::extdeps_languages_go_emit::{go_type_map, go_keywords, go_container_templates, go_reserved, go_reserved_escape_suffix, go_manifest_file};
 use ReservedWordStrategy::*;
@@ -245,6 +245,14 @@ pub struct SharingStrategy {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CloneTemplates {
+    pub clone_expr: String,
+    pub deref_clone_expr: String,
+    pub field_clone_expr: String,
+    pub iterator_clone_suffix: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,
@@ -253,6 +261,7 @@ pub struct LanguageSpec {
     pub test_conventions: Rc<TestConventions>,
     pub top_level_visibility: String,
     pub sharing: Rc<SharingStrategy>,
+    pub clone_templates: Option<Rc<CloneTemplates>>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -292,6 +301,12 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     sharing: Rc::new(SharingStrategy {
     wrap_template: "Rc<{0}>".to_string(),
 }),
+    clone_templates: Some(Rc::new(CloneTemplates {
+    clone_expr: rust_clone_expr(),
+    deref_clone_expr: rust_deref_clone_expr(),
+    field_clone_expr: rust_field_clone_expr(),
+    iterator_clone_suffix: rust_iterator_clone_suffix(),
+})),
 })
 }
 
@@ -332,6 +347,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     sharing: Rc::new(SharingStrategy {
     wrap_template: "{0}".to_string(),
 }),
+    clone_templates: None,
 })
 }
 
@@ -372,6 +388,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     sharing: Rc::new(SharingStrategy {
     wrap_template: "{0}".to_string(),
 }),
+    clone_templates: None,
 })
 }
 
@@ -461,6 +478,10 @@ pub fn top_level_visibility_for_target(target: RenderTarget) -> String {
 
 pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
     language_spec_for_target(target.clone()).sharing.clone()
+}
+
+pub fn clone_templates_for_target(target: RenderTarget) -> Option<Rc<CloneTemplates>> {
+    language_spec_for_target(target.clone()).clone_templates.clone()
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {

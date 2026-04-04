@@ -27,7 +27,8 @@ import extdeps.languages.rust.emit {
   rust_enum_derives, rust_enum_derives_copy,
   rust_serde_tag, rust_serde_rename_template,
   rust_source_extension, rust_source_dir, rust_visibility,
-  rust_value_types, rust_string_types
+  rust_value_types, rust_string_types,
+  rust_clone_expr, rust_deref_clone_expr, rust_field_clone_expr, rust_iterator_clone_suffix
 }
 
 import extdeps.languages.python.emit {
@@ -177,6 +178,13 @@ type SharingStrategy {
   wrap_template: String
 }
 
+type CloneTemplates {
+  clone_expr: String              // "{0}.clone()" — clone an owned expression
+  deref_clone_expr: String        // "(*{0}).clone()" — deref then clone (Rc/Box)
+  field_clone_expr: String        // "{0}.{1}.clone()" — clone a field access
+  iterator_clone_suffix: String   // ".cloned()" — clone iterator elements
+}
+
 type LanguageSpec {
   target_name: String
   reserved_words: ReservedWords
@@ -185,6 +193,7 @@ type LanguageSpec {
   test_conventions: TestConventions
   top_level_visibility: String
   sharing: SharingStrategy
+  clone_templates: CloneTemplates?
 }
 
 // =========================================================================
@@ -226,6 +235,12 @@ fn rust_spec() -> LanguageSpec {
     top_level_visibility: rust_visibility,
     sharing: SharingStrategy {
       wrap_template: "Rc<{0}>"
+    },
+    clone_templates: CloneTemplates {
+      clone_expr: rust_clone_expr,
+      deref_clone_expr: rust_deref_clone_expr,
+      field_clone_expr: rust_field_clone_expr,
+      iterator_clone_suffix: rust_iterator_clone_suffix
     }
   }
 }
@@ -264,7 +279,8 @@ fn python_spec() -> LanguageSpec {
     top_level_visibility: "",
     sharing: SharingStrategy {
       wrap_template: "{0}"
-    }
+    },
+    clone_templates: null
   }
 }
 
@@ -302,7 +318,8 @@ fn go_spec() -> LanguageSpec {
     top_level_visibility: "",
     sharing: SharingStrategy {
       wrap_template: "{0}"
-    }
+    },
+    clone_templates: null
   }
 }
 
@@ -377,6 +394,10 @@ fn top_level_visibility_for_target(target: RenderTarget) -> String {
 
 fn sharing_for_target(target: RenderTarget) -> SharingStrategy {
   language_spec_for_target(target: target).sharing
+}
+
+fn clone_templates_for_target(target: RenderTarget) -> CloneTemplates? {
+  language_spec_for_target(target: target).clone_templates
 }
 
 // Apply sharing wrap template to a type string.
