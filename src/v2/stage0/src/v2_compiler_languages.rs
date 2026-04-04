@@ -330,7 +330,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
 }
 
 pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
-    match target.clone() {
+    match target {
     RenderTarget::Rust => rust_spec(),
     RenderTarget::Go => go_spec(),
     RenderTarget::Python => python_spec(),
@@ -339,7 +339,7 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
 }
 
 pub fn target_keyword(target: RenderTarget, key: String) -> String {
-    match target.clone() {
+    match target {
     RenderTarget::Rust => match v2_rt::lookup(&rust_keywords(), key.clone()) {
     Some(kw) => kw.clone(),
     None => key.clone(),
@@ -357,7 +357,7 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
 }
 
 pub fn target_primitive_type(target: RenderTarget, name: String) -> String {
-    match target.clone() {
+    match target {
     RenderTarget::Rust => match v2_rt::lookup(&rust_type_map(), name.clone()) {
     Some(mapped) => mapped.clone(),
     None => name.clone(),
@@ -375,51 +375,51 @@ pub fn target_primitive_type(target: RenderTarget, name: String) -> String {
 }
 
 pub fn target_container_template(target: RenderTarget, kind: String) -> Option<String> {
-    match target.clone() {
-    RenderTarget::Rust => v2_rt::lookup(&rust_container_templates(), kind.clone()),
-    RenderTarget::Go => v2_rt::lookup(&go_container_templates(), kind.clone()),
-    RenderTarget::Python => v2_rt::lookup(&python_container_templates(), kind.clone()),
+    match target {
+    RenderTarget::Rust => v2_rt::lookup(&rust_container_templates(), kind),
+    RenderTarget::Go => v2_rt::lookup(&go_container_templates(), kind),
+    RenderTarget::Python => v2_rt::lookup(&python_container_templates(), kind),
     RenderTarget::Dag => None,
 }
 }
 
 pub fn is_value_type(target: RenderTarget, name: String) -> bool {
-    match target.clone() {
+    match target {
     RenderTarget::Rust => { let mut __found = false; for t in rust_value_types().iter().cloned() { if (t.clone().as_str() == name.clone().as_str()) { __found = true; break; } } __found },
     _ => false,
 }
 }
 
 pub fn is_string_like(target: RenderTarget, name: String) -> bool {
-    match target.clone() {
+    match target {
     RenderTarget::Rust => { let mut __found = false; for t in rust_string_types().iter().cloned() { if (t.clone().as_str() == name.clone().as_str()) { __found = true; break; } } __found },
     _ => false,
 }
 }
 
 pub fn scaffold_for_target(target: RenderTarget) -> Rc<ProjectScaffold> {
-    language_spec_for_target(target.clone()).scaffold.clone()
+    language_spec_for_target(target).scaffold.clone()
 }
 
 pub fn serialization_for_target(target: RenderTarget) -> Rc<SerializationSpec> {
-    language_spec_for_target(target.clone()).serialization.clone()
+    language_spec_for_target(target).serialization.clone()
 }
 
 pub fn test_conventions_for_target(target: RenderTarget) -> Rc<TestConventions> {
-    language_spec_for_target(target.clone()).test_conventions.clone()
+    language_spec_for_target(target).test_conventions.clone()
 }
 
 pub fn top_level_visibility_for_target(target: RenderTarget) -> String {
-    language_spec_for_target(target.clone()).top_level_visibility.clone()
+    language_spec_for_target(target).top_level_visibility.clone()
 }
 
 pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
-    language_spec_for_target(target.clone()).sharing.clone()
+    language_spec_for_target(target).sharing.clone()
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     {
-        let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
-v2_rt::replace(tmpl.clone(), "{0}".to_string(), inner.clone())
+        let tmpl = sharing_for_target(target).wrap_template.clone();
+v2_rt::replace(tmpl, "{0}".to_string(), inner)
 }
 }

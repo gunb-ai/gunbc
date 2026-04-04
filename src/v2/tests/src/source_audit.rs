@@ -638,7 +638,7 @@ fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
     );
     assert_live_contains(
         &stage0,
-        "typed_diags.clone()",
+        "typed_diags",
         "stage0 compile mirror should reference typed_diags for fail-closed path",
     );
     assert_live_not_contains(

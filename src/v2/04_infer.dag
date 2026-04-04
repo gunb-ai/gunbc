@@ -48,7 +48,7 @@ import v2.std.core {
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   FieldAccessStyle, StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue, FieldSummary,
-  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
+  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
@@ -175,6 +175,7 @@ type InferScope {
   type_env: TypeEnv
   func_env: ResolvedFuncEnv
   locals: Map<String, TypeBinding>
+  match_bound_names: Map<String, Bool>
   module_name: String
   service_registry: Map<String, List<OpEntry>>
   item_registry: Map<String, ItemInfo>
@@ -494,7 +495,9 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
     Some { value: parent_enum } => VariantValueBinding { parent_enum: parent_enum }
     None =>
       match map_get(scope.locals, name) {
-        Some { value: _ } => LocalValueBinding
+        Some { value: _ } =>
+          if map_has(scope.match_bound_names, name) { MatchBoundBinding }
+          else { LocalValueBinding }
         None => FunctionValueBinding
       }
   }
@@ -598,6 +601,7 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: new_locals,
+    match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry
@@ -613,6 +617,19 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node) -> InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved }),
+    match_bound_names: scope.match_bound_names,
+    module_name: scope.module_name,
+    service_registry: scope.service_registry,
+    item_registry: scope.item_registry
+  }
+}
+
+fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node) -> InferScope {
+  InferScope {
+    type_env: scope.type_env,
+    func_env: scope.func_env,
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved }),
+    match_bound_names: map_insert(scope.match_bound_names, name, true),
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry
@@ -628,6 +645,7 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: new_locals,
+    match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry
@@ -649,7 +667,7 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
 
 fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject) -> PatternScopeResult {
   match pattern {
-    Bind { name: n } => PatternScopeResult { scope: extend_scope(scope: scope, name: n, resolved: pattern_binding_type(subject: scrutinee_subject)), diagnostics: [] }
+    Bind { name: n } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: n, resolved: pattern_binding_type(subject: scrutinee_subject)), diagnostics: [] }
     Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
@@ -664,7 +682,7 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
         let fb_pattern = field_binding_pattern(n: fb)
         match fb_pattern {
           Bind { name: n } => PatternScopeResult {
-            scope: extend_scope(scope: acc.scope, name: n, resolved: field_type),
+            scope: extend_scope_match_bound(scope: acc.scope, name: n, resolved: field_type),
             diagnostics: concat(acc.diagnostics, field_lookup.diagnostics)
           }
           _ =>
@@ -2701,6 +2719,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     type_env: env,
     func_env: ctx.func_env,
     locals: data_locals,
+    match_bound_names: empty_map(),
     module_name: resolved.module.name,
     service_registry: ctx.svc_registry,
     item_registry: ctx.item_registry
@@ -2924,7 +2943,9 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
     fielded_variants: fielded,
-    value_contexts: value_ctxs
+    value_contexts: value_ctxs,
+    ownership_index: empty_map(),
+    movable: empty_map()
   }
 }
 

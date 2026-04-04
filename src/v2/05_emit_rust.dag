@@ -32,7 +32,7 @@ import v2.std.core {
   LambdaSemantics,
   FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
-  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
+  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
@@ -102,6 +102,7 @@ import v2.compiler.infer_emit_info {
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum
 }
+import v2.compiler.ownership { analyze_ownership, build_movable_set }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
@@ -347,11 +348,33 @@ fn build_rc_types(emit_info: EmitGraphInfo) -> Map<String, Bool> {
 }
 
 // =========================================================================
+// Ownership index -- fan-out=1 bindings that can be moved instead of cloned
+// =========================================================================
+
+fn build_ownership_index(modules: List<TypedModule>) -> Map<String, Map<String, Bool>> {
+  modules |> fold(init: empty_map(), f: (acc, m) =>
+    m.items |> filter(item => item.body != None) |> fold(init: acc, f: (inner_acc, item) =>
+      let proof = analyze_ownership(func_name: item.name, params: item.params, body: item.body.value)
+      map_insert(inner_acc, item.name, build_movable_set(proof: proof))
+    )
+  )
+}
+
+// =========================================================================
 // Entry point -- Rust target
 // =========================================================================
 
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
-  let emit_info = build_emit_graph_info(modules: typed.modules)
+  let base_info = build_emit_graph_info(modules: typed.modules)
+  let ownership_idx = build_ownership_index(modules: typed.modules)
+  let emit_info = EmitGraphInfo {
+    type_summaries: base_info.type_summaries,
+    recursive_type_set: base_info.recursive_type_set,
+    fielded_variants: base_info.fielded_variants,
+    value_contexts: base_info.value_contexts,
+    ownership_index: ownership_idx,
+    movable: empty_map()
+  }
   let rc_types = build_rc_types(emit_info: emit_info)
   let registry = typed.item_registry
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
@@ -659,10 +682,29 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   } else if (kind == TypedItemTypeDecl) {
     ""
   } else if (kind == TypedItemFunction) {
-    if item.uses |> count > 0 {
-      emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: emit_info)
+    // Set movable bindings for this function from the ownership index.
+    // TCO transforms the code structure, so ownership analysis from the
+    // original AST may not apply — skip optimization for TCO functions.
+    let fn_movable = if is_tco_eligible(name: item_text, body: item.body.value, registry: registry) {
+      empty_map()
     } else {
-      emit_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: emit_info)
+      match map_get(emit_info.ownership_index, item.name) {
+        Some { value: m } => m
+        None => empty_map()
+      }
+    }
+    let fn_emit_info = EmitGraphInfo {
+      type_summaries: emit_info.type_summaries,
+      recursive_type_set: emit_info.recursive_type_set,
+      fielded_variants: emit_info.fielded_variants,
+      value_contexts: emit_info.value_contexts,
+      ownership_index: emit_info.ownership_index,
+      movable: fn_movable
+    }
+    if item.uses |> count > 0 {
+      emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
+    } else {
+      emit_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
     }
   } else if (kind == TypedItemDataDef) {
     emit_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, rc_types: rc_types, emit_info: emit_info)
@@ -1576,7 +1618,10 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 _ => false
               }
               let ident = emit_ident(name: name, target: Rust)
+              let is_movable = emit_map_has(m: emit_info.movable, key: name)
               let ident_str = if is_function_value {
+                ident
+              } else if is_movable {
                 ident
               } else { match resolved_type {
                 Some { value: _ } => concat(ident, ".clone()")
@@ -1586,10 +1631,13 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
             }
           None =>
             let ident = emit_ident(name: name, target: Rust)
-            let ident_str = match resolved_type {
+            let is_movable = emit_map_has(m: emit_info.movable, key: name)
+            let ident_str = if is_movable {
+              ident
+            } else { match resolved_type {
               Some { value: _ } => concat(ident, ".clone()")
               _ => ident
-            }
+            } }
             ident_str
         }
     }

@@ -112,10 +112,10 @@ pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSp
     InferredNode::TypeVariable { .. } => Rc::new(vec![]),
     InferredNode::Resolved { node: rt, .. } => {
             let has_structure = (rt.connective.clone() != Connective::NoConnective);
-if has_structure.clone() {
+if has_structure {
                 {
                     let is_product = (rt.connective.clone() == Connective::Conj);
-if is_product.clone() {
+if is_product {
                         if (rt.name.clone().as_str() == "".to_string().as_str()) {
                             Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
                                 let child_type = child_inferred_or_name(child.clone());
@@ -167,12 +167,12 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
 }
 }
 };
-kind.clone()
+kind
 }
 }
 
 pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<String, Rc<TypeBinding>>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    items.clone().iter().cloned().fold(init.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
+    items.iter().cloned().fold(init.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
         let is_coproduct = (item.connective.clone() == Connective::Disj);
 if is_coproduct.clone() {
             item.children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| v2_rt::rc_map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {

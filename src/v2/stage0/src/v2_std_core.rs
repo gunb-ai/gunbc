@@ -176,7 +176,7 @@ pub enum InferredNode {
 }
 
 pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
-    match (*inferred.clone()).clone() {
+    match (*inferred).clone() {
     InferredNode::Resolved { node: n, .. } => Some(n.clone()),
     InferredNode::CompilerError { .. } => None,
     InferredNode::TypeVariable { .. } => None,
@@ -184,7 +184,7 @@ pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
 }
 
 pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
-    match (*inferred.clone()).clone() {
+    match (*inferred).clone() {
     InferredNode::Resolved { .. } => false,
     InferredNode::CompilerError { .. } => true,
     InferredNode::TypeVariable { .. } => false,
@@ -238,6 +238,7 @@ pub enum VarBindingKind {
     VariantValueBinding {
         parent_enum: String,
     },
+    MatchBoundBinding,
 }
 impl VarBindingKind {
     pub fn parent_enum(&self) -> String {
@@ -245,6 +246,7 @@ impl VarBindingKind {
             VarBindingKind::LocalValueBinding => panic!("no parent_enum on unit variant"),
             VarBindingKind::FunctionValueBinding => panic!("no parent_enum on unit variant"),
             VarBindingKind::VariantValueBinding { parent_enum: __val, .. } => __val.clone(),
+            VarBindingKind::MatchBoundBinding => panic!("no parent_enum on unit variant"),
         }
     }
 }
@@ -497,7 +499,7 @@ pub struct ErrorDAG {
 }
 
 pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
-    match (*d.clone()).clone() {
+    match (*d).clone() {
     CompilerDiagnostic::UnresolvedImport { span: s, .. } => s.clone(),
     CompilerDiagnostic::MissingExport { span: s, .. } => s.clone(),
     CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
@@ -517,7 +519,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
 }
 
 pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
-    match (*d.clone()).clone() {
+    match (*d).clone() {
     CompilerDiagnostic::UnresolvedImport { module_path: m, importing_module: i, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("unresolved import: module '".to_string(), m.clone()), "' not found (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::UnresolvedType { name: n, .. } => v2_rt::concat(v2_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
@@ -542,8 +544,8 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 
 pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
     Rc::new(ErrorNode {
-    diagnostic: diagnostic.clone(),
-    module_name: module_name.clone(),
+    diagnostic: diagnostic,
+    module_name: module_name,
 })
 }
 
@@ -582,22 +584,22 @@ pub struct Node {
 }
 
 pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
-    if (name.clone().as_str() == "".to_string().as_str()) {
+    if (name.as_str() == "".to_string().as_str()) {
         None
 } else {
-        Some(span.clone())
+        Some(span)
 }
 }
 
 pub fn make_expr_node(expr_data: Rc<ExprData>, children: Rc<Vec<Rc<Node>>>, inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: "".to_string(),
-    span: span.clone(),
+    span: span,
     ident_span: None,
-    children: children.clone(),
+    children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
-    inferred: inferred.clone(),
+    inferred: inferred,
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
     body: None,
@@ -607,7 +609,7 @@ pub fn make_expr_node(expr_data: Rc<ExprData>, children: Rc<Vec<Rc<Node>>>, infe
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
-    expr_data: expr_data.clone(),
+    expr_data: expr_data,
 })
 }
 
@@ -616,10 +618,10 @@ pub fn make_named_expr_node(name: String, expr_data: Rc<ExprData>, children: Rc<
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: children.clone(),
+    children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
-    inferred: inferred.clone(),
+    inferred: inferred,
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
     body: None,
@@ -629,7 +631,7 @@ pub fn make_named_expr_node(name: String, expr_data: Rc<ExprData>, children: Rc<
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
-    expr_data: expr_data.clone(),
+    expr_data: expr_data,
 })
 }
 
@@ -655,7 +657,7 @@ pub fn make_expr_error_node(kind: ExprErrorKind, message: String, span: Rc<Sourc
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::ExprError {
-    kind: kind.clone(),
+    kind: kind,
     message: message.clone(),
 }),
 })
@@ -663,7 +665,7 @@ pub fn make_expr_error_node(kind: ExprErrorKind, message: String, span: Rc<Sourc
 
 pub fn make_arg_node(name: Option<String>, value: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let arg_name = match name.clone() {
+        let arg_name = match name {
     Some(n) => n.clone(),
     None => "".to_string(),
 };
@@ -671,7 +673,7 @@ Rc::new(Node {
     name: arg_name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(arg_name.clone(), span.clone()),
-    children: Rc::new(vec![value.clone()]),
+    children: Rc::new(vec![value]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -691,15 +693,15 @@ Rc::new(Node {
 
 pub fn make_arm_node(pattern: Rc<MatchPattern>, guard: Option<Rc<Node>>, body: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let children = match guard.clone() {
-    Some(g) => Rc::new(vec![g.clone(), body.clone()]),
-    None => Rc::new(vec![body.clone()]),
+        let children = match guard {
+    Some(g) => Rc::new(vec![g.clone(), body]),
+    None => Rc::new(vec![body]),
 };
 Rc::new(Node {
     name: "".to_string(),
-    span: span.clone(),
+    span: span,
     ident_span: None,
-    children: children.clone(),
+    children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -711,7 +713,7 @@ Rc::new(Node {
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
-    match_pattern: Some(pattern.clone()),
+    match_pattern: Some(pattern),
     expr_data: Rc::new(ExprData::NoExprData),
 })
 }
@@ -722,7 +724,7 @@ pub fn make_resource_use_node(name: String, resource: Rc<Node>, span: Rc<SourceS
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: Rc::new(vec![resource.clone()]),
+    children: Rc::new(vec![resource]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -744,7 +746,7 @@ pub fn resource_use_name(n: Rc<Node>) -> String {
 }
 
 pub fn resource_use_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), n.clone())
+    authored_name_at(source_index, n)
 }
 
 pub fn resource_use_resource(n: Rc<Node>) -> Rc<Node> {
@@ -759,7 +761,7 @@ pub fn make_field_init_node(name: String, value: Rc<Node>, span: Rc<SourceSpan>)
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: Rc::new(vec![value.clone()]),
+    children: Rc::new(vec![value]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -793,7 +795,7 @@ pub fn make_field_binding_node(field_name: String, binding: Rc<MatchPattern>, sp
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
-    match_pattern: Some(binding.clone()),
+    match_pattern: Some(binding),
     expr_data: Rc::new(ExprData::NoExprData),
 })
 }
@@ -803,7 +805,7 @@ pub fn field_binding_name(n: Rc<Node>) -> String {
 }
 
 pub fn field_binding_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), n.clone())
+    authored_name_at(source_index, n)
 }
 
 pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
@@ -816,7 +818,7 @@ pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
 pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: "".to_string(),
-    span: span.clone(),
+    span: span,
     ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
@@ -833,7 +835,7 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
     match_pattern: None,
     expr_data: Rc::new(ExprData::ExprLiteral {
     value: Rc::new(LiteralValue::LitStr {
-    value: text.clone(),
+    value: text,
 }),
 }),
 })
@@ -842,9 +844,9 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
 pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: "".to_string(),
-    span: span.clone(),
+    span: span,
     ident_span: None,
-    children: Rc::new(vec![expr.clone()]),
+    children: Rc::new(vec![expr]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -863,15 +865,15 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
 
 pub fn make_param_node(name: String, type_expr: Rc<Node>, default_value: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let children = match default_value.clone() {
-    Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
-    None => Rc::new(vec![type_expr.clone()]),
+        let children = match default_value {
+    Some(dv) => Rc::new(vec![type_expr, dv.clone()]),
+    None => Rc::new(vec![type_expr]),
 };
 Rc::new(Node {
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: children.clone(),
+    children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -894,16 +896,16 @@ pub fn param_node_name(n: Rc<Node>) -> String {
 }
 
 pub fn param_node_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), n.clone())
+    authored_name_at(source_index, n)
 }
 
 pub fn generic_param_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), n.clone())
+    authored_name_at(source_index, n)
 }
 
 pub fn authored_name_at(source_index: Option<Rc<NewlineIndex>>, node: Rc<Node>) -> String {
     match node.ident_span.clone() {
-    Some(span) => match source_index.clone() {
+    Some(span) => match source_index {
     Some(index) => if (span.file.clone().as_str() == index.file.clone().as_str()) {
         {
             let text = source_text_at(index.clone(), span.clone());
@@ -943,11 +945,11 @@ pub fn param_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
 
 pub fn make_field_node(name: String, type_expr: Rc<Node>, cardinality: Cardinality, default_value: Option<Rc<Node>>, from_key: Option<String>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let children = match default_value.clone() {
-    Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
-    None => Rc::new(vec![type_expr.clone()]),
+        let children = match default_value {
+    Some(dv) => Rc::new(vec![type_expr, dv.clone()]),
+    None => Rc::new(vec![type_expr]),
 };
-let props = match from_key.clone() {
+let props = match from_key {
     Some(fk) => Rc::new(vec![leaf_node(fk.clone())]),
     None => Rc::new(vec![]),
 };
@@ -955,15 +957,15 @@ Rc::new(Node {
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: children.clone(),
+    children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
-    return_cardinality: cardinality.clone(),
+    return_cardinality: cardinality,
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: props.clone(),
+    properties: props,
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -1012,7 +1014,7 @@ pub fn make_variant_node(name: String, fields: Rc<Vec<Rc<Node>>>, span: Rc<Sourc
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: fields.clone(),
+    children: fields,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -1064,13 +1066,13 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
 }
 
 pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
-    v2_rt::lookup(&expr_child_roles(), variant_name.clone())
+    v2_rt::lookup(&expr_child_roles(), variant_name)
 }
 
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
-    match Rc::new(texpr.children.clone().iter().cloned().skip(index.clone() as usize).collect::<Vec<_>>()).first().cloned() {
+    match Rc::new(texpr.children.clone().iter().cloned().skip(index as usize).collect::<Vec<_>>()).first().cloned() {
     Some(v) => v.clone(),
-    None => make_expr_error_node(ExprErrorKind::InternalExprError, v2_rt::concat("malformed node: missing ".to_string(), role.clone()), texpr.span.clone()),
+    None => make_expr_error_node(ExprErrorKind::InternalExprError, v2_rt::concat("malformed node: missing ".to_string(), role), texpr.span.clone()),
 }
 }
 
@@ -1084,7 +1086,7 @@ pub fn arg_name(n: Rc<Node>) -> Option<String> {
 
 pub fn arg_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
     {
-        let name = authored_name_at(source_index.clone(), n.clone());
+        let name = authored_name_at(source_index, n);
 if (name.clone().as_str() == "".to_string().as_str()) {
             None
 } else {
@@ -1127,7 +1129,7 @@ pub fn field_init_node_name(n: Rc<Node>) -> String {
 }
 
 pub fn field_init_node_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), n.clone())
+    authored_name_at(source_index, n)
 }
 
 pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
@@ -1138,11 +1140,11 @@ pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn if_condition(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "if condition".to_string())
+    expr_child_at(texpr, 0, "if condition".to_string())
 }
 
 pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "if then-branch".to_string())
+    expr_child_at(texpr, 1, "if then-branch".to_string())
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
@@ -1150,7 +1152,7 @@ pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "match scrutinee".to_string())
+    expr_child_at(texpr, 0, "match scrutinee".to_string())
 }
 
 pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -1158,15 +1160,15 @@ pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "binop left".to_string())
+    expr_child_at(texpr, 0, "binop left".to_string())
 }
 
 pub fn binop_right(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "binop right".to_string())
+    expr_child_at(texpr, 1, "binop right".to_string())
 }
 
 pub fn unaryop_operand(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "unaryop operand".to_string())
+    expr_child_at(texpr, 0, "unaryop operand".to_string())
 }
 
 pub fn expr_var_name(texpr: Rc<Node>) -> String {
@@ -1174,11 +1176,11 @@ pub fn expr_var_name(texpr: Rc<Node>) -> String {
 }
 
 pub fn expr_var_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), texpr.clone())
+    authored_name_at(source_index, texpr)
 }
 
 pub fn field_access_base(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "field access base".to_string())
+    expr_child_at(texpr, 0, "field access base".to_string())
 }
 
 pub fn field_access_field(texpr: Rc<Node>) -> String {
@@ -1186,7 +1188,7 @@ pub fn field_access_field(texpr: Rc<Node>) -> String {
 }
 
 pub fn field_access_field_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), texpr.clone())
+    authored_name_at(source_index, texpr)
 }
 
 pub fn expr_call_func(texpr: Rc<Node>) -> String {
@@ -1194,11 +1196,11 @@ pub fn expr_call_func(texpr: Rc<Node>) -> String {
 }
 
 pub fn expr_call_func_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), texpr.clone())
+    authored_name_at(source_index, texpr)
 }
 
 pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "method receiver".to_string())
+    expr_child_at(texpr, 0, "method receiver".to_string())
 }
 
 pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -1210,11 +1212,11 @@ pub fn expr_method_name(texpr: Rc<Node>) -> String {
 }
 
 pub fn expr_method_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), texpr.clone())
+    authored_name_at(source_index, texpr)
 }
 
 pub fn lambda_body(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "lambda body".to_string())
+    expr_child_at(texpr, 0, "lambda body".to_string())
 }
 
 pub fn lambda_param_names(texpr: Rc<Node>) -> Rc<Vec<String>> {
@@ -1226,7 +1228,7 @@ pub fn lambda_param_names_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineInd
 }
 
 pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "let value".to_string())
+    expr_child_at(texpr, 0, "let value".to_string())
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
@@ -1238,23 +1240,23 @@ pub fn let_binding_name(texpr: Rc<Node>) -> String {
 }
 
 pub fn let_binding_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), texpr.clone())
+    authored_name_at(source_index, texpr)
 }
 
 pub fn cast_expr(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "cast expr".to_string())
+    expr_child_at(texpr, 0, "cast expr".to_string())
 }
 
 pub fn cast_target(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "cast target".to_string())
+    expr_child_at(texpr, 1, "cast target".to_string())
 }
 
 pub fn foreach_collection(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "foreach collection".to_string())
+    expr_child_at(texpr, 0, "foreach collection".to_string())
 }
 
 pub fn foreach_body(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "foreach body".to_string())
+    expr_child_at(texpr, 1, "foreach body".to_string())
 }
 
 pub fn foreach_variable(texpr: Rc<Node>) -> String {
@@ -1262,31 +1264,31 @@ pub fn foreach_variable(texpr: Rc<Node>) -> String {
 }
 
 pub fn foreach_variable_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index.clone(), texpr.clone())
+    authored_name_at(source_index, texpr)
 }
 
 pub fn index_base(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "index base".to_string())
+    expr_child_at(texpr, 0, "index base".to_string())
 }
 
 pub fn index_expr(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "index expression".to_string())
+    expr_child_at(texpr, 1, "index expression".to_string())
 }
 
 pub fn slice_base(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "slice base".to_string())
+    expr_child_at(texpr, 0, "slice base".to_string())
 }
 
 pub fn slice_start(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "slice start".to_string())
+    expr_child_at(texpr, 1, "slice start".to_string())
 }
 
 pub fn slice_end(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 2, "slice end".to_string())
+    expr_child_at(texpr, 2, "slice end".to_string())
 }
 
 pub fn return_value(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "return value".to_string())
+    expr_child_at(texpr, 0, "return value".to_string())
 }
 
 pub fn block_stmts(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -1303,7 +1305,7 @@ pub fn record_lit_type_name(texpr: Rc<Node>) -> Option<String> {
 
 pub fn record_lit_type_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
     {
-        let name = authored_name_at(source_index.clone(), texpr.clone());
+        let name = authored_name_at(source_index, texpr);
 if (name.clone().as_str() == "".to_string().as_str()) {
             None
 } else {
@@ -1337,7 +1339,7 @@ pub fn make_transport_node(name: String, properties: Rc<Vec<Rc<Node>>>, children
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: children.clone(),
+    children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -1345,7 +1347,7 @@ pub fn make_transport_node(name: String, properties: Rc<Vec<Rc<Node>>>, children
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: properties.clone(),
+    properties: properties,
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -1355,37 +1357,37 @@ pub fn make_transport_node(name: String, properties: Rc<Vec<Rc<Node>>>, children
 }
 
 pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node("local".to_string(), Rc::new(vec![]), Rc::new(vec![]), span.clone())
+    make_transport_node("local".to_string(), Rc::new(vec![]), Rc::new(vec![]), span)
 }
 
 pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let url_field = make_field_init_node(transport_url_key(), base_url.clone(), make_span(0, 0));
-let props = v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field.clone()]), auth_props.clone()), headers.clone());
-make_transport_node("rest".to_string(), props.clone(), Rc::new(vec![]), span.clone())
+        let url_field = make_field_init_node(transport_url_key(), base_url, make_span(0, 0));
+let props = v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), auth_props), headers);
+make_transport_node("rest".to_string(), props, Rc::new(vec![]), span)
 }
 }
 
 pub fn shell_transport_node(argv: Rc<Vec<Rc<Node>>>, env: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node("shell".to_string(), env.clone(), argv.clone(), span.clone())
+    make_transport_node("shell".to_string(), env, argv, span)
 }
 
 pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let path_field = make_field_init_node(transport_path_key(), base_path.clone(), make_span(0, 0));
-make_transport_node("file".to_string(), Rc::new(vec![path_field.clone()]), Rc::new(vec![]), span.clone())
+        let path_field = make_field_init_node(transport_path_key(), base_path, make_span(0, 0));
+make_transport_node("file".to_string(), Rc::new(vec![path_field]), Rc::new(vec![]), span)
 }
 }
 
 pub fn find_property(props: Rc<Vec<Rc<Node>>>, prop_name: String) -> Option<Rc<Node>> {
-    match Rc::new({ let mut __result = Vec::new(); for p in props.clone().iter().cloned() { if (field_init_node_name(p.clone()).as_str() == prop_name.clone().as_str()) { __result.push(p); } } __result }).first().cloned() {
+    match Rc::new({ let mut __result = Vec::new(); for p in props.iter().cloned() { if (field_init_node_name(p.clone()).as_str() == prop_name.clone().as_str()) { __result.push(p); } } __result }).first().cloned() {
     Some(fi) => Some(field_init_node_value(fi.clone())),
     None => None,
 }
 }
 
 pub fn find_property_string(props: Rc<Vec<Rc<Node>>>, prop_name: String) -> Option<String> {
-    match find_property(props.clone(), prop_name.clone()) {
+    match find_property(props, prop_name) {
     Some(n) => match (*n.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; Some(s.clone()) },
     _ => None,
@@ -1412,7 +1414,7 @@ pub fn is_local_transport(t: Rc<Node>) -> bool {
 
 pub fn field_init_operation_modifier(field_init: Rc<Node>) -> Option<OperationModifier> {
     {
-        let fi_name = field_init_node_name(field_init.clone());
+        let fi_name = field_init_node_name(field_init);
 if (fi_name.clone().as_str() == "idempotent".to_string().as_str()) {
             Some(OperationModifier::Idempotent)
 } else {
@@ -1430,7 +1432,7 @@ if (fi_name.clone().as_str() == "idempotent".to_string().as_str()) {
 }
 
 pub fn operation_modifier_name(modifier: OperationModifier) -> String {
-    match modifier.clone() {
+    match modifier {
     OperationModifier::Idempotent => "idempotent".to_string(),
     OperationModifier::Readonly => "readonly".to_string(),
     OperationModifier::Hermetic => "hermetic".to_string(),
@@ -1527,12 +1529,12 @@ let else_bad = match if_else_branch(texpr.clone()) {
     Some(e) => expr_has_non_tail_self_call(e.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
 };
-((cond_bad.clone() || then_bad.clone()) || else_bad.clone())
+((cond_bad || then_bad) || else_bad)
 },
     ExprData::ExprMatch => {
             let scrut_bad = expr_has_non_tail_self_call(match_scrutinee(texpr.clone()), fn_name.clone(), false);
 let arms_bad = { let mut __found = false; for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() { if expr_has_non_tail_self_call(arm_body(arm_node.clone()), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found };
-(scrut_bad.clone() || arms_bad.clone())
+(scrut_bad || arms_bad)
 },
     ExprData::ExprLet => {
             let val_bad = expr_has_non_tail_self_call(let_value(texpr.clone()), fn_name.clone(), false);
@@ -1540,7 +1542,7 @@ let body_bad = match let_body(texpr.clone()) {
     Some(b) => expr_has_non_tail_self_call(b.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
 };
-(val_bad.clone() || body_bad.clone())
+(val_bad || body_bad)
 },
     ExprData::ExprBlock => {
             let ss = texpr.children.clone();
@@ -1554,7 +1556,7 @@ let last_bad = match ss.clone().last().cloned() {
     Some(last_expr) => expr_has_non_tail_self_call(last_expr.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
 };
-(init_bad.clone() || last_bad.clone())
+(init_bad || last_bad)
 }
 }
 },
@@ -1568,20 +1570,20 @@ let last_bad = match ss.clone().last().cloned() {
 pub fn service_config_properties(endpoint: Rc<Node>, auth: Option<Rc<Node>>, rate_limit: Option<Rc<Node>>, retry: Option<Rc<Node>>) -> Rc<Vec<Rc<Node>>> {
     {
         let zero_span = make_span(0, 0);
-let ep_prop = Rc::new(vec![make_field_init_node("svc_endpoint".to_string(), endpoint.clone(), zero_span.clone())]);
-let auth_prop = match auth.clone() {
+let ep_prop = Rc::new(vec![make_field_init_node("svc_endpoint".to_string(), endpoint, zero_span.clone())]);
+let auth_prop = match auth {
     Some(a) => Rc::new(vec![make_field_init_node("svc_auth".to_string(), a.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
-let rate_prop = match rate_limit.clone() {
+let rate_prop = match rate_limit {
     Some(r) => Rc::new(vec![make_field_init_node("svc_rate_limit".to_string(), r.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
-let retry_prop = match retry.clone() {
+let retry_prop = match retry {
     Some(r) => Rc::new(vec![make_field_init_node("svc_retry".to_string(), r.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop.clone(), auth_prop.clone()), rate_prop.clone()), retry_prop.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop, auth_prop), rate_prop), retry_prop)
 }
 }
 
@@ -1616,7 +1618,7 @@ Rc::new(Node {
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: v2_rt::concat(imports.clone(), items.clone()),
+    children: v2_rt::concat(imports, items),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -1624,7 +1626,7 @@ Rc::new(Node {
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: Rc::new(vec![marker.clone()]),
+    properties: Rc::new(vec![marker]),
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -1641,7 +1643,7 @@ pub fn import_node(module_path: String, is_all: bool, specific_names: Rc<Vec<Rc<
     value: "true".to_string(),
 }),
 }), Rc::new(vec![]), None, make_span(0, 0)), make_span(0, 0));
-let all_prop = if is_all.clone() {
+let all_prop = if is_all {
             Rc::new(vec![make_field_init_node("__import_all".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
     value: Rc::new(LiteralValue::LitStr {
     value: "true".to_string(),
@@ -1654,7 +1656,7 @@ Rc::new(Node {
     name: module_path.clone(),
     span: span.clone(),
     ident_span: default_ident_span(module_path.clone(), span.clone()),
-    children: specific_names.clone(),
+    children: specific_names,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -1662,7 +1664,7 @@ Rc::new(Node {
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: v2_rt::concat(Rc::new(vec![import_prop.clone()]), all_prop.clone()),
+    properties: v2_rt::concat(Rc::new(vec![import_prop]), all_prop),
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -1702,7 +1704,7 @@ pub fn is_token_node(n: Rc<Node>) -> bool {
 
 pub fn leaf_node(name: String) -> Rc<Node> {
     Rc::new(Node {
-    name: name.clone(),
+    name: name,
     span: make_span(0, 0),
     ident_span: None,
     children: Rc::new(vec![]),
@@ -1911,16 +1913,16 @@ pub fn error_type() -> Rc<Node> {
 pub fn make_span(start: i64, end: i64) -> Rc<SourceSpan> {
     Rc::new(SourceSpan {
     file: "".to_string(),
-    start: start.clone(),
-    end: end.clone(),
+    start: start,
+    end: end,
 })
 }
 
 pub fn make_file_span(file: String, start: i64, end: i64) -> Rc<SourceSpan> {
     Rc::new(SourceSpan {
-    file: file.clone(),
-    start: start.clone(),
-    end: end.clone(),
+    file: file,
+    start: start,
+    end: end,
 })
 }
 
@@ -1944,14 +1946,14 @@ pub struct NewlineIndex {
 pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
     {
         let char_codes = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
-let offsets = Rc::new(char_codes.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(Rc::new(vec![]), |acc: _, pair: (i64, i64)| if (pair.1.clone() == 10) {
+let offsets = Rc::new(char_codes.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(Rc::new(vec![]), |acc: _, pair: (i64, i64)| if (pair.1.clone() == 10) {
             v2_rt::rc_list_push(acc.clone(), pair.0.clone())
 } else {
             acc.clone()
 });
 Rc::new(NewlineIndex {
-    file: file.clone(),
-    offsets: offsets.clone(),
+    file: file,
+    offsets: offsets,
     source: source.clone(),
 })
 }
@@ -1973,10 +1975,10 @@ let line_start = if (line.clone() <= 1) {
     None => 0,
 }
 };
-let col = ((clamped.clone() - line_start.clone()) + 1);
+let col = ((clamped.clone() - line_start) + 1);
 Rc::new(LineCol {
     line: line.clone(),
-    col: col.clone(),
+    col: col,
 })
 }
 }
@@ -1996,7 +1998,7 @@ let line_end = match Rc::new(index.offsets.clone().iter().cloned().skip((line.cl
     Some(o) => o.clone(),
     None => src_len.clone(),
 };
-v2_rt::substring(&index.source.clone(), line_start.clone(), line_end.clone())
+v2_rt::substring(&index.source.clone(), line_start, line_end)
 }
 }
 
