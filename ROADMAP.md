@@ -38,8 +38,8 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (ratchet 2) | 0 | 92 dsl + 29 v2 files, M1 complete. DSL_COMPLEXITY_RATCHET = 2 tolerates 2 user-defined recursive union violations (stack_size, fold_stack) — deferred until CX lane completes |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 0 | 0 | GREEN (2026-04-03, PR #307). Down from 23→10→7→6→3→0. bootstrap_stage0_to_stage1 passes. |
-| Stage0 regeneration (C) | RED | GREEN | CX gate disabled in both stage0 and compile.dag. Emission works (40 files). Bootstrap B green — regeneration is the next gate. |
+| Bootstrap emitted Rust (B) | 0 | 0 | GREEN (2026-04-03, PR #307). Down from 23→10→7→6→3→0. `bootstrap_stage0_to_stage1` test still `#[ignore]` — not yet a live CI gate. |
+| Stage0 regeneration (C) | RED | GREEN | CX gate disabled. Emission works (40 files). Regenerated binary OOMs on self-compile (tokenizer O(n^2) fixed, dag_syntax_spec + 25 type errors remain). |
 | L1 ratchet | 24 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
@@ -48,7 +48,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 
 ---
 
-## Active: Bootstrap B → 0 (verified: 23 → 6, PR #307)
+## Active: Bootstrap B → 0 (PR #307)
 
 First verified bootstrap run (2026-04-03). CX gate disabled in both
 stage0 and `compile.dag` — emission is not blocked by complexity
@@ -77,28 +77,26 @@ site instead of 12+.
 | map_keys/map_values Rc wrapping | 1 | v2_rt::map_keys returns Vec, needs Rc<Vec>. Wrapping in both method call and function call paths |
 | CompilerError fold fallback | 2 | collection_element_type rendered error as compile_error! sentinel. Fall back to `_` for Rust inference |
 
-### Remaining 3 errors (1 root cause: codepoint carrier)
+### Remaining 0 emitted-Rust errors
 
-All 3 errors are in `v2_compiler_tokenize.rs`. The `.dag` type model
-declares `source_chars: List<String>` but `chars()` produces
-`List<Int>` (code points). Stage0 manually converts with
-`.chars().map(|c| c.to_string())`. The emitter produces
-`.chars().map(|c| c as i64)` (matching code point semantics used
-elsewhere, e.g. `04_service.dag` uppercase check).
+Bootstrap B is GREEN. All 23 errors fixed via TypeRendering switchover
+and .dag source fixes. Tokenizer codepoint carrier (`List<Int>` vs
+`List<String>`) resolved by porting to `List<Int>` uniformly.
 
-- **E0282** (line 163): `let ch = panic!("unsupported index base")` —
-  list indexing not modeled in emitter's `emit_typed_index`
-- **E0599** (line 182): `.as_deref()` on `!` type (cascade from above)
-- **E0308** (line 200): `source_chars` expects `Rc<Vec<String>>`, gets
-  `Rc<Vec<i64>>` from chars()
+### Bootstrap C blockers (regenerated binary self-compiling)
 
-**Fix path:** This is the codepoint carrier issue (ROADMAP M4 Tier 2.5).
-Two approaches:
-1. **Context-sensitive chars()**: emit `c.to_string()` when target is
-   `List<String>`, `c as i64` when target is `List<Int>`. Requires
-   type-directed emission.
-2. **Uniform model**: change `source_chars: List<Int>` and compare code
-   points throughout tokenizer. Simpler but changes the .dag type model.
+The regenerated stage0 binary compiles as Rust but fails to self-compile .dag:
+
+1. **Tokenizer OOM** (FIXED): `source_substring_acc` used `list_push`
+   per character = O(n^2). Fixed by adding `text: String` to SourceRef
+   and using `substring` builtin.
+2. **dag_syntax_spec panic**: Emitter serializes data-def function fields
+   as JSON strings (`"dag_item_forms"`) instead of calling them. Also
+   missing thread_local cache (per-token call = O(n*k)).
+3. **25 type errors**: Callable unresolved in algebra, algebra template
+   functions not in scope, List<Int> indexing not recognized, Bool
+   pattern exhaustiveness. Root cause: regenerated inference code
+   diverges from committed stage0 hand-fixes.
 
 **Reviewer-flagged structural debt (tracked, not blocking merge):**
 
@@ -155,7 +153,7 @@ Current reality:
 - Manual stage0 edits are still possible because regeneration is not green; that is the productivity failure we need to eliminate.
 - The next milestone is not “more lane work,” it is “stage0 regeneration is authoritative again.”
 - CX gate disabled in both stage0 and `compile.dag` (2026-04-03) — emission is no longer blocked by complexity violations. Re-enable when CX violations reach 0.
-- Bootstrap B first verified 2026-04-03: 23 errors → 6 via TypeRendering switchover (PR #307). Remaining 6 = inference failures + tokenizer model gap.
+- Bootstrap B GREEN 2026-04-03: 23 → 0 errors via TypeRendering switchover + .dag source fixes (PR #307). `bootstrap_stage0_to_stage1` test still `#[ignore]` — not yet a live CI gate.
 
 Clean-repo workflow:
 1. `cargo check -p v2-compiler`
@@ -1160,8 +1158,8 @@ bootstrap test (`bootstrap_stage0_to_stage1`) must be a hard gate, not
 *Bootstrap:*
 - [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
 - [x] `dag/syntax.dag` included in bootstrap (OOM resolved by FF-8)
-- [ ] Bootstrap B: stage0→stage1 emitted-Rust gate back under ratchet (verified at 6, target 0)
-- [ ] Bootstrap C: regenerate stage0 with `regenerate-stage0.sh`
+- [x] Bootstrap B: stage0→stage1 emitted-Rust errors at 0 (PR #307). Gate not yet live (`#[ignore]`).
+- [ ] Bootstrap C: regenerated binary self-compiles without OOM/panic/type errors
 - [ ] Bootstrap D: owned bootstrap entrypoint in repo
 - [ ] CI-verified regeneration (regenerate + diff = empty)
 
@@ -2236,7 +2234,7 @@ the first level the language recognizes.
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 24 | 0 | `scripts/l1-ratchet.sh --check` |
 | Complexity violations | 164 | 0 | `strict_complexity_violation_count -- --ignored` (ungrounded algebraic concepts; dissolves via CX-A..E, not analyzer heuristics) |
-| Emitted Rust errors | 0 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` (unverified — emission blocked by complexity violations) |
+| Emitted Rust errors | 0 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` (GREEN 2026-04-03, PR #307. Test still `#[ignore]`, not live CI gate.) |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
 

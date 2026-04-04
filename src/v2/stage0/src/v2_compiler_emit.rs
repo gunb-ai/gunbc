@@ -514,7 +514,7 @@ v2_rt::concat(v2_rt::concat("[".to_string(), el_strs.clone().join(&", ".to_strin
 v2_rt::concat(v2_rt::concat("{".to_string(), field_strs.clone().join(&", ".to_string())), "}".to_string())
 },
     ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(expr_var_name_at(value.clone(), source_index.clone()))), "\"".to_string()),
-    _ => "\"__UNSUPPORTED_MOCK_EXPR__\"".to_string(),
+    _ => "\"compile_error!(unsupported mock expression)\"".to_string(),
 }
     })
 }

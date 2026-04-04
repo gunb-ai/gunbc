@@ -399,10 +399,8 @@ fn bootstrap_stage0_to_stage1() {
         error_count, EMITTED_RUST_ERROR_RATCHET
     );
 
-    // DEBUG: preserve output for inspection
-    eprintln!("stage1 output preserved at: {}", stage1_dir.display());
-    // let _ = std::fs::remove_dir_all(&sources_dir);
-    // let _ = std::fs::remove_dir_all(&stage1_dir);
+    let _ = std::fs::remove_dir_all(&sources_dir);
+    let _ = std::fs::remove_dir_all(&stage1_dir);
 }
 
 // ── 4. bootstrap_fixed_point ────────────────────────────────────────────
