@@ -69,7 +69,7 @@ M5-full (language plugin extraction).
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (271 pass, 0 fail, 36 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
-| L1 ratchet | `scripts/l1-ratchet.sh --check` | 32 (target: 0) |
+| L1 ratchet | `scripts/l1-ratchet.sh --check` | 30 (target: 0) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
 ## Ratchet Counts
@@ -77,7 +77,7 @@ M5-full (language plugin extraction).
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
-| L1 type knowledge | 32 | 0 | Down from 70; name-based workarounds tracked for M4 |
+| L1 type knowledge | 30 | 0 | Down from 70; name-based workarounds tracked for M4 |
 | Complexity violations | 164 | 0 | Down from 315; unfinished algebraic grounding |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
@@ -241,7 +241,7 @@ passes — every new fact layer must have a consumer in the same change.
 ## M4: Structural Identity (L1 = 0) — follows Lanes 1+2
 
 **Root cause:** The compiler uses `Node.name` (a string) as semantic
-authority. ~256 constructions, ~32 name-based comparisons. Deletion
+authority. ~256 constructions, ~30 name-based comparisons. Deletion
 requires declaration-driven identity and structural algebra.
 Blocked on M2 (structural facts in resolve/infer files) and E-track
 (clean render path in emit files).
