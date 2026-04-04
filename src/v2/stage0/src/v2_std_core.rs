@@ -1942,22 +1942,62 @@ pub struct NewlineIndex {
 }
 
 pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
-    Rc::new(NewlineIndex {
+    {
+        let char_codes = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
+let offsets = Rc::new(char_codes.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(Rc::new(vec![]), |acc: _, pair: (i64, i64)| if (pair.1.clone() == 10) {
+            v2_rt::rc_list_push(acc.clone(), pair.0.clone())
+} else {
+            acc.clone()
+});
+Rc::new(NewlineIndex {
     file: file.clone(),
-    offsets: Rc::new(vec![]),
+    offsets: offsets.clone(),
     source: source.clone(),
 })
 }
+}
 
 pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> Rc<LineCol> {
-    Rc::new(LineCol {
-    line: 1,
-    col: 1,
+    {
+        let clamped = if (offset.clone() < 0) {
+            0
+} else {
+            offset.clone()
+};
+let line = ((Rc::new({ let mut __result = Vec::new(); for o in index.offsets.clone().iter().cloned() { if (o.clone() < clamped.clone()) { __result.push(o); } } __result }).len() as i64) + 1);
+let line_start = if (line.clone() <= 1) {
+            0
+} else {
+            match Rc::new(index.offsets.clone().iter().cloned().skip((line.clone() - 2) as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(o) => (o.clone() + 1),
+    None => 0,
+}
+};
+let col = ((clamped.clone() - line_start.clone()) + 1);
+Rc::new(LineCol {
+    line: line.clone(),
+    col: col.clone(),
 })
+}
 }
 
 pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
-    "".to_string()
+    {
+        let src_len = v2_rt::string_length(&index.source.clone());
+let line_start = if (line.clone() <= 1) {
+            0
+} else {
+            match Rc::new(index.offsets.clone().iter().cloned().skip((line.clone() - 2) as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(o) => (o.clone() + 1),
+    None => src_len.clone(),
+}
+};
+let line_end = match Rc::new(index.offsets.clone().iter().cloned().skip((line.clone() - 1) as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(o) => o.clone(),
+    None => src_len.clone(),
+};
+v2_rt::substring(&index.source.clone(), line_start.clone(), line_end.clone())
+}
 }
 
 pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> String {

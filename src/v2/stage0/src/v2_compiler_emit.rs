@@ -1004,7 +1004,20 @@ if emit_map_has(rc_types.clone(), n.name.clone()) {
 }
 }
 } else {
-                    emit_primitive_type(n.name.clone(), target.clone())
+                    {
+                        let child_strs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(emit_node_type_rc(c.clone(), target.clone(), rc_types.clone())); } __result });
+let inner = child_strs.clone().join(&", ".to_string());
+let base = emit_primitive_type(n.name.clone(), target.clone());
+let wrapped = match target.clone() {
+    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "[".to_string()), inner.clone()), "]".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(base.clone(), "<".to_string()), inner.clone()), ">".to_string()),
+};
+if emit_map_has(rc_types.clone(), n.name.clone()) {
+                            wrap_shared_type(target.clone(), wrapped.clone())
+} else {
+                            wrapped.clone()
+}
+}
 }
 }
 }
