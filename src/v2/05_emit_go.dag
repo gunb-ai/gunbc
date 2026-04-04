@@ -104,7 +104,7 @@ import v2.compiler.emit {
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name, test_function_name,
-  apply_type_template1, apply_type_template2, apply_type_template3,
+  apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template,
   language_spec,
   is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
   has_nested_records_node,
@@ -826,31 +826,25 @@ fn go_bridge_method_name(method_name: String) -> String {
 fn emit_go_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0, fuel: 1024)
   let first_arg_str = emit_go_typed_first_arg(args: args, registry: registry, scope: scope)
-  if method_name == "count" { concat("len(", recv_str, ")") }
-  else if method_name == "join" { concat("strings.Join(", recv_str, ", ", first_arg_str, ")") }
-  else if method_name == "split" { concat("strings.Split(", recv_str, ", ", first_arg_str, ")") }
-  else if method_name == "last" { concat(recv_str, "[len(", recv_str, ")-1]") }
-  else if method_name == "first" { concat(recv_str, "[0]") }
-  else if method_name == "enumerate" { recv_str }
-  else if method_name == "chars" { concat("strings.Split(", recv_str, ", \"\")") }
-  else if method_name == "string_contains" { concat("strings.Contains(", recv_str, ", ", first_arg_str, ")") }
-  else if method_name == "concat" { concat("append(", recv_str, ", ", first_arg_str, "...)") }
-  else if method_name == "map" { concat("v2rt.Map(", recv_str, ", ", first_arg_str, ")") }
-  else if method_name == "filter" { concat("v2rt.Filter(", recv_str, ", ", first_arg_str, ")") }
-  else if method_name == "any" { concat("v2rt.Any(", recv_str, ", ", first_arg_str, ")") }
-  else if method_name == "all" { concat("v2rt.All(", recv_str, ", ", first_arg_str, ")") }
-  else if method_name == "flat_map" { concat("v2rt.FlatMap(", recv_str, ", ", first_arg_str, ")") }
-  else if method_name == "skip" { concat(recv_str, "[", first_arg_str, ":]") }
-  else if method_name == "take" { concat(recv_str, "[:", first_arg_str, "]") }
-  else if method_name == "fold" { concat("v2rt.Fold(", recv_str, ", ", first_arg_str, ")") }
-  else if method_name == "sort_by" { concat("v2rt.SortBy(", recv_str, ", ", first_arg_str, ")") }
-  else if method_name == "append" { concat("append(", recv_str, ", ", first_arg_str, ")") }
-  else {
-    let go_name = go_bridge_method_name(method_name: method_name)
-    let arg_strs = args |> map(a => emit_go_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: 0, fuel: 1024))
-    let all_args = concat([recv_str], arg_strs)
-    let args_str = all_args |> join(separator: ", ")
-    concat("v2rt.", go_name, "(", args_str, ")")
+  let spec = language_spec(target: Go)
+  match spec.method_templates {
+    Some { value: templates } => match map_get(templates, method_name) {
+      Some { value: tmpl } =>
+        let bindings = empty_map() |> map_insert("recv", recv_str) |> map_insert("arg", first_arg_str)
+        apply_named_template(template: tmpl, bindings: bindings)
+      None =>
+        let go_name = go_bridge_method_name(method_name: method_name)
+        let arg_strs = args |> map(a => emit_go_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: 0, fuel: 1024))
+        let all_args = concat([recv_str], arg_strs)
+        let args_str = all_args |> join(separator: ", ")
+        concat("v2rt.", go_name, "(", args_str, ")")
+    }
+    None =>
+      let go_name = go_bridge_method_name(method_name: method_name)
+      let arg_strs = args |> map(a => emit_go_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: 0, fuel: 1024))
+      let all_args = concat([recv_str], arg_strs)
+      let args_str = all_args |> join(separator: ", ")
+      concat("v2rt.", go_name, "(", args_str, ")")
   }
 }
 

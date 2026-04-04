@@ -96,7 +96,7 @@ import v2.compiler.emit {
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name, test_function_name,
-  apply_type_template1, apply_type_template2, apply_type_template3,
+  apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template,
   language_spec,
   is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
@@ -802,30 +802,23 @@ fn py_bridge_method_name(method_name: String) -> String {
 fn emit_py_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
-  if method_name == "count" { concat("len(", recv_str, ")") }
-  else if method_name == "join" { concat(first_arg_str, ".join(", recv_str, ")") }
-  else if method_name == "split" { concat(recv_str, ".split(", first_arg_str, ")") }
-  else if method_name == "last" { concat(recv_str, "[-1] if ", recv_str, " else None") }
-  else if method_name == "first" { concat(recv_str, "[0] if ", recv_str, " else None") }
-  else if method_name == "enumerate" { concat("list(enumerate(", recv_str, "))") }
-  else if method_name == "chars" { concat("list(", recv_str, ")") }
-  else if method_name == "string_contains" { concat(first_arg_str, " in ", recv_str) }
-  else if method_name == "concat" { concat(recv_str, " + ", first_arg_str) }
-  else if method_name == "map" { concat("[", first_arg_str, "(x) for x in ", recv_str, "]") }
-  else if method_name == "filter" { concat("[x for x in ", recv_str, " if ", first_arg_str, "(x)]") }
-  else if method_name == "any" { concat("any(", first_arg_str, "(x) for x in ", recv_str, ")") }
-  else if method_name == "all" { concat("all(", first_arg_str, "(x) for x in ", recv_str, ")") }
-  else if method_name == "flat_map" { concat("[y for x in ", recv_str, " for y in ", first_arg_str, "(x)]") }
-  else if method_name == "skip" { concat(recv_str, "[", first_arg_str, ":]") }
-  else if method_name == "take" { concat(recv_str, "[:", first_arg_str, "]") }
-  else if method_name == "fold" { concat("functools.reduce(", first_arg_str, ", ", recv_str, ")") }
-  else if method_name == "sort_by" { concat("sorted(", recv_str, ", key=", first_arg_str, ")") }
-  else if method_name == "append" { concat(recv_str, " + [", first_arg_str, "]") }
-  else {
-    let function_name = py_bridge_method_name(method_name: method_name)
-    let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024))
-    let all_args = concat([recv_str], arg_strs)
-    concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
+  let spec = language_spec(target: Python)
+  match spec.method_templates {
+    Some { value: templates } => match map_get(templates, method_name) {
+      Some { value: tmpl } =>
+        let bindings = empty_map() |> map_insert("recv", recv_str) |> map_insert("arg", first_arg_str)
+        apply_named_template(template: tmpl, bindings: bindings)
+      None =>
+        let function_name = py_bridge_method_name(method_name: method_name)
+        let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024))
+        let all_args = concat([recv_str], arg_strs)
+        concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
+    }
+    None =>
+      let function_name = py_bridge_method_name(method_name: method_name)
+      let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024))
+      let all_args = concat([recv_str], arg_strs)
+      concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
   }
 }
 
