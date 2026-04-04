@@ -47,6 +47,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
   is_rest_transport, is_shell_transport, is_file_transport, is_local_transport,
+  is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
@@ -312,6 +313,7 @@ fn empty_emit_scope() -> InferScope {
     type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: none },
     func_env: ResolvedFuncEnv { signatures: empty_map() },
     locals: empty_map(),
+    match_bound_names: empty_map(),
     module_name: "",
     service_registry: empty_map(),
     item_registry: empty_map()
@@ -323,6 +325,7 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
     locals: empty_map(),
+    match_bound_names: empty_map(),
     module_name: typed_module.module.name,
     service_registry: empty_map(),
     item_registry: typed_module.item_registry
@@ -666,9 +669,27 @@ fn apply_type_template1(template: String, arg0: String) -> String {
 }
 
 // Apply a two-argument template: replaces {0} and {1}.
+// Split-then-join: split on {0} first, replace {1} inside each segment
+// (which is only original template text), then join with arg0.
+// This prevents arg0 containing "{1}" from being corrupted by the second pass.
 fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
-  template |> split(delimiter: "{0}") |> join(separator: arg0)
-    |> split(delimiter: "{1}") |> join(separator: arg1)
+  let parts = template |> split(delimiter: "{0}")
+  let replaced = parts |> map(p => p |> split(delimiter: "{1}") |> join(separator: arg1))
+  replaced |> join(separator: arg0)
+}
+
+// Apply a three-argument template: replaces {0}, {1}, and {2}.
+// Nested split-then-join: split on {0}, then within each segment split on {1},
+// then within each sub-segment replace {2}. Joins inside-out so no inserted
+// argument is ever re-scanned for a higher-numbered placeholder.
+fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
+  let parts0 = template |> split(delimiter: "{0}")
+  let replaced = parts0 |> map(p0 =>
+    let parts1 = p0 |> split(delimiter: "{1}")
+    let inner = parts1 |> map(p1 => p1 |> split(delimiter: "{2}") |> join(separator: arg2))
+    inner |> join(separator: arg1)
+  )
+  replaced |> join(separator: arg0)
 }
 
 fn language_spec(target: RenderTarget) -> LanguageSpec {
@@ -839,256 +860,12 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 }
 
 // =========================================================================
-// P4.1a: Unified type rendering -- all targets including Rust Rc wrapping.
-// emit_node_type is the public API for Go/Python (no Rc).
-// emit_node_type_rc is the Rc-aware API for Rust callers.
+// Type rendering: all targets. Routes through build_type_rendering + render_type.
+// Go/Python callers pass no rc_types; Rust uses render_rust_type in 05_emit_rust.dag.
 // =========================================================================
 
 fn emit_node_type(n: Node, target: RenderTarget) -> String {
-  emit_node_type_rc(n: n, target: target, rc_types: empty_map())
-}
-
-fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
-  // TypeVariable/CompilerError: inference failures that leaked to emit.
-  let is_rust = match target { Rust => true  _ => false }
-  let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
-  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
-  let sentinel_label = if n_is_error { "CompilerError" } else if n_is_type_var { "TypeVariable" } else { n.name }
-  if (n_is_type_var || n_is_error) && n.children |> count == 0 {
-    if is_rust {
-      return concat("compile_error!(\"unresolved ", sentinel_label, " type reached emit\")")
-    } else {
-      return concat("__EMIT_BUG_UNRESOLVED_", sentinel_label, "__")
-    }
-  }
-  // Callable: function type rendering (structural — name-based check covers 0-param callables)
-  if n.name == "Callable" {
-    let param_types = n.params |> map(p => emit_node_type_rc(n: param_node_type_expr(n: p), target: target, rc_types: rc_types))
-    let param_str = param_types |> join(separator: ", ")
-    let ret_str = match n.inferred {
-      Some { value: Resolved { node: rt } } => emit_node_type_rc(n: rt, target: target, rc_types: rc_types)
-      _ => match target { Go => ""  Python => "None"  _ => "()" }
-    }
-    match target {
-      Go => concat("func(", param_str, ")", if ret_str != "" { concat(" ", ret_str) } else { "" })
-      Python => concat("Callable[[", param_str, "], ", ret_str, "]")
-      Rust => concat("Rc<dyn Fn(", param_str, ") -> ", ret_str, ">")
-      _ => concat("Fn(", param_str, ") -> ", ret_str)
-    }
-  } else {
-    let is_optional = n.return_cardinality == CardOptional
-    if is_optional {
-      emit_container(kind: "optional", inner: emit_node_type_rc(n: with_required_cardinality(n: n), target: target, rc_types: rc_types), target: target)
-    } else {
-      let is_conj = n.connective == Conj
-      let is_disj = n.connective == Disj
-      if is_conj == false && is_disj == false {
-        emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
-      } else if is_conj {
-        emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
-      } else {
-        emit_node_type_disj_rc(n: n, target: target, rc_types: rc_types)
-      }
-    }
-  }
-}
-
-fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
-  if n.children |> count == 0 {
-    // BRIDGE: name-based container check compensates for lost upstream type
-    // structure. Blocked on P1-C structural container-ness on type nodes.
-    // Bare container nodes (from empty_map(), etc.) need container templates
-    // even without children — emit with "_" placeholders.
-    // Uses is_container_type (name check) because node_is_keyed/element_collection
-    // require children > 0 and fail for bare containers from empty_map.
-    let has_container_template = target_container_template(target: target, kind: to_snake(name: n.name)) != none
-    let bare_is_map = is_container_type(name: n.name) && to_snake(name: n.name) == "map"
-    let bare_is_collection = is_container_type(name: n.name) && !bare_is_map
-    let param_count = n.params |> count
-    let base = if bare_is_map {
-      emit_map_type(key_type: "_", val_type: "_", target: target)
-    } else if bare_is_collection {
-      emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
-    } else if has_container_template && param_count == 1 {
-      // Single-param generic with a container template (e.g., FreeMonoid<T> → Vec<T>).
-      let param_strs = n.params |> map(p => emit_node_type_rc(n: param_node_type_expr(n: p), target: target, rc_types: rc_types))
-      match param_strs |> first {
-        Some { value: inner } => emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
-        None => emit_primitive_type(name: n.name, target: target)
-      }
-    } else if n.name == tuple_type_name {
-      // Bare Tuple with no children (type params stripped) — emit as generic tuple
-      match target { Python => "Tuple"  Go => "struct{}"  _ => "()" }
-    } else {
-      emit_primitive_type(name: n.name, target: target)
-    }
-    // Sharing wrapping for named types (Rust: Rc<T>, Go/Python: identity)
-    if emit_map_has(m: rc_types, key: n.name) {
-      wrap_shared_type(target: target, inner: base)
-    } else {
-      base
-    }
-  } else {
-    let is_map = node_is_keyed_collection(n: n)
-    if is_map {
-      // After resolution, Map nodes always have 2 children (key + value).
-      // None branches are structurally required by match but unreachable.
-      let k = match n.children |> first {
-        Some { value: kn } => emit_node_type_rc(n: kn, target: target, rc_types: rc_types)
-        None => "__EMIT_BUG_MISSING_MAP_KEY__"
-      }
-      let v = match skip(n.children, 1) |> first {
-        Some { value: vn } => emit_node_type_rc(n: vn, target: target, rc_types: rc_types)
-        None => "__EMIT_BUG_MISSING_MAP_VALUE__"
-      }
-      let map_str = emit_map_type(key_type: k, val_type: v, target: target)
-      // Sharing wrapping via rc_types — same authority as all other types.
-      // Container templates are bare; sharing wrap is applied here.
-      if emit_map_has(m: rc_types, key: n.name) { wrap_shared_type(target: target, inner: map_str) }
-      else { map_str }
-    } else if n.children |> count == 1 {
-      let inner = match n.children |> first {
-        Some { value: child } => emit_node_type_rc(n: child, target: target, rc_types: rc_types)
-        None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__"
-      }
-      // Only use container templates for actual containers (structural check).
-      // Non-container generic types (e.g., FreeMonoid<T>) emit as Name<Inner>
-      // without snake_casing — type names stay in their declared casing.
-      let is_container = node_is_collection(n: n)
-      if is_container {
-        // Template key is snake_case of the type name — LanguageSpec maps
-        // each key to the target-language template (e.g., "list" → "Vec<{0}>").
-        let container_str = emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
-        // Sharing wrapping via rc_types — same authority as all other types.
-        if emit_map_has(m: rc_types, key: n.name) { wrap_shared_type(target: target, inner: container_str) }
-        else { container_str }
-      } else {
-        // Non-container generic type: use target-specific syntax.
-        let base = emit_primitive_type(name: n.name, target: target)
-        let wrapped = match target {
-          Python => concat(base, "[", inner, "]")
-          _ => concat(base, "<", inner, ">")
-        }
-        if emit_map_has(m: rc_types, key: n.name) { wrap_shared_type(target: target, inner: wrapped) }
-        else { wrapped }
-      }
-    } else {
-      // Multi-child leaf: render as generic type Name<A, B, ...>
-      let child_strs = n.children |> map(c => emit_node_type_rc(n: c, target: target, rc_types: rc_types))
-      let inner = child_strs |> join(separator: ", ")
-      let base = emit_primitive_type(name: n.name, target: target)
-      let wrapped = match target {
-        Python => concat(base, "[", inner, "]")
-        _ => concat(base, "<", inner, ">")
-      }
-      if emit_map_has(m: rc_types, key: n.name) { wrap_shared_type(target: target, inner: wrapped) }
-      else { wrapped }
-    }
-  }
-}
-
-
-fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
-  if n.name == "Refined" {
-    match n.children |> first {
-      Some { value: base } => emit_node_type_rc(n: base, target: target, rc_types: rc_types)
-      None => emit_primitive_type(name: n.name, target: target)
-    }
-  } else if n.name == tuple_type_name {
-    // Tuple children may have inferred set — unwrap to get the actual type.
-    let first_str = match n.children |> first {
-      Some { value: c } =>
-        if c.inferred != none {
-          emit_node_type_rc(n: rt_type(n: c), target: target, rc_types: rc_types)
-        } else {
-          emit_node_type_rc(n: c, target: target, rc_types: rc_types)
-        }
-      None => "__EMIT_BUG_MISSING_TUPLE_FIRST__"
-    }
-    let second_str = match skip(n.children, 1) |> first {
-      Some { value: c } =>
-        if c.inferred != none {
-          emit_node_type_rc(n: rt_type(n: c), target: target, rc_types: rc_types)
-        } else {
-          emit_node_type_rc(n: c, target: target, rc_types: rc_types)
-        }
-      None => "__EMIT_BUG_MISSING_TUPLE_SECOND__"
-    }
-    match target {
-      Go => concat("struct{ First ", first_str, "; Second ", second_str, " }")
-      Python => concat("Tuple[", first_str, ", ", second_str, "]")
-      _ => concat("(", first_str, ", ", second_str, ")")
-    }
-  } else if n.name != "" {
-    // Named product — check for container template before bare-name fallback.
-    // After alias expansion, resolved Conj nodes like FreeMonoid have their
-    // params stripped. Route through container path so FreeMonoid → Vec<_>.
-    let snake = to_snake(name: n.name)
-    let has_template = target_container_template(target: target, kind: snake) != none
-    if has_template {
-      let base = if snake == "map" {
-        emit_map_type(key_type: "_", val_type: "_", target: target)
-      } else {
-        emit_container(kind: snake, inner: "_", target: target)
-      }
-      if emit_map_has(m: rc_types, key: n.name) {
-        wrap_shared_type(target: target, inner: base)
-      } else { base }
-    } else {
-      let mapped = emit_primitive_type(name: n.name, target: target)
-      if emit_map_has(m: rc_types, key: n.name) {
-        wrap_shared_type(target: target, inner: mapped)
-      } else { mapped }
-    }
-  } else {
-    // Anonymous product: Rust renders as tuple, others as error marker.
-    let is_rust = match target { Rust => true  _ => false }
-    if is_rust {
-      if n.children |> count == 1 {
-        // Single-field anonymous product — unwrap the field type.
-        match n.children |> first {
-          Some { value: field_node } =>
-            if field_node.inferred != none {
-              emit_node_type_rc(n: rt_type(n: field_node), target: target, rc_types: rc_types)
-            } else {
-              "compile_error!(\"anonymous product field missing inferred\")"
-            }
-          None => "compile_error!(\"anonymous product reached Node emitter\")"
-        }
-      } else {
-        // Multi-field anonymous product → Rust tuple type.
-        let field_types = n.children |> map(child =>
-          if child.inferred != none {
-            emit_node_type_rc(n: rt_type(n: child), target: target, rc_types: rc_types)
-          } else { "compile_error!(\"anonymous product field missing inferred\")" }
-        )
-        let result = concat("(", field_types |> join(separator: ", "), ")")
-        result
-      }
-    } else {
-      "__EMIT_BUG_ANONYMOUS_CONJ__"
-    }
-  }
-}
-
-fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
-  if n.name != "" {
-    // Named coproduct type — route through type map (invariant: all names via language spec).
-    let mapped = emit_primitive_type(name: n.name, target: target)
-    if emit_map_has(m: rc_types, key: n.name) {
-      wrap_shared_type(target: target, inner: mapped)
-    } else {
-      mapped
-    }
-  } else {
-    // Anonymous coproduct — error in all targets.
-    let is_rust = match target { Rust => true  _ => false }
-    if is_rust {
-      "compile_error!(\"anonymous coproduct reached Node emitter\")"
-    } else {
-      "__EMIT_BUG_ANONYMOUS_DISJ__"
-    }
-  }
+  render_type(tr: build_type_rendering(n: n, rc_types: empty_map(), recursive_types: empty_map()), target: target)
 }
 
 // =========================================================================
@@ -1802,12 +1579,13 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
 
 fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
   match target {
-    Rust => concat("let ", emit_ident(name: name, target: Rust), " = ", value, ";")
-    Go => concat(emit_ident(name: name, target: Go), " := ", value)
-    Python => concat(emit_ident(name: name, target: Python), " = ", value)
     Dag => concat("let ", name, " = ", value)
+    _ =>
+      let spec = language_spec(target: target)
+      apply_type_template2(template: spec.annotations.let_binding_inferred, arg0: emit_ident(name: name, target: target), arg1: value)
   }
 }
+
 
 fn emit_return(value: String, target: RenderTarget) -> String {
   match target {
@@ -1851,10 +1629,10 @@ fn emit_error_expr(message: String, target: RenderTarget) -> String {
 }
 
 fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String {
-  let param_strs = match target {
-    Go => param_names |> map(p => concat(emit_ident(name: p, target: Go), " interface{}"))
-    _ => param_names |> map(p => emit_ident(name: p, target: target))
-  }
+  let spec = language_spec(target: target)
+  let param_strs = param_names |> map(p =>
+    apply_type_template1(template: spec.annotations.lambda_param_untyped, arg0: emit_ident(name: p, target: target))
+  )
   param_strs |> join(separator: ", ")
 }
 

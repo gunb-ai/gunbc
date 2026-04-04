@@ -229,6 +229,10 @@ pub enum AlgebraTypeTemplate {
         first: Rc<AlgebraTypeTemplate>,
         second: Rc<AlgebraTypeTemplate>,
     },
+    CallableOf {
+        params: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
+        return_type: Rc<AlgebraTypeTemplate>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -728,7 +732,7 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }
 
 pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
-    match profile.clone() {
+    match profile {
     AlgebraProfile::OrderedRingProfile => ordered_ring_templates(),
     AlgebraProfile::ApproximateFieldProfile => approximate_field_templates(),
     AlgebraProfile::BooleanAlgebraProfile => boolean_algebra_templates(),

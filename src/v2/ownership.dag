@@ -9,6 +9,23 @@
 //   unclassified             -> completeness bug in this analysis
 //
 // One pass over each function body. No heuristics, no fallbacks.
+//
+// Clone elision (FF-1 exploitation):
+//
+// The .dag language guarantees fan-out is a syntactic property (INVARIANTS.md
+// "Facts Flow Forward"). This analysis computes binding_fan_out and the emitter
+// reads it: fan-out=0 → dead code, fan-out=1 → move, fan-out>1 → Rc + clone.
+//
+// VarBindingKind flows from inference through the ownership proof to emission.
+// BindingUsage carries binding_kind so the proof is self-contained:
+//
+//   LocalValueBinding   (params, let-bindings) → Rc<T> owned → movable if fan-out=1
+//   MatchBoundBinding   (match pattern vars)   → &T reference → never movable
+//   FunctionValueBinding, VariantValueBinding   → not values  → never movable
+//
+// Lambda/foreach bodies are walked in a fresh accumulator; all discovered names
+// are recorded twice in the outer accumulator (fan-out >= 2), preventing name
+// collisions from incorrectly marking outer bindings as movable.
 
 module v2.compiler.ownership
 
@@ -16,13 +33,15 @@ import v2.std.core {
   Node,
   ExprData, NoExprData, ExprError,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn,
+  ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn, ExprLambda, ExprForEach,
+  VarBindingKind, LocalValueBinding,
   arg_value, arm_body,
   field_access_base, field_access_field,
   if_condition, if_then_branch, if_else_branch,
-  let_value, let_body,
+  let_value, let_body, lambda_body,
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes,
+  foreach_collection, foreach_body,
   expr_var_name, expr_call_func, expr_method_name
 }
 
@@ -49,6 +68,7 @@ type EdgeClassification {
 
 type BindingUsage {
   name: String
+  binding_kind: VarBindingKind?
   consumers: List<EdgeClassification>
 }
 
@@ -95,14 +115,18 @@ fn empty_usage_accum() -> UsageAccum {
 }
 
 // Record a use of a binding with the given edge kind and site description.
-fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String) -> UsageAccum {
+// binding_kind is set from ExprVar nodes; once set it is preserved across
+// subsequent records for the same name.
+fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?) -> UsageAccum {
   let edge = EdgeClassification { kind: kind, site: site }
   let existing = match map_get(accum.bindings, name) {
     Some { value: usage } => usage
-    None => BindingUsage { name: name, consumers: [] }
+    None => BindingUsage { name: name, binding_kind: none, consumers: [] }
   }
+  let effective_kind = if existing.binding_kind != none { existing.binding_kind } else { binding_kind }
   let updated = BindingUsage {
     name: name,
+    binding_kind: effective_kind,
     consumers: list_push(existing.consumers, edge)
   }
   UsageAccum { bindings: map_insert(accum.bindings, name, updated) }
@@ -116,13 +140,17 @@ fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String) -> 
 // =========================================================================
 
 fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAccum {
+  // Each branch accumulator already includes the base's edges (since branches
+  // are walked starting from the base). We keep the worst-case branch per
+  // binding, using binding_fan_out (the emit metric) for comparison — not
+  // semantic_consumer_count, which ignores Read edges and would undercount.
   branches |> fold(init: base, f: (merged, branch) =>
     branch.bindings |> map_values |> fold(init: merged, f: (acc, usage) =>
       let current_count = match map_get(acc.bindings, usage.name) {
-        Some { value: existing } => semantic_consumer_count(usage: existing)
+        Some { value: existing } => binding_fan_out(usage: existing)
         None => 0
       }
-      let branch_count = semantic_consumer_count(usage: usage)
+      let branch_count = binding_fan_out(usage: usage)
       if branch_count > current_count {
         UsageAccum { bindings: map_insert(acc.bindings, usage.name, usage) }
       } else { acc }
@@ -140,12 +168,12 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
 
 fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
   match texpr.expr_data {
-    ExprVar =>
+    ExprVar { binding_kind: bk } =>
       let n = expr_var_name(texpr: texpr)
       if in_tail {
-        record_use(accum: accum, name: n, kind: Consumed, site: "return")
+        record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk)
       } else {
-        record_use(accum: accum, name: n, kind: Read, site: "read")
+        record_use(accum: accum, name: n, kind: Read, site: "read", binding_kind: bk)
       }
 
     ExprLiteral { value: _ } => accum
@@ -154,10 +182,10 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       // children = [base]. Check if base is a variable for projection.
       let base_node = field_access_base(texpr: texpr)
       match base_node.expr_data {
-        ExprVar =>
+        ExprVar { binding_kind: bk } =>
           let vn = expr_var_name(texpr: base_node)
           let f = field_access_field(texpr: texpr)
-          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f))
+          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk)
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false)
       }
 
@@ -170,9 +198,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
           Some { value: ia } =>
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
-              ExprVar =>
+              ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name(texpr: ia_val)
-                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init")
+                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk)
               _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false)
             }
           None => accum
@@ -199,9 +227,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
           Some { value: ia } =>
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
-              ExprVar =>
+              ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name(texpr: ia_val)
-                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init")
+                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk)
               _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false)
             }
           None => recv_accum
@@ -270,9 +298,33 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
         walk_expr(accum: acc, texpr: child, in_tail: true)
       )
 
+    ExprLambda { semantics: _ } =>
+      // Lambda bodies may execute N times (map/filter/fold). Walk the body
+      // in a fresh accumulator, then record ALL variables found (including
+      // lambda params) twice in the outer accumulator — ensuring fan-out >= 2.
+      // This prevents name collisions between lambda params and outer bindings
+      // from incorrectly marking the outer binding as movable.
+      let body = lambda_body(texpr: texpr)
+      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false)
+      inner.bindings |> map_values |> fold(init: accum, f: (acc, usage) =>
+        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none)
+        record_use(accum: a1, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none)
+      )
+
+    ExprForEach =>
+      // For-loop body executes N times — same treatment as lambda.
+      let coll = foreach_collection(texpr: texpr)
+      let coll_accum = walk_expr(accum: accum, texpr: coll, in_tail: false)
+      let body = foreach_body(texpr: texpr)
+      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false)
+      inner.bindings |> map_values |> fold(init: coll_accum, f: (acc, usage) =>
+        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none)
+        record_use(accum: a1, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none)
+      )
+
     // All remaining variants: children are never in tail position.
-    // Handles BinOp, UnaryOp, Lambda, RecordLit, ListLit, StringInterp,
-    // Cast, ForEach, Index, Slice, Error, and NoExprData (wrapper nodes).
+    // Handles BinOp, UnaryOp, RecordLit, ListLit, StringInterp,
+    // Cast, Index, Slice, Error, and NoExprData (wrapper nodes).
     _ =>
       texpr.children |> fold(init: accum, f: (acc, child) =>
         walk_expr(accum: acc, texpr: child, in_tail: false)
@@ -307,6 +359,28 @@ fn make_decision(usage: BindingUsage) -> OwnershipDecision {
 }
 
 // =========================================================================
+// Movable set -- emit-facing projection of ownership analysis
+//
+// A binding is "movable" when its fan-out is exactly 1 AND it is an owned
+// local (parameter or let-binding). Match-bound variables produce &T
+// references in Rust (from .as_ref() destructuring) and must always clone.
+// The binding_kind field on BindingUsage carries this fact from inference.
+// =========================================================================
+
+fn is_owned_local(kind: VarBindingKind?) -> Bool {
+  match kind {
+    Some { value: LocalValueBinding } => true
+    _ => false
+  }
+}
+
+fn build_movable_set(proof: OwnershipProof) -> Map<String, Bool> {
+  proof.bindings |> map_values
+    |> filter(usage => binding_fan_out(usage: usage) == 1 && is_owned_local(kind: usage.binding_kind))
+    |> fold(init: empty_map(), f: (acc, usage) => map_insert(acc, usage.name, true))
+}
+
+// =========================================================================
 // Analysis entry point
 // =========================================================================
 
@@ -314,9 +388,10 @@ fn make_decision(usage: BindingUsage) -> OwnershipDecision {
 // One pass over the function body AST.
 fn analyze_ownership(func_name: String, params: List<Node>, body: Node) -> OwnershipProof {
   // Seed the accumulator with parameter names so they appear in bindings.
+  // binding_kind is none here; it will be set from ExprVar during the walk.
   let initial = params |> fold(init: empty_usage_accum(), f: (acc, p) =>
     UsageAccum {
-      bindings: map_insert(acc.bindings, p.name, BindingUsage { name: p.name, consumers: [] })
+      bindings: map_insert(acc.bindings, p.name, BindingUsage { name: p.name, binding_kind: none, consumers: [] })
     }
   )
   // Walk the body in tail position (the function body is the return value).

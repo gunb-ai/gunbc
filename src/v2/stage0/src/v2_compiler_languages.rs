@@ -59,10 +59,6 @@ pub use crate::extdeps_languages_go_emit::{go_type_map, go_keywords, go_containe
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
-use ServiceBindingStrategy::*;
-use CaseStyle::*;
-use IndentStyle::*;
-use ImportGroupStyle::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 
@@ -144,102 +140,6 @@ pub struct ImportRule {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PrimitiveLowering {
-    pub dag_name: String,
-    pub target_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AlgebraicLowering {
-    pub dag_name: String,
-    pub target_template: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TypeWellFormedness {
-    pub primitive_lowerings: Rc<Vec<Rc<PrimitiveLowering>>>,
-    pub algebraic_lowerings: Rc<Vec<Rc<AlgebraicLowering>>>,
-    pub callable_template: String,
-    pub generic_params_from_dag: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ServiceBindingStrategy {
-    ParamInjection,
-    ConstructInBody,
-    GlobalSingleton,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ExprWellFormedness {
-    pub async_propagation: bool,
-    pub statement_terminator: String,
-    pub brace_escape_in_format: bool,
-    pub service_binding: ServiceBindingStrategy,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum CaseStyle {
-    PascalCaseStyle,
-    SnakeCaseStyle,
-    CamelCaseStyle,
-    ScreamingSnakeStyle,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NamingConvention {
-    pub type_names: CaseStyle,
-    pub function_names: CaseStyle,
-    pub module_names: CaseStyle,
-    pub constant_names: CaseStyle,
-    pub enum_variant_names: CaseStyle,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum IndentStyle {
-    SpaceIndent {
-        width: i64,
-    },
-    TabIndent,
-}
-impl IndentStyle {
-    pub fn width(&self) -> i64 {
-        match self {
-            IndentStyle::SpaceIndent { width: __val, .. } => __val.clone(),
-            IndentStyle::TabIndent => panic!("no width on unit variant"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ImportGroupStyle {
-    StdExternalLocal,
-    NoGrouping,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FormatModel {
-    pub indent: Rc<IndentStyle>,
-    pub max_line_width: Option<i64>,
-    pub import_grouping: ImportGroupStyle,
-    pub trailing_newline: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LintModel {
-    pub name: String,
-    pub import_rules: Rc<Vec<Rc<ImportRule>>>,
-    pub type_rules: Rc<TypeWellFormedness>,
-    pub expr_rules: Rc<ExprWellFormedness>,
-    pub naming: Rc<NamingConvention>,
-    pub formatting: Rc<FormatModel>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SharingStrategy {
     pub wrap_template: String,
 }
@@ -253,6 +153,22 @@ pub struct CloneTemplates {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct IndexingSemantics {
+    pub list_index: String,
+    pub map_index: String,
+    pub string_index: String,
+    pub list_slice: Option<String>,
+    pub string_slice: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AnnotationRequirements {
+    pub let_binding_inferred: String,
+    pub lambda_param_typed: String,
+    pub lambda_param_untyped: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,
@@ -262,6 +178,8 @@ pub struct LanguageSpec {
     pub top_level_visibility: String,
     pub sharing: Rc<SharingStrategy>,
     pub clone_templates: Option<Rc<CloneTemplates>>,
+    pub indexing: Rc<IndexingSemantics>,
+    pub annotations: Rc<AnnotationRequirements>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -307,6 +225,18 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     field_clone_expr: rust_field_clone_expr(),
     iterator_clone_suffix: rust_iterator_clone_suffix(),
 })),
+    indexing: Rc::new(IndexingSemantics {
+    list_index: "{0}[({1}) as usize].clone()".to_string(),
+    map_index: "({0}).get(&{1}).cloned()".to_string(),
+    string_index: "v2_rt::char_at(&{0}, {1})".to_string(),
+    list_slice: None,
+    string_slice: Some("v2_rt::substring(&{0}, {1}, {2})".to_string()),
+}),
+    annotations: Rc::new(AnnotationRequirements {
+    let_binding_inferred: "let {0} = {1};".to_string(),
+    lambda_param_typed: "{0}: {1}".to_string(),
+    lambda_param_untyped: "{0}".to_string(),
+}),
 })
 }
 
@@ -348,6 +278,18 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     wrap_template: "{0}".to_string(),
 }),
     clone_templates: None,
+    indexing: Rc::new(IndexingSemantics {
+    list_index: "{0}[{1}]".to_string(),
+    map_index: "{0}[{1}]".to_string(),
+    string_index: "{0}[{1}]".to_string(),
+    list_slice: Some("{0}[{1}:{2}]".to_string()),
+    string_slice: Some("{0}[{1}:{2}]".to_string()),
+}),
+    annotations: Rc::new(AnnotationRequirements {
+    let_binding_inferred: "{0} = {1}".to_string(),
+    lambda_param_typed: "{0}: {1}".to_string(),
+    lambda_param_untyped: "{0}".to_string(),
+}),
 })
 }
 
@@ -389,11 +331,23 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     wrap_template: "{0}".to_string(),
 }),
     clone_templates: None,
+    indexing: Rc::new(IndexingSemantics {
+    list_index: "{0}[{1}]".to_string(),
+    map_index: "{0}[{1}]".to_string(),
+    string_index: "{0}[{1}]".to_string(),
+    list_slice: Some("{0}[{1}:{2}]".to_string()),
+    string_slice: Some("{0}[{1}:{2}]".to_string()),
+}),
+    annotations: Rc::new(AnnotationRequirements {
+    let_binding_inferred: "{0} := {1}".to_string(),
+    lambda_param_typed: "{0} {1}".to_string(),
+    lambda_param_untyped: "{0} interface{}".to_string(),
+}),
 })
 }
 
 pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
-    match target.clone() {
+    match target {
     RenderTarget::Rust => rust_spec(),
     RenderTarget::Go => go_spec(),
     RenderTarget::Python => python_spec(),
@@ -402,7 +356,7 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
 }
 
 pub fn target_keyword(target: RenderTarget, key: String) -> String {
-    match target.clone() {
+    match target {
     RenderTarget::Rust => match v2_rt::lookup(&rust_keywords(), key.clone()) {
     Some(kw) => kw.clone(),
     None => key.clone(),
@@ -420,7 +374,7 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
 }
 
 pub fn target_primitive_type(target: RenderTarget, name: String) -> String {
-    match target.clone() {
+    match target {
     RenderTarget::Rust => match v2_rt::lookup(&rust_type_map(), name.clone()) {
     Some(mapped) => mapped.clone(),
     None => name.clone(),
@@ -438,55 +392,55 @@ pub fn target_primitive_type(target: RenderTarget, name: String) -> String {
 }
 
 pub fn target_container_template(target: RenderTarget, kind: String) -> Option<String> {
-    match target.clone() {
-    RenderTarget::Rust => v2_rt::lookup(&rust_container_templates(), kind.clone()),
-    RenderTarget::Go => v2_rt::lookup(&go_container_templates(), kind.clone()),
-    RenderTarget::Python => v2_rt::lookup(&python_container_templates(), kind.clone()),
+    match target {
+    RenderTarget::Rust => v2_rt::lookup(&rust_container_templates(), kind),
+    RenderTarget::Go => v2_rt::lookup(&go_container_templates(), kind),
+    RenderTarget::Python => v2_rt::lookup(&python_container_templates(), kind),
     RenderTarget::Dag => None,
 }
 }
 
 pub fn is_value_type(target: RenderTarget, name: String) -> bool {
-    match target.clone() {
+    match target {
     RenderTarget::Rust => { let mut __found = false; for t in rust_value_types().iter().cloned() { if (t.clone().as_str() == name.clone().as_str()) { __found = true; break; } } __found },
     _ => false,
 }
 }
 
 pub fn is_string_like(target: RenderTarget, name: String) -> bool {
-    match target.clone() {
+    match target {
     RenderTarget::Rust => { let mut __found = false; for t in rust_string_types().iter().cloned() { if (t.clone().as_str() == name.clone().as_str()) { __found = true; break; } } __found },
     _ => false,
 }
 }
 
 pub fn scaffold_for_target(target: RenderTarget) -> Rc<ProjectScaffold> {
-    language_spec_for_target(target.clone()).scaffold.clone()
+    language_spec_for_target(target).scaffold.clone()
 }
 
 pub fn serialization_for_target(target: RenderTarget) -> Rc<SerializationSpec> {
-    language_spec_for_target(target.clone()).serialization.clone()
+    language_spec_for_target(target).serialization.clone()
 }
 
 pub fn test_conventions_for_target(target: RenderTarget) -> Rc<TestConventions> {
-    language_spec_for_target(target.clone()).test_conventions.clone()
+    language_spec_for_target(target).test_conventions.clone()
 }
 
 pub fn top_level_visibility_for_target(target: RenderTarget) -> String {
-    language_spec_for_target(target.clone()).top_level_visibility.clone()
+    language_spec_for_target(target).top_level_visibility.clone()
 }
 
 pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
-    language_spec_for_target(target.clone()).sharing.clone()
+    language_spec_for_target(target).sharing.clone()
 }
 
 pub fn clone_templates_for_target(target: RenderTarget) -> Option<Rc<CloneTemplates>> {
-    language_spec_for_target(target.clone()).clone_templates.clone()
+    language_spec_for_target(target).clone_templates.clone()
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     {
-        let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
-v2_rt::replace(tmpl.clone(), "{0}".to_string(), inner.clone())
+        let tmpl = sharing_for_target(target).wrap_template.clone();
+v2_rt::replace(tmpl, "{0}".to_string(), inner)
 }
 }

@@ -68,7 +68,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef};
 
 pub fn emit_py_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<String>>, mut scope: Rc<InferScope>, mut registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut depth: i64) -> Rc<BlockEmitState> {
@@ -138,9 +138,9 @@ let module_files = Rc::new({ let mut __result = Vec::new(); for tm in typed.modu
 let test_files = Rc::new({ let mut __result = Vec::new(); for f in Rc::new({ let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.push(emit_py_test_file(tm.module.clone().name.clone(), Rc::new({ let mut __result = Vec::new(); for p in test_projections.clone().iter().cloned() { if (p.module_name.clone().as_str() == tm.module.clone().name.clone().as_str()) { __result.push(p); } } __result }))); } __result }).iter().cloned() { if (f.path.clone().as_str() != "".to_string().as_str()) { __result.push(f); } } __result });
 let init_file = emit_init_py(typed.modules.clone());
 let requirements = emit_requirements_txt(has_service_items(typed.clone()));
-let files = v2_rt::concat(v2_rt::concat(Rc::new(vec![requirements.clone(), init_file.clone()]), module_files.clone()), test_files.clone());
+let files = v2_rt::concat(v2_rt::concat(Rc::new(vec![requirements, init_file]), module_files), test_files);
 Rc::new(EmitResult {
-    files: files.clone(),
+    files: files,
     diagnostics: Rc::new(vec![]),
 })
 }
@@ -178,25 +178,25 @@ let file_dir = match conventions.file_dir.clone() {
     Some(dir) => dir.clone(),
     None => "".to_string(),
 };
-let filename = module_to_filename(module_name.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(file_dir.clone(), conventions.file_prefix.clone()), filename.clone()), conventions.file_suffix.clone()), py_source_extension())
+let filename = module_to_filename(module_name);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(file_dir, conventions.file_prefix.clone()), filename), conventions.file_suffix.clone()), py_source_extension())
 }
 }
 
 pub fn py_test_name(projection: Rc<TestProjection>) -> String {
-    test_function_name(projection.clone(), RenderTarget::Python)
+    test_function_name(projection, RenderTarget::Python)
 }
 
 pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
     {
-        let import_lines = Rc::new({ let mut __result = Vec::new(); for tm in modules.clone().iter().cloned() { __result.push({
+        let import_lines = Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.push({
             let mod_name = module_to_filename(tm.module.clone().name.clone());
 v2_rt::concat("from . import ".to_string(), mod_name.clone())
 }); } __result });
-let content = v2_rt::concat(v2_rt::concat("# Generated by v2 compiler -- do not edit.\n\n".to_string(), import_lines.clone().join(&"\n".to_string())), "\n".to_string());
+let content = v2_rt::concat(v2_rt::concat("# Generated by v2 compiler -- do not edit.\n\n".to_string(), import_lines.join(&"\n".to_string())), "\n".to_string());
 Rc::new(TextFile {
     path: py_module_init_path(),
-    content: content.clone(),
+    content: content,
 })
 }
 }
@@ -204,7 +204,7 @@ Rc::new(TextFile {
 pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
     {
         let params_str = Rc::new({ let mut __result = Vec::new(); for p in projection.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(param_node_name_at(p.clone(), projection.source_index.clone()), ": ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Python))); } __result }).join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("# Signature: ".to_string(), sanitize_service_name(projection.service_name.clone())), ".".to_string()), projection.operation_name.clone()), "(".to_string()), params_str.clone()), ") -> ".to_string()), emit_node_type(projection.inferred.clone(), RenderTarget::Python))
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("# Signature: ".to_string(), sanitize_service_name(projection.service_name.clone())), ".".to_string()), projection.operation_name.clone()), "(".to_string()), params_str), ") -> ".to_string()), emit_node_type(projection.inferred.clone(), RenderTarget::Python))
 }
 }
 
@@ -217,10 +217,10 @@ pub fn emit_py_test_file(module_name: String, projections: Rc<Vec<Rc<TestProject
 } else {
         {
             let tests_str = Rc::new({ let mut __result = Vec::new(); for p in projections.clone().iter().cloned() { __result.push(emit_py_operation_test(p.clone(), 0)); } __result }).join(&"\n\n".to_string());
-let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("# Generated tests -- do not edit.\n".to_string(), "# Source module: ".to_string()), module_name.clone()), "\n\n".to_string()), tests_str.clone()), "\n".to_string());
+let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("# Generated tests -- do not edit.\n".to_string(), "# Source module: ".to_string()), module_name.clone()), "\n\n".to_string()), tests_str), "\n".to_string());
 Rc::new(TextFile {
     path: py_test_file_path(module_name.clone()),
-    content: content.clone(),
+    content: content,
 })
 }
 }
@@ -231,7 +231,7 @@ pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
         let test_name = py_test_name(projection.clone());
 let indent = make_indent((depth.clone() + 1));
 let mock_setup = Rc::new({ let mut __result = Vec::new(); for mp in projection.mock_field_inits.clone().iter().cloned() { __result.push(emit_py_mock_prop_setup(mp.clone(), (depth.clone() + 1))); } __result }).join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), test_name.clone()), "() -> None:\n".to_string()), indent.clone()), python_test_signature_comment(projection.clone())), "\n".to_string()), indent.clone()), mock_setup.clone()), "\n".to_string()), indent.clone()), "# TODO: add dry-run support to Python service emission for full invocation tests\n".to_string()), indent.clone()), "assert True  # mock data setup verified\n".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), test_name), "() -> None:\n".to_string()), indent.clone()), python_test_signature_comment(projection.clone())), "\n".to_string()), indent.clone()), mock_setup), "\n".to_string()), indent.clone()), "# TODO: add dry-run support to Python service emission for full invocation tests\n".to_string()), indent.clone()), "assert True  # mock data setup verified\n".to_string())
 }
 }
 
@@ -252,10 +252,10 @@ let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str(
 };
 let items_str = Rc::new({ let mut __result = Vec::new(); for item in typed_module.items.clone().iter().cloned() { __result.push(emit_py_typed_item(item.clone(), registry.clone(), scope.clone())); } __result }).join(&"\n\n\n".to_string());
 let filename = module_to_filename(m.name.clone());
-let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("# Generated by v2 compiler -- do not edit.\n".to_string(), "# Source module: ".to_string()), m.name.clone()), "\n\n".to_string()), prelude.clone()), imports_section.clone()), "\n\n\n".to_string()), items_str.clone()), "\n".to_string());
+let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("# Generated by v2 compiler -- do not edit.\n".to_string(), "# Source module: ".to_string()), m.name.clone()), "\n\n".to_string()), prelude), imports_section), "\n\n\n".to_string()), items_str), "\n".to_string());
 Rc::new(TextFile {
-    path: v2_rt::concat(filename.clone(), py_source_extension()),
-    content: content.clone(),
+    path: v2_rt::concat(filename, py_source_extension()),
+    content: content,
 })
 }
 }
@@ -283,7 +283,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("from ".to_string(), mod_name.clone())
 }
 }
 }); } __result });
-Rc::new({ let mut __result = Vec::new(); for line in import_lines.clone().iter().cloned() { if (line.clone().as_str() != "".to_string().as_str()) { __result.push(line); } } __result }).join(&"\n".to_string())
+Rc::new({ let mut __result = Vec::new(); for line in import_lines.iter().cloned() { if (line.clone().as_str() != "".to_string().as_str()) { __result.push(line); } } __result }).join(&"\n".to_string())
 }
 }
 }
@@ -310,12 +310,12 @@ let typing_import = if (has_structs.clone() || has_enums.clone()) {
 } else {
             "".to_string()
 };
-let async_import = if has_services.clone() {
+let async_import = if has_services {
             "import aiohttp\n".to_string()
 } else {
             "".to_string()
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(future_import.clone(), dc_import.clone()), enum_import.clone()), typing_import.clone()), async_import.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(future_import, dc_import), enum_import), typing_import), async_import)
 }
 }
 
@@ -328,28 +328,28 @@ if (kind.clone() == TypedItemKind::TypedItemTypeDef) {
             emit_py_type_def_from_connective(item.clone(), env.clone())
 } else {
             if (kind.clone() == TypedItemKind::TypedItemTypeAlias) {
-                v2_rt::concat(v2_rt::concat(item_text.clone(), " = ".to_string()), emit_node_type(rt_type(item.clone()), RenderTarget::Python))
+                v2_rt::concat(v2_rt::concat(item_text, " = ".to_string()), emit_node_type(rt_type(item.clone()), RenderTarget::Python))
 } else {
                 if (kind.clone() == TypedItemKind::TypedItemTypeDecl) {
                     "".to_string()
 } else {
                     if (kind.clone() == TypedItemKind::TypedItemFunction) {
                         if ((item.uses.clone().len() as i64) > 0) {
-                            emit_py_func_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone())
+                            emit_py_func_def(item_text, item.params.clone(), rt_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry, scope.clone())
 } else {
-                            emit_py_fn_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.body.clone().clone().unwrap(), registry.clone(), scope.clone())
+                            emit_py_fn_def(item_text, item.params.clone(), rt_type(item.clone()), item.body.clone().clone().unwrap(), registry, scope.clone())
 }
 } else {
                         if (kind.clone() == TypedItemKind::TypedItemDataDef) {
-                            emit_py_data_def(item_text.clone(), item.type_annotation.clone().clone().unwrap(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone())
+                            emit_py_data_def(item_text, item.type_annotation.clone().clone().unwrap(), item.body.clone().clone().unwrap(), registry, scope.clone())
 } else {
                             if (kind.clone() == TypedItemKind::TypedItemServiceDef) {
-                                emit_py_service_def(item.clone(), registry.clone(), env.clone())
+                                emit_py_service_def(item.clone(), registry, env.clone())
 } else {
                                 if (kind.clone() == TypedItemKind::TypedItemResourceDef) {
                                     emit_py_resource_def(item.clone(), env.clone())
 } else {
-                                    v2_rt::concat("# unhandled node: ".to_string(), item_text.clone())
+                                    v2_rt::concat("# unhandled node: ".to_string(), item_text)
 }
 }
 }
@@ -364,22 +364,22 @@ pub fn emit_py_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> Str
     {
         let item_text = authored_name(env.clone(), item.clone());
 let is_product = (item.connective.clone() == Connective::Conj);
-if is_product.clone() {
-            emit_py_dataclass_from_children(item_text.clone(), item.children.clone(), env.clone())
+if is_product {
+            emit_py_dataclass_from_children(item_text, item.children.clone(), env.clone())
 } else {
-            emit_py_enum_from_children(item_text.clone(), item.children.clone(), env.clone())
+            emit_py_enum_from_children(item_text, item.children.clone(), env.clone())
 }
 }
 }
 
 pub fn emit_py_dataclass_from_children(name: String, children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
     if ((children.clone().len() as i64) == 0) {
-        v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "\nclass ".to_string()), name.clone()), ":\n    pass".to_string())
+        v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "\nclass ".to_string()), name), ":\n    pass".to_string())
 } else {
         {
             let field_lines = Rc::new({ let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_py_dataclass_field_from_child(child.clone(), env.clone())); } __result });
-let fields_str = field_lines.clone().join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "\nclass ".to_string()), name.clone()), ":\n".to_string()), fields_str.clone())
+let fields_str = field_lines.join(&"\n".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "\nclass ".to_string()), name), ":\n".to_string()), fields_str)
 }
 }
 }
@@ -388,31 +388,31 @@ pub fn emit_py_dataclass_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> 
     {
         let ty = emit_node_type(rt_type(child.clone()), RenderTarget::Python);
 let is_optional = (rt_type(child.clone()).return_cardinality.clone() == Cardinality::CardOptional);
-let default_str = if is_optional.clone() {
+let default_str = if is_optional {
             v2_rt::concat(" = ".to_string(), py_default_value())
 } else {
             "".to_string()
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), emit_ident(authored_name(env.clone(), child.clone()), RenderTarget::Python)), ": ".to_string()), ty.clone()), default_str.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), emit_ident(authored_name(env, child.clone()), RenderTarget::Python)), ": ".to_string()), ty), default_str)
 }
 }
 
 pub fn emit_py_enum_from_children(name: String, children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
     {
         let has_data = { let mut __found = false; for child in children.clone().iter().cloned() { if ((child.children.clone().len() as i64) > 0) { __found = true; break; } } __found };
-if has_data.clone() {
+if has_data {
             {
                 let variant_classes = Rc::new({ let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_py_variant_class_from_child(name.clone(), child.clone(), env.clone())); } __result });
 let variant_names = Rc::new({ let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(v2_rt::concat(name.clone(), authored_name(env.clone(), child.clone()))); } __result });
-let union_str = variant_names.clone().join(&", ".to_string());
-let classes_str = variant_classes.clone().join(&"\n\n\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(classes_str.clone(), "\n\n\n".to_string()), name.clone()), " = Union[".to_string()), union_str.clone()), "]".to_string())
+let union_str = variant_names.join(&", ".to_string());
+let classes_str = variant_classes.join(&"\n\n\n".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(classes_str, "\n\n\n".to_string()), name.clone()), " = Union[".to_string()), union_str), "]".to_string())
 }
 } else {
             {
                 let variant_lines = Rc::new({ let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat("    ".to_string(), authored_name(env.clone(), child.clone())), " = auto()".to_string())); } __result });
-let variants_str = variant_lines.clone().join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat("class ".to_string(), name.clone()), "(Enum):\n".to_string()), variants_str.clone())
+let variants_str = variant_lines.join(&"\n".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat("class ".to_string(), name.clone()), "(Enum):\n".to_string()), variants_str)
 }
 }
 }
@@ -420,14 +420,14 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("class ".to_string(), name.clone()), "
 
 pub fn emit_py_variant_class_from_child(parent_name: String, child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
-        let class_name = v2_rt::concat(parent_name.clone(), authored_name(env.clone(), child.clone()));
+        let class_name = v2_rt::concat(parent_name, authored_name(env.clone(), child.clone()));
 if ((child.children.clone().len() as i64) == 0) {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "\nclass ".to_string()), class_name.clone()), ":\n    pass".to_string())
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "\nclass ".to_string()), class_name), ":\n    pass".to_string())
 } else {
             {
                 let field_lines = Rc::new({ let mut __result = Vec::new(); for f in child.children.clone().iter().cloned() { __result.push(emit_py_dataclass_field_from_child(f.clone(), env.clone())); } __result });
-let fields_str = field_lines.clone().join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "\nclass ".to_string()), class_name.clone()), ":\n".to_string()), fields_str.clone())
+let fields_str = field_lines.join(&"\n".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "\nclass ".to_string()), class_name), ":\n".to_string()), fields_str)
 }
 }
 }
@@ -437,19 +437,19 @@ pub fn emit_py_fn_def(name: String, params: Rc<Vec<Rc<Node>>>, inferred: Rc<Node
     {
         let depth = 0;
 let si = scope.type_env.clone().source_index.clone();
-let params_str = emit_py_params(params.clone(), si.clone());
-let ret_str = emit_py_inferred(inferred.clone());
+let params_str = emit_py_params(params.clone(), si);
+let ret_str = emit_py_inferred(inferred);
 let body_scope = build_params_scope(scope.clone(), params.clone());
 let use_tco = is_tco_eligible(name.clone(), body.clone(), registry.clone());
-if use_tco.clone() {
+if use_tco {
             {
-                let body_str = emit_py_typed_tco_body(body.clone(), name.clone(), params.clone(), registry.clone(), body_scope.clone(), (depth.clone() + 1));
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), emit_ident(name.clone(), RenderTarget::Python)), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str.clone())
+                let body_str = emit_py_typed_tco_body(body.clone(), name.clone(), params.clone(), registry.clone(), body_scope, (depth.clone() + 1));
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), emit_ident(name.clone(), RenderTarget::Python)), "(".to_string()), params_str), ")".to_string()), ret_str), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
 }
 } else {
             {
-                let body_str = emit_py_typed_expr(body.clone(), registry.clone(), body_scope.clone(), (depth.clone() + 1), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), emit_ident(name.clone(), RenderTarget::Python)), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), ":\n".to_string()), make_indent((depth.clone() + 1))), "return ".to_string()), body_str.clone())
+                let body_str = emit_py_typed_expr(body.clone(), registry.clone(), body_scope, (depth.clone() + 1), 1024);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), emit_ident(name.clone(), RenderTarget::Python)), "(".to_string()), params_str), ")".to_string()), ret_str), ":\n".to_string()), make_indent((depth.clone() + 1))), "return ".to_string()), body_str)
 }
 }
 }
@@ -462,78 +462,78 @@ let service_names = match lookup_item(registry.clone(), name.clone()) {
     Some(info) => info.service_names.clone(),
     None => Rc::new(vec![]),
 };
-let params_str = emit_py_func_params(params.clone(), uses.clone(), service_names.clone(), scope.type_env.clone().source_index.clone());
-let ret_str = emit_py_inferred(inferred.clone());
+let params_str = emit_py_func_params(params.clone(), uses.clone(), service_names, scope.type_env.clone().source_index.clone());
+let ret_str = emit_py_inferred(inferred);
 let body_scope = build_params_scope(scope.clone(), params.clone());
 let si = scope.type_env.clone().source_index.clone();
-let body_scope = uses.clone().iter().cloned().fold(body_scope.clone(), |s: Rc<InferScope>, u: Rc<Node>| extend_scope(s.clone(), resource_use_name_at(u.clone(), si.clone()), resource_use_resource(u.clone())));
-let body_str = emit_py_typed_func_body(body.clone(), registry.clone(), body_scope.clone(), (depth.clone() + 1));
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async def ".to_string(), emit_ident(name.clone(), RenderTarget::Python)), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str.clone())
+let body_scope = uses.clone().iter().cloned().fold(body_scope, |s: Rc<InferScope>, u: Rc<Node>| extend_scope(s.clone(), resource_use_name_at(u.clone(), si.clone()), resource_use_resource(u.clone())));
+let body_str = emit_py_typed_func_body(body, registry.clone(), body_scope, (depth.clone() + 1));
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async def ".to_string(), emit_ident(name.clone(), RenderTarget::Python)), "(".to_string()), params_str), ")".to_string()), ret_str), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
 }
 }
 
 pub fn emit_py_func_params(params: Rc<Vec<Rc<Node>>>, uses: Rc<Vec<Rc<Node>>>, service_names: Rc<Vec<String>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let param_strs = Rc::new({ let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_py_param(p.clone(), source_index.clone())); } __result });
-let resource_strs = Rc::new({ let mut __result = Vec::new(); for u in uses.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(resource_use_name_at(u.clone(), source_index.clone()), RenderTarget::Python), ": ".to_string()), emit_node_type(resource_use_resource(u.clone()), RenderTarget::Python))); } __result });
-let service_strs = Rc::new({ let mut __result = Vec::new(); for sn in service_names.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(service_var_name(sn.clone()), ": ".to_string()), sanitize_service_name(sn.clone()))); } __result });
-let all_params = v2_rt::concat(v2_rt::concat(param_strs.clone(), resource_strs.clone()), service_strs.clone());
-all_params.clone().join(&", ".to_string())
+        let param_strs = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_py_param(p.clone(), source_index.clone())); } __result });
+let resource_strs = Rc::new({ let mut __result = Vec::new(); for u in uses.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(resource_use_name_at(u.clone(), source_index.clone()), RenderTarget::Python), ": ".to_string()), emit_node_type(resource_use_resource(u.clone()), RenderTarget::Python))); } __result });
+let service_strs = Rc::new({ let mut __result = Vec::new(); for sn in service_names.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(service_var_name(sn.clone()), ": ".to_string()), sanitize_service_name(sn.clone()))); } __result });
+let all_params = v2_rt::concat(v2_rt::concat(param_strs, resource_strs), service_strs);
+all_params.join(&", ".to_string())
 }
 }
 
 pub fn emit_py_params(params: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let strs = Rc::new({ let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_py_param(p.clone(), source_index.clone())); } __result });
-strs.clone().join(&", ".to_string())
+        let strs = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_py_param(p.clone(), source_index.clone())); } __result });
+strs.join(&", ".to_string())
 }
 }
 
 pub fn emit_py_param(param: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let ty = emit_node_type(param_node_type_expr(param.clone()), RenderTarget::Python);
-v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Python), ": ".to_string()), ty.clone())
+v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_index), RenderTarget::Python), ": ".to_string()), ty)
 }
 }
 
 pub fn emit_py_inferred(inferred: Rc<Node>) -> String {
-    v2_rt::concat(" -> ".to_string(), emit_node_type(inferred.clone(), RenderTarget::Python))
+    v2_rt::concat(" -> ".to_string(), emit_node_type(inferred, RenderTarget::Python))
 }
 
 pub fn emit_py_pattern(pattern: Rc<MatchPattern>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    match (*pattern.clone()).clone() {
+    match (*pattern).clone() {
     MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Python),
     MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), RenderTarget::Python),
-    MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } => emit_py_variant_pattern(n.clone(), fbs.clone(), source_index.clone()),
+    MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } => emit_py_variant_pattern(n.clone(), fbs.clone(), source_index),
     MatchPattern::Wildcard => "_".to_string(),
 }
 }
 
 pub fn emit_py_variant_pattern(name: String, field_bindings: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     if ((field_bindings.clone().len() as i64) == 0) {
-        v2_rt::concat(name.clone(), "()".to_string())
+        v2_rt::concat(name, "()".to_string())
 } else {
         {
             let binding_strs = Rc::new({ let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { __result.push({
                 let pat_str = emit_py_pattern(field_binding_pattern(fb.clone()), source_index.clone());
 v2_rt::concat(v2_rt::concat(emit_ident(field_binding_name_at(fb.clone(), source_index.clone()), RenderTarget::Python), "=".to_string()), pat_str.clone())
 }); } __result });
-let bindings_str = binding_strs.clone().join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(name.clone(), "(".to_string()), bindings_str.clone()), ")".to_string())
+let bindings_str = binding_strs.join(&", ".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(name, "(".to_string()), bindings_str), ")".to_string())
 }
 }
 }
 
 pub fn emit_py_field_access(base: Rc<Node>, field: String, summary: Option<Rc<FieldSummary>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let base_str = emit_py_typed_expr(base.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-match summary.clone() {
+        let base_str = emit_py_typed_expr(base, registry, scope, depth, 1024);
+match summary {
     Some(fs) => match fs.access_style.clone() {
-    FieldAccessStyle::TupleFirst => v2_rt::concat(base_str.clone(), "[0]".to_string()),
-    FieldAccessStyle::TupleSecond => v2_rt::concat(base_str.clone(), "[1]".to_string()),
-    _ => v2_rt::concat(v2_rt::concat(base_str.clone(), ".".to_string()), emit_ident(field.clone(), RenderTarget::Python)),
+    FieldAccessStyle::TupleFirst => v2_rt::concat(base_str, "[0]".to_string()),
+    FieldAccessStyle::TupleSecond => v2_rt::concat(base_str, "[1]".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field, RenderTarget::Python)),
 },
-    None => v2_rt::concat(v2_rt::concat(base_str.clone(), ".".to_string()), emit_ident(field.clone(), RenderTarget::Python)),
+    None => v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field, RenderTarget::Python)),
 }
 }
 }
@@ -541,8 +541,8 @@ match summary.clone() {
 pub fn emit_py_expr_var(expr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-        let n = expr_var_name_at(expr.clone(), source_index.clone());
-emit_ident(n.clone(), RenderTarget::Python)
+        let n = expr_var_name_at(expr.clone(), source_index);
+emit_ident(n, RenderTarget::Python)
 },
     _ => emit_error_expr("emit_py_expr_var expected ExprVar".to_string(), RenderTarget::Python),
 }
@@ -556,10 +556,10 @@ let b = field_access_base(expr.clone());
 if is_typed_service_call_receiver(expr.clone()) {
             match extract_typed_service_name(expr.clone()) {
     Some(svc_name) => service_var_name(svc_name.clone()),
-    None => emit_py_field_access(b.clone(), f.clone(), summary.clone(), registry.clone(), scope.clone(), depth.clone()),
+    None => emit_py_field_access(b, f, summary.clone(), registry, scope, depth),
 }
 } else {
-            emit_py_field_access(b.clone(), f.clone(), summary.clone(), registry.clone(), scope.clone(), depth.clone())
+            emit_py_field_access(b, f, summary.clone(), registry, scope, depth)
 }
 },
     _ => emit_error_expr("emit_py_expr_field_access expected ExprFieldAccess".to_string(), RenderTarget::Python),
@@ -570,7 +570,7 @@ pub fn emit_py_expr_call(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInf
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
         let f = expr_call_func_at(expr.clone(), scope.type_env.clone().source_index.clone());
-emit_py_typed_call(f.clone(), expr.children.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_call(f, expr.children.clone(), registry, scope.clone(), depth)
 },
     _ => emit_error_expr("emit_py_expr_call expected ExprCall".to_string(), RenderTarget::Python),
 }
@@ -582,7 +582,7 @@ pub fn emit_py_expr_method_call(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<
         let r = method_receiver(expr.clone());
 let a = method_arg_nodes(expr.clone());
 let m = expr_method_name_at(expr.clone(), scope.type_env.clone().source_index.clone());
-emit_py_typed_method_call(r.clone(), m.clone(), a.clone(), method_semantics.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_method_call(r, m, a, method_semantics.clone(), registry, scope.clone(), depth)
 },
     _ => emit_error_expr("emit_py_expr_method_call expected ExprMethodCall".to_string(), RenderTarget::Python),
 }
@@ -593,7 +593,7 @@ pub fn emit_py_expr_match(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
     ExprData::ExprMatch => {
         let s = match_scrutinee(expr.clone());
 let arm_list = match_arm_nodes(expr.clone());
-emit_py_typed_match(s.clone(), arm_list.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_match(s, arm_list, registry, scope, depth)
 },
     _ => emit_error_expr("emit_py_expr_match expected ExprMatch".to_string(), RenderTarget::Python),
 }
@@ -605,7 +605,7 @@ pub fn emit_py_expr_if(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>
         let c = if_condition(expr.clone());
 let t = if_then_branch(expr.clone());
 let e = if_else_branch(expr.clone());
-emit_py_typed_if(c.clone(), t.clone(), e.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_if(c, t, e, registry, scope, depth)
 },
     _ => emit_error_expr("emit_py_expr_if expected ExprIf".to_string(), RenderTarget::Python),
 }
@@ -617,7 +617,7 @@ pub fn emit_py_expr_let(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo
         let n = let_binding_name_at(expr.clone(), scope.type_env.clone().source_index.clone());
 let v = let_value(expr.clone());
 let bd = let_body(expr.clone());
-emit_py_typed_let(n.clone(), v.clone(), bd.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_let(n, v, bd, registry, scope.clone(), depth)
 },
     _ => emit_error_expr("emit_py_expr_let expected ExprLet".to_string(), RenderTarget::Python),
 }
@@ -628,7 +628,7 @@ pub fn emit_py_expr_record_lit(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<I
     ExprData::ExprRecordLit { .. } => {
         let tn = record_lit_type_name(expr.clone());
 let fs = expr.children.clone();
-emit_py_typed_record_lit(tn.clone(), fs.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_record_lit(tn, fs, registry, scope, depth)
 },
     _ => emit_error_expr("emit_py_expr_record_lit expected ExprRecordLit".to_string(), RenderTarget::Python),
 }
@@ -645,7 +645,7 @@ pub fn emit_py_expr_string_interp(expr: Rc<Node>, registry: Rc<HashMap<String, R
     expr: arg_value(child.clone()),
 }),
 }); } __result });
-emit_py_typed_string_interp(ps.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_string_interp(ps, registry, scope, depth)
 },
     _ => emit_error_expr("emit_py_expr_string_interp expected ExprStringInterp".to_string(), RenderTarget::Python),
 }
@@ -653,7 +653,7 @@ emit_py_typed_string_interp(ps.clone(), registry.clone(), scope.clone(), depth.c
 
 pub fn emit_py_expr_block(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprBlock => emit_py_typed_block(expr.children.clone(), registry.clone(), scope.clone(), depth.clone()),
+    ExprData::ExprBlock => emit_py_typed_block(expr.children.clone(), registry, scope, depth),
     _ => emit_error_expr("emit_py_expr_block expected ExprBlock".to_string(), RenderTarget::Python),
 }
 }
@@ -663,7 +663,7 @@ pub fn emit_py_expr_cast(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInf
     ExprData::ExprCast => {
         let e = cast_expr(expr.clone());
 let t = cast_target(expr.clone());
-emit_py_typed_cast(e.clone(), t.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_cast(e, t, registry, scope, depth)
 },
     _ => emit_error_expr("emit_py_expr_cast expected ExprCast".to_string(), RenderTarget::Python),
 }
@@ -675,7 +675,7 @@ pub fn emit_py_expr_for_each(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<Ite
         let v = foreach_variable(expr.clone());
 let c = foreach_collection(expr.clone());
 let bd = foreach_body(expr.clone());
-emit_py_typed_for_each(v.clone(), c.clone(), bd.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_for_each(v, c, bd, registry, scope, depth)
 },
     _ => emit_error_expr("emit_py_expr_for_each expected ExprForEach".to_string(), RenderTarget::Python),
 }
@@ -686,7 +686,7 @@ pub fn emit_py_expr_index(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
     ExprData::ExprIndex => {
         let b = index_base(expr.clone());
 let i = index_expr(expr.clone());
-emit_py_typed_index(b.clone(), i.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_index(b, i, registry, scope, depth)
 },
     _ => emit_error_expr("emit_py_expr_index expected ExprIndex".to_string(), RenderTarget::Python),
 }
@@ -698,7 +698,7 @@ pub fn emit_py_expr_slice(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
         let b = slice_base(expr.clone());
 let s = slice_start(expr.clone());
 let e = slice_end(expr.clone());
-emit_py_typed_slice(b.clone(), s.clone(), e.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_typed_slice(b, s, e, registry, scope, depth)
 },
     _ => emit_error_expr("emit_py_expr_slice expected ExprSlice".to_string(), RenderTarget::Python),
 }
@@ -706,14 +706,14 @@ emit_py_typed_slice(b.clone(), s.clone(), e.clone(), registry.clone(), scope.clo
 
 pub fn emit_py_typed_expr(texpr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, fuel: i64) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        emit_shared_expr(texpr.clone(), RenderTarget::Python, scope.type_env.clone().source_index.clone(), |result| result.clone(), |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), (fuel.clone() - 1)), |expr| emit_py_expr_var(expr.clone(), scope.type_env.clone().source_index.clone()), |expr| emit_py_expr_field_access(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_method_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_match(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_if(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_let(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_record_lit(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_string_interp(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_block(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_cast(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_for_each(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_index(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_slice(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_default_bin_op(expr.clone(), RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), (fuel.clone() - 1)), |result| result.clone()))
+        emit_shared_expr(texpr, RenderTarget::Python, scope.type_env.clone().source_index.clone(), |result| result.clone(), |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), (fuel.clone() - 1)), |expr| emit_py_expr_var(expr.clone(), scope.type_env.clone().source_index.clone()), |expr| emit_py_expr_field_access(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_method_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_match(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_if(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_let(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_record_lit(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_string_interp(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_block(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_cast(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_for_each(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_index(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_slice(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_default_bin_op(expr.clone(), RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), (fuel.clone() - 1)), |result| result.clone()))
     })
 }
 
 pub fn emit_py_typed_call(func: String, args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let ordered_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
-let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in ordered_args.clone().iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
+        let ordered_args = order_typed_call_args(args, func.clone(), scope.clone());
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in ordered_args.iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
 let callee = lookup_item(registry.clone(), func.clone());
 let extra_args = match callee.clone() {
     Some(info) => {
@@ -726,19 +726,19 @@ if is_func.clone() {
 },
     None => Rc::new(vec![]),
 };
-let all_args = v2_rt::concat(arg_strs.clone(), extra_args.clone());
-let args_str = all_args.clone().join(&", ".to_string());
-let call_str = v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(func.clone(), RenderTarget::Python), "(".to_string()), args_str.clone()), ")".to_string());
+let all_args = v2_rt::concat(arg_strs, extra_args);
+let args_str = all_args.join(&", ".to_string());
+let call_str = v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(func.clone(), RenderTarget::Python), "(".to_string()), args_str), ")".to_string());
 match callee.clone() {
     Some(info) => {
             let is_func = (info.kind.clone() == ItemKind::FuncItem);
 if is_func.clone() {
-                v2_rt::concat("await ".to_string(), call_str.clone())
+                v2_rt::concat("await ".to_string(), call_str)
 } else {
-                call_str.clone()
+                call_str
 }
 },
-    None => call_str.clone(),
+    None => call_str,
 }
 }
 }
@@ -747,26 +747,31 @@ pub fn emit_py_typed_for_each(variable: String, collection: Rc<Node>, body: Rc<N
     {
         let coll_str = emit_py_typed_expr(collection.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
 let elem_type = for_each_element_type_node(rt_type(collection.clone()));
-let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type.clone());
-let body_str = emit_py_typed_expr(body.clone(), registry.clone(), body_scope.clone(), (depth.clone() + 1), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("for ".to_string(), emit_ident(variable.clone(), RenderTarget::Python)), " in ".to_string()), coll_str.clone()), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str.clone())
+let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type);
+let body_str = emit_py_typed_expr(body, registry.clone(), body_scope, (depth.clone() + 1), 1024);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("for ".to_string(), emit_ident(variable.clone(), RenderTarget::Python)), " in ".to_string()), coll_str), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
 }
 }
 
 pub fn emit_py_typed_index(base: Rc<Node>, index: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let base_str = emit_py_typed_expr(base.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let index_str = emit_py_typed_expr(index.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str.clone(), "[".to_string()), index_str.clone()), "]".to_string())
+        let spec = language_spec(RenderTarget::Python);
+let base_str = emit_py_typed_expr(base, registry.clone(), scope.clone(), depth.clone(), 1024);
+let index_str = emit_py_typed_expr(index, registry.clone(), scope.clone(), depth.clone(), 1024);
+apply_type_template2(spec.indexing.clone().list_index.clone(), base_str, index_str)
 }
 }
 
 pub fn emit_py_typed_slice(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let base_str = emit_py_typed_expr(base.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let start_str = emit_py_typed_expr(start.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let end_str = emit_py_typed_expr(end.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str.clone(), "[".to_string()), start_str.clone()), ":".to_string()), end_str.clone()), "]".to_string())
+        let spec = language_spec(RenderTarget::Python);
+let base_str = emit_py_typed_expr(base, registry.clone(), scope.clone(), depth.clone(), 1024);
+let start_str = emit_py_typed_expr(start, registry.clone(), scope.clone(), depth.clone(), 1024);
+let end_str = emit_py_typed_expr(end, registry.clone(), scope.clone(), depth.clone(), 1024);
+match spec.indexing.clone().list_slice.clone() {
+    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
+    None => emit_error_expr("unsupported slice for target".to_string(), RenderTarget::Python),
+}
 }
 }
 
@@ -780,16 +785,16 @@ pub fn py_bridge_method_name(method_name: String) -> String {
 
 pub fn emit_py_algebra_method_call(method_name: String, receiver: Rc<Node>, args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let recv_str = emit_py_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
+        let recv_str = emit_py_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), 1024);
 let first_arg_str = emit_py_typed_first_arg(args.clone(), registry.clone(), scope.clone(), depth.clone());
 if (method_name.clone().as_str() == "count".to_string().as_str()) {
             v2_rt::concat(v2_rt::concat("len(".to_string(), recv_str.clone()), ")".to_string())
 } else {
             if (method_name.clone().as_str() == "join".to_string().as_str()) {
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(first_arg_str.clone(), ".join(".to_string()), recv_str.clone()), ")".to_string())
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(first_arg_str, ".join(".to_string()), recv_str.clone()), ")".to_string())
 } else {
                 if (method_name.clone().as_str() == "split".to_string().as_str()) {
-                    v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), ".split(".to_string()), first_arg_str.clone()), ")".to_string())
+                    v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), ".split(".to_string()), first_arg_str), ")".to_string())
 } else {
                     if (method_name.clone().as_str() == "last".to_string().as_str()) {
                         v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[-1] if ".to_string()), recv_str.clone()), " else None".to_string())
@@ -804,46 +809,46 @@ if (method_name.clone().as_str() == "count".to_string().as_str()) {
                                     v2_rt::concat(v2_rt::concat("list(".to_string(), recv_str.clone()), ")".to_string())
 } else {
                                     if (method_name.clone().as_str() == "string_contains".to_string().as_str()) {
-                                        v2_rt::concat(v2_rt::concat(first_arg_str.clone(), " in ".to_string()), recv_str.clone())
+                                        v2_rt::concat(v2_rt::concat(first_arg_str, " in ".to_string()), recv_str.clone())
 } else {
                                         if (method_name.clone().as_str() == "concat".to_string().as_str()) {
-                                            v2_rt::concat(v2_rt::concat(recv_str.clone(), " + ".to_string()), first_arg_str.clone())
+                                            v2_rt::concat(v2_rt::concat(recv_str.clone(), " + ".to_string()), first_arg_str)
 } else {
                                             if (method_name.clone().as_str() == "map".to_string().as_str()) {
-                                                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[".to_string(), first_arg_str.clone()), "(x) for x in ".to_string()), recv_str.clone()), "]".to_string())
+                                                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[".to_string(), first_arg_str), "(x) for x in ".to_string()), recv_str.clone()), "]".to_string())
 } else {
                                                 if (method_name.clone().as_str() == "filter".to_string().as_str()) {
-                                                    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[x for x in ".to_string(), recv_str.clone()), " if ".to_string()), first_arg_str.clone()), "(x)]".to_string())
+                                                    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[x for x in ".to_string(), recv_str.clone()), " if ".to_string()), first_arg_str), "(x)]".to_string())
 } else {
                                                     if (method_name.clone().as_str() == "any".to_string().as_str()) {
-                                                        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("any(".to_string(), first_arg_str.clone()), "(x) for x in ".to_string()), recv_str.clone()), ")".to_string())
+                                                        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("any(".to_string(), first_arg_str), "(x) for x in ".to_string()), recv_str.clone()), ")".to_string())
 } else {
                                                         if (method_name.clone().as_str() == "all".to_string().as_str()) {
-                                                            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("all(".to_string(), first_arg_str.clone()), "(x) for x in ".to_string()), recv_str.clone()), ")".to_string())
+                                                            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("all(".to_string(), first_arg_str), "(x) for x in ".to_string()), recv_str.clone()), ")".to_string())
 } else {
                                                             if (method_name.clone().as_str() == "flat_map".to_string().as_str()) {
-                                                                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[y for x in ".to_string(), recv_str.clone()), " for y in ".to_string()), first_arg_str.clone()), "(x)]".to_string())
+                                                                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[y for x in ".to_string(), recv_str.clone()), " for y in ".to_string()), first_arg_str), "(x)]".to_string())
 } else {
                                                                 if (method_name.clone().as_str() == "skip".to_string().as_str()) {
-                                                                    v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[".to_string()), first_arg_str.clone()), ":]".to_string())
+                                                                    v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[".to_string()), first_arg_str), ":]".to_string())
 } else {
                                                                     if (method_name.clone().as_str() == "take".to_string().as_str()) {
-                                                                        v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[:".to_string()), first_arg_str.clone()), "]".to_string())
+                                                                        v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[:".to_string()), first_arg_str), "]".to_string())
 } else {
                                                                         if (method_name.clone().as_str() == "fold".to_string().as_str()) {
-                                                                            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("functools.reduce(".to_string(), first_arg_str.clone()), ", ".to_string()), recv_str.clone()), ")".to_string())
+                                                                            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("functools.reduce(".to_string(), first_arg_str), ", ".to_string()), recv_str.clone()), ")".to_string())
 } else {
                                                                             if (method_name.clone().as_str() == "sort_by".to_string().as_str()) {
-                                                                                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("sorted(".to_string(), recv_str.clone()), ", key=".to_string()), first_arg_str.clone()), ")".to_string())
+                                                                                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("sorted(".to_string(), recv_str.clone()), ", key=".to_string()), first_arg_str), ")".to_string())
 } else {
                                                                                 if (method_name.clone().as_str() == "append".to_string().as_str()) {
-                                                                                    v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), " + [".to_string()), first_arg_str.clone()), "]".to_string())
+                                                                                    v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), " + [".to_string()), first_arg_str), "]".to_string())
 } else {
                                                                                     {
                                                                                         let function_name = py_bridge_method_name(method_name.clone());
 let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
-let all_args = v2_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(function_name.clone(), RenderTarget::Python), "(".to_string()), all_args.clone().join(&", ".to_string())), ")".to_string())
+let all_args = v2_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(function_name, RenderTarget::Python), "(".to_string()), all_args.join(&", ".to_string())), ")".to_string())
 }
 }
 }
@@ -869,10 +874,10 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(function_name.clone(), Rend
 
 pub fn emit_py_plain_method_call(receiver: Rc<Node>, method: String, args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let recv_str = emit_py_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
-let args_str = arg_strs.clone().join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), ".".to_string()), emit_ident(method.clone(), RenderTarget::Python)), "(".to_string()), args_str.clone()), ")".to_string())
+        let recv_str = emit_py_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), 1024);
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
+let args_str = arg_strs.join(&", ".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".".to_string()), emit_ident(method, RenderTarget::Python)), "(".to_string()), args_str), ")".to_string())
 }
 }
 
@@ -881,46 +886,46 @@ pub fn emit_py_typed_method_call(receiver: Rc<Node>, method: String, args: Rc<Ve
         match (*method_semantics.clone().unwrap()).clone() {
     MethodSemantics::ServiceMethodSemantics { service_name: svc_name, .. } => {
             let var_name = service_var_name(svc_name.clone());
-let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
-let args_str = arg_strs.clone().join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("await ".to_string(), var_name.clone()), ".".to_string()), emit_ident(method.clone(), RenderTarget::Python)), "(".to_string()), args_str.clone()), ")".to_string())
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
+let args_str = arg_strs.join(&", ".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("await ".to_string(), var_name), ".".to_string()), emit_ident(method, RenderTarget::Python)), "(".to_string()), args_str), ")".to_string())
 },
     MethodSemantics::AlgebraMethodSemantics { method_def: method_def, .. } => {
             let mn = method_def.name.clone();
-emit_py_algebra_method_call(mn.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone())
+emit_py_algebra_method_call(mn, receiver.clone(), args, registry.clone(), scope.clone(), depth.clone())
 },
-    MethodSemantics::PlainMethodSemantics => emit_py_plain_method_call(receiver.clone(), method.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone()),
+    MethodSemantics::PlainMethodSemantics => emit_py_plain_method_call(receiver.clone(), method, args, registry.clone(), scope.clone(), depth.clone()),
 }
 } else {
         if is_typed_service_call_receiver(receiver.clone()) {
             match extract_typed_service_name(receiver.clone()) {
     Some(svc_name) => {
                 let var_name = service_var_name(svc_name.clone());
-let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
-let args_str = arg_strs.clone().join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("await ".to_string(), var_name.clone()), ".".to_string()), emit_ident(method.clone(), RenderTarget::Python)), "(".to_string()), args_str.clone()), ")".to_string())
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
+let args_str = arg_strs.join(&", ".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("await ".to_string(), var_name), ".".to_string()), emit_ident(method, RenderTarget::Python)), "(".to_string()), args_str), ")".to_string())
 },
     None => "raise NotImplementedError(\"unsupported service receiver\")".to_string(),
 }
 } else {
-            emit_py_plain_method_call(receiver.clone(), method.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone())
+            emit_py_plain_method_call(receiver.clone(), method, args, registry.clone(), scope.clone(), depth.clone())
 }
 }
 }
 
 pub fn emit_py_typed_first_arg(args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match args.clone().first().cloned() {
-    Some(a) => emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024),
+    match args.first().cloned() {
+    Some(a) => emit_py_typed_expr(arg_value(a.clone()), registry, scope, depth, 1024),
     None => "raise NotImplementedError(\"missing method argument\")".to_string(),
 }
 }
 
 pub fn emit_py_typed_match(scrutinee: Rc<Node>, arms: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let scrut_str = emit_py_typed_expr(scrutinee.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arms.clone().iter().cloned() { __result.push(emit_py_typed_match_arm(arm.clone(), registry.clone(), scope.clone(), depth.clone())); } __result });
-let arms_str = arm_strs.clone().join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str.clone()), ":\n".to_string()), arms_str.clone())
+        let scrut_str = emit_py_typed_expr(scrutinee, registry.clone(), scope.clone(), depth.clone(), 1024);
+let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arms.iter().cloned() { __result.push(emit_py_typed_match_arm(arm.clone(), registry.clone(), scope.clone(), depth.clone())); } __result });
+let arms_str = arm_strs.join(&"\n".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str), ":\n".to_string()), arms_str)
 }
 }
 
@@ -932,20 +937,20 @@ let guard_str = match arm_guard(arm.clone()) {
     None => "".to_string(),
 };
 let body_str = emit_py_typed_expr(arm_body(arm.clone()), registry.clone(), scope.clone(), (depth.clone() + 2), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent((depth.clone() + 1)), "case ".to_string()), pat_str.clone()), guard_str.clone()), ":\n".to_string()), make_indent((depth.clone() + 2))), body_str.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent((depth.clone() + 1)), "case ".to_string()), pat_str), guard_str), ":\n".to_string()), make_indent((depth.clone() + 2))), body_str)
 }
 }
 
 pub fn emit_py_typed_if(condition: Rc<Node>, then_branch: Rc<Node>, else_branch: Option<Rc<Node>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let cond_str = emit_py_typed_expr(condition.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let then_str = emit_py_typed_expr(then_branch.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-match else_branch.clone() {
+        let cond_str = emit_py_typed_expr(condition, registry.clone(), scope.clone(), depth.clone(), 1024);
+let then_str = emit_py_typed_expr(then_branch, registry.clone(), scope.clone(), depth.clone(), 1024);
+match else_branch {
     Some(eb) => {
             let else_str = emit_py_typed_expr(eb.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), then_str.clone()), ") if (".to_string()), cond_str.clone()), ") else (".to_string()), else_str.clone()), ")".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), then_str), ") if (".to_string()), cond_str), ") else (".to_string()), else_str), ")".to_string())
 },
-    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str.clone()), ":\n".to_string()), make_indent((depth.clone() + 1))), then_str.clone()),
+    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), ":\n".to_string()), make_indent((depth.clone() + 1))), then_str),
 }
 }
 }
@@ -953,26 +958,26 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_py_typed_let(name: String, value: Rc<Node>, body: Option<Rc<Node>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let val_str = emit_py_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let let_line = emit_let_binding(name.clone(), val_str.clone(), RenderTarget::Python);
-match body.clone() {
+let let_line = emit_let_binding(name.clone(), val_str, RenderTarget::Python);
+match body {
     Some(bd) => {
             let next_scope = extend_scope(scope.clone(), name.clone(), rt_type(value.clone()));
-v2_rt::concat(v2_rt::concat(let_line.clone(), "\n".to_string()), emit_py_typed_expr(bd.clone(), registry.clone(), next_scope.clone(), depth.clone(), 1024))
+v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_py_typed_expr(bd.clone(), registry.clone(), next_scope, depth.clone(), 1024))
 },
-    None => let_line.clone(),
+    None => let_line,
 }
 }
 }
 
 pub fn emit_py_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match type_name.clone() {
+    match type_name {
     None => if ((fields.clone().len() as i64) == 0) {
         "{}".to_string()
 } else {
         {
             let field_strs = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    \"".to_string(), field_init_node_name(f.clone())), "\": ".to_string()), emit_py_typed_expr(field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)), ",".to_string())); } __result });
-let fields_str = field_strs.clone().join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat("{\n".to_string(), fields_str.clone()), "\n}".to_string())
+let fields_str = field_strs.join(&"\n".to_string());
+v2_rt::concat(v2_rt::concat("{\n".to_string(), fields_str), "\n}".to_string())
 }
 },
     Some(tn) => if ((fields.clone().len() as i64) == 0) {
@@ -980,8 +985,8 @@ v2_rt::concat(v2_rt::concat("{\n".to_string(), fields_str.clone()), "\n}".to_str
 } else {
         {
             let field_strs = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(field_init_node_name(f.clone()), RenderTarget::Python), "=".to_string()), emit_py_typed_expr(field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), 1024))); } __result });
-let fields_str = field_strs.clone().join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(tn.clone(), "(".to_string()), fields_str.clone()), ")".to_string())
+let fields_str = field_strs.join(&", ".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(tn.clone(), "(".to_string()), fields_str), ")".to_string())
 }
 },
 }
@@ -989,14 +994,14 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(tn.clone(), "(".to_string()), fields_s
 
 pub fn emit_py_typed_bin_op(op: BinOp, left: Rc<Node>, right: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let l_str = emit_py_typed_expr(left.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let r_str = emit_py_typed_expr(right.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
+        let l_str = emit_py_typed_expr(left, registry.clone(), scope.clone(), depth.clone(), 1024);
+let r_str = emit_py_typed_expr(right, registry.clone(), scope.clone(), depth.clone(), 1024);
 if is_null_coalesce(op.clone()) {
-            emit_null_coalesce(l_str.clone(), r_str.clone(), RenderTarget::Python)
+            emit_null_coalesce(l_str, r_str, RenderTarget::Python)
 } else {
             {
                 let op_str = emit_bin_op_symbol(op.clone(), RenderTarget::Python);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), l_str.clone()), " ".to_string()), op_str.clone()), " ".to_string()), r_str.clone()), ")".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), l_str), " ".to_string()), op_str), " ".to_string()), r_str), ")".to_string())
 }
 }
 }
@@ -1009,34 +1014,34 @@ pub fn emit_py_typed_string_interp(parts: Rc<Vec<Rc<StringPart>>>, registry: Rc<
     _ => false,
 } { __found = true; break; } } __found };
 let segments = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(py_typed_interp_segment(p.clone(), registry.clone(), scope.clone(), depth.clone(), has_interpolations.clone())); } __result });
-let fstr = segments.clone().join(&"".to_string());
-v2_rt::concat(v2_rt::concat("f\"".to_string(), fstr.clone()), "\"".to_string())
+let fstr = segments.join(&"".to_string());
+v2_rt::concat(v2_rt::concat("f\"".to_string(), fstr), "\"".to_string())
 }
 }
 
 pub fn py_typed_interp_segment(part: Rc<StringPart>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, has_interpolations: bool) -> String {
-    match (*part.clone()).clone() {
-    StringPart::Text { value: v, .. } => if has_interpolations.clone() {
+    match (*part).clone() {
+    StringPart::Text { value: v, .. } => if has_interpolations {
         escape_python_interp_text(v.clone())
 } else {
         escape_string_literal_body(v.clone())
 },
-    StringPart::Interpolation { expr: e, .. } => v2_rt::concat(v2_rt::concat("{".to_string(), emit_py_typed_expr(e.clone(), registry.clone(), scope.clone(), depth.clone(), 1024)), "}".to_string()),
+    StringPart::Interpolation { expr: e, .. } => v2_rt::concat(v2_rt::concat("{".to_string(), emit_py_typed_expr(e.clone(), registry, scope, depth, 1024)), "}".to_string()),
 }
 }
 
 pub fn emit_py_typed_block(stmts: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let state = emit_py_block_stmts(stmts.clone(), Rc::new(vec![]), scope.clone(), registry.clone(), depth.clone());
+        let state = emit_py_block_stmts(stmts, Rc::new(vec![]), scope, registry, depth);
 state.text.clone().join(&"\n".to_string())
 }
 }
 
 pub fn emit_py_typed_cast(expr: Rc<Node>, target: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let expr_str = emit_py_typed_expr(expr.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let ty_str = emit_node_type(target.clone(), RenderTarget::Python);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(ty_str.clone(), "(".to_string()), expr_str.clone()), ")".to_string())
+        let expr_str = emit_py_typed_expr(expr, registry, scope, depth, 1024);
+let ty_str = emit_node_type(target, RenderTarget::Python);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(ty_str, "(".to_string()), expr_str), ")".to_string())
 }
 }
 
@@ -1046,16 +1051,16 @@ pub fn emit_py_typed_func_body(body: Rc<Node>, registry: Rc<HashMap<String, Rc<I
             let si = scope.type_env.clone().source_index.clone();
 match (*body.expr_data.clone()).clone() {
     ExprData::ExprLet => {
-                let n = let_binding_name_at(body.clone(), si.clone());
+                let n = let_binding_name_at(body.clone(), si);
 let ch = body.children.clone();
 let v = let_value(body.clone());
 let inner = let_body(body.clone());
 let val_str = emit_py_typed_expr(v.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let let_line = emit_let_binding(n.clone(), val_str.clone(), RenderTarget::Python);
+let let_line = emit_let_binding(n.clone(), val_str, RenderTarget::Python);
 let next_scope = extend_scope(scope.clone(), n.clone(), rt_type(v.clone()));
-match inner.clone() {
-    Some(bd) => v2_rt::concat(v2_rt::concat(let_line.clone(), "\n".to_string()), emit_py_typed_func_body(bd.clone(), registry.clone(), next_scope.clone(), depth.clone())),
-    None => let_line.clone(),
+match inner {
+    Some(bd) => v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_py_typed_func_body(bd.clone(), registry.clone(), next_scope, depth.clone())),
+    None => let_line,
 }
 },
     ExprData::ExprBlock => {
@@ -1066,14 +1071,14 @@ if ((ss.clone().len() as i64) == 0) {
                     {
                         let init_state = emit_py_init_block_stmts(ss.clone(), Rc::new(vec![]), scope.clone(), registry.clone(), depth.clone());
 let last_stmt = ss.clone().last().cloned();
-let last_str = match last_stmt.clone() {
+let last_str = match last_stmt {
     Some(s) => v2_rt::concat("return ".to_string(), emit_py_typed_expr(s.clone(), registry.clone(), init_state.scope.clone(), depth.clone(), 1024)),
     None => "return None".to_string(),
 };
 if ((init_state.text.clone().len() as i64) == 0) {
-                            last_str.clone()
+                            last_str
 } else {
-                            v2_rt::concat(v2_rt::concat(init_state.text.clone().join(&"\n".to_string()), "\n".to_string()), last_str.clone())
+                            v2_rt::concat(v2_rt::concat(init_state.text.clone().join(&"\n".to_string()), "\n".to_string()), last_str)
 }
 }
 }
@@ -1086,8 +1091,8 @@ if ((init_state.text.clone().len() as i64) == 0) {
 
 pub fn emit_py_typed_tco_body(texpr: Rc<Node>, fn_name: String, params: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let inner = emit_py_typed_tco_expr(texpr.clone(), fn_name.clone(), params.clone(), registry.clone(), scope.clone(), (depth.clone() + 1));
-v2_rt::concat(v2_rt::concat("while True:\n".to_string(), make_indent((depth.clone() + 1))), inner.clone())
+        let inner = emit_py_typed_tco_expr(texpr, fn_name, params, registry, scope, (depth.clone() + 1));
+v2_rt::concat(v2_rt::concat("while True:\n".to_string(), make_indent((depth.clone() + 1))), inner)
 }
 }
 
@@ -1095,8 +1100,8 @@ pub fn emit_py_tco_non_self_call(frame: Rc<TcoFrame>, registry: Rc<HashMap<Strin
     match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
         let f = expr_call_func_at(frame.expr.clone(), frame.scope.clone().type_env.clone().source_index.clone());
-let call_str = emit_py_typed_call(f.clone(), frame.expr.clone().children.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone());
-v2_rt::concat("return ".to_string(), call_str.clone())
+let call_str = emit_py_typed_call(f, frame.expr.clone().children.clone(), registry, frame.scope.clone(), frame.depth.clone());
+v2_rt::concat("return ".to_string(), call_str)
 },
     _ => emit_error_expr("emit_py_tco_non_self_call expected ExprCall".to_string(), RenderTarget::Python),
 }
@@ -1108,14 +1113,14 @@ pub fn emit_py_tco_if(frame: Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<No
         let c = if_condition(frame.expr.clone());
 let t = if_then_branch(frame.expr.clone());
 let e = if_else_branch(frame.expr.clone());
-let cond_str = emit_py_typed_expr(c.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone(), 1024);
-let then_str = emit_py_typed_tco_expr(t.clone(), fn_name.clone(), params.clone(), registry.clone(), frame.scope.clone(), (frame.depth.clone() + 1));
-match e.clone() {
+let cond_str = emit_py_typed_expr(c, registry.clone(), frame.scope.clone(), frame.depth.clone(), 1024);
+let then_str = emit_py_typed_tco_expr(t, fn_name.clone(), params.clone(), registry.clone(), frame.scope.clone(), (frame.depth.clone() + 1));
+match e {
     Some(eb) => {
             let else_str = emit_py_typed_tco_expr(eb.clone(), fn_name.clone(), params.clone(), registry.clone(), frame.scope.clone(), (frame.depth.clone() + 1));
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str.clone()), ":\n".to_string()), make_indent((frame.depth.clone() + 1))), then_str.clone()), "\nelse:\n".to_string()), make_indent((frame.depth.clone() + 1))), else_str.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), ":\n".to_string()), make_indent((frame.depth.clone() + 1))), then_str), "\nelse:\n".to_string()), make_indent((frame.depth.clone() + 1))), else_str)
 },
-    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str.clone()), ":\n".to_string()), make_indent((frame.depth.clone() + 1))), then_str.clone()),
+    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), ":\n".to_string()), make_indent((frame.depth.clone() + 1))), then_str),
 }
 },
     _ => emit_error_expr("emit_py_tco_if expected ExprIf".to_string(), RenderTarget::Python),
@@ -1127,10 +1132,10 @@ pub fn emit_py_tco_match(frame: Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc
     ExprData::ExprMatch => {
         let s = match_scrutinee(frame.expr.clone());
 let arm_list = match_arm_nodes(frame.expr.clone());
-let scrut_str = emit_py_typed_expr(s.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone(), 1024);
-let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arm_list.clone().iter().cloned() { __result.push(emit_py_typed_tco_match_arm(arm.clone(), fn_name.clone(), params.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone())); } __result });
-let arms_str = arm_strs.clone().join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str.clone()), ":\n".to_string()), arms_str.clone())
+let scrut_str = emit_py_typed_expr(s, registry.clone(), frame.scope.clone(), frame.depth.clone(), 1024);
+let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arm_list.iter().cloned() { __result.push(emit_py_typed_tco_match_arm(arm.clone(), fn_name.clone(), params.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone())); } __result });
+let arms_str = arm_strs.join(&"\n".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str), ":\n".to_string()), arms_str)
 },
     _ => emit_error_expr("emit_py_tco_match expected ExprMatch".to_string(), RenderTarget::Python),
 }
@@ -1143,11 +1148,11 @@ pub fn emit_py_tco_let(frame: Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<N
 let v = let_value(frame.expr.clone());
 let bd = let_body(frame.expr.clone());
 let val_str = emit_py_typed_expr(v.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone(), 1024);
-let let_line = emit_let_binding(n.clone(), val_str.clone(), RenderTarget::Python);
+let let_line = emit_let_binding(n.clone(), val_str, RenderTarget::Python);
 let next_scope = extend_scope(frame.scope.clone(), n.clone(), rt_type(v.clone()));
-match bd.clone() {
-    Some(b) => v2_rt::concat(v2_rt::concat(let_line.clone(), "\n".to_string()), emit_py_typed_tco_expr(b.clone(), fn_name.clone(), params.clone(), registry.clone(), next_scope.clone(), frame.depth.clone())),
-    None => let_line.clone(),
+match bd {
+    Some(b) => v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_py_typed_tco_expr(b.clone(), fn_name, params, registry.clone(), next_scope, frame.depth.clone())),
+    None => let_line,
 }
 },
     _ => emit_error_expr("emit_py_tco_let expected ExprLet".to_string(), RenderTarget::Python),
@@ -1164,13 +1169,13 @@ if ((ss.clone().len() as i64) == 0) {
             {
                 let init_state = emit_py_init_block_stmts(ss.clone(), Rc::new(vec![]), frame.scope.clone(), registry.clone(), frame.depth.clone());
 let last_str = match ss.clone().last().cloned() {
-    Some(last_expr) => emit_py_typed_tco_expr(last_expr.clone(), fn_name.clone(), params.clone(), registry.clone(), init_state.scope.clone(), frame.depth.clone()),
+    Some(last_expr) => emit_py_typed_tco_expr(last_expr.clone(), fn_name, params, registry.clone(), init_state.scope.clone(), frame.depth.clone()),
     None => "return None".to_string(),
 };
 if ((init_state.text.clone().len() as i64) == 0) {
-                    last_str.clone()
+                    last_str
 } else {
-                    v2_rt::concat(v2_rt::concat(init_state.text.clone().join(&"\n".to_string()), "\n".to_string()), last_str.clone())
+                    v2_rt::concat(v2_rt::concat(init_state.text.clone().join(&"\n".to_string()), "\n".to_string()), last_str)
 }
 }
 }
@@ -1181,16 +1186,16 @@ if ((init_state.text.clone().len() as i64) == 0) {
 
 pub fn emit_py_tco_default_return(frame: Rc<TcoFrame>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
     {
-        let val_str = emit_py_typed_expr(frame.expr.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone(), 1024);
-v2_rt::concat("return ".to_string(), val_str.clone())
+        let val_str = emit_py_typed_expr(frame.expr.clone(), registry, frame.scope.clone(), frame.depth.clone(), 1024);
+v2_rt::concat("return ".to_string(), val_str)
 }
 }
 
 pub fn emit_py_typed_tco_expr(texpr: Rc<Node>, fn_name: String, params: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     emit_shared_tco_expr(Rc::new(TcoFrame {
-    expr: texpr.clone(),
-    scope: scope.clone(),
-    depth: depth.clone(),
+    expr: texpr,
+    scope: scope,
+    depth: depth,
 }), fn_name.clone(), |input| emit_py_typed_tco_reassign(input.args.clone(), params.clone(), registry.clone(), input.scope.clone(), input.depth.clone()), |frame| emit_py_tco_non_self_call(frame.clone(), registry.clone()), |frame| emit_py_tco_if(frame.clone(), fn_name.clone(), params.clone(), registry.clone()), |frame| emit_py_tco_match(frame.clone(), fn_name.clone(), params.clone(), registry.clone()), |frame| emit_py_tco_let(frame.clone(), fn_name.clone(), params.clone(), registry.clone()), |frame| emit_py_tco_block(frame.clone(), fn_name.clone(), params.clone(), registry.clone()), |frame| emit_py_tco_default_return(frame.clone(), registry.clone()))
 }
 
@@ -1201,18 +1206,18 @@ let guard_str = match arm_guard(arm.clone()) {
     Some(g) => v2_rt::concat(" if ".to_string(), emit_py_typed_expr(g.clone(), registry.clone(), scope.clone(), depth.clone(), 1024)),
     None => "".to_string(),
 };
-let body_str = emit_py_typed_tco_expr(arm_body(arm.clone()), fn_name.clone(), params.clone(), registry.clone(), scope.clone(), (depth.clone() + 2));
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent((depth.clone() + 1)), "case ".to_string()), pat_str.clone()), guard_str.clone()), ":\n".to_string()), make_indent((depth.clone() + 2))), body_str.clone())
+let body_str = emit_py_typed_tco_expr(arm_body(arm.clone()), fn_name, params, registry.clone(), scope.clone(), (depth.clone() + 2));
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent((depth.clone() + 1)), "case ".to_string()), pat_str), guard_str), ":\n".to_string()), make_indent((depth.clone() + 2))), body_str)
 }
 }
 
 pub fn emit_py_typed_tco_reassign(args: Rc<Vec<Rc<Node>>>, params: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let ordered_args = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
+        let ordered_args = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
 let si = scope.type_env.clone().source_index.clone();
-let param_names = Rc::new({ let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), si.clone()), RenderTarget::Python)); } __result });
-let all_lines = tco_reassign_core(ordered_args.clone(), param_names.clone(), "__tco_".to_string(), "".to_string(), " = ".to_string(), "".to_string(), "continue".to_string(), "".to_string());
-all_lines.clone().join(&"\n".to_string())
+let param_names = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), si.clone()), RenderTarget::Python)); } __result });
+let all_lines = tco_reassign_core(ordered_args, param_names, "__tco_".to_string(), "".to_string(), " = ".to_string(), "".to_string(), "continue".to_string(), "".to_string());
+all_lines.join(&"\n".to_string())
 }
 }
 
@@ -1223,9 +1228,9 @@ let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
 let transport = service_fallback_transport(item.clone());
 let init_method = emit_py_service_init(transport.clone());
 let op_children = item.children.clone();
-let methods = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_py_operation_method(safe_name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1), env.clone())); } __result });
-let methods_str = methods.clone().join(&"\n\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("class ".to_string(), safe_name.clone()), ":\n".to_string()), make_indent((depth.clone() + 1))), init_method.clone()), "\n\n".to_string()), make_indent((depth.clone() + 1))), methods_str.clone())
+let methods = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.iter().cloned() { __result.push(emit_py_operation_method(safe_name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1), env.clone())); } __result });
+let methods_str = methods.join(&"\n\n".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("class ".to_string(), safe_name.clone()), ":\n".to_string()), make_indent((depth.clone() + 1))), init_method), "\n\n".to_string()), make_indent((depth.clone() + 1))), methods_str)
 }
 }
 
@@ -1242,7 +1247,7 @@ let auth_assign = if transport_has_auth(transport.clone()) {
 } else {
                 "".to_string()
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def __init__(self, base_url: str".to_string(), auth_param.clone()), "):\n".to_string()), "    self.base_url = base_url".to_string()), auth_assign.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def __init__(self, base_url: str".to_string(), auth_param), "):\n".to_string()), "    self.base_url = base_url".to_string()), auth_assign)
 }
 } else {
         if is_shell_transport(transport.clone()) {
@@ -1261,30 +1266,30 @@ pub fn emit_py_operation_method(service_name: String, transport: Rc<Node>, op_no
     {
         let op_text = authored_name(env.clone(), op_node.clone());
 let input_params = Rc::new({ let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Python), ": ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Python))); } __result });
-let params_str = input_params.clone().join(&", ".to_string());
+let params_str = input_params.join(&", ".to_string());
 let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
             "self".to_string()
 } else {
             v2_rt::concat("self, ".to_string(), params_str.clone())
 };
 let ret_type = emit_node_type(rt_type(op_node.clone()), RenderTarget::Python);
-let eff_transport = effective_operation_transport(op_node.clone(), transport.clone());
-let body = emit_py_transport_call(eff_transport.clone(), op_text.clone(), registry.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async def ".to_string(), emit_ident(op_text.clone(), RenderTarget::Python)), "(".to_string()), all_params.clone()), ") -> ".to_string()), ret_type.clone()), ":\n".to_string()), make_indent((depth.clone() + 1))), body.clone())
+let eff_transport = effective_operation_transport(op_node.clone(), transport);
+let body = emit_py_transport_call(eff_transport, op_text.clone(), registry);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async def ".to_string(), emit_ident(op_text.clone(), RenderTarget::Python)), "(".to_string()), all_params), ") -> ".to_string()), ret_type), ":\n".to_string()), make_indent((depth + 1))), body)
 }
 }
 
 pub fn emit_py_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
     if is_rest_transport(transport.clone()) {
-        emit_py_rest_call(op_name.clone(), transport.clone())
+        emit_py_rest_call(op_name, transport.clone())
 } else {
         if is_shell_transport(transport.clone()) {
-            emit_py_shell_call(op_name.clone(), transport.clone())
+            emit_py_shell_call(op_name, transport.clone())
 } else {
             if is_file_transport(transport.clone()) {
-                emit_py_file_call(op_name.clone())
+                emit_py_file_call(op_name)
 } else {
-                emit_py_local_call(op_name.clone())
+                emit_py_local_call(op_name)
 }
 }
 }
@@ -1293,10 +1298,10 @@ pub fn emit_py_transport_call(transport: Rc<Node>, op_name: String, registry: Rc
 pub fn emit_py_rest_call(op_name: String, transport: Rc<Node>) -> String {
     {
         let self_base_url = v2_rt::concat(v2_rt::concat("{".to_string(), "self.base_url".to_string()), "}".to_string());
-let url_line = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("url = f\"".to_string(), self_base_url.clone()), "/".to_string()), emit_ident(op_name.clone(), RenderTarget::Python)), "\"".to_string());
-let headers_dict = emit_py_headers_dict(transport.clone());
+let url_line = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("url = f\"".to_string(), self_base_url), "/".to_string()), emit_ident(op_name, RenderTarget::Python)), "\"".to_string());
+let headers_dict = emit_py_headers_dict(transport);
 let session_lines = v2_rt::concat(v2_rt::concat("async with aiohttp.ClientSession() as session:\n".to_string(), "    async with session.post(url, headers=headers) as response:\n".to_string()), "        return await response.json()".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(url_line.clone(), "\n".to_string()), headers_dict.clone()), "\n".to_string()), session_lines.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(url_line, "\n".to_string()), headers_dict), "\n".to_string()), session_lines)
 }
 }
 
@@ -1308,40 +1313,40 @@ pub fn emit_py_headers_dict(transport: Rc<Node>) -> String {
     Some(h) => h.clone(),
     None => "Authorization".to_string(),
 };
-v2_rt::concat(v2_rt::concat("\"".to_string(), header_name.clone()), "\": self.auth_token, ".to_string())
+v2_rt::concat(v2_rt::concat("\"".to_string(), header_name), "\": self.auth_token, ".to_string())
 }
 } else {
             "".to_string()
 };
 let hdrs = transport_headers(transport.clone());
-let header_entries = Rc::new({ let mut __result = Vec::new(); for h in hdrs.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), h.name.clone()), "\": ".to_string()), emit_simple_expr(field_init_node_value(h.clone()), RenderTarget::Python, None))); } __result });
+let header_entries = Rc::new({ let mut __result = Vec::new(); for h in hdrs.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), h.name.clone()), "\": ".to_string()), emit_simple_expr(field_init_node_value(h.clone()), RenderTarget::Python, None))); } __result });
 let all_entries = if (auth_entry.clone().as_str() == "".to_string().as_str()) {
-            header_entries.clone().join(&", ".to_string())
+            header_entries.join(&", ".to_string())
 } else {
-            v2_rt::concat(auth_entry.clone(), header_entries.clone().join(&", ".to_string()))
+            v2_rt::concat(auth_entry.clone(), header_entries.join(&", ".to_string()))
 };
-v2_rt::concat(v2_rt::concat("headers = {".to_string(), all_entries.clone()), "}".to_string())
+v2_rt::concat(v2_rt::concat("headers = {".to_string(), all_entries), "}".to_string())
 }
 }
 
 pub fn emit_py_shell_call(op_name: String, transport: Rc<Node>) -> String {
     {
-        let envs = transport_env(transport.clone());
-let env_dict_entries = Rc::new({ let mut __result = Vec::new(); for e in envs.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), e.name.clone()), "\": ".to_string()), emit_simple_expr(field_init_node_value(e.clone()), RenderTarget::Python, None))); } __result });
-let env_str = v2_rt::concat(v2_rt::concat("{".to_string(), env_dict_entries.clone().join(&", ".to_string())), "}".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("import subprocess\n".to_string(), "result = subprocess.run(\n".to_string()), "    [\"".to_string()), emit_ident(op_name.clone(), RenderTarget::Python)), "\"],\n".to_string()), "    cwd=self.working_dir or \".\",\n".to_string()), "    env=".to_string()), env_str.clone()), ",\n".to_string()), "    capture_output=True, text=True,\n".to_string()), ")\n".to_string()), "return result.stdout".to_string())
+        let envs = transport_env(transport);
+let env_dict_entries = Rc::new({ let mut __result = Vec::new(); for e in envs.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), e.name.clone()), "\": ".to_string()), emit_simple_expr(field_init_node_value(e.clone()), RenderTarget::Python, None))); } __result });
+let env_str = v2_rt::concat(v2_rt::concat("{".to_string(), env_dict_entries.join(&", ".to_string())), "}".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("import subprocess\n".to_string(), "result = subprocess.run(\n".to_string()), "    [\"".to_string()), emit_ident(op_name, RenderTarget::Python)), "\"],\n".to_string()), "    cwd=self.working_dir or \".\",\n".to_string()), "    env=".to_string()), env_str), ",\n".to_string()), "    capture_output=True, text=True,\n".to_string()), ")\n".to_string()), "return result.stdout".to_string())
 }
 }
 
 pub fn emit_py_file_call(op_name: String) -> String {
     {
         let self_base_path = v2_rt::concat(v2_rt::concat("{".to_string(), "self.base_path".to_string()), "}".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("path = f\"".to_string(), self_base_path.clone()), "/".to_string()), emit_ident(op_name.clone(), RenderTarget::Python)), "\"\n".to_string()), "with open(path) as f:\n".to_string()), "    return f.read()".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("path = f\"".to_string(), self_base_path), "/".to_string()), emit_ident(op_name, RenderTarget::Python)), "\"\n".to_string()), "with open(path) as f:\n".to_string()), "    return f.read()".to_string())
 }
 }
 
 pub fn emit_py_local_call(op_name: String) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat("# Local binding -- direct function call\n".to_string(), "return ".to_string()), emit_ident(op_name.clone(), RenderTarget::Python)), "()".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat("# Local binding -- direct function call\n".to_string(), "return ".to_string()), emit_ident(op_name, RenderTarget::Python)), "()".to_string())
 }
 
 pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
@@ -1349,46 +1354,46 @@ pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
         let item_text = authored_name(env.clone(), item.clone());
 let depth = 0;
 let cap_children = item.children.clone();
-let methods = Rc::new({ let mut __result = Vec::new(); for c in cap_children.clone().iter().cloned() { __result.push(emit_py_capability_method(c.clone(), env.clone())); } __result });
-let methods_str = methods.clone().join(&"\n\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("from abc import ABC, abstractmethod\n\n".to_string(), "class ".to_string()), item_text.clone()), "(ABC):\n".to_string()), make_indent((depth.clone() + 1))), methods_str.clone())
+let methods = Rc::new({ let mut __result = Vec::new(); for c in cap_children.iter().cloned() { __result.push(emit_py_capability_method(c.clone(), env.clone())); } __result });
+let methods_str = methods.join(&"\n\n".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("from abc import ABC, abstractmethod\n\n".to_string(), "class ".to_string()), item_text), "(ABC):\n".to_string()), make_indent((depth + 1))), methods_str)
 }
 }
 
 pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let input_params = Rc::new({ let mut __result = Vec::new(); for p in cap_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Python), ": ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Python))); } __result });
-let params_str = input_params.clone().join(&", ".to_string());
+let params_str = input_params.join(&", ".to_string());
 let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
             "self".to_string()
 } else {
             v2_rt::concat("self, ".to_string(), params_str.clone())
 };
 let ret = emit_node_type(rt_type(cap_node.clone()), RenderTarget::Python);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("@abstractmethod\n".to_string(), "async def ".to_string()), emit_ident(authored_name(env.clone(), cap_node.clone()), RenderTarget::Python)), "(".to_string()), all_params.clone()), ") -> ".to_string()), ret.clone()), ":\n".to_string()), "    ...".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("@abstractmethod\n".to_string(), "async def ".to_string()), emit_ident(authored_name(env.clone(), cap_node.clone()), RenderTarget::Python)), "(".to_string()), all_params), ") -> ".to_string()), ret), ":\n".to_string()), "    ...".to_string())
 }
 }
 
 pub fn emit_py_data_def(name: String, type_node: Rc<Node>, value: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
     {
-        let ty_str = emit_node_type(type_node.clone(), RenderTarget::Python);
-let upper_name = to_screaming_snake(name.clone());
-let val_str = emit_py_typed_expr(value.clone(), registry.clone(), scope.clone(), 0, 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(upper_name.clone(), ": ".to_string()), ty_str.clone()), " = ".to_string()), val_str.clone())
+        let ty_str = emit_node_type(type_node, RenderTarget::Python);
+let upper_name = to_screaming_snake(name);
+let val_str = emit_py_typed_expr(value, registry, scope, 0, 1024);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(upper_name, ": ".to_string()), ty_str), " = ".to_string()), val_str)
 }
 }
 
 pub fn emit_requirements_txt(has_services: bool) -> Rc<TextFile> {
     {
         let base_deps = "".to_string();
-let async_deps = if has_services.clone() {
+let async_deps = if has_services {
             "aiohttp>=3.9\n".to_string()
 } else {
             "".to_string()
 };
 Rc::new(TextFile {
     path: "requirements.txt".to_string(),
-    content: v2_rt::concat(base_deps.clone(), async_deps.clone()),
+    content: v2_rt::concat(base_deps, async_deps),
 })
 }
 }

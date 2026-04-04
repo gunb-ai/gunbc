@@ -114,7 +114,7 @@ pub fn empty_trace() -> Rc<Trace> {
 
 pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
     Rc::new(Trace {
-    events: v2_rt::rc_list_push(trace.events.clone(), event.clone()),
+    events: v2_rt::rc_list_push(trace.events.clone(), event),
     stack: trace.stack.clone(),
 })
 }
@@ -122,7 +122,7 @@ pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
 pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
     Rc::new(Trace {
     events: trace.events.clone(),
-    stack: v2_rt::rc_list_push(trace.stack.clone(), frame.clone()),
+    stack: v2_rt::rc_list_push(trace.stack.clone(), frame),
 })
 }
 
@@ -144,7 +144,7 @@ if (n.clone() <= 1) {
 }
 
 pub fn event_span(event: Rc<TraceEvent>) -> Rc<SourceSpan> {
-    match (*event.clone()).clone() {
+    match (*event).clone() {
     TraceEvent::TraceEnter { span: s, .. } => s.clone(),
     TraceEvent::TraceExit { span: s, .. } => s.clone(),
     TraceEvent::TraceError { span: s, .. } => s.clone(),
@@ -152,7 +152,7 @@ pub fn event_span(event: Rc<TraceEvent>) -> Rc<SourceSpan> {
 }
 
 pub fn event_node_id(event: Rc<TraceEvent>) -> String {
-    match (*event.clone()).clone() {
+    match (*event).clone() {
     TraceEvent::TraceEnter { node_id: id, .. } => id.clone(),
     TraceEvent::TraceExit { node_id: id, .. } => id.clone(),
     TraceEvent::TraceError { node_id: id, .. } => id.clone(),
@@ -174,13 +174,13 @@ pub enum TraceFilter {
 
 pub fn event_matches_span(event: Rc<TraceEvent>, filter_start: i64, filter_end: i64) -> bool {
     {
-        let sp = event_span(event.clone());
-((sp.start.clone() >= filter_start.clone()) && (sp.start.clone() < filter_end.clone()))
+        let sp = event_span(event);
+((sp.start.clone() >= filter_start) && (sp.start.clone() < filter_end))
 }
 }
 
 pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<TraceEvent>>> {
-    match (*filter.clone()).clone() {
+    match (*filter).clone() {
     TraceFilter::FilterByFunc { func_name: name, .. } => Rc::new({ let mut __result = Vec::new(); for e in trace.events.clone().iter().cloned() { if (event_node_id(e.clone()).as_str() == name.clone().as_str()) { __result.push(e); } } __result }),
     TraceFilter::FilterBySpan { start: s, end: e, .. } => Rc::new({ let mut __result = Vec::new(); for ev in trace.events.clone().iter().cloned() { if event_matches_span(ev.clone(), s.clone(), e.clone()) { __result.push(ev); } } __result }),
     TraceFilter::FilterErrors => Rc::new({ let mut __result = Vec::new(); for e in trace.events.clone().iter().cloned() { if match (*e.clone()).clone() {
@@ -195,7 +195,7 @@ pub fn format_span(sp: Rc<SourceSpan>) -> String {
 }
 
 pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
-    match (*event.clone()).clone() {
+    match (*event).clone() {
     TraceEvent::TraceEnter { node_id: id, span: sp, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat("> ".to_string(), id.clone()), " at ".to_string()), format_span(sp.clone())),
     TraceEvent::TraceExit { node_id: id, span: sp, output: out, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("< ".to_string(), id.clone()), " at ".to_string()), format_span(sp.clone())), ": ".to_string()), out.clone()),
     TraceEvent::TraceError { node_id: id, span: sp, message: msg, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("! ".to_string(), id.clone()), " at ".to_string()), format_span(sp.clone())), ": ".to_string()), msg.clone()),
@@ -216,10 +216,10 @@ pub struct ReproCase {
 
 pub fn capture_repro(func_name: String, inputs: Rc<HashMap<String, String>>, trace: Rc<Trace>) -> Rc<ReproCase> {
     Rc::new(ReproCase {
-    func_name: func_name.clone(),
-    inputs: inputs.clone(),
+    func_name: func_name,
+    inputs: inputs,
     expected_output: None,
-    trace: Some(trace.clone()),
+    trace: Some(trace),
 })
 }
 
