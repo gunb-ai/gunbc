@@ -119,6 +119,23 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
   )
 }
 
+// Build per-function binding fan-out data from ownership proofs.
+// Returns: func_name → binding_name → fan_out count.
+// Threaded to emit via ResolvedGraph.fan_out_data so emit_var_ref
+// can use move (fan_out ≤ 1) vs clone (fan_out > 1) instead of
+// the current "clone everything with resolved_type" heuristic.
+fn build_fan_out_data(ownership: List<OwnershipProof>) -> Map<String, Map<String, Int>> {
+  ownership |> fold(init: empty_map(), f: (acc, proof) =>
+    let func_map = map_keys(proof.bindings) |> fold(init: empty_map(), f: (m, name) =>
+      match map_get(proof.bindings, name) {
+        Some { value: usage } => map_insert(m, name, usage.consumers |> count)
+        None => m
+      }
+    )
+    map_insert(acc, proof.func_name, func_map)
+  )
+}
+
 // =========================================================================
 // Complexity fail-closed gate
 //
@@ -854,6 +871,17 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
         root_modules: typed.modules |> map(m => m.module.name),
         target: target
       )
+
+      // Enrich typed graph with fan-out data from ownership analysis.
+      // emit_var_ref uses this to decide move vs clone per binding.
+      let fan_outs = build_fan_out_data(ownership: ownership)
+      let typed = ResolvedGraph {
+        modules: typed.modules,
+        item_registry: typed.item_registry,
+        diagnostics: typed.diagnostics,
+        emit_graph_info: typed.emit_graph_info,
+        fan_out_data: fan_outs
+      }
 
       // Stage 8: Emit target-language files.
       // The artifact plan is the source of truth for backend selection in the

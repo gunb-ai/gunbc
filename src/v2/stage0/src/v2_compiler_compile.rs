@@ -74,7 +74,7 @@ pub use crate::v2_compiler_emit_rust::{emit_rust};
 pub use crate::v2_compiler_emit_python::{emit_python};
 pub use crate::v2_compiler_emit_go::{emit_go};
 pub use crate::v2_compiler_complexity::{ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report};
-pub use crate::v2_compiler_ownership::{OwnershipProof, OwnershipDecision, analyze_ownership};
+pub use crate::v2_compiler_ownership::{OwnershipProof, OwnershipDecision, BindingUsage, analyze_ownership};
 use crate::v2_compiler_ownership::OwnershipDecision::{SharedError};
 pub use crate::v2_compiler_artifact::{ArtifactPlan, Artifact, RenderTarget, default_artifact_plan};
 use crate::v2_compiler_artifact::RenderTarget::{Dag};
@@ -99,6 +99,18 @@ pub struct PipelineResult {
 pub struct FrontendResult {
     pub graph: Option<Rc<ModuleGraph>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn build_fan_out_data(ownership: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<HashMap<String, Rc<HashMap<String, i64>>>> {
+    ownership.clone().iter().cloned().fold(Rc::new(HashMap::new()), |acc: Rc<HashMap<String, Rc<HashMap<String, i64>>>>, proof: Rc<OwnershipProof>| {
+        let func_map = Rc::new(v2_rt::map_keys(&proof.bindings)).iter().cloned().fold(Rc::new(HashMap::new()), |m: Rc<HashMap<String, i64>>, name: String| {
+            match v2_rt::map_get(&proof.bindings, name.clone()) {
+                Some(usage) => v2_rt::rc_map_insert(m.clone(), name.clone(), (usage.consumers.clone().len() as i64)),
+                None => m.clone(),
+            }
+        });
+        v2_rt::rc_map_insert(acc.clone(), proof.func_name.clone(), func_map.clone())
+    })
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
@@ -643,6 +655,14 @@ if ((ownership_errors.clone().len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
 }
+let fan_outs = build_fan_out_data(ownership.clone());
+let typed = Rc::new(ResolvedGraph {
+    modules: typed.modules.clone(),
+    item_registry: typed.item_registry.clone(),
+    diagnostics: typed.diagnostics.clone(),
+    emit_graph_info: typed.emit_graph_info.clone(),
+    fan_out_data: fan_outs.clone(),
+});
 let artifact_plan = default_artifact_plan(Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(m.module.clone().name.clone()); } __result }), target.clone());
 let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
 let emit_files = emit_result.files.clone();

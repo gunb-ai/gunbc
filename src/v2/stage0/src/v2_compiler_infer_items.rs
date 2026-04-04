@@ -101,6 +101,7 @@ pub struct ResolvedGraph {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub emit_graph_info: Rc<EmitGraphInfo>,
+    pub fan_out_data: Rc<HashMap<String, Rc<HashMap<String, i64>>>>,
 }
 
 pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Vec<Rc<Node>>> {

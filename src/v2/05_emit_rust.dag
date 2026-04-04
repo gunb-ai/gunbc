@@ -351,7 +351,15 @@ fn build_rc_types(emit_info: EmitGraphInfo) -> Map<String, Bool> {
 // =========================================================================
 
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
-  let emit_info = build_emit_graph_info(modules: typed.modules)
+  let base_info = build_emit_graph_info(modules: typed.modules)
+  let emit_info = EmitGraphInfo {
+    type_summaries: base_info.type_summaries,
+    recursive_type_set: base_info.recursive_type_set,
+    fielded_variants: base_info.fielded_variants,
+    value_contexts: base_info.value_contexts,
+    all_fan_outs: typed.fan_out_data,
+    binding_fan_outs: empty_map()
+  }
   let rc_types = build_rc_types(emit_info: emit_info)
   let registry = typed.item_registry
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
@@ -659,10 +667,23 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   } else if (kind == TypedItemTypeDecl) {
     ""
   } else if (kind == TypedItemFunction) {
+    // Set per-function binding_fan_outs so emit_var_ref uses move vs clone.
+    let func_fan_outs = match map_get(emit_info.all_fan_outs, item.name) {
+      Some { value: fm } => fm
+      None => empty_map()
+    }
+    let fn_emit_info = EmitGraphInfo {
+      type_summaries: emit_info.type_summaries,
+      recursive_type_set: emit_info.recursive_type_set,
+      fielded_variants: emit_info.fielded_variants,
+      value_contexts: emit_info.value_contexts,
+      all_fan_outs: emit_info.all_fan_outs,
+      binding_fan_outs: func_fan_outs
+    }
     if item.uses |> count > 0 {
-      emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: emit_info)
+      emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
     } else {
-      emit_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: emit_info)
+      emit_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
     }
   } else if (kind == TypedItemDataDef) {
     emit_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, rc_types: rc_types, emit_info: emit_info)
@@ -1542,6 +1563,23 @@ fn variant_parent_from_binding_kind(binding_kind: VarBindingKind?) -> String? {
   }
 }
 
+// Decide clone vs move for a variable reference based on ownership fan-out.
+// fan_out > 1 → clone (multiple consumers), fan_out ≤ 1 → move.
+// Falls back to current heuristic (clone if resolved_type present) when
+// no fan-out data is available (e.g. data defs, service defs).
+fn emit_var_clone_or_move(ident: String, name: String, resolved_type: InferredNode?, emit_info: EmitGraphInfo) -> String {
+  match map_get(emit_info.binding_fan_outs, name) {
+    Some { value: fo } =>
+      if fo > 1 { concat(ident, ".clone()") }
+      else { ident }
+    None =>
+      match resolved_type {
+        Some { value: _ } => concat(ident, ".clone()")
+        _ => ident
+      }
+  }
+}
+
 fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, emit_info: EmitGraphInfo) -> String? {
   match resolved_type {
     Some { value: Resolved { node: rt } } =>
@@ -1578,18 +1616,12 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               let ident = emit_ident(name: name, target: Rust)
               let ident_str = if is_function_value {
                 ident
-              } else { match resolved_type {
-                Some { value: _ } => concat(ident, ".clone()")
-                _ => ident
-              } }
+              } else { emit_var_clone_or_move(ident: ident, name: name, resolved_type: resolved_type, emit_info: emit_info) }
               ident_str
             }
           None =>
             let ident = emit_ident(name: name, target: Rust)
-            let ident_str = match resolved_type {
-              Some { value: _ } => concat(ident, ".clone()")
-              _ => ident
-            }
+            let ident_str = emit_var_clone_or_move(ident: ident, name: name, resolved_type: resolved_type, emit_info: emit_info)
             ident_str
         }
     }

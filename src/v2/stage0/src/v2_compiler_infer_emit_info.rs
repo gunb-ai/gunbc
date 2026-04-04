@@ -100,6 +100,8 @@ pub struct EmitGraphInfo {
     pub recursive_type_set: Rc<HashMap<String, bool>>,
     pub fielded_variants: Rc<HashMap<String, bool>>,
     pub value_contexts: Rc<HashMap<String, Rc<ValueContext>>>,
+    pub all_fan_outs: Rc<HashMap<String, Rc<HashMap<String, i64>>>>,
+    pub binding_fan_outs: Rc<HashMap<String, i64>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -130,6 +132,8 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     recursive_type_set: v2_rt::rc_empty_map::<bool>(),
     fielded_variants: v2_rt::rc_empty_map::<bool>(),
     value_contexts: v2_rt::rc_empty_map::<Rc<ValueContext>>(),
+    all_fan_outs: v2_rt::rc_empty_map::<Rc<HashMap<String, i64>>>(),
+    binding_fan_outs: v2_rt::rc_empty_map::<i64>(),
 })
 }
 

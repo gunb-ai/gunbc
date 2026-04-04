@@ -3020,5 +3020,5 @@ fn typecheck_modules(
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>) -> ResolvedGraph {
   let typed = typecheck(graph: graph, source_indices: source_indices)
   let emit_info = build_emit_graph_info(modules: typed.modules)
-  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info }
+  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info, fan_out_data: empty_map() }
 }

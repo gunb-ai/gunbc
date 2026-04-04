@@ -87,6 +87,12 @@ type EmitGraphInfo {
   // is used, keyed by type name. Emitter reads these instead of locally
   // inspecting resolved children.
   value_contexts: Map<String, ValueContext>
+  // All per-function fan-out data from ownership analysis.
+  // Outer key: func_name, inner key: binding_name, value: fan-out count.
+  all_fan_outs: Map<String, Map<String, Int>>
+  // Current function's binding fan-outs (set per-item in emit_typed_item).
+  // Key: binding_name, value: fan-out count.
+  binding_fan_outs: Map<String, Int>
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -125,7 +131,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_map(),
     fielded_variants: empty_map(),
-    value_contexts: empty_map()
+    value_contexts: empty_map(),
+    all_fan_outs: empty_map(),
+    binding_fan_outs: empty_map()
   }
 }
 

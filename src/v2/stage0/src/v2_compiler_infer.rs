@@ -3337,6 +3337,8 @@ Rc::new(EmitGraphInfo {
     recursive_type_set: all_recursive.clone(),
     fielded_variants: fielded.clone(),
     value_contexts: value_ctxs.clone(),
+    all_fan_outs: v2_rt::rc_empty_map::<Rc<HashMap<String, i64>>>(),
+    binding_fan_outs: v2_rt::rc_empty_map::<i64>(),
 })
 }
 }
@@ -3386,6 +3388,7 @@ Rc::new(ResolvedGraph {
     item_registry: typed.item_registry.clone(),
     diagnostics: typed.diagnostics.clone(),
     emit_graph_info: emit_info.clone(),
+    fan_out_data: Rc::new(HashMap::new()),
 })
 }
 }

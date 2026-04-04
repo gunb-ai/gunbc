@@ -301,9 +301,35 @@ v2_rt::rc_map_insert(acc.clone(), pascal.clone(), true)
 }
 }
 
+pub fn emit_var_clone_or_move(ident: String, name: String, resolved_type: Option<Rc<InferredNode>>, emit_info: Rc<EmitGraphInfo>) -> String {
+    match v2_rt::map_get(&emit_info.binding_fan_outs, name.clone()) {
+        Some(fo) => {
+            if (fo.clone() > 1) {
+                v2_rt::concat(ident.clone(), ".clone()".to_string())
+            } else {
+                ident.clone()
+            }
+        },
+        None => {
+            match resolved_type.clone() {
+                Some(_) => v2_rt::concat(ident.clone(), ".clone()".to_string()),
+                _ => ident.clone(),
+            }
+        },
+    }
+}
+
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
-        let emit_info = build_emit_graph_info(typed.modules.clone());
+        let base_info = build_emit_graph_info(typed.modules.clone());
+let emit_info = Rc::new(EmitGraphInfo {
+    type_summaries: base_info.type_summaries.clone(),
+    recursive_type_set: base_info.recursive_type_set.clone(),
+    fielded_variants: base_info.fielded_variants.clone(),
+    value_contexts: base_info.value_contexts.clone(),
+    all_fan_outs: typed.fan_out_data.clone(),
+    binding_fan_outs: v2_rt::rc_empty_map::<i64>(),
+});
 let rc_types = build_rc_types(emit_info.clone());
 let registry = typed.item_registry.clone();
 let workflow_funcs = collect_workflow_funcs(typed.modules.clone(), registry.clone());
@@ -552,10 +578,22 @@ if (kind.clone() == TypedItemKind::TypedItemTypeDef) {
                     "".to_string()
 } else {
                     if (kind.clone() == TypedItemKind::TypedItemFunction) {
-                        if ((item.uses.clone().len() as i64) > 0) {
-                            emit_func_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), rc_types.clone(), emit_info.clone())
+                        let func_fan_outs = match v2_rt::map_get(&emit_info.all_fan_outs, item.name.clone()) {
+    Some(fm) => fm.clone(),
+    None => Rc::new(HashMap::new()),
+};
+let fn_emit_info = Rc::new(EmitGraphInfo {
+    type_summaries: emit_info.type_summaries.clone(),
+    recursive_type_set: emit_info.recursive_type_set.clone(),
+    fielded_variants: emit_info.fielded_variants.clone(),
+    value_contexts: emit_info.value_contexts.clone(),
+    all_fan_outs: emit_info.all_fan_outs.clone(),
+    binding_fan_outs: func_fan_outs.clone(),
+});
+if ((item.uses.clone().len() as i64) > 0) {
+                            emit_func_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), rc_types.clone(), fn_emit_info.clone())
 } else {
-                            emit_fn_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), rc_types.clone(), emit_info.clone())
+                            emit_fn_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), rc_types.clone(), fn_emit_info.clone())
 }
 } else {
                         if (kind.clone() == TypedItemKind::TypedItemDataDef) {
@@ -1496,10 +1534,7 @@ let ident = emit_ident(name.clone(), RenderTarget::Rust);
 let ident_str = if is_function_value.clone() {
                                 ident.clone()
 } else {
-                                match resolved_type.clone() {
-    Some(_) => v2_rt::concat(ident.clone(), ".clone()".to_string()),
-    _ => ident.clone(),
-}
+                                emit_var_clone_or_move(ident.clone(), name.clone(), resolved_type.clone(), emit_info.clone())
 };
 ident_str.clone()
 }
@@ -1507,10 +1542,7 @@ ident_str.clone()
 },
     None => {
                     let ident = emit_ident(name.clone(), RenderTarget::Rust);
-let ident_str = match resolved_type.clone() {
-    Some(_) => v2_rt::concat(ident.clone(), ".clone()".to_string()),
-    _ => ident.clone(),
-};
+let ident_str = emit_var_clone_or_move(ident.clone(), name.clone(), resolved_type.clone(), emit_info.clone());
 ident_str.clone()
 },
 },

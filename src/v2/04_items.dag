@@ -69,6 +69,10 @@ type ResolvedGraph {
   item_registry: Map<String, ItemInfo>
   diagnostics: List<ErrorNode>
   emit_graph_info: EmitGraphInfo
+  // Per-function binding fan-out counts from ownership analysis.
+  // Outer key: func_name, inner key: binding_name, value: fan-out count.
+  // Populated by compile.dag after ownership stage; empty during infer.
+  fan_out_data: Map<String, Map<String, Int>>
 }
 
 // =========================================================================
