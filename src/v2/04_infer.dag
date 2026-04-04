@@ -692,7 +692,7 @@ fn arg_has_name(arg: Node, name: String) -> Bool {
 // Extract fold init arg info from the method args list.
 // Returns the inferred init arg if the method is fold and has enough args.
 // `method_args` should be the args excluding the collection receiver (already skipped for ExprCall).
-fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_args: Int, scope: InferScope) -> ArgInferResult? {
+fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_args: Int, scope: InferScope, expected: Node?) -> ArgInferResult? {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   if is_fold && method_args |> count >= min_args {
     let init_arg = match method_args |> filter(a => arg_has_name(arg: a, name: "init")) |> first {
@@ -701,7 +701,9 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
     }
     match init_arg {
       Some { value: ia } =>
-        let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: none)
+        // Thread expected from caller context so empty collections (empty_map(), [])
+        // can adopt the expected type instead of falling back to bare nodes.
+        let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: expected)
         Some { value: ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: ia), value: init_result.typed, span: ia.span), diagnostics: init_result.diagnostics } }
       None => none
     }
@@ -1063,7 +1065,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let call_method_args = call_args |> skip(1)
       // Use method name string directly for dispatch.
       let call_method_name = Some { value: func_name }
-      let call_fold_info = extract_fold_init_info(method_name: call_method_name, method_args: call_method_args, min_args: 2, scope: scope)
+      let call_fold_info = extract_fold_init_info(method_name: call_method_name, method_args: call_method_args, min_args: 2, scope: scope, expected: expected)
       let call_fold_acc_type = match call_fold_info {
         Some { value: fi } => match rt_node(n: arg_value(n: fi.typed_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
         None => error_type
@@ -1084,16 +1086,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             []
         }
       } else {
-        // Infer each arg; for lambdas where the formal param is Callable,
-        // thread the Callable's param types to the lambda (P4.7e).
+        // Infer each arg with formal param type as expected context.
+        // Empty collections (empty_map(), []) and lambdas use expected to
+        // adopt the correct type; other expressions ignore it (advisory).
         call_args |> enumerate |> map(pair =>
           let a = pair.second
           let formal_param_type = match sig_params |> skip(pair.first) |> first {
             Some { value: p } => param_node_type_expr(n: p)
             None => type_variable_node(id: "callable_param")
           }
-          let is_callable_formal = formal_param_type.params |> count > 0
-          let expected = if is_callable_formal { Some { value: formal_param_type } } else { none }
+          let expected = Some { value: formal_param_type }
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
           ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
         )
@@ -1307,7 +1309,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
       // Use method name string directly for dispatch.
       let mc_method_name = Some { value: method_name }
-      let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope)
+      let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
       let fold_acc_type = match fold_info {
         Some { value: fi } => match rt_node(n: arg_value(n: fi.typed_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
         None => error_type
@@ -1538,7 +1540,17 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => unit_type
         }
       } else {
-        unit_type
+        // Empty list: adopt expected element type if available.
+        match expected {
+          Some { value: exp } =>
+            if node_is_element_collection(n: exp) {
+              match exp.children |> first {
+                Some { value: elem } => elem
+                None => unit_type
+              }
+            } else { unit_type }
+          None => unit_type
+        }
       }
       let ll_texpr = make_expr_node(expr_data: ExprListLit, children: typed_elements, inferred: Some { value: Resolved { node: named_collection_type(kind_name: "List", element: elem_type_node) } }, span: span)
       InferResult {

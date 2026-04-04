@@ -826,7 +826,7 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
 }
 
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
-    emit_node_type_rc(n.clone(), target.clone(), Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */)
+    emit_node_type_rc(n.clone(), target.clone(), v2_rt::rc_empty_map::<bool>())
 }
 
 pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {

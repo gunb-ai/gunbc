@@ -366,7 +366,7 @@ Some(Rc::new(TypeSummary {
 }),
     field_summaries: build_enum_field_summaries(item.children.clone()),
     field_type_map: v2_rt::rc_empty_map::<String>(),
-    variant_name_set: item.children.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), child.name.clone(), true)),
+    variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), child.name.clone(), true)),
     generic_param_names: gpn.clone(),
 }))
 }

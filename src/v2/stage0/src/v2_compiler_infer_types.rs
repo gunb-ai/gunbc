@@ -1021,7 +1021,7 @@ collect_named_templates(t.return_type.clone(), a2.clone())
 pub fn bridge_placeholder_type_names() -> Rc<HashMap<String, bool>> {
     {
         let type_params = v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "T".to_string(), true), "K".to_string(), true), "V".to_string(), true);
-let n1 = collect_field_template_names(partial_function_templates(), Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */);
+let n1 = collect_field_template_names(partial_function_templates(), v2_rt::rc_empty_map::<bool>());
 let n2 = collect_field_template_names(free_monoid_collection_templates(), n1.clone());
 let n3 = collect_field_template_names(free_monoid_scalar_templates(), n2.clone());
 let n4 = collect_field_template_names(boolean_algebra_collection_templates(), n3.clone());
