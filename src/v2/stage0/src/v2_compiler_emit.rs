@@ -2016,6 +2016,10 @@ match (*frame.expr.clone().expr_data.clone()).clone() {
 } else {
             emit_non_self_call(frame.clone())
 },
+    ExprData::ExprReturn => {
+            let inner = return_value(frame.expr.clone());
+            emit_shared_tco_expr(Rc::new(TcoFrame { expr: inner, scope: frame.scope.clone(), depth: frame.depth.clone() }), fn_name.clone(), emit_self_call_reassign, emit_non_self_call, emit_if, emit_match, emit_let, emit_block, emit_default_return)
+    },
     ExprData::ExprIf => emit_if(frame.clone()),
     ExprData::ExprMatch => emit_match(frame.clone()),
     ExprData::ExprLet => emit_let(frame.clone()),
@@ -2029,6 +2033,7 @@ pub fn is_tco_candidate(texpr: Rc<Node>, func_name: String, source_index: Option
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => (expr_call_func_at(texpr.clone(), source_index.clone()).as_str() == func_name.clone().as_str()),
+    ExprData::ExprReturn => is_tco_candidate(return_value(texpr.clone()), func_name.clone(), source_index.clone()),
     ExprData::ExprIf => {
             let then_cand: bool = is_tco_candidate(if_then_branch(texpr.clone()), func_name.clone(), source_index.clone());
 let else_cand: bool = match if_else_branch(texpr.clone()) {

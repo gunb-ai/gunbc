@@ -1532,6 +1532,7 @@ let last_bad: bool = match ss.clone().last().cloned() {
 }
 }
 },
+    ExprData::ExprReturn => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), true) { __found = true; break; } } __found },
     ExprData::NoExprData => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found },
     _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
 }

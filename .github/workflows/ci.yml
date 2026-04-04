@@ -57,3 +57,6 @@ jobs:
 
       - name: L1 Type Knowledge Ratchet
         run: scripts/l1-ratchet.sh --check
+
+      - name: Stage0 Freshness
+        run: scripts/check-stage0-freshness.sh

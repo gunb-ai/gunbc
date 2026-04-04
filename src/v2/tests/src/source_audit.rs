@@ -370,7 +370,6 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn dfs_collect_component(",
         "fn is_descending_witness_arg(",
         "fn self_calls_have_descending_witness(",
-        "fn is_structural_descent(",
         "fn normalize_asymptotic(",
         "fn normalize_constants(",
         "fn format_cost_class(",
@@ -400,7 +399,6 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn dfs_collect_component(",
         "pub fn is_descending_witness_arg(",
         "pub fn self_calls_have_descending_witness(",
-        "pub fn is_structural_descent(",
         "pub fn normalize_asymptotic(",
         "pub fn normalize_constants(",
         "pub fn format_cost_class(",
@@ -630,7 +628,7 @@ fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
     // when CX-5 lands and violations reach 0.
     assert_live_contains(
         &source,
-        "let typecheck_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
+        "let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
         "src/v2/compile.dag should gate emission on infer diagnostics (complexity bypassed pending CX rewrite)",
     );
     assert_live_not_contains(

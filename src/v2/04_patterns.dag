@@ -19,7 +19,8 @@ import v2.std.core {
   CardOptional,
   ErrorNode, make_error_node,
   VariantNotFound, FieldNotFound, NonExhaustiveMatch,
-  MatchPattern, arm_pattern,
+  MatchPattern, LitPattern, arm_pattern,
+  LiteralValue, LitBool,
   leaf_node, with_optional_cardinality,
   none_type, error_type
 }
@@ -227,6 +228,10 @@ fn check_match_exhaustiveness(
       let covered_set = arms |> fold(init: empty_map(), f: (acc, arm) =>
         match arm_pattern(n: arm) {
           VariantPattern { name: n, parent_enum: _, field_bindings: _ } => map_insert(acc, n, true)
+          LitPattern { value: v } => match v {
+            LitBool { value: b } => if b { map_insert(acc, "True", true) } else { map_insert(acc, "False", true) }
+            _ => acc
+          }
           _ => acc
         }
       )
