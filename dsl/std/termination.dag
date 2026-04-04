@@ -76,11 +76,17 @@ type DescentEvidence
 // meet(NonIncreasing, Unknown) = Unknown
 
 fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-  match (a, b) {
-    (Strict, Strict) => Strict
-    (Strict, NonIncreasing) => NonIncreasing
-    (NonIncreasing, Strict) => NonIncreasing
-    (NonIncreasing, NonIncreasing) => NonIncreasing
+  match a {
+    Strict => match b {
+      Strict => Strict
+      NonIncreasing => NonIncreasing
+      _ => Unknown
+    }
+    NonIncreasing => match b {
+      Strict => NonIncreasing
+      NonIncreasing => NonIncreasing
+      _ => Unknown
+    }
     _ => Unknown
   }
 }

@@ -46,9 +46,13 @@ $STAGE0_CMD compile \
     echo 'mod compiler_tests;'
 } > "$OUTPUT_DIR/src/lib.rs"
 
-# Copy hand-maintained files from committed stage0
+# Copy hand-maintained files from committed stage0.
+# These files have manual additions (FF-9 import resolution in main.rs,
+# runtime shims in v2_rt.rs, test harness in compiler_tests.rs) that
+# the emitter doesn't produce.
 cp "$STAGE0_DIR/src/v2_rt.rs" "$OUTPUT_DIR/src/v2_rt.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/compiler_tests.rs" "$OUTPUT_DIR/src/compiler_tests.rs" 2>/dev/null || true
+cp "$STAGE0_DIR/src/main.rs" "$OUTPUT_DIR/src/main.rs" 2>/dev/null || true
 
 echo "=== Copying to stage0 ==="
 for f in "$OUTPUT_DIR"/src/*.rs; do

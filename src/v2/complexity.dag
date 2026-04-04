@@ -2561,8 +2561,8 @@ fn build_call_graph(func_entries: List<FuncEntry>) -> CallGraph {
       None => []
     }
     CallGraphAcc {
-      forward: map_insert(acc.forward, edge.caller, concat(forward_neighbors, [edge.callee])),
-      reverse: map_insert(acc.reverse, edge.callee, concat(reverse_neighbors, [edge.caller]))
+      forward: map_insert(acc.forward, edge.caller, list_push(forward_neighbors, edge.callee)),
+      reverse: map_insert(acc.reverse, edge.callee, list_push(reverse_neighbors, edge.caller))
     }
   )
   CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }

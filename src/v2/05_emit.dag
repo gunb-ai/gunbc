@@ -68,7 +68,7 @@ import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope
 }
-import v2.compiler.infer_emit_info { TypeSummary, EmitGraphInfo, TypeRendering }
+import v2.compiler.infer_emit_info { TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering }
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.compiler.languages {
@@ -475,7 +475,7 @@ fn emit_data_value_json(value: Node, source_index: NewlineIndex?) -> String {
       concat("{", field_strs |> join(separator: ", "), "}")
     }
     ExprVar { binding_kind: _ } => concat("\"", escape_json_string(s: expr_var_name_at(texpr: value, source_index: source_index)), "\"")
-    _ => "<<<UNSUPPORTED_MOCK_EXPR>>>"
+    _ => "\"compile_error!(unsupported mock expression)\""
   }
 }
 
@@ -901,9 +901,8 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
     // even without children — emit with "_" placeholders.
     // Uses is_container_type (name check) because node_is_keyed/element_collection
     // require children > 0 and fail for bare containers from empty_map.
-    let has_map_template = target_container_template(target: target, kind: "map") != none
     let has_container_template = target_container_template(target: target, kind: to_snake(name: n.name)) != none
-    let bare_is_map = is_container_type(name: n.name) && has_map_template
+    let bare_is_map = is_container_type(name: n.name) && to_snake(name: n.name) == "map"
     let bare_is_collection = is_container_type(name: n.name) && !bare_is_map
     let param_count = n.params |> count
     let base = if bare_is_map {
@@ -1012,12 +1011,25 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       _ => concat("(", first_str, ", ", second_str, ")")
     }
   } else if n.name != "" {
-    // Named product type — route through type map (invariant: all names via language spec).
-    let mapped = emit_primitive_type(name: n.name, target: target)
-    if emit_map_has(m: rc_types, key: n.name) {
-      wrap_shared_type(target: target, inner: mapped)
+    // Named product — check for container template before bare-name fallback.
+    // After alias expansion, resolved Conj nodes like FreeMonoid have their
+    // params stripped. Route through container path so FreeMonoid → Vec<_>.
+    let snake = to_snake(name: n.name)
+    let has_template = target_container_template(target: target, kind: snake) != none
+    if has_template {
+      let base = if snake == "map" {
+        emit_map_type(key_type: "_", val_type: "_", target: target)
+      } else {
+        emit_container(kind: snake, inner: "_", target: target)
+      }
+      if emit_map_has(m: rc_types, key: n.name) {
+        wrap_shared_type(target: target, inner: base)
+      } else { base }
     } else {
-      mapped
+      let mapped = emit_primitive_type(name: n.name, target: target)
+      if emit_map_has(m: rc_types, key: n.name) {
+        wrap_shared_type(target: target, inner: mapped)
+      } else { mapped }
     }
   } else {
     // Anonymous product: Rust renders as tuple, others as error marker.
@@ -1070,9 +1082,303 @@ fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
   }
 }
 
-// render_type is implemented in stage0 Rust (v2_compiler_emit.rs).
-// The .dag source will use this once the stage0 bootstrap reaches
-// fixed point. Until then, stage0 Rust is the authority.
+// =========================================================================
+// TypeRendering builder + renderer
+// =========================================================================
+
+fn tr_default() -> TypeRendering {
+  TypeRendering {
+    type_name: "", element: none, key: none, value: none,
+    params: [], return_type: none, inner: none, generic_args: [],
+    shared: false, boxed: false, is_tuple: false, is_error: false, error_label: ""
+  }
+}
+
+fn build_type_rendering(n: Node, rc_types: Map<String, Bool>, recursive_types: Map<String, Bool>) -> TypeRendering {
+  let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
+  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+
+  // Error / unresolved type variable
+  if (n_is_type_var || n_is_error) && n.children |> count == 0 {
+    return TypeRendering {
+      type_name: if n_is_error { "CompilerError" } else { "TypeVariable" },
+      is_error: true, error_label: n.name,
+      element: none, key: none, value: none, params: [], return_type: none,
+      inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false
+    }
+  }
+
+  // Callable: fn(A, B) -> R
+  if n.name == "Callable" {
+    let param_renderings = n.params |> map(p => build_type_rendering(n: param_node_type_expr(n: p), rc_types: rc_types, recursive_types: recursive_types))
+    let ret = match n.inferred {
+      Some { value: Resolved { node: rt } } => Some { value: build_type_rendering(n: rt, rc_types: rc_types, recursive_types: recursive_types) }
+      _ => none
+    }
+    return TypeRendering {
+      type_name: "Callable", params: param_renderings, return_type: ret,
+      element: none, key: none, value: none, inner: none, generic_args: [],
+      shared: false, boxed: false, is_tuple: false, is_error: false, error_label: ""
+    }
+  }
+
+  // Optional wrapping
+  let is_optional = n.return_cardinality == CardOptional
+  if is_optional {
+    let inner_tr = build_type_rendering(n: with_required_cardinality(n: n), rc_types: rc_types, recursive_types: recursive_types)
+    return TypeRendering {
+      type_name: "optional", inner: Some { value: inner_tr },
+      element: none, key: none, value: none, params: [], return_type: none,
+      generic_args: [], shared: false, boxed: false, is_tuple: false, is_error: false, error_label: ""
+    }
+  }
+
+  // Dispatch on connective
+  let is_conj = n.connective == Conj
+  let is_disj = n.connective == Disj
+  if !is_conj && !is_disj {
+    build_type_rendering_leaf(n: n, rc_types: rc_types, recursive_types: recursive_types)
+  } else if is_conj {
+    build_type_rendering_conj(n: n, rc_types: rc_types, recursive_types: recursive_types)
+  } else {
+    build_type_rendering_disj(n: n, rc_types: rc_types)
+  }
+}
+
+fn build_type_rendering_leaf(n: Node, rc_types: Map<String, Bool>, recursive_types: Map<String, Bool>) -> TypeRendering {
+  let shared = emit_map_has(m: rc_types, key: n.name)
+  if n.children |> count == 0 {
+    // Bare type (no children)
+    let bare_is_map = is_container_type(name: n.name) && to_snake(name: n.name) == "map"
+    let bare_is_collection = is_container_type(name: n.name) && !bare_is_map
+    let has_container_template = match target_container_template(target: Rust, name: to_snake(name: n.name)) {
+      Some { value: _ } => true
+      None => false
+    }
+    let param_count = n.params |> count
+    if bare_is_map {
+      TypeRendering { type_name: "map", key: Some { value: leaf_type_rendering(name: "_") }, value: Some { value: leaf_type_rendering(name: "_") }, shared: shared, element: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+    } else if bare_is_collection {
+      TypeRendering { type_name: to_snake(name: n.name), element: Some { value: leaf_type_rendering(name: "_") }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+    } else if has_container_template && param_count == 1 {
+      let inner = match n.params |> first {
+        Some { value: p } => build_type_rendering(n: param_node_type_expr(n: p), rc_types: rc_types, recursive_types: recursive_types)
+        None => leaf_type_rendering(name: "_")
+      }
+      TypeRendering { type_name: to_snake(name: n.name), element: Some { value: inner }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+    } else if n.name == "Tuple" {
+      TypeRendering { type_name: "Tuple", is_tuple: true, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_error: false, error_label: "" }
+    } else {
+      TypeRendering { type_name: n.name, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+    }
+  } else {
+    // Leaf with children
+    let is_map = node_is_keyed_collection(n: n)
+    if is_map {
+      let k = match n.children |> first {
+        Some { value: kn } => build_type_rendering(n: kn, rc_types: rc_types, recursive_types: recursive_types)
+        None => leaf_type_rendering(name: "_")
+      }
+      let v = match n.children |> skip(1) |> first {
+        Some { value: vn } => build_type_rendering(n: vn, rc_types: rc_types, recursive_types: recursive_types)
+        None => leaf_type_rendering(name: "_")
+      }
+      TypeRendering { type_name: n.name, key: Some { value: k }, value: Some { value: v }, shared: shared, element: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+    } else if n.children |> count == 1 {
+      let child_tr = match n.children |> first {
+        Some { value: child } => build_type_rendering(n: child, rc_types: rc_types, recursive_types: recursive_types)
+        None => leaf_type_rendering(name: "_")
+      }
+      let is_container = node_is_collection(n: n)
+      if is_container {
+        TypeRendering { type_name: to_snake(name: n.name), element: Some { value: child_tr }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      } else {
+        TypeRendering { type_name: n.name, generic_args: [child_tr], shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      }
+    } else {
+      // Multi-child leaf: Tuple or generic type
+      let child_trs = n.children |> map(c => build_type_rendering(n: c, rc_types: rc_types, recursive_types: recursive_types))
+      if n.name == "Tuple" {
+        TypeRendering { type_name: "Tuple", is_tuple: true, params: child_trs, element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
+      } else {
+        TypeRendering { type_name: n.name, generic_args: child_trs, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      }
+    }
+  }
+}
+
+fn build_type_rendering_conj(n: Node, rc_types: Map<String, Bool>, recursive_types: Map<String, Bool>) -> TypeRendering {
+  let shared = emit_map_has(m: rc_types, key: n.name)
+
+  // Refined: unwrap to base type
+  if n.name == "Refined" {
+    return match n.children |> first {
+      Some { value: base } => build_type_rendering(n: base, rc_types: rc_types, recursive_types: recursive_types)
+      None => TypeRendering { type_name: "Refined", element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false, is_error: false, error_label: "" }
+    }
+  }
+
+  // Tuple
+  if n.name == "Tuple" {
+    let first_child = match n.children |> first {
+      Some { value: c } => if c.inferred != none { build_type_rendering(n: rt_type(n: c), rc_types: rc_types, recursive_types: recursive_types) } else { build_type_rendering(n: c, rc_types: rc_types, recursive_types: recursive_types) }
+      None => leaf_type_rendering(name: "_")
+    }
+    let second_child = match n.children |> skip(1) |> first {
+      Some { value: c } => if c.inferred != none { build_type_rendering(n: rt_type(n: c), rc_types: rc_types, recursive_types: recursive_types) } else { build_type_rendering(n: c, rc_types: rc_types, recursive_types: recursive_types) }
+      None => leaf_type_rendering(name: "_")
+    }
+    return TypeRendering { type_name: "Tuple", is_tuple: true, params: [first_child, second_child], element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
+  }
+
+  // Named product — check container template
+  if n.name != "" {
+    let snake = to_snake(name: n.name)
+    let has_template = match target_container_template(target: Rust, name: snake) {
+      Some { value: _ } => true
+      None => false
+    }
+    if has_template {
+      if snake == "map" {
+        return TypeRendering { type_name: "map", key: Some { value: leaf_type_rendering(name: "_") }, value: Some { value: leaf_type_rendering(name: "_") }, shared: shared, element: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      } else {
+        return TypeRendering { type_name: snake, element: Some { value: leaf_type_rendering(name: "_") }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      }
+    }
+    return TypeRendering { type_name: n.name, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+  }
+
+  // Anonymous product
+  let field_renderings = n.children |> map(child =>
+    if child.inferred != none {
+      build_type_rendering(n: rt_type(n: child), rc_types: rc_types, recursive_types: recursive_types)
+    } else {
+      TypeRendering { type_name: "", is_error: true, error_label: "anonymous product field missing inferred", element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false }
+    }
+  )
+  TypeRendering { type_name: "", params: field_renderings, is_tuple: true, element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
+}
+
+fn build_type_rendering_disj(n: Node, rc_types: Map<String, Bool>) -> TypeRendering {
+  let shared = emit_map_has(m: rc_types, key: n.name)
+  if n.name != "" {
+    TypeRendering { type_name: n.name, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+  } else {
+    TypeRendering { type_name: "", is_error: true, error_label: "anonymous coproduct reached TypeRendering builder", element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false }
+  }
+}
+
+fn render_type(tr: TypeRendering, target: RenderTarget) -> String {
+  if tr.is_error {
+    let label = if tr.error_label == "" { tr.type_name } else { tr.error_label }
+    match target {
+      Rust => concat("panic!(\"unresolved ", label, " type reached emit\")")
+      _ => concat("__EMIT_BUG_UNRESOLVED_", label, "__")
+    }
+  } else {
+    let base = render_type_base(tr: tr, target: target)
+    if tr.shared { wrap_shared_type(target: target, inner: base) } else { base }
+  }
+}
+
+fn render_type_base(tr: TypeRendering, target: RenderTarget) -> String {
+  // Callable
+  if tr.type_name == "Callable" {
+    let param_strs = tr.params |> map(p => render_type(tr: p, target: target))
+    let param_str = param_strs |> join(separator: ", ")
+    let ret_str = match tr.return_type {
+      Some { value: rt } => render_type(tr: rt, target: target)
+      None => match target {
+        Go => ""
+        Python => "None"
+        _ => "()"
+      }
+    }
+    return match target {
+      Go => if ret_str == "" { concat("func(", param_str, ")") } else { concat("func(", param_str, ") ", ret_str) }
+      Python => concat("Callable[[", param_str, "], ", ret_str, "]")
+      Rust => concat("Rc<dyn Fn(", param_str, ") -> ", ret_str, ">")
+      _ => concat("Fn(", param_str, ") -> ", ret_str)
+    }
+  }
+  // Optional
+  if tr.type_name == "optional" {
+    match tr.inner {
+      Some { value: inner } =>
+        let inner_str = render_type(tr: inner, target: target)
+        return emit_container(kind: "optional", inner: inner_str, target: target)
+      None => {}
+    }
+  }
+  // Tuple
+  if tr.is_tuple {
+    if tr.params |> count > 0 {
+      let parts = tr.params |> map(p => render_type(tr: p, target: target))
+      return match target {
+        Go => if parts |> count == 2 {
+          match parts |> first {
+            Some { value: first_part } => match parts |> skip(1) |> first {
+              Some { value: second_part } => concat("struct{ First ", first_part, "; Second ", second_part, " }")
+              None => concat("struct{ ", parts |> join(separator: "; "), " }")
+            }
+            None => concat("struct{ ", parts |> join(separator: "; "), " }")
+          }
+        } else { concat("struct{ ", parts |> join(separator: "; "), " }") }
+        Python => concat("Tuple[", parts |> join(separator: ", "), "]")
+        _ => concat("(", parts |> join(separator: ", "), ")")
+      }
+    } else {
+      return match target {
+        Python => "Tuple"
+        Go => "struct{}"
+        _ => "()"
+      }
+    }
+  }
+  // Map
+  match tr.key {
+    Some { value: k } => match tr.value {
+      Some { value: v } =>
+        let key_str = render_type(tr: k, target: target)
+        let val_str = render_type(tr: v, target: target)
+        return emit_map_type(key_type: key_str, val_type: val_str, target: target)
+      None => {}
+    }
+    None => {}
+  }
+  // Container
+  match tr.element {
+    Some { value: elem } =>
+      let inner_str = render_type(tr: elem, target: target)
+      return emit_container(kind: tr.type_name, inner: inner_str, target: target)
+    None => {}
+  }
+  // Generic args
+  if tr.generic_args |> count > 0 {
+    let base = emit_primitive_type(name: tr.type_name, target: target)
+    let arg_strs = tr.generic_args |> map(a => render_type(tr: a, target: target))
+    let args_joined = arg_strs |> join(separator: ", ")
+    return match target {
+      Python => concat(base, "[", args_joined, "]")
+      _ => concat(base, "<", args_joined, ">")
+    }
+  }
+  // Anonymous product
+  if tr.type_name == "" && tr.params |> count > 0 {
+    let parts = tr.params |> map(p => render_type(tr: p, target: target))
+    match target {
+      Rust => if parts |> count == 1 {
+        match parts |> first {
+          Some { value: single } => return single
+          None => {}
+        }
+      } else { return concat("(", parts |> join(separator: ", "), ")") }
+      _ => return "__EMIT_BUG_ANONYMOUS_CONJ__"
+    }
+  }
+  // Leaf
+  emit_primitive_type(name: tr.type_name, target: target)
+}
 
 // =========================================================================
 // Shared item-level helpers -- identical across all backends
@@ -1517,7 +1823,7 @@ fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> St
 fn emit_error_expr(message: String, target: RenderTarget) -> String {
   let msg = emit_string_literal(s: message, suffix: "")
   match target {
-    Rust => concat("compile_error!(", msg, ")")
+    Rust => concat("panic!(", msg, ")")
     Go => concat("panic(", msg, ")")
     Python => concat("raise RuntimeError(", msg, ")")
     Dag => concat("error(", msg, ")")

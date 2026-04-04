@@ -2,6 +2,7 @@
 
 use crate::helpers::*;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
@@ -4101,4 +4102,216 @@ fn make() -> Outer {
         "String field should not be Rc-wrapped, got:\n{}",
         content
     );
+}
+
+// ── DEBUG: Callable field rendering ───────────────────────────────────
+
+#[test]
+fn callable_field_renders_as_fn_type() {
+    let source = "
+module test
+
+type Foo {
+  length: fn() -> Int
+  transform: fn(String) -> String
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    eprintln!("=== EMITTED ===\n{}\n=== END ===", content);
+    assert!(
+        content.contains("Rc<dyn Fn() -> i64>"),
+        "fn() -> Int field should render as Rc<dyn Fn() -> i64>, got:\n{}",
+        content
+    );
+}
+
+#[test]
+fn generic_type_args_preserved_in_rendering() {
+    // Tuple type args
+    let source = "
+module test
+
+type Foo<T> {
+  items: List<Tuple<Int, T>>
+}
+
+type Bar<K, V> {
+  data: Map<K, V>
+  transform: fn(K, V) -> Map<K, V>
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    eprintln!("=== EMITTED ===\n{}\n=== END ===", content);
+    // Tuple renders as (i64, T), not bare Tuple
+    assert!(
+        !content.contains(": Tuple") && !content.contains("<Tuple>"),
+        "Tuple should not appear as bare type name, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("(i64, T)"),
+        "Tuple<Int, T> should render as (i64, T), got:\n{}",
+        content
+    );
+}
+
+// ── TypeRendering equivalence validation ──────────────────────────────
+//
+// Validates that build_type_rendering + render_type produces the same
+// output as the old emit_node_type_rc path for all types in the DSL.
+// This is the safety net for the TypeRendering switchover.
+
+#[test]
+fn type_rendering_equivalence() {
+    use v2_compiler::v2_compiler_emit::{
+        build_type_rendering, render_type, emit_node_type_rc,
+    };
+    use v2_compiler::v2_compiler_emit_rust::build_rc_types;
+    use v2_compiler::v2_compiler_infer::build_emit_graph_info;
+    use v2_compiler::v2_std_core::Node;
+
+    let ws = workspace_root();
+    let dsl_dir = ws.join("dsl");
+    let mut dsl_sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect_dag_sources(&ws, &dsl_dir, &mut dsl_sources);
+
+    // Run the pipeline to get the resolved graph
+    let frontend = v2_compiler::v2_compiler_compile::front_end_sources(
+        Rc::new(dsl_sources),
+    );
+    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let norm = v2_compiler::v2_compiler_normalize::normalize_graph(graph);
+    let source_indices = Rc::new(HashMap::new());
+    let typed = v2_compiler::v2_compiler_infer::reconcile(
+        norm.graph.clone(),
+        source_indices,
+    );
+
+    // Build emit info and rc_types
+    let emit_info = build_emit_graph_info(typed.modules.clone());
+    let rc_types = build_rc_types(emit_info.clone());
+    let recursive_types = emit_info.recursive_type_set.clone();
+
+    // Walk all type nodes and validate
+    let mut checked = 0usize;
+    let mut mismatches: Vec<String> = Vec::new();
+
+    fn walk_type_nodes(
+        node: &Rc<Node>,
+        rc_types: &Rc<HashMap<String, bool>>,
+        recursive_types: &Rc<HashMap<String, bool>>,
+        checked: &mut usize,
+        mismatches: &mut Vec<String>,
+    ) {
+        if !node.name.is_empty() || !node.children.is_empty() {
+            let old = emit_node_type_rc(
+                node.clone(),
+                RenderTarget::Rust,
+                rc_types.clone(),
+            );
+            let tr = build_type_rendering(
+                node.clone(),
+                rc_types.clone(),
+                recursive_types.clone(),
+            );
+            let new = render_type(tr, RenderTarget::Rust);
+            *checked += 1;
+            if old != new {
+                mismatches.push(format!(
+                    "  '{}': old={:?} new={:?}",
+                    node.name, old, new
+                ));
+            }
+        }
+        for child in node.children.iter() {
+            walk_type_nodes(child, rc_types, recursive_types, checked, mismatches);
+        }
+    }
+
+    for module in typed.modules.iter() {
+        for item in module.items.iter() {
+            walk_type_nodes(
+                item,
+                &rc_types,
+                &recursive_types,
+                &mut checked,
+                &mut mismatches,
+            );
+        }
+    }
+
+    eprintln!(
+        "TypeRendering equivalence: checked {} type nodes, {} mismatches",
+        checked,
+        mismatches.len()
+    );
+    if !mismatches.is_empty() {
+        for m in mismatches.iter().take(20) {
+            eprintln!("{}", m);
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "TypeRendering produced {} mismatches out of {} checked — \
+         build_type_rendering + render_type must match emit_node_type_rc exactly",
+        mismatches.len(),
+        checked,
+    );
+}
+
+// ── Targeted TypeRendering correctness tests ─────────────────────────
+
+#[test]
+fn type_rendering_bare_list_not_map() {
+    use v2_compiler::v2_compiler_emit::{build_type_rendering, render_type};
+    use v2_compiler::v2_std_core::leaf_node;
+
+    let list_node = leaf_node("List".to_string());
+    let rc_types = Rc::new(HashMap::from([("List".to_string(), true)]));
+    let recursive_types = Rc::new(HashMap::new());
+
+    let tr = build_type_rendering(list_node, rc_types, recursive_types);
+    let rendered = render_type(tr, RenderTarget::Rust);
+
+    assert!(rendered.contains("Vec"), "bare List rendered as {:?}, expected Vec<_>", rendered);
+    assert!(!rendered.contains("HashMap"), "bare List incorrectly rendered as HashMap: {:?}", rendered);
+}
+
+#[test]
+fn type_rendering_bare_map_stays_hashmap() {
+    use v2_compiler::v2_compiler_emit::{build_type_rendering, render_type};
+    use v2_compiler::v2_std_core::leaf_node;
+
+    let map_node = leaf_node("Map".to_string());
+    let rc_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
+    let recursive_types = Rc::new(HashMap::new());
+
+    let tr = build_type_rendering(map_node, rc_types, recursive_types);
+    let rendered = render_type(tr, RenderTarget::Rust);
+
+    assert!(rendered.contains("HashMap"), "bare Map rendered as {:?}, expected HashMap<_, _>", rendered);
+}
+
+#[test]
+fn type_rendering_named_conj_with_container_template() {
+    use v2_compiler::v2_compiler_emit::{build_type_rendering, render_type};
+    use v2_compiler::v2_std_core::{leaf_node, Connective};
+
+    let free_monoid_conj = Rc::new(v2_compiler::v2_std_core::Node {
+        name: "FreeMonoid".to_string(),
+        connective: Connective::Conj,
+        ..(*leaf_node("".to_string())).clone()
+    });
+    let rc_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
+    let recursive_types = Rc::new(HashMap::new());
+
+    let tr = build_type_rendering(free_monoid_conj, rc_types, recursive_types);
+    let rendered = render_type(tr, RenderTarget::Rust);
+
+    assert!(rendered.contains("Vec"), "FreeMonoid Conj rendered as {:?}, expected Vec<_> via container template", rendered);
+    assert!(!rendered.contains("FreeMonoid"), "FreeMonoid Conj rendered bare name instead of container template: {:?}", rendered);
 }
