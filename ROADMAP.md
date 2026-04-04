@@ -26,12 +26,12 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 ```
             ┌─ Lane 1: M2 (boundary sufficiency) ──┐
 M1 COMPLETE─┤                                       ├→ M4 (structural identity)
-Bootstrap D ┼─ Lane 2: E-track (emit + LanguageSpec)┘       └→ M5 → M6 → M7
+Bootstrap D ┼─ Lane 2: CG (codegen correctness) ───┘       └→ M5 → M6 → M7
   COMPLETE  ├─ Lane 3: CX (164 → 0)
             └─ PERF (continuous — parallel to all lanes)
 
 Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
-Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, languages
+Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, ownership, languages
 Lane 3 owns: complexity, dsl/std/
 PERF owns: performance ratchets, bootstrap convergence tests, timing budgets
 M4 follows Lanes 1+2 (needs structural facts + clean render path)
@@ -56,10 +56,13 @@ when it self-compiles (fixed point convergence). **Blocks all other
 lanes from editing stage0 Rust directly.**
 
 Note: "zero manual patches" means zero patches to *generated* files.
-Five hand-maintained files are still copied during regeneration
+Nine hand-maintained files are still copied during regeneration
 (main.rs, v2_rt.rs, compiler_tests.rs, extdeps_languages_dag_syntax.rs,
-v2_coercion.rs). Eliminating these is tracked as future work under
-M5-full (language plugin extraction).
+v2_coercion.rs, v2_compiler_infer_method.rs, std_types.rs,
+v2_compiler_tokenize.rs, extdeps_languages_rust_emit.rs).
+The last five are thread-local cache shims for performance;
+eliminating these is tracked as future work under M5-full
+(language plugin extraction).
 
 ## CI Gates
 
@@ -102,9 +105,8 @@ Two stacked failures, not one. First, some target-language facts are
 missing (TLC-1 through TLC-4). Second, facts that exist upstream are
 lost before emit, so emission compensates with heuristics. The deepest
 bug is upstream information loss, not the leaf workaround. Every
-remaining emit workaround should be treated as either an
-inference-boundary bug or a missing LanguageSpec/coercion fact — never
-a standalone emitter patch.
+remaining emit workaround is either an inference-boundary bug (M2) or
+a missing codegen authority (CG) — never a standalone emitter patch.
 
 ---
 
@@ -149,45 +151,72 @@ Open items:
 - [ ] Refine fold accumulators structurally via `is_fully_resolved`
 - [ ] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
-### Explicit ownership and identity
-
-- [x] Ownership analysis wired into Rust emitter: fan-out=1 function params move instead of clone
-- [ ] VarBindingKind flows through ownership analysis to emission (FF-1 completion)
-  - Unblocks let-binding moves (name collision with lambda params in flat movable map)
-  - Unblocks match-bound variable handling (&T vs Rc<T> distinction)
-- [ ] Clone semantics in LanguageSpec (Rust `.clone()` is hardcoded, not data-driven)
-- [ ] Explicit parent-enum ownership facts through resolve/infer/emit
-- [ ] Transport/config: one `.dag` authority for transport schema (35+ redundant sites)
-
 ### Acceptance
 
 No fabricated type args, no generic/wrong fallback return types, no
-suffix/name scans to recover ownership. Fallback count promoted to CI.
+error-typed children reaching emit. Fallback count promoted to CI.
+Ownership and clone correctness tracked under CG lane.
 
 ---
 
-## E-track: Emit Boundary + LanguageSpec (Lane 2)
+## CG: Codegen Correctness + Optimality (Lane 2)
 
-**Root cause:** Emission rediscovers facts available upstream.
-TypeRendering is the boundary fix. LanguageSpec/coercion is the
-authority fix. TLC-1 through TLC-4 are the concrete expression-level
-gaps.
+**Root cause:** Codegen decisions (type rendering, sharing, ownership,
+clone, expression semantics) are scattered across emitter heuristics
+instead of derived from structural authorities. This produces
+correct-but-suboptimal code and blocks new backends.
 
-### TypeRendering boundary (E0c)
+One root cause, two symptoms:
+1. Facts that exist upstream are lost before emit — emission compensates
+   with heuristics (411 `rc_types` threading sites, 28 hardcoded
+   `.clone()` decisions in the Rust emitter alone)
+2. Target-language facts are missing entirely — expression-level gaps
+   (TLC-1..4) force per-backend special cases
+
+### Completed (FF-1: ownership analysis)
+
+- [x] Ownership analysis wired into Rust emitter: fan-out=1 function params move instead of clone
+- [x] VarBindingKind flows through ownership analysis to emission
+  - Let-binding moves: BindingUsage carries binding_kind, is_owned_local filter replaces params set
+  - Match-bound variable handling: MatchBoundBinding variant excludes &T refs from movable set
+
+### CG-1: Authority consolidation
+
+Single source of truth for each codegen decision. Kill dual authorities
+and heuristic fallbacks.
+
+**Type rendering**
 
 `build_type_rendering` + `render_type` replaces scattered
 `emit_node_type_rc()`. 2757 nodes validated with 0 mismatches.
-Dual authority remains (`emit_node_type_rc` still live).
+Dual authority remains (`emit_node_type_rc` still live, 20+ call sites).
 
-- [ ] Delete `emit_node_type_rc` / old type rendering path
-- [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
+- [ ] Delete `emit_node_type_rc` / old type rendering path (20+ call sites → 0)
 - [ ] `emit_primitive_type` fail-closed (no pass-through on miss)
-- [ ] TypeRendering dissolves into coercion engine (M5)
 
-### Expression-level emit semantics (TLC-1..4)
+**Sharing and ownership**
 
-These are the concrete gaps blocking new backends. Each should be a
-LanguageSpec authority, not emitter special cases.
+- [ ] `rc_types` derived from ValueContext (`is_constant` → no wrap)
+- [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
+- [ ] `is_constant` computation with consumer
+- [ ] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
+- [ ] Explicit parent-enum ownership facts through resolve/infer/emit
+
+**Value context**
+
+`EmitGraphInfo` carries `value_contexts: Map<String, ValueContext>`
+with four kinds: ConstantData (immutable lookup table), RuntimeValue
+(heap-allocated, needs per-language wrapper), SpecificationWitness
+(structural fact, not runtime data), CallableValue (function type).
+Per-language emission reads ValueContext × LanguageSpec. Partially
+landed (`has_fn_fields` precomputed).
+
+- [ ] ValueContext fully consumed by all emission sites
+
+### CG-2: Expression-level gap closure (TLC-1..4)
+
+Each gap is a missing LanguageSpec fact. Closing them unblocks new
+backends.
 
 - [ ] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
   must render as `name()`, not bare `name`. The callable-vs-value
@@ -203,7 +232,16 @@ LanguageSpec authority, not emitter special cases.
   with incomplete inference (Rust turbofish) should model annotation
   needs as LanguageSpec properties.
 
-### M5-early: coercion via TypeRendering
+### CG-3: Parameterization
+
+Make emission fully data-driven. Adding a backend = adding data.
+
+- [ ] Transport/config: one `.dag` authority (35+ redundant sites → 1)
+- [ ] LanguageSpec completion — all target-language facts data-driven
+- [ ] TypeRendering dissolves into coercion engine
+- [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
+
+### Coercion infrastructure (reference)
 
 `build_type_rendering` reads coercion data from `.dag` declarations:
 - `TypeCheckpoint` (primitives) from language `types.dag`
@@ -214,32 +252,58 @@ Shared schema in `std/coercion.dag`; per-language instances in
 `extdeps/languages/{rust,python,go}/types.dag`. Design doc:
 [docs/coercion-design.md](docs/coercion-design.md).
 
-### ValueContext (E0b)
-
-The graph doesn't carry HOW a value is used, only WHAT it is.
-`EmitGraphInfo` carries `value_contexts: Map<String, ValueContext>`
-with four kinds: ConstantData (immutable lookup table), RuntimeValue
-(heap-allocated, needs per-language wrapper), SpecificationWitness
-(structural fact, not runtime data), CallableValue (function type).
-Per-language emission reads ValueContext × LanguageSpec. Partially
-landed (`has_fn_fields` precomputed); `rc_types` authority should
-derive from ValueContext (`is_constant` → no wrap).
-
-- [ ] `rc_types` authority derived from ValueContext
-- [ ] `is_constant` computation with consumer
-
-### LanguageSpec completion
-
-LanguageSpec is designed but underutilized — backends hardcode values
-the spec provides. Full parameterization of expression/statement
-emission (P1-B) depends on LanguageSpec carrying all target-language
-facts.
-
 ### Acceptance
 
-Zero escape hatches in type rendering. No fabricated names. Adding a
-backend requires only data, no emission logic. No partial metadata
-passes — every new fact layer must have a consumer in the same change.
+For each target language, the compiler must prove:
+
+1. **Correctness**: emitted code compiles and passes the full test suite
+   with zero manual patches or escape hatches.
+2. **Optimality**: no unnecessary clone, copy, or allocation — every
+   sharing decision traces to a structural fact (TypeRendering,
+   ValueContext, or LanguageSpec) and can be audited. Emitted code
+   should be what a competent human would write by hand.
+3. **Completeness**: every codegen decision derives from exactly one
+   structural authority — no heuristic fallbacks, no dual authorities,
+   no hardcoded target-language knowledge in the emitter.
+4. **Backend independence**: adding a new target language requires only
+   LanguageSpec + coercion data files, zero emission logic changes.
+
+### Proof mechanism: structural coverage by construction
+
+The .dag input language is decidable and Node-bounded, so the space
+of structural forms reaching the emitter is finite. Correctness is
+proved by construction over this finite algebra, not by post-hoc
+validation of specific programs.
+
+**Emission algebra.** The emitter's input space is the product of
+`(NodeKind × TypeForm × Cardinality)` triples that survive type
+checking. This set is enumerable from the .dag type definitions
+themselves — it is the compiler's own structural vocabulary.
+
+**Structural induction on Node depth.** Node is the only recursive
+type, so the proof has two parts:
+- *Base case*: every leaf form (literal, variable ref, constant) emits
+  valid target code for all type forms.
+- *Inductive step*: if children emit valid code, the parent node's
+  assembly emits valid code. This holds when every assembly decision
+  (clone, wrap, annotate) reads from a structural authority rather
+  than a heuristic — which is exactly what CG-1 through CG-3 enforce.
+
+**Exhaustive form coverage.** A test generator synthesizes one minimal
+`.dag` program per element of the emission algebra and compiles it to
+every target. This extends `full_dsl_compiles` from "these programs
+compile" to "every structural form compiles." The generator is
+derivable from the .dag type definitions, so new forms added to the
+language automatically produce new test cases.
+
+**LanguageSpec modularity.** Once every emitter decision reads from
+LanguageSpec (CG-3), the proof becomes modular: prove LanguageSpec
+covers every structural form → proves any backend using it is
+complete. Adding a language = adding a LanguageSpec instance + proving
+coverage of the same finite algebra.
+
+No escape hatches in type rendering. No fabricated names. No post-hoc
+passes to fix what construction should have prevented.
 
 ---
 
@@ -383,7 +447,7 @@ types are standard algebraic structures reimplemented ad-hoc.
 | Item | What | Impact | Blocked on |
 |------|------|--------|-----------|
 | P1-A | Result monad unification (58 parser/resolve types → 2 generic) | ~58 types deleted, ~200 sites simplified | Generic type support |
-| P1-B | Emit parameterization (3 backends → 1 parameterized homomorphism) | ~2,500 lines eliminated | M5-early for types |
+| P1-B | Emit parameterization (3 backends → 1 parameterized homomorphism) | ~2,500 lines eliminated | CG-3 |
 | P1-C | String→structural identity (~200 Map<String,X> → edges) | IS M4 Lane 2 | M4 |
 | P1-D | Context/accumulator dedup (10 types → 4) | ~6 types eliminated | Independent |
 | P1-E | Non-Node recursive type dissolution | ~45 variants, ~56 CX violations | CX lane |
