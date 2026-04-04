@@ -775,20 +775,20 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_go_typed_index(base: Rc<Node>, index: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
     {
         let spec = language_spec(RenderTarget::Go);
-let base_str = emit_go_typed_expr(base.clone(), registry.clone(), scope.clone(), 0, 1024);
-let index_str = emit_go_typed_expr(index.clone(), registry.clone(), scope.clone(), 0, 1024);
-apply_type_template2(spec.indexing.clone().list_index.clone(), base_str.clone(), index_str.clone())
+let base_str = emit_go_typed_expr(base, registry.clone(), scope.clone(), 0, 1024);
+let index_str = emit_go_typed_expr(index, registry.clone(), scope.clone(), 0, 1024);
+apply_type_template2(spec.indexing.clone().list_index.clone(), base_str, index_str)
 }
 }
 
 pub fn emit_go_typed_slice(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
     {
         let spec = language_spec(RenderTarget::Go);
-let base_str = emit_go_typed_expr(base.clone(), registry.clone(), scope.clone(), 0, 1024);
-let start_str = emit_go_typed_expr(start.clone(), registry.clone(), scope.clone(), 0, 1024);
-let end_str = emit_go_typed_expr(end.clone(), registry.clone(), scope.clone(), 0, 1024);
+let base_str = emit_go_typed_expr(base, registry.clone(), scope.clone(), 0, 1024);
+let start_str = emit_go_typed_expr(start, registry.clone(), scope.clone(), 0, 1024);
+let end_str = emit_go_typed_expr(end, registry.clone(), scope.clone(), 0, 1024);
 match spec.indexing.clone().list_slice.clone() {
-    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str.clone(), start_str.clone(), end_str.clone()),
+    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
     None => emit_error_expr("unsupported slice for target".to_string(), RenderTarget::Go),
 }
 }

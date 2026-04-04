@@ -690,21 +690,21 @@ pub fn apply_type_template1(template: String, arg0: String) -> String {
 
 pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
     {
-        let parts = Rc::new(template.clone().split(&"{0}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
-let replaced = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(Rc::new(p.clone().split(&"{1}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&arg1.clone())); } __result });
-replaced.clone().join(&arg0.clone())
+        let parts = Rc::new(template.split(&"{0}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+let replaced = Rc::new({ let mut __result = Vec::new(); for p in parts.iter().cloned() { __result.push(Rc::new(p.clone().split(&"{1}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&arg1.clone())); } __result });
+replaced.join(&arg0)
 }
 }
 
 pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
     {
-        let parts0 = Rc::new(template.clone().split(&"{0}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
-let replaced = Rc::new({ let mut __result = Vec::new(); for p0 in parts0.clone().iter().cloned() { __result.push({
+        let parts0 = Rc::new(template.split(&"{0}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+let replaced = Rc::new({ let mut __result = Vec::new(); for p0 in parts0.iter().cloned() { __result.push({
             let parts1 = Rc::new(p0.clone().split(&"{1}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
 let inner = Rc::new({ let mut __result = Vec::new(); for p1 in parts1.clone().iter().cloned() { __result.push(Rc::new(p1.clone().split(&"{2}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&arg2.clone())); } __result });
 inner.clone().join(&arg1.clone())
 }); } __result });
-replaced.clone().join(&arg0.clone())
+replaced.join(&arg0)
 }
 }
 
@@ -844,7 +844,7 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
 }
 
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
-    render_type(build_type_rendering(n.clone(), Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */), target.clone())
+    render_type(build_type_rendering(n, Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */), target)
 }
 
 pub fn tr_default() -> Rc<TypeRendering> {
@@ -1950,10 +1950,10 @@ if { let mut __found = false; for r in language_spec(RenderTarget::Python).reser
 
 pub fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
     match target.clone() {
-    RenderTarget::Dag => v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), name.clone()), " = ".to_string()), value.clone()),
+    RenderTarget::Dag => v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), name), " = ".to_string()), value),
     _ => {
         let spec = language_spec(target.clone());
-apply_type_template2(spec.annotations.clone().let_binding_inferred.clone(), emit_ident(name.clone(), target.clone()), value.clone())
+apply_type_template2(spec.annotations.clone().let_binding_inferred.clone(), emit_ident(name, target.clone()), value)
 },
 }
 }
@@ -1998,8 +1998,8 @@ match target {
 pub fn emit_lambda_params(param_names: Rc<Vec<String>>, target: RenderTarget) -> String {
     {
         let spec = language_spec(target.clone());
-let param_strs = Rc::new({ let mut __result = Vec::new(); for p in param_names.clone().iter().cloned() { __result.push(apply_type_template1(spec.annotations.clone().lambda_param_untyped.clone(), emit_ident(p.clone(), target.clone()))); } __result });
-param_strs.clone().join(&", ".to_string())
+let param_strs = Rc::new({ let mut __result = Vec::new(); for p in param_names.iter().cloned() { __result.push(apply_type_template1(spec.annotations.clone().lambda_param_untyped.clone(), emit_ident(p.clone(), target.clone()))); } __result });
+param_strs.join(&", ".to_string())
 }
 }
 

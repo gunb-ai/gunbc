@@ -76,6 +76,7 @@ pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extra
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, build_emit_graph_info, expr_span};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
+pub use crate::v2_compiler_ownership::{analyze_ownership, build_movable_set};
 pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, TypedItemKind, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, classify_typed_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, service_has_rest, service_has_shell, service_has_file, service_has_rest_auth, extract_modifier_names};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef};
 
@@ -2241,16 +2242,16 @@ pub fn emit_typed_index(base: Rc<Node>, index: Rc<Node>, registry: Rc<HashMap<St
     {
         let spec = language_spec(RenderTarget::Rust);
 let base_str = emit_typed_expr(base.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-let index_str = emit_typed_expr(index.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
+let index_str = emit_typed_expr(index, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
 let base_node = normalize_access_type_node(rt_type(base.clone()));
 let is_map = node_is_keyed_collection(base_node.clone());
 if is_rust_string_like(base_node.clone()) {
-            apply_type_template2(spec.indexing.clone().string_index.clone(), base_str.clone(), index_str.clone())
+            apply_type_template2(spec.indexing.clone().string_index.clone(), base_str, index_str)
 } else {
-            if is_map.clone() {
-                apply_type_template2(spec.indexing.clone().map_index.clone(), base_str.clone(), index_str.clone())
+            if is_map {
+                apply_type_template2(spec.indexing.clone().map_index.clone(), base_str, index_str)
 } else {
-                apply_type_template2(spec.indexing.clone().list_index.clone(), base_str.clone(), index_str.clone())
+                apply_type_template2(spec.indexing.clone().list_index.clone(), base_str, index_str)
 }
 }
 }
@@ -2260,17 +2261,17 @@ pub fn emit_typed_slice(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, registry
     {
         let spec = language_spec(RenderTarget::Rust);
 let base_str = emit_typed_expr(base.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-let start_str = emit_typed_expr(start.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-let end_str = emit_typed_expr(end.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
+let start_str = emit_typed_expr(start, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
+let end_str = emit_typed_expr(end, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
 let base_node = normalize_access_type_node(rt_type(base.clone()));
-if is_rust_string_like(base_node.clone()) {
+if is_rust_string_like(base_node) {
             match spec.indexing.clone().string_slice.clone() {
-    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str.clone(), start_str.clone(), end_str.clone()),
+    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
     None => emit_error_expr("unsupported string slice for target".to_string(), RenderTarget::Rust),
 }
 } else {
             match spec.indexing.clone().list_slice.clone() {
-    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str.clone(), start_str.clone(), end_str.clone()),
+    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
     None => emit_error_expr("unsupported list slice for target".to_string(), RenderTarget::Rust),
 }
 }
