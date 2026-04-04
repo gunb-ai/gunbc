@@ -48,7 +48,7 @@ M4 follows Lanes 1+2 (needs structural facts + clean render path)
 | **A** | GREEN | 0 diagnostics | PR #264 |
 | **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_stage0_to_stage1` still `#[ignore]` |
 | **C** | GREEN | regen binary self-compiles | PR #308. 1 perf-only bootstrap patch: `dag_syntax_spec` cache |
-| **D** | GREEN | `regenerate-stage0.sh && git diff --exit-code` | PR #308. Freshness gate blocking in CI. Root cause was .dag source using legacy `emit_node_type_rc` while stage0 used `render_rust_type` |
+| **D** | GREEN | `regenerate-stage0.sh && git diff --exit-code` | PR #308. Freshness gate blocking in CI. `emit_node_type_rc` deleted; single authority via `build_type_rendering` + `render_type` |
 
 **Bootstrap D** = regenerated code replaces committed stage0 with zero
 manual patches, AND the regenerated binary produces identical output
@@ -163,6 +163,12 @@ suffix/name scans to recover ownership. Fallback count promoted to CI.
 
 ## E-track: Emit Boundary + LanguageSpec (Lane 2)
 
+**Status:** TypeRendering boundary established (emit_node_type_rc deleted).
+TLC-3 and TLC-4 data models landed in LanguageSpec; Rust emitter consumes
+both. Go/Python still use list_index/list_slice unconditionally (TLC-3 not
+fully dispatched). Annotated-let path introduced but has no consumer yet
+(TLC-4 not end-to-end). TLC-1 and TLC-2 blocked on upstream pipeline work.
+
 **Root cause:** Emission rediscovers facts available upstream.
 TypeRendering is the boundary fix. LanguageSpec/coercion is the
 authority fix. TLC-1 through TLC-4 are the concrete expression-level
@@ -170,11 +176,12 @@ gaps.
 
 ### TypeRendering boundary (E0c)
 
-`build_type_rendering` + `render_type` replaces scattered
-`emit_node_type_rc()`. 2757 nodes validated with 0 mismatches.
-Dual authority remains (`emit_node_type_rc` still live).
+`build_type_rendering` + `render_type` is the sole type rendering
+authority. `emit_node_type_rc` deleted (2757 nodes validated at 0
+mismatches before removal). `emit_node_type` routes through
+`build_type_rendering` + `render_type`.
 
-- [ ] Delete `emit_node_type_rc` / old type rendering path
+- [x] Delete `emit_node_type_rc` / old type rendering path
 - [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
 - [ ] `emit_primitive_type` fail-closed (no pass-through on miss)
 - [ ] TypeRendering dissolves into coercion engine (M5)
@@ -187,16 +194,21 @@ LanguageSpec authority, not emitter special cases.
 - [ ] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
   must render as `name()`, not bare `name`. The callable-vs-value
   distinction must survive from resolution through emit.
+  *Blocked: requires callable identity to flow through pipeline (M2 Lane 1).*
 - [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
-- [ ] **TLC-3: Indexing / character access semantics.** List indexing
-  must be declared as a target-language fact, not fabricated in the
-  emitter.
-- [ ] **TLC-4: Explicit annotation requirements.** Target languages
-  with incomplete inference (Rust turbofish) should model annotation
-  needs as LanguageSpec properties.
+  *Blocked: requires M5 coercion engine for type/wrap authority.*
+- [ ] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
+  in LanguageSpec — per-collection-type templates (list/map/string index/slice).
+  Rust dispatches on collection type; Go/Python still route through `list_index`
+  unconditionally. *Remaining: Go/Python per-collection dispatch.*
+- [ ] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
+  in LanguageSpec — let binding templates (inferred/annotated), lambda param
+  templates (typed/untyped). Inferred-let and lambda params consume spec;
+  `emit_let_binding_annotated` introduced but no caller yet.
+  *Remaining: annotated-let consumer must land in same change.*
 
 ### M5-early: coercion via TypeRendering
 

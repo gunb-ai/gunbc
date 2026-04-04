@@ -96,7 +96,8 @@ import v2.compiler.emit {
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name, test_function_name,
-  apply_type_template1, apply_type_template2,
+  apply_type_template1, apply_type_template2, apply_type_template3,
+  language_spec,
   is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   classify_typed_item,
@@ -776,16 +777,21 @@ fn emit_py_typed_for_each(variable: String, collection: Node, body: Node, regist
 }
 
 fn emit_py_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let spec = language_spec(target: Python)
   let base_str = emit_py_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let index_str = emit_py_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  concat(base_str, "[", index_str, "]")
+  apply_type_template2(template: spec.indexing.list_index, arg0: base_str, arg1: index_str)
 }
 
 fn emit_py_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let spec = language_spec(target: Python)
   let base_str = emit_py_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let start_str = emit_py_typed_expr(texpr: start, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let end_str = emit_py_typed_expr(texpr: end, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  concat(base_str, "[", start_str, ":", end_str, "]")
+  match spec.indexing.list_slice {
+    Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
+    None => emit_error_expr(message: "unsupported slice for target", target: Python)
+  }
 }
 
 fn py_bridge_method_name(method_name: String) -> String {

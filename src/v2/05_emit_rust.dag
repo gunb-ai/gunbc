@@ -108,7 +108,7 @@ import v2.compiler.emit {
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
   TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   rust_literal_for_pattern,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body,
   module_emit_scope,
@@ -120,7 +120,8 @@ import v2.compiler.emit {
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name, test_function_name,
-  apply_type_template1, apply_type_template2,
+  apply_type_template1, apply_type_template2, apply_type_template3,
+  language_spec,
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
@@ -2186,29 +2187,36 @@ fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry:
 }
 
 fn emit_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let spec = language_spec(target: Rust)
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let index_str = emit_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let base_node = normalize_access_type_node(n: rt_type(n: base))
   let is_map = node_is_keyed_collection(n: base_node)
   if is_rust_string_like(n: base_node) {
-    concat("v2_rt::char_at(&", base_str, ", ", index_str, ")")
+    apply_type_template2(template: spec.indexing.string_index, arg0: base_str, arg1: index_str)
   } else if is_map {
-    concat("(", base_str, ").get(&", index_str, ").cloned()")
+    apply_type_template2(template: spec.indexing.map_index, arg0: base_str, arg1: index_str)
   } else {
-    // List indexing: base[index as usize].clone()
-    concat(base_str, "[(", index_str, ") as usize].clone()")
+    apply_type_template2(template: spec.indexing.list_index, arg0: base_str, arg1: index_str)
   }
 }
 
 fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let spec = language_spec(target: Rust)
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let start_str = emit_typed_expr(texpr: start, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let end_str = emit_typed_expr(texpr: end, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let base_node = normalize_access_type_node(n: rt_type(n: base))
   if is_rust_string_like(n: base_node) {
-    concat("v2_rt::substring(&", base_str, ", ", start_str, ", ", end_str, ")")
+    match spec.indexing.string_slice {
+      Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
+      None => emit_error_expr(message: "unsupported string slice for target", target: Rust)
+    }
   } else {
-    "panic!(\"internal error: unsupported slice base in emitter\")"
+    match spec.indexing.list_slice {
+      Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
+      None => emit_error_expr(message: "unsupported list slice for target", target: Rust)
+    }
   }
 }
 
@@ -2270,9 +2278,11 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
       Some { value: ty } => ty
       None => "_"
     }
+    let spec = language_spec(target: Rust)
+    let ident = emit_ident(name: param_name, target: Rust)
     match inferred_type {
-      Some { value: ty } => concat(emit_ident(name: param_name, target: Rust), ": ", ty)
-      None => concat(emit_ident(name: param_name, target: Rust), ": ", fallback_type)
+      Some { value: ty } => apply_type_template2(template: spec.annotations.lambda_param_typed, arg0: ident, arg1: ty)
+      None => apply_type_template2(template: spec.annotations.lambda_param_typed, arg0: ident, arg1: fallback_type)
     }
   )
 }
