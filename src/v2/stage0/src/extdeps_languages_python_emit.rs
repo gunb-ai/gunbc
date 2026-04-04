@@ -109,3 +109,27 @@ pub fn python_source_extension() -> String {
 pub fn python_module_init() -> String {
     "__init__.py".to_string()
 }
+
+pub fn python_method_templates() -> Rc<HashMap<String, String>> {
+    let mut __m = HashMap::new();
+    __m.insert("count".to_string(), "len({recv})".to_string());
+    __m.insert("join".to_string(), "{arg}.join({recv})".to_string());
+    __m.insert("split".to_string(), "{recv}.split({arg})".to_string());
+    __m.insert("last".to_string(), "{recv}[-1] if {recv} else None".to_string());
+    __m.insert("first".to_string(), "{recv}[0] if {recv} else None".to_string());
+    __m.insert("enumerate".to_string(), "list(enumerate({recv}))".to_string());
+    __m.insert("chars".to_string(), "list({recv})".to_string());
+    __m.insert("string_contains".to_string(), "{arg} in {recv}".to_string());
+    __m.insert("concat".to_string(), "{recv} + {arg}".to_string());
+    __m.insert("map".to_string(), "[{arg}(x) for x in {recv}]".to_string());
+    __m.insert("filter".to_string(), "[x for x in {recv} if {arg}(x)]".to_string());
+    __m.insert("any".to_string(), "any({arg}(x) for x in {recv})".to_string());
+    __m.insert("all".to_string(), "all({arg}(x) for x in {recv})".to_string());
+    __m.insert("flat_map".to_string(), "[y for x in {recv} for y in {arg}(x)]".to_string());
+    __m.insert("skip".to_string(), "{recv}[{arg}:]".to_string());
+    __m.insert("take".to_string(), "{recv}[:{arg}]".to_string());
+    __m.insert("fold".to_string(), "functools.reduce({arg}, {recv})".to_string());
+    __m.insert("sort_by".to_string(), "sorted({recv}, key={arg})".to_string());
+    __m.insert("append".to_string(), "{recv} + [{arg}]".to_string());
+    Rc::new(__m)
+}

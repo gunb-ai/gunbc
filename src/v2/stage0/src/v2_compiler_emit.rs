@@ -708,6 +708,16 @@ replaced.join(&arg0)
 }
 }
 
+pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, String>>) -> String {
+    Rc::new(v2_rt::map_keys(&bindings)).iter().cloned().fold(template.clone(), |acc: String, key: String| match v2_rt::map_get(&bindings, key.clone()) {
+    Some(val) => {
+        let placeholder = v2_rt::concat(v2_rt::concat("{".to_string(), key.clone()), "}".to_string());
+Rc::new(acc.clone().split(&placeholder.clone()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&val.clone())
+},
+    None => acc.clone(),
+})
+}
+
 pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
     language_spec_for_target(target)
 }

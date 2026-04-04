@@ -691,6 +691,20 @@ fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: Stri
   replaced |> join(separator: arg0)
 }
 
+// Apply a named-placeholder template: replaces {key} with value for each binding.
+// Uses the same split-then-join pattern as apply_type_template1/2/3 but
+// with arbitrary named placeholders from a Map<String, String>.
+fn apply_named_template(template: String, bindings: Map<String, String>) -> String {
+  fold(map_keys(bindings), init: template, f: (acc, key) =>
+    match map_get(bindings, key) {
+      Some { value: val } =>
+        let placeholder = concat("{", key, "}")
+        acc |> split(delimiter: placeholder) |> join(separator: val)
+      None => acc
+    }
+  )
+}
+
 fn language_spec(target: RenderTarget) -> LanguageSpec {
   language_spec_for_target(target: target)
 }

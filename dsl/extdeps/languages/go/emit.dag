@@ -67,3 +67,29 @@ data go_reserved_escape_suffix: String = "_"
 // Mirrors go_scaffold from std.languages.
 data go_source_extension: String = ".go"
 data go_manifest_file: String = "go.mod"
+
+// -- Method templates -------------------------------------------------------
+// Named-placeholder templates for algebra method calls.
+// \{recv\} = pre-emitted receiver, \{arg\} = pre-emitted first argument.
+// Ref: Go standard library + v2rt runtime helpers.
+data go_method_templates: Map<String, String> = {
+  "count": "len(\{recv\})",
+  "join": "strings.Join(\{recv\}, \{arg\})",
+  "split": "strings.Split(\{recv\}, \{arg\})",
+  "last": "\{recv\}[len(\{recv\})-1]",
+  "first": "\{recv\}[0]",
+  "enumerate": "\{recv\}",
+  "chars": "strings.Split(\{recv\}, \"\")",
+  "string_contains": "strings.Contains(\{recv\}, \{arg\})",
+  "concat": "append(\{recv\}, \{arg\}...)",
+  "map": "v2rt.Map(\{recv\}, \{arg\})",
+  "filter": "v2rt.Filter(\{recv\}, \{arg\})",
+  "any": "v2rt.Any(\{recv\}, \{arg\})",
+  "all": "v2rt.All(\{recv\}, \{arg\})",
+  "flat_map": "v2rt.FlatMap(\{recv\}, \{arg\})",
+  "skip": "\{recv\}[\{arg\}:]",
+  "take": "\{recv\}[:\{arg\}]",
+  "fold": "v2rt.Fold(\{recv\}, \{arg\})",
+  "sort_by": "v2rt.SortBy(\{recv\}, \{arg\})",
+  "append": "append(\{recv\}, \{arg\})"
+}

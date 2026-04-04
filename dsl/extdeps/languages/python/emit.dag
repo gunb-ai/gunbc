@@ -70,3 +70,29 @@ data python_default_value: String = "None"
 // Mirrors python_scaffold from std.languages.
 data python_source_extension: String = ".py"
 data python_module_init: String = "__init__.py"
+
+// -- Method templates -------------------------------------------------------
+// Named-placeholder templates for algebra method calls.
+// \{recv\} = pre-emitted receiver, \{arg\} = pre-emitted first argument.
+// Ref: Python standard library, builtins, functools.
+data python_method_templates: Map<String, String> = {
+  "count": "len(\{recv\})",
+  "join": "\{arg\}.join(\{recv\})",
+  "split": "\{recv\}.split(\{arg\})",
+  "last": "\{recv\}[-1] if \{recv\} else None",
+  "first": "\{recv\}[0] if \{recv\} else None",
+  "enumerate": "list(enumerate(\{recv\}))",
+  "chars": "list(\{recv\})",
+  "string_contains": "\{arg\} in \{recv\}",
+  "concat": "\{recv\} + \{arg\}",
+  "map": "[\{arg\}(x) for x in \{recv\}]",
+  "filter": "[x for x in \{recv\} if \{arg\}(x)]",
+  "any": "any(\{arg\}(x) for x in \{recv\})",
+  "all": "all(\{arg\}(x) for x in \{recv\})",
+  "flat_map": "[y for x in \{recv\} for y in \{arg\}(x)]",
+  "skip": "\{recv\}[\{arg\}:]",
+  "take": "\{recv\}[:\{arg\}]",
+  "fold": "functools.reduce(\{arg\}, \{recv\})",
+  "sort_by": "sorted(\{recv\}, key=\{arg\})",
+  "append": "\{recv\} + [\{arg\}]"
+}
