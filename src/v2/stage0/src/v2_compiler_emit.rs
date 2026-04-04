@@ -709,13 +709,27 @@ replaced.join(&arg0)
 }
 
 pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, String>>) -> String {
-    Rc::new(v2_rt::map_keys(&bindings)).iter().cloned().fold(template.clone(), |acc: String, key: String| match v2_rt::map_get(&bindings, key.clone()) {
+    apply_named_template_nested(template, bindings.clone(), Rc::new(v2_rt::map_keys(&bindings)))
+}
+
+pub fn apply_named_template_nested(template: String, bindings: Rc<HashMap<String, String>>, keys: Rc<Vec<String>>) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match keys.clone().first().cloned() {
+    None => template,
+    Some(key) => {
+            let rest = Rc::new(keys.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let placeholder = v2_rt::concat(v2_rt::concat("{".to_string(), key.clone()), "}".to_string());
+match v2_rt::map_get(&bindings, key.clone()) {
     Some(val) => {
-        let placeholder = v2_rt::concat(v2_rt::concat("{".to_string(), key.clone()), "}".to_string());
-Rc::new(acc.clone().split(&placeholder.clone()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&val.clone())
+                let parts = Rc::new(template.split(&placeholder).map(|s| s.to_string()).collect::<Vec<_>>());
+let processed = Rc::new({ let mut __result = Vec::new(); for part in parts.iter().cloned() { __result.push(apply_named_template_nested(part.clone(), bindings.clone(), rest.clone())); } __result });
+processed.join(&val.clone())
 },
-    None => acc.clone(),
-})
+    None => apply_named_template_nested(template, bindings.clone(), rest.clone()),
+}
+},
+}
+    })
 }
 
 pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
