@@ -42,7 +42,7 @@ import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
-import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
+import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership, build_movable_set }
 import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
 // =========================================================================
@@ -153,9 +153,9 @@ fn compile_bundle_error(message: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: no_span() }, module_name: "")
 }
 
-fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
+fn emit_artifact(typed: ResolvedGraph, artifact: Artifact, ownership: List<OwnershipProof>) -> EmitResult {
   match artifact.target {
-    Rust => emit_rust(typed: typed)
+    Rust => emit_rust(typed: typed, ownership: ownership)
     Python => emit_python(typed: typed)
     Go => emit_go(typed: typed)
     Dag => emit_dag_artifact(typed: typed)
@@ -690,7 +690,7 @@ fn validate_boundaries(plan: ArtifactPlan) -> List<ErrorNode> {
   )
 }
 
-fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) -> EmitResult {
+fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan, ownership: List<OwnershipProof>) -> EmitResult {
   if artifact_plan.artifacts |> count == 0 {
     return EmitResult {
       files: [],
@@ -701,7 +701,7 @@ fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) ->
   if boundary_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: boundary_diags }
   }
-  let results = artifact_plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact))
+  let results = artifact_plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact, ownership: ownership))
   let all_files = results |> flat_map(r => r.files)
   let all_diags = results |> flat_map(r => r.diagnostics)
   EmitResult { files: all_files, diagnostics: all_diags }
@@ -860,7 +860,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       // Stage 8: Emit target-language files.
       // The artifact plan is the source of truth for backend selection in the
       // current single-artifact compiler path.
-      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
+      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan, ownership: ownership)
       let emit_files = emit_result.files
       let emit_diags = emit_result.diagnostics
       let emit_errors = emit_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))

@@ -74,7 +74,7 @@ pub use crate::v2_compiler_emit_rust::{emit_rust};
 pub use crate::v2_compiler_emit_python::{emit_python};
 pub use crate::v2_compiler_emit_go::{emit_go};
 pub use crate::v2_compiler_complexity::{ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report};
-pub use crate::v2_compiler_ownership::{OwnershipProof, OwnershipDecision, analyze_ownership};
+pub use crate::v2_compiler_ownership::{OwnershipProof, OwnershipDecision, analyze_ownership, build_movable_set};
 use crate::v2_compiler_ownership::OwnershipDecision::{SharedError};
 pub use crate::v2_compiler_artifact::{ArtifactPlan, Artifact, RenderTarget, default_artifact_plan};
 use crate::v2_compiler_artifact::RenderTarget::{Dag};
@@ -151,9 +151,9 @@ pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
 }), "".to_string())
 }
 
-pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
+pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>, ownership: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<EmitResult> {
     match artifact.target.clone() {
-    RenderTarget::Rust => emit_rust(typed),
+    RenderTarget::Rust => emit_rust(typed, ownership),
     RenderTarget::Python => emit_python(typed),
     RenderTarget::Go => emit_go(typed),
     RenderTarget::Dag => emit_dag_artifact(typed),
@@ -507,7 +507,7 @@ Rc::new({ let mut __result = Vec::new(); for b in plan.boundaries.clone().iter()
 }
 }
 
-pub fn emit_from_artifact_plan(typed: Rc<ResolvedGraph>, artifact_plan: Rc<ArtifactPlan>) -> Rc<EmitResult> {
+pub fn emit_from_artifact_plan(typed: Rc<ResolvedGraph>, artifact_plan: Rc<ArtifactPlan>, ownership: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<EmitResult> {
     {
         if ((artifact_plan.artifacts.clone().len() as i64) == 0) {
             return Rc::new(EmitResult {
@@ -522,7 +522,7 @@ if ((boundary_diags.clone().len() as i64) > 0) {
     diagnostics: boundary_diags.clone(),
 })
 }
-let results = Rc::new({ let mut __result = Vec::new(); for artifact in artifact_plan.artifacts.clone().iter().cloned() { __result.push(emit_artifact(typed.clone(), artifact.clone())); } __result });
+let results = Rc::new({ let mut __result = Vec::new(); for artifact in artifact_plan.artifacts.clone().iter().cloned() { __result.push(emit_artifact(typed.clone(), artifact.clone(), ownership.clone())); } __result });
 let all_files = Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.files.clone()).iter().cloned()); } __result });
 let all_diags = Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.diagnostics.clone()).iter().cloned()); } __result });
 Rc::new(EmitResult {
@@ -645,7 +645,7 @@ if ((ownership_errors.len() as i64) > 0) {
 })
 }
 let artifact_plan = default_artifact_plan(Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(m.module.clone().name.clone()); } __result }), target);
-let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
+let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone(), ownership.clone());
 let emit_files = emit_result.files.clone();
 let emit_diags = emit_result.diagnostics.clone();
 let emit_errors = Rc::new({ let mut __result = Vec::new(); for d in emit_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });

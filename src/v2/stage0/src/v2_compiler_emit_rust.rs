@@ -78,7 +78,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope,
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypedItemKind, lookup_item_kind, is_type_item_kind, ServiceFieldSet, lookup_service_fields, FunctionSignature, lookup_function_signature, CapabilitySignature, ResourceDefinition, lookup_resource_definition, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemStruct, TypedItemEnum, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled};
-pub use crate::v2_compiler_ownership::{analyze_ownership, build_movable_set};
+pub use crate::v2_compiler_ownership::{OwnershipProof, build_movable_set};
 pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, has_service_items, typed_named_arg_matches, order_typed_call_args, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, TransportKind, classify_transport, extract_modifier_names};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
@@ -310,20 +310,14 @@ v2_rt::rc_map_insert(acc.clone(), pascal.clone(), true)
 }
 }
 
-pub fn build_ownership_index(modules: Rc<Vec<Rc<TypedModule>>>, function_signatures: Rc<HashMap<String, Rc<FunctionSignature>>>) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
-    modules.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(), |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(acc.clone(), |inner_acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, item: Rc<Node>| match v2_rt::map_get(&function_signatures, item.name.clone()) {
-    Some(sig) => {
-        let proof = analyze_ownership(item.name.clone(), sig.params.clone(), sig.body.clone());
-v2_rt::rc_map_insert(inner_acc.clone(), item.name.clone(), build_movable_set(proof.clone()))
-},
-    None => inner_acc.clone(),
-}))
+pub fn build_ownership_index(ownership: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
+    ownership.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(), |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, proof: Rc<OwnershipProof>| v2_rt::rc_map_insert(acc.clone(), proof.func_name.clone(), build_movable_set(proof.clone())))
 }
 
-pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
+pub fn emit_rust(typed: Rc<ResolvedGraph>, ownership: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<EmitResult> {
     {
         let base_info = build_emit_graph_info(typed.modules.clone());
-let ownership_idx = build_ownership_index(typed.modules.clone(), base_info.function_signatures.clone());
+let ownership_idx = build_ownership_index(ownership);
 let emit_info = Rc::new(EmitGraphInfo {
     type_summaries: base_info.type_summaries.clone(),
     recursive_type_set: base_info.recursive_type_set.clone(),

@@ -111,7 +111,7 @@ import v2.compiler.infer_emit_info {
   FunctionSignature, lookup_function_signature,
   CapabilitySignature, ResourceDefinition, lookup_resource_definition
 }
-import v2.compiler.ownership { analyze_ownership, build_movable_set }
+import v2.compiler.ownership { OwnershipProof, build_movable_set }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
@@ -359,16 +359,9 @@ fn build_rc_types(emit_info: EmitGraphInfo) -> Map<String, Bool> {
 // Ownership index -- fan-out=1 bindings that can be moved instead of cloned
 // =========================================================================
 
-fn build_ownership_index(modules: List<TypedModule>, function_signatures: Map<String, FunctionSignature>) -> Map<String, Map<String, Bool>> {
-  modules |> fold(init: empty_map(), f: (acc, m) =>
-    m.items |> fold(init: acc, f: (inner_acc, item) =>
-      match map_get(function_signatures, item.name) {
-        Some { value: sig } =>
-          let proof = analyze_ownership(func_name: item.name, params: sig.params, body: sig.body)
-          map_insert(inner_acc, item.name, build_movable_set(proof: proof))
-        None => inner_acc
-      }
-    )
+fn build_ownership_index(ownership: List<OwnershipProof>) -> Map<String, Map<String, Bool>> {
+  ownership |> fold(init: empty_map(), f: (acc, proof) =>
+    map_insert(acc, proof.func_name, build_movable_set(proof: proof))
   )
 }
 
@@ -376,9 +369,9 @@ fn build_ownership_index(modules: List<TypedModule>, function_signatures: Map<St
 // Entry point -- Rust target
 // =========================================================================
 
-fn emit_rust(typed: ResolvedGraph) -> EmitResult {
+fn emit_rust(typed: ResolvedGraph, ownership: List<OwnershipProof>) -> EmitResult {
   let base_info = build_emit_graph_info(modules: typed.modules)
-  let ownership_idx = build_ownership_index(modules: typed.modules, function_signatures: base_info.function_signatures)
+  let ownership_idx = build_ownership_index(ownership: ownership)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
