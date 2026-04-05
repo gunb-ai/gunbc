@@ -27,7 +27,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
             ┌─ Lane 1: M2 (boundary sufficiency) ──┐
 M1 COMPLETE─┤                                       ├→ M4 (structural identity)
 Bootstrap D ┼─ Lane 2: CG (codegen correctness) ───┘       └→ M5 → M6 → M7
-  COMPLETE  ├─ Lane 3: CX (164 → 0)
+  COMPLETE  ├─ Lane 3: CX (315 → 0; ratchet at 315, main at 164)
             └─ PERF (continuous — parallel to all lanes)
 
 Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
@@ -71,7 +71,7 @@ eliminating these is tracked as future work under M5-full
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (271 pass, 0 fail, 36 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
-| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
+| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | ratchet 316 (all complexity violations) |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | 30 (target: 0) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
@@ -79,9 +79,9 @@ eliminating these is tracked as future work under M5-full
 
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
-| Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
+| Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations (ratchet: 316) |
 | L1 type knowledge | 30 | 0 | Down from 70; name-based workarounds tracked for M4 |
-| Complexity violations | 164 | 0 | Down from 315; unfinished algebraic grounding |
+| Complexity violations | 76 | 0 | Down from 315 → 164 → 76; PR #318 (ratchet: 315, not yet lowered) |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
@@ -372,16 +372,19 @@ then deleted. `Node.name` field deleted.
 
 ---
 
-## CX: Complexity Analyzer (164 → 0) (Lane 3)
+## CX: Complexity Analyzer (Lane 3)
 
-**Root cause:** 164 violations are ungrounded algebraic concepts, not
+**Status:** Down from 315 → 164 (main) → 76 after PR #318.
+Ratchet constants not yet lowered (315/316).
+
+**Root cause:** Violations are ungrounded algebraic concepts, not
 analyzer bugs. The path to 0 is grounding each concept in std/, not
 extending the analyzer.
 
 Computation model and migration plan:
 [docs/cx-computation-model.md](docs/cx-computation-model.md)
 
-DFA triage maps all 164 to four algebraic root causes:
+DFA triage maps violations to four algebraic root causes:
 
 | Root cause | Count | Fix |
 |-----------|-------|-----|
@@ -390,36 +393,85 @@ DFA triage maps all 164 to four algebraic root causes:
 | CostExpr/SizeExpr | ~30 | Flat product-of-bounds (std/computation.dag) |
 | Accessor-on-var | ~14 | Signature-driven fold (std/algebra.dag) |
 
+### PR #318 work (CX-K through CX-R)
+
+Reduced violation count via heuristic descent recognizers. Review
+flagged 15 items as heuristics-over-structure — the count dropped but
+the approach needs migration to structural authorities before the
+remaining path is sound. Work accomplished:
+
+- SCC proof constructor with TokenPosition progress dimension
+- Parser edge classification (`collect_parser_edges_for_scc`)
+- `is_algebra_iteration_method` reads `AlgebraMethodSemantics`
+- Children iteration produces descent evidence
+- Match-based descent detection (is_match_option_descent)
+- Field projection descent recognition
+- SCC parameter name unification in emit_pattern (CX-Q/CX-R)
+- Soundness fixes: branching_only, all_safe, any-argument fabrication
+
+### Review feedback (deferred — 15 items from PR #318)
+
+Per Review Queue Discipline, these are recorded but not stacked:
+
+**Theme A: Heuristic descent recognizers** (read structural facts instead)
+- `complexity.dag:1962` — child-descent hardcodes `"children"` and list-methods
+- `complexity.dag:2056` — `is_tree_size_preserving_wrapper` hardcodes callee name
+- `complexity.dag:2088` — hardcoded `rt_type`, `param_node_type_expr`, `field_binding_pattern` as sub-value extractors
+- `complexity.dag:2170` — treats any `param.field` as descent without structural witness
+- `complexity.dag:2244` — `is_match_option_descent` is shape heuristic for missing Option/Result facts
+- `complexity.dag:2312` — `lambda_param_names |> last` heuristic for missing method-signature facts
+
+**Theme B: Producer patches** (fix analyzer root cause instead)
+- `02_parse.dag:2759` — `node_to_name_str` split to make SCC shape friendlier
+- `04_types.dag:418` — optional-cardinality split to make analyzer see Same edge
+
+**Theme C: Fabrication / scope issues** (unsound)
+- `complexity.dag:275` — `ParserResultDirectState` duplicates state-progress fact
+- `complexity.dag:1382` — filtering `ProgressSame` self-edges fabricates acyclicity
+- `complexity.dag:2346` — `val_inner_vars` leaks arm-local bindings into outer scope
+- `complexity.dag:3061` — `branching_proof_safe` fallback fabricates LinearRecursion
+- `same_progress_subgraph_has_cycle` drops self-loops for 1-node SCCs
+
+**Theme D: Boundary / testing**
+- `tests/pipeline.rs:2505` — diagnostic tests read workspace source tree (not hermetic)
+- `05_emit_rust.dag:1334` — `emit_variant_pattern` returns empty string on impossible input
+
 ### Work items
 
-- **CX-A**: DescentEvidence lattice unification — parser mutual recursion
-  gets structural termination proofs. Files: `complexity.dag`,
-  `dsl/std/termination.dag`. Expected: 164 → ~150.
-  Progress: TokenPosition dimension added to SCC proof constructor;
-  single-function parser recursion verified. SCC parser-proof path
-  not yet covered by end-to-end test.
+- **CX-A**: DescentEvidence lattice unification — parser mutual recursion.
+  Files: `complexity.dag`, `dsl/std/termination.dag`.
+  Done: TokenPosition dimension, SCC proof constructor, edge classification.
+  Deferred: ProgressSame self-edge filtering is heuristic (Theme C);
+  ParserResultDirectState duplicates facts (Theme C).
 - **CX-B**: CostExpr/SizeExpr dissolution — cost expressions become flat
   products of SizeBounds from `std/computation.dag`'s lowering table.
   Planned: RecursionPattern → LoweringTarget, UnresolvableRecursion
   deleted. See [migration phases](docs/cx-computation-model.md#migration-phases).
-  Expected: ~150 → ~120.
+  Not started.
 - **CX-C**: Signature-driven fold evidence — self-calls inside
   `children |> fold` callbacks get structural descent proofs.
-  Expected: ~120 → ~80.
-  Progress: `is_algebra_iteration_method` reads `AlgebraMethodSemantics`
-  from ExprMethodCall; structural children iteration produces descent
-  evidence. Lambda element position still uses `last` convention
-  (Phase 3 blocker).
-- **CX-D**: MatchPattern dissolution + remaining concept grounding.
-  Expected: ~80 → 0.
+  Done: `is_algebra_iteration_method` reads `AlgebraMethodSemantics`;
+  children iteration produces descent evidence.
+  Deferred: lambda element uses `last` convention (Theme A);
+  child-descent hardcodes `"children"` (Theme A).
+- **CX-D**: Remaining concept grounding → structural descent authority.
+  This is the primary remaining work. Review feedback shows the heuristic
+  layer (Themes A+B) must be replaced by a structural descent authority:
+  a modeled fact in std/ that declares which operations are descent
+  (child access, Option unwrap, field projection on sub-values). The
+  analyzer reads this authority instead of matching function/field names.
+  Dissolves all Theme A and Theme B items. Unblocks producer-patch
+  reversals (02_parse.dag, 04_types.dag).
 - **CX-E**: Re-enable complexity gate — remove `complexity_diags = []`,
   un-ignore 14 complexity tests (10 `complexity_*`, 3 `soundness_*`,
   1 `structural_classify_*`; all `#[ignore]` with "CX track" comment).
+  Blocked on 0 violations.
 
 ### Acceptance
 
 0 violations without suppression. CX gate re-enabled. Node is the only
-recursive type consumed by complexity analysis.
+recursive type consumed by complexity analysis. All descent evidence
+reads structural facts — no heuristic name-matching in the analyzer.
 
 ---
 
@@ -437,7 +489,7 @@ lanes — any lane can introduce a regression.
 | Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]` |
 | Full DSL compile | `pipeline::full_dsl_compiles` | `#[ignore]`, GREEN |
 | Stage0 freshness gate | `scripts/check-stage0-freshness.sh` | CI blocking |
-| Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, 314 |
+| Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, ratchet 316 |
 
 ### Work items
 
