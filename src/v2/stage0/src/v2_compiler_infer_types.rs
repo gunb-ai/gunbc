@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_types::{SourceSpan, is_container_type};
+pub use crate::std_types::{SourceSpan, is_container_type, container_expected_arity};
 pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile, partial_function_templates, free_monoid_collection_templates, free_monoid_scalar_templates, boolean_algebra_collection_templates, boolean_algebra_templates, approximate_field_templates, ordered_ring_templates};
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf};
@@ -106,14 +106,10 @@ pub fn is_fully_resolved(n: Rc<Node>) -> bool {
 if self_is_type_var {
                 false
 } else {
-                if (node_is_keyed_collection(n.clone()) && ((n.children.clone().len() as i64) < 2)) {
+                if (is_container_type(n.name.clone()) && ((n.children.clone().len() as i64) < container_expected_arity(n.name.clone()))) {
                     false
 } else {
-                    if (node_is_element_collection(n.clone()) && ((n.children.clone().len() as i64) == 0)) {
-                        false
-} else {
-                        { let mut __all = true; for ch in n.children.clone().iter().cloned() { if !(is_fully_resolved(ch.clone())) { __all = false; break; } } __all }
-}
+                    { let mut __all = true; for ch in n.children.clone().iter().cloned() { if !(is_fully_resolved(ch.clone())) { __all = false; break; } } __all }
 }
 }
 }

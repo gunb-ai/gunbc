@@ -195,14 +195,14 @@ type BlockInferState {
 
 // SG-9: Tail-recursive block inference. Each accumulated list is a standalone
 // parameter (Rc refcount=1) so list_push avoids deep clone.
-fn infer_block_stmts(remaining: List<Node>, scope: InferScope,
+fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferScope,
     typed_stmts: List<Node>, diag_chunks: List<List<ErrorNode>>,
     last_type: Node, expected: Node?) -> BlockInferState {
   match remaining |> first {
     None => BlockInferState { scope: scope, diag_chunks: diag_chunks,
                               last_type: last_type, typed_stmts: typed_stmts }
     Some { value: stmt } =>
-      let is_last = (remaining |> count) == 1
+      let is_last = remaining_count == 1
       let stmt_expected = if is_last { expected } else { none }
       let stmt_result = infer_expr(texpr: stmt, scope: scope, expected: stmt_expected)
       let stmt_typed = stmt_result.typed
@@ -215,6 +215,7 @@ fn infer_block_stmts(remaining: List<Node>, scope: InferScope,
       )
       infer_block_stmts(
         remaining: remaining |> skip(1),
+        remaining_count: remaining_count - 1,
         scope: next_scope,
         typed_stmts: list_push(typed_stmts, stmt_typed),
         diag_chunks: list_push(diag_chunks, stmt_diags),
@@ -1716,7 +1717,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let stmts = texpr.children
       if count(stmts) > 0 {
         let state = infer_block_stmts(
-          remaining: stmts, scope: scope,
+          remaining: stmts, remaining_count: count(stmts), scope: scope,
           typed_stmts: [], diag_chunks: [],
           last_type: unit_type, expected: expected
         )

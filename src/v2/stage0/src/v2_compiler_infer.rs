@@ -133,7 +133,7 @@ pub struct BlockInferState {
     pub typed_stmts: Rc<Vec<Rc<Node>>>,
 }
 
-pub fn infer_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut scope: Rc<InferScope>, mut typed_stmts: Rc<Vec<Rc<Node>>>, mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>, mut last_type: Rc<Node>, mut expected: Option<Rc<Node>>) -> Rc<BlockInferState> {
+pub fn infer_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut remaining_count: i64, mut scope: Rc<InferScope>, mut typed_stmts: Rc<Vec<Rc<Node>>>, mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>, mut last_type: Rc<Node>, mut expected: Option<Rc<Node>>) -> Rc<BlockInferState> {
     loop {
         match remaining.clone().first().cloned() {
     None => { break Rc::new(BlockInferState {
@@ -142,7 +142,7 @@ pub fn infer_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut scope: Rc<InferSc
     last_type: last_type.clone(),
     typed_stmts: typed_stmts.clone(),
 }); },
-    Some(stmt) => { let is_last = ((remaining.clone().len() as i64) == 1);
+    Some(stmt) => { let is_last = (remaining_count.clone() == 1);
 let stmt_expected = if is_last.clone() {
             expected.clone()
 } else {
@@ -155,17 +155,19 @@ let stmt_rt = rt_type(stmt_typed.clone());
 let next_scope = scope_after_stmt_node(stmt.clone(), stmt_rt.clone(), scope.clone());
 {
             let __tco_0 = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = next_scope.clone();
-let __tco_2 = v2_rt::rc_list_push(typed_stmts.clone(), stmt_typed.clone());
-let __tco_3 = v2_rt::rc_list_push(diag_chunks.clone(), stmt_diags.clone());
-let __tco_4 = stmt_rt.clone();
-let __tco_5 = expected.clone();
+let __tco_1 = (remaining_count.clone() - 1);
+let __tco_2 = next_scope.clone();
+let __tco_3 = v2_rt::rc_list_push(typed_stmts.clone(), stmt_typed.clone());
+let __tco_4 = v2_rt::rc_list_push(diag_chunks.clone(), stmt_diags.clone());
+let __tco_5 = stmt_rt.clone();
+let __tco_6 = expected.clone();
 remaining = __tco_0;
-scope = __tco_1;
-typed_stmts = __tco_2;
-diag_chunks = __tco_3;
-last_type = __tco_4;
-expected = __tco_5;
+remaining_count = __tco_1;
+scope = __tco_2;
+typed_stmts = __tco_3;
+diag_chunks = __tco_4;
+last_type = __tco_5;
+expected = __tco_6;
 continue;
 } },
 }
@@ -1805,7 +1807,7 @@ Rc::new(InferResult {
 let stmts = texpr.children.clone();
 if ((stmts.clone().len() as i64) > 0) {
                 {
-                    let state = infer_block_stmts(stmts.clone(), scope.clone(), Rc::new(vec![]), Rc::new(vec![]), unit_type(), expected.clone());
+                    let state = infer_block_stmts(stmts.clone(), (stmts.clone().len() as i64), scope.clone(), Rc::new(vec![]), Rc::new(vec![]), unit_type(), expected.clone());
 let blk_texpr = make_expr_node(Rc::new(ExprData::ExprBlock), state.typed_stmts.clone(), Some(Rc::new(InferredNode::Resolved {
     node: state.last_type.clone(),
 })), span.clone());
@@ -2503,7 +2505,7 @@ let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_i
 });
 let import_recursive = parent_envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
 let import_recursive_set = parent_envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
-let import_recursive_variant_fields = parent_envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
+let import_recursive_variant_fields = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
 let import_env = Rc::new(TypeEnv {
     bindings: import_bindings,
     recursive_types: import_recursive,
@@ -2809,7 +2811,7 @@ let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_i
 });
 let import_recursive = parent_envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
 let import_recursive_set = parent_envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
-let import_recursive_variant_fields = parent_envs.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
+let import_recursive_variant_fields = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
 let import_env = Rc::new(TypeEnv {
     bindings: import_bindings,
     recursive_types: import_recursive,

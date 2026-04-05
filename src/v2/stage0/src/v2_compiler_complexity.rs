@@ -2766,11 +2766,11 @@ pub fn count_unknown_proof_edges(edges: Rc<Vec<Rc<ProofEdge>>>) -> i64 {
 pub fn collect_scc_proof_edges_for_dim(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_name_set: Rc<HashMap<String, bool>>, check_child: bool, check_list: bool) -> Rc<Vec<Rc<ProofEdge>>> {
     Rc::new({ let mut __result = Vec::new(); for name in members.iter().cloned() { __result.extend((*match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-        let best_map = entry.params.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |best: _, p: Rc<Node>| {
+        let best_map = entry.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |best: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
             let pname = param_node_name(p.clone());
 let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v2_rt::rc_empty_map::<bool>(), check_child.clone(), check_list.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone());
-let param_map = param_edges.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |bm: _, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
+let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
 pick_best_param_edges(best.clone(), param_map.clone())
 });
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v2_rt::map_keys(&best_map)).iter().cloned() { __result.push({
@@ -2831,22 +2831,22 @@ pub fn pick_best_param_edges(current: Rc<HashMap<String, DescentEvidence>>, cand
 pub fn collect_scc_independent_dim_edges(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_name_set: Rc<HashMap<String, bool>>) -> Rc<Vec<Rc<ProofEdge>>> {
     Rc::new({ let mut __result = Vec::new(); for name in members.iter().cloned() { __result.extend((*match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-        let tree_edge_map = entry.params.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |best_map: _, p: Rc<Node>| {
+        let tree_edge_map = entry.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
             let pname = param_node_name(p.clone());
 let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v2_rt::rc_empty_map::<bool>(), true, false);
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone());
-let param_map = param_edges.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |bm: _, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
+let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
 pick_best_param_edges(best_map.clone(), param_map.clone())
 });
-let list_edge_map = entry.params.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |best_map: _, p: Rc<Node>| {
+let list_edge_map = entry.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
             let pname = param_node_name(p.clone());
 let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v2_rt::rc_empty_map::<bool>(), false, true);
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), list_vars.clone(), scc_name_set.clone());
-let param_map = param_edges.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |bm: _, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
+let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
 pick_best_param_edges(best_map.clone(), param_map.clone())
 });
 let all_keys = v2_rt::concat(Rc::new(v2_rt::map_keys(&tree_edge_map)), Rc::new(v2_rt::map_keys(&list_edge_map)));
-let unique_keys = all_keys.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, k: _| v2_rt::rc_map_insert(acc.clone(), k.clone(), true));
+let unique_keys = all_keys.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, k: String| v2_rt::rc_map_insert(acc.clone(), k.clone(), true));
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v2_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
             let tree_ev = match v2_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
@@ -2882,17 +2882,17 @@ if ((all_parser_edges.clone().len() as i64) == 0) {
 } else {
             Rc::new({ let mut __result = Vec::new(); for name in members.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-                let tree_edge_map = entry.params.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |best_map: _, p: Rc<Node>| {
+                let tree_edge_map = entry.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                     let pname = param_node_name(p.clone());
 let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v2_rt::rc_empty_map::<bool>(), true, false);
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone());
-let param_map = param_edges.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |bm: _, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
+let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
 pick_best_param_edges(best_map.clone(), param_map.clone())
 });
 let my_parser_edges = Rc::new({ let mut __result = Vec::new(); for pe in all_parser_edges.clone().iter().cloned() { if (pe.caller.clone().as_str() == name.clone().as_str()) { __result.push(pe); } } __result });
-let parser_edge_map = my_parser_edges.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |bm: _, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
+let parser_edge_map = my_parser_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
 let all_keys = v2_rt::concat(Rc::new(v2_rt::map_keys(&tree_edge_map)), Rc::new(v2_rt::map_keys(&parser_edge_map)));
-let unique_keys = all_keys.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, k: _| v2_rt::rc_map_insert(acc.clone(), k.clone(), true));
+let unique_keys = all_keys.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, k: String| v2_rt::rc_map_insert(acc.clone(), k.clone(), true));
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v2_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
                     let tree_ev = match v2_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),

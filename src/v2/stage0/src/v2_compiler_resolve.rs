@@ -322,7 +322,7 @@ if (((m.name.clone().as_str() != "std.types".to_string().as_str()) && (m.name.cl
 } else {
             Rc::new(vec![])
 };
-let adjacency = v2_rt::concat(explicit_edges, implicit_std_types_edges).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, edge: Rc<DepEdge>| adjacency_add_edge(acc.clone(), edge.from_module.clone(), edge.to_module.clone()));
+let adjacency = v2_rt::concat(explicit_edges, implicit_std_types_edges).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| adjacency_add_edge(acc.clone(), edge.from_module.clone(), edge.to_module.clone()));
 let in_degree_map = modules.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, m: Rc<Node>| {
             let imports_std_types = { let mut __found = false; for imp in module_imports(m.clone()).iter().cloned() { if (imp.name.clone().as_str() == "std.types".to_string().as_str()) { __found = true; break; } } __found };
 let implicit_std_types_in_degree = if (((has_std_types.clone() && (m.name.clone().as_str() != "std.types".to_string().as_str())) && (m.name.clone().as_str() != "std.algebra".to_string().as_str())) && (imports_std_types.clone() == false)) {
