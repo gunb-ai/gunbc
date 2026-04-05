@@ -18,7 +18,7 @@ import v2.std.core {
   NoConnective, ArityMismatch
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule }
-import std.types { is_container_type }
+import std.types { is_container_type, container_expected_arity }
 
 // =========================================================================
 // Output types
@@ -38,7 +38,7 @@ fn check_bare_containers(n: Node, module_name: String) -> List<ErrorNode> {
   let is_bare = is_container_type(name: n.name) && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure
   let self_diags = if is_bare {
     [make_error_node(
-      diagnostic: ArityMismatch { name: n.name, expected: 1, got: 0, span: n.span },
+      diagnostic: ArityMismatch { name: n.name, expected: container_expected_arity(name: n.name), got: 0, span: n.span },
       module_name: module_name
     )]
   } else {

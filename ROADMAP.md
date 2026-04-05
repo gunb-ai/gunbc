@@ -145,9 +145,9 @@ Symptoms:
 - Callback shapes (`fn(Acc, T) -> Acc`) synthesized at inference time, not declared
 
 Open items:
-- [ ] Incomplete parameterized types rejected at normalization, not infer
-- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit
-- [ ] Thread `expected` to all formal params, not just callable ones — currently only threaded to fold init + literal special cases, not general parameter inference; also overloads the `expected` boundary (non-callable expected can silently type lambda args)
+- [x] Incomplete parameterized types rejected at normalization — `check_bare_containers` uses `container_expected_arity` as single arity authority
+- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators
+- [x] Thread `expected` to formal params at matching positions — over-arity args no longer receive synthetic expected types; non-callable expected boundary overload remains open
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 

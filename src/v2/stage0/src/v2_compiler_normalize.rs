@@ -51,7 +51,7 @@ use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{NoConnective};
 use crate::v2_std_core::CompilerDiagnostic::{ArityMismatch};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule};
-pub use crate::std_types::{is_container_type};
+pub use crate::std_types::{is_container_type, container_expected_arity};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizeResult {
@@ -70,7 +70,7 @@ let is_bare = ((((is_container_type(n.name.clone()) && ((n.children.clone().len(
 let self_diags = if is_bare {
                 Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ArityMismatch {
     name: n.name.clone(),
-    expected: 1,
+    expected: container_expected_arity(n.name.clone()),
     got: 0,
     span: n.span.clone(),
 }), module_name.clone())])

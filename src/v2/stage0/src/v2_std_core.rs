@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_set, is_container_type};
+pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::std_syntax::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull};

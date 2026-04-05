@@ -1194,7 +1194,10 @@ let formal_param_type = match Rc::new(sig_params.clone().iter().cloned().skip(pa
     Some(p) => param_node_type_expr(p.clone()),
     None => type_variable_node("callable_param".to_string()),
 };
-let has_formal = (sig.clone() != None);
+let has_formal = match Rc::new(sig_params.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(_) => true,
+    None => false,
+};
 let expected = if has_formal.clone() {
                         Some(formal_param_type.clone())
 } else {

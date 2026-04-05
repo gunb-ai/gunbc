@@ -1109,7 +1109,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Some { value: p } => param_node_type_expr(n: p)
             None => type_variable_node(id: "callable_param")
           }
-          let has_formal = sig != none
+          let has_formal = match sig_params |> skip(pair.first) |> first { Some { value: _ } => true  None => false }
           let expected = if has_formal { Some { value: formal_param_type } } else { none }
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
           ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }

@@ -2753,8 +2753,8 @@ fn last_child_or_self(n: Node) -> Node {
 }
 
 // Extract a string name from a Node for use in property values.
-// Keyed-container detection derives from container_type_set (single authority
-// for container identity) plus structural child count — no parallel name list.
+// Keyed-container detection derives from container_type_arity (single authority
+// for container identity and arity) plus structural child count — no parallel name list.
 fn node_to_name_str(n: Node) -> String {
   let has_children = n.children |> count > 0
   let is_optional = n.return_cardinality == CardOptional
