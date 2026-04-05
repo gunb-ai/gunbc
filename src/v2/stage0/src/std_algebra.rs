@@ -229,6 +229,10 @@ pub enum AlgebraTypeTemplate {
         first: Rc<AlgebraTypeTemplate>,
         second: Rc<AlgebraTypeTemplate>,
     },
+    CallableOf {
+        params: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
+        return_type: Rc<AlgebraTypeTemplate>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

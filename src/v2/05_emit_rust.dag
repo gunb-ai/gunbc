@@ -69,12 +69,14 @@ import extdeps.languages.rust.emit {
 }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
-  TestConventions,
+  TestConventions, CloneTemplates,
   test_conventions_for_target, top_level_visibility_for_target,
+  clone_templates_for_target,
   is_value_type, is_string_like, target_primitive_type, try_target_primitive_type
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 
+import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import v2.compiler.infer_types {
   normalize_access_type_node, for_each_element_type_node,
@@ -1588,6 +1590,51 @@ fn variant_parent_from_binding_kind(binding_kind: VarBindingKind?) -> String? {
   }
 }
 
+// Clone template helpers — read from LanguageSpec, apply via template substitution.
+// Centralizes all clone expression generation through the Rust clone templates.
+fn rust_clone_templates() -> CloneTemplates {
+  match clone_templates_for_target(target: Rust) {
+    Some { value: t } => t
+    None => CloneTemplates {
+      clone_expr: "\{0\}.clone()",
+      deref_clone_expr: "(*\{0\}).clone()",
+      field_clone_expr: "\{0\}.\{1\}.clone()",
+      iterator_clone_suffix: ".cloned()"
+    }
+  }
+}
+
+fn apply_clone(expr: String) -> String {
+  apply_type_template1(template: rust_clone_templates().clone_expr, arg0: expr)
+}
+
+fn apply_deref_clone(expr: String) -> String {
+  apply_type_template1(template: rust_clone_templates().deref_clone_expr, arg0: expr)
+}
+
+fn apply_field_clone(expr: String, field: String) -> String {
+  apply_type_template2(template: rust_clone_templates().field_clone_expr, arg0: expr, arg1: field)
+}
+
+fn clone_iterator_suffix() -> String {
+  rust_clone_templates().iterator_clone_suffix
+}
+
+// Decide clone vs move for a variable reference based on ownership fan-out.
+// Decide clone vs move for a variable reference based on ownership movable set.
+// Movable bindings (fan-out=1) are moved; non-movable are cloned via
+// CloneTemplates. Falls back to clone if resolved_type is present.
+fn emit_var_clone_or_move(ident: String, name: String, resolved_type: InferredNode?, emit_info: EmitGraphInfo) -> String {
+  let is_movable = emit_map_has(m: emit_info.movable, key: name)
+  if is_movable { ident }
+  else {
+    match resolved_type {
+      Some { value: _ } => apply_clone(expr: ident)
+      _ => ident
+    }
+  }
+}
+
 fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, emit_info: EmitGraphInfo) -> String? {
   match resolved_type {
     Some { value: Resolved { node: rt } } =>
@@ -2069,7 +2116,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
           Some { value: idx_arg } =>
             let list_str = emit_typed_expr(texpr: arg_value(n: list_arg), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
             let index_str = emit_typed_expr(texpr: arg_value(n: idx_arg), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-            concat(list_str, ".get((", index_str, ") as usize).cloned()")
+            concat(list_str, ".get((", index_str, ") as usize)", clone_iterator_suffix())
           None => "compile_error!(\"get call missing index argument\")"
         }
       None => "compile_error!(\"get call missing list argument\")"
@@ -2421,7 +2468,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   let acc_type_str = render_rust_type(n: acc_type_node, rc_types: rc_types)
   // Split: lambda annotation can use "_" for bare containers, but init value
   // resolution needs the real type for turbofish generation.
-  let is_bare_container = acc_type_node.children |> count == 0 && (acc_type_node.name == "List" || acc_type_node.name == "Map" || acc_type_node.name == "Set" || acc_type_node.name == "NonEmptyList" || acc_type_node.name == "NonEmptySet")
+  let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_node.name)
   let lambda_acc_type_str = if is_bare_container { "_" } else { acc_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
   let init_str = match args |> first {
@@ -2634,7 +2681,7 @@ fn emit_rust_get_method_call(receiver: Node, args: List<Node>, registry: Map<Str
   if is_map_typed_expr(texpr: receiver) {
     concat("v2_rt::map_get(&", recv_str, ", ", index_str, ")")
   } else if receiver_resolved {
-    concat(recv_str, ".get((", index_str, ") as usize).cloned()")
+    concat(recv_str, ".get((", index_str, ") as usize)", clone_iterator_suffix())
   } else {
     "compile_error!(\"get: receiver type unresolved\")"
   }
@@ -2787,7 +2834,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
   let needs_string_from = has_string_lit_with_bind(arms: arms)
   if rc_match.needs_option_deref {
-    concat("match ", scrut_str, ".as_deref().cloned() {\n", arms_str, "\n}")
+    concat("match ", scrut_str, ".as_deref()", clone_iterator_suffix(), " {\n", arms_str, "\n}")
   } else if rc_match.needs_deref {
     let sharing = language_spec(target: Rust).sharing
     concat("match ", apply_type_template1(template: sharing.deref_clone, arg0: scrut_str), " {\n", arms_str, "\n}")
@@ -3394,7 +3441,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       let arms_str = arm_strs |> join(separator: "\n")
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
       if rc_match.needs_option_deref {
-        concat("match ", scrut_str, ".as_deref().cloned() {\n", arms_str, "\n}")
+        concat("match ", scrut_str, ".as_deref()", clone_iterator_suffix(), " {\n", arms_str, "\n}")
       } else if rc_match.needs_deref {
         let sharing = language_spec(target: Rust).sharing
         concat("match ", apply_type_template1(template: sharing.deref_clone, arg0: scrut_str), " {\n", arms_str, "\n}")

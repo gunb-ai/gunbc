@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_set, is_container_type};
+pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::std_syntax::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull};
@@ -1334,6 +1334,22 @@ pub fn transport_auth_scheme_key() -> String {
     "auth_scheme".to_string()
 }
 
+pub fn transport_kind_rest() -> String {
+    "rest".to_string()
+}
+
+pub fn transport_kind_shell() -> String {
+    "shell".to_string()
+}
+
+pub fn transport_kind_file() -> String {
+    "file".to_string()
+}
+
+pub fn transport_kind_local() -> String {
+    "local".to_string()
+}
+
 pub fn make_transport_node(name: String, properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: name.clone(),
@@ -1357,25 +1373,25 @@ pub fn make_transport_node(name: String, properties: Rc<Vec<Rc<Node>>>, children
 }
 
 pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node("local".to_string(), Rc::new(vec![]), Rc::new(vec![]), span)
+    make_transport_node(transport_kind_local(), Rc::new(vec![]), Rc::new(vec![]), span)
 }
 
 pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let url_field = make_field_init_node(transport_url_key(), base_url, make_span(0, 0));
 let props = v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), auth_props), headers);
-make_transport_node("rest".to_string(), props, Rc::new(vec![]), span)
+make_transport_node(transport_kind_rest(), props, Rc::new(vec![]), span)
 }
 }
 
 pub fn shell_transport_node(argv: Rc<Vec<Rc<Node>>>, env: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node("shell".to_string(), env, argv, span)
+    make_transport_node(transport_kind_shell(), env, argv, span)
 }
 
 pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let path_field = make_field_init_node(transport_path_key(), base_path, make_span(0, 0));
-make_transport_node("file".to_string(), Rc::new(vec![path_field]), Rc::new(vec![]), span)
+make_transport_node(transport_kind_file(), Rc::new(vec![path_field]), Rc::new(vec![]), span)
 }
 }
 
@@ -1397,19 +1413,23 @@ pub fn find_property_string(props: Rc<Vec<Rc<Node>>>, prop_name: String) -> Opti
 }
 
 pub fn is_rest_transport(t: Rc<Node>) -> bool {
-    (t.name.clone().as_str() == "rest".to_string().as_str())
+    (t.name.clone().as_str() == transport_kind_rest().as_str())
 }
 
 pub fn is_shell_transport(t: Rc<Node>) -> bool {
-    (t.name.clone().as_str() == "shell".to_string().as_str())
+    (t.name.clone().as_str() == transport_kind_shell().as_str())
 }
 
 pub fn is_file_transport(t: Rc<Node>) -> bool {
-    (t.name.clone().as_str() == "file".to_string().as_str())
+    (t.name.clone().as_str() == transport_kind_file().as_str())
 }
 
 pub fn is_local_transport(t: Rc<Node>) -> bool {
-    (t.name.clone().as_str() == "local".to_string().as_str())
+    (t.name.clone().as_str() == transport_kind_local().as_str())
+}
+
+pub fn is_transport_kind(t: Rc<Node>, kind: String) -> bool {
+    (t.name.clone().as_str() == kind.as_str())
 }
 
 pub fn field_init_operation_modifier(field_init: Rc<Node>) -> Option<OperationModifier> {

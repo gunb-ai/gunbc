@@ -72,7 +72,7 @@ eliminating these is tracked as future work under M5-full
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (271 pass, 0 fail, 36 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
-| L1 ratchet | `scripts/l1-ratchet.sh --check` | 32 (target: 0) |
+| L1 ratchet | `scripts/l1-ratchet.sh --check` | 30 (target: 0) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
 ## Ratchet Counts
@@ -80,7 +80,7 @@ eliminating these is tracked as future work under M5-full
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
-| L1 type knowledge | 32 | 0 | Down from 70; name-based workarounds tracked for M4 |
+| L1 type knowledge | 30 | 0 | Down from 70; name-based workarounds tracked for M4 |
 | Complexity violations | 164 | 0 | Down from 315; unfinished algebraic grounding |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
@@ -128,8 +128,8 @@ of propagating error state. `node_inferred_to_outputs` builds outputs
 from fabricated types. Highest-confidence correctness bug (reviewer
 2026-04-02).
 
-- [ ] `child_inferred_or_empty` propagates error state structurally
-- [ ] `node_inferred_to_outputs` refuses error-typed children (fail-closed)
+- [x] `child_inferred_or_empty` propagates error state structurally
+- [x] `node_inferred_to_outputs` refuses error-typed children (fail-closed) — all-or-nothing gate via `rt_node` check; returns `[]` if any child is not `Typed`
 
 ### Incomplete parameterization and bidirectional inference
 
@@ -145,11 +145,11 @@ Symptoms:
 - Callback shapes (`fn(Acc, T) -> Acc`) synthesized at inference time, not declared
 
 Open items:
-- [ ] Incomplete parameterized types rejected at normalization, not infer
-- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit
-- [ ] Thread `expected` to all formal params, not just callable ones
-- [ ] Refine fold accumulators structurally via `is_fully_resolved`
-- [ ] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
+- [x] Incomplete parameterized types rejected at normalization — `check_bare_containers` uses `container_expected_arity` as single arity authority
+- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators
+- [x] Thread `expected` to formal params at matching positions — over-arity args no longer receive synthetic expected types; non-callable expected boundary overload remains open
+- [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
+- [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
 ### Acceptance
 
@@ -328,7 +328,7 @@ passes to fix what construction should have prevented.
 ## M4: Structural Identity (L1 = 0) — follows Lanes 1+2
 
 **Root cause:** The compiler uses `Node.name` (a string) as semantic
-authority. ~256 constructions, ~32 name-based comparisons. Deletion
+authority. ~256 constructions, ~30 name-based comparisons. Deletion
 requires declaration-driven identity and structural algebra.
 Blocked on M2 (structural facts in resolve/infer files) and E-track
 (clean render path in emit files).

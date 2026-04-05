@@ -47,6 +47,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
   is_rest_transport, is_shell_transport, is_file_transport, is_local_transport,
+  is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
@@ -1242,29 +1243,25 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
 }
 
 // Structural transport queries: check if any operation in the service
-// uses a specific transport by detecting its structural signature.
-fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_rest_transport(t: fallback_transport)
+// uses a specific transport kind. Generic helper eliminates per-kind duplication.
+fn service_has_transport_kind(kind: String, fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = is_transport_kind(t: fallback_transport, kind: kind)
   let from_ops = op_children |> any(op =>
-    if op.transport != none { is_rest_transport(t: op.transport.value) } else { false }
+    if op.transport != none { is_transport_kind(t: op.transport.value, kind: kind) } else { false }
   )
   from_fallback || from_ops
+}
+
+fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  service_has_transport_kind(kind: transport_kind_rest, fallback_transport: fallback_transport, op_children: op_children)
 }
 
 fn service_has_shell(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_shell_transport(t: fallback_transport)
-  let from_ops = op_children |> any(op =>
-    if op.transport != none { is_shell_transport(t: op.transport.value) } else { false }
-  )
-  from_fallback || from_ops
+  service_has_transport_kind(kind: transport_kind_shell, fallback_transport: fallback_transport, op_children: op_children)
 }
 
 fn service_has_file(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_file_transport(t: fallback_transport)
-  let from_ops = op_children |> any(op =>
-    if op.transport != none { is_file_transport(t: op.transport.value) } else { false }
-  )
-  from_fallback || from_ops
+  service_has_transport_kind(kind: transport_kind_file, fallback_transport: fallback_transport, op_children: op_children)
 }
 
 // Check if any REST operation (or the service-level fallback) has auth.

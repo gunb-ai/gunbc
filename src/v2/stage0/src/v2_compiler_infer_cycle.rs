@@ -72,8 +72,8 @@ result
 }
 
 pub fn build_reverse_adj(all_names: Rc<Vec<String>>, local_deps: Rc<HashMap<String, Rc<Vec<String>>>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    all_names.iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| match v2_rt::map_get(&local_deps, name.clone()) {
-    Some(deps) => deps.clone().iter().cloned().fold(acc.clone(), |inner_acc: _, dep: String| {
+    all_names.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v2_rt::map_get(&local_deps, name.clone()) {
+    Some(deps) => deps.clone().iter().cloned().fold(acc.clone(), |inner_acc: Rc<HashMap<String, Rc<Vec<String>>>>, dep: String| {
         let existing = match v2_rt::map_get(&inner_acc, dep.clone()) {
     Some(v) => v.clone(),
     None => Rc::new(vec![]),
@@ -85,7 +85,7 @@ v2_rt::rc_map_insert(inner_acc.clone(), dep.clone(), v2_rt::rc_list_push(existin
 }
 
 pub fn build_in_degree(all_names: Rc<Vec<String>>, local_deps: Rc<HashMap<String, Rc<Vec<String>>>>) -> Rc<HashMap<String, i64>> {
-    all_names.iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| {
+    all_names.iter().cloned().fold(v2_rt::rc_empty_map::<i64>(), |acc: Rc<HashMap<String, i64>>, name: String| {
         let deg = match v2_rt::map_get(&local_deps, name.clone()) {
     Some(deps) => (deps.clone().len() as i64),
     None => 0,

@@ -533,7 +533,7 @@ Rc::new(EmitResult {
 }
 
 pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<ErrorNode>>> {
-    parse_results.iter().cloned().fold(Rc::new(vec![]), |acc: _, pr: Rc<ParseResult>| match pr.error.clone() {
+    parse_results.iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<ErrorNode>>>, pr: Rc<ParseResult>| match pr.error.clone() {
     Some(diag) => v2_rt::rc_list_push(acc.clone(), diag.clone()),
     None => acc.clone(),
 })

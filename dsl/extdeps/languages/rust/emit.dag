@@ -102,6 +102,15 @@ data rust_serde_tag: String = ""
 // {0} = field key name
 data rust_serde_rename_template: String = ""
 
+// -- Clone templates ------------------------------------------------------
+// Ownership-based clone expression templates.
+// {0} = expression, {1} = field name (for field_clone_expr).
+// Ref: Rust Reference 10.1.8 "Clone trait"
+data rust_clone_expr: String = "\{0\}.clone()"
+data rust_deref_clone_expr: String = "(*\{0\}).clone()"
+data rust_field_clone_expr: String = "\{0\}.\{1\}.clone()"
+data rust_iterator_clone_suffix: String = ".cloned()"
+
 // -- Project scaffold ----------------------------------------------------
 // Ref: Cargo Reference (doc.rust-lang.org/cargo/reference)
 // Mirrors rust_scaffold from std.languages.

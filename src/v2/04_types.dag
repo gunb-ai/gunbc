@@ -9,7 +9,7 @@
 
 module v2.compiler.infer_types
 
-import std.types { SourceSpan, is_container_type }
+import std.types { SourceSpan, is_container_type, container_expected_arity }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -96,6 +96,13 @@ fn node_is_keyed_collection(n: Node) -> Bool {
 
 fn node_is_element_collection(n: Node) -> Bool {
   node_is_collection(n: n) && (n.children |> count) == 1
+}
+
+fn is_fully_resolved(n: Node) -> Bool {
+  let self_is_type_var = match n.inferred { Some { value: inf } => is_type_variable(inferred: inf)  None => false }
+  if self_is_type_var { false }
+  else if is_container_type(name: n.name) && (n.children |> count) < container_expected_arity(name: n.name) { false }
+  else { n.children |> all(ch => is_fully_resolved(n: ch)) }
 }
 
 fn container_node(kind_name: String, element: Node) -> Node {
@@ -188,6 +195,10 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node) -> Node {
     TupleOf { first: first, second: second } => tuple_node(
       first: instantiate_algebra_type(template: first, base: base),
       second: instantiate_algebra_type(template: second, base: base)
+    )
+    CallableOf { params: p, return_type: r } => callable_node(
+      func_params: p |> map(tp => instantiate_algebra_type(template: tp, base: base)),
+      ret: instantiate_algebra_type(template: r, base: base)
     )
   }
 }
@@ -667,6 +678,9 @@ fn collect_named_templates(template: AlgebraTypeTemplate, acc: Map<String, Bool>
     TupleOf { first: f, second: s } =>
       let acc2 = collect_named_templates(template: f, acc: acc)
       collect_named_templates(template: s, acc: acc2)
+    CallableOf { params: p, return_type: r } =>
+      let acc2 = p |> fold(init: acc, f: (a, tp) => collect_named_templates(template: tp, acc: a))
+      collect_named_templates(template: r, acc: acc2)
   }
 }
 

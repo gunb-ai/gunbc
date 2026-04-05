@@ -52,7 +52,7 @@ use crate::v2_std_core::InferredNode::{TypeVariable};
 use crate::v2_std_core::Connective::{NoConnective};
 use crate::v2_std_core::Cardinality::{Required};
 use crate::v2_std_core::ExprData::{NoExprData};
-pub use crate::v2_compiler_infer_types::{bare_map_node};
+pub use crate::v2_compiler_infer_types::{map_node};
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
@@ -76,6 +76,10 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 })
+}
+
+pub fn map_of_type_variables() -> Rc<Node> {
+    map_node(type_variable_node("map_key".to_string()), type_variable_node("map_value".to_string()))
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
@@ -139,9 +143,9 @@ let m = v2_rt::rc_map_insert(m.clone(), "substring".to_string(), string_type());
 let m = v2_rt::rc_map_insert(m.clone(), "from_code_point".to_string(), string_type());
 let m = v2_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type());
 let m = v2_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type());
-let m = v2_rt::rc_map_insert(m.clone(), "map_insert".to_string(), bare_map_node());
-let m = v2_rt::rc_map_insert(m.clone(), "map_merge".to_string(), bare_map_node());
-let m = v2_rt::rc_map_insert(m.clone(), "with".to_string(), bare_map_node());
+let m = v2_rt::rc_map_insert(m.clone(), "map_insert".to_string(), map_of_type_variables());
+let m = v2_rt::rc_map_insert(m.clone(), "map_merge".to_string(), map_of_type_variables());
+let m = v2_rt::rc_map_insert(m.clone(), "with".to_string(), map_of_type_variables());
 let m = v2_rt::rc_map_insert(m.clone(), "map_contains_key".to_string(), bool_type());
 let m = v2_rt::rc_map_insert(m.clone(), "map_has".to_string(), bool_type());
 let m = v2_rt::rc_map_insert(m.clone(), "emit_map_has".to_string(), bool_type());

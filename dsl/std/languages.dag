@@ -344,6 +344,10 @@ type ValueSemantics
       reference_prefix: String   // e.g. "&" for Rust
       mutable_prefix: String     // e.g. "mut " for Rust
       copy_primitives: List<String>  // e.g. ["Int", "Bool", "Float", "Unit"] -- passed by value
+      clone_expr: String             // e.g. "{0}.clone()" -- clone an owned expression
+      deref_clone_expr: String       // e.g. "(*{0}).clone()" -- deref Rc/Box then clone
+      field_clone_expr: String       // e.g. "{0}.{1}.clone()" -- clone a field access
+      iterator_clone_suffix: String  // e.g. ".cloned()" -- clone iterator elements
     }
   | ReferenceBased               // Python: all objects are references
   | ValueBased {
@@ -1024,7 +1028,11 @@ data rust_reserved_words: ReservedWords = {
 data rust_value_semantics: ValueSemantics = OwnershipBased {
   reference_prefix: "&",
   mutable_prefix: "mut ",
-  copy_primitives: ["Int", "Bool", "Float", "Unit"]
+  copy_primitives: ["Int", "Bool", "Float", "Unit"],
+  clone_expr: "\{0\}.clone()",
+  deref_clone_expr: "(*\{0\}).clone()",
+  field_clone_expr: "\{0\}.\{1\}.clone()",
+  iterator_clone_suffix: ".cloned()"
 }
 
 data rust_serialization: SerializationFramework = {
