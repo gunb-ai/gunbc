@@ -142,6 +142,7 @@ pub struct ImportRule {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SharingStrategy {
     pub wrap_template: String,
+    pub fold_accumulator_shared: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -210,6 +211,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     top_level_visibility: rust_visibility(),
     sharing: Rc::new(SharingStrategy {
     wrap_template: "Rc<{0}>".to_string(),
+    fold_accumulator_shared: false,
 }),
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[({1}) as usize].clone()".to_string(),
@@ -263,6 +265,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
     wrap_template: "{0}".to_string(),
+    fold_accumulator_shared: false,
 }),
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[{1}]".to_string(),
@@ -316,6 +319,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
     wrap_template: "{0}".to_string(),
+    fold_accumulator_shared: false,
 }),
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[{1}]".to_string(),

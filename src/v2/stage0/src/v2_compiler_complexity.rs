@@ -4189,13 +4189,13 @@ let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
     certainty: Certainty::Proven,
 }),
     table: empty_intern_table(),
-}), |acc: Rc<SummaryResult>, entry: Rc<FuncEntry>| {
-            let sr = get_or_compute_summary(entry.name.clone(), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
+}), |acc: Rc<SummaryResult>, entry: Rc<FuncEntry>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
+            let sr = get_or_compute_summary(entry.name.clone(), func_index.clone(), scc_index.clone(), acc.table, parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: sr.summary.clone(),
     table: sr.table.clone(),
 })
-});
+} });
 let summaries_map = result.table.clone().summaries.clone();
 let violations = Rc::new({ let mut __result = Vec::new(); for entry in Rc::new({ let mut __result = Vec::new(); for entry in func_entries.clone().iter().cloned() { if match v2_rt::map_get(&summaries_map, entry.name.clone()) {
     Some(summary) => if is_unknown_cost(summary.work.clone()) {

@@ -65,7 +65,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, is_value_type, is_string_like, target_primitive_type};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, is_value_type, is_string_like, target_primitive_type, sharing_for_target};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, rt_type, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
@@ -319,6 +319,7 @@ let emit_info = Rc::new(EmitGraphInfo {
     value_contexts: base_info.value_contexts.clone(),
     ownership_index: ownership_idx,
     movable: v2_rt::rc_empty_map::<bool>(),
+    owned_bindings: v2_rt::rc_empty_map::<bool>(),
 });
 let rc_types = build_rc_types(emit_info.clone());
 let registry = typed.item_registry.clone();
@@ -584,6 +585,7 @@ let fn_emit_info = Rc::new(EmitGraphInfo {
     value_contexts: emit_info.value_contexts.clone(),
     ownership_index: emit_info.ownership_index.clone(),
     movable: fn_movable,
+    owned_bindings: v2_rt::rc_empty_map::<bool>(),
 });
 if ((item.uses.clone().len() as i64) > 0) {
                                 emit_func_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), rc_types, fn_emit_info)
@@ -1659,7 +1661,20 @@ match matches.first().cloned() {
     FieldAccessStyle::TupleSecond => v2_rt::concat(base_str, ".1.clone()".to_string()),
     FieldAccessStyle::OptionalUnwrap => v2_rt::concat(base_str, ".clone().unwrap()".to_string()),
     FieldAccessStyle::EnumAccessor => v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field.clone(), RenderTarget::Rust)), "()".to_string()),
-    FieldAccessStyle::StoredField => v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field.clone(), RenderTarget::Rust)), ".clone()".to_string()),
+    FieldAccessStyle::StoredField => {
+                let base_is_owned = match (*base.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                    let base_name = expr_var_name(base.clone());
+emit_map_has(emit_info.owned_bindings.clone(), base_name)
+},
+    _ => false,
+};
+if base_is_owned {
+                    v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field.clone(), RenderTarget::Rust))
+} else {
+                    v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field.clone(), RenderTarget::Rust)), ".clone()".to_string())
+}
+},
 },
     None => v2_rt::concat(v2_rt::concat("compile_error!(\"field access missing reconcile summary for '".to_string(), field.clone()), "'\")".to_string()),
 }
@@ -2399,10 +2414,97 @@ let fallback_types = Rc::new({ let mut __result = Vec::new(); for pair in Rc::ne
 let param_strs = lambda_param_type_strs(ps.clone(), None, fallback_types, rc_types.clone());
 let params_str = param_strs.join(&", ".to_string());
 let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
-let body_str = emit_typed_expr(bd, registry, lambda_scope, depth, rc_types.clone(), emit_info, 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat("|".to_string(), params_str), "| ".to_string()), body_str)
+let body_str = emit_typed_expr(bd, registry, lambda_scope, depth, rc_types.clone(), emit_info.clone(), 1024);
+let acc_name = match ps.clone().first().cloned() {
+    Some(n) => n.clone(),
+    None => "".to_string(),
+};
+let needs_unwrap = ((acc_name.clone().as_str() != "".to_string().as_str()) && emit_map_has(emit_info.owned_bindings.clone(), acc_name.clone()));
+if needs_unwrap {
+            {
+                let acc_ident = emit_ident(acc_name.clone(), RenderTarget::Rust);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("|".to_string(), params_str), "| { let ".to_string()), acc_ident.clone()), " = Rc::try_unwrap(".to_string()), acc_ident.clone()), ").unwrap_or_else(|rc| (*rc).clone()); ".to_string()), body_str), " }".to_string())
+}
+} else {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat("|".to_string(), params_str), "| ".to_string()), body_str)
+}
 },
-    _ => emit_typed_expr(lambda_expr.clone(), registry, scope.clone(), depth, rc_types.clone(), emit_info, 1024),
+    _ => emit_typed_expr(lambda_expr.clone(), registry, scope.clone(), depth, rc_types.clone(), emit_info.clone(), 1024),
+}
+}
+
+pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
+    loop {
+        match (*body.expr_data.clone()).clone() {
+    ExprData::ExprLet => { match let_body(body.clone()) {
+    Some(inner) => { {
+            let __tco_0 = inner.clone();
+body = __tco_0;
+continue;
+} },
+    None => { break body.clone(); },
+} },
+    ExprData::ExprBlock => { match body.children.clone().last().cloned() {
+    Some(last_child) => { {
+            let __tco_0 = last_child.clone();
+body = __tco_0;
+continue;
+} },
+    None => { break body.clone(); },
+} },
+    _ => { break body.clone(); },
+}
+}
+}
+
+pub fn fold_body_constructs_acc_struct(lambda_node: Rc<Node>, acc_type_name: String) -> bool {
+    match (*lambda_node.expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => {
+        let body = lambda_body(lambda_node.clone());
+let terminal = fold_terminal_expr(body);
+match (*terminal.expr_data.clone()).clone() {
+    ExprData::ExprRecordLit { .. } => (terminal.name.clone().as_str() == acc_type_name.as_str()),
+    _ => false,
+}
+},
+    _ => false,
+}
+}
+
+pub fn collect_acc_field_moves(node: Rc<Node>, acc_name: String) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*node.expr_data.clone()).clone() {
+    ExprData::ExprFieldAccess { .. } => {
+            let base = field_access_base(node.clone());
+let is_direct = match (*base.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => (expr_var_name(base.clone()).as_str() == acc_name.clone().as_str()),
+    _ => false,
+};
+if is_direct {
+                Rc::new(vec![field_access_field(node.clone())])
+} else {
+                Rc::new({ let mut __result = Vec::new(); for c in node.children.clone().iter().cloned() { __result.extend((*collect_acc_field_moves(c.clone(), acc_name.clone())).iter().cloned()); } __result })
+}
+},
+    ExprData::ExprCall { .. } => if v2_rt::map_contains_key(&rt_ref_map_functions(), expr_call_func(node.clone())) {
+            Rc::new({ let mut __result = Vec::new(); for c in Rc::new(node.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned() { __result.extend((*collect_acc_field_moves(c.clone(), acc_name.clone())).iter().cloned()); } __result })
+} else {
+            Rc::new({ let mut __result = Vec::new(); for c in node.children.clone().iter().cloned() { __result.extend((*collect_acc_field_moves(c.clone(), acc_name.clone())).iter().cloned()); } __result })
+},
+    _ => Rc::new({ let mut __result = Vec::new(); for c in node.children.clone().iter().cloned() { __result.extend((*collect_acc_field_moves(c.clone(), acc_name.clone())).iter().cloned()); } __result }),
+}
+    })
+}
+
+pub fn fold_body_safe_field_moves(lambda_node: Rc<Node>, acc_name: String) -> bool {
+    match (*lambda_node.expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => {
+        let body = lambda_body(lambda_node.clone());
+let moves = collect_acc_field_moves(body, acc_name);
+let deduped = moves.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |seen: _, field: String| v2_rt::rc_map_insert(seen.clone(), field.clone(), true));
+((Rc::new(v2_rt::map_keys(&deduped)).len() as i64) == (moves.clone().len() as i64))
+},
+    _ => true,
 }
 }
 
@@ -2441,6 +2543,53 @@ if ((is_under_resolved_map || is_under_resolved_list) || is_under_resolved_non_c
 },
 },
 };
+let acc_type_name = acc_type_node.name.clone();
+let fold_lambda_node = match Rc::new(args.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(a) => arg_value(a.clone()),
+    None => type_variable_node("".to_string()),
+};
+let acc_param_name = match (*fold_lambda_node.expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => match lambda_param_names(fold_lambda_node.clone()).first().cloned() {
+    Some(n) => n.clone(),
+    None => "".to_string(),
+},
+    _ => "".to_string(),
+};
+let cond_sharing = !sharing_for_target(RenderTarget::Rust).fold_accumulator_shared.clone();
+let cond_required = (acc_type_node.return_cardinality.clone() == Cardinality::Required);
+let cond_rc = emit_map_has(rc_types.clone(), acc_type_name.clone());
+let cond_struct = match lookup_emit_type_summary(emit_info.clone(), acc_type_name.clone()) {
+    Some(summary) => match (*summary.repr.clone()).clone() {
+    TypeRepr::StructRepr => true,
+    _ => false,
+},
+    None => false,
+};
+let cond_body = fold_body_constructs_acc_struct(fold_lambda_node.clone(), acc_type_name.clone());
+let cond_safe = fold_body_safe_field_moves(fold_lambda_node.clone(), acc_param_name);
+let acc_unwrap = (((((cond_sharing && cond_required) && cond_rc) && cond_struct) && cond_body) && cond_safe);
+let fold_emit_info = if acc_unwrap {
+            match (*fold_lambda_node.expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => {
+                let ps = lambda_param_names_at(fold_lambda_node.clone(), scope.type_env.clone().source_index.clone());
+match ps.first().cloned() {
+    Some(acc_name) => Rc::new(EmitGraphInfo {
+    type_summaries: emit_info.type_summaries.clone(),
+    recursive_type_set: emit_info.recursive_type_set.clone(),
+    fielded_variants: emit_info.fielded_variants.clone(),
+    value_contexts: emit_info.value_contexts.clone(),
+    ownership_index: emit_info.ownership_index.clone(),
+    movable: emit_info.movable.clone(),
+    owned_bindings: v2_rt::rc_map_insert(emit_info.owned_bindings.clone(), acc_name.clone(), true),
+}),
+    None => emit_info.clone(),
+}
+},
+    _ => emit_info.clone(),
+}
+} else {
+            emit_info.clone()
+};
 let acc_type_str = render_rust_type(acc_type_node.clone(), rc_types.clone());
 let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0) && (((((acc_type_node.name.clone().as_str() == "List".to_string().as_str()) || (acc_type_node.name.clone().as_str() == "Map".to_string().as_str())) || (acc_type_node.name.clone().as_str() == "Set".to_string().as_str())) || (acc_type_node.name.clone().as_str() == "NonEmptyList".to_string().as_str())) || (acc_type_node.name.clone().as_str() == "NonEmptySet".to_string().as_str())));
 let lambda_acc_type_str = if is_bare_container {
@@ -2466,16 +2615,16 @@ if (value_type_str.clone().as_str() != "".to_string().as_str()) {
                 if (init_func.clone().as_str() == "empty_map".to_string().as_str()) {
                     "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */".to_string()
 } else {
-                    emit_typed_expr(arg_value(init_arg.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024)
+                    emit_typed_expr(arg_value(init_arg.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), fold_emit_info.clone(), 1024)
 }
 }
 },
-    _ => emit_typed_expr(arg_value(init_arg.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024),
+    _ => emit_typed_expr(arg_value(init_arg.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), fold_emit_info.clone(), 1024),
 },
     None => "compile_error!(\"missing fold init argument\")".to_string(),
 };
 let fold_fn = match Rc::new(args.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
-    Some(a) => emit_typed_fold_lambda(arg_value(a.clone()), lambda_acc_type_str, elem_type_str, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()),
+    Some(a) => emit_typed_fold_lambda(arg_value(a.clone()), lambda_acc_type_str, elem_type_str, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), fold_emit_info.clone()),
     None => "compile_error!(\"missing fold function argument\")".to_string(),
 };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".iter().cloned().fold(".to_string()), init_str), ", ".to_string()), fold_fn), ")".to_string())

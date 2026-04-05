@@ -4445,3 +4445,64 @@ fn apply_named_template_arg_value_containing_recv_placeholder() {
     );
 }
 
+#[test]
+fn fold_struct_accumulator_linear_ownership() {
+    // Regression: fold accumulators are linearly threaded (owned at each step).
+    // When the fold body constructs a new struct of the accumulator type,
+    // the emitter should emit Rc::try_unwrap at iteration start so field
+    // accesses are moves (not clones), keeping Rc refcounts at 1 and avoiding
+    // O(N) deep copies in Rc::make_mut.
+    let source = r#"module fold_linear_acc
+type Accum { count: Int, total: Int }
+fn summarize(items: List<Int>) -> Accum {
+  items |> fold(init: Accum { count: 0, total: 0 }, f: (acc, item) =>
+    Accum { count: acc.count + 1, total: acc.total + item }
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/fold_linear_acc.rs");
+    // Rc::try_unwrap should be emitted to convert Rc<Accum> to owned Accum
+    assert!(
+        content.contains("Rc::try_unwrap(acc)"),
+        "fold should emit Rc::try_unwrap for struct accumulator, got:\n{}",
+        content
+    );
+    // Field accesses on the unwrapped accumulator should be moves (no .clone())
+    assert!(
+        content.contains("acc.count") && !content.contains("acc.count.clone()"),
+        "field accesses on unwrapped acc should not clone, got:\n{}",
+        content
+    );
+}
+
+#[test]
+fn fold_struct_accumulator_rejects_multi_move() {
+    // Safety check: when a fold body moves the same accumulator field
+    // more than once (to non-ref functions), the emitter must NOT emit
+    // Rc::try_unwrap — doing so would cause use-after-move in Rust.
+    // Instead it must fall back to Rc<Accum>.clone() which is safe.
+    let source = r#"module fold_multi_move
+type Accum { data: Map<String, Bool> }
+fn process(items: List<String>) -> Accum {
+  items |> fold(init: Accum { data: empty_map() }, f: (acc, item) =>
+    let a = map_insert(acc.data, item, true)
+    let b = map_insert(acc.data, item, false)
+    Accum { data: b }
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/fold_multi_move.rs");
+    // acc.data is passed to map_insert twice (both are moves).
+    // The safety check must detect the duplicate move and suppress
+    // Rc::try_unwrap, falling back to .clone() on the Rc<Accum>.
+    assert!(
+        !content.contains("Rc::try_unwrap"),
+        "fold with multi-move field must NOT emit Rc::try_unwrap, got:\n{}",
+        content
+    );
+}
+

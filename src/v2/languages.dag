@@ -102,6 +102,7 @@ type ImportRule {
 
 type SharingStrategy {
   wrap_template: String
+  fold_accumulator_shared: Bool
 }
 
 // -- Indexing semantics: per-collection-type rendering templates ------------
@@ -184,7 +185,8 @@ fn rust_spec() -> LanguageSpec {
     },
     top_level_visibility: rust_visibility,
     sharing: SharingStrategy {
-      wrap_template: "Rc<{0}>"
+      wrap_template: "Rc<{0}>",
+      fold_accumulator_shared: false
     },
     indexing: IndexingSemantics {
       list_index: "{0}[({1}) as usize].clone()",
@@ -235,7 +237,8 @@ fn python_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     sharing: SharingStrategy {
-      wrap_template: "{0}"
+      wrap_template: "{0}",
+      fold_accumulator_shared: false
     },
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
@@ -286,7 +289,8 @@ fn go_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     sharing: SharingStrategy {
-      wrap_template: "{0}"
+      wrap_template: "{0}",
+      fold_accumulator_shared: false
     },
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
