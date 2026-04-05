@@ -34,7 +34,8 @@ type NormalizeResult {
 // =========================================================================
 
 fn check_bare_containers(n: Node, module_name: String) -> List<ErrorNode> {
-  let is_bare = is_container_type(name: n.name) && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
+  let has_structure = match n.body { Some { value: _ } => true  None => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
+  let is_bare = is_container_type(name: n.name) && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure
   let self_diags = if is_bare {
     [make_error_node(
       diagnostic: ArityMismatch { name: n.name, expected: 1, got: 0, span: n.span },

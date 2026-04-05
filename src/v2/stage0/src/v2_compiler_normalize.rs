@@ -62,7 +62,11 @@ pub struct NormalizeResult {
 pub fn check_bare_containers(n: Rc<Node>, module_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
-            let is_bare = (((is_container_type(n.name.clone()) && ((n.children.clone().len() as i64) == 0)) && ((n.params.clone().len() as i64) == 0)) && (n.connective.clone() == Connective::NoConnective));
+            let has_structure = ((match n.body.clone() {
+    Some(_) => true,
+    None => false,
+} || ((n.uses.clone().len() as i64) > 0)) || ((n.properties.clone().len() as i64) > 0));
+let is_bare = ((((is_container_type(n.name.clone()) && ((n.children.clone().len() as i64) == 0)) && ((n.params.clone().len() as i64) == 0)) && (n.connective.clone() == Connective::NoConnective)) && !has_structure);
 let self_diags = if is_bare {
                 Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ArityMismatch {
     name: n.name.clone(),
