@@ -161,6 +161,7 @@ pub struct IndexingSemantics {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationRequirements {
     pub let_binding_inferred: String,
+    pub let_binding_annotated: String,
     pub lambda_param_typed: String,
     pub lambda_param_untyped: String,
 }
@@ -230,6 +231,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
 }),
     annotations: Rc::new(AnnotationRequirements {
     let_binding_inferred: "let {0} = {1};".to_string(),
+    let_binding_annotated: "let {0}: {1} = {2};".to_string(),
     lambda_param_typed: "{0}: {1}".to_string(),
     lambda_param_untyped: "{0}".to_string(),
 }),
@@ -288,6 +290,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
 }),
     annotations: Rc::new(AnnotationRequirements {
     let_binding_inferred: "{0} = {1}".to_string(),
+    let_binding_annotated: "{0}: {1} = {2}".to_string(),
     lambda_param_typed: "{0}: {1}".to_string(),
     lambda_param_untyped: "{0}".to_string(),
 }),
@@ -346,6 +349,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
 }),
     annotations: Rc::new(AnnotationRequirements {
     let_binding_inferred: "{0} := {1}".to_string(),
+    let_binding_annotated: "var {0} {1} = {2}".to_string(),
     lambda_param_typed: "{0} {1}".to_string(),
     lambda_param_untyped: "{0} interface{}".to_string(),
 }),

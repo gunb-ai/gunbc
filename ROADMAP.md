@@ -200,15 +200,15 @@ mismatches before removal). `emit_node_type` routes through
 `build_type_rendering` + `render_type`.
 
 - [x] Delete `emit_node_type_rc` / old type rendering path
-- [ ] `emit_primitive_type` fail-closed (no pass-through on miss)
+- [x] `emit_primitive_type` fail-closed (no pass-through on miss)
 
 **Sharing and ownership**
 
-- [ ] `rc_types` derived from ValueContext (`is_constant` → no wrap)
+- [x] `rc_types` derived from ValueContext (`is_constant` → no wrap)
 - [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
-- [ ] `is_constant` computation with consumer
+- [x] `is_constant` computation with consumer
 - [x] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
-- [ ] Explicit parent-enum ownership facts through resolve/infer/emit
+- [x] Explicit parent-enum ownership facts through resolve/infer/emit
 
 **Value context**
 
@@ -238,11 +238,10 @@ backends.
 - [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
   All three backends dispatch on collection type.
-- [ ] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
+- [x] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
   in LanguageSpec — let binding templates (inferred/annotated), lambda param
-  templates (typed/untyped). Inferred-let and lambda params consume spec;
-  `emit_let_binding_annotated` introduced but no caller yet.
-  *Remaining: annotated-let consumer must land in same change.*
+  templates (typed/untyped). All three Rust emitter let-binding sites consume
+  `emit_let_binding_annotated` via `build_type_rendering` + `render_type`.
 
 ### CG-3: Parameterization
 
@@ -343,6 +342,13 @@ instead of hardcoding them.
 - Tier 2.5 (algebra bridge fidelity):
   - [ ] `CallableOf` variant for higher-order callback shapes
   - [ ] Derive T/K/V type parameter names from algebra declarations
+- Tier 2.6 (functional system modeling):
+  - [ ] Model function application as a concept (apply/call vs function-value-ref)
+  - [ ] Inference encodes "this is a call" in the IR node, not as a type-arity heuristic
+  - [ ] Dissolves `is_zero_arg_callable_ref` and `rt.name == "Callable"` L1 violation
+  - Same pattern as iteration modeling (fold/descend/repeat): ad-hoc emit
+    decisions are symptoms of a missing concept layer. Once the functional
+    system is modeled, arity-based rendering questions disappear.
 - Tier 3 (full structural algebra, requires FF-9):
   - [ ] Compiler reads type declarations + algebra edges at resolve time
   - [ ] Derive kernel/container identity from type declarations

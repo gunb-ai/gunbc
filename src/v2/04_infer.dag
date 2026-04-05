@@ -110,10 +110,9 @@ import v2.compiler.infer_sigs {
 import v2.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
-  ValueContext,
   empty_emit_graph_info, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary
+  add_emit_item_summary, derive_variant_to_enum
 }
 import v2.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
@@ -2933,57 +2932,6 @@ fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String
   result
 }
 
-fn child_has_fn_type(child: Node) -> Bool {
-  match child.inferred {
-    Some { value: Resolved { node: rt } } => rt.params |> count > 0
-    _ => false
-  }
-}
-
-// DAG-level value type names: fixed-width carriers that never need
-// indirection or heap allocation in any target language.
-fn is_dag_value_type_name(name: String) -> Bool {
-  name == "Int" || name == "Bool" || name == "Float"
-}
-
-fn child_resolved_type_name(child: Node) -> String {
-  match child.inferred {
-    Some { value: Resolved { node: rt } } => normalize_access_type_node(n: rt).name
-    _ => ""
-  }
-}
-
-// A type is constant when it is a fixed-width carrier: no recursion,
-// no fn-typed fields, no generic params, and every field resolves to a
-// DAG value type. Unit-only enums are trivially constant.
-fn all_fields_are_value_types(children: List<Node>) -> Bool {
-  children |> all(child =>
-    let type_name = child_resolved_type_name(child: child)
-    type_name != "" && is_dag_value_type_name(name: type_name)
-  )
-}
-
-fn is_item_constant(item: Node, recursive_type_set: Map<String, Bool>) -> Bool {
-  let is_recursive = map_contains_key(recursive_type_set, item.name)
-  let has_generics = (item.params |> count) > 0
-  let has_fn = item.children |> any(child => child_has_fn_type(child: child))
-  let is_unit_only_enum = item.connective == Disj && item.children |> all(variant => (variant.children |> count) == 0)
-  let is_value_struct = item.connective == Conj && all_fields_are_value_types(children: item.children)
-  !is_recursive && !has_generics && !has_fn && (is_value_struct || is_unit_only_enum)
-}
-
-fn build_value_contexts(modules: List<TypedModule>, recursive_type_set: Map<String, Bool>) -> Map<String, ValueContext> {
-  // Keyed by type name — same keying contract as type_summaries and
-  // recursive_type_set (unique within the compilation unit after resolution).
-  modules |> fold(init: empty_map(), f: (acc, m) =>
-    m.items |> fold(init: acc, f: (inner, item) =>
-      let has_fn_fields = item.children |> any(child => child_has_fn_type(child: child))
-      let is_constant = is_item_constant(item: item, recursive_type_set: recursive_type_set)
-      map_insert(inner, item.name, ValueContext { has_fn_fields: has_fn_fields, is_constant: is_constant })
-    )
-  )
-}
-
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map()
@@ -2997,14 +2945,15 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     map_merge(acc, m.type_env.recursive_type_set)
   )
   let fielded = build_fielded_variants(modules: modules, type_summaries: built.type_summaries)
-  let value_ctxs = build_value_contexts(modules: modules, recursive_type_set: all_recursive)
+  let vtoe = derive_variant_to_enum(type_summaries: built.type_summaries)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
     fielded_variants: fielded,
-    value_contexts: value_ctxs,
+    shared_types: empty_map(),
     ownership_index: empty_map(),
-    movable: empty_map()
+    movable: empty_map(),
+    variant_to_enum: vtoe
   }
 }
 

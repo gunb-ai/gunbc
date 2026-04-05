@@ -78,7 +78,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope,
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 pub use crate::v2_compiler_ownership::{analyze_ownership, build_movable_set};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, TypedItemKind, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, classify_typed_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, TransportKind, classify_transport, extract_modifier_names};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, TypedItemKind, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, classify_typed_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, TransportKind, classify_transport, extract_modifier_names};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
@@ -274,13 +274,6 @@ pub fn has_complex_variants(item: Rc<Node>) -> bool {
 }
 }
 
-pub fn type_summary_needs_rc(summary: Rc<TypeSummary>) -> bool {
-    match (*summary.repr.clone()).clone() {
-    TypeRepr::StructRepr => true,
-    TypeRepr::EnumRepr { unit_only: unit_only, .. } => (unit_only.clone() == false),
-}
-}
-
 pub fn is_simple_disj(item: Rc<Node>) -> bool {
     {
         let complex = Rc::new({ let mut __result = Vec::new(); for v in item.children.clone().iter().cloned() { if ((v.children.clone().len() as i64) > 0) { __result.push(v); } } __result });
@@ -288,22 +281,48 @@ pub fn is_simple_disj(item: Rc<Node>) -> bool {
 }
 }
 
-pub fn build_rc_types(emit_info: Rc<EmitGraphInfo>) -> Rc<HashMap<String, bool>> {
+pub fn is_dag_value_type_name(name: String) -> bool {
+    (((name.clone().as_str() == "Int".to_string().as_str()) || (name.clone().as_str() == "Bool".to_string().as_str())) || (name.clone().as_str() == "Float".to_string().as_str()))
+}
+
+pub fn is_type_constant(summary: Rc<TypeSummary>, recursive_type_set: Rc<HashMap<String, bool>>) -> bool {
     {
-        let user_rc = Rc::new(v2_rt::map_values(&emit_info.type_summaries.clone())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, summary: Rc<TypeSummary>| {
-            let ctx = v2_rt::map_get(&emit_info.value_contexts.clone(), summary.name.clone());
-let is_constant = match ctx.clone() {
-    Some(vc) => vc.is_constant.clone(),
-    None => false,
+        let is_recursive = v2_rt::map_contains_key(&recursive_type_set, summary.name.clone());
+let has_generics = ((summary.generic_param_names.clone().len() as i64) > 0);
+match (*summary.repr.clone()).clone() {
+    TypeRepr::EnumRepr { unit_only: unit_only, .. } => (((unit_only.clone() && !is_recursive) && !has_generics) && !summary.has_fn_fields.clone()),
+    TypeRepr::StructRepr => if ((is_recursive || has_generics) || summary.has_fn_fields.clone()) {
+            false
+} else {
+            {
+                let field_count = (Rc::new(v2_rt::map_keys(&summary.field_summaries.clone())).len() as i64);
+let ft_count = (Rc::new(v2_rt::map_keys(&summary.field_type_map.clone())).len() as i64);
+if (ft_count < field_count) {
+                    false
+} else {
+                    { let mut __all = true; for tn in Rc::new(v2_rt::map_values(&summary.field_type_map.clone())).iter().cloned() { if !(is_dag_value_type_name(tn.clone())) { __all = false; break; } } __all }
+}
+}
+},
+}
+}
+}
+
+pub fn build_shared_types(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>, recursive_type_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, bool>> {
+    {
+        let user_shared = Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, summary: Rc<TypeSummary>| {
+            let needs_sharing = match (*summary.repr.clone()).clone() {
+    TypeRepr::StructRepr => true,
+    TypeRepr::EnumRepr { unit_only: unit_only, .. } => (unit_only.clone() == false),
 };
-if (type_summary_needs_rc(summary.clone()) && !is_constant.clone()) {
+if (needs_sharing.clone() && !is_type_constant(summary.clone(), recursive_type_set.clone())) {
                 v2_rt::rc_map_insert(acc.clone(), summary.name.clone(), true)
 } else {
                 acc.clone()
 }
 });
 let collection_keys = Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&rust_container_templates())).iter().cloned() { if ((k.clone().as_str() != "optional".to_string().as_str()) && (k.clone().as_str() != "boolean_algebra".to_string().as_str())) { __result.push(k); } } __result });
-collection_keys.iter().cloned().fold(user_rc.clone(), |acc: _, key: String| {
+collection_keys.iter().cloned().fold(user_shared.clone(), |acc: _, key: String| {
             let pascal = to_pascal(key.clone());
 v2_rt::rc_map_insert(acc.clone(), pascal.clone(), true)
 })
@@ -321,15 +340,17 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let base_info = build_emit_graph_info(typed.modules.clone());
 let ownership_idx = build_ownership_index(typed.modules.clone());
+let shared = build_shared_types(base_info.type_summaries.clone(), base_info.recursive_type_set.clone());
 let emit_info = Rc::new(EmitGraphInfo {
     type_summaries: base_info.type_summaries.clone(),
     recursive_type_set: base_info.recursive_type_set.clone(),
     fielded_variants: base_info.fielded_variants.clone(),
-    value_contexts: base_info.value_contexts.clone(),
+    shared_types: shared,
     ownership_index: ownership_idx,
     movable: v2_rt::rc_empty_map::<bool>(),
+    variant_to_enum: base_info.variant_to_enum.clone(),
 });
-let rc_types = build_rc_types(emit_info.clone());
+let rc_types = emit_info.shared_types.clone();
 let registry = typed.item_registry.clone();
 let workflow_funcs = collect_workflow_funcs(typed.modules.clone(), registry.clone());
 let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone());
@@ -392,8 +413,18 @@ Rc::new(TextFile {
 
 pub fn emit_module(typed_module: Rc<TypedModule>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<TextFile> {
     {
-        let emit_info = build_emit_graph_info(Rc::new(vec![typed_module.clone()]));
-let rc_types = build_rc_types(emit_info.clone());
+        let base_info = build_emit_graph_info(Rc::new(vec![typed_module.clone()]));
+let shared = build_shared_types(base_info.type_summaries.clone(), base_info.recursive_type_set.clone());
+let emit_info = Rc::new(EmitGraphInfo {
+    type_summaries: base_info.type_summaries.clone(),
+    recursive_type_set: base_info.recursive_type_set.clone(),
+    fielded_variants: base_info.fielded_variants.clone(),
+    shared_types: shared,
+    ownership_index: base_info.ownership_index.clone(),
+    movable: base_info.movable.clone(),
+    variant_to_enum: base_info.variant_to_enum.clone(),
+});
+let rc_types = emit_info.shared_types.clone();
 emit_module_full(typed_module.clone(), registry, emit_info.clone(), rc_types, v2_rt::rc_empty_map::<String>())
 }
 }
@@ -590,9 +621,10 @@ let fn_emit_info = Rc::new(EmitGraphInfo {
     type_summaries: emit_info.type_summaries.clone(),
     recursive_type_set: emit_info.recursive_type_set.clone(),
     fielded_variants: emit_info.fielded_variants.clone(),
-    value_contexts: emit_info.value_contexts.clone(),
+    shared_types: emit_info.shared_types.clone(),
     ownership_index: emit_info.ownership_index.clone(),
     movable: fn_movable,
+    variant_to_enum: emit_info.variant_to_enum.clone(),
 });
 if ((item.uses.clone().len() as i64) > 0) {
                                 emit_func_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), rc_types, fn_emit_info)
@@ -674,8 +706,8 @@ if is_product {
 
 pub fn emit_struct_from_children(name: String, type_params: String, children: Rc<Vec<Rc<Node>>>, recursive_types: Rc<HashMap<String, bool>>, rc_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
-        let has_fn_fields = match v2_rt::map_get(&emit_info.value_contexts.clone(), name.clone()) {
-    Some(vc) => vc.has_fn_fields.clone(),
+        let has_fn_fields = match v2_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
+    Some(ts) => ts.has_fn_fields.clone(),
     None => false,
 };
 let derives = if has_fn_fields {
@@ -919,7 +951,8 @@ match (*body.expr_data.clone()).clone() {
 let v = let_value(body.clone());
 let inner = let_body(body.clone());
 let val_str = emit_typed_expr(v.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-let let_line = emit_let_binding(n.clone(), val_str, RenderTarget::Rust);
+let type_str = render_type(build_type_rendering(rt_type(v.clone()), rc_types.clone(), emit_info.recursive_type_set.clone()), RenderTarget::Rust);
+let let_line = emit_let_binding_annotated(n.clone(), type_str, val_str, RenderTarget::Rust);
 let next_scope = extend_scope(scope.clone(), n.clone(), rt_type(v.clone()));
 match inner {
     Some(bd) => v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_func_body(bd.clone(), registry.clone(), next_scope, depth.clone(), rc_types.clone(), emit_info.clone())),
@@ -1532,13 +1565,16 @@ if is_movable {
 }
 
 pub fn effective_variant_parent(name: String, binding_kind: Option<Rc<VarBindingKind>>, resolved_type: Option<Rc<InferredNode>>, emit_info: Rc<EmitGraphInfo>) -> Option<String> {
-    match resolved_type.as_deref().cloned() {
+    match v2_rt::map_get(&emit_info.variant_to_enum.clone(), name.clone()) {
+    Some(parent) => Some(parent.clone()),
+    None => match resolved_type.as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => if (((rt.name.clone().as_str() != "".to_string().as_str()) && (rt.name.clone().as_str() != name.clone().as_str())) && variant_belongs_to_enum(emit_info.type_summaries.clone(), name.clone(), rt.name.clone())) {
         Some(rt.name.clone())
 } else {
         variant_parent_from_binding_kind(binding_kind)
 },
     _ => variant_parent_from_binding_kind(binding_kind),
+},
 }
 }
 
@@ -3099,7 +3135,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_typed_let(name: String, value: Rc<Node>, body: Option<Rc<Node>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let val_str = emit_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-let let_line = emit_let_binding(name.clone(), val_str, RenderTarget::Rust);
+let type_str = render_type(build_type_rendering(rt_type(value.clone()), rc_types.clone(), emit_info.recursive_type_set.clone()), RenderTarget::Rust);
+let let_line = emit_let_binding_annotated(name.clone(), type_str, val_str, RenderTarget::Rust);
 match body {
     Some(bd) => {
             let next_scope = extend_scope(scope.clone(), name.clone(), rt_type(value.clone()));
@@ -3611,15 +3648,18 @@ pub fn emit_tco_init_stmt(stmt: Rc<Node>, params: Rc<Vec<Rc<Node>>>, registry: R
     ExprData::ExprLet => {
         let n = let_binding_name(stmt.clone());
 let v = let_value(stmt.clone());
-let val_str = emit_typed_expr(v, registry, scope, depth, rc_types, emit_info, 1024);
+let val_str = emit_typed_expr(v.clone(), registry, scope, depth, rc_types.clone(), emit_info.clone(), 1024);
 let is_param = { let mut __found = false; for p in params.iter().cloned() { if (param_node_name(p.clone()).as_str() == n.clone().as_str()) { __found = true; break; } } __found };
 if is_param {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(n.clone(), RenderTarget::Rust), " = ".to_string()), val_str), ";".to_string())
 } else {
-            emit_let_binding(n.clone(), val_str, RenderTarget::Rust)
+            {
+                let type_str = render_type(build_type_rendering(rt_type(v.clone()), rc_types.clone(), emit_info.recursive_type_set.clone()), RenderTarget::Rust);
+emit_let_binding_annotated(n.clone(), type_str, val_str, RenderTarget::Rust)
+}
 }
 },
-    _ => emit_typed_expr(stmt.clone(), registry, scope, depth, rc_types, emit_info, 1024),
+    _ => emit_typed_expr(stmt.clone(), registry, scope, depth, rc_types.clone(), emit_info.clone(), 1024),
 }
 }
 

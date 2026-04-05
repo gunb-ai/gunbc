@@ -79,12 +79,6 @@ impl TypeRepr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ValueContext {
-    pub has_fn_fields: bool,
-    pub is_constant: bool,
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeSummary {
     pub name: String,
@@ -93,6 +87,7 @@ pub struct TypeSummary {
     pub field_type_map: Rc<HashMap<String, String>>,
     pub variant_name_set: Rc<HashMap<String, bool>>,
     pub generic_param_names: Rc<Vec<String>>,
+    pub has_fn_fields: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -100,9 +95,10 @@ pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub recursive_type_set: Rc<HashMap<String, bool>>,
     pub fielded_variants: Rc<HashMap<String, bool>>,
-    pub value_contexts: Rc<HashMap<String, ValueContext>>,
+    pub shared_types: Rc<HashMap<String, bool>>,
     pub ownership_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub movable: Rc<HashMap<String, bool>>,
+    pub variant_to_enum: Rc<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -132,9 +128,10 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     type_summaries: v2_rt::rc_empty_map::<Rc<TypeSummary>>(),
     recursive_type_set: v2_rt::rc_empty_map::<bool>(),
     fielded_variants: v2_rt::rc_empty_map::<bool>(),
-    value_contexts: v2_rt::rc_empty_map::<ValueContext>(),
+    shared_types: v2_rt::rc_empty_map::<bool>(),
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     movable: v2_rt::rc_empty_map::<bool>(),
+    variant_to_enum: v2_rt::rc_empty_map::<String>(),
 })
 }
 
@@ -352,6 +349,10 @@ pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
 }
 let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result });
 let is_product = (item.connective.clone() == Connective::Conj);
+let has_fn = { let mut __found = false; for child in item.children.clone().iter().cloned() { if match child.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => ((rt.params.clone().len() as i64) > 0),
+    _ => false,
+} { __found = true; break; } } __found };
 if is_product {
             Some(Rc::new(TypeSummary {
     name: item.name.clone(),
@@ -360,6 +361,7 @@ if is_product {
     field_type_map: build_field_type_map(item.children.clone()),
     variant_name_set: v2_rt::rc_empty_map::<bool>(),
     generic_param_names: gpn,
+    has_fn_fields: has_fn,
 }))
 } else {
             {
@@ -373,6 +375,7 @@ Some(Rc::new(TypeSummary {
     field_type_map: v2_rt::rc_empty_map::<String>(),
     variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), child.name.clone(), true)),
     generic_param_names: gpn,
+    has_fn_fields: has_fn,
 }))
 }
 }
@@ -384,14 +387,21 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     Some(summary) => {
         let with_variants = match (*summary.repr.clone()).clone() {
     TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.type_summaries.clone(), |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
-            v2_rt::rc_map_insert(acc.clone(), variant.name.clone(), Rc::new(TypeSummary {
+            {
+                let v_has_fn = { let mut __found = false; for vc in variant.children.clone().iter().cloned() { if match vc.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => ((rt.params.clone().len() as i64) > 0),
+    _ => false,
+} { __found = true; break; } } __found };
+v2_rt::rc_map_insert(acc.clone(), variant.name.clone(), Rc::new(TypeSummary {
     name: variant.name.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(variant.children.clone()),
     field_type_map: build_field_type_map(variant.children.clone()),
     variant_name_set: v2_rt::rc_empty_map::<bool>(),
     generic_param_names: Rc::new(vec![]),
+    has_fn_fields: v_has_fn.clone(),
 }))
+}
 } else {
             acc.clone()
 }),

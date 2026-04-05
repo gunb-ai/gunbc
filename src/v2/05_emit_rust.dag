@@ -111,7 +111,7 @@ import v2.compiler.emit {
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
   TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   rust_literal_for_pattern,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body,
   module_emit_scope,
@@ -313,28 +313,51 @@ fn has_complex_variants(item: Node) -> Bool {
 // modules with no Rc-wrapped user types.
 // =========================================================================
 
-fn type_summary_needs_rc(summary: TypeSummary) -> Bool {
-  match summary.repr {
-    StructRepr => true
-    EnumRepr { unit_only: unit_only } => unit_only == false
-  }
-}
-
 fn is_simple_disj(item: Node) -> Bool {
   // Simple enum: all variants are unit variants (no children)
   let complex = item.children |> filter(v => v.children |> count > 0)
   complex |> count == 0
 }
 
-// Build the rc_types map: the SINGLE authority for Rc-wrapping decisions.
+// DAG-level value type names: fixed-width carriers that never need
+// indirection or heap allocation in any target language.
+fn is_dag_value_type_name(name: String) -> Bool {
+  name == "Int" || name == "Bool" || name == "Float"
+}
+
+// A type is constant (fixed-width carrier) when it needs no shared-pointer
+// wrapping: not recursive, no generics, no fn-typed fields, and every field
+// resolves to a DAG value type. Unit-only enums are trivially constant.
+fn is_type_constant(summary: TypeSummary, recursive_type_set: Map<String, Bool>) -> Bool {
+  let is_recursive = map_contains_key(recursive_type_set, summary.name)
+  let has_generics = (summary.generic_param_names |> count) > 0
+  match summary.repr {
+    EnumRepr { unit_only: unit_only } =>
+      unit_only && !is_recursive && !has_generics && !summary.has_fn_fields
+    StructRepr =>
+      if is_recursive || has_generics || summary.has_fn_fields { false }
+      else {
+        // All fields must resolve to value types. field_type_map excludes
+        // unresolvable fields, so check counts match field_summaries.
+        let field_count = map_keys(summary.field_summaries) |> count
+        let ft_count = map_keys(summary.field_type_map) |> count
+        if ft_count < field_count { false }
+        else { map_values(summary.field_type_map) |> all(tn => is_dag_value_type_name(name: tn)) }
+      }
+  }
+}
+
+// Build the shared_types map: the SINGLE authority for sharing (Rc) decisions.
 // Includes user-defined types (structs, data enums) and built-in collection
 // types. Container templates are BARE — Rc is applied here, not in templates.
-// Types with is_constant=true in ValueContext skip Rc (fixed-width carriers).
-fn build_rc_types(emit_info: EmitGraphInfo) -> Map<String, Bool> {
-  let user_rc = map_values(emit_info.type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
-    let ctx = map_get(emit_info.value_contexts, summary.name)
-    let is_constant = match ctx { Some { value: vc } => vc.is_constant  None => false }
-    if type_summary_needs_rc(summary: summary) && !is_constant {
+// Constant types (fixed-width carriers) skip sharing.
+fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_set: Map<String, Bool>) -> Map<String, Bool> {
+  let user_shared = map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
+    let needs_sharing = match summary.repr {
+      StructRepr => true
+      EnumRepr { unit_only: unit_only } => unit_only == false
+    }
+    if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) {
       map_insert(acc, summary.name, true)
     } else {
       acc
@@ -346,7 +369,7 @@ fn build_rc_types(emit_info: EmitGraphInfo) -> Map<String, Bool> {
   let collection_keys = map_keys(rust_container_templates)
     |> filter(k => k != "optional" && k != "boolean_algebra")
   // Template keys are snake_case; type names are PascalCase.
-  collection_keys |> fold(init: user_rc, f: (acc, key) =>
+  collection_keys |> fold(init: user_shared, f: (acc, key) =>
     let pascal = to_pascal(name: key)
     map_insert(acc, pascal, true)
   )
@@ -372,15 +395,17 @@ fn build_ownership_index(modules: List<TypedModule>) -> Map<String, Map<String, 
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let base_info = build_emit_graph_info(modules: typed.modules)
   let ownership_idx = build_ownership_index(modules: typed.modules)
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
-    value_contexts: base_info.value_contexts,
+    shared_types: shared,
     ownership_index: ownership_idx,
-    movable: empty_map()
+    movable: empty_map(),
+    variant_to_enum: base_info.variant_to_enum
   }
-  let rc_types = build_rc_types(emit_info: emit_info)
+  let rc_types = emit_info.shared_types
   let registry = typed.item_registry
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
@@ -458,8 +483,18 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>) -> TextFile {
 
 // Backwards-compatible wrapper for tests that call emit_module directly.
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
-  let emit_info = build_emit_graph_info(modules: [typed_module])
-  let rc_types = build_rc_types(emit_info: emit_info)
+  let base_info = build_emit_graph_info(modules: [typed_module])
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set)
+  let emit_info = EmitGraphInfo {
+    type_summaries: base_info.type_summaries,
+    recursive_type_set: base_info.recursive_type_set,
+    fielded_variants: base_info.fielded_variants,
+    shared_types: shared,
+    ownership_index: base_info.ownership_index,
+    movable: base_info.movable,
+    variant_to_enum: base_info.variant_to_enum
+  }
+  let rc_types = emit_info.shared_types
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, rc_types: rc_types, svc_module_map: empty_map())
 }
 
@@ -702,9 +737,10 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       type_summaries: emit_info.type_summaries,
       recursive_type_set: emit_info.recursive_type_set,
       fielded_variants: emit_info.fielded_variants,
-      value_contexts: emit_info.value_contexts,
+      shared_types: emit_info.shared_types,
       ownership_index: emit_info.ownership_index,
-      movable: fn_movable
+      movable: fn_movable,
+      variant_to_enum: emit_info.variant_to_enum
     }
     if item.uses |> count > 0 {
       emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
@@ -774,9 +810,9 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>,
 fn emit_struct_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   // Types with fn-typed fields (algebra witnesses) can't derive Debug/PartialEq
   // because dyn Fn doesn't implement those traits. Derive Clone only.
-  // Read from precomputed ValueContext boundary instead of locally inspecting children.
-  let has_fn_fields = match map_get(emit_info.value_contexts, name) {
-    Some { value: vc } => vc.has_fn_fields
+  // Read from precomputed TypeSummary.has_fn_fields instead of locally inspecting children.
+  let has_fn_fields = match map_get(emit_info.type_summaries, name) {
+    Some { value: ts } => ts.has_fn_fields
     None => false
   }
   let derives = if has_fn_fields {
@@ -1031,8 +1067,8 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      // Type annotations disabled for bootstrap convergence (Pass A).
-      let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
+      let type_str = render_type(tr: build_type_rendering(n: rt_type(n: v), rc_types: rc_types, recursive_types: emit_info.recursive_type_set), target: Rust)
+      let let_line = emit_let_binding_annotated(name: n, type_str: type_str, value: val_str, target: Rust)
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match inner {
         Some { value: bd } =>
@@ -1625,14 +1661,21 @@ fn emit_var_clone_or_move(ident: String, name: String, resolved_type: InferredNo
 }
 
 fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, emit_info: EmitGraphInfo) -> String? {
-  match resolved_type {
-    Some { value: Resolved { node: rt } } =>
-      if rt.name != "" && rt.name != name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: name, enum_name: rt.name) {
-        Some { value: rt.name }
-      } else {
-        variant_parent_from_binding_kind(binding_kind: binding_kind)
+  // Primary: precomputed variant_to_enum map (O(1) lookup, no heuristics).
+  match map_get(emit_info.variant_to_enum, name) {
+    Some { value: parent } => Some { value: parent }
+    None =>
+      // Fallback: resolved type may name the parent for ambiguous variants
+      // or variants from external modules not in type_summaries.
+      match resolved_type {
+        Some { value: Resolved { node: rt } } =>
+          if rt.name != "" && rt.name != name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: name, enum_name: rt.name) {
+            Some { value: rt.name }
+          } else {
+            variant_parent_from_binding_kind(binding_kind: binding_kind)
+          }
+        _ => variant_parent_from_binding_kind(binding_kind: binding_kind)
       }
-    _ => variant_parent_from_binding_kind(binding_kind: binding_kind)
   }
 }
 
@@ -2934,10 +2977,8 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
 
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-  // Type annotations disabled for bootstrap convergence (Pass A).
-  // Without annotations, Rust infers correct types from usage context.
-  // Re-enable with proper empty-collection inference in Pass B.
-  let let_line = emit_let_binding(name: name, value: val_str, target: Rust)
+  let type_str = render_type(tr: build_type_rendering(n: rt_type(n: value), rc_types: rc_types, recursive_types: emit_info.recursive_type_set), target: Rust)
+  let let_line = emit_let_binding_annotated(name: name, type_str: type_str, value: val_str, target: Rust)
   match body {
     Some { value: bd } =>
       let next_scope = extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
@@ -3390,9 +3431,11 @@ fn emit_tco_init_stmt(stmt: Node, params: List<Node>, registry: Map<String, Item
       let v = let_value(texpr: stmt)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
       let is_param = params |> any(p => param_node_name(n: p) == n)
-      // Type annotations disabled for bootstrap convergence (Pass A).
       if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") }
-      else { emit_let_binding(name: n, value: val_str, target: Rust) }
+      else {
+        let type_str = render_type(tr: build_type_rendering(n: rt_type(n: v), rc_types: rc_types, recursive_types: emit_info.recursive_type_set), target: Rust)
+        emit_let_binding_annotated(name: n, type_str: type_str, value: val_str, target: Rust)
+      }
     _ => emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   }
 }
