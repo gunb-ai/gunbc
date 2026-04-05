@@ -8,13 +8,11 @@
 // algebra.dag says "Int inhabits OrderedRing, therefore add/mul/compare exist."
 // computation.dag says "self(child) inhabits Descend, therefore it terminates."
 //
-// DESIGN PRINCIPLE (proposed direction — requires INVARIANTS.md update):
+// DESIGN PRINCIPLE:
 // No pattern is rejected. Every computation has a finite bound. The
 // compiler always succeeds in lowering; the question is not "does this
-// terminate?" but "what is its bound?" Currently INVARIANTS.md says
-// unchanged-argument self-calls are compilation errors; that invariant
-// must be explicitly updated before SameArgumentCall → repeat(Forever)
-// becomes active in the analyzer.
+// terminate?" but "what is its bound?" INVARIANTS.md is aligned: the
+// lowering table is exhaustive and every call pattern has a bound.
 //
 // BOUNDED TRUTH:
 //

@@ -388,10 +388,6 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
   let left_opt = left.return_cardinality == CardOptional
   let right_opt = right.return_cardinality == CardOptional
-  let left_leaf = left.connective == NoConnective && left.children |> count == 0 && left.properties |> count == 0
-  let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
-  let left_struct = left.connective != NoConnective
-  let right_struct = right.connective != NoConnective
   let right_is_unit_eq = right.connective == Conj && right.children |> count == 0
   let left_is_unit_eq = left.connective == Conj && left.children |> count == 0
   if left_err || right_err { true }
@@ -399,7 +395,23 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   else if left_tv || right_tv { false }
   else if left_opt && right_is_unit_eq { true }
   else if left_is_unit_eq && right_opt { true }
-  else if left_leaf && right_leaf {
+  else if left_opt && right_opt {
+    // Optional unwrap: same tree structure with cardinality stripped.
+    // Separate from node_type_equals_core so CX sees SCC edge as Same
+    // (wrapper transparency) rather than dragging core's Strict to NonIncreasing.
+    node_type_equals_core(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right))
+  }
+  else {
+    node_type_equals_core(left: left, right: right)
+  }
+}
+
+fn node_type_equals_core(left: Node, right: Node) -> Bool {
+  let left_leaf = left.connective == NoConnective && left.children |> count == 0 && left.properties |> count == 0
+  let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
+  let left_struct = left.connective != NoConnective
+  let right_struct = right.connective != NoConnective
+  if left_leaf && right_leaf {
     left.name == right.name
   }
   else if left_struct && right_struct {
@@ -437,21 +449,30 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
         }
       }
     }
-    else if left_opt && right_opt {
-      node_type_equals(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right))
-    }
     else {
       let both_maps = node_is_keyed_collection(n: left) && node_is_keyed_collection(n: right)
       if both_maps {
-      if left.children |> count == 2 && right.children |> count == 2 {
-        let left_first = match left.children |> first { Some { value: v } => v, None => left }
-        let right_first = match right.children |> first { Some { value: v } => v, None => right }
-        let left_second = match skip(left.children, 1) |> first { Some { value: v } => v, None => left }
-        let right_second = match skip(right.children, 1) |> first { Some { value: v } => v, None => right }
-        node_type_equals(left: left_first, right: right_first) && node_type_equals(left: left_second, right: right_second)
-      } else {
-        false
-      }
+        if left.children |> count == 2 && right.children |> count == 2 {
+          match left.children |> first {
+            Some { value: left_first } =>
+              match right.children |> first {
+                Some { value: right_first } =>
+                  match left.children |> skip(1) |> first {
+                    Some { value: left_second } =>
+                      match right.children |> skip(1) |> first {
+                        Some { value: right_second } =>
+                          node_type_equals(left: left_first, right: right_first) && node_type_equals(left: left_second, right: right_second)
+                        None => false
+                      }
+                    None => false
+                  }
+                None => false
+              }
+            None => false
+          }
+        } else {
+          false
+        }
       }
       else if left.params |> count > 0 && right.params |> count > 0 {
         if left.params |> count != right.params |> count { false }

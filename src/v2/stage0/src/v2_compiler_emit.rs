@@ -927,9 +927,14 @@ if ((n_is_type_var || n_is_error.clone()) && ((n.children.clone().len() as i64) 
 if (n.name.clone().as_str() == "Callable".to_string().as_str()) {
                 {
                     let param_renderings = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(build_type_rendering(param_node_type_expr(p.clone()), rc_types.clone(), recursive_types.clone())); } __result });
-let ret = match n.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => Some(build_type_rendering(rt.clone(), rc_types.clone(), recursive_types.clone())),
-    _ => None,
+let has_resolved_return = match n.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { .. }) => true,
+    _ => false,
+};
+let ret = if has_resolved_return {
+                        Some(build_type_rendering(rt_type(n.clone()), rc_types.clone(), recursive_types.clone()))
+} else {
+                        None
 };
 return Rc::new(TypeRendering {
     type_name: "Callable".to_string(),
@@ -951,7 +956,7 @@ return Rc::new(TypeRendering {
 let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional {
                 {
-                    let inner_tr = build_type_rendering(with_required_cardinality(n.clone()), rc_types.clone(), recursive_types.clone());
+                    let inner_tr = build_type_rendering_dispatch(with_required_cardinality(n.clone()), rc_types.clone(), recursive_types.clone());
 return Rc::new(TypeRendering {
     type_name: "optional".to_string(),
     inner: Some(inner_tr),
@@ -969,19 +974,25 @@ return Rc::new(TypeRendering {
 })
 }
 }
-let is_conj = (n.connective.clone() == Connective::Conj);
-let is_disj = (n.connective.clone() == Connective::Disj);
-if (!is_conj.clone() && !is_disj) {
-                build_type_rendering_leaf(n.clone(), rc_types.clone(), recursive_types.clone())
-} else {
-                if is_conj.clone() {
-                    build_type_rendering_conj(n.clone(), rc_types.clone(), recursive_types.clone())
-} else {
-                    build_type_rendering_disj(n.clone(), rc_types.clone())
-}
-}
+build_type_rendering_dispatch(n.clone(), rc_types.clone(), recursive_types.clone())
 }
     })
+}
+
+pub fn build_type_rendering_dispatch(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
+    {
+        let is_conj = (n.connective.clone() == Connective::Conj);
+let is_disj = (n.connective.clone() == Connective::Disj);
+if (!is_conj.clone() && !is_disj) {
+            build_type_rendering_leaf(n.clone(), rc_types, recursive_types)
+} else {
+            if is_conj.clone() {
+                build_type_rendering_conj(n.clone(), rc_types, recursive_types)
+} else {
+                build_type_rendering_disj(n.clone(), rc_types)
+}
+}
+}
 }
 
 pub fn build_type_rendering_leaf(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {

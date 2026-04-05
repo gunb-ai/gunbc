@@ -2381,13 +2381,36 @@ fn strict_complexity_violation_count() {
         .iter()
         .map(|(p, c)| (p.as_str(), c.as_str()))
         .collect();
-    let result = crate::helpers::compile_multi(&file_refs);
 
-    let violation_count = result.complexity.violations.len();
+    // compile.dag bypasses complexity analysis (empty_complexity_report).
+    // Call build_complexity_report directly to get real violations.
+    use v2_compiler::v2_compiler_compile::{extract_func_entries, build_recursion_context, front_end_sources, SourceFile};
+    use v2_compiler::v2_compiler_complexity::build_complexity_report;
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
+    use v2_compiler::v2_compiler_infer::reconcile;
+
+    let mut all_sources: std::collections::HashMap<String, std::rc::Rc<SourceFile>> = std::collections::HashMap::new();
+    for (path, content) in &file_refs {
+        let resolved = crate::helpers::resolve_imports_transitively(path, content);
+        for src in resolved {
+            all_sources.entry(src.path.clone()).or_insert(src);
+        }
+    }
+    let sources: Vec<std::rc::Rc<SourceFile>> = all_sources.into_values().collect();
+    let frontend = front_end_sources(std::rc::Rc::new(sources));
+    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let norm = normalize_graph(graph);
+    let source_indices = std::rc::Rc::new(std::collections::HashMap::new());
+    let typed = reconcile(norm.graph.clone(), source_indices);
+    let func_entries = extract_func_entries(typed.clone());
+    let recursion_ctx = build_recursion_context(typed);
+    let complexity = build_complexity_report(func_entries, recursion_ctx);
+
+    let violation_count = complexity.violations.len();
     eprintln!(
         "complexity: {} violations out of {} function summaries",
         violation_count,
-        result.complexity.function_summaries.len()
+        complexity.function_summaries.len()
     );
 
     // Root-cause cascade (diagnostic display only — no assertions on
@@ -2399,7 +2422,7 @@ fn strict_complexity_violation_count() {
     let mut root_cause_counts: std::collections::BTreeMap<String, usize> =
         std::collections::BTreeMap::new();
     let computing_prefix = "computing: ";
-    for v in result.complexity.violations.iter() {
+    for v in complexity.violations.iter() {
         let root = if v.reason.starts_with(computing_prefix) {
             v.reason[computing_prefix.len()..].to_string()
         } else {
@@ -2420,7 +2443,7 @@ fn strict_complexity_violation_count() {
     }
 
     eprintln!("\n  SAMPLE VIOLATIONS (first 20):");
-    for v in result.complexity.violations.iter().take(20) {
+    for v in complexity.violations.iter().take(20) {
         eprintln!("    {}: {}", v.func_name, v.reason);
     }
 

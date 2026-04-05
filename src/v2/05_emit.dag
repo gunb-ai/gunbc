@@ -924,10 +924,13 @@ fn build_type_rendering(n: Node, rc_types: Map<String, Bool>, recursive_types: M
   // Callable: fn(A, B) -> R
   if n.name == "Callable" {
     let param_renderings = n.params |> map(p => build_type_rendering(n: param_node_type_expr(n: p), rc_types: rc_types, recursive_types: recursive_types))
-    let ret = match n.inferred {
-      Some { value: Resolved { node: rt } } => Some { value: build_type_rendering(n: rt, rc_types: rc_types, recursive_types: recursive_types) }
-      _ => none
+    let has_resolved_return = match n.inferred {
+      Some { value: Resolved { node: _ } } => true
+      _ => false
     }
+    let ret = if has_resolved_return {
+      Some { value: build_type_rendering(n: rt_type(n: n), rc_types: rc_types, recursive_types: recursive_types) }
+    } else { none }
     return TypeRendering {
       type_name: "Callable", params: param_renderings, return_type: ret,
       element: none, key: none, value: none, inner: none, generic_args: [],
@@ -935,10 +938,12 @@ fn build_type_rendering(n: Node, rc_types: Map<String, Bool>, recursive_types: M
     }
   }
 
-  // Optional wrapping
+  // Optional wrapping — dispatch directly to connective handler to avoid
+  // a NonIncreasing self-loop (wrapper preserves tree size but self-edge
+  // creates a non-descending cycle in the SCC proof).
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
-    let inner_tr = build_type_rendering(n: with_required_cardinality(n: n), rc_types: rc_types, recursive_types: recursive_types)
+    let inner_tr = build_type_rendering_dispatch(n: with_required_cardinality(n: n), rc_types: rc_types, recursive_types: recursive_types)
     return TypeRendering {
       type_name: "optional", inner: Some { value: inner_tr },
       element: none, key: none, value: none, params: [], return_type: none,
@@ -946,7 +951,10 @@ fn build_type_rendering(n: Node, rc_types: Map<String, Bool>, recursive_types: M
     }
   }
 
-  // Dispatch on connective
+  build_type_rendering_dispatch(n: n, rc_types: rc_types, recursive_types: recursive_types)
+}
+
+fn build_type_rendering_dispatch(n: Node, rc_types: Map<String, Bool>, recursive_types: Map<String, Bool>) -> TypeRendering {
   let is_conj = n.connective == Conj
   let is_disj = n.connective == Disj
   if !is_conj && !is_disj {
