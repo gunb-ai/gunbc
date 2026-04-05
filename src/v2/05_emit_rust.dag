@@ -71,7 +71,7 @@ import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
   TestConventions,
   test_conventions_for_target, top_level_visibility_for_target,
-  is_value_type, is_string_like, target_primitive_type
+  is_value_type, is_string_like, target_primitive_type, try_target_primitive_type
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 
@@ -132,8 +132,8 @@ import v2.compiler.emit {
   is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
-  service_has_rest, service_has_shell, service_has_file,
-  service_has_rest_auth,
+  ServiceFieldSet, compute_service_fields,
+  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
   extract_modifier_names
 }
 
@@ -327,9 +327,12 @@ fn is_simple_disj(item: Node) -> Bool {
 // Build the rc_types map: the SINGLE authority for Rc-wrapping decisions.
 // Includes user-defined types (structs, data enums) and built-in collection
 // types. Container templates are BARE — Rc is applied here, not in templates.
+// Types with is_constant=true in ValueContext skip Rc (fixed-width carriers).
 fn build_rc_types(emit_info: EmitGraphInfo) -> Map<String, Bool> {
   let user_rc = map_values(emit_info.type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
-    if type_summary_needs_rc(summary: summary) {
+    let ctx = map_get(emit_info.value_contexts, summary.name)
+    let is_constant = match ctx { Some { value: vc } => vc.is_constant  None => false }
+    if type_summary_needs_rc(summary: summary) && !is_constant {
       map_insert(acc, summary.name, true)
     } else {
       acc
@@ -800,7 +803,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
     match map_get(env.bindings, rt_child.name) {
       Some { value: binding } =>
         if binding.resolved.params |> count > 0 {
-          let base = target_primitive_type(target: Rust, name: rt_child.name)
+          let base = match try_target_primitive_type(target: Rust, name: rt_child.name) { Some { value: m } => m  None => rt_child.name }
           let param_names = binding.resolved.params |> map(p => generic_param_name_at(n: p, source_index: env.source_index))
           let with_params = concat(base, "<", param_names |> join(separator: ", "), ">")
           if emit_map_has(m: rc_types, key: rt_child.name) { concat("Rc<", with_params, ">") }
@@ -901,7 +904,8 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
       if child.children |> count == 0 {
         concat("            ", name, "::", child_text, " => panic!(\"no ", fname, " on unit variant\"),")
       } else {
-        concat("            ", name, "::", child_text, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => __val.clone(),")
+        let sharing = language_spec(target: Rust).sharing
+        concat("            ", name, "::", child_text, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => ", apply_type_template1(template: sharing.clone_value, arg0: "__val"), ",")
       }
     )
     let arms_str = arms |> join(separator: "\n")
@@ -1600,6 +1604,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
   if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
+    let sharing = language_spec(target: Rust).sharing
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info)
     let ref_str = match variant_parent {
       Some { value: enum_name } =>
@@ -1624,7 +1629,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               } else if is_movable {
                 ident
               } else { match resolved_type {
-                Some { value: _ } => concat(ident, ".clone()")
+                Some { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
                 _ => ident
               } }
               ident_str
@@ -1635,7 +1640,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
             let ident_str = if is_movable {
               ident
             } else { match resolved_type {
-              Some { value: _ } => concat(ident, ".clone()")
+              Some { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
               _ => ident
             } }
             ident_str
@@ -1710,14 +1715,15 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
       }
     }
   } else {
+    let sharing = language_spec(target: Rust).sharing
     match summary {
       Some { value: field_summary } =>
         match field_summary.access_style {
-          TupleFirst => concat(base_str, ".0.clone()")
-          TupleSecond => concat(base_str, ".1.clone()")
-          OptionalUnwrap => concat(base_str, ".clone().unwrap()")
+          TupleFirst => apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".0"))
+          TupleSecond => apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".1"))
+          OptionalUnwrap => concat(apply_type_template1(template: sharing.clone_value, arg0: base_str), ".unwrap()")
           EnumAccessor => concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
-          StoredField => concat(base_str, ".", emit_ident(name: field, target: Rust), ".clone()")
+          StoredField => apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
         }
       // Every field access must have a summary set by reconcile.
       None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
@@ -2092,7 +2098,8 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     }
     let fields_str = field_strs |> join(separator: ", ")
     let needs_rc = emit_map_has(m: rc_types, key: type_name)
-    let spread = if needs_rc { concat("(*", base_str, ").clone()") } else { concat(base_str, ".clone()") }
+    let sharing = language_spec(target: Rust).sharing
+    let spread = if needs_rc { apply_type_template1(template: sharing.deref_clone, arg0: base_str) } else { apply_type_template1(template: sharing.clone_value, arg0: base_str) }
     let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
     if needs_rc { return concat("Rc::new(", raw, ")") }
     else { return raw }
@@ -2218,6 +2225,7 @@ fn emit_nested_rt_concat(remaining: List<String>, acc: String, rc_types: Map<Str
 }
 
 fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let sharing = language_spec(target: Rust).sharing
   let coll_str = emit_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let elem_type = for_each_element_type_node(n: rt_type(n: collection))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
@@ -2225,9 +2233,10 @@ fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry:
   let ind1 = make_indent(level: depth + 1)
   let ind2 = make_indent(level: depth + 2)
   let ind0 = make_indent(level: depth)
+  let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: coll_str)
   concat("{\n",
     ind1, "let mut __collect = Vec::new();\n",
-    ind1, "for ", emit_ident(name: variable, target: Rust), " in ", coll_str, ".iter().cloned() {\n",
+    ind1, "for ", emit_ident(name: variable, target: Rust), " in ", iter_str, " {\n",
     ind2, "__collect.push(", body_str, ");\n",
     ind1, "}\n",
     ind1, "Rc::new(__collect)\n",
@@ -2441,7 +2450,8 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
       emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
     None => "compile_error!(\"missing fold function argument\")"
   }
-  concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
+  let sharing = language_spec(target: Rust).sharing
+  concat(apply_type_template1(template: sharing.iter_owned, arg0: recv_str), ".fold(", init_str, ", ", fold_fn, ")")
 }
 
 fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
@@ -2465,10 +2475,14 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   // and bare Vec<T>. Avoids the (*recv).clone() issue with slices.
   // When elem_type_str is "_", omit type annotations and use a.clone() directly
   // as sort key — avoids the (|name: _| ...)(a.clone()) wrapper that Rust can't infer.
+  let sharing = language_spec(target: Rust).sharing
+  let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
+  let a_clone = apply_type_template1(template: sharing.clone_value, arg0: "a")
+  let b_clone = apply_type_template1(template: sharing.clone_value, arg0: "b")
   if elem_type_str == "_" {
-    concat("Rc::new({ let mut __sorted: Vec<_> = ", recv_str, ".iter().cloned().collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+    concat("Rc::new({ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
   } else {
-    concat("Rc::new({ let mut __sorted: Vec<_> = ", recv_str, ".iter().cloned().collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(a.clone()); let __kb = (", sort_key_fn, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
+    concat("Rc::new({ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
   }
 }
 
@@ -2496,6 +2510,8 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
       None => concat(recv_str, ".map(", first_arg_str, ")")
     }
   } else {
+    let sharing = language_spec(target: Rust).sharing
+    let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
     match args |> first {
       Some { value: a } =>
         match arg_value(n: a).expr_data {
@@ -2506,17 +2522,19 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
             let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-            concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.push(", body_str, "); } __result })")
-          _ => concat("Rc::new(", recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>())")
+            concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.push(", body_str, "); } __result })")
+          _ => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>())")
         }
-      None => concat("Rc::new(", recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>())")
+      None => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>())")
     }
   }
 }
 
 fn emit_rust_filter_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let sharing = language_spec(target: Rust).sharing
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+  let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   match args |> first {
     Some { value: a } =>
       match arg_value(n: a).expr_data {
@@ -2527,16 +2545,18 @@ fn emit_rust_filter_method_call(receiver: Node, args: List<Node>, registry: Map<
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
           let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-          concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __result.push(", p, "); } } __result })")
-        _ => concat("Rc::new(", recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>())")
+          concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { if ", body_str, " { __result.push(", p, "); } } __result })")
+        _ => concat("Rc::new(", iter_str, ".filter(", first_arg_str, ").collect::<Vec<_>>())")
       }
-    None => concat("Rc::new(", recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>())")
+    None => concat("Rc::new(", iter_str, ".filter(", first_arg_str, ").collect::<Vec<_>>())")
   }
 }
 
 fn emit_rust_any_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let sharing = language_spec(target: Rust).sharing
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+  let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   match args |> first {
     Some { value: a } =>
       match arg_value(n: a).expr_data {
@@ -2547,16 +2567,18 @@ fn emit_rust_any_method_call(receiver: Node, args: List<Node>, registry: Map<Str
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
           let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-          concat("{ let mut __found = false; for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __found = true; break; } } __found }")
-        _ => concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
+          concat("{ let mut __found = false; for ", p, " in ", iter_str, " { if ", body_str, " { __found = true; break; } } __found }")
+        _ => concat(iter_str, ".any(", first_arg_str, ")")
       }
-    None => concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
+    None => concat(iter_str, ".any(", first_arg_str, ")")
   }
 }
 
 fn emit_rust_all_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let sharing = language_spec(target: Rust).sharing
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+  let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   match args |> first {
     Some { value: a } =>
       match arg_value(n: a).expr_data {
@@ -2567,16 +2589,18 @@ fn emit_rust_all_method_call(receiver: Node, args: List<Node>, registry: Map<Str
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
           let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-          concat("{ let mut __all = true; for ", p, " in ", recv_str, ".iter().cloned() { if !(", body_str, ") { __all = false; break; } } __all }")
-        _ => concat(recv_str, ".iter().cloned().all(", first_arg_str, ")")
+          concat("{ let mut __all = true; for ", p, " in ", iter_str, " { if !(", body_str, ") { __all = false; break; } } __all }")
+        _ => concat(iter_str, ".all(", first_arg_str, ")")
       }
-    None => concat(recv_str, ".iter().cloned().all(", first_arg_str, ")")
+    None => concat(iter_str, ".all(", first_arg_str, ")")
   }
 }
 
 fn emit_rust_flat_map_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let sharing = language_spec(target: Rust).sharing
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+  let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   match args |> first {
     Some { value: a } =>
       match arg_value(n: a).expr_data {
@@ -2587,10 +2611,11 @@ fn emit_rust_flat_map_method_call(receiver: Node, args: List<Node>, registry: Ma
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
           let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-          concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.extend((*", body_str, ").iter().cloned()); } __result })")
-        _ => concat("Rc::new(", recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>())")
+          let inner_iter = apply_type_template1(template: sharing.iter_owned, arg0: concat("(*", body_str, ")"))
+          concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.extend(", inner_iter, "); } __result })")
+        _ => concat("Rc::new(", iter_str, ".flat_map(", first_arg_str, ").collect::<Vec<_>>())")
       }
-    None => concat("Rc::new(", recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>())")
+    None => concat("Rc::new(", iter_str, ".flat_map(", first_arg_str, ").collect::<Vec<_>>())")
   }
 }
 
@@ -2634,7 +2659,8 @@ fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<St
   }
   let fields_str = field_strs |> join(separator: ", ")
   let needs_rc = emit_map_has(m: rc_types, key: type_name)
-  let spread = if needs_rc { concat("(*", base_str, ").clone()") } else { concat(base_str, ".clone()") }
+  let sharing = language_spec(target: Rust).sharing
+  let spread = if needs_rc { apply_type_template1(template: sharing.deref_clone, arg0: base_str) } else { apply_type_template1(template: sharing.clone_value, arg0: base_str) }
   let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
   if needs_rc { concat("Rc::new(", raw, ")") } else { raw }
 }
@@ -2763,7 +2789,8 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   if rc_match.needs_option_deref {
     concat("match ", scrut_str, ".as_deref().cloned() {\n", arms_str, "\n}")
   } else if rc_match.needs_deref {
-    concat("match (*", scrut_str, ").clone() {\n", arms_str, "\n}")
+    let sharing = language_spec(target: Rust).sharing
+    concat("match ", apply_type_template1(template: sharing.deref_clone, arg0: scrut_str), " {\n", arms_str, "\n}")
   } else if needs_as_str {
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
   } else if needs_string_from {
@@ -3369,7 +3396,8 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       if rc_match.needs_option_deref {
         concat("match ", scrut_str, ".as_deref().cloned() {\n", arms_str, "\n}")
       } else if rc_match.needs_deref {
-        concat("match (*", scrut_str, ").clone() {\n", arms_str, "\n}")
+        let sharing = language_spec(target: Rust).sharing
+        concat("match ", apply_type_template1(template: sharing.deref_clone, arg0: scrut_str), " {\n", arms_str, "\n}")
       } else if tco_needs_as_str {
         concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
       } else {
@@ -3512,14 +3540,11 @@ fn emit_service_struct(name: String, fallback_transport: Node, op_children: List
 }
 
 fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>) -> String {
-  let has_shell = service_has_shell(fallback_transport: fallback_transport, op_children: op_children)
-  let has_rest = service_has_rest(fallback_transport: fallback_transport, op_children: op_children)
-  let has_file = service_has_file(fallback_transport: fallback_transport, op_children: op_children)
-  let has_auth = service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
-  let shell_field = if has_shell { "    pub working_dir: Option<String>,\n" } else { "" }
-  let rest_field = if has_rest { "    pub base_url: String,\n" } else { "" }
-  let auth_field = if has_auth { "    pub auth_token: String,\n" } else { "" }
-  let file_field = if has_file { "    pub base_path: String,\n" } else { "" }
+  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+  let shell_field = if fs.has_shell { "    pub working_dir: Option<String>,\n" } else { "" }
+  let rest_field = if fs.has_rest { "    pub base_url: String,\n" } else { "" }
+  let auth_field = if fs.has_auth { "    pub auth_token: String,\n" } else { "" }
+  let file_field = if fs.has_file { "    pub base_path: String,\n" } else { "" }
   let fields = concat(shell_field, rest_field, auth_field, file_field)
   if fields == "" { "    // No configuration needed for local binding.\n" } else { fields }
 }
@@ -3538,12 +3563,9 @@ fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, reg
 // Emit a `new` constructor for a service struct that accepts DryRunMode.
 // Scans all operations to determine which transport fields to initialize.
 fn emit_service_new_method(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
-  let has_shell = service_has_shell(fallback_transport: fallback_transport, op_children: op_children)
-  let has_rest = service_has_rest(fallback_transport: fallback_transport, op_children: op_children)
-  let has_file = service_has_file(fallback_transport: fallback_transport, op_children: op_children)
-  let has_auth = service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
+  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
   // Find a default base_url from the service-level REST transport or from any REST op
-  let base_url_default = if has_rest {
+  let base_url_default = if fs.has_rest {
     let fallback_is_rest = is_rest_transport(t: fallback_transport)
     let from_fallback = if fallback_is_rest {
       match transport_base_url(t: fallback_transport) {
@@ -3556,10 +3578,10 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
     } else { "" }
     if from_fallback != "" { from_fallback } else { "http://localhost" }
   } else { "" }
-  let shell_init = if has_shell { "        working_dir: None,\n" } else { "" }
-  let rest_init = if has_rest { concat("        base_url: \"", base_url_default, "\".to_string(),\n") } else { "" }
-  let auth_init = if has_auth { "        auth_token: String::new(),\n" } else { "" }
-  let file_init = if has_file { "        base_path: \".\".to_string(),\n" } else { "" }
+  let shell_init = if fs.has_shell { "        working_dir: None,\n" } else { "" }
+  let rest_init = if fs.has_rest { concat("        base_url: \"", base_url_default, "\".to_string(),\n") } else { "" }
+  let auth_init = if fs.has_auth { "        auth_token: String::new(),\n" } else { "" }
+  let file_init = if fs.has_file { "        base_path: \".\".to_string(),\n" } else { "" }
   concat(
     "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
     "    ", name, " {\n",
@@ -3630,14 +3652,11 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 }
 
 fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node) -> String {
-  if is_rest_transport(t: transport) {
-    emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth)
-  } else if is_shell_transport(t: transport) {
-    emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred)
-  } else if is_file_transport(t: transport) {
-    emit_file_call(op_name: op_name, inferred: inferred)
-  } else {
-    emit_local_call(op_name: op_name)
+  match classify_transport(t: transport) {
+    RestKind => emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth)
+    ShellKind => emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred)
+    FileKind => emit_file_call(op_name: op_name, inferred: inferred)
+    LocalKind => emit_local_call(op_name: op_name)
   }
 }
 
@@ -4189,9 +4208,10 @@ fn emit_cli_param_type_node(n: Node) -> String {
   } else if has_structure {
     "String"
   } else if n.children |> count == 0 {
-    let mapped = target_primitive_type(target: Rust, name: n.name)
-    if mapped != n.name { mapped }
-    else { "String" }
+    match try_target_primitive_type(target: Rust, name: n.name) {
+      Some { value: mapped } => mapped
+      None => "String"
+    }
   } else {
     "String"
   }
@@ -4353,11 +4373,12 @@ fn emit_main_service_args(wf: WorkflowFunc, has_services: Bool) -> String {
 // Build the list of service instance arguments for a workflow call.
 // Each service gets constructed with `::new(dry_run.clone())` or `::new()`.
 fn emit_main_service_arg_list(wf: WorkflowFunc, has_services: Bool) -> List<String> {
+  let sharing = language_spec(target: Rust).sharing
   let resource_args = wf.uses |> map(u => concat("&", resource_use_resource(n: u).name))
   let svc_args = wf.service_names |> map(sn =>
     let struct_name = sanitize_service_name(name: sn)
     if has_services {
-      concat("&", struct_name, "::new(dry_run.clone())")
+      concat("&", struct_name, "::new(", apply_type_template1(template: sharing.clone_value, arg0: "dry_run"), ")")
     } else {
       concat("&", struct_name, "::new()")
     }

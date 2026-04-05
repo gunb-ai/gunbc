@@ -57,10 +57,11 @@ import v2.std.core {
 import v2.compiler.artifact { RenderTarget, Python }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
-  TestConventions, test_conventions_for_target
+  TestConventions, test_conventions_for_target,
+  is_string_like
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
-import v2.compiler.infer_types { for_each_element_type_node, rt_type }
+import v2.compiler.infer_types { for_each_element_type_node, rt_type, normalize_access_type_node, node_is_keyed_collection }
 import v2.compiler.infer_method {
 }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
@@ -104,7 +105,9 @@ import v2.compiler.emit {
   extract_test_projections,
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
-  service_fallback_transport, effective_operation_transport
+  service_fallback_transport, effective_operation_transport,
+  ServiceFieldSet, compute_service_fields,
+  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport
 }
 
 // =========================================================================
@@ -780,7 +783,15 @@ fn emit_py_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>,
   let spec = language_spec(target: Python)
   let base_str = emit_py_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let index_str = emit_py_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  apply_type_template2(template: spec.indexing.list_index, arg0: base_str, arg1: index_str)
+  let base_node = normalize_access_type_node(n: rt_type(n: base))
+  let is_map = node_is_keyed_collection(n: base_node)
+  if is_string_like(target: Python, name: base_node.name) {
+    apply_type_template2(template: spec.indexing.string_index, arg0: base_str, arg1: index_str)
+  } else if is_map {
+    apply_type_template2(template: spec.indexing.map_index, arg0: base_str, arg1: index_str)
+  } else {
+    apply_type_template2(template: spec.indexing.list_index, arg0: base_str, arg1: index_str)
+  }
 }
 
 fn emit_py_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -788,9 +799,17 @@ fn emit_py_typed_slice(base: Node, start: Node, end: Node, registry: Map<String,
   let base_str = emit_py_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let start_str = emit_py_typed_expr(texpr: start, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let end_str = emit_py_typed_expr(texpr: end, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  match spec.indexing.list_slice {
-    Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
-    None => emit_error_expr(message: "unsupported slice for target", target: Python)
+  let base_node = normalize_access_type_node(n: rt_type(n: base))
+  if is_string_like(target: Python, name: base_node.name) {
+    match spec.indexing.string_slice {
+      Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
+      None => emit_error_expr(message: "unsupported string slice for target", target: Python)
+    }
+  } else {
+    match spec.indexing.list_slice {
+      Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
+      None => emit_error_expr(message: "unsupported slice for target", target: Python)
+    }
   }
 }
 
@@ -1170,8 +1189,8 @@ fn emit_py_service_def(
   let depth = 0
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let transport = service_fallback_transport(item: item)
-  let init_method = emit_py_service_init(transport: transport)
   let op_children = item.children
+  let init_method = emit_py_service_init(fallback_transport: transport, op_children: op_children)
   let methods = op_children |> map(op_node =>
     emit_py_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, env: env)
   )
@@ -1181,20 +1200,24 @@ fn emit_py_service_def(
     make_indent(level: depth + 1), methods_str)
 }
 
-fn emit_py_service_init(transport: Node) -> String {
-  if is_rest_transport(t: transport) {
-    let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
-    let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }
-    concat("def __init__(self, base_url: str", auth_param, "):\n",
-      "    self.base_url = base_url", auth_assign)
-  } else if is_shell_transport(t: transport) {
-    concat("def __init__(self, working_dir: str | None = None):\n",
-      "    self.working_dir = working_dir")
-  } else if is_file_transport(t: transport) {
-    concat("def __init__(self, base_path: str):\n",
-      "    self.base_path = base_path")
-  } else {
+fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>) -> String {
+  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+  let params = []
+  let assigns = []
+  let params = if fs.has_rest { concat(params, ["base_url: str"]) } else { params }
+  let assigns = if fs.has_rest { concat(assigns, ["self.base_url = base_url"]) } else { assigns }
+  let params = if fs.has_auth { concat(params, ["auth_token: str"]) } else { params }
+  let assigns = if fs.has_auth { concat(assigns, ["self.auth_token = auth_token"]) } else { assigns }
+  let params = if fs.has_shell { concat(params, ["working_dir: str | None = None"]) } else { params }
+  let assigns = if fs.has_shell { concat(assigns, ["self.working_dir = working_dir"]) } else { assigns }
+  let params = if fs.has_file { concat(params, ["base_path: str"]) } else { params }
+  let assigns = if fs.has_file { concat(assigns, ["self.base_path = base_path"]) } else { assigns }
+  if params |> count == 0 {
     "def __init__(self):\n    pass"
+  } else {
+    let params_str = concat("self, ", params |> join(separator: ", "))
+    let assigns_str = assigns |> map(a => concat("    ", a)) |> join(separator: "\n")
+    concat("def __init__(", params_str, "):\n", assigns_str)
   }
 }
 
@@ -1218,10 +1241,12 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>) -> String {
-  if is_rest_transport(t: transport) { emit_py_rest_call(op_name: op_name, transport: transport) }
-  else if is_shell_transport(t: transport) { emit_py_shell_call(op_name: op_name, transport: transport) }
-  else if is_file_transport(t: transport) { emit_py_file_call(op_name: op_name) }
-  else { emit_py_local_call(op_name: op_name) }
+  match classify_transport(t: transport) {
+    RestKind => emit_py_rest_call(op_name: op_name, transport: transport)
+    ShellKind => emit_py_shell_call(op_name: op_name, transport: transport)
+    FileKind => emit_py_file_call(op_name: op_name)
+    LocalKind => emit_py_local_call(op_name: op_name)
+  }
 }
 
 fn emit_py_rest_call(op_name: String, transport: Node) -> String {

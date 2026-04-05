@@ -45,10 +45,12 @@ type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 // The emitter reads ValueContext × LanguageSpec to choose representation:
 //   has_fn_fields × Rust → skip PartialEq/Debug derives
 //
-// Future fields (land when consumer exists):
-//   is_constant → const/static (no Rc, no lazy_static) in Rust
 type ValueContext {
   has_fn_fields: Bool
+  // True when the type is a fixed-width carrier: not recursive, no fn-typed
+  // fields, and all fields are value types (Int, Bool, Float) or it's a
+  // unit-only enum. The emitter uses this to skip Rc wrapping in Rust.
+  is_constant: Bool
 }
 
 type TypeSummary {
