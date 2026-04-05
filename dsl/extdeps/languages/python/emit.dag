@@ -71,6 +71,10 @@ data python_default_value: String = "None"
 data python_source_extension: String = ".py"
 data python_module_init: String = "__init__.py"
 
+// -- String-like types ------------------------------------------------------
+// Types that use string comparison/indexing semantics in Python.
+data python_string_types: List<String> = ["String", "Secret"]
+
 // -- Method templates -------------------------------------------------------
 // Named-placeholder templates for algebra method calls.
 // \{recv\} = pre-emitted receiver, \{arg\} = pre-emitted first argument.

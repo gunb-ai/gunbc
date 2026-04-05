@@ -110,6 +110,10 @@ pub fn python_module_init() -> String {
     "__init__.py".to_string()
 }
 
+pub fn python_string_types() -> Rc<Vec<String>> {
+    Rc::new(vec!["String".to_string(), "Secret".to_string()])
+}
+
 pub fn python_method_templates() -> Rc<HashMap<String, String>> {
     let mut __m = HashMap::new();
     __m.insert("count".to_string(), "len({recv})".to_string());

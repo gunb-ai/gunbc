@@ -2262,16 +2262,16 @@ fn is_match_option_descent(val: Node, param_name: String, vars: Map<String, Bool
             _ => false
           }
         )
-        // All non-extracting arms must not return param directly
+        // All arms must not return the original param directly.
+        // VariantPattern arms that extract bindings and return one are fine
+        // (checked by has_extraction). But variant arms that return the
+        // param itself (e.g. None => n) would make the overall match
+        // non-descending — same check as non-variant arms.
         let all_safe = match_arm_nodes(texpr: val) |> all(arm_node =>
-          match arm_pattern(n: arm_node) {
-            VariantPattern { name: _, parent_enum: _, field_bindings: _ } => true
-            _ =>
-              let arm_b = arm_body(n: arm_node)
-              match arm_b.expr_data {
-                ExprVar { binding_kind: _ } => expr_var_name(texpr: arm_b) != param_name
-                _ => true
-              }
+          let arm_b = arm_body(n: arm_node)
+          match arm_b.expr_data {
+            ExprVar { binding_kind: _ } => expr_var_name(texpr: arm_b) != param_name
+            _ => true
           }
         )
         has_extraction && all_safe

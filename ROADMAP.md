@@ -72,7 +72,7 @@ eliminating these is tracked as future work under M5-full
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (271 pass, 0 fail, 36 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
-| L1 ratchet | `scripts/l1-ratchet.sh --check` | 32 (target: 0) |
+| L1 ratchet | `scripts/l1-ratchet.sh --check` | 30 (target: 0) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
 ## Ratchet Counts
@@ -80,7 +80,7 @@ eliminating these is tracked as future work under M5-full
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
-| L1 type knowledge | 32 | 0 | Down from 70; name-based workarounds tracked for M4 |
+| L1 type knowledge | 30 | 0 | Down from 70; name-based workarounds tracked for M4 |
 | Complexity violations | 164 | 0 | Down from 315; unfinished algebraic grounding |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
@@ -128,8 +128,8 @@ of propagating error state. `node_inferred_to_outputs` builds outputs
 from fabricated types. Highest-confidence correctness bug (reviewer
 2026-04-02).
 
-- [ ] `child_inferred_or_empty` propagates error state structurally
-- [ ] `node_inferred_to_outputs` refuses error-typed children (fail-closed)
+- [x] `child_inferred_or_empty` propagates error state structurally
+- [x] `node_inferred_to_outputs` refuses error-typed children (fail-closed) — all-or-nothing gate via `rt_node` check; returns `[]` if any child is not `Typed`
 
 ### Incomplete parameterization and bidirectional inference
 
@@ -145,11 +145,11 @@ Symptoms:
 - Callback shapes (`fn(Acc, T) -> Acc`) synthesized at inference time, not declared
 
 Open items:
-- [ ] Incomplete parameterized types rejected at normalization, not infer
-- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit
-- [ ] Thread `expected` to all formal params, not just callable ones
-- [ ] Refine fold accumulators structurally via `is_fully_resolved`
-- [ ] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
+- [x] Incomplete parameterized types rejected at normalization — `container_expected_arity` returns `Int?` (fail-closed: unknown names → None, no false positives on operations sharing container names)
+- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators. Empty list `[]` diagnostic blocked on expected-type propagation through list element inference (160 false positives from `[]` in record literal fields like `param_types: []`)
+- [x] Thread `expected` to formal params at matching positions — over-arity args no longer receive synthetic expected types; non-callable expected boundary overload remains open
+- [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
+- [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
 ### Acceptance
 
@@ -206,7 +206,7 @@ mismatches before removal). `emit_node_type` routes through
 - [ ] `rc_types` derived from ValueContext (`is_constant` → no wrap)
 - [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
 - [ ] `is_constant` computation with consumer
-- [ ] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
+- [x] Clone semantics in LanguageSpec — `SharingStrategy` templates (`clone_value`, `deref_clone`, `iter_owned`) replace all hardcoded `.clone()` in emit
 - [ ] Explicit parent-enum ownership facts through resolve/infer/emit
 
 **Value context**
@@ -252,7 +252,7 @@ Make emission fully data-driven. Adding a backend = adding data.
   `Map<String, String>` data. Templates are pure method syntax; Rc wrapping
   composed separately from sharing authority. Covers count/join/split/first/last/
   enumerate/chars/skip/take + higher-order (map/filter/fold/sort_by/any/all/flat_map).
-- [ ] Transport/config: one `.dag` authority (35+ redundant sites → 1)
+- [~] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend sites are inherent rendering differences.
 - [ ] LanguageSpec completion — all target-language facts data-driven
   *(method_templates landed as `Map<String, String>?`; structured `MethodTemplate`
   type with lambda/fn_ref/simple variants is the next step)*
@@ -328,7 +328,7 @@ passes to fix what construction should have prevented.
 ## M4: Structural Identity (L1 = 0) — follows Lanes 1+2
 
 **Root cause:** The compiler uses `Node.name` (a string) as semantic
-authority. ~256 constructions, ~32 name-based comparisons. Deletion
+authority. ~256 constructions, ~30 name-based comparisons. Deletion
 requires declaration-driven identity and structural algebra.
 Blocked on M2 (structural facts in resolve/infer files) and E-track
 (clean render path in emit files).
@@ -341,7 +341,7 @@ instead of hardcoding them.
 - Tier 1 (data tables → .dag): DONE
 - Tier 2 (factor enrich_kernel_type): DONE
 - Tier 2.5 (algebra bridge fidelity):
-  - [ ] `CallableOf` variant for higher-order callback shapes
+  - [x] `CallableOf` variant for higher-order callback shapes
   - [ ] Derive T/K/V type parameter names from algebra declarations
 - Tier 3 (full structural algebra, requires FF-9):
   - [ ] Compiler reads type declarations + algebra edges at resolve time
@@ -469,6 +469,51 @@ No test >2s without justification. Self-compile time tracked per-PR.
 
 Theory, long-horizon, and items that land after root-cause tracks complete.
 
+## CM: Compiler Concept Modeling (continuous track)
+
+**Root cause:** The compiler interrogates structural properties (connective,
+children count, param count, transport presence) to answer semantic questions
+that should be modeled facts. Each ad-hoc question is a symptom of a missing
+concept. Until the compiler models its own domain in `.dag`, these questions
+will keep spawning in every new feature and every refactor.
+
+**Principle:** Improper modeling spawns downstream questions. Model the
+underlying concept and the questions dissolve. Same pattern as
+fold/descend/repeat dissolving ad-hoc iteration logic.
+
+### Concept categories (by impact)
+
+| Category | Pattern | Sites | Missing concept |
+|----------|---------|-------|-----------------|
+| Item classification | body+params+uses+connective combinatorics 3× | ~40 branches | Precomputed `ItemKind` on Node |
+| Connective branching | `Conj`/`Disj`/`NoConnective` if-else everywhere | 30+ branches | Explicit `TypeStructure` (product/coproduct/scalar) |
+| Collection detection | Name + children-count checks for List/Map/Set | ~15 sites | Structural `CollectionShape` from algebra |
+| Arity as semantics | `params |> count` as proxy for callable/generic | ~10 sites | Explicit `Callable`/`GenericSignature` properties |
+| Optional handling | Cardinality modifier + synthetic Some bridges | ~10 sites | First-class Optional as coproduct (M7) |
+| Function application | Type-name + arity check for call vs value-ref | ~5 sites | Modeled apply/call concept (M4 Tier 2.6) |
+| Transport/service | `transport != none && children > 0` repeated | ~8 sites | Explicit `ServiceDefinition` property |
+| Function signatures | body+params+uses conjunctions | ~12 sites | `FunctionSignature` semantic property |
+| Property/resource | `properties |> count > 0` as resource proxy | ~5 sites | Explicit `ResourceDefinition` marker |
+| Underresolved types | Sentinel names ("Dynamic", "Error") | ~6 sites | Explicit `ResolutionState` enum |
+
+### Dissolution strategy
+
+Items dissolve into existing milestones as they become unblocked:
+
+- **M4** dissolves: collection detection, arity-as-semantics, function
+  application (Tier 2.6), connective branching (partially)
+- **M7** dissolves: Optional handling, connective branching (fully),
+  underresolved type sentinels
+- **Independent**: item classification, transport/service, function
+  signatures, property/resource — these can be precomputed in inference
+  and stored on EmitGraphInfo without waiting for other milestones
+
+### Acceptance
+
+No ad-hoc structural interrogation in emission. Inference precomputes
+all semantic facts. Compiler concepts modeled in `.dag` declarations
+readable by the compiler itself.
+
 ## P1: Modeling Consolidation
 
 Programs are applied mathematics with informal names. ~90 redundant
@@ -501,9 +546,9 @@ Non-recursive authority leaks (same class of unfinished migration):
 | Leak | Fix |
 |------|-----|
 | `Node.name` as authority (~256 sites) | M4 Lane 2 |
-| Transport/config duplication (35+ sites) | One .dag authority |
+| Transport/config per-backend rendering | Inherent per-language differences |
 | Bare parameterized types | Reject at normalization |
-| Missing `CallableOf` | M4 Tier 2.5 |
+| ~~Missing `CallableOf`~~ | ~~M4 Tier 2.5~~ (DONE) |
 | Semantic strings (parent_enum, service_name) | Structural Node references |
 
 ## Pipeline Algebraic Grounding

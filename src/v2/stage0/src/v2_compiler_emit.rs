@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, Connective, Cardinality};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, Connective, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
@@ -65,12 +65,13 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, try_target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
 use TypedItemKind::*;
 use BackendCapability::*;
+use TransportKind::*;
 use ExprCategory::*;
 use FuncBodyShape::*;
 use TcoExprShape::*;
@@ -869,7 +870,7 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
 }
 
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
-    render_type(build_type_rendering(n, Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */), target)
+    render_type(build_type_rendering(n, v2_rt::rc_empty_map::<bool>(), v2_rt::rc_empty_map::<bool>()), target)
 }
 
 pub fn tr_default() -> Rc<TypeRendering> {
@@ -1525,7 +1526,10 @@ return emit_container(tr.type_name.clone(), inner_str.clone(), target.clone())
 }
 if ((tr.generic_args.clone().len() as i64) > 0) {
             {
-                let base = emit_primitive_type(tr.type_name.clone(), target.clone());
+                let base = match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
+    Some(m) => m.clone(),
+    None => tr.type_name.clone(),
+};
 let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in tr.generic_args.clone().iter().cloned() { __result.push(render_type(a.clone(), target.clone())); } __result });
 let args_joined = arg_strs.join(&", ".to_string());
 return match target.clone() {
@@ -1552,7 +1556,10 @@ match target.clone() {
 }
 }
 }
-emit_primitive_type(tr.type_name.clone(), target.clone())
+match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
+    Some(m) => m.clone(),
+    None => tr.type_name.clone(),
+}
 }
 }
 
@@ -1583,40 +1590,28 @@ pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> R
 }
 }
 
-pub fn service_has_rest(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+pub fn service_has_transport_kind(kind: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
     {
-        let from_fallback = is_rest_transport(fallback_transport);
+        let from_fallback = is_transport_kind(fallback_transport, kind.clone());
 let from_ops = { let mut __found = false; for op in op_children.iter().cloned() { if if (op.transport.clone() != None) {
-            is_rest_transport(op.transport.clone().clone().unwrap())
+            is_transport_kind(op.transport.clone().clone().unwrap(), kind.clone())
 } else {
             false
 } { __found = true; break; } } __found };
 (from_fallback || from_ops)
 }
+}
+
+pub fn service_has_rest(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+    service_has_transport_kind(transport_kind_rest(), fallback_transport, op_children)
 }
 
 pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
-    {
-        let from_fallback = is_shell_transport(fallback_transport);
-let from_ops = { let mut __found = false; for op in op_children.iter().cloned() { if if (op.transport.clone() != None) {
-            is_shell_transport(op.transport.clone().clone().unwrap())
-} else {
-            false
-} { __found = true; break; } } __found };
-(from_fallback || from_ops)
-}
+    service_has_transport_kind(transport_kind_shell(), fallback_transport, op_children)
 }
 
 pub fn service_has_file(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
-    {
-        let from_fallback = is_file_transport(fallback_transport);
-let from_ops = { let mut __found = false; for op in op_children.iter().cloned() { if if (op.transport.clone() != None) {
-            is_file_transport(op.transport.clone().clone().unwrap())
-} else {
-            false
-} { __found = true; break; } } __found };
-(from_fallback || from_ops)
-}
+    service_has_transport_kind(transport_kind_file(), fallback_transport, op_children)
 }
 
 pub fn service_has_rest_auth(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
@@ -1648,6 +1643,48 @@ pub fn extract_modifier_names(properties: Rc<Vec<Rc<Node>>>) -> Rc<Vec<String>> 
     Some(modifier) => Rc::new(vec![operation_modifier_name(modifier.clone())]),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceFieldSet {
+    pub has_rest: bool,
+    pub has_shell: bool,
+    pub has_file: bool,
+    pub has_auth: bool,
+}
+
+pub fn compute_service_fields(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> ServiceFieldSet {
+    ServiceFieldSet {
+    has_rest: service_has_rest(fallback_transport.clone(), op_children.clone()),
+    has_shell: service_has_shell(fallback_transport.clone(), op_children.clone()),
+    has_file: service_has_file(fallback_transport.clone(), op_children.clone()),
+    has_auth: service_has_rest_auth(fallback_transport.clone(), op_children.clone()),
+}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum TransportKind {
+    RestKind,
+    ShellKind,
+    FileKind,
+    LocalKind,
+}
+
+pub fn classify_transport(t: Rc<Node>) -> TransportKind {
+    if is_rest_transport(t.clone()) {
+        TransportKind::RestKind
+} else {
+        if is_shell_transport(t.clone()) {
+            TransportKind::ShellKind
+} else {
+            if is_file_transport(t.clone()) {
+                TransportKind::FileKind
+} else {
+                TransportKind::LocalKind
+}
+}
+}
 }
 
 pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {

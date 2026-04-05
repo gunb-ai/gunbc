@@ -86,21 +86,25 @@ pub fn is_kernel_type(name: String) -> bool {
 }
 }
 
-pub fn container_type_set() -> Rc<HashMap<String, bool>> {
+pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
     let mut __m = HashMap::new();
-    __m.insert("List".to_string(), true);
-    __m.insert("Set".to_string(), true);
-    __m.insert("NonEmptyList".to_string(), true);
-    __m.insert("NonEmptySet".to_string(), true);
-    __m.insert("Map".to_string(), true);
+    __m.insert("List".to_string(), 1);
+    __m.insert("Set".to_string(), 1);
+    __m.insert("NonEmptyList".to_string(), 1);
+    __m.insert("NonEmptySet".to_string(), 1);
+    __m.insert("Map".to_string(), 2);
     Rc::new(__m)
 }
 
 pub fn is_container_type(name: String) -> bool {
-    match v2_rt::map_get(&container_type_set(), name.clone()) {
+    match container_expected_arity(name) {
     Some(_) => true,
     None => false,
 }
+}
+
+pub fn container_expected_arity(name: String) -> Option<i64> {
+    v2_rt::map_get(&container_type_arity(), name.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

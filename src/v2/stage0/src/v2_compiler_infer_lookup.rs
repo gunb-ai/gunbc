@@ -143,7 +143,7 @@ match first_field {
 }
 
 pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
-    resolve_scrutinee_type_node_seen(env, n, Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */)
+    resolve_scrutinee_type_node_seen(env, n, v2_rt::rc_empty_map::<bool>())
 }
 
 pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<HashMap<String, bool>>) -> Rc<Node> {

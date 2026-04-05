@@ -68,6 +68,10 @@ data go_reserved_escape_suffix: String = "_"
 data go_source_extension: String = ".go"
 data go_manifest_file: String = "go.mod"
 
+// -- String-like types ------------------------------------------------------
+// Types that use string comparison/indexing semantics in Go.
+data go_string_types: List<String> = ["String", "Secret"]
+
 // -- Method templates -------------------------------------------------------
 // Named-placeholder templates for algebra method calls.
 // \{recv\} = pre-emitted receiver, \{arg\} = pre-emitted first argument.

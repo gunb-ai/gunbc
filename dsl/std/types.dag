@@ -75,15 +75,20 @@ fn is_kernel_type(name: String) -> Bool {
 }
 
 // Container types: parameterized types that stay unexpanded at resolve time.
-data container_type_set: Map<String, Bool> = {
-  "List": true, "Set": true, "NonEmptyList": true, "NonEmptySet": true, "Map": true
+// Value is the expected type-parameter arity (element collections: 1, keyed: 2).
+data container_type_arity: Map<String, Int> = {
+  "List": 1, "Set": 1, "NonEmptyList": 1, "NonEmptySet": 1, "Map": 2
 }
 
 fn is_container_type(name: String) -> Bool {
-  match map_get(container_type_set, name) {
+  match container_expected_arity(name: name) {
     Some { value: _ } => true
     None => false
   }
+}
+
+fn container_expected_arity(name: String) -> Int? {
+  map_get(container_type_arity, name)
 }
 
 // Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.

@@ -47,6 +47,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
   is_rest_transport, is_shell_transport, is_file_transport, is_local_transport,
+  is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
@@ -80,7 +81,7 @@ import v2.compiler.languages {
   ContainerUsageTrigger, AsyncUsageTrigger,
   language_spec_for_target,
   test_conventions_for_target,
-  target_keyword, target_primitive_type, target_container_template,
+  target_keyword, target_primitive_type, try_target_primitive_type, target_container_template,
   wrap_shared_type
 }
 
@@ -1176,7 +1177,7 @@ fn render_type_base(tr: TypeRendering, target: RenderTarget) -> String {
   }
   // Generic args
   if tr.generic_args |> count > 0 {
-    let base = emit_primitive_type(name: tr.type_name, target: target)
+    let base = match try_target_primitive_type(target: target, name: tr.type_name) { Some { value: m } => m  None => tr.type_name }
     let arg_strs = tr.generic_args |> map(a => render_type(tr: a, target: target))
     let args_joined = arg_strs |> join(separator: ", ")
     return match target {
@@ -1197,8 +1198,8 @@ fn render_type_base(tr: TypeRendering, target: RenderTarget) -> String {
       _ => return "__EMIT_BUG_ANONYMOUS_CONJ__"
     }
   }
-  // Leaf
-  emit_primitive_type(name: tr.type_name, target: target)
+  // Leaf: primitives are mapped; user-defined type names pass through.
+  match try_target_primitive_type(target: target, name: tr.type_name) { Some { value: m } => m  None => tr.type_name }
 }
 
 // =========================================================================
@@ -1250,29 +1251,25 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
 }
 
 // Structural transport queries: check if any operation in the service
-// uses a specific transport by detecting its structural signature.
-fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_rest_transport(t: fallback_transport)
+// uses a specific transport kind. Generic helper eliminates per-kind duplication.
+fn service_has_transport_kind(kind: String, fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = is_transport_kind(t: fallback_transport, kind: kind)
   let from_ops = op_children |> any(op =>
-    if op.transport != none { is_rest_transport(t: op.transport.value) } else { false }
+    if op.transport != none { is_transport_kind(t: op.transport.value, kind: kind) } else { false }
   )
   from_fallback || from_ops
+}
+
+fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  service_has_transport_kind(kind: transport_kind_rest, fallback_transport: fallback_transport, op_children: op_children)
 }
 
 fn service_has_shell(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_shell_transport(t: fallback_transport)
-  let from_ops = op_children |> any(op =>
-    if op.transport != none { is_shell_transport(t: op.transport.value) } else { false }
-  )
-  from_fallback || from_ops
+  service_has_transport_kind(kind: transport_kind_shell, fallback_transport: fallback_transport, op_children: op_children)
 }
 
 fn service_has_file(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_file_transport(t: fallback_transport)
-  let from_ops = op_children |> any(op =>
-    if op.transport != none { is_file_transport(t: op.transport.value) } else { false }
-  )
-  from_fallback || from_ops
+  service_has_transport_kind(kind: transport_kind_file, fallback_transport: fallback_transport, op_children: op_children)
 }
 
 // Check if any REST operation (or the service-level fallback) has auth.
@@ -1298,6 +1295,36 @@ fn extract_modifier_names(properties: List<Node>) -> List<String> {
       None => []
     }
   )
+}
+
+// Consolidated service field detection: returns which transport-driven
+// config fields a service struct needs. Single call replaces 4 separate
+// predicate calls that all three backends were duplicating.
+type ServiceFieldSet {
+  has_rest: Bool
+  has_shell: Bool
+  has_file: Bool
+  has_auth: Bool
+}
+
+fn compute_service_fields(fallback_transport: Node, op_children: List<Node>) -> ServiceFieldSet {
+  ServiceFieldSet {
+    has_rest: service_has_rest(fallback_transport: fallback_transport, op_children: op_children),
+    has_shell: service_has_shell(fallback_transport: fallback_transport, op_children: op_children),
+    has_file: service_has_file(fallback_transport: fallback_transport, op_children: op_children),
+    has_auth: service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
+  }
+}
+
+// Transport kind classification: single-dispatch alternative to repeated
+// if/else chains in each backend's transport_call emitter.
+type TransportKind = RestKind | ShellKind | FileKind | LocalKind
+
+fn classify_transport(t: Node) -> TransportKind {
+  if is_rest_transport(t: t) { RestKind }
+  else if is_shell_transport(t: t) { ShellKind }
+  else if is_file_transport(t: t) { FileKind }
+  else { LocalKind }
 }
 
 // =========================================================================

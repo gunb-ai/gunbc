@@ -17,7 +17,7 @@
 
 module v2.std.core
 
-import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_set, is_container_type }
+import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity }
 import std.syntax {
   BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull
@@ -982,6 +982,13 @@ data transport_auth_token_key: String = "auth_token"
 data transport_auth_header_key: String = "auth_header"
 data transport_auth_scheme_key: String = "auth_scheme"
 
+// Transport kind names — single authority for transport identity.
+// Constructors and predicates both reference these constants.
+data transport_kind_rest: String = "rest"
+data transport_kind_shell: String = "shell"
+data transport_kind_file: String = "file"
+data transport_kind_local: String = "local"
+
 fn make_transport_node(name: String, properties: List<Node>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: children, connective: NoConnective,
@@ -994,22 +1001,22 @@ fn make_transport_node(name: String, properties: List<Node>, children: List<Node
 }
 
 fn local_transport_node(span: SourceSpan) -> Node {
-  make_transport_node(name: "local", properties: [], children: [], span: span)
+  make_transport_node(name: transport_kind_local, properties: [], children: [], span: span)
 }
 
 fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, span: SourceSpan) -> Node {
   let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: make_span(start: 0, end: 0))
   let props = concat([url_field], auth_props, headers)
-  make_transport_node(name: "rest", properties: props, children: [], span: span)
+  make_transport_node(name: transport_kind_rest, properties: props, children: [], span: span)
 }
 
 fn shell_transport_node(argv: List<Node>, env: List<Node>, span: SourceSpan) -> Node {
-  make_transport_node(name: "shell", properties: env, children: argv, span: span)
+  make_transport_node(name: transport_kind_shell, properties: env, children: argv, span: span)
 }
 
 fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0))
-  make_transport_node(name: "file", properties: [path_field], children: [], span: span)
+  make_transport_node(name: transport_kind_file, properties: [path_field], children: [], span: span)
 }
 
 // =========================================================================
@@ -1036,11 +1043,12 @@ fn find_property_string(props: List<Node>, prop_name: String) -> String? {
 // Transport identity predicates. Constructors are the authority for
 // transport kind (they set the name field); predicates are name lookups.
 // See extdeps/transports/{rest,shell,file}.dag for transport definitions.
-fn is_rest_transport(t: Node) -> Bool { t.name == "rest" }
-fn is_shell_transport(t: Node) -> Bool { t.name == "shell" }
-fn is_file_transport(t: Node) -> Bool { t.name == "file" }
-fn is_local_transport(t: Node) -> Bool { t.name == "local"
-}
+fn is_rest_transport(t: Node) -> Bool { t.name == transport_kind_rest }
+fn is_shell_transport(t: Node) -> Bool { t.name == transport_kind_shell }
+fn is_file_transport(t: Node) -> Bool { t.name == transport_kind_file }
+fn is_local_transport(t: Node) -> Bool { t.name == transport_kind_local }
+
+fn is_transport_kind(t: Node, kind: String) -> Bool { t.name == kind }
 
 fn field_init_operation_modifier(field_init: Node) -> OperationModifier? {
   let fi_name = field_init_node_name(n: field_init)

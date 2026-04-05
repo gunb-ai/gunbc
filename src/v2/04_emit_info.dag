@@ -45,10 +45,12 @@ type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 // The emitter reads ValueContext × LanguageSpec to choose representation:
 //   has_fn_fields × Rust → skip PartialEq/Debug derives
 //
-// Future fields (land when consumer exists):
-//   is_constant → const/static (no Rc, no lazy_static) in Rust
 type ValueContext {
   has_fn_fields: Bool
+  // True when the type is a fixed-width carrier: not recursive, no fn-typed
+  // fields, and all fields are value types (Int, Bool, Float) or it's a
+  // unit-only enum. The emitter uses this to skip Rc wrapping in Rust.
+  is_constant: Bool
 }
 
 type TypeSummary {
@@ -95,6 +97,10 @@ type EmitGraphInfo {
   // dispatching to emit_fn_def/emit_func_def. Bindings in this set have
   // fan-out=1 and can be moved instead of cloned.
   movable: Map<String, Bool>
+  // Bindings known to be owned (not behind Rc). Field accesses on these
+  // bindings use move semantics instead of .clone(). Set for fold
+  // accumulators after Rc::try_unwrap.
+  owned_bindings: Map<String, Bool>
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -135,7 +141,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     fielded_variants: empty_map(),
     value_contexts: empty_map(),
     ownership_index: empty_map(),
-    movable: empty_map()
+    movable: empty_map(),
+    owned_bindings: empty_map()
   }
 }
 

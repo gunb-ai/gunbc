@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_types::{SourceSpan, is_container_type};
+pub use crate::std_types::{SourceSpan, is_container_type, container_expected_arity};
 pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile, partial_function_templates, free_monoid_collection_templates, free_monoid_scalar_templates, boolean_algebra_collection_templates, boolean_algebra_templates, approximate_field_templates, ordered_ring_templates};
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf};
@@ -94,6 +94,32 @@ pub fn node_is_keyed_collection(n: Rc<Node>) -> bool {
 
 pub fn node_is_element_collection(n: Rc<Node>) -> bool {
     (node_is_collection(n.clone()) && ((n.children.clone().len() as i64) == 1))
+}
+
+pub fn is_fully_resolved(n: Rc<Node>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        {
+            let self_is_type_var = match n.inferred.clone() {
+    Some(inf) => is_type_variable(inf.clone()),
+    None => false,
+};
+if self_is_type_var {
+                false
+} else {
+                {
+                    let under_param = match container_expected_arity(n.name.clone()) {
+    Some(expected) => ((n.children.clone().len() as i64) < expected.clone()),
+    None => false,
+};
+if under_param {
+                        false
+} else {
+                        { let mut __all = true; for ch in n.children.clone().iter().cloned() { if !(is_fully_resolved(ch.clone())) { __all = false; break; } } __all }
+}
+}
+}
+}
+    })
 }
 
 pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
@@ -328,6 +354,7 @@ match (*template).clone() {
     AlgebraTypeTemplate::ListOf { element: inner, .. } => container_node("List".to_string(), instantiate_algebra_type(inner.clone(), base.clone())),
     AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => with_optional_cardinality(instantiate_algebra_type(inner.clone(), base.clone())),
     AlgebraTypeTemplate::TupleOf { first: first, second: second, .. } => tuple_node(instantiate_algebra_type(first.clone(), base.clone()), instantiate_algebra_type(second.clone(), base.clone())),
+    AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => callable_node(Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), base.clone())); } __result }), instantiate_algebra_type(r.clone(), base.clone())),
 }
 }
     })
@@ -1005,6 +1032,10 @@ pub fn collect_named_templates(template: Rc<AlgebraTypeTemplate>, acc: Rc<HashMa
             let acc2 = collect_named_templates(f.clone(), acc);
 collect_named_templates(s.clone(), acc2)
 },
+    AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => {
+            let acc2 = p.clone().iter().cloned().fold(acc, |a: Rc<HashMap<String, bool>>, tp: Rc<AlgebraTypeTemplate>| collect_named_templates(tp.clone(), a.clone()));
+collect_named_templates(r.clone(), acc2)
+},
 }
     })
 }
@@ -1019,7 +1050,7 @@ collect_named_templates(t.return_type.clone(), a2.clone())
 pub fn bridge_placeholder_type_names() -> Rc<HashMap<String, bool>> {
     {
         let type_params = v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "T".to_string(), true), "K".to_string(), true), "V".to_string(), true);
-let n1 = collect_field_template_names(partial_function_templates(), Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */);
+let n1 = collect_field_template_names(partial_function_templates(), v2_rt::rc_empty_map::<bool>());
 let n2 = collect_field_template_names(free_monoid_collection_templates(), n1);
 let n3 = collect_field_template_names(free_monoid_scalar_templates(), n2);
 let n4 = collect_field_template_names(boolean_algebra_collection_templates(), n3);

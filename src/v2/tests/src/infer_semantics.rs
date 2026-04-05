@@ -6,11 +6,12 @@ use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, container_node, map_node, node_is_keyed_collection,
+    bare_map_node, container_node, is_fully_resolved, map_node, node_is_keyed_collection,
 };
+use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::{
-    leaf_node, make_arm_node, with_optional_cardinality, Cardinality, ExprData, InferredNode,
-    MatchPattern, Node, NodeType, SourceSpan,
+    leaf_node, make_arm_node, with_optional_cardinality, Cardinality, Connective, ExprData,
+    InferredNode, MatchPattern, Node, NodeType, SourceSpan,
 };
 
 fn zero_span() -> Rc<SourceSpan> {
@@ -519,6 +520,29 @@ fn node_is_keyed_collection_false_for_leaf() {
     assert!(!node_is_keyed_collection(leaf));
 }
 
+// ── is_fully_resolved ─────────────────────────────────────────────────
+
+#[test]
+fn is_fully_resolved_rejects_under_parameterized_container() {
+    // leaf_node("List") creates a node named "List" with 0 children.
+    // container_expected_arity("List") = Some(1), so 0 < 1 → not fully resolved.
+    let bare_list = leaf_node("List".to_string());
+    assert!(!is_fully_resolved(bare_list));
+}
+
+#[test]
+fn is_fully_resolved_accepts_parameterized_container() {
+    let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
+    assert!(is_fully_resolved(list_int));
+}
+
+#[test]
+fn is_fully_resolved_ignores_unknown_type_names() {
+    // User-defined "Widget" with 0 children → arity is None → not under-parameterized.
+    let widget = leaf_node("Widget".to_string());
+    assert!(is_fully_resolved(widget));
+}
+
 #[test]
 fn map_index_with_correct_key_type_succeeds() {
     let map_type = map_node(
@@ -561,6 +585,46 @@ fn map_index_with_wrong_key_type_reports_error() {
         result.diagnostics.len(),
         1,
         "Map<String,Int>[Int] should report key type mismatch"
+    );
+}
+
+// =========================================================================
+// Boundary regression tests (review feedback 2026-04-02)
+// =========================================================================
+
+#[test]
+fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
+    // Conj node with two children: one Typed, one CompilerError.
+    // Fail-closed gate must return [] — no partial output synthesis.
+    let typed_child = Rc::new(Node {
+        name: "x".to_string(),
+        inferred: Some(Rc::new(InferredNode::Resolved {
+            node: leaf_node("Int".to_string()),
+        })),
+        connective: Connective::NoConnective,
+        ..(*leaf_node("".to_string())).clone()
+    });
+    let error_child = Rc::new(Node {
+        name: "y".to_string(),
+        inferred: Some(Rc::new(InferredNode::CompilerError {
+            message: "upstream failure".to_string(),
+            span: zero_span(),
+        })),
+        connective: Connective::NoConnective,
+        ..(*leaf_node("".to_string())).clone()
+    });
+    let conj_node = Rc::new(Node {
+        name: "Result".to_string(),
+        connective: Connective::Conj,
+        children: Rc::new(vec![typed_child, error_child]),
+        ..(*leaf_node("".to_string())).clone()
+    });
+
+    let outputs = v2_compiler_parse::node_inferred_to_outputs(conj_node);
+    assert!(
+        outputs.is_empty(),
+        "fail-closed gate: Conj with error child must produce 0 outputs, got {}",
+        outputs.len()
     );
 }
 

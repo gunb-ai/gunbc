@@ -103,13 +103,13 @@ v2_rt::rc_map_insert(acc.clone(), m.name.clone(), exported_set.clone())
 let resolve_accum = modules.clone().iter().cloned().fold(Rc::new(ResolveAccum {
     imports_by_name: v2_rt::rc_empty_map::<Rc<Vec<Rc<ResolvedImport>>>>(),
     diagnostics: Rc::new(vec![]),
-}), |acc: Rc<ResolveAccum>, m: Rc<Node>| {
+}), |acc: Rc<ResolveAccum>, m: Rc<Node>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
             let result = resolve_module_imports(m.clone(), module_index.clone(), export_sets.clone());
 Rc::new(ResolveAccum {
-    imports_by_name: v2_rt::rc_map_insert(acc.imports_by_name.clone(), m.name.clone(), result.resolved_imports.clone()),
-    diagnostics: v2_rt::concat(acc.diagnostics.clone(), result.diagnostics.clone()),
+    imports_by_name: v2_rt::rc_map_insert(acc.imports_by_name, m.name.clone(), result.resolved_imports.clone()),
+    diagnostics: v2_rt::concat(acc.diagnostics, result.diagnostics.clone()),
 })
-});
+} });
 let imports_by_name = resolve_accum.imports_by_name.clone();
 let import_diags = resolve_accum.diagnostics.clone();
 let topo_result = topological_sort(modules.clone());
@@ -377,13 +377,13 @@ pub fn kahn_drain(mut queue: Rc<Vec<String>>, mut sorted: Rc<Vec<String>>, mut i
 let batch_result = queue.clone().iter().cloned().fold(Rc::new(KahnDrainState {
     sorted: sorted.clone(),
     in_degree_map: in_degree_map.clone(),
-}), |state: Rc<KahnDrainState>, node: String| {
-            let new_sorted = v2_rt::rc_list_push(state.sorted.clone(), node.clone());
+}), |state: Rc<KahnDrainState>, node: String| { let state = Rc::try_unwrap(state).unwrap_or_else(|rc| (*rc).clone()); {
+            let new_sorted = v2_rt::rc_list_push(state.sorted, node.clone());
 let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
     Some(ns) => ns.clone(),
     None => Rc::new(vec![]),
 };
-let new_degrees = neighbors.clone().iter().cloned().fold(state.in_degree_map.clone(), |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
+let new_degrees = neighbors.clone().iter().cloned().fold(state.in_degree_map, |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
                 let current = match v2_rt::map_get(&deg_map, neighbor.clone()) {
     Some(d) => d.clone(),
     None => 0,
@@ -394,7 +394,7 @@ Rc::new(KahnDrainState {
     sorted: new_sorted.clone(),
     in_degree_map: new_degrees.clone(),
 })
-});
+} });
 let new_zero_set = Rc::new({ let mut __result = Vec::new(); for neighbor in Rc::new({ let mut __result = Vec::new(); for node in queue.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&adjacency, node.clone()) {
     Some(ns) => ns.clone(),
     None => Rc::new(vec![]),

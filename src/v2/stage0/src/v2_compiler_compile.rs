@@ -110,8 +110,8 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
 })); } __result })).iter().cloned()); } __result })
 }
 
-pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> Rc<RecursionContext> {
-    Rc::new(RecursionContext {})
+pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
+    RecursionContext {}
 }
 
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
@@ -533,7 +533,7 @@ Rc::new(EmitResult {
 }
 
 pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<ErrorNode>>> {
-    parse_results.iter().cloned().fold(Rc::new(vec![]), |acc: _, pr: Rc<ParseResult>| match pr.error.clone() {
+    parse_results.iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<ErrorNode>>>, pr: Rc<ParseResult>| match pr.error.clone() {
     Some(diag) => v2_rt::rc_list_push(acc.clone(), diag.clone()),
     None => acc.clone(),
 })
