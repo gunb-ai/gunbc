@@ -331,6 +331,93 @@ fn shared_primitives_parses_strict() {
     assert_parses_strict("dsl/std/primitives.dag");
 }
 
+// ── Phase 1b: tokenizer non-ASCII regression ───────────────────────────
+//
+// The tokenizer's source_substring calls v2_rt::substring, which has an
+// is_ascii() fast path (O(1) byte slice) and a slow path (O(pos) char
+// iteration). A single non-ASCII byte in a file disables the fast path
+// for ALL substring calls, making tokenization O(n²). This test catches
+// that regression by requiring that non-ASCII content doesn't blow up
+// tokenize time relative to ASCII-only content of the same size.
+
+#[test]
+fn tokenizer_non_ascii_performance_regression() {
+    use std::time::Instant;
+
+    let source = read_v2_file("src/v2/02_parse.dag"); // largest .dag, has non-ASCII
+    assert!(!source.is_ascii(), "test requires non-ASCII source file");
+
+    // Strip non-ASCII for comparison (replace with ASCII equivalent)
+    let ascii_source: String = source.chars().map(|c| if c.is_ascii() { c } else { '-' }).collect();
+    assert!(ascii_source.is_ascii());
+
+    let start = Instant::now();
+    let _ = tokenize(&ascii_source);
+    let ascii_time = start.elapsed();
+
+    let start = Instant::now();
+    let _ = tokenize(&source);
+    let non_ascii_time = start.elapsed();
+
+    let ratio = non_ascii_time.as_secs_f64() / ascii_time.as_secs_f64().max(0.001);
+    eprintln!(
+        "tokenize 02_parse.dag: ascii={:.3}s, non-ascii={:.3}s, ratio={:.1}x",
+        ascii_time.as_secs_f64(),
+        non_ascii_time.as_secs_f64(),
+        ratio,
+    );
+
+    // Non-ASCII should be at most 3x slower than ASCII (generous margin).
+    // Before the fix, this ratio is typically 50-500x.
+    assert!(
+        ratio < 3.0,
+        "non-ASCII tokenization is {:.1}x slower than ASCII — likely O(n²) regression in v2_rt::substring",
+        ratio,
+    );
+
+    // Absolute time budget: tokenizing 271KB should be well under 2s
+    assert!(
+        non_ascii_time.as_secs_f64() < 2.0,
+        "tokenize took {:.3}s — budget is 2s for ~270KB file",
+        non_ascii_time.as_secs_f64(),
+    );
+}
+
+#[test]
+fn tokenizer_scales_linearly_with_file_size() {
+    use std::time::Instant;
+
+    // Use smallest non-trivial .dag to establish baseline
+    let small_source = read_v2_file("src/v2/ownership.dag"); // ~23KB
+    let large_source = read_v2_file("src/v2/02_parse.dag");  // ~271KB
+
+    let start = Instant::now();
+    let small_tokens = tokenize(&small_source);
+    let small_time = start.elapsed();
+
+    let start = Instant::now();
+    let large_tokens = tokenize(&large_source);
+    let large_time = start.elapsed();
+
+    let size_ratio = large_source.len() as f64 / small_source.len() as f64;
+    let time_ratio = large_time.as_secs_f64() / small_time.as_secs_f64().max(0.001);
+
+    eprintln!(
+        "small: {}B, {} tokens, {:.3}s | large: {}B, {} tokens, {:.3}s | size ratio: {:.1}x, time ratio: {:.1}x",
+        small_source.len(), small_tokens.len(), small_time.as_secs_f64(),
+        large_source.len(), large_tokens.len(), large_time.as_secs_f64(),
+        size_ratio, time_ratio,
+    );
+
+    // If tokenization is O(n), time ratio should be ≈ size ratio.
+    // Allow 2x margin. If it's O(n²), time ratio ≈ size_ratio².
+    assert!(
+        time_ratio < size_ratio * 2.0,
+        "tokenization appears super-linear: size ratio {:.1}x but time ratio {:.1}x (expected < {:.1}x)",
+        size_ratio, time_ratio, size_ratio * 2.0,
+    );
+}
+
 // ── Phase 2: tokenizer e2e ──────────────────────────────────────────────
 
 #[test]
