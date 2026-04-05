@@ -50,10 +50,11 @@ pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueSha
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, TupleFirst, TupleSecond};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
-use crate::v2_std_core::Connective::{Conj, NoConnective};
+use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{CardOptional};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, rt_type, emit_map_has, child_inferred_or_name, node_type_equals};
 use TypeRepr::*;
+use TypedItemKind::*;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
@@ -77,6 +78,93 @@ impl TypeRepr {
             TypeRepr::EnumRepr { unit_only: __val, .. } => __val.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum TypedItemKind {
+    TypedItemStruct,
+    TypedItemEnum,
+    TypedItemTypeAlias,
+    TypedItemTypeDecl,
+    TypedItemFunction,
+    TypedItemTransportFunction,
+    TypedItemDataDef,
+    TypedItemServiceDef,
+    TypedItemResourceDef,
+    TypedItemUnhandled,
+}
+
+pub fn is_type_alias_return_node(n: Rc<Node>) -> bool {
+    (n.name.clone().as_str() != "Unit".to_string().as_str())
+}
+
+pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
+    {
+        let item_has_structure = (item.connective.clone() != Connective::NoConnective);
+let is_bare_leaf = (((((item_has_structure.clone() == false) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0));
+if (is_bare_leaf.clone() && is_type_alias_return_node(rt_type(item.clone()))) {
+            TypedItemKind::TypedItemTypeAlias
+} else {
+            if (is_bare_leaf.clone() && !is_type_alias_return_node(rt_type(item.clone()))) {
+                TypedItemKind::TypedItemTypeDecl
+} else {
+                if (item_has_structure.clone() && (item.transport.clone() == None)) {
+                    match item.connective.clone() {
+    Connective::Conj => TypedItemKind::TypedItemStruct,
+    Connective::Disj => TypedItemKind::TypedItemEnum,
+    Connective::NoConnective => TypedItemKind::TypedItemEnum,
+}
+} else {
+                    if ((item.body.clone() != None) && (item.type_annotation.clone() == None)) {
+                        match ((item.uses.clone().len() as i64) > 0) {
+    true => TypedItemKind::TypedItemTransportFunction,
+    false => TypedItemKind::TypedItemFunction,
+}
+} else {
+                        if ((item.body.clone() != None) && (item.type_annotation.clone() != None)) {
+                            TypedItemKind::TypedItemDataDef
+} else {
+                            if ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0)) {
+                                TypedItemKind::TypedItemServiceDef
+} else {
+                                if (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0)) || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0)) && ((item.properties.clone().len() as i64) > 0)) && (item.body.clone() == None))) {
+                                    TypedItemKind::TypedItemResourceDef
+} else {
+                                    if (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)) {
+                                        TypedItemKind::TypedItemTypeDecl
+} else {
+                                        TypedItemKind::TypedItemUnhandled
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+
+pub fn lookup_item_kind(emit_info: Rc<EmitGraphInfo>, name: String) -> TypedItemKind {
+    match v2_rt::map_get(&emit_info.item_kinds.clone(), name) {
+    Some(k) => k.clone(),
+    None => TypedItemKind::TypedItemUnhandled,
+}
+}
+
+pub fn is_type_item_kind(emit_info: Rc<EmitGraphInfo>, name: String) -> bool {
+    {
+        let k = lookup_item_kind(emit_info, name);
+((k.clone() == TypedItemKind::TypedItemStruct) || (k.clone() == TypedItemKind::TypedItemEnum))
+}
+}
+
+pub fn is_function_item_kind(emit_info: Rc<EmitGraphInfo>, name: String) -> bool {
+    {
+        let k = lookup_item_kind(emit_info, name);
+((k.clone() == TypedItemKind::TypedItemFunction) || (k.clone() == TypedItemKind::TypedItemTransportFunction))
+}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -104,6 +192,7 @@ pub struct EmitGraphInfo {
     pub ownership_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub movable: Rc<HashMap<String, bool>>,
     pub owned_bindings: Rc<HashMap<String, bool>>,
+    pub item_kinds: Rc<HashMap<String, TypedItemKind>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -137,6 +226,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     movable: v2_rt::rc_empty_map::<bool>(),
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
+    item_kinds: v2_rt::rc_empty_map::<TypedItemKind>(),
 })
 }
 

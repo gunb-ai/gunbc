@@ -102,14 +102,16 @@ import v2.compiler.infer {
 import v2.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
-  variant_belongs_to_enum
+  variant_belongs_to_enum,
+  TypedItemKind, TypedItemStruct, TypedItemEnum, TypedItemTypeAlias,
+  TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction,
+  TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled,
+  lookup_item_kind, is_type_item_kind
 }
 import v2.compiler.ownership { analyze_ownership, build_movable_set }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
-  TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
-  TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
@@ -125,10 +127,9 @@ import v2.compiler.emit {
   capitalize_first, sanitize_service_name, service_var_name, test_function_name,
   apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template,
   language_spec,
-  is_null_coalesce, is_type_alias_return_node,
-  is_service_item, has_service_items,
+  is_null_coalesce,
+  has_service_items,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item,
   has_mock_prefix,
   extract_test_projections,
   is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
@@ -379,7 +380,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     value_contexts: base_info.value_contexts,
     ownership_index: ownership_idx,
     movable: empty_map(),
-    owned_bindings: empty_map()
+    owned_bindings: empty_map(),
+    item_kinds: base_info.item_kinds
   }
   let rc_types = build_rc_types(emit_info: emit_info)
   let registry = typed.item_registry
@@ -389,7 +391,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     return EmitResult { files: [], diagnostics: workflow_default_diags }
   }
   let svc_module_map = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
-    let svc_items = tm.items |> filter(item => is_service_item(item: item))
+    let svc_items = tm.items |> filter(item => lookup_item_kind(emit_info: emit_info, name: item.name) == TypedItemServiceDef)
     let mod_filename = module_to_filename(name: tm.module.name)
     svc_items |> fold(init: acc, f: (a, svc) =>
       map_insert(a, svc.name, mod_filename)
@@ -470,7 +472,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let prelude = emit_prelude()
   // Collect locally-defined type names so imports can skip them.
   let local_type_names = typed_module.items
-    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef)
+    |> filter(item => is_type_item_kind(emit_info: emit_info, name: item.name))
     |> map(item => item.name)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
@@ -496,7 +498,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // RC1: For enums defined in this module, add `use EnumName::*;` so
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
-    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && item.connective == Disj)
+    |> filter(item => lookup_item_kind(emit_info: emit_info, name: item.name) == TypedItemEnum)
     |> map(item => concat("use ", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
@@ -677,42 +679,46 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
+fn build_fn_emit_info(item: Node, item_text: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> EmitGraphInfo {
+  let fn_movable = match is_tco_eligible(name: item_text, body: item.body.value, registry: registry) {
+    true => empty_map()
+    false => match map_get(emit_info.ownership_index, item.name) {
+      Some { value: m } => m
+      None => empty_map()
+    }
+  }
+  EmitGraphInfo {
+    type_summaries: emit_info.type_summaries,
+    recursive_type_set: emit_info.recursive_type_set,
+    fielded_variants: emit_info.fielded_variants,
+    value_contexts: emit_info.value_contexts,
+    ownership_index: emit_info.ownership_index,
+    movable: fn_movable,
+    owned_bindings: empty_map(),
+    item_kinds: emit_info.item_kinds
+  }
+}
+
 fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  let kind = classify_typed_item(item: item)
-  if (kind == TypedItemTypeDef) {
-    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, rc_types: rc_types, env: env, emit_info: emit_info)
+  let kind = lookup_item_kind(emit_info: emit_info, name: item.name)
+  if (kind == TypedItemStruct) {
+    let type_params = emit_type_params(params: item.params, source_index: env.source_index)
+    emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: emit_info.recursive_type_set, rc_types: rc_types, env: env, emit_info: emit_info)
+  } else if (kind == TypedItemEnum) {
+    let type_params = emit_type_params(params: item.params, source_index: env.source_index)
+    emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: emit_info.recursive_type_set, rc_types: rc_types, env: env)
   } else if (kind == TypedItemTypeAlias) {
     concat(rust_visibility_prefix(), "type ", item_text, " = ", render_rust_type(n: rt_type(n: item), rc_types: rc_types), ";")
   } else if (kind == TypedItemTypeDecl) {
     ""
+  } else if (kind == TypedItemTransportFunction) {
+    let fn_emit_info = build_fn_emit_info(item: item, item_text: item_text, registry: registry, emit_info: emit_info)
+    emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
   } else if (kind == TypedItemFunction) {
-    // Set movable bindings for this function from the ownership index.
-    // TCO transforms the code structure, so ownership analysis from the
-    // original AST may not apply — skip optimization for TCO functions.
-    let fn_movable = if is_tco_eligible(name: item_text, body: item.body.value, registry: registry) {
-      empty_map()
-    } else {
-      match map_get(emit_info.ownership_index, item.name) {
-        Some { value: m } => m
-        None => empty_map()
-      }
-    }
-    let fn_emit_info = EmitGraphInfo {
-      type_summaries: emit_info.type_summaries,
-      recursive_type_set: emit_info.recursive_type_set,
-      fielded_variants: emit_info.fielded_variants,
-      value_contexts: emit_info.value_contexts,
-      ownership_index: emit_info.ownership_index,
-      movable: fn_movable,
-      owned_bindings: empty_map()
-    }
-    if item.uses |> count > 0 {
-      emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
-    } else {
-      emit_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
-    }
+    let fn_emit_info = build_fn_emit_info(item: item, item_text: item_text, registry: registry, emit_info: emit_info)
+    emit_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
   } else if (kind == TypedItemDataDef) {
     emit_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, rc_types: rc_types, emit_info: emit_info)
   } else if (kind == TypedItemServiceDef) {
@@ -759,19 +765,6 @@ fn emit_type_params(params: List<Node>, source_index: NewlineIndex?) -> String {
     concat("<", names |> join(separator: ", "), ">")
   }
 }
-
-fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
-  let type_params = emit_type_params(params: item.params, source_index: env.source_index)
-  let item_text = authored_name(env: env, node: item)
-  let is_product = item.connective == Conj
-  if is_product {
-    emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types, env: env, emit_info: emit_info)
-  } else {
-    emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types, env: env)
-  }
-}
-
-// is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
 fn emit_struct_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   // Types with fn-typed fields (algebra witnesses) can't derive Debug/PartialEq
@@ -2613,7 +2606,8 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               value_contexts: emit_info.value_contexts,
               ownership_index: emit_info.ownership_index,
               movable: emit_info.movable,
-              owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true)
+              owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
+              item_kinds: emit_info.item_kinds
             }
           None => emit_info
         }

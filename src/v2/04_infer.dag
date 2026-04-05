@@ -110,10 +110,12 @@ import v2.compiler.infer_sigs {
 import v2.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
+  TypedItemKind,
   ValueContext,
   empty_emit_graph_info, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary
+  add_emit_item_summary,
+  classify_typed_item
 }
 import v2.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
@@ -2984,6 +2986,14 @@ fn build_value_contexts(modules: List<TypedModule>, recursive_type_set: Map<Stri
   )
 }
 
+fn build_item_kinds(modules: List<TypedModule>) -> Map<String, TypedItemKind> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    tm.items |> fold(init: acc, f: (inner, item) =>
+      map_insert(inner, item.name, classify_typed_item(item: item))
+    )
+  )
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map()
@@ -2998,6 +3008,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   )
   let fielded = build_fielded_variants(modules: modules, type_summaries: built.type_summaries)
   let value_ctxs = build_value_contexts(modules: modules, recursive_type_set: all_recursive)
+  let kinds = build_item_kinds(modules: modules)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
@@ -3005,7 +3016,8 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     value_contexts: value_ctxs,
     ownership_index: empty_map(),
     movable: empty_map(),
-    owned_bindings: empty_map()
+    owned_bindings: empty_map(),
+    item_kinds: kinds
   }
 }
 

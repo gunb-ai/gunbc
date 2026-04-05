@@ -17,7 +17,7 @@ import v2.std.core {
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
   with_required_cardinality,
-  Connective, Conj, NoConnective,
+  Connective, Conj, Disj, NoConnective,
   CardOptional,
   param_node_name
 }
@@ -25,6 +25,7 @@ import v2.compiler.infer_types {
   normalize_access_type_node,
   rt_type, emit_map_has, child_inferred_or_name, node_type_equals
 }
+
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
@@ -37,6 +38,85 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 // =========================================================================
 
 type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
+
+// =========================================================================
+// TypedItemKind — enriched item classification precomputed during reconcile.
+//
+// Eliminates post-classification re-interrogation of connective and uses:
+//   TypeDef → split into Struct / Enum (no connective re-check)
+//   Function → split into Function / TransportFunction (no uses re-check)
+// =========================================================================
+
+type TypedItemKind
+  = TypedItemStruct
+  | TypedItemEnum
+  | TypedItemTypeAlias
+  | TypedItemTypeDecl
+  | TypedItemFunction
+  | TypedItemTransportFunction
+  | TypedItemDataDef
+  | TypedItemServiceDef
+  | TypedItemResourceDef
+  | TypedItemUnhandled
+
+// Check if a return type indicates a type alias (not Unit).
+// Unit is the only return type that signals "this is not an alias" —
+// bare items like `type Unit` have rt_type name "Unit".
+fn is_type_alias_return_node(n: Node) -> Bool {
+  n.name != "Unit"
+}
+
+// Classify a typed item into one of the enriched structural categories.
+// Splits TypeDef by connective (Struct vs Enum) and Function by uses
+// (Function vs TransportFunction) so emit never re-interrogates these.
+fn classify_typed_item(item: Node) -> TypedItemKind {
+  let item_has_structure = item.connective != NoConnective
+  let is_bare_leaf = item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+  if is_bare_leaf && is_type_alias_return_node(n: rt_type(n: item)) {
+    TypedItemTypeAlias
+  } else if is_bare_leaf && !is_type_alias_return_node(n: rt_type(n: item)) {
+    TypedItemTypeDecl
+  } else if item_has_structure && item.transport == none {
+    match item.connective {
+      Conj => TypedItemStruct
+      Disj => TypedItemEnum
+      NoConnective => TypedItemEnum
+    }
+  } else if item.body != none && item.type_annotation == none {
+    match item.uses |> count > 0 {
+      true => TypedItemTransportFunction
+      false => TypedItemFunction
+    }
+  } else if item.body != none && item.type_annotation != none {
+    TypedItemDataDef
+  } else if item.transport != none && item.children |> count > 0 {
+    TypedItemServiceDef
+  } else if (item.transport == none && item.children |> count > 0) || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none) {
+    TypedItemResourceDef
+  } else if item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0 {
+    TypedItemTypeDecl
+  } else {
+    TypedItemUnhandled
+  }
+}
+
+// Lookup an item's precomputed kind from EmitGraphInfo.
+fn lookup_item_kind(emit_info: EmitGraphInfo, name: String) -> TypedItemKind {
+  match map_get(emit_info.item_kinds, name) {
+    Some { value: k } => k
+    None => TypedItemUnhandled
+  }
+}
+
+fn is_type_item_kind(emit_info: EmitGraphInfo, name: String) -> Bool {
+  let k = lookup_item_kind(emit_info: emit_info, name: name)
+  k == TypedItemStruct || k == TypedItemEnum
+}
+
+fn is_function_item_kind(emit_info: EmitGraphInfo, name: String) -> Bool {
+  let k = lookup_item_kind(emit_info: emit_info, name: name)
+  k == TypedItemFunction || k == TypedItemTransportFunction
+}
 
 // ValueContext: orthogonal facts about how a named value is used,
 // determining its target-language representation. Precomputed in
@@ -101,6 +181,10 @@ type EmitGraphInfo {
   // bindings use move semantics instead of .clone(). Set for fold
   // accumulators after Rc::try_unwrap.
   owned_bindings: Map<String, Bool>
+  // Per-item structural classification: item.name → TypedItemKind.
+  // Precomputed during reconcile so emit reads enriched kinds (Struct/Enum,
+  // Function/TransportFunction) without re-interrogating Node fields.
+  item_kinds: Map<String, TypedItemKind>
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -142,7 +226,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     value_contexts: empty_map(),
     ownership_index: empty_map(),
     movable: empty_map(),
-    owned_bindings: empty_map()
+    owned_bindings: empty_map(),
+    item_kinds: empty_map()
   }
 }
 

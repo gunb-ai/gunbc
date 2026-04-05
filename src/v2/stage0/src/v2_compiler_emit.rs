@@ -62,14 +62,14 @@ pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope};
-pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering};
+pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering, TypedItemKind, lookup_item_kind, is_type_alias_return_node};
+use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemStruct, TypedItemEnum, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, try_target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
-use TypedItemKind::*;
 use BackendCapability::*;
 use TransportKind::*;
 use ExprCategory::*;
@@ -111,19 +111,6 @@ pub struct TcoReassignInput {
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 
-pub enum TypedItemKind {
-    TypedItemTypeDef,
-    TypedItemTypeAlias,
-    TypedItemTypeDecl,
-    TypedItemFunction,
-    TypedItemDataDef,
-    TypedItemServiceDef,
-    TypedItemResourceDef,
-    TypedItemUnhandled,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
 pub enum BackendCapability {
     CapServiceEmit,
     CapAsyncTransport,
@@ -158,7 +145,9 @@ pub fn has_mock_prefix(name: String) -> bool {
 }
 
 pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProjection>>> {
-    Rc::new({ let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_service_item(item.clone()) { __result.push(item); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for c in Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { if { let mut __found = false; for p in c.properties.clone().iter().cloned() { if has_mock_prefix(p.name.clone()) { __found = true; break; } } __found } { __result.push(c); } } __result }).iter().cloned() { __result.push(Rc::new(TestProjection {
+    {
+        let emit_info = typed.emit_graph_info.clone();
+Rc::new({ let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if (lookup_item_kind(emit_info.clone(), item.name.clone()) == TypedItemKind::TypedItemServiceDef) { __result.push(item); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for c in Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { if { let mut __found = false; for p in c.properties.clone().iter().cloned() { if has_mock_prefix(p.name.clone()) { __found = true; break; } } __found } { __result.push(c); } } __result }).iter().cloned() { __result.push(Rc::new(TestProjection {
     module_name: tm.module.clone().name.clone(),
     service_name: item.name.clone(),
     operation_name: c.name.clone(),
@@ -167,6 +156,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
     mock_field_inits: Rc::new({ let mut __result = Vec::new(); for p in c.properties.clone().iter().cloned() { if has_mock_prefix(p.name.clone()) { __result.push(p); } } __result }),
     source_index: tm.type_env.clone().source_index.clone(),
 })); } __result })).iter().cloned()); } __result })).iter().cloned()); } __result })
+}
 }
 
 pub fn derive_module_imports(items: Rc<Vec<Rc<Node>>>, import_rules: Rc<Vec<Rc<ImportRule>>>, target: RenderTarget) -> Rc<Vec<String>> {
@@ -1552,16 +1542,11 @@ match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
 }
 }
 
-pub fn is_type_alias_return_node(n: Rc<Node>) -> bool {
-    (n.name.clone().as_str() != "Unit".to_string().as_str())
-}
-
-pub fn is_service_item(item: Rc<Node>) -> bool {
-    ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
-}
-
 pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
-    { let mut __found = false; for tm in typed.modules.clone().iter().cloned() { if { let mut __found = false; for item in tm.items.clone().iter().cloned() { if is_service_item(item.clone()) { __found = true; break; } } __found } { __found = true; break; } } __found }
+    {
+        let emit_info = typed.emit_graph_info.clone();
+{ let mut __found = false; for tm in typed.modules.clone().iter().cloned() { if { let mut __found = false; for item in tm.items.clone().iter().cloned() { if (lookup_item_kind(emit_info.clone(), item.name.clone()) == TypedItemKind::TypedItemServiceDef) { __found = true; break; } } __found } { __found = true; break; } } __found }
+}
 }
 
 pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
@@ -1673,47 +1658,6 @@ pub fn classify_transport(t: Rc<Node>) -> TransportKind {
                 TransportKind::LocalKind
 }
 }
-}
-}
-
-pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
-    {
-        let item_has_structure = (item.connective.clone() != Connective::NoConnective);
-let is_bare_leaf = (((((item_has_structure.clone() == false) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0));
-let kind = if (is_bare_leaf.clone() && is_type_alias_return_node(rt_type(item.clone()))) {
-            TypedItemKind::TypedItemTypeAlias
-} else {
-            if (is_bare_leaf.clone() && !is_type_alias_return_node(rt_type(item.clone()))) {
-                TypedItemKind::TypedItemTypeDecl
-} else {
-                if (item_has_structure.clone() && (item.transport.clone() == None)) {
-                    TypedItemKind::TypedItemTypeDef
-} else {
-                    if ((item.body.clone() != None) && (item.type_annotation.clone() == None)) {
-                        TypedItemKind::TypedItemFunction
-} else {
-                        if ((item.body.clone() != None) && (item.type_annotation.clone() != None)) {
-                            TypedItemKind::TypedItemDataDef
-} else {
-                            if ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0)) {
-                                TypedItemKind::TypedItemServiceDef
-} else {
-                                if (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0)) || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0)) && ((item.properties.clone().len() as i64) > 0)) && (item.body.clone() == None))) {
-                                    TypedItemKind::TypedItemResourceDef
-} else {
-                                    if (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)) {
-                                        TypedItemKind::TypedItemTypeDecl
-} else {
-                                        TypedItemKind::TypedItemUnhandled
-}
-}
-}
-}
-}
-}
-}
-};
-kind
 }
 }
 
