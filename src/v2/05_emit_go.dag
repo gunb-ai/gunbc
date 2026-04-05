@@ -115,7 +115,9 @@ import v2.compiler.emit {
   extract_test_projections,
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
-  service_fallback_transport, effective_operation_transport
+  service_fallback_transport, effective_operation_transport,
+  ServiceFieldSet, compute_service_fields,
+  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport
 }
 // =========================================================================
 // Go language facts -- from std.languages spec (go_language, go_literals)
@@ -1228,9 +1230,9 @@ fn emit_go_service_def(
 ) -> String {
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let transport = service_fallback_transport(item: item)
-  let struct_def = emit_go_service_struct(name: safe_name, transport: transport)
   // After dissolution, operation children are identified by having params
   let op_children = item.children |> filter(c => c.params |> count > 0)
+  let struct_def = emit_go_service_struct(name: safe_name, fallback_transport: transport, op_children: op_children)
   let methods = op_children |> map(op_node =>
     emit_go_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, env: env)
   )
@@ -1238,18 +1240,13 @@ fn emit_go_service_def(
   concat(struct_def, "\n\n", methods_str)
 }
 
-fn emit_go_service_struct(name: String, transport: Node) -> String {
-  let fields = if is_rest_transport(t: transport) {
-    let base = "\tBaseURL string"
-    let auth_field = if transport_has_auth(t: transport) { "\n\tAuthToken string" } else { "" }
-    concat(base, auth_field)
-  } else if is_shell_transport(t: transport) {
-    "\tWorkingDir string"
-  } else if is_file_transport(t: transport) {
-    "\tBasePath string"
-  } else {
-    ""
-  }
+fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
+  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+  let rest_field = if fs.has_rest { "\tBaseURL string" } else { "" }
+  let auth_field = if fs.has_auth { "\n\tAuthToken string" } else { "" }
+  let shell_field = if fs.has_shell { "\tWorkingDir string" } else { "" }
+  let file_field = if fs.has_file { "\tBasePath string" } else { "" }
+  let fields = concat(rest_field, auth_field, shell_field, file_field)
   if fields == "" {
     concat("type ", name, " struct{}")
   } else {
@@ -1274,14 +1271,11 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  if is_rest_transport(t: transport) {
-    emit_go_rest_call(op_name: op_name, transport: transport, depth: depth)
-  } else if is_shell_transport(t: transport) {
-    emit_go_shell_call(op_name: op_name, transport: transport, depth: depth)
-  } else if is_file_transport(t: transport) {
-    emit_go_file_call(op_name: op_name, depth: depth)
-  } else {
-    emit_go_local_call(op_name: op_name, depth: depth)
+  match classify_transport(t: transport) {
+    RestKind => emit_go_rest_call(op_name: op_name, transport: transport, depth: depth)
+    ShellKind => emit_go_shell_call(op_name: op_name, transport: transport, depth: depth)
+    FileKind => emit_go_file_call(op_name: op_name, depth: depth)
+    LocalKind => emit_go_local_call(op_name: op_name, depth: depth)
   }
 }
 

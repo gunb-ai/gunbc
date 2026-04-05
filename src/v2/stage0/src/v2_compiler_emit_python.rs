@@ -68,8 +68,9 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, TransportKind, classify_transport};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef};
+use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
 pub fn emit_py_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<String>>, mut scope: Rc<InferScope>, mut registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut depth: i64) -> Rc<BlockEmitState> {
     loop {
@@ -1183,37 +1184,66 @@ pub fn emit_py_service_def(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemI
         let depth = 0;
 let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
 let transport = service_fallback_transport(item.clone());
-let init_method = emit_py_service_init(transport.clone());
 let op_children = item.children.clone();
-let methods = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.iter().cloned() { __result.push(emit_py_operation_method(safe_name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1), env.clone())); } __result });
+let init_method = emit_py_service_init(transport.clone(), op_children.clone());
+let methods = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_py_operation_method(safe_name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1), env.clone())); } __result });
 let methods_str = methods.join(&"\n\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("class ".to_string(), safe_name.clone()), ":\n".to_string()), make_indent((depth.clone() + 1))), init_method), "\n\n".to_string()), make_indent((depth.clone() + 1))), methods_str)
 }
 }
 
-pub fn emit_py_service_init(transport: Rc<Node>) -> String {
-    if is_rest_transport(transport.clone()) {
-        {
-            let auth_param = if transport_has_auth(transport.clone()) {
-                ", auth_token: str".to_string()
+pub fn emit_py_service_init(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
+    {
+        let fs = compute_service_fields(fallback_transport, op_children);
+let params = Rc::new(vec![]);
+let assigns = Rc::new(vec![]);
+let params = if fs.has_rest.clone() {
+            v2_rt::concat(params.clone(), Rc::new(vec!["base_url: str".to_string()]))
 } else {
-                "".to_string()
+            params.clone()
 };
-let auth_assign = if transport_has_auth(transport.clone()) {
-                "\n    self.auth_token = auth_token".to_string()
+let assigns = if fs.has_rest.clone() {
+            v2_rt::concat(assigns.clone(), Rc::new(vec!["self.base_url = base_url".to_string()]))
 } else {
-                "".to_string()
+            assigns.clone()
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def __init__(self, base_url: str".to_string(), auth_param), "):\n".to_string()), "    self.base_url = base_url".to_string()), auth_assign)
-}
+let params = if fs.has_auth.clone() {
+            v2_rt::concat(params.clone(), Rc::new(vec!["auth_token: str".to_string()]))
 } else {
-        if is_shell_transport(transport.clone()) {
-            v2_rt::concat("def __init__(self, working_dir: str | None = None):\n".to_string(), "    self.working_dir = working_dir".to_string())
+            params.clone()
+};
+let assigns = if fs.has_auth.clone() {
+            v2_rt::concat(assigns.clone(), Rc::new(vec!["self.auth_token = auth_token".to_string()]))
 } else {
-            if is_file_transport(transport.clone()) {
-                v2_rt::concat("def __init__(self, base_path: str):\n".to_string(), "    self.base_path = base_path".to_string())
+            assigns.clone()
+};
+let params = if fs.has_shell.clone() {
+            v2_rt::concat(params.clone(), Rc::new(vec!["working_dir: str | None = None".to_string()]))
 } else {
-                "def __init__(self):\n    pass".to_string()
+            params.clone()
+};
+let assigns = if fs.has_shell.clone() {
+            v2_rt::concat(assigns.clone(), Rc::new(vec!["self.working_dir = working_dir".to_string()]))
+} else {
+            assigns.clone()
+};
+let params = if fs.has_file.clone() {
+            v2_rt::concat(params.clone(), Rc::new(vec!["base_path: str".to_string()]))
+} else {
+            params.clone()
+};
+let assigns = if fs.has_file.clone() {
+            v2_rt::concat(assigns.clone(), Rc::new(vec!["self.base_path = base_path".to_string()]))
+} else {
+            assigns.clone()
+};
+if ((params.clone().len() as i64) == 0) {
+            "def __init__(self):\n    pass".to_string()
+} else {
+            {
+                let params_str = v2_rt::concat("self, ".to_string(), params.clone().join(&", ".to_string()));
+let assigns_str = Rc::new({ let mut __result = Vec::new(); for a in assigns.clone().iter().cloned() { __result.push(v2_rt::concat("    ".to_string(), a.clone())); } __result }).join(&"\n".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat("def __init__(".to_string(), params_str), "):\n".to_string()), assigns_str)
 }
 }
 }
@@ -1237,18 +1267,11 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 
 pub fn emit_py_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
-    if is_rest_transport(transport.clone()) {
-        emit_py_rest_call(op_name, transport.clone())
-} else {
-        if is_shell_transport(transport.clone()) {
-            emit_py_shell_call(op_name, transport.clone())
-} else {
-            if is_file_transport(transport.clone()) {
-                emit_py_file_call(op_name)
-} else {
-                emit_py_local_call(op_name)
-}
-}
+    match classify_transport(transport.clone()) {
+    TransportKind::RestKind => emit_py_rest_call(op_name, transport.clone()),
+    TransportKind::ShellKind => emit_py_shell_call(op_name, transport.clone()),
+    TransportKind::FileKind => emit_py_file_call(op_name),
+    TransportKind::LocalKind => emit_py_local_call(op_name),
 }
 }
 

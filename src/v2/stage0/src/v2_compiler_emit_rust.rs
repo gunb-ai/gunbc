@@ -77,8 +77,9 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope,
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 pub use crate::v2_compiler_ownership::{analyze_ownership, build_movable_set};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, TypedItemKind, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, classify_typed_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, service_has_rest, service_has_shell, service_has_file, service_has_rest_auth, extract_modifier_names};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, TypedItemKind, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, classify_typed_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, TransportKind, classify_transport, extract_modifier_names};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef};
+use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
 pub fn render_rust_type(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>) -> String {
     render_type(build_type_rendering(n, rc_types, Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */), RenderTarget::Rust)
@@ -3779,26 +3780,23 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 
 pub fn emit_service_config_fields(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
     {
-        let has_shell = service_has_shell(fallback_transport.clone(), op_children.clone());
-let has_rest = service_has_rest(fallback_transport.clone(), op_children.clone());
-let has_file = service_has_file(fallback_transport.clone(), op_children.clone());
-let has_auth = service_has_rest_auth(fallback_transport.clone(), op_children.clone());
-let shell_field = if has_shell {
+        let fs = compute_service_fields(fallback_transport, op_children);
+let shell_field = if fs.has_shell.clone() {
             "    pub working_dir: Option<String>,\n".to_string()
 } else {
             "".to_string()
 };
-let rest_field = if has_rest {
+let rest_field = if fs.has_rest.clone() {
             "    pub base_url: String,\n".to_string()
 } else {
             "".to_string()
 };
-let auth_field = if has_auth {
+let auth_field = if fs.has_auth.clone() {
             "    pub auth_token: String,\n".to_string()
 } else {
             "".to_string()
 };
-let file_field = if has_file {
+let file_field = if fs.has_file.clone() {
             "    pub base_path: String,\n".to_string()
 } else {
             "".to_string()
@@ -3825,11 +3823,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("impl ".to
 
 pub fn emit_service_new_method(name: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
     {
-        let has_shell = service_has_shell(fallback_transport.clone(), op_children.clone());
-let has_rest = service_has_rest(fallback_transport.clone(), op_children.clone());
-let has_file = service_has_file(fallback_transport.clone(), op_children.clone());
-let has_auth = service_has_rest_auth(fallback_transport.clone(), op_children.clone());
-let base_url_default = if has_rest.clone() {
+        let fs = compute_service_fields(fallback_transport.clone(), op_children);
+let base_url_default = if fs.has_rest.clone() {
             {
                 let fallback_is_rest = is_rest_transport(fallback_transport.clone());
 let from_fallback = if fallback_is_rest {
@@ -3852,22 +3847,22 @@ if (from_fallback.clone().as_str() != "".to_string().as_str()) {
 } else {
             "".to_string()
 };
-let shell_init = if has_shell {
+let shell_init = if fs.has_shell.clone() {
             "        working_dir: None,\n".to_string()
 } else {
             "".to_string()
 };
-let rest_init = if has_rest.clone() {
+let rest_init = if fs.has_rest.clone() {
             v2_rt::concat(v2_rt::concat("        base_url: \"".to_string(), base_url_default), "\".to_string(),\n".to_string())
 } else {
             "".to_string()
 };
-let auth_init = if has_auth {
+let auth_init = if fs.has_auth.clone() {
             "        auth_token: String::new(),\n".to_string()
 } else {
             "".to_string()
 };
-let file_init = if has_file {
+let file_init = if fs.has_file.clone() {
             "        base_path: \".\".to_string(),\n".to_string()
 } else {
             "".to_string()
@@ -3930,18 +3925,11 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(log_line, 
 }
 
 pub fn emit_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, inferred: Rc<Node>) -> String {
-    if is_rest_transport(transport.clone()) {
-        emit_rest_call(op_name, transport.clone(), registry, depth)
-} else {
-        if is_shell_transport(transport.clone()) {
-            emit_shell_call(op_name, transport.clone(), registry, depth, inferred)
-} else {
-            if is_file_transport(transport.clone()) {
-                emit_file_call(op_name, inferred)
-} else {
-                emit_local_call(op_name)
-}
-}
+    match classify_transport(transport.clone()) {
+    TransportKind::RestKind => emit_rest_call(op_name, transport.clone(), registry, depth),
+    TransportKind::ShellKind => emit_shell_call(op_name, transport.clone(), registry, depth, inferred),
+    TransportKind::FileKind => emit_file_call(op_name, inferred),
+    TransportKind::LocalKind => emit_local_call(op_name),
 }
 }
 

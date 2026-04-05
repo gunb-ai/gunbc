@@ -1292,6 +1292,36 @@ fn extract_modifier_names(properties: List<Node>) -> List<String> {
   )
 }
 
+// Consolidated service field detection: returns which transport-driven
+// config fields a service struct needs. Single call replaces 4 separate
+// predicate calls that all three backends were duplicating.
+type ServiceFieldSet {
+  has_rest: Bool
+  has_shell: Bool
+  has_file: Bool
+  has_auth: Bool
+}
+
+fn compute_service_fields(fallback_transport: Node, op_children: List<Node>) -> ServiceFieldSet {
+  ServiceFieldSet {
+    has_rest: service_has_rest(fallback_transport: fallback_transport, op_children: op_children),
+    has_shell: service_has_shell(fallback_transport: fallback_transport, op_children: op_children),
+    has_file: service_has_file(fallback_transport: fallback_transport, op_children: op_children),
+    has_auth: service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
+  }
+}
+
+// Transport kind classification: single-dispatch alternative to repeated
+// if/else chains in each backend's transport_call emitter.
+type TransportKind = RestKind | ShellKind | FileKind | LocalKind
+
+fn classify_transport(t: Node) -> TransportKind {
+  if is_rest_transport(t: t) { RestKind }
+  else if is_shell_transport(t: t) { ShellKind }
+  else if is_file_transport(t: t) { FileKind }
+  else { LocalKind }
+}
+
 // =========================================================================
 // Shared classification functions -- target-agnostic item/type/transport
 // dispatch. Each backend calls these to determine WHAT kind of thing it's
