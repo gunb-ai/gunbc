@@ -3201,7 +3201,7 @@ match f_arg {
 }
 }
 
-pub fn resolve_callback_cost(lambda_arg: Option<Rc<Node>>, recv_r: Rc<SummaryResult>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_index: Rc<HashMap<String, Rc<SccInfo>>>, parser_always_advancing: Rc<HashMap<String, bool>>, recursion_ctx: Rc<RecursionContext>) -> Rc<SummaryResult> {
+pub fn resolve_callback_cost(lambda_arg: Option<Rc<Node>>, recv_r: Rc<SummaryResult>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_index: Rc<HashMap<String, Rc<SccInfo>>>, parser_always_advancing: Rc<HashMap<String, bool>>, recursion_ctx: RecursionContext) -> Rc<SummaryResult> {
     match lambda_arg {
     Some(la) => match (*la.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
@@ -3229,7 +3229,7 @@ match v2_rt::map_get(&func_index, fn_ref.clone()) {
 }
 }
 
-pub fn cost_of_method_by_shape(shape: Rc<CostShape>, recv_r: Rc<SummaryResult>, mc_args: Rc<Vec<Rc<Node>>>, size: Rc<SizeExpr>, binder: String, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_index: Rc<HashMap<String, Rc<SccInfo>>>, parser_always_advancing: Rc<HashMap<String, bool>>, recursion_ctx: Rc<RecursionContext>) -> Rc<SummaryResult> {
+pub fn cost_of_method_by_shape(shape: Rc<CostShape>, recv_r: Rc<SummaryResult>, mc_args: Rc<Vec<Rc<Node>>>, size: Rc<SizeExpr>, binder: String, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_index: Rc<HashMap<String, Rc<SccInfo>>>, parser_always_advancing: Rc<HashMap<String, bool>>, recursion_ctx: RecursionContext) -> Rc<SummaryResult> {
     match (*shape).clone() {
     CostShape::ShapeIterateBody { produces_collection: pc, .. } => {
         let lambda_arg = resolve_lambda_arg(mc_args);
@@ -3625,7 +3625,7 @@ pub struct FuncEntry {
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RecursionContext;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3640,7 +3640,7 @@ pub struct MatchCostAccum {
     pub branch_costs: Rc<Vec<Rc<CostExpr>>>,
 }
 
-pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_index: Rc<HashMap<String, Rc<SccInfo>>>, table: Rc<CostInternTable>, parser_always_advancing: Rc<HashMap<String, bool>>, recursion_ctx: Rc<RecursionContext>) -> Rc<SummaryResult> {
+pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_index: Rc<HashMap<String, Rc<SccInfo>>>, table: Rc<CostInternTable>, parser_always_advancing: Rc<HashMap<String, bool>>, recursion_ctx: RecursionContext) -> Rc<SummaryResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprLiteral { .. } => Rc::new(SummaryResult {
@@ -4033,7 +4033,7 @@ pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
     })
 }
 
-pub fn get_or_compute_summary(func_name: String, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_index: Rc<HashMap<String, Rc<SccInfo>>>, table: Rc<CostInternTable>, parser_always_advancing: Rc<HashMap<String, bool>>, recursion_ctx: Rc<RecursionContext>) -> Rc<SummaryResult> {
+pub fn get_or_compute_summary(func_name: String, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_index: Rc<HashMap<String, Rc<SccInfo>>>, table: Rc<CostInternTable>, parser_always_advancing: Rc<HashMap<String, bool>>, recursion_ctx: RecursionContext) -> Rc<SummaryResult> {
     match lookup_summary(table.clone(), func_name.clone()) {
     Some(cached) => Rc::new(SummaryResult {
     summary: cached.clone(),
@@ -4172,7 +4172,7 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
     })
 }
 
-pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>, recursion_ctx: Rc<RecursionContext>) -> Rc<ComplexityReport> {
+pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>, recursion_ctx: RecursionContext) -> Rc<ComplexityReport> {
     {
         let func_index = func_entries.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, entry: Rc<FuncEntry>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), entry.clone()));
 let scc_index = build_scc_index(func_entries.clone(), func_index.clone());

@@ -3365,12 +3365,43 @@ pub fn child_has_fn_type(child: Rc<Node>) -> bool {
 }
 }
 
-pub fn build_value_contexts(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<ValueContext>>> {
-    modules.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<ValueContext>>(), |acc: Rc<HashMap<String, Rc<ValueContext>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, Rc<ValueContext>>>, item: Rc<Node>| {
+pub fn is_dag_value_type_name(name: String) -> bool {
+    (((name.clone().as_str() == "Int".to_string().as_str()) || (name.clone().as_str() == "Bool".to_string().as_str())) || (name.clone().as_str() == "Float".to_string().as_str()))
+}
+
+pub fn child_resolved_type_name(child: Rc<Node>) -> String {
+    match child.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => normalize_access_type_node(rt.clone()).name.clone(),
+    _ => "".to_string(),
+}
+}
+
+pub fn all_fields_are_value_types(children: Rc<Vec<Rc<Node>>>) -> bool {
+    { let mut __all = true; for child in children.iter().cloned() { if !({
+        let type_name = child_resolved_type_name(child.clone());
+((type_name.clone().as_str() != "".to_string().as_str()) && is_dag_value_type_name(type_name.clone()))
+}) { __all = false; break; } } __all }
+}
+
+pub fn is_item_constant(item: Rc<Node>, recursive_type_set: Rc<HashMap<String, bool>>) -> bool {
+    {
+        let is_recursive = v2_rt::map_contains_key(&recursive_type_set, item.name.clone());
+let has_generics = ((item.params.clone().len() as i64) > 0);
+let has_fn = { let mut __found = false; for child in item.children.clone().iter().cloned() { if child_has_fn_type(child.clone()) { __found = true; break; } } __found };
+let is_unit_only_enum = ((item.connective.clone() == Connective::Disj) && { let mut __all = true; for variant in item.children.clone().iter().cloned() { if !(((variant.children.clone().len() as i64) == 0)) { __all = false; break; } } __all });
+let is_value_struct = ((item.connective.clone() == Connective::Conj) && all_fields_are_value_types(item.children.clone()));
+(((!is_recursive && !has_generics) && !has_fn) && (is_value_struct || is_unit_only_enum))
+}
+}
+
+pub fn build_value_contexts(modules: Rc<Vec<Rc<TypedModule>>>, recursive_type_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, ValueContext>> {
+    modules.iter().cloned().fold(v2_rt::rc_empty_map::<ValueContext>(), |acc: Rc<HashMap<String, ValueContext>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, ValueContext>>, item: Rc<Node>| {
         let has_fn_fields = { let mut __found = false; for child in item.children.clone().iter().cloned() { if child_has_fn_type(child.clone()) { __found = true; break; } } __found };
-v2_rt::rc_map_insert(inner.clone(), item.name.clone(), Rc::new(ValueContext {
+let is_constant = is_item_constant(item.clone(), recursive_type_set.clone());
+v2_rt::rc_map_insert(inner.clone(), item.name.clone(), ValueContext {
     has_fn_fields: has_fn_fields.clone(),
-}))
+    is_constant: is_constant.clone(),
+})
 }))
 }
 
@@ -3382,10 +3413,10 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
 let built = modules.clone().iter().cloned().fold(init.clone(), |state: Rc<EmitInfoBuildState>, typed_module: Rc<TypedModule>| typed_module.items.clone().iter().cloned().fold(state.clone(), |inner_state: Rc<EmitInfoBuildState>, item: Rc<Node>| add_emit_item_summary(inner_state.clone(), item.clone())));
 let all_recursive = modules.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, m: Rc<TypedModule>| v2_rt::rc_map_merge(acc.clone(), m.type_env.clone().recursive_type_set.clone()));
 let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
-let value_ctxs = build_value_contexts(modules.clone());
+let value_ctxs = build_value_contexts(modules.clone(), all_recursive.clone());
 Rc::new(EmitGraphInfo {
     type_summaries: built.type_summaries.clone(),
-    recursive_type_set: all_recursive,
+    recursive_type_set: all_recursive.clone(),
     fielded_variants: fielded,
     value_contexts: value_ctxs,
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),

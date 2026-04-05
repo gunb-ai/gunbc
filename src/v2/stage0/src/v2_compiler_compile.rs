@@ -110,8 +110,8 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
 })); } __result })).iter().cloned()); } __result })
 }
 
-pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> Rc<RecursionContext> {
-    Rc::new(RecursionContext {})
+pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
+    RecursionContext {}
 }
 
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
