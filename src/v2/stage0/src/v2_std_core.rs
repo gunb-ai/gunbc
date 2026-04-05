@@ -50,6 +50,9 @@ pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan, kernel_type_set, i
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::std_syntax::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull};
+pub use crate::extdeps_transports_rest::{transport_kind_rest};
+pub use crate::extdeps_transports_shell::{transport_kind_shell};
+pub use crate::extdeps_transports_file::{transport_kind_file};
 use TokenShape::*;
 use Connective::*;
 use Cardinality::*;
@@ -1332,18 +1335,6 @@ pub fn transport_auth_header_key() -> String {
 
 pub fn transport_auth_scheme_key() -> String {
     "auth_scheme".to_string()
-}
-
-pub fn transport_kind_rest() -> String {
-    "rest".to_string()
-}
-
-pub fn transport_kind_shell() -> String {
-    "shell".to_string()
-}
-
-pub fn transport_kind_file() -> String {
-    "file".to_string()
 }
 
 pub fn transport_kind_local() -> String {

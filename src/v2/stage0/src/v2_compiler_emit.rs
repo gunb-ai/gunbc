@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, Connective, Cardinality};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, Connective, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
@@ -55,6 +55,9 @@ use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{CardOptional};
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
+pub use crate::extdeps_transports_rest::{transport_kind_rest};
+pub use crate::extdeps_transports_shell::{transport_kind_shell};
+pub use crate::extdeps_transports_file::{transport_kind_file};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
 pub use crate::v2_compiler_infer_types::{rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection};
 pub use crate::std_types::{is_container_type};

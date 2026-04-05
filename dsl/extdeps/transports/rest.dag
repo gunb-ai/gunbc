@@ -13,6 +13,9 @@
 
 module extdeps.transports.rest
 
+// Transport kind name — single authority for "rest" transport identity.
+data transport_kind_rest: String = "rest"
+
 // RFC 9110 Section 9: request methods.
 type HttpMethod = GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
 
