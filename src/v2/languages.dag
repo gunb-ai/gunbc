@@ -29,7 +29,6 @@ import extdeps.languages.rust.emit {
   rust_serde_tag, rust_serde_rename_template,
   rust_source_extension, rust_source_dir, rust_visibility,
   rust_value_types, rust_string_types,
-  rust_clone_expr, rust_deref_clone_expr, rust_field_clone_expr, rust_iterator_clone_suffix,
   rust_method_templates
 }
 
@@ -105,18 +104,13 @@ type ImportRule {
 
 type SharingStrategy {
   wrap_template: String
-  // Clone templates: {0}=value.
+  // Clone templates: {0}=value, {1}=field (for field_clone).
   // In GC'd languages these are identity — no ownership transfer needed.
   clone_value: String       // owned copy of a value: Rust "{0}.clone()", Python/Go "{0}"
   deref_clone: String       // owned copy through shared pointer: Rust "(*{0}).clone()"
+  field_clone: String       // owned copy of a field: Rust "{0}.{1}.clone()", Python/Go "{0}.{1}"
   iter_owned: String        // owned iterator from shared collection: Rust "{0}.iter().cloned()"
-}
-
-type CloneTemplates {
-  clone_expr: String              // "{0}.clone()" — clone an owned expression
-  deref_clone_expr: String        // "(*{0}).clone()" — deref then clone (Rc/Box)
-  field_clone_expr: String        // "{0}.{1}.clone()" — clone a field access
-  iterator_clone_suffix: String   // ".cloned()" — clone iterator elements
+  clone_suffix: String      // appended for owned element access: Rust ".cloned()", Python/Go ""
 }
 
 // -- Indexing semantics: per-collection-type rendering templates ------------
@@ -156,7 +150,6 @@ type LanguageSpec {
   test_conventions: TestConventions
   top_level_visibility: String
   sharing: SharingStrategy
-  clone_templates: CloneTemplates?
   indexing: IndexingSemantics
   annotations: AnnotationRequirements
   method_templates: Map<String, String>?
@@ -203,13 +196,9 @@ fn rust_spec() -> LanguageSpec {
       wrap_template: "Rc<{0}>",
       clone_value: "{0}.clone()",
       deref_clone: "(*{0}).clone()",
-      iter_owned: "{0}.iter().cloned()"
-    },
-    clone_templates: CloneTemplates {
-      clone_expr: rust_clone_expr,
-      deref_clone_expr: rust_deref_clone_expr,
-      field_clone_expr: rust_field_clone_expr,
-      iterator_clone_suffix: rust_iterator_clone_suffix
+      field_clone: "{0}.{1}.clone()",
+      iter_owned: "{0}.iter().cloned()",
+      clone_suffix: ".cloned()"
     },
     indexing: IndexingSemantics {
       list_index: "{0}[({1}) as usize].clone()",
@@ -263,9 +252,10 @@ fn python_spec() -> LanguageSpec {
       wrap_template: "{0}",
       clone_value: "{0}",
       deref_clone: "{0}",
-      iter_owned: "{0}"
+      field_clone: "{0}.{1}",
+      iter_owned: "{0}",
+      clone_suffix: ""
     },
-    clone_templates: null,
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
       map_index: "{0}[{1}]",
@@ -318,9 +308,10 @@ fn go_spec() -> LanguageSpec {
       wrap_template: "{0}",
       clone_value: "{0}",
       deref_clone: "{0}",
-      iter_owned: "{0}"
+      field_clone: "{0}.{1}",
+      iter_owned: "{0}",
+      clone_suffix: ""
     },
-    clone_templates: null,
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
       map_index: "{0}[{1}]",
@@ -421,10 +412,6 @@ fn top_level_visibility_for_target(target: RenderTarget) -> String {
 
 fn sharing_for_target(target: RenderTarget) -> SharingStrategy {
   language_spec_for_target(target: target).sharing
-}
-
-fn clone_templates_for_target(target: RenderTarget) -> CloneTemplates? {
-  language_spec_for_target(target: target).clone_templates
 }
 
 // Apply sharing wrap template to a type string.

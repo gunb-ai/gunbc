@@ -53,7 +53,7 @@ use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge,
 use crate::v2_std_core::LiteralValue::*;
 pub use crate::std_syntax::{ItemForm, OperatorSpec, SyntaxSpec, BodyKind};
 use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
-pub use crate::extdeps_languages_rust_emit::{rust_type_map, rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_value_types, rust_string_types, rust_clone_expr, rust_deref_clone_expr, rust_field_clone_expr, rust_iterator_clone_suffix, rust_method_templates};
+pub use crate::extdeps_languages_rust_emit::{rust_type_map, rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_value_types, rust_string_types, rust_method_templates};
 pub use crate::extdeps_languages_python_emit::{python_type_map, python_keywords, python_container_templates, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates, python_string_types};
 pub use crate::extdeps_languages_go_emit::{go_type_map, go_keywords, go_container_templates, go_reserved, go_reserved_escape_suffix, go_manifest_file, go_method_templates, go_string_types};
 use ReservedWordStrategy::*;
@@ -144,15 +144,9 @@ pub struct SharingStrategy {
     pub wrap_template: String,
     pub clone_value: String,
     pub deref_clone: String,
+    pub field_clone: String,
     pub iter_owned: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CloneTemplates {
-    pub clone_expr: String,
-    pub deref_clone_expr: String,
-    pub field_clone_expr: String,
-    pub iterator_clone_suffix: String,
+    pub clone_suffix: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -180,7 +174,6 @@ pub struct LanguageSpec {
     pub test_conventions: Rc<TestConventions>,
     pub top_level_visibility: String,
     pub sharing: Rc<SharingStrategy>,
-    pub clone_templates: Option<Rc<CloneTemplates>>,
     pub indexing: Rc<IndexingSemantics>,
     pub annotations: Rc<AnnotationRequirements>,
     pub method_templates: Option<Rc<HashMap<String, String>>>,
@@ -224,14 +217,10 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     wrap_template: "Rc<{0}>".to_string(),
     clone_value: "{0}.clone()".to_string(),
     deref_clone: "(*{0}).clone()".to_string(),
+    field_clone: "{0}.{1}.clone()".to_string(),
     iter_owned: "{0}.iter().cloned()".to_string(),
+    clone_suffix: ".cloned()".to_string(),
 }),
-    clone_templates: Some(Rc::new(CloneTemplates {
-    clone_expr: rust_clone_expr(),
-    deref_clone_expr: rust_deref_clone_expr(),
-    field_clone_expr: rust_field_clone_expr(),
-    iterator_clone_suffix: rust_iterator_clone_suffix(),
-})),
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[({1}) as usize].clone()".to_string(),
     map_index: "({0}).get(&{1}).cloned()".to_string(),
@@ -286,9 +275,10 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     wrap_template: "{0}".to_string(),
     clone_value: "{0}".to_string(),
     deref_clone: "{0}".to_string(),
+    field_clone: "{0}.{1}".to_string(),
     iter_owned: "{0}".to_string(),
+    clone_suffix: "".to_string(),
 }),
-    clone_templates: None,
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[{1}]".to_string(),
     map_index: "{0}[{1}]".to_string(),
@@ -343,9 +333,10 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     wrap_template: "{0}".to_string(),
     clone_value: "{0}".to_string(),
     deref_clone: "{0}".to_string(),
+    field_clone: "{0}.{1}".to_string(),
     iter_owned: "{0}".to_string(),
+    clone_suffix: "".to_string(),
 }),
-    clone_templates: None,
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[{1}]".to_string(),
     map_index: "{0}[{1}]".to_string(),
@@ -459,10 +450,6 @@ pub fn top_level_visibility_for_target(target: RenderTarget) -> String {
 
 pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
     language_spec_for_target(target).sharing.clone()
-}
-
-pub fn clone_templates_for_target(target: RenderTarget) -> Option<Rc<CloneTemplates>> {
-    language_spec_for_target(target).clone_templates.clone()
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {

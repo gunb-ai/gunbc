@@ -167,10 +167,11 @@ instead of derived from structural authorities. This produces
 correct-but-suboptimal code and blocks new backends.
 
 **Status:** TypeRendering boundary established (emit_node_type_rc deleted).
-TLC-3 and TLC-4 data models landed in LanguageSpec; Rust emitter consumes
-both. Go/Python still use list_index/list_slice unconditionally (TLC-3 not
-fully dispatched). Annotated-let path introduced but has no consumer yet
-(TLC-4 not end-to-end). TLC-1 and TLC-2 blocked on upstream pipeline work.
+Clone semantics unified in SharingStrategy (CloneTemplates removed).
+TLC-1 landed: `is_zero_arg_callable_ref` dispatches call-vs-value through
+emit_var_ref and emit_typed_expr_base. TLC-3 Go/Python per-collection
+dispatch done. TLC-4 data model landed, annotated-let consumer pending.
+TLC-2 blocked on M5 coercion engine.
 
 One root cause, two symptoms:
 1. Facts that exist upstream are lost before emit — emission compensates
@@ -206,7 +207,7 @@ mismatches before removal). `emit_node_type` routes through
 - [ ] `rc_types` derived from ValueContext (`is_constant` → no wrap)
 - [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
 - [ ] `is_constant` computation with consumer
-- [ ] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
+- [x] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
 - [ ] Explicit parent-enum ownership facts through resolve/infer/emit
 
 **Value context**
@@ -225,19 +226,18 @@ landed (`has_fn_fields` precomputed).
 Each gap is a missing LanguageSpec fact. Closing them unblocks new
 backends.
 
-- [ ] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
-  must render as `name()`, not bare `name`. The callable-vs-value
-  distinction must survive from resolution through emit.
-  *Blocked: requires callable identity to flow through pipeline (M2 Lane 1).*
+- [x] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
+  render as `name()` via `is_zero_arg_callable_ref` (FunctionValueBinding +
+  Callable node with empty params). Dispatched in emit_var_ref (registry hit
+  and miss) and emit_typed_expr_base.
 - [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
   *Blocked: requires M5 coercion engine for type/wrap authority.*
-- [ ] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
+- [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
-  Rust dispatches on collection type; Go/Python still route through `list_index`
-  unconditionally. *Remaining: Go/Python per-collection dispatch.*
+  All three backends dispatch on collection type.
 - [ ] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
   in LanguageSpec — let binding templates (inferred/annotated), lambda param
   templates (typed/untyped). Inferred-let and lambda params consume spec;

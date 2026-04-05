@@ -65,7 +65,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, CloneTemplates, test_conventions_for_target, top_level_visibility_for_target, clone_templates_for_target, is_value_type, is_string_like, target_primitive_type, try_target_primitive_type};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_value_type, is_string_like, target_primitive_type, try_target_primitive_type};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
@@ -1501,32 +1501,20 @@ pub fn variant_parent_from_binding_kind(binding_kind: Option<Rc<VarBindingKind>>
 }
 }
 
-pub fn rust_clone_templates() -> Rc<CloneTemplates> {
-    match clone_templates_for_target(RenderTarget::Rust) {
-    Some(t) => t.clone(),
-    None => Rc::new(CloneTemplates {
-    clone_expr: "{0}.clone()".to_string(),
-    deref_clone_expr: "(*{0}).clone()".to_string(),
-    field_clone_expr: "{0}.{1}.clone()".to_string(),
-    iterator_clone_suffix: ".cloned()".to_string(),
-}),
-}
-}
-
 pub fn apply_clone(expr: String) -> String {
-    apply_type_template1(rust_clone_templates().clone_expr.clone(), expr)
+    apply_type_template1(sharing_for_target(RenderTarget::Rust).clone_value.clone(), expr)
 }
 
 pub fn apply_deref_clone(expr: String) -> String {
-    apply_type_template1(rust_clone_templates().deref_clone_expr.clone(), expr)
+    apply_type_template1(sharing_for_target(RenderTarget::Rust).deref_clone.clone(), expr)
 }
 
 pub fn apply_field_clone(expr: String, field: String) -> String {
-    apply_type_template2(rust_clone_templates().field_clone_expr.clone(), expr, field)
+    apply_type_template2(sharing_for_target(RenderTarget::Rust).field_clone.clone(), expr, field)
 }
 
 pub fn clone_iterator_suffix() -> String {
-    rust_clone_templates().iterator_clone_suffix.clone()
+    sharing_for_target(RenderTarget::Rust).clone_suffix.clone()
 }
 
 pub fn emit_var_clone_or_move(ident: String, name: String, resolved_type: Option<Rc<InferredNode>>, emit_info: Rc<EmitGraphInfo>) -> String {
@@ -1551,6 +1539,16 @@ pub fn effective_variant_parent(name: String, binding_kind: Option<Rc<VarBinding
         variant_parent_from_binding_kind(binding_kind)
 },
     _ => variant_parent_from_binding_kind(binding_kind),
+}
+}
+
+pub fn is_zero_arg_callable_ref(binding_kind: Option<Rc<VarBindingKind>>, resolved_type: Option<Rc<InferredNode>>) -> bool {
+    match binding_kind.as_deref().cloned() {
+    Some(VarBindingKind::FunctionValueBinding) => match resolved_type.as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => ((rt.name.clone().as_str() == "Callable".to_string().as_str()) && ((rt.params.clone().len() as i64) == 0)),
+    _ => false,
+},
+    _ => false,
 }
 }
 
@@ -1580,21 +1578,26 @@ if is_data {
                         v2_rt::concat(to_snake(name.clone()), "()".to_string())
 } else {
                         {
-                            let is_function_value = match binding_kind.clone().as_deref().cloned() {
+                            let is_zero_arg = is_zero_arg_callable_ref(binding_kind.clone(), resolved_type.clone());
+let is_function_value = match binding_kind.clone().as_deref().cloned() {
     Some(VarBindingKind::FunctionValueBinding) => true,
     _ => false,
 };
 let ident = emit_ident(name.clone(), RenderTarget::Rust);
 let is_movable = emit_map_has(emit_info.movable.clone(), name.clone());
-let ident_str = if is_function_value {
-                                ident
+let ident_str = if is_zero_arg {
+                                v2_rt::concat(ident, "()".to_string())
 } else {
-                                if is_movable {
+                                if is_function_value {
                                     ident
 } else {
-                                    match resolved_type.clone() {
+                                    if is_movable {
+                                        ident
+} else {
+                                        match resolved_type.clone() {
     Some(_) => apply_type_template1(sharing.clone_value.clone(), ident),
     _ => ident,
+}
 }
 }
 };
@@ -1604,16 +1607,23 @@ ident_str
 },
     None => {
                     let ident = emit_ident(name.clone(), RenderTarget::Rust);
-let is_movable = emit_map_has(emit_info.movable.clone(), name.clone());
-let ident_str = if is_movable {
-                        ident
+let is_zero_arg = is_zero_arg_callable_ref(binding_kind.clone(), resolved_type.clone());
+if is_zero_arg {
+                        v2_rt::concat(ident, "()".to_string())
 } else {
-                        match resolved_type.clone() {
+                        {
+                            let is_movable = emit_map_has(emit_info.movable.clone(), name.clone());
+let ident_str = if is_movable {
+                                ident
+} else {
+                                match resolved_type.clone() {
     Some(_) => apply_type_template1(sharing.clone_value.clone(), ident),
     _ => ident,
 }
 };
 ident_str
+}
+}
 },
 },
 };
@@ -1652,7 +1662,14 @@ if emit_map_has(rc_types, enum_name.clone()) {
 if is_data {
                                 v2_rt::concat(to_snake(n.clone()), "()".to_string())
 } else {
-                                emit_ident(n.clone(), RenderTarget::Rust)
+                                {
+                                    let is_zero_arg = is_zero_arg_callable_ref(binding_kind.clone(), texpr.inferred.clone());
+if is_zero_arg {
+                                        v2_rt::concat(emit_ident(n.clone(), RenderTarget::Rust), "()".to_string())
+} else {
+                                        emit_ident(n.clone(), RenderTarget::Rust)
+}
+}
 }
 },
     None => {
