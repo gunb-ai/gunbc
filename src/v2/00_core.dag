@@ -22,9 +22,6 @@ import std.syntax {
   BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull
 }
-import extdeps.transports.rest { transport_kind_rest }
-import extdeps.transports.shell { transport_kind_shell }
-import extdeps.transports.file { transport_kind_file }
 
 // =========================================================================
 // Tokens
@@ -985,8 +982,11 @@ data transport_auth_token_key: String = "auth_token"
 data transport_auth_header_key: String = "auth_header"
 data transport_auth_scheme_key: String = "auth_scheme"
 
-// Transport kind names. rest/shell/file imported from extdeps (single authority).
-// Local transport is compiler-internal — no external definition.
+// Transport kind names — single authority for transport identity.
+// Constructors and predicates both reference these constants.
+data transport_kind_rest: String = "rest"
+data transport_kind_shell: String = "shell"
+data transport_kind_file: String = "file"
 data transport_kind_local: String = "local"
 
 fn make_transport_node(name: String, properties: List<Node>, children: List<Node>, span: SourceSpan) -> Node {

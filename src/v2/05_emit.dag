@@ -47,7 +47,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
   is_rest_transport, is_shell_transport, is_file_transport, is_local_transport,
-  is_transport_kind,
+  is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
@@ -57,9 +57,6 @@ import v2.std.core {
   CardOptional
 }
 
-import extdeps.transports.rest { transport_kind_rest }
-import extdeps.transports.shell { transport_kind_shell }
-import extdeps.transports.file { transport_kind_file }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, RecursiveVariantFieldWitness }
 import v2.compiler.infer_types { rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection }
 import std.types { is_container_type }

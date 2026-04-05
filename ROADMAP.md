@@ -199,18 +199,14 @@ mismatches before removal). `emit_node_type` routes through
 `build_type_rendering` + `render_type`.
 
 - [x] Delete `emit_node_type_rc` / old type rendering path
-- [x] `emit_primitive_type` fail-closed (no pass-through on miss) — unknown primitives produce `compile_error!`/sentinel in Rust/Go/Python
-
-**Transport identity**
-
-- [x] `transport_kind_rest/shell/file` constants moved to `extdeps.transports.*` as single authority — `00_core.dag` and `05_emit.dag` import directly; `transport_kind_local` remains compiler-internal
+- [ ] `emit_primitive_type` fail-closed (no pass-through on miss)
 
 **Sharing and ownership**
 
-- [x] `rc_types` derived from ValueContext (`is_constant` → no wrap) — non-recursive, non-generic, all-value-type fields skip Rc, gain Copy derive
+- [ ] `rc_types` derived from ValueContext (`is_constant` → no wrap)
 - [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
-- [x] `is_constant` computation with consumer — ValueContext.is_constant drives rc_types exclusion
-- [x] Clone semantics in LanguageSpec — all hardcoded `.clone()` flows through SharingStrategy templates (clone_value, deref_clone, iter_owned, get_cloned); Python/Go use identity templates
+- [ ] `is_constant` computation with consumer
+- [ ] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
 - [ ] Explicit parent-enum ownership facts through resolve/infer/emit
 
 **Value context**
@@ -238,10 +234,10 @@ backends.
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
   *Blocked: requires M5 coercion engine for type/wrap authority.*
-- [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
+- [ ] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
-  All three backends dispatch by collection type (string_like → string_index,
-  keyed → map_index, else list_index).
+  Rust dispatches on collection type; Go/Python still route through `list_index`
+  unconditionally. *Remaining: Go/Python per-collection dispatch.*
 - [ ] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
   in LanguageSpec — let binding templates (inferred/annotated), lambda param
   templates (typed/untyped). Inferred-let and lambda params consume spec;

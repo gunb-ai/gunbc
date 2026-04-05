@@ -10,9 +10,6 @@
 
 module extdeps.transports.file
 
-// Transport kind name — single authority for "file" transport identity.
-data transport_kind_file: String = "file"
-
 // Configuration type for file transport bindings.
 type FileTransportConfig {
   base_path: String             // POSIX pathname prefix for operation paths

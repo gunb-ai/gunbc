@@ -11,9 +11,6 @@
 
 module extdeps.transports.shell
 
-// Transport kind name — single authority for "shell" transport identity.
-data transport_kind_shell: String = "shell"
-
 // Configuration type for shell transport bindings.
 // argv is the command + arguments (POSIX.1-2017 Section 2.9.2).
 // env is additional environment variables (POSIX.1-2017 Section 8.1).
