@@ -469,6 +469,51 @@ No test >2s without justification. Self-compile time tracked per-PR.
 
 Theory, long-horizon, and items that land after root-cause tracks complete.
 
+## CM: Compiler Concept Modeling (continuous track)
+
+**Root cause:** The compiler interrogates structural properties (connective,
+children count, param count, transport presence) to answer semantic questions
+that should be modeled facts. Each ad-hoc question is a symptom of a missing
+concept. Until the compiler models its own domain in `.dag`, these questions
+will keep spawning in every new feature and every refactor.
+
+**Principle:** Improper modeling spawns downstream questions. Model the
+underlying concept and the questions dissolve. Same pattern as
+fold/descend/repeat dissolving ad-hoc iteration logic.
+
+### Concept categories (by impact)
+
+| Category | Pattern | Sites | Missing concept |
+|----------|---------|-------|-----------------|
+| Item classification | body+params+uses+connective combinatorics 3× | ~40 branches | Precomputed `ItemKind` on Node |
+| Connective branching | `Conj`/`Disj`/`NoConnective` if-else everywhere | 30+ branches | Explicit `TypeStructure` (product/coproduct/scalar) |
+| Collection detection | Name + children-count checks for List/Map/Set | ~15 sites | Structural `CollectionShape` from algebra |
+| Arity as semantics | `params |> count` as proxy for callable/generic | ~10 sites | Explicit `Callable`/`GenericSignature` properties |
+| Optional handling | Cardinality modifier + synthetic Some bridges | ~10 sites | First-class Optional as coproduct (M7) |
+| Function application | Type-name + arity check for call vs value-ref | ~5 sites | Modeled apply/call concept (M4 Tier 2.6) |
+| Transport/service | `transport != none && children > 0` repeated | ~8 sites | Explicit `ServiceDefinition` property |
+| Function signatures | body+params+uses conjunctions | ~12 sites | `FunctionSignature` semantic property |
+| Property/resource | `properties |> count > 0` as resource proxy | ~5 sites | Explicit `ResourceDefinition` marker |
+| Underresolved types | Sentinel names ("Dynamic", "Error") | ~6 sites | Explicit `ResolutionState` enum |
+
+### Dissolution strategy
+
+Items dissolve into existing milestones as they become unblocked:
+
+- **M4** dissolves: collection detection, arity-as-semantics, function
+  application (Tier 2.6), connective branching (partially)
+- **M7** dissolves: Optional handling, connective branching (fully),
+  underresolved type sentinels
+- **Independent**: item classification, transport/service, function
+  signatures, property/resource — these can be precomputed in inference
+  and stored on EmitGraphInfo without waiting for other milestones
+
+### Acceptance
+
+No ad-hoc structural interrogation in emission. Inference precomputes
+all semantic facts. Compiler concepts modeled in `.dag` declarations
+readable by the compiler itself.
+
 ## P1: Modeling Consolidation
 
 Programs are applied mathematics with informal names. ~90 redundant
