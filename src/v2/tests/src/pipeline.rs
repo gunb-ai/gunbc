@@ -4363,10 +4363,10 @@ fn type_rendering_bare_list_not_map() {
     use v2_compiler::v2_std_core::leaf_node;
 
     let list_node = leaf_node("List".to_string());
-    let rc_types = Rc::new(HashMap::from([("List".to_string(), true)]));
+    let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
     let recursive_types = Rc::new(HashMap::new());
 
-    let tr = build_type_rendering(list_node, rc_types, recursive_types);
+    let tr = build_type_rendering(list_node, shared_types, recursive_types);
     let rendered = render_type(tr, RenderTarget::Rust);
 
     assert!(rendered.contains("Vec"), "bare List rendered as {:?}, expected Vec<_>", rendered);
@@ -4379,10 +4379,10 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v2_compiler::v2_std_core::leaf_node;
 
     let map_node = leaf_node("Map".to_string());
-    let rc_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
+    let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
     let recursive_types = Rc::new(HashMap::new());
 
-    let tr = build_type_rendering(map_node, rc_types, recursive_types);
+    let tr = build_type_rendering(map_node, shared_types, recursive_types);
     let rendered = render_type(tr, RenderTarget::Rust);
 
     assert!(rendered.contains("HashMap"), "bare Map rendered as {:?}, expected HashMap<_, _>", rendered);
@@ -4398,10 +4398,10 @@ fn type_rendering_named_conj_with_container_template() {
         connective: Connective::Conj,
         ..(*leaf_node("".to_string())).clone()
     });
-    let rc_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
+    let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
     let recursive_types = Rc::new(HashMap::new());
 
-    let tr = build_type_rendering(free_monoid_conj, rc_types, recursive_types);
+    let tr = build_type_rendering(free_monoid_conj, shared_types, recursive_types);
     let rendered = render_type(tr, RenderTarget::Rust);
 
     assert!(rendered.contains("Vec"), "FreeMonoid Conj rendered as {:?}, expected Vec<_> via container template", rendered);

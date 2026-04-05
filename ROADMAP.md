@@ -204,22 +204,15 @@ mismatches before removal). `emit_node_type` routes through
 
 **Sharing and ownership**
 
-- [x] `rc_types` derived from ValueContext (`is_constant` → no wrap)
-- [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
-- [x] `is_constant` computation with consumer
+- [x] `rc_types` derived from `is_constant` (no wrap for fixed-width carriers)
+- [x] `build_rc_types` eliminated — replaced by `build_shared_types` in Rust emitter
+- [x] `ValueContext` deleted — `has_fn_fields` moved to `TypeSummary`, sharing
+  authority consolidated into `EmitGraphInfo.shared_types`
+- [x] `is_constant` computation with consumer (`is_type_constant` in 05_emit_rust.dag)
 - [x] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
 - [x] Explicit parent-enum ownership facts through resolve/infer/emit
-
-**Value context**
-
-`EmitGraphInfo` carries `value_contexts: Map<String, ValueContext>`
-with four kinds: ConstantData (immutable lookup table), RuntimeValue
-(heap-allocated, needs per-language wrapper), SpecificationWitness
-(structural fact, not runtime data), CallableValue (function type).
-Per-language emission reads ValueContext × LanguageSpec. Partially
-landed (`has_fn_fields` precomputed).
-
-- [ ] ValueContext fully consumed by all emission sites
+- [ ] Phase B cleanup: rename `rc_types` parameter → `shared_types` across ~90
+  function signatures (mechanical, no semantic change)
 
 ### CG-2: Expression-level gap closure (TLC-1..4)
 
