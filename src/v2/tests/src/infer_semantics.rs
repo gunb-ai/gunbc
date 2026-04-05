@@ -6,7 +6,7 @@ use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, container_node, map_node, node_is_keyed_collection,
+    bare_map_node, container_node, is_fully_resolved, map_node, node_is_keyed_collection,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::{
@@ -518,6 +518,29 @@ fn node_is_keyed_collection_false_for_list() {
 fn node_is_keyed_collection_false_for_leaf() {
     let leaf = leaf_node("String".to_string());
     assert!(!node_is_keyed_collection(leaf));
+}
+
+// ── is_fully_resolved ─────────────────────────────────────────────────
+
+#[test]
+fn is_fully_resolved_rejects_under_parameterized_container() {
+    // leaf_node("List") creates a node named "List" with 0 children.
+    // container_expected_arity("List") = Some(1), so 0 < 1 → not fully resolved.
+    let bare_list = leaf_node("List".to_string());
+    assert!(!is_fully_resolved(bare_list));
+}
+
+#[test]
+fn is_fully_resolved_accepts_parameterized_container() {
+    let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
+    assert!(is_fully_resolved(list_int));
+}
+
+#[test]
+fn is_fully_resolved_ignores_unknown_type_names() {
+    // User-defined "Widget" with 0 children → arity is None → not under-parameterized.
+    let widget = leaf_node("Widget".to_string());
+    assert!(is_fully_resolved(widget));
 }
 
 #[test]

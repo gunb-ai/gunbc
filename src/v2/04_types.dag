@@ -101,8 +101,14 @@ fn node_is_element_collection(n: Node) -> Bool {
 fn is_fully_resolved(n: Node) -> Bool {
   let self_is_type_var = match n.inferred { Some { value: inf } => is_type_variable(inferred: inf)  None => false }
   if self_is_type_var { false }
-  else if is_container_type(name: n.name) && (n.children |> count) < container_expected_arity(name: n.name) { false }
-  else { n.children |> all(ch => is_fully_resolved(n: ch)) }
+  else {
+    let under_param = match container_expected_arity(name: n.name) {
+      Some { value: expected } => (n.children |> count) < expected
+      None => false
+    }
+    if under_param { false }
+    else { n.children |> all(ch => is_fully_resolved(n: ch)) }
+  }
 }
 
 fn container_node(kind_name: String, element: Node) -> Node {
