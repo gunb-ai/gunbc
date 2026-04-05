@@ -3421,6 +3421,7 @@ Rc::new(EmitGraphInfo {
     value_contexts: value_ctxs,
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     movable: v2_rt::rc_empty_map::<bool>(),
+    owned_bindings: v2_rt::rc_empty_map::<bool>(),
 })
 }
 }

@@ -378,7 +378,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     fielded_variants: base_info.fielded_variants,
     value_contexts: base_info.value_contexts,
     ownership_index: ownership_idx,
-    movable: empty_map()
+    movable: empty_map(),
+    owned_bindings: empty_map()
   }
   let rc_types = build_rc_types(emit_info: emit_info)
   let registry = typed.item_registry
@@ -704,7 +705,8 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       fielded_variants: emit_info.fielded_variants,
       value_contexts: emit_info.value_contexts,
       ownership_index: emit_info.ownership_index,
-      movable: fn_movable
+      movable: fn_movable,
+      owned_bindings: empty_map()
     }
     if item.uses |> count > 0 {
       emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
@@ -1770,7 +1772,21 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
           TupleSecond => apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".1"))
           OptionalUnwrap => concat(apply_type_template1(template: sharing.clone_value, arg0: base_str), ".unwrap()")
           EnumAccessor => concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
-          StoredField => apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
+          StoredField =>
+            // If base is a variable in owned_bindings, field access is a move (no clone).
+            // Fold accumulators after Rc::try_unwrap are owned — moving fields keeps
+            // Rc refcount at 1, avoiding O(N) deep copies in Rc::make_mut.
+            let base_is_owned = match base.expr_data {
+              ExprVar { binding_kind: _ } =>
+                let base_name = expr_var_name(texpr: base)
+                emit_map_has(m: emit_info.owned_bindings, key: base_name)
+              _ => false
+            }
+            if base_is_owned {
+              concat(base_str, ".", emit_ident(name: field, target: Rust))
+            } else {
+              apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
+            }
         }
       // Every field access must have a summary set by reconcile.
       None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
@@ -2428,8 +2444,96 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      concat("|", params_str, "| ", body_str)
+      // If the accumulator is in owned_bindings, unwrap Rc at iteration start.
+      // This rebinds the acc from Rc<T> to owned T so field accesses move
+      // instead of clone, keeping Rc refcounts at 1 for in-place mutation.
+      let acc_name = match ps |> first { Some { value: n } => n  None => "" }
+      let needs_unwrap = acc_name != "" && emit_map_has(m: emit_info.owned_bindings, key: acc_name)
+      if needs_unwrap {
+        let acc_ident = emit_ident(name: acc_name, target: Rust)
+        concat("|", params_str, "| { let ", acc_ident, " = Rc::try_unwrap(", acc_ident, ").unwrap_or_else(|rc| (*rc).clone()); ", body_str, " }")
+      } else {
+        concat("|", params_str, "| ", body_str)
+      }
     _ => emit_typed_expr(texpr: lambda_expr, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+  }
+}
+
+// Walk through ExprLet chains and ExprBlock wrappers to find the terminal expression.
+// The parser wraps multi-statement lambda bodies in ExprBlock, so we must look
+// through both ExprBlock (last child) and ExprLet (body child) to reach the
+// terminal expression that determines whether the fold constructs its accumulator.
+fn fold_terminal_expr(body: Node) -> Node {
+  match body.expr_data {
+    ExprLet => match let_body(texpr: body) {
+      Some { value: inner } => fold_terminal_expr(body: inner)
+      None => body
+    }
+    ExprBlock => match body.children |> last {
+      Some { value: last_child } => fold_terminal_expr(body: last_child)
+      None => body
+    }
+    _ => body
+  }
+}
+
+// Check if a fold lambda's body terminal expression constructs a struct of the
+// accumulator type. When true, the fold body is safe for Rc::try_unwrap
+// optimization: field accesses on the accumulator are moves into the new struct,
+// not whole-accumulator references that would produce type mismatches.
+fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String) -> Bool {
+  match lambda_node.expr_data {
+    ExprLambda { semantics: _ } =>
+      let body = lambda_body(texpr: lambda_node)
+      let terminal = fold_terminal_expr(body: body)
+      match terminal.expr_data {
+        ExprRecordLit { parent_enum: _ } => terminal.name == acc_type_name
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Collect direct acc.field moves in a fold body. A "direct" move is
+// ExprFieldAccess where the base is ExprVar matching the accumulator name.
+// Accesses that appear as the first argument of an rt_ref_map_function are
+// borrows (emitted with &), not moves, and are excluded.
+fn collect_acc_field_moves(node: Node, acc_name: String) -> List<String> {
+  match node.expr_data {
+    ExprFieldAccess { summary: _ } =>
+      let base = field_access_base(texpr: node)
+      let is_direct = match base.expr_data {
+        ExprVar { binding_kind: _ } => expr_var_name(texpr: base) == acc_name
+        _ => false
+      }
+      if is_direct {
+        [field_access_field(texpr: node)]
+      } else {
+        node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name))
+      }
+    ExprCall { call_semantics: _ } =>
+      if map_contains_key(rt_ref_map_functions(), expr_call_func(texpr: node)) {
+        // First arg receives & prefix at emission (borrow), skip its subtree
+        node.children |> skip(1) |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name))
+      } else {
+        node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name))
+      }
+    _ =>
+      node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name))
+  }
+}
+
+// Check that no accumulator field is moved more than once in the fold body.
+// The Rc::try_unwrap optimization makes acc.field a Rust move (not clone).
+// If the same field is moved twice, Rust rejects it as use-after-move.
+fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String) -> Bool {
+  match lambda_node.expr_data {
+    ExprLambda { semantics: _ } =>
+      let body = lambda_body(texpr: lambda_node)
+      let moves = collect_acc_field_moves(node: body, acc_name: acc_name)
+      let deduped = moves |> fold(init: empty_map(), f: (seen, field) => map_insert(seen, field, true))
+      map_keys(deduped) |> count == moves |> count
+    _ => true
   }
 }
 
@@ -2465,6 +2569,57 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
           }
       }
   }
+  // Fold accumulators are linearly threaded — owned at each step, not shared.
+  // When the accumulator is an Rc-wrapped struct, emit Rc::try_unwrap at
+  // iteration start so field accesses move instead of clone. This keeps Rc
+  // refcounts at 1, avoiding O(N) deep copies
+  // in Rc::make_mut (the root cause of O(N²) fold behavior).
+  // Types stay Rc-wrapped (rc_types unchanged) — only field access on the
+  // owned accumulator binding skips .clone() via owned_bindings.
+  // Safety: only applied when the fold body's terminal expression constructs a
+  // new struct of the accumulator type (ExprRecordLit check). This guarantees
+  // field accesses are moves into the new struct, not whole-accumulator refs.
+  let acc_type_name = acc_type_node.name
+  let fold_lambda_node = match args |> skip(1) |> first {
+    Some { value: a } => arg_value(n: a)
+    None => type_variable_node(id: "")
+  }
+  let acc_param_name = match fold_lambda_node.expr_data {
+    ExprLambda { semantics: _ } => match lambda_param_names(texpr: fold_lambda_node) |> first {
+      Some { value: n } => n
+      None => ""
+    }
+    _ => ""
+  }
+  let cond_required = acc_type_node.return_cardinality == Required
+  let cond_rc = emit_map_has(m: rc_types, key: acc_type_name)
+  let cond_struct = match lookup_emit_type_summary(emit_info: emit_info, name: acc_type_name) {
+    Some { value: summary } => match summary.repr { StructRepr => true  _ => false }
+    None => false
+  }
+  let cond_body = fold_body_constructs_acc_struct(lambda_node: fold_lambda_node, acc_type_name: acc_type_name)
+  let cond_safe = fold_body_safe_field_moves(lambda_node: fold_lambda_node, acc_name: acc_param_name)
+  let acc_unwrap = cond_required && cond_rc && cond_struct && cond_body && cond_safe
+  let fold_emit_info = if acc_unwrap {
+    match fold_lambda_node.expr_data {
+      ExprLambda { semantics: _ } =>
+        let ps = lambda_param_names_at(texpr: fold_lambda_node, source_index: scope.type_env.source_index)
+        match ps |> first {
+          Some { value: acc_name } =>
+            EmitGraphInfo {
+              type_summaries: emit_info.type_summaries,
+              recursive_type_set: emit_info.recursive_type_set,
+              fielded_variants: emit_info.fielded_variants,
+              value_contexts: emit_info.value_contexts,
+              ownership_index: emit_info.ownership_index,
+              movable: emit_info.movable,
+              owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true)
+            }
+          None => emit_info
+        }
+      _ => emit_info
+    }
+  } else { emit_info }
   let acc_type_str = render_rust_type(n: acc_type_node, rc_types: rc_types)
   // Split: lambda annotation can use "_" for bare containers, but init value
   // resolution needs the real type for turbofish generation.
@@ -2486,15 +2641,15 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
           } else if init_func == "empty_map" {
             "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */"
           } else {
-            emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+            emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: fold_emit_info, fuel: 1024)
           }
-        _ => emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+        _ => emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: fold_emit_info, fuel: 1024)
       }
     None => "compile_error!(\"missing fold init argument\")"
   }
   let fold_fn = match args |> skip(1) |> first {
     Some { value: a } =>
-      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: fold_emit_info)
     None => "compile_error!(\"missing fold function argument\")"
   }
   let sharing = language_spec(target: Rust).sharing

@@ -3004,7 +3004,8 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     fielded_variants: fielded,
     value_contexts: value_ctxs,
     ownership_index: empty_map(),
-    movable: empty_map()
+    movable: empty_map(),
+    owned_bindings: empty_map()
   }
 }
 
