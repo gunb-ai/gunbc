@@ -2404,7 +2404,7 @@ fn strict_complexity_violation_count() {
     let typed = reconcile(norm.graph.clone(), source_indices);
     let func_entries = extract_func_entries(typed.clone());
     let recursion_ctx = build_recursion_context(typed);
-    let complexity = build_complexity_report(func_entries, recursion_ctx);
+    let complexity = build_complexity_report(func_entries.clone(), recursion_ctx);
 
     let violation_count = complexity.violations.len();
     eprintln!(
@@ -2445,6 +2445,32 @@ fn strict_complexity_violation_count() {
     eprintln!("\n  SAMPLE VIOLATIONS (first 20):");
     for v in complexity.violations.iter().take(20) {
         eprintln!("    {}: {}", v.func_name, v.reason);
+    }
+
+    // Temporary diagnostic: dump SCC membership for failing SCCs
+    {
+        use v2_compiler::v2_compiler_complexity::build_scc_index;
+        let func_index_map: std::collections::HashMap<String, std::rc::Rc<v2_compiler::v2_compiler_complexity::FuncEntry>> =
+            func_entries.iter().cloned().map(|e| (e.name.clone(), e)).collect();
+        let scc_index = build_scc_index(func_entries.clone(), std::rc::Rc::new(func_index_map));
+        let mut seen_sccs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for v in complexity.violations.iter() {
+            let reason = if v.reason.starts_with("computing: ") { &v.reason[11..] } else { &v.reason };
+            if reason.contains("mutual recursion") {
+                if let Some(scc_info) = scc_index.get(&v.func_name) {
+                    let label = scc_info.members.first().cloned().unwrap_or_default();
+                    if seen_sccs.insert(label.clone()) {
+                        eprintln!("\n  SCC [{}] ({} members):", label, scc_info.members.len());
+                        for m in scc_info.members.iter() {
+                            if let Some(entry) = scc_index.get(m) {
+                                let _ = entry; // just to confirm membership
+                            }
+                            eprintln!("    - {}", m);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Ratchet history:

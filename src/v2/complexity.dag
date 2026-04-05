@@ -2115,7 +2115,8 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
           None => false
         }
       ExprVar { binding_kind: _ } =>
-        set_has(m: vars, key: expr_var_name(texpr: expr))
+        let vname = expr_var_name(texpr: expr)
+        vname == param_name || set_has(m: vars, key: vname)
       // CX-E: param.field or descent_var.field is a sub-value (acyclic construction).
       ExprFieldAccess =>
         let base = field_access_base(texpr: expr)
@@ -3234,14 +3235,20 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: body)
       let own_edges = if set_has(m: target_set, key: callee) {
-        // SCC peer call. Check the argument targeting param_name specifically.
-        // Only the argument whose name matches param_name provides evidence —
-        // checking ANY argument would fabricate descent proof.
+        // SCC peer call. Check ALL named arguments for descent evidence.
+        // Any argument carrying a descent expression proves structural progress,
+        // regardless of which callee parameter it targets.
         let progress = body.children |> fold(init: ProgressUnknown, f: (acc, arg_node) =>
-          let aname = arg_name(n: arg_node)
-          if aname == Some { value: param_name } {
-            classify_scc_call_progress(arg_expr: arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars)
-          } else { acc }
+          match arg_name(n: arg_node) {
+            Some { value: _ } =>
+              let arg_progress = classify_scc_call_progress(arg_expr: arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars)
+              match arg_progress {
+                ProgressStrict => ProgressStrict
+                ProgressSame => match acc { ProgressStrict => acc  _ => ProgressSame }
+                ProgressUnknown => acc
+              }
+            None => acc
+          }
         )
         [ParserProgressEdge { caller: caller, callee: callee, progress: progress }]
       } else { [] }

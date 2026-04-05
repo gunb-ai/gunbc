@@ -1823,7 +1823,10 @@ pub fn expr_contains_descent(expr: Rc<Node>, param_name: String, vars: Rc<HashMa
     Some(last_stmt) => expr_contains_descent(last_stmt.clone(), param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
     None => false,
 },
-    ExprData::ExprVar { .. } => set_has(vars.clone(), expr_var_name(expr.clone())),
+    ExprData::ExprVar { .. } => {
+                let vname = expr_var_name(expr.clone());
+((vname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), vname.clone()))
+},
     ExprData::ExprFieldAccess { .. } => {
                 let base = field_access_base(expr.clone());
 match (*base.expr_data.clone()).clone() {
@@ -3000,13 +3003,19 @@ pub fn collect_scc_child_edges(body: Rc<Node>, caller: String, param_name: Strin
             let callee = expr_call_func(body.clone());
 let own_edges = if set_has(target_set.clone(), callee.clone()) {
                 {
-                    let progress = body.children.clone().iter().cloned().fold(ProgressKind::ProgressUnknown, |acc: ProgressKind, arg_node: Rc<Node>| {
-                        let aname = arg_name(arg_node.clone());
-if (aname.clone().as_deref() == Some(param_name.clone()).as_deref()) {
-                            classify_scc_call_progress(arg_value(arg_node.clone()), param_name.clone(), descent_vars.clone())
-} else {
-                            acc.clone()
+                    let progress = body.children.clone().iter().cloned().fold(ProgressKind::ProgressUnknown, |acc: ProgressKind, arg_node: Rc<Node>| match arg_name(arg_node.clone()) {
+    Some(_) => {
+                        let arg_progress = classify_scc_call_progress(arg_value(arg_node.clone()), param_name.clone(), descent_vars.clone());
+match arg_progress.clone() {
+    ProgressKind::ProgressStrict => ProgressKind::ProgressStrict,
+    ProgressKind::ProgressSame => match acc.clone() {
+    ProgressKind::ProgressStrict => acc.clone(),
+    _ => ProgressKind::ProgressSame,
+},
+    ProgressKind::ProgressUnknown => acc.clone(),
 }
+},
+    None => acc.clone(),
 });
 Rc::new(vec![Rc::new(ParserProgressEdge {
     caller: caller.clone(),
