@@ -146,7 +146,7 @@ Symptoms:
 
 Open items:
 - [x] Incomplete parameterized types rejected at normalization — `container_expected_arity` returns `Int?` (fail-closed: unknown names → None, no false positives on operations sharing container names)
-- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators
+- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators. Empty list `[]` diagnostic blocked on expected-type propagation through list element inference (160 false positives from `[]` in record literal fields like `param_types: []`)
 - [x] Thread `expected` to formal params at matching positions — over-arity args no longer receive synthetic expected types; non-callable expected boundary overload remains open
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
@@ -206,7 +206,7 @@ mismatches before removal). `emit_node_type` routes through
 - [ ] `rc_types` derived from ValueContext (`is_constant` → no wrap)
 - [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
 - [ ] `is_constant` computation with consumer
-- [ ] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
+- [x] Clone semantics in LanguageSpec — `SharingStrategy` templates (`clone_value`, `deref_clone`, `iter_owned`) replace all hardcoded `.clone()` in emit
 - [ ] Explicit parent-enum ownership facts through resolve/infer/emit
 
 **Value context**
@@ -252,7 +252,7 @@ Make emission fully data-driven. Adding a backend = adding data.
   `Map<String, String>` data. Templates are pure method syntax; Rc wrapping
   composed separately from sharing authority. Covers count/join/split/first/last/
   enumerate/chars/skip/take + higher-order (map/filter/fold/sort_by/any/all/flat_map).
-- [ ] Transport/config: one `.dag` authority (35+ redundant sites → 1)
+- [~] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend sites are inherent rendering differences.
 - [ ] LanguageSpec completion — all target-language facts data-driven
   *(method_templates landed as `Map<String, String>?`; structured `MethodTemplate`
   type with lambda/fn_ref/simple variants is the next step)*
@@ -341,7 +341,7 @@ instead of hardcoding them.
 - Tier 1 (data tables → .dag): DONE
 - Tier 2 (factor enrich_kernel_type): DONE
 - Tier 2.5 (algebra bridge fidelity):
-  - [ ] `CallableOf` variant for higher-order callback shapes
+  - [x] `CallableOf` variant for higher-order callback shapes
   - [ ] Derive T/K/V type parameter names from algebra declarations
 - Tier 3 (full structural algebra, requires FF-9):
   - [ ] Compiler reads type declarations + algebra edges at resolve time
@@ -501,9 +501,9 @@ Non-recursive authority leaks (same class of unfinished migration):
 | Leak | Fix |
 |------|-----|
 | `Node.name` as authority (~256 sites) | M4 Lane 2 |
-| Transport/config duplication (35+ sites) | One .dag authority |
+| Transport/config per-backend rendering | Inherent per-language differences |
 | Bare parameterized types | Reject at normalization |
-| Missing `CallableOf` | M4 Tier 2.5 |
+| ~~Missing `CallableOf`~~ | ~~M4 Tier 2.5~~ (DONE) |
 | Semantic strings (parent_enum, service_name) | Structural Node references |
 
 ## Pipeline Algebraic Grounding
