@@ -1228,43 +1228,6 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
   }
 }
 
-// Structural transport queries: check if any operation in the service
-// uses a specific transport kind. Generic helper eliminates per-kind duplication.
-fn service_has_transport_kind(kind: String, fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_transport_kind(t: fallback_transport, kind: kind)
-  let from_ops = op_children |> any(op =>
-    if op.transport != none { is_transport_kind(t: op.transport.value, kind: kind) } else { false }
-  )
-  from_fallback || from_ops
-}
-
-fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  service_has_transport_kind(kind: transport_kind_rest, fallback_transport: fallback_transport, op_children: op_children)
-}
-
-fn service_has_shell(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  service_has_transport_kind(kind: transport_kind_shell, fallback_transport: fallback_transport, op_children: op_children)
-}
-
-fn service_has_file(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  service_has_transport_kind(kind: transport_kind_file, fallback_transport: fallback_transport, op_children: op_children)
-}
-
-// Check if any REST operation (or the service-level fallback) has auth.
-fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let fallback_is_rest = is_rest_transport(t: fallback_transport)
-  let from_fallback = if fallback_is_rest {
-    transport_has_auth(t: fallback_transport)
-  } else { false }
-  let from_ops = op_children |> any(op =>
-    if op.transport != none {
-      let t = op.transport.value
-      if is_rest_transport(t: t) { transport_has_auth(t: t) } else { false }
-    } else { false }
-  )
-  from_fallback || from_ops
-}
-
 // Extract operation modifier names from a list of property field inits.
 fn extract_modifier_names(properties: List<Node>) -> List<String> {
   properties |> flat_map(p =>
@@ -1273,25 +1236,6 @@ fn extract_modifier_names(properties: List<Node>) -> List<String> {
       None => []
     }
   )
-}
-
-// Consolidated service field detection: returns which transport-driven
-// config fields a service struct needs. Single call replaces 4 separate
-// predicate calls that all three backends were duplicating.
-type ServiceFieldSet {
-  has_rest: Bool
-  has_shell: Bool
-  has_file: Bool
-  has_auth: Bool
-}
-
-fn compute_service_fields(fallback_transport: Node, op_children: List<Node>) -> ServiceFieldSet {
-  ServiceFieldSet {
-    has_rest: service_has_rest(fallback_transport: fallback_transport, op_children: op_children),
-    has_shell: service_has_shell(fallback_transport: fallback_transport, op_children: op_children),
-    has_file: service_has_file(fallback_transport: fallback_transport, op_children: op_children),
-    has_auth: service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
-  }
 }
 
 // Transport kind classification: single-dispatch alternative to repeated

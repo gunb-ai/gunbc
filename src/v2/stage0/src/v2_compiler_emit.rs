@@ -1564,76 +1564,11 @@ pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> R
 }
 }
 
-pub fn service_has_transport_kind(kind: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
-    {
-        let from_fallback = is_transport_kind(fallback_transport, kind.clone());
-let from_ops = { let mut __found = false; for op in op_children.iter().cloned() { if if (op.transport.clone() != None) {
-            is_transport_kind(op.transport.clone().clone().unwrap(), kind.clone())
-} else {
-            false
-} { __found = true; break; } } __found };
-(from_fallback || from_ops)
-}
-}
-
-pub fn service_has_rest(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
-    service_has_transport_kind(transport_kind_rest(), fallback_transport, op_children)
-}
-
-pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
-    service_has_transport_kind(transport_kind_shell(), fallback_transport, op_children)
-}
-
-pub fn service_has_file(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
-    service_has_transport_kind(transport_kind_file(), fallback_transport, op_children)
-}
-
-pub fn service_has_rest_auth(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
-    {
-        let fallback_is_rest = is_rest_transport(fallback_transport.clone());
-let from_fallback = if fallback_is_rest {
-            transport_has_auth(fallback_transport.clone())
-} else {
-            false
-};
-let from_ops = { let mut __found = false; for op in op_children.iter().cloned() { if if (op.transport.clone() != None) {
-            {
-                let t = op.transport.clone().clone().unwrap();
-if is_rest_transport(t.clone()) {
-                    transport_has_auth(t.clone())
-} else {
-                    false
-}
-}
-} else {
-            false
-} { __found = true; break; } } __found };
-(from_fallback || from_ops)
-}
-}
-
 pub fn extract_modifier_names(properties: Rc<Vec<Rc<Node>>>) -> Rc<Vec<String>> {
     Rc::new({ let mut __result = Vec::new(); for p in properties.iter().cloned() { __result.extend((*match field_init_operation_modifier(p.clone()) {
     Some(modifier) => Rc::new(vec![operation_modifier_name(modifier.clone())]),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ServiceFieldSet {
-    pub has_rest: bool,
-    pub has_shell: bool,
-    pub has_file: bool,
-    pub has_auth: bool,
-}
-
-pub fn compute_service_fields(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> ServiceFieldSet {
-    ServiceFieldSet {
-    has_rest: service_has_rest(fallback_transport.clone(), op_children.clone()),
-    has_shell: service_has_shell(fallback_transport.clone(), op_children.clone()),
-    has_file: service_has_file(fallback_transport.clone(), op_children.clone()),
-    has_auth: service_has_rest_auth(fallback_transport.clone(), op_children.clone()),
-}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

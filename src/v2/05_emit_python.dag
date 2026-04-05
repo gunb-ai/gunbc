@@ -83,7 +83,8 @@ import v2.compiler.infer_emit_info {
   TypedItemKind, TypedItemStruct, TypedItemEnum, TypedItemTypeAlias,
   TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled,
-  lookup_item_kind
+  lookup_item_kind,
+  ServiceFieldSet, lookup_service_fields
 }
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
@@ -110,7 +111,6 @@ import v2.compiler.emit {
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
-  ServiceFieldSet, compute_service_fields,
   TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport
 }
 
@@ -373,7 +373,7 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   } else if (kind == TypedItemDataDef) {
     emit_py_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
   } else if (kind == TypedItemServiceDef) {
-    emit_py_service_def(item: item, registry: registry, env: env)
+    emit_py_service_def(item: item, registry: registry, env: env, emit_info: emit_info)
   } else if (kind == TypedItemResourceDef) {
     emit_py_resource_def(item: item, env: env)
   } else {
@@ -1177,13 +1177,15 @@ fn emit_py_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Ma
 fn emit_py_service_def(
   item: Node,
   registry: Map<String, ItemInfo>,
-  env: TypeEnv
+  env: TypeEnv,
+  emit_info: EmitGraphInfo
 ) -> String {
   let depth = 0
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let transport = service_fallback_transport(item: item)
   let op_children = item.children
-  let init_method = emit_py_service_init(fallback_transport: transport, op_children: op_children)
+  let fs = lookup_service_fields(emit_info: emit_info, name: item.name)
+  let init_method = emit_py_service_init(fs: fs)
   let methods = op_children |> map(op_node =>
     emit_py_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, env: env)
   )
@@ -1193,8 +1195,7 @@ fn emit_py_service_def(
     make_indent(level: depth + 1), methods_str)
 }
 
-fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>) -> String {
-  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+fn emit_py_service_init(fs: ServiceFieldSet) -> String {
   let params = []
   let assigns = []
   let params = if fs.has_rest { concat(params, ["base_url: str"]) } else { params }

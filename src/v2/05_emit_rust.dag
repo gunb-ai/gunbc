@@ -106,7 +106,8 @@ import v2.compiler.infer_emit_info {
   TypedItemKind, TypedItemStruct, TypedItemEnum, TypedItemTypeAlias,
   TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled,
-  lookup_item_kind, is_type_item_kind
+  lookup_item_kind, is_type_item_kind,
+  ServiceFieldSet, lookup_service_fields
 }
 import v2.compiler.ownership { analyze_ownership, build_movable_set }
 
@@ -135,7 +136,6 @@ import v2.compiler.emit {
   is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
-  ServiceFieldSet, compute_service_fields,
   TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
   extract_modifier_names
 }
@@ -381,7 +381,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     ownership_index: ownership_idx,
     movable: empty_map(),
     owned_bindings: empty_map(),
-    item_kinds: base_info.item_kinds
+    item_kinds: base_info.item_kinds,
+    service_fields: base_info.service_fields
   }
   let rc_types = build_rc_types(emit_info: emit_info)
   let registry = typed.item_registry
@@ -695,7 +696,8 @@ fn build_fn_emit_info(item: Node, item_text: String, registry: Map<String, ItemI
     ownership_index: emit_info.ownership_index,
     movable: fn_movable,
     owned_bindings: empty_map(),
-    item_kinds: emit_info.item_kinds
+    item_kinds: emit_info.item_kinds,
+    service_fields: emit_info.service_fields
   }
 }
 
@@ -722,7 +724,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   } else if (kind == TypedItemDataDef) {
     emit_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, rc_types: rc_types, emit_info: emit_info)
   } else if (kind == TypedItemServiceDef) {
-    emit_service_def(item: item, registry: registry, rc_types: rc_types, env: env)
+    emit_service_def(item: item, registry: registry, rc_types: rc_types, env: env, emit_info: emit_info)
   } else if (kind == TypedItemResourceDef) {
     emit_resource_def(item: item, rc_types: rc_types, env: env)
   } else {
@@ -2607,7 +2609,8 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               ownership_index: emit_info.ownership_index,
               movable: emit_info.movable,
               owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
-              item_kinds: emit_info.item_kinds
+              item_kinds: emit_info.item_kinds,
+              service_fields: emit_info.service_fields
             }
           None => emit_info
         }
@@ -3718,25 +3721,26 @@ fn emit_service_def(
   item: Node,
   registry: Map<String, ItemInfo>,
   rc_types: Map<String, Bool>,
-  env: TypeEnv
+  env: TypeEnv,
+  emit_info: EmitGraphInfo
 ) -> String {
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let fallback_transport = service_fallback_transport(item: item)
   let op_children = item.children
-  let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children)
-  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, rc_types: rc_types, env: env)
+  let fs = lookup_service_fields(emit_info: emit_info, name: item.name)
+  let struct_def = emit_service_struct(name: safe_name, fs: fs)
+  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, rc_types: rc_types, env: env, fs: fs)
   concat(struct_def, "\n\n", impl_block)
 }
 
-fn emit_service_struct(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
+fn emit_service_struct(name: String, fs: ServiceFieldSet) -> String {
   let derives = "#[derive(Debug, Clone)]"
-  let config_fields = emit_service_config_fields(fallback_transport: fallback_transport, op_children: op_children)
+  let config_fields = emit_service_config_fields(fs: fs)
   let dry_run_field = "\n    pub dry_run: crate::dry_run::DryRunMode,"
   concat(derives, "\npub struct ", name, " {\n", config_fields, dry_run_field, "\n}")
 }
 
-fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>) -> String {
-  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+fn emit_service_config_fields(fs: ServiceFieldSet) -> String {
   let shell_field = if fs.has_shell { "    pub working_dir: Option<String>,\n" } else { "" }
   let rest_field = if fs.has_rest { "    pub base_url: String,\n" } else { "" }
   let auth_field = if fs.has_auth { "    pub auth_token: String,\n" } else { "" }
@@ -3745,9 +3749,9 @@ fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>)
   if fields == "" { "    // No configuration needed for local binding.\n" } else { fields }
 }
 
-fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
+fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, rc_types: Map<String, Bool>, env: TypeEnv, fs: ServiceFieldSet) -> String {
   let depth = 0
-  let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children)
+  let new_method = emit_service_new_method(name: name, fallback_transport: transport, fs: fs)
   let method_strs = op_children |> map(op_node =>
     emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, rc_types: rc_types, env: env)
   )
@@ -3757,9 +3761,7 @@ fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, reg
 }
 
 // Emit a `new` constructor for a service struct that accepts DryRunMode.
-// Scans all operations to determine which transport fields to initialize.
-fn emit_service_new_method(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
-  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+fn emit_service_new_method(name: String, fallback_transport: Node, fs: ServiceFieldSet) -> String {
   // Find a default base_url from the service-level REST transport or from any REST op
   let base_url_default = if fs.has_rest {
     let fallback_is_rest = is_rest_transport(t: fallback_transport)

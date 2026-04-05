@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, with_required_cardinality, Connective, param_node_name, Cardinality};
+pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, with_required_cardinality, Connective, param_node_name, local_transport_node, is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file, is_rest_transport, transport_has_auth, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, TupleFirst, TupleSecond};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
@@ -167,6 +167,67 @@ pub fn is_function_item_kind(emit_info: Rc<EmitGraphInfo>, name: String) -> bool
 }
 }
 
+pub fn classify_service_fields(item: Rc<Node>) -> ServiceFieldSet {
+    {
+        let fallback = if (item.transport.clone() == None) {
+            local_transport_node(item.span.clone())
+} else {
+            item.transport.clone().clone().unwrap()
+};
+let ops = item.children.clone();
+let has_rest = (is_transport_kind(fallback.clone(), transport_kind_rest()) || { let mut __found = false; for op in ops.clone().iter().cloned() { if if (op.transport.clone() != None) {
+            is_transport_kind(op.transport.clone().clone().unwrap(), transport_kind_rest())
+} else {
+            false
+} { __found = true; break; } } __found });
+let has_shell = (is_transport_kind(fallback.clone(), transport_kind_shell()) || { let mut __found = false; for op in ops.clone().iter().cloned() { if if (op.transport.clone() != None) {
+            is_transport_kind(op.transport.clone().clone().unwrap(), transport_kind_shell())
+} else {
+            false
+} { __found = true; break; } } __found });
+let has_file = (is_transport_kind(fallback.clone(), transport_kind_file()) || { let mut __found = false; for op in ops.clone().iter().cloned() { if if (op.transport.clone() != None) {
+            is_transport_kind(op.transport.clone().clone().unwrap(), transport_kind_file())
+} else {
+            false
+} { __found = true; break; } } __found });
+let has_auth = if is_rest_transport(fallback.clone()) {
+            transport_has_auth(fallback.clone())
+} else {
+            false
+};
+let has_auth = (has_auth.clone() || { let mut __found = false; for op in ops.clone().iter().cloned() { if if (op.transport.clone() != None) {
+            {
+                let t = op.transport.clone().clone().unwrap();
+if is_rest_transport(t.clone()) {
+                    transport_has_auth(t.clone())
+} else {
+                    false
+}
+}
+} else {
+            false
+} { __found = true; break; } } __found });
+ServiceFieldSet {
+    has_rest: has_rest,
+    has_shell: has_shell,
+    has_file: has_file,
+    has_auth: has_auth.clone(),
+}
+}
+}
+
+pub fn lookup_service_fields(emit_info: Rc<EmitGraphInfo>, name: String) -> ServiceFieldSet {
+    match v2_rt::map_get(&emit_info.service_fields.clone(), name) {
+    Some(fs) => fs.clone(),
+    None => ServiceFieldSet {
+    has_rest: false,
+    has_shell: false,
+    has_file: false,
+    has_auth: false,
+},
+}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ValueContext {
     pub has_fn_fields: bool,
@@ -193,6 +254,15 @@ pub struct EmitGraphInfo {
     pub movable: Rc<HashMap<String, bool>>,
     pub owned_bindings: Rc<HashMap<String, bool>>,
     pub item_kinds: Rc<HashMap<String, TypedItemKind>>,
+    pub service_fields: Rc<HashMap<String, ServiceFieldSet>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceFieldSet {
+    pub has_rest: bool,
+    pub has_shell: bool,
+    pub has_file: bool,
+    pub has_auth: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -227,6 +297,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     movable: v2_rt::rc_empty_map::<bool>(),
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
     item_kinds: v2_rt::rc_empty_map::<TypedItemKind>(),
+    service_fields: v2_rt::rc_empty_map::<ServiceFieldSet>(),
 })
 }
 

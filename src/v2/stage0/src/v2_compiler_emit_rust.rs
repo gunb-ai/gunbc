@@ -75,11 +75,11 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem, DataItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, build_emit_graph_info, expr_span};
-pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypedItemKind, lookup_item_kind, is_type_item_kind, TypeRepr};
+pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypedItemKind, lookup_item_kind, is_type_item_kind, ServiceFieldSet, lookup_service_fields, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemStruct, TypedItemEnum, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled};
 pub use crate::v2_compiler_ownership::{analyze_ownership, build_movable_set};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, has_service_items, typed_named_arg_matches, order_typed_call_args, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, TransportKind, classify_transport, extract_modifier_names};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, has_service_items, typed_named_arg_matches, order_typed_call_args, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, TransportKind, classify_transport, extract_modifier_names};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
 pub fn render_rust_type(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>) -> String {
@@ -330,6 +330,7 @@ let emit_info = Rc::new(EmitGraphInfo {
     movable: v2_rt::rc_empty_map::<bool>(),
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
     item_kinds: base_info.item_kinds.clone(),
+    service_fields: base_info.service_fields.clone(),
 });
 let rc_types = build_rc_types(emit_info.clone());
 let registry = typed.item_registry.clone();
@@ -582,6 +583,7 @@ Rc::new(EmitGraphInfo {
     movable: fn_movable,
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
     item_kinds: emit_info.item_kinds.clone(),
+    service_fields: emit_info.service_fields.clone(),
 })
 }
 }
@@ -625,7 +627,7 @@ emit_fn_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.
                                     emit_data_def(item_text.clone(), item.type_annotation.clone().clone().unwrap(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), 0, rc_types, emit_info.clone())
 } else {
                                     if (kind.clone() == TypedItemKind::TypedItemServiceDef) {
-                                        emit_service_def(item.clone(), registry.clone(), rc_types, env.clone())
+                                        emit_service_def(item.clone(), registry.clone(), rc_types, env.clone(), emit_info.clone())
 } else {
                                         if (kind.clone() == TypedItemKind::TypedItemResourceDef) {
                                             emit_resource_def(item.clone(), rc_types, env.clone())
@@ -2652,6 +2654,7 @@ match ps.first().cloned() {
     movable: emit_info.movable.clone(),
     owned_bindings: v2_rt::rc_map_insert(emit_info.owned_bindings.clone(), acc_name.clone(), true),
     item_kinds: emit_info.item_kinds.clone(),
+    service_fields: emit_info.service_fields.clone(),
 }),
     None => emit_info.clone(),
 }
@@ -3957,30 +3960,30 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n".to_string(), make_indent((depth.
 }
 }
 
-pub fn emit_service_def(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, rc_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
+pub fn emit_service_def(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, rc_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
 let fallback_transport = service_fallback_transport(item.clone());
 let op_children = item.children.clone();
-let struct_def = emit_service_struct(safe_name.clone(), fallback_transport.clone(), op_children.clone());
-let impl_block = emit_service_impl(safe_name.clone(), fallback_transport.clone(), op_children.clone(), registry, rc_types, env.clone());
+let fs = lookup_service_fields(emit_info, item.name.clone());
+let struct_def = emit_service_struct(safe_name.clone(), fs.clone());
+let impl_block = emit_service_impl(safe_name.clone(), fallback_transport, op_children, registry, rc_types, env.clone(), fs.clone());
 v2_rt::concat(v2_rt::concat(struct_def, "\n\n".to_string()), impl_block)
 }
 }
 
-pub fn emit_service_struct(name: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
+pub fn emit_service_struct(name: String, fs: ServiceFieldSet) -> String {
     {
         let derives = "#[derive(Debug, Clone)]".to_string();
-let config_fields = emit_service_config_fields(fallback_transport, op_children);
+let config_fields = emit_service_config_fields(fs);
 let dry_run_field = "\n    pub dry_run: crate::dry_run::DryRunMode,".to_string();
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\npub struct ".to_string()), name), " {\n".to_string()), config_fields), dry_run_field), "\n}".to_string())
 }
 }
 
-pub fn emit_service_config_fields(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
+pub fn emit_service_config_fields(fs: ServiceFieldSet) -> String {
     {
-        let fs = compute_service_fields(fallback_transport, op_children);
-let shell_field = if fs.has_shell.clone() {
+        let shell_field = if fs.has_shell.clone() {
             "    pub working_dir: Option<String>,\n".to_string()
 } else {
             "".to_string()
@@ -4009,21 +4012,20 @@ if (fields.clone().as_str() == "".to_string().as_str()) {
 }
 }
 
-pub fn emit_service_impl(name: String, transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, rc_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
+pub fn emit_service_impl(name: String, transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, rc_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>, fs: ServiceFieldSet) -> String {
     {
         let depth = 0;
-let new_method = emit_service_new_method(name.clone(), transport.clone(), op_children.clone());
-let method_strs = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_operation_method(name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1), rc_types.clone(), env.clone())); } __result });
+let new_method = emit_service_new_method(name.clone(), transport.clone(), fs);
+let method_strs = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.iter().cloned() { __result.push(emit_operation_method(name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1), rc_types.clone(), env.clone())); } __result });
 let all_methods = v2_rt::concat(Rc::new(vec![new_method]), method_strs);
 let methods_str = all_methods.join(&"\n\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("impl ".to_string(), name.clone()), " {\n".to_string()), make_indent((depth.clone() + 1))), methods_str), "\n}".to_string())
 }
 }
 
-pub fn emit_service_new_method(name: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
+pub fn emit_service_new_method(name: String, fallback_transport: Rc<Node>, fs: ServiceFieldSet) -> String {
     {
-        let fs = compute_service_fields(fallback_transport.clone(), op_children);
-let base_url_default = if fs.has_rest.clone() {
+        let base_url_default = if fs.has_rest.clone() {
             {
                 let fallback_is_rest = is_rest_transport(fallback_transport.clone());
 let from_fallback = if fallback_is_rest {

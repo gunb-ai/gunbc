@@ -72,9 +72,9 @@ pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, RecursiveVariantFieldWitness, put_recursive_variant_field_witness, merge_recursive_variant_fields};
 pub use crate::v2_compiler_infer_resolve::{resolve_node, resolve_item_types, NodeResolveResult, ItemResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult, resolve_func_sigs};
-pub use crate::v2_compiler_infer_emit_info::{TypeRepr, TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypedItemKind, ValueContext, empty_emit_graph_info, lookup_emit_type_summary, build_struct_field_summaries, build_enum_field_summaries, add_emit_item_summary, classify_typed_item};
+pub use crate::v2_compiler_infer_emit_info::{TypeRepr, TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypedItemKind, ServiceFieldSet, ValueContext, empty_emit_graph_info, lookup_emit_type_summary, build_struct_field_summaries, build_enum_field_summaries, add_emit_item_summary, classify_typed_item, classify_service_fields};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
-use crate::v2_compiler_infer_emit_info::TypedItemKind::*;
+use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemServiceDef};
 pub use crate::v2_compiler_infer_items::{ItemKind, ItemInfo, TypedModule, TypedGraph, ResolvedGraph, inferred_to_outputs, item_kind, variant_locals_from_items};
 use crate::v2_compiler_infer_items::ItemKind::{FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, ServiceMethodResult, is_typed_service_call_receiver, extract_typed_service_name, collect_typed_service_calls, collect_called_func_names, expand_transitive_services, check_service_field_access_node, check_service_method_call_node, service_op_entry};
@@ -3410,6 +3410,21 @@ pub fn build_item_kinds(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String,
     modules.iter().cloned().fold(v2_rt::rc_empty_map::<TypedItemKind>(), |acc: Rc<HashMap<String, TypedItemKind>>, tm: Rc<TypedModule>| tm.items.clone().iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, TypedItemKind>>, item: Rc<Node>| v2_rt::rc_map_insert(inner.clone(), item.name.clone(), classify_typed_item(item.clone()))))
 }
 
+pub fn build_service_fields(modules: Rc<Vec<Rc<TypedModule>>>, item_kinds: Rc<HashMap<String, TypedItemKind>>) -> Rc<HashMap<String, ServiceFieldSet>> {
+    modules.iter().cloned().fold(v2_rt::rc_empty_map::<ServiceFieldSet>(), |acc: Rc<HashMap<String, ServiceFieldSet>>, tm: Rc<TypedModule>| tm.items.clone().iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, ServiceFieldSet>>, item: Rc<Node>| {
+        let kind_opt = v2_rt::map_get(&item_kinds, item.name.clone());
+let is_svc = match kind_opt.clone() {
+    Some(k) => (k.clone() == TypedItemKind::TypedItemServiceDef),
+    None => false,
+};
+if is_svc.clone() {
+            v2_rt::rc_map_insert(inner.clone(), item.name.clone(), classify_service_fields(item.clone()))
+} else {
+            inner.clone()
+}
+}))
+}
+
 pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
@@ -3420,6 +3435,7 @@ let all_recursive = modules.clone().iter().cloned().fold(Rc::new(HashMap::new())
 let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
 let value_ctxs = build_value_contexts(modules.clone(), all_recursive.clone());
 let kinds = build_item_kinds(modules.clone());
+let svc_fields = build_service_fields(modules.clone(), kinds.clone());
 Rc::new(EmitGraphInfo {
     type_summaries: built.type_summaries.clone(),
     recursive_type_set: all_recursive.clone(),
@@ -3428,7 +3444,8 @@ Rc::new(EmitGraphInfo {
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     movable: v2_rt::rc_empty_map::<bool>(),
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
-    item_kinds: kinds,
+    item_kinds: kinds.clone(),
+    service_fields: svc_fields,
 })
 }
 }

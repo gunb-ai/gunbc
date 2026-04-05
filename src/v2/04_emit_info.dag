@@ -19,7 +19,10 @@ import v2.std.core {
   with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   CardOptional,
-  param_node_name
+  param_node_name,
+  local_transport_node,
+  is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file,
+  is_rest_transport, transport_has_auth
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,
@@ -118,6 +121,44 @@ fn is_function_item_kind(emit_info: EmitGraphInfo, name: String) -> Bool {
   k == TypedItemFunction || k == TypedItemTransportFunction
 }
 
+// Classify a service item's transport capabilities by scanning its
+// fallback transport and operation children. Called once per service
+// during reconcile; result stored in EmitGraphInfo.service_fields.
+fn classify_service_fields(item: Node) -> ServiceFieldSet {
+  let fallback = if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
+  let ops = item.children
+  let has_rest = is_transport_kind(t: fallback, kind: transport_kind_rest) || ops |> any(op =>
+    if op.transport != none { is_transport_kind(t: op.transport.value, kind: transport_kind_rest) } else { false }
+  )
+  let has_shell = is_transport_kind(t: fallback, kind: transport_kind_shell) || ops |> any(op =>
+    if op.transport != none { is_transport_kind(t: op.transport.value, kind: transport_kind_shell) } else { false }
+  )
+  let has_file = is_transport_kind(t: fallback, kind: transport_kind_file) || ops |> any(op =>
+    if op.transport != none { is_transport_kind(t: op.transport.value, kind: transport_kind_file) } else { false }
+  )
+  let has_auth = if is_rest_transport(t: fallback) { transport_has_auth(t: fallback) } else { false }
+  let has_auth = has_auth || ops |> any(op =>
+    if op.transport != none {
+      let t = op.transport.value
+      if is_rest_transport(t: t) { transport_has_auth(t: t) } else { false }
+    } else { false }
+  )
+  ServiceFieldSet {
+    has_rest: has_rest,
+    has_shell: has_shell,
+    has_file: has_file,
+    has_auth: has_auth
+  }
+}
+
+// Lookup precomputed service fields from EmitGraphInfo.
+fn lookup_service_fields(emit_info: EmitGraphInfo, name: String) -> ServiceFieldSet {
+  match map_get(emit_info.service_fields, name) {
+    Some { value: fs } => fs
+    None => ServiceFieldSet { has_rest: false, has_shell: false, has_file: false, has_auth: false }
+  }
+}
+
 // ValueContext: orthogonal facts about how a named value is used,
 // determining its target-language representation. Precomputed in
 // EmitGraphInfo so the emitter reads facts instead of heuristics.
@@ -185,6 +226,20 @@ type EmitGraphInfo {
   // Precomputed during reconcile so emit reads enriched kinds (Struct/Enum,
   // Function/TransportFunction) without re-interrogating Node fields.
   item_kinds: Map<String, TypedItemKind>
+  // Per-service transport capability facts: service_name → ServiceFieldSet.
+  // Precomputed during reconcile so emit reads which transport fields a
+  // service needs without scanning operations at render time.
+  service_fields: Map<String, ServiceFieldSet>
+}
+
+// ServiceFieldSet: transport capability facts for a service definition.
+// Precomputed once per service during reconcile. Each boolean indicates
+// whether any operation (or the fallback transport) uses that transport kind.
+type ServiceFieldSet {
+  has_rest: Bool
+  has_shell: Bool
+  has_file: Bool
+  has_auth: Bool
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -227,7 +282,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     ownership_index: empty_map(),
     movable: empty_map(),
     owned_bindings: empty_map(),
-    item_kinds: empty_map()
+    item_kinds: empty_map(),
+    service_fields: empty_map()
   }
 }
 

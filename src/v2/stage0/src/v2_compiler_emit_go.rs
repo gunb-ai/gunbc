@@ -69,9 +69,9 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypedItemKind, lookup_item_kind, is_type_item_kind, is_function_item_kind};
+pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypedItemKind, lookup_item_kind, is_type_item_kind, is_function_item_kind, ServiceFieldSet, lookup_service_fields};
 use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemStruct, TypedItemEnum, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, has_nested_records_node, typed_named_arg_matches, order_typed_call_args, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, TransportKind, classify_transport};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, has_nested_records_node, typed_named_arg_matches, order_typed_call_args, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, TransportKind, classify_transport};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
 pub fn emit_go_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<String>>, mut scope: Rc<InferScope>, mut registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut depth: i64) -> Rc<BlockEmitState> {
@@ -315,7 +315,7 @@ pub fn emit_go_typed_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
     {
         let env = scope.type_env.clone();
 let item_text = authored_name(env.clone(), item.clone());
-let kind = lookup_item_kind(emit_info, item.name.clone());
+let kind = lookup_item_kind(emit_info.clone(), item.name.clone());
 if (kind.clone() == TypedItemKind::TypedItemStruct) {
             emit_go_struct_from_children(item_text, item.children.clone(), env.clone())
 } else {
@@ -338,7 +338,7 @@ if (kind.clone() == TypedItemKind::TypedItemStruct) {
                                     emit_go_data_def(item_text, item.type_annotation.clone().clone().unwrap(), item.body.clone().clone().unwrap(), registry, scope.clone())
 } else {
                                     if (kind.clone() == TypedItemKind::TypedItemServiceDef) {
-                                        emit_go_service_def(item.clone(), registry, env.clone())
+                                        emit_go_service_def(item.clone(), registry, env.clone(), emit_info.clone())
 } else {
                                         if (kind.clone() == TypedItemKind::TypedItemResourceDef) {
                                             emit_go_resource_def(item.clone(), env.clone())
@@ -1229,22 +1229,22 @@ all_lines.join(&"\n".to_string())
 }
 }
 
-pub fn emit_go_service_def(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, env: Rc<TypeEnv>) -> String {
+pub fn emit_go_service_def(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, env: Rc<TypeEnv>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
 let transport = service_fallback_transport(item.clone());
 let op_children = Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { if ((c.params.clone().len() as i64) > 0) { __result.push(c); } } __result });
-let struct_def = emit_go_service_struct(safe_name.clone(), transport.clone(), op_children.clone());
-let methods = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_go_operation_method(safe_name.clone(), transport.clone(), op_node.clone(), registry.clone(), env.clone())); } __result });
+let fs = lookup_service_fields(emit_info, item.name.clone());
+let struct_def = emit_go_service_struct(safe_name.clone(), fs);
+let methods = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.iter().cloned() { __result.push(emit_go_operation_method(safe_name.clone(), transport.clone(), op_node.clone(), registry.clone(), env.clone())); } __result });
 let methods_str = methods.join(&"\n\n".to_string());
 v2_rt::concat(v2_rt::concat(struct_def, "\n\n".to_string()), methods_str)
 }
 }
 
-pub fn emit_go_service_struct(name: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
+pub fn emit_go_service_struct(name: String, fs: ServiceFieldSet) -> String {
     {
-        let fs = compute_service_fields(fallback_transport, op_children);
-let rest_field = if fs.has_rest.clone() {
+        let rest_field = if fs.has_rest.clone() {
             "\tBaseURL string".to_string()
 } else {
             "".to_string()
