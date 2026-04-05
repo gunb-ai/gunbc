@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
+use crate::v2_compiler_languages::{scaffold_for_target, RenderTarget};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
@@ -95,7 +96,7 @@ pub fn go_reserved_escape_suffix() -> String {
 }
 
 pub fn go_source_extension() -> String {
-    ".go".to_string()
+    scaffold_for_target(RenderTarget::Go).source_file_extension.clone()
 }
 
 pub fn go_manifest_file() -> String {

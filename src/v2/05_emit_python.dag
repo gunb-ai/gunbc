@@ -84,7 +84,8 @@ import v2.compiler.infer_emit_info {
   TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled,
   lookup_item_kind,
-  ServiceFieldSet, lookup_service_fields
+  ServiceFieldSet, lookup_service_fields,
+  FunctionSignature, lookup_function_signature
 }
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
@@ -367,9 +368,17 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   } else if (kind == TypedItemTypeDecl) {
     ""
   } else if (kind == TypedItemTransportFunction) {
-    emit_py_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+    match lookup_function_signature(emit_info: emit_info, name: item.name) {
+      Some { value: sig } =>
+        emit_py_func_def(name: item_text, params: sig.params, inferred: sig.return_type, uses: sig.uses, body: sig.body, registry: registry, scope: scope)
+      None => ""
+    }
   } else if (kind == TypedItemFunction) {
-    emit_py_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
+    match lookup_function_signature(emit_info: emit_info, name: item.name) {
+      Some { value: sig } =>
+        emit_py_fn_def(name: item_text, params: sig.params, inferred: sig.return_type, body: sig.body, registry: registry, scope: scope)
+      None => ""
+    }
   } else if (kind == TypedItemDataDef) {
     emit_py_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
   } else if (kind == TypedItemServiceDef) {

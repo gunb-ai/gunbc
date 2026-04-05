@@ -228,6 +228,19 @@ pub fn lookup_service_fields(emit_info: Rc<EmitGraphInfo>, name: String) -> Serv
 }
 }
 
+pub fn classify_function_signature(item: Rc<Node>) -> Rc<FunctionSignature> {
+    Rc::new(FunctionSignature {
+    params: item.params.clone(),
+    return_type: rt_type(item.clone()),
+    body: item.body.clone().clone().unwrap(),
+    uses: item.uses.clone(),
+})
+}
+
+pub fn lookup_function_signature(emit_info: Rc<EmitGraphInfo>, name: String) -> Option<Rc<FunctionSignature>> {
+    v2_rt::map_get(&emit_info.function_signatures.clone(), name)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ValueContext {
     pub has_fn_fields: bool,
@@ -255,6 +268,15 @@ pub struct EmitGraphInfo {
     pub owned_bindings: Rc<HashMap<String, bool>>,
     pub item_kinds: Rc<HashMap<String, TypedItemKind>>,
     pub service_fields: Rc<HashMap<String, ServiceFieldSet>>,
+    pub function_signatures: Rc<HashMap<String, Rc<FunctionSignature>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FunctionSignature {
+    pub params: Rc<Vec<Rc<Node>>>,
+    pub return_type: Rc<Node>,
+    pub body: Rc<Node>,
+    pub uses: Rc<Vec<Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -298,6 +320,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
     item_kinds: v2_rt::rc_empty_map::<TypedItemKind>(),
     service_fields: v2_rt::rc_empty_map::<ServiceFieldSet>(),
+    function_signatures: v2_rt::rc_empty_map::<Rc<FunctionSignature>>(),
 })
 }
 

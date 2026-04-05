@@ -113,10 +113,12 @@ import v2.compiler.infer_emit_info {
   TypedItemKind, TypedItemServiceDef,
   ServiceFieldSet,
   ValueContext,
+  FunctionSignature,
   empty_emit_graph_info, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary,
-  classify_typed_item, classify_service_fields
+  classify_typed_item, classify_service_fields,
+  classify_function_signature, lookup_function_signature
 }
 import v2.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
@@ -3012,6 +3014,23 @@ fn build_service_fields(modules: List<TypedModule>, item_kinds: Map<String, Type
   )
 }
 
+fn build_function_signatures(modules: List<TypedModule>, item_kinds: Map<String, TypedItemKind>) -> Map<String, FunctionSignature> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    tm.items |> fold(init: acc, f: (inner, item) =>
+      let kind_opt = map_get(item_kinds, item.name)
+      let is_fn = match kind_opt {
+        Some { value: k } => k == TypedItemFunction || k == TypedItemTransportFunction
+        None => false
+      }
+      if is_fn {
+        map_insert(inner, item.name, classify_function_signature(item: item))
+      } else {
+        inner
+      }
+    )
+  )
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map()
@@ -3028,6 +3047,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let value_ctxs = build_value_contexts(modules: modules, recursive_type_set: all_recursive)
   let kinds = build_item_kinds(modules: modules)
   let svc_fields = build_service_fields(modules: modules, item_kinds: kinds)
+  let fn_sigs = build_function_signatures(modules: modules, item_kinds: kinds)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
@@ -3037,7 +3057,8 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     movable: empty_map(),
     owned_bindings: empty_map(),
     item_kinds: kinds,
-    service_fields: svc_fields
+    service_fields: svc_fields,
+    function_signatures: fn_sigs
   }
 }
 

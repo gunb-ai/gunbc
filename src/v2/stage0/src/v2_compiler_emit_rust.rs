@@ -75,7 +75,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem, DataItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, build_emit_graph_info, expr_span};
-pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypedItemKind, lookup_item_kind, is_type_item_kind, ServiceFieldSet, lookup_service_fields, TypeRepr};
+pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypedItemKind, lookup_item_kind, is_type_item_kind, ServiceFieldSet, lookup_service_fields, FunctionSignature, lookup_function_signature, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemStruct, TypedItemEnum, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled};
 pub use crate::v2_compiler_ownership::{analyze_ownership, build_movable_set};
@@ -310,17 +310,20 @@ v2_rt::rc_map_insert(acc.clone(), pascal.clone(), true)
 }
 }
 
-pub fn build_ownership_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
-    modules.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(), |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, m: Rc<TypedModule>| Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned().fold(acc.clone(), |inner_acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, item: Rc<Node>| {
-        let proof = analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap());
+pub fn build_ownership_index(modules: Rc<Vec<Rc<TypedModule>>>, function_signatures: Rc<HashMap<String, Rc<FunctionSignature>>>) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
+    modules.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(), |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(acc.clone(), |inner_acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, item: Rc<Node>| match v2_rt::map_get(&function_signatures, item.name.clone()) {
+    Some(sig) => {
+        let proof = analyze_ownership(item.name.clone(), sig.params.clone(), sig.body.clone());
 v2_rt::rc_map_insert(inner_acc.clone(), item.name.clone(), build_movable_set(proof.clone()))
+},
+    None => inner_acc.clone(),
 }))
 }
 
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let base_info = build_emit_graph_info(typed.modules.clone());
-let ownership_idx = build_ownership_index(typed.modules.clone());
+let ownership_idx = build_ownership_index(typed.modules.clone(), base_info.function_signatures.clone());
 let emit_info = Rc::new(EmitGraphInfo {
     type_summaries: base_info.type_summaries.clone(),
     recursive_type_set: base_info.recursive_type_set.clone(),
@@ -331,10 +334,11 @@ let emit_info = Rc::new(EmitGraphInfo {
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
     item_kinds: base_info.item_kinds.clone(),
     service_fields: base_info.service_fields.clone(),
+    function_signatures: base_info.function_signatures.clone(),
 });
 let rc_types = build_rc_types(emit_info.clone());
 let registry = typed.item_registry.clone();
-let workflow_funcs = collect_workflow_funcs(typed.modules.clone(), registry.clone());
+let workflow_funcs = collect_workflow_funcs(typed.modules.clone(), registry.clone(), base_info.function_signatures.clone());
 let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone());
 if ((workflow_default_diags.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
@@ -565,11 +569,11 @@ v2_rt::concat(v2_rt::concat(vec_wrapper, "\n\n".to_string()), set_wrapper)
 }
 }
 
-pub fn build_fn_emit_info(item: Rc<Node>, item_text: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, emit_info: Rc<EmitGraphInfo>) -> Rc<EmitGraphInfo> {
+pub fn build_fn_emit_info(sig: Rc<FunctionSignature>, item_name: String, item_text: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, emit_info: Rc<EmitGraphInfo>) -> Rc<EmitGraphInfo> {
     {
-        let fn_movable = match is_tco_eligible(item_text, item.body.clone().clone().unwrap(), registry) {
+        let fn_movable = match is_tco_eligible(item_text, sig.body.clone(), registry) {
     true => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
-    false => match v2_rt::map_get(&emit_info.ownership_index.clone(), item.name.clone()) {
+    false => match v2_rt::map_get(&emit_info.ownership_index.clone(), item_name) {
     Some(m) => m.clone(),
     None => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
 },
@@ -584,6 +588,7 @@ Rc::new(EmitGraphInfo {
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
     item_kinds: emit_info.item_kinds.clone(),
     service_fields: emit_info.service_fields.clone(),
+    function_signatures: emit_info.function_signatures.clone(),
 })
 }
 }
@@ -612,15 +617,21 @@ emit_enum_from_children(item_text.clone(), type_params, item.children.clone(), e
                         "".to_string()
 } else {
                         if (kind.clone() == TypedItemKind::TypedItemTransportFunction) {
-                            {
-                                let fn_emit_info = build_fn_emit_info(item.clone(), item_text.clone(), registry.clone(), emit_info.clone());
-emit_func_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), rc_types, fn_emit_info)
+                            match lookup_function_signature(emit_info.clone(), item.name.clone()) {
+    Some(sig) => {
+                                let fn_emit_info = build_fn_emit_info(sig.clone(), item.name.clone(), item_text.clone(), registry.clone(), emit_info.clone());
+emit_func_def(item_text.clone(), sig.params.clone(), sig.return_type.clone(), sig.uses.clone(), sig.body.clone(), registry.clone(), scope.clone(), rc_types, fn_emit_info)
+},
+    None => "".to_string(),
 }
 } else {
                             if (kind.clone() == TypedItemKind::TypedItemFunction) {
-                                {
-                                    let fn_emit_info = build_fn_emit_info(item.clone(), item_text.clone(), registry.clone(), emit_info.clone());
-emit_fn_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), rc_types, fn_emit_info)
+                                match lookup_function_signature(emit_info.clone(), item.name.clone()) {
+    Some(sig) => {
+                                    let fn_emit_info = build_fn_emit_info(sig.clone(), item.name.clone(), item_text.clone(), registry.clone(), emit_info.clone());
+emit_fn_def(item_text.clone(), sig.params.clone(), sig.return_type.clone(), sig.body.clone(), registry.clone(), scope.clone(), rc_types, fn_emit_info)
+},
+    None => "".to_string(),
 }
 } else {
                                 if (kind.clone() == TypedItemKind::TypedItemDataDef) {
@@ -2655,6 +2666,7 @@ match ps.first().cloned() {
     owned_bindings: v2_rt::rc_map_insert(emit_info.owned_bindings.clone(), acc_name.clone(), true),
     item_kinds: emit_info.item_kinds.clone(),
     service_fields: emit_info.service_fields.clone(),
+    function_signatures: emit_info.function_signatures.clone(),
 }),
     None => emit_info.clone(),
 }
@@ -4455,26 +4467,33 @@ pub struct WorkflowFunc {
     pub source_index: Option<Rc<NewlineIndex>>,
 }
 
-pub fn to_workflow_func(item: Rc<Node>, module_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<WorkflowFunc> {
+pub fn to_workflow_func(item_name: String, sig: Rc<FunctionSignature>, module_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<WorkflowFunc> {
     {
-        let svc_names = match lookup_item(registry, item.name.clone()) {
+        let svc_names = match lookup_item(registry, item_name.clone()) {
     Some(info) => info.service_names.clone(),
     None => Rc::new(vec![]),
 };
 Rc::new(WorkflowFunc {
-    name: item.name.clone(),
+    name: item_name.clone(),
     module_name: module_name,
-    params: item.params.clone(),
-    inferred: rt_type(item.clone()),
-    uses: item.uses.clone(),
+    params: sig.params.clone(),
+    inferred: sig.return_type.clone(),
+    uses: sig.uses.clone(),
     service_names: svc_names,
     source_index: source_index,
 })
 }
 }
 
-pub fn collect_workflow_funcs(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<Vec<Rc<WorkflowFunc>>> {
-    Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if ((item.body.clone() != None) && ((item.uses.clone().len() as i64) > 0)) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(item.clone(), tm.module.clone().name.clone(), registry.clone(), tm.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
+pub fn collect_workflow_funcs(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, function_signatures: Rc<HashMap<String, Rc<FunctionSignature>>>) -> Rc<Vec<Rc<WorkflowFunc>>> {
+    Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&function_signatures, item.name.clone()) {
+    Some(sig) => if ((sig.uses.clone().len() as i64) > 0) {
+        Rc::new(vec![to_workflow_func(item.name.clone(), sig.clone(), tm.module.clone().name.clone(), registry.clone(), tm.type_env.clone().source_index.clone())])
+} else {
+        Rc::new(vec![])
+},
+    None => Rc::new(vec![]),
+}).iter().cloned()); } __result })).iter().cloned()); } __result })
 }
 
 pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {

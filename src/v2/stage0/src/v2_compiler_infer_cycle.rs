@@ -49,13 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 pub use crate::v2_compiler_infer_env::{TypeBinding};
 
 pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
-    {
-        let result = match v2_rt::map_get(&m, key) {
-    Some(_) => true,
-    None => false,
-};
-result.clone()
-}
+    (v2_rt::map_get(&m, key) != None)
 }
 
 pub fn compute_in_graph_deps(all_names: Rc<Vec<String>>, deps_map: Rc<HashMap<String, Rc<Vec<String>>>>, name_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {

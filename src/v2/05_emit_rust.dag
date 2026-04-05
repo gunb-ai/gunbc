@@ -107,7 +107,8 @@ import v2.compiler.infer_emit_info {
   TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled,
   lookup_item_kind, is_type_item_kind,
-  ServiceFieldSet, lookup_service_fields
+  ServiceFieldSet, lookup_service_fields,
+  FunctionSignature, lookup_function_signature
 }
 import v2.compiler.ownership { analyze_ownership, build_movable_set }
 
@@ -357,11 +358,15 @@ fn build_rc_types(emit_info: EmitGraphInfo) -> Map<String, Bool> {
 // Ownership index -- fan-out=1 bindings that can be moved instead of cloned
 // =========================================================================
 
-fn build_ownership_index(modules: List<TypedModule>) -> Map<String, Map<String, Bool>> {
+fn build_ownership_index(modules: List<TypedModule>, function_signatures: Map<String, FunctionSignature>) -> Map<String, Map<String, Bool>> {
   modules |> fold(init: empty_map(), f: (acc, m) =>
-    m.items |> filter(item => item.body != None) |> fold(init: acc, f: (inner_acc, item) =>
-      let proof = analyze_ownership(func_name: item.name, params: item.params, body: item.body.value)
-      map_insert(inner_acc, item.name, build_movable_set(proof: proof))
+    m.items |> fold(init: acc, f: (inner_acc, item) =>
+      match map_get(function_signatures, item.name) {
+        Some { value: sig } =>
+          let proof = analyze_ownership(func_name: item.name, params: sig.params, body: sig.body)
+          map_insert(inner_acc, item.name, build_movable_set(proof: proof))
+        None => inner_acc
+      }
     )
   )
 }
@@ -372,7 +377,7 @@ fn build_ownership_index(modules: List<TypedModule>) -> Map<String, Map<String, 
 
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let base_info = build_emit_graph_info(modules: typed.modules)
-  let ownership_idx = build_ownership_index(modules: typed.modules)
+  let ownership_idx = build_ownership_index(modules: typed.modules, function_signatures: base_info.function_signatures)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
@@ -382,11 +387,12 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     movable: empty_map(),
     owned_bindings: empty_map(),
     item_kinds: base_info.item_kinds,
-    service_fields: base_info.service_fields
+    service_fields: base_info.service_fields,
+    function_signatures: base_info.function_signatures
   }
   let rc_types = build_rc_types(emit_info: emit_info)
   let registry = typed.item_registry
-  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
+  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, function_signatures: base_info.function_signatures)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   if workflow_default_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: workflow_default_diags }
@@ -680,10 +686,10 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn build_fn_emit_info(item: Node, item_text: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> EmitGraphInfo {
-  let fn_movable = match is_tco_eligible(name: item_text, body: item.body.value, registry: registry) {
+fn build_fn_emit_info(sig: FunctionSignature, item_name: String, item_text: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> EmitGraphInfo {
+  let fn_movable = match is_tco_eligible(name: item_text, body: sig.body, registry: registry) {
     true => empty_map()
-    false => match map_get(emit_info.ownership_index, item.name) {
+    false => match map_get(emit_info.ownership_index, item_name) {
       Some { value: m } => m
       None => empty_map()
     }
@@ -697,7 +703,8 @@ fn build_fn_emit_info(item: Node, item_text: String, registry: Map<String, ItemI
     movable: fn_movable,
     owned_bindings: empty_map(),
     item_kinds: emit_info.item_kinds,
-    service_fields: emit_info.service_fields
+    service_fields: emit_info.service_fields,
+    function_signatures: emit_info.function_signatures
   }
 }
 
@@ -716,11 +723,19 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   } else if (kind == TypedItemTypeDecl) {
     ""
   } else if (kind == TypedItemTransportFunction) {
-    let fn_emit_info = build_fn_emit_info(item: item, item_text: item_text, registry: registry, emit_info: emit_info)
-    emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
+    match lookup_function_signature(emit_info: emit_info, name: item.name) {
+      Some { value: sig } =>
+        let fn_emit_info = build_fn_emit_info(sig: sig, item_name: item.name, item_text: item_text, registry: registry, emit_info: emit_info)
+        emit_func_def(name: item_text, params: sig.params, inferred: sig.return_type, uses: sig.uses, body: sig.body, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
+      None => ""
+    }
   } else if (kind == TypedItemFunction) {
-    let fn_emit_info = build_fn_emit_info(item: item, item_text: item_text, registry: registry, emit_info: emit_info)
-    emit_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
+    match lookup_function_signature(emit_info: emit_info, name: item.name) {
+      Some { value: sig } =>
+        let fn_emit_info = build_fn_emit_info(sig: sig, item_name: item.name, item_text: item_text, registry: registry, emit_info: emit_info)
+        emit_fn_def(name: item_text, params: sig.params, inferred: sig.return_type, body: sig.body, registry: registry, scope: scope, rc_types: rc_types, emit_info: fn_emit_info)
+      None => ""
+    }
   } else if (kind == TypedItemDataDef) {
     emit_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, rc_types: rc_types, emit_info: emit_info)
   } else if (kind == TypedItemServiceDef) {
@@ -2610,7 +2625,8 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               movable: emit_info.movable,
               owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
               item_kinds: emit_info.item_kinds,
-              service_fields: emit_info.service_fields
+              service_fields: emit_info.service_fields,
+              function_signatures: emit_info.function_signatures
             }
           None => emit_info
         }
@@ -4189,27 +4205,34 @@ type WorkflowFunc {
   source_index: NewlineIndex?
 }
 
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> WorkflowFunc {
-  let svc_names = match lookup_item(registry: registry, name: item.name) {
+fn to_workflow_func(item_name: String, sig: FunctionSignature, module_name: String, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> WorkflowFunc {
+  let svc_names = match lookup_item(registry: registry, name: item_name) {
     Some { value: info } => info.service_names
     None => []
   }
   WorkflowFunc {
-    name: item.name,
+    name: item_name,
     module_name: module_name,
-    params: item.params,
-    inferred: rt_type(n: item),
-    uses: item.uses,
+    params: sig.params,
+    inferred: sig.return_type,
+    uses: sig.uses,
     service_names: svc_names,
     source_index: source_index
   }
 }
 
-fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> List<WorkflowFunc> {
+fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>, function_signatures: Map<String, FunctionSignature>) -> List<WorkflowFunc> {
   modules |> flat_map(tm =>
     tm.items
-      |> filter(item => item.body != none && item.uses |> count > 0)
-      |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry, source_index: tm.type_env.source_index))
+      |> flat_map(item =>
+        match map_get(function_signatures, item.name) {
+          Some { value: sig } =>
+            if sig.uses |> count > 0 {
+              [to_workflow_func(item_name: item.name, sig: sig, module_name: tm.module.name, registry: registry, source_index: tm.type_env.source_index)]
+            } else { [] }
+          None => []
+        }
+      )
   )
 }
 

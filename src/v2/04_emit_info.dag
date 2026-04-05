@@ -159,6 +159,22 @@ fn lookup_service_fields(emit_info: EmitGraphInfo, name: String) -> ServiceField
   }
 }
 
+// Classify a function item into a FunctionSignature. Called once per
+// function during reconcile; result stored in EmitGraphInfo.function_signatures.
+fn classify_function_signature(item: Node) -> FunctionSignature {
+  FunctionSignature {
+    params: item.params,
+    return_type: rt_type(n: item),
+    body: item.body.value,
+    uses: item.uses
+  }
+}
+
+// Lookup precomputed function signature from EmitGraphInfo.
+fn lookup_function_signature(emit_info: EmitGraphInfo, name: String) -> FunctionSignature? {
+  map_get(emit_info.function_signatures, name)
+}
+
 // ValueContext: orthogonal facts about how a named value is used,
 // determining its target-language representation. Precomputed in
 // EmitGraphInfo so the emitter reads facts instead of heuristics.
@@ -230,6 +246,20 @@ type EmitGraphInfo {
   // Precomputed during reconcile so emit reads which transport fields a
   // service needs without scanning operations at render time.
   service_fields: Map<String, ServiceFieldSet>
+  // Per-function precomputed signature: params, return_type, body, uses.
+  // Precomputed during reconcile so emit reads structured facts instead of
+  // reaching into Node.params / Node.body / rt_type at render time.
+  function_signatures: Map<String, FunctionSignature>
+}
+
+// FunctionSignature: structural facts about a function item, precomputed
+// during reconcile. Captures the conjunction of params + return_type +
+// body + uses that emit otherwise extracts ad-hoc from the Node tree.
+type FunctionSignature {
+  params: List<Node>
+  return_type: Node
+  body: Node
+  uses: List<Node>
 }
 
 // ServiceFieldSet: transport capability facts for a service definition.
@@ -283,7 +313,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     movable: empty_map(),
     owned_bindings: empty_map(),
     item_kinds: empty_map(),
-    service_fields: empty_map()
+    service_fields: empty_map(),
+    function_signatures: empty_map()
   }
 }
 
