@@ -44,6 +44,22 @@ data rust_container_templates: Map<String, String> = {
   "boolean_algebra": "bool"
 }
 
+// -- Method templates --------------------------------------------------------
+// Named-placeholder templates for simple algebra method calls.
+// Templates use {recv} (receiver) and {arg} (first argument).
+// Applied via apply_named_template in shared emit.
+data rust_method_templates: Map<String, String> = {
+  "count": "(\{recv\}.len() as i64)",
+  "join": "\{recv\}.join(&\{arg\})",
+  "split": "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",
+  "last": "\{recv\}.last().cloned()",
+  "first": "\{recv\}.first().cloned()",
+  "enumerate": "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",
+  "chars": "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",
+  "skip": "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",
+  "take": "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()"
+}
+
 // -- Reserved words ------------------------------------------------------
 // Ref: Rust Reference, Appendix A: Keywords
 data rust_reserved: List<String> = [
@@ -202,3 +218,4 @@ fn rt_bridge_name(name: String) -> String {
 fn rt_passes_by_ref(name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), name)
 }
+

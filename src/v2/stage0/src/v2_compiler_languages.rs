@@ -53,9 +53,9 @@ use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge,
 use crate::v2_std_core::LiteralValue::*;
 pub use crate::std_syntax::{ItemForm, OperatorSpec, SyntaxSpec, BodyKind};
 use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
-pub use crate::extdeps_languages_rust_emit::{rust_type_map, rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_value_types, rust_string_types, rust_clone_expr, rust_deref_clone_expr, rust_field_clone_expr, rust_iterator_clone_suffix};
-pub use crate::extdeps_languages_python_emit::{python_type_map, python_keywords, python_container_templates, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init};
-pub use crate::extdeps_languages_go_emit::{go_type_map, go_keywords, go_container_templates, go_reserved, go_reserved_escape_suffix, go_manifest_file};
+pub use crate::extdeps_languages_rust_emit::{rust_type_map, rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_value_types, rust_string_types, rust_clone_expr, rust_deref_clone_expr, rust_field_clone_expr, rust_iterator_clone_suffix, rust_method_templates};
+pub use crate::extdeps_languages_python_emit::{python_type_map, python_keywords, python_container_templates, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates};
+pub use crate::extdeps_languages_go_emit::{go_type_map, go_keywords, go_container_templates, go_reserved, go_reserved_escape_suffix, go_manifest_file, go_method_templates};
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
@@ -180,6 +180,7 @@ pub struct LanguageSpec {
     pub clone_templates: Option<Rc<CloneTemplates>>,
     pub indexing: Rc<IndexingSemantics>,
     pub annotations: Rc<AnnotationRequirements>,
+    pub method_templates: Option<Rc<HashMap<String, String>>>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -237,6 +238,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     lambda_param_typed: "{0}: {1}".to_string(),
     lambda_param_untyped: "{0}".to_string(),
 }),
+    method_templates: Some(rust_method_templates()),
 })
 }
 
@@ -290,6 +292,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     lambda_param_typed: "{0}: {1}".to_string(),
     lambda_param_untyped: "{0}".to_string(),
 }),
+    method_templates: Some(python_method_templates()),
 })
 }
 
@@ -343,6 +346,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     lambda_param_typed: "{0} {1}".to_string(),
     lambda_param_untyped: "{0} interface{}".to_string(),
 }),
+    method_templates: Some(go_method_templates()),
 })
 }
 

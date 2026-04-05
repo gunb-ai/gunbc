@@ -68,7 +68,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef};
 
 pub fn emit_py_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<String>>, mut scope: Rc<InferScope>, mut registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut depth: i64) -> Rc<BlockEmitState> {
@@ -787,87 +787,26 @@ pub fn emit_py_algebra_method_call(method_name: String, receiver: Rc<Node>, args
     {
         let recv_str = emit_py_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), 1024);
 let first_arg_str = emit_py_typed_first_arg(args.clone(), registry.clone(), scope.clone(), depth.clone());
-if (method_name.clone().as_str() == "count".to_string().as_str()) {
-            v2_rt::concat(v2_rt::concat("len(".to_string(), recv_str.clone()), ")".to_string())
-} else {
-            if (method_name.clone().as_str() == "join".to_string().as_str()) {
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(first_arg_str, ".join(".to_string()), recv_str.clone()), ")".to_string())
-} else {
-                if (method_name.clone().as_str() == "split".to_string().as_str()) {
-                    v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), ".split(".to_string()), first_arg_str), ")".to_string())
-} else {
-                    if (method_name.clone().as_str() == "last".to_string().as_str()) {
-                        v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[-1] if ".to_string()), recv_str.clone()), " else None".to_string())
-} else {
-                        if (method_name.clone().as_str() == "first".to_string().as_str()) {
-                            v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[0] if ".to_string()), recv_str.clone()), " else None".to_string())
-} else {
-                            if (method_name.clone().as_str() == "enumerate".to_string().as_str()) {
-                                v2_rt::concat(v2_rt::concat("list(enumerate(".to_string(), recv_str.clone()), "))".to_string())
-} else {
-                                if (method_name.clone().as_str() == "chars".to_string().as_str()) {
-                                    v2_rt::concat(v2_rt::concat("list(".to_string(), recv_str.clone()), ")".to_string())
-} else {
-                                    if (method_name.clone().as_str() == "string_contains".to_string().as_str()) {
-                                        v2_rt::concat(v2_rt::concat(first_arg_str, " in ".to_string()), recv_str.clone())
-} else {
-                                        if (method_name.clone().as_str() == "concat".to_string().as_str()) {
-                                            v2_rt::concat(v2_rt::concat(recv_str.clone(), " + ".to_string()), first_arg_str)
-} else {
-                                            if (method_name.clone().as_str() == "map".to_string().as_str()) {
-                                                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[".to_string(), first_arg_str), "(x) for x in ".to_string()), recv_str.clone()), "]".to_string())
-} else {
-                                                if (method_name.clone().as_str() == "filter".to_string().as_str()) {
-                                                    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[x for x in ".to_string(), recv_str.clone()), " if ".to_string()), first_arg_str), "(x)]".to_string())
-} else {
-                                                    if (method_name.clone().as_str() == "any".to_string().as_str()) {
-                                                        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("any(".to_string(), first_arg_str), "(x) for x in ".to_string()), recv_str.clone()), ")".to_string())
-} else {
-                                                        if (method_name.clone().as_str() == "all".to_string().as_str()) {
-                                                            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("all(".to_string(), first_arg_str), "(x) for x in ".to_string()), recv_str.clone()), ")".to_string())
-} else {
-                                                            if (method_name.clone().as_str() == "flat_map".to_string().as_str()) {
-                                                                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[y for x in ".to_string(), recv_str.clone()), " for y in ".to_string()), first_arg_str), "(x)]".to_string())
-} else {
-                                                                if (method_name.clone().as_str() == "skip".to_string().as_str()) {
-                                                                    v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[".to_string()), first_arg_str), ":]".to_string())
-} else {
-                                                                    if (method_name.clone().as_str() == "take".to_string().as_str()) {
-                                                                        v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[:".to_string()), first_arg_str), "]".to_string())
-} else {
-                                                                        if (method_name.clone().as_str() == "fold".to_string().as_str()) {
-                                                                            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("functools.reduce(".to_string(), first_arg_str), ", ".to_string()), recv_str.clone()), ")".to_string())
-} else {
-                                                                            if (method_name.clone().as_str() == "sort_by".to_string().as_str()) {
-                                                                                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("sorted(".to_string(), recv_str.clone()), ", key=".to_string()), first_arg_str), ")".to_string())
-} else {
-                                                                                if (method_name.clone().as_str() == "append".to_string().as_str()) {
-                                                                                    v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), " + [".to_string()), first_arg_str), "]".to_string())
-} else {
-                                                                                    {
-                                                                                        let function_name = py_bridge_method_name(method_name.clone());
+let spec = language_spec(RenderTarget::Python);
+match spec.method_templates.clone() {
+    Some(templates) => match v2_rt::map_get(&templates, method_name.clone()) {
+    Some(tmpl) => {
+            let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "recv".to_string(), recv_str), "arg".to_string(), first_arg_str);
+apply_named_template(tmpl.clone(), bindings)
+},
+    None => {
+            let function_name = py_bridge_method_name(method_name.clone());
 let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
-let all_args = v2_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs);
+let all_args = v2_rt::concat(Rc::new(vec![recv_str]), arg_strs);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(function_name, RenderTarget::Python), "(".to_string()), all_args.join(&", ".to_string())), ")".to_string())
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
+},
+},
+    None => {
+            let function_name = py_bridge_method_name(method_name.clone());
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
+let all_args = v2_rt::concat(Rc::new(vec![recv_str]), arg_strs);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(function_name, RenderTarget::Python), "(".to_string()), all_args.join(&", ".to_string())), ")".to_string())
+},
 }
 }
 }

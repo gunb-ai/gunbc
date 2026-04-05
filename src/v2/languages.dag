@@ -29,20 +29,23 @@ import extdeps.languages.rust.emit {
   rust_serde_tag, rust_serde_rename_template,
   rust_source_extension, rust_source_dir, rust_visibility,
   rust_value_types, rust_string_types,
-  rust_clone_expr, rust_deref_clone_expr, rust_field_clone_expr, rust_iterator_clone_suffix
+  rust_clone_expr, rust_deref_clone_expr, rust_field_clone_expr, rust_iterator_clone_suffix,
+  rust_method_templates
 }
 
 import extdeps.languages.python.emit {
   python_type_map, python_keywords, python_container_templates,
   python_reserved, python_reserved_escape_suffix,
   python_derive_attribute, python_default_value,
-  python_source_extension, python_module_init
+  python_source_extension, python_module_init,
+  python_method_templates
 }
 
 import extdeps.languages.go.emit {
   go_type_map, go_keywords, go_container_templates,
   go_reserved, go_reserved_escape_suffix,
-  go_manifest_file
+  go_manifest_file,
+  go_method_templates
 }
 
 type ReservedWordStrategy
@@ -131,6 +134,13 @@ type AnnotationRequirements {
   lambda_param_untyped: String     // e.g. "{0}" (Rust/Py) / "{0} interface{}" (Go)
 }
 
+// -- Method templates: per-method rendering for simple algebra method calls ---
+// Map<String, String> keyed by method name, value is a template string with
+// {recv} and {arg} named placeholders. Applied via apply_named_template.
+// Only covers methods whose rendering is pure string substitution on receiver
+// and first argument. Higher-order methods (map, filter, fold, etc.) that need
+// lambda/closure structure remain as dedicated emitter functions.
+
 type LanguageSpec {
   target_name: String
   reserved_words: ReservedWords
@@ -142,6 +152,7 @@ type LanguageSpec {
   clone_templates: CloneTemplates?
   indexing: IndexingSemantics
   annotations: AnnotationRequirements
+  method_templates: Map<String, String>?
 }
 
 // =========================================================================
@@ -201,7 +212,8 @@ fn rust_spec() -> LanguageSpec {
       let_binding_inferred: "let {0} = {1};",
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
-    }
+    },
+    method_templates: rust_method_templates
   }
 }
 
@@ -252,7 +264,8 @@ fn python_spec() -> LanguageSpec {
       let_binding_inferred: "{0} = {1}",
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
-    }
+    },
+    method_templates: python_method_templates
   }
 }
 
@@ -303,7 +316,8 @@ fn go_spec() -> LanguageSpec {
       let_binding_inferred: "{0} := {1}",
       lambda_param_typed: "{0} {1}",
       lambda_param_untyped: "{0} interface{}"
-    }
+    },
+    method_templates: go_method_templates
   }
 }
 

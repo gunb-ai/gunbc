@@ -248,8 +248,14 @@ backends.
 
 Make emission fully data-driven. Adding a backend = adding data.
 
+- [x] Method templates: simple methods use `apply_named_template` with per-language
+  `Map<String, String>` data. Templates are pure method syntax; Rc wrapping
+  composed separately from sharing authority. Covers count/join/split/first/last/
+  enumerate/chars/skip/take + higher-order (map/filter/fold/sort_by/any/all/flat_map).
 - [ ] Transport/config: one `.dag` authority (35+ redundant sites → 1)
 - [ ] LanguageSpec completion — all target-language facts data-driven
+  *(method_templates landed as `Map<String, String>?`; structured `MethodTemplate`
+  type with lambda/fn_ref/simple variants is the next step)*
 - [ ] TypeRendering dissolves into coercion engine
 - [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
 

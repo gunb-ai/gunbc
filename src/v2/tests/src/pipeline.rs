@@ -4279,3 +4279,40 @@ fn map_insert_does_not_leave_unresolved_map_shape() {
         "map_insert/map_merge must not leave unresolved types at emit"
     );
 }
+
+// ── apply_named_template correctness ────────────────────────────────────
+
+#[test]
+fn apply_named_template_does_not_rescan_substituted_values() {
+    use v2_compiler::v2_compiler_emit::apply_named_template;
+
+    // Value for "recv" contains literal "{arg}" — must NOT be rewritten
+    // by the second placeholder pass.
+    let template = "{recv}.join(&{arg})".to_string();
+    let mut bindings = HashMap::new();
+    bindings.insert("recv".to_string(), "expr_with_{arg}_literal".to_string());
+    bindings.insert("arg".to_string(), "sep".to_string());
+    let result = apply_named_template(template, Rc::new(bindings));
+
+    assert_eq!(
+        result, "expr_with_{arg}_literal.join(&sep)",
+        "substituted value containing {{arg}} was incorrectly rewritten"
+    );
+}
+
+#[test]
+fn apply_named_template_arg_value_containing_recv_placeholder() {
+    use v2_compiler::v2_compiler_emit::apply_named_template;
+
+    // Value for "arg" contains literal "{recv}" — must NOT be rewritten.
+    let template = "{recv}.call({arg})".to_string();
+    let mut bindings = HashMap::new();
+    bindings.insert("recv".to_string(), "receiver".to_string());
+    bindings.insert("arg".to_string(), "has_{recv}_inside".to_string());
+    let result = apply_named_template(template, Rc::new(bindings));
+
+    assert_eq!(
+        result, "receiver.call(has_{recv}_inside)",
+        "substituted value containing {{recv}} was incorrectly rewritten"
+    );
+}
