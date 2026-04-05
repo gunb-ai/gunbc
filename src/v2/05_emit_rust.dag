@@ -108,7 +108,8 @@ import v2.compiler.infer_emit_info {
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled,
   lookup_item_kind, is_type_item_kind,
   ServiceFieldSet, lookup_service_fields,
-  FunctionSignature, lookup_function_signature
+  FunctionSignature, lookup_function_signature,
+  CapabilitySignature, ResourceDefinition, lookup_resource_definition
 }
 import v2.compiler.ownership { analyze_ownership, build_movable_set }
 
@@ -388,7 +389,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     owned_bindings: empty_map(),
     item_kinds: base_info.item_kinds,
     service_fields: base_info.service_fields,
-    function_signatures: base_info.function_signatures
+    function_signatures: base_info.function_signatures,
+    resource_definitions: base_info.resource_definitions
   }
   let rc_types = build_rc_types(emit_info: emit_info)
   let registry = typed.item_registry
@@ -704,7 +706,8 @@ fn build_fn_emit_info(sig: FunctionSignature, item_name: String, item_text: Stri
     owned_bindings: empty_map(),
     item_kinds: emit_info.item_kinds,
     service_fields: emit_info.service_fields,
-    function_signatures: emit_info.function_signatures
+    function_signatures: emit_info.function_signatures,
+    resource_definitions: emit_info.resource_definitions
   }
 }
 
@@ -741,7 +744,10 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   } else if (kind == TypedItemServiceDef) {
     emit_service_def(item: item, registry: registry, rc_types: rc_types, env: env, emit_info: emit_info)
   } else if (kind == TypedItemResourceDef) {
-    emit_resource_def(item: item, rc_types: rc_types, env: env)
+    match lookup_resource_definition(emit_info: emit_info, name: item.name) {
+      Some { value: rd } => emit_resource_def(item_text: item_text, rd: rd, rc_types: rc_types, env: env)
+      None => ""
+    }
   } else {
     concat("compile_error!(\"unhandled item: ", item_text, "\");")
   }
@@ -2626,7 +2632,8 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
               item_kinds: emit_info.item_kinds,
               service_fields: emit_info.service_fields,
-              function_signatures: emit_info.function_signatures
+              function_signatures: emit_info.function_signatures,
+              resource_definitions: emit_info.resource_definitions
             }
           None => emit_info
         }
@@ -3974,24 +3981,22 @@ fn emit_local_call(op_name: String) -> String {
 // Resources become a trait with capability methods.
 // =========================================================================
 
-fn emit_resource_def(item: Node, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
-  let item_text = authored_name(env: env, node: item)
-  let cap_children = item.children
-  if cap_children |> count == 0 {
+fn emit_resource_def(item_text: String, rd: ResourceDefinition, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
+  if rd.capabilities |> count == 0 {
     // Resources without capabilities are emitted as unit structs.
     // They serve as capability markers passed by reference.
     concat("#[derive(Debug, Clone)]\npub struct ", item_text, ";")
   } else {
     let depth = 0
-    let cap_methods = cap_children |> map(c => emit_capability_method(cap_node: c, rc_types: rc_types, env: env))
+    let cap_methods = rd.capabilities |> map(cap => emit_capability_method(cap: cap, rc_types: rc_types, env: env))
     let methods_str = cap_methods |> join(separator: "\n\n")
     concat("#[async_trait::async_trait]\npub trait ", item_text, " {\n",
       make_indent(level: depth + 1),methods_str, "\n}")
   }
 }
 
-fn emit_capability_method(cap_node: Node, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
-  let input_params = cap_node.params |> map(p =>
+fn emit_capability_method(cap: CapabilitySignature, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
+  let input_params = cap.params |> map(p =>
     concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: rc_types))
   )
   let params_str = input_params |> join(separator: ", ")
@@ -4000,8 +4005,8 @@ fn emit_capability_method(cap_node: Node, rc_types: Map<String, Bool>, env: Type
   } else {
     concat("&self, ", params_str)
   }
-  let ret = render_rust_type(n: rt_type(n: cap_node), rc_types: rc_types)
-  concat("async fn ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
+  let ret = render_rust_type(n: cap.return_type, rc_types: rc_types)
+  concat("async fn ", emit_ident(name: cap.name, target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
 // =========================================================================

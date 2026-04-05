@@ -95,7 +95,8 @@ import v2.compiler.infer_emit_info {
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled,
   lookup_item_kind, is_type_item_kind, is_function_item_kind,
   ServiceFieldSet, lookup_service_fields,
-  FunctionSignature, lookup_function_signature
+  FunctionSignature, lookup_function_signature,
+  CapabilitySignature, ResourceDefinition, lookup_resource_definition
 }
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
@@ -391,7 +392,10 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   } else if (kind == TypedItemServiceDef) {
     emit_go_service_def(item: item, registry: registry, env: env, emit_info: emit_info)
   } else if (kind == TypedItemResourceDef) {
-    emit_go_resource_def(item: item, env: env)
+    match lookup_resource_definition(emit_info: emit_info, name: item.name) {
+      Some { value: rd } => emit_go_resource_def(item_text: item_text, rd: rd, env: env)
+      None => ""
+    }
   } else {
     concat("func init() { panic(\"EMIT BUG: unhandled item: ", item_text, "\") }")
   }
@@ -1355,24 +1359,20 @@ fn emit_go_local_call(op_name: String, depth: Int) -> String {
 // "implements" needed).
 // =========================================================================
 
-fn emit_go_resource_def(item: Node, env: TypeEnv) -> String {
-  let item_text = authored_name(env: env, node: item)
-  // After dissolution, capability children are identified by having params
-  let cap_children = item.children |> filter(c => c.params |> count > 0)
-  let methods = cap_children |> map(c => emit_go_capability_method(cap_node: c, depth: 1, env: env))
+fn emit_go_resource_def(item_text: String, rd: ResourceDefinition, env: TypeEnv) -> String {
+  let methods = rd.capabilities |> map(cap => emit_go_capability_method(cap: cap, depth: 1, env: env))
   let methods_str = methods |> join(separator: "\n")
   concat("type ", item_text, " interface {\n",
     methods_str, "\n}")
 }
 
-fn emit_go_capability_method(cap_node: Node, depth: Int, env: TypeEnv) -> String {
-  let input_params = cap_node.params |> map(p =>
+fn emit_go_capability_method(cap: CapabilitySignature, depth: Int, env: TypeEnv) -> String {
+  let input_params = cap.params |> map(p =>
     concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Go), " ", emit_node_type(n: param_node_type_expr(n: p), target: Go))
   )
   let params_str = input_params |> join(separator: ", ")
-  // After dissolution, inferred on the child node IS the output type
-  let ret = emit_node_type(n: rt_type(n: cap_node), target: Go)
-  concat(make_indent(level: depth), go_export_ident(name: authored_name(env: env, node: cap_node)), "(", params_str, ") (", ret, ", error)")
+  let ret = emit_node_type(n: cap.return_type, target: Go)
+  concat(make_indent(level: depth), go_export_ident(name: cap.name), "(", params_str, ") (", ret, ", error)")
 }
 
 // =========================================================================

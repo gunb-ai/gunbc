@@ -69,7 +69,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypedItemKind, lookup_item_kind, is_type_item_kind, is_function_item_kind, ServiceFieldSet, lookup_service_fields, FunctionSignature, lookup_function_signature};
+pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypedItemKind, lookup_item_kind, is_type_item_kind, is_function_item_kind, ServiceFieldSet, lookup_service_fields, FunctionSignature, lookup_function_signature, CapabilitySignature, ResourceDefinition, lookup_resource_definition};
 use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemStruct, TypedItemEnum, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled};
 pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, has_nested_records_node, typed_named_arg_matches, order_typed_call_args, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, TransportKind, classify_transport};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
@@ -347,7 +347,10 @@ if (kind.clone() == TypedItemKind::TypedItemStruct) {
                                         emit_go_service_def(item.clone(), registry, env.clone(), emit_info.clone())
 } else {
                                         if (kind.clone() == TypedItemKind::TypedItemResourceDef) {
-                                            emit_go_resource_def(item.clone(), env.clone())
+                                            match lookup_resource_definition(emit_info.clone(), item.name.clone()) {
+    Some(rd) => emit_go_resource_def(item_text, rd.clone(), env.clone()),
+    None => "".to_string(),
+}
 } else {
                                             v2_rt::concat(v2_rt::concat("func init() { panic(\"EMIT BUG: unhandled item: ".to_string(), item_text), "\") }".to_string())
 }
@@ -1357,22 +1360,20 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix, "// Local bindin
 }
 }
 
-pub fn emit_go_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
+pub fn emit_go_resource_def(item_text: String, rd: Rc<ResourceDefinition>, env: Rc<TypeEnv>) -> String {
     {
-        let item_text = authored_name(env.clone(), item.clone());
-let cap_children = Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { if ((c.params.clone().len() as i64) > 0) { __result.push(c); } } __result });
-let methods = Rc::new({ let mut __result = Vec::new(); for c in cap_children.iter().cloned() { __result.push(emit_go_capability_method(c.clone(), 1, env.clone())); } __result });
+        let methods = Rc::new({ let mut __result = Vec::new(); for cap in rd.capabilities.clone().iter().cloned() { __result.push(emit_go_capability_method(cap.clone(), 1, env.clone())); } __result });
 let methods_str = methods.join(&"\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("type ".to_string(), item_text), " interface {\n".to_string()), methods_str), "\n}".to_string())
 }
 }
 
-pub fn emit_go_capability_method(cap_node: Rc<Node>, depth: i64, env: Rc<TypeEnv>) -> String {
+pub fn emit_go_capability_method(cap: Rc<CapabilitySignature>, depth: i64, env: Rc<TypeEnv>) -> String {
     {
-        let input_params = Rc::new({ let mut __result = Vec::new(); for p in cap_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Go), " ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Go))); } __result });
+        let input_params = Rc::new({ let mut __result = Vec::new(); for p in cap.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Go), " ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Go))); } __result });
 let params_str = input_params.join(&", ".to_string());
-let ret = emit_node_type(rt_type(cap_node.clone()), RenderTarget::Go);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth), go_export_ident(authored_name(env.clone(), cap_node.clone()))), "(".to_string()), params_str), ") (".to_string()), ret), ", error)".to_string())
+let ret = emit_node_type(cap.return_type.clone(), RenderTarget::Go);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth), go_export_ident(cap.name.clone())), "(".to_string()), params_str), ") (".to_string()), ret), ", error)".to_string())
 }
 }
 

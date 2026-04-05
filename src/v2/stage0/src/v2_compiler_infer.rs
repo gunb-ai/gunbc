@@ -72,9 +72,9 @@ pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, RecursiveVariantFieldWitness, put_recursive_variant_field_witness, merge_recursive_variant_fields};
 pub use crate::v2_compiler_infer_resolve::{resolve_node, resolve_item_types, NodeResolveResult, ItemResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult, resolve_func_sigs};
-pub use crate::v2_compiler_infer_emit_info::{TypeRepr, TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypedItemKind, ServiceFieldSet, ValueContext, FunctionSignature, empty_emit_graph_info, lookup_emit_type_summary, build_struct_field_summaries, build_enum_field_summaries, add_emit_item_summary, classify_typed_item, classify_service_fields, classify_function_signature, lookup_function_signature};
+pub use crate::v2_compiler_infer_emit_info::{TypeRepr, TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypedItemKind, ServiceFieldSet, ValueContext, FunctionSignature, CapabilitySignature, ResourceDefinition, empty_emit_graph_info, lookup_emit_type_summary, build_struct_field_summaries, build_enum_field_summaries, add_emit_item_summary, classify_typed_item, classify_service_fields, classify_function_signature, lookup_function_signature, classify_resource_definition, lookup_resource_definition};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
-use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemServiceDef};
+use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemServiceDef, TypedItemResourceDef};
 pub use crate::v2_compiler_infer_items::{ItemKind, ItemInfo, TypedModule, TypedGraph, ResolvedGraph, inferred_to_outputs, item_kind, variant_locals_from_items};
 use crate::v2_compiler_infer_items::ItemKind::{FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, ServiceMethodResult, is_typed_service_call_receiver, extract_typed_service_name, collect_typed_service_calls, collect_called_func_names, expand_transitive_services, check_service_field_access_node, check_service_method_call_node, service_op_entry};
@@ -3440,6 +3440,21 @@ if is_fn.clone() {
 }))
 }
 
+pub fn build_resource_definitions(modules: Rc<Vec<Rc<TypedModule>>>, item_kinds: Rc<HashMap<String, TypedItemKind>>) -> Rc<HashMap<String, Rc<ResourceDefinition>>> {
+    modules.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<ResourceDefinition>>(), |acc: Rc<HashMap<String, Rc<ResourceDefinition>>>, tm: Rc<TypedModule>| tm.items.clone().iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, Rc<ResourceDefinition>>>, item: Rc<Node>| {
+        let kind_opt = v2_rt::map_get(&item_kinds, item.name.clone());
+let is_res = match kind_opt.clone() {
+    Some(k) => (k.clone() == TypedItemKind::TypedItemResourceDef),
+    None => false,
+};
+if is_res.clone() {
+            v2_rt::rc_map_insert(inner.clone(), item.name.clone(), classify_resource_definition(item.clone()))
+} else {
+            inner.clone()
+}
+}))
+}
+
 pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
@@ -3452,6 +3467,7 @@ let value_ctxs = build_value_contexts(modules.clone(), all_recursive.clone());
 let kinds = build_item_kinds(modules.clone());
 let svc_fields = build_service_fields(modules.clone(), kinds.clone());
 let fn_sigs = build_function_signatures(modules.clone(), kinds.clone());
+let res_defs = build_resource_definitions(modules.clone(), kinds.clone());
 Rc::new(EmitGraphInfo {
     type_summaries: built.type_summaries.clone(),
     recursive_type_set: all_recursive.clone(),
@@ -3463,6 +3479,7 @@ Rc::new(EmitGraphInfo {
     item_kinds: kinds.clone(),
     service_fields: svc_fields,
     function_signatures: fn_sigs,
+    resource_definitions: res_defs,
 })
 }
 }

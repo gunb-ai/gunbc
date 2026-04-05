@@ -241,6 +241,20 @@ pub fn lookup_function_signature(emit_info: Rc<EmitGraphInfo>, name: String) -> 
     v2_rt::map_get(&emit_info.function_signatures.clone(), name)
 }
 
+pub fn classify_resource_definition(item: Rc<Node>) -> Rc<ResourceDefinition> {
+    Rc::new(ResourceDefinition {
+    capabilities: Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { __result.push(Rc::new(CapabilitySignature {
+    name: c.name.clone(),
+    params: c.params.clone(),
+    return_type: rt_type(c.clone()),
+})); } __result }),
+})
+}
+
+pub fn lookup_resource_definition(emit_info: Rc<EmitGraphInfo>, name: String) -> Option<Rc<ResourceDefinition>> {
+    v2_rt::map_get(&emit_info.resource_definitions.clone(), name)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ValueContext {
     pub has_fn_fields: bool,
@@ -269,6 +283,7 @@ pub struct EmitGraphInfo {
     pub item_kinds: Rc<HashMap<String, TypedItemKind>>,
     pub service_fields: Rc<HashMap<String, ServiceFieldSet>>,
     pub function_signatures: Rc<HashMap<String, Rc<FunctionSignature>>>,
+    pub resource_definitions: Rc<HashMap<String, Rc<ResourceDefinition>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -285,6 +300,18 @@ pub struct ServiceFieldSet {
     pub has_shell: bool,
     pub has_file: bool,
     pub has_auth: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CapabilitySignature {
+    pub name: String,
+    pub params: Rc<Vec<Rc<Node>>>,
+    pub return_type: Rc<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResourceDefinition {
+    pub capabilities: Rc<Vec<Rc<CapabilitySignature>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -321,6 +348,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     item_kinds: v2_rt::rc_empty_map::<TypedItemKind>(),
     service_fields: v2_rt::rc_empty_map::<ServiceFieldSet>(),
     function_signatures: v2_rt::rc_empty_map::<Rc<FunctionSignature>>(),
+    resource_definitions: v2_rt::rc_empty_map::<Rc<ResourceDefinition>>(),
 })
 }
 

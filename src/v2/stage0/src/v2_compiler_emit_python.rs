@@ -68,7 +68,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypedItemKind, lookup_item_kind, ServiceFieldSet, lookup_service_fields, FunctionSignature, lookup_function_signature};
+pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypedItemKind, lookup_item_kind, ServiceFieldSet, lookup_service_fields, FunctionSignature, lookup_function_signature, CapabilitySignature, ResourceDefinition, lookup_resource_definition};
 use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemStruct, TypedItemEnum, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled};
 pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, has_service_items, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, TransportKind, classify_transport};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
@@ -358,7 +358,10 @@ if (kind.clone() == TypedItemKind::TypedItemStruct) {
                                         emit_py_service_def(item.clone(), registry, env.clone(), emit_info.clone())
 } else {
                                         if (kind.clone() == TypedItemKind::TypedItemResourceDef) {
-                                            emit_py_resource_def(item.clone(), env.clone())
+                                            match lookup_resource_definition(emit_info.clone(), item.name.clone()) {
+    Some(rd) => emit_py_resource_def(item_text, rd.clone(), env.clone()),
+    None => "".to_string(),
+}
 } else {
                                             v2_rt::concat("# unhandled node: ".to_string(), item_text)
 }
@@ -1329,28 +1332,26 @@ pub fn emit_py_local_call(op_name: String) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat("# Local binding -- direct function call\n".to_string(), "return ".to_string()), emit_ident(op_name, RenderTarget::Python)), "()".to_string())
 }
 
-pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
+pub fn emit_py_resource_def(item_text: String, rd: Rc<ResourceDefinition>, env: Rc<TypeEnv>) -> String {
     {
-        let item_text = authored_name(env.clone(), item.clone());
-let depth = 0;
-let cap_children = item.children.clone();
-let methods = Rc::new({ let mut __result = Vec::new(); for c in cap_children.iter().cloned() { __result.push(emit_py_capability_method(c.clone(), env.clone())); } __result });
+        let depth = 0;
+let methods = Rc::new({ let mut __result = Vec::new(); for cap in rd.capabilities.clone().iter().cloned() { __result.push(emit_py_capability_method(cap.clone(), env.clone())); } __result });
 let methods_str = methods.join(&"\n\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("from abc import ABC, abstractmethod\n\n".to_string(), "class ".to_string()), item_text), "(ABC):\n".to_string()), make_indent((depth + 1))), methods_str)
 }
 }
 
-pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String {
+pub fn emit_py_capability_method(cap: Rc<CapabilitySignature>, env: Rc<TypeEnv>) -> String {
     {
-        let input_params = Rc::new({ let mut __result = Vec::new(); for p in cap_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Python), ": ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Python))); } __result });
+        let input_params = Rc::new({ let mut __result = Vec::new(); for p in cap.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Python), ": ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Python))); } __result });
 let params_str = input_params.join(&", ".to_string());
 let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
             "self".to_string()
 } else {
             v2_rt::concat("self, ".to_string(), params_str.clone())
 };
-let ret = emit_node_type(rt_type(cap_node.clone()), RenderTarget::Python);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("@abstractmethod\n".to_string(), "async def ".to_string()), emit_ident(authored_name(env.clone(), cap_node.clone()), RenderTarget::Python)), "(".to_string()), all_params), ") -> ".to_string()), ret), ":\n".to_string()), "    ...".to_string())
+let ret = emit_node_type(cap.return_type.clone(), RenderTarget::Python);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("@abstractmethod\n".to_string(), "async def ".to_string()), emit_ident(cap.name.clone(), RenderTarget::Python)), "(".to_string()), all_params), ") -> ".to_string()), ret), ":\n".to_string()), "    ...".to_string())
 }
 }
 

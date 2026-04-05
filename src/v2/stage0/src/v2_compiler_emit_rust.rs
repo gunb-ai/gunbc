@@ -75,7 +75,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem, DataItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, build_emit_graph_info, expr_span};
-pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypedItemKind, lookup_item_kind, is_type_item_kind, ServiceFieldSet, lookup_service_fields, FunctionSignature, lookup_function_signature, TypeRepr};
+pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypedItemKind, lookup_item_kind, is_type_item_kind, ServiceFieldSet, lookup_service_fields, FunctionSignature, lookup_function_signature, CapabilitySignature, ResourceDefinition, lookup_resource_definition, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemStruct, TypedItemEnum, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled};
 pub use crate::v2_compiler_ownership::{analyze_ownership, build_movable_set};
@@ -335,6 +335,7 @@ let emit_info = Rc::new(EmitGraphInfo {
     item_kinds: base_info.item_kinds.clone(),
     service_fields: base_info.service_fields.clone(),
     function_signatures: base_info.function_signatures.clone(),
+    resource_definitions: base_info.resource_definitions.clone(),
 });
 let rc_types = build_rc_types(emit_info.clone());
 let registry = typed.item_registry.clone();
@@ -589,6 +590,7 @@ Rc::new(EmitGraphInfo {
     item_kinds: emit_info.item_kinds.clone(),
     service_fields: emit_info.service_fields.clone(),
     function_signatures: emit_info.function_signatures.clone(),
+    resource_definitions: emit_info.resource_definitions.clone(),
 })
 }
 }
@@ -641,7 +643,10 @@ emit_fn_def(item_text.clone(), sig.params.clone(), sig.return_type.clone(), sig.
                                         emit_service_def(item.clone(), registry.clone(), rc_types, env.clone(), emit_info.clone())
 } else {
                                         if (kind.clone() == TypedItemKind::TypedItemResourceDef) {
-                                            emit_resource_def(item.clone(), rc_types, env.clone())
+                                            match lookup_resource_definition(emit_info.clone(), item.name.clone()) {
+    Some(rd) => emit_resource_def(item_text.clone(), rd.clone(), rc_types, env.clone()),
+    None => "".to_string(),
+}
 } else {
                                             v2_rt::concat(v2_rt::concat("compile_error!(\"unhandled item: ".to_string(), item_text.clone()), "\");".to_string())
 }
@@ -2667,6 +2672,7 @@ match ps.first().cloned() {
     item_kinds: emit_info.item_kinds.clone(),
     service_fields: emit_info.service_fields.clone(),
     function_signatures: emit_info.function_signatures.clone(),
+    resource_definitions: emit_info.resource_definitions.clone(),
 }),
     None => emit_info.clone(),
 }
@@ -4242,34 +4248,30 @@ pub fn emit_local_call(op_name: String) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat("// Local binding -- direct function call\n".to_string(), "Ok(".to_string()), emit_ident(op_name, RenderTarget::Rust)), "())".to_string())
 }
 
-pub fn emit_resource_def(item: Rc<Node>, rc_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
-    {
-        let item_text = authored_name(env.clone(), item.clone());
-let cap_children = item.children.clone();
-if ((cap_children.clone().len() as i64) == 0) {
-            v2_rt::concat(v2_rt::concat("#[derive(Debug, Clone)]\npub struct ".to_string(), item_text), ";".to_string())
+pub fn emit_resource_def(item_text: String, rd: Rc<ResourceDefinition>, rc_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
+    if ((rd.capabilities.clone().len() as i64) == 0) {
+        v2_rt::concat(v2_rt::concat("#[derive(Debug, Clone)]\npub struct ".to_string(), item_text), ";".to_string())
 } else {
-            {
-                let depth = 0;
-let cap_methods = Rc::new({ let mut __result = Vec::new(); for c in cap_children.clone().iter().cloned() { __result.push(emit_capability_method(c.clone(), rc_types.clone(), env.clone())); } __result });
+        {
+            let depth = 0;
+let cap_methods = Rc::new({ let mut __result = Vec::new(); for cap in rd.capabilities.clone().iter().cloned() { __result.push(emit_capability_method(cap.clone(), rc_types.clone(), env.clone())); } __result });
 let methods_str = cap_methods.join(&"\n\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[async_trait::async_trait]\npub trait ".to_string(), item_text), " {\n".to_string()), make_indent((depth + 1))), methods_str), "\n}".to_string())
 }
 }
 }
-}
 
-pub fn emit_capability_method(cap_node: Rc<Node>, rc_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
+pub fn emit_capability_method(cap: Rc<CapabilitySignature>, rc_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
     {
-        let input_params = Rc::new({ let mut __result = Vec::new(); for p in cap_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Rust), ": ".to_string()), emit_rust_param_type(param_node_type_expr(p.clone()), rc_types.clone()))); } __result });
+        let input_params = Rc::new({ let mut __result = Vec::new(); for p in cap.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Rust), ": ".to_string()), emit_rust_param_type(param_node_type_expr(p.clone()), rc_types.clone()))); } __result });
 let params_str = input_params.join(&", ".to_string());
 let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
             "&self".to_string()
 } else {
             v2_rt::concat("&self, ".to_string(), params_str.clone())
 };
-let ret = render_rust_type(rt_type(cap_node.clone()), rc_types.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async fn ".to_string(), emit_ident(authored_name(env.clone(), cap_node.clone()), RenderTarget::Rust)), "(".to_string()), all_params), ") -> Result<".to_string()), ret), ", Box<dyn std::error::Error>>;".to_string())
+let ret = render_rust_type(cap.return_type.clone(), rc_types.clone());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async fn ".to_string(), emit_ident(cap.name.clone(), RenderTarget::Rust)), "(".to_string()), all_params), ") -> Result<".to_string()), ret), ", Box<dyn std::error::Error>>;".to_string())
 }
 }
 

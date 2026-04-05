@@ -175,6 +175,23 @@ fn lookup_function_signature(emit_info: EmitGraphInfo, name: String) -> Function
   map_get(emit_info.function_signatures, name)
 }
 
+// Classify a resource item into a ResourceDefinition. Called once per
+// resource during reconcile; result stored in EmitGraphInfo.resource_definitions.
+fn classify_resource_definition(item: Node) -> ResourceDefinition {
+  ResourceDefinition {
+    capabilities: item.children |> map(c => CapabilitySignature {
+      name: c.name,
+      params: c.params,
+      return_type: rt_type(n: c)
+    })
+  }
+}
+
+// Lookup precomputed resource definition from EmitGraphInfo.
+fn lookup_resource_definition(emit_info: EmitGraphInfo, name: String) -> ResourceDefinition? {
+  map_get(emit_info.resource_definitions, name)
+}
+
 // ValueContext: orthogonal facts about how a named value is used,
 // determining its target-language representation. Precomputed in
 // EmitGraphInfo so the emitter reads facts instead of heuristics.
@@ -250,6 +267,10 @@ type EmitGraphInfo {
   // Precomputed during reconcile so emit reads structured facts instead of
   // reaching into Node.params / Node.body / rt_type at render time.
   function_signatures: Map<String, FunctionSignature>
+  // Per-resource precomputed definition: capabilities with params and return types.
+  // Precomputed during reconcile so emit reads structured capability data
+  // instead of filtering/inspecting child Nodes.
+  resource_definitions: Map<String, ResourceDefinition>
 }
 
 // FunctionSignature: structural facts about a function item, precomputed
@@ -270,6 +291,22 @@ type ServiceFieldSet {
   has_shell: Bool
   has_file: Bool
   has_auth: Bool
+}
+
+// CapabilitySignature: structural facts about a resource capability,
+// precomputed during reconcile. Captures name + params + return_type
+// that emit otherwise extracts ad-hoc from capability child Nodes.
+type CapabilitySignature {
+  name: String
+  params: List<Node>
+  return_type: Node
+}
+
+// ResourceDefinition: precomputed facts about a resource item.
+// Capabilities are pre-extracted from the item's children so emit
+// reads structured data instead of filtering/inspecting child Nodes.
+type ResourceDefinition {
+  capabilities: List<CapabilitySignature>
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -314,7 +351,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     owned_bindings: empty_map(),
     item_kinds: empty_map(),
     service_fields: empty_map(),
-    function_signatures: empty_map()
+    function_signatures: empty_map(),
+    resource_definitions: empty_map()
   }
 }
 
