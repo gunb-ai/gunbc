@@ -65,7 +65,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, CloneTemplates, test_conventions_for_target, top_level_visibility_for_target, clone_templates_for_target, is_value_type, is_string_like, target_primitive_type, try_target_primitive_type, sharing_for_target};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, CloneTemplates, test_conventions_for_target, top_level_visibility_for_target, clone_templates_for_target, is_value_type, is_string_like, target_primitive_type, try_target_primitive_type};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
@@ -2619,7 +2619,6 @@ let acc_param_name = match (*fold_lambda_node.expr_data.clone()).clone() {
 },
     _ => "".to_string(),
 };
-let cond_sharing = !sharing_for_target(RenderTarget::Rust).fold_accumulator_shared.clone();
 let cond_required = (acc_type_node.return_cardinality.clone() == Cardinality::Required);
 let cond_rc = emit_map_has(rc_types.clone(), acc_type_name.clone());
 let cond_struct = match lookup_emit_type_summary(emit_info.clone(), acc_type_name.clone()) {
@@ -2631,7 +2630,7 @@ let cond_struct = match lookup_emit_type_summary(emit_info.clone(), acc_type_nam
 };
 let cond_body = fold_body_constructs_acc_struct(fold_lambda_node.clone(), acc_type_name.clone());
 let cond_safe = fold_body_safe_field_moves(fold_lambda_node.clone(), acc_param_name);
-let acc_unwrap = (((((cond_sharing && cond_required) && cond_rc) && cond_struct) && cond_body) && cond_safe);
+let acc_unwrap = ((((cond_required && cond_rc) && cond_struct) && cond_body) && cond_safe);
 let fold_emit_info = if acc_unwrap {
             match (*fold_lambda_node.expr_data.clone()).clone() {
     ExprData::ExprLambda { .. } => {

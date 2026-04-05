@@ -105,7 +105,6 @@ type ImportRule {
 
 type SharingStrategy {
   wrap_template: String
-  fold_accumulator_shared: Bool
   // Clone templates: {0}=value.
   // In GC'd languages these are identity — no ownership transfer needed.
   clone_value: String       // owned copy of a value: Rust "{0}.clone()", Python/Go "{0}"
@@ -202,7 +201,6 @@ fn rust_spec() -> LanguageSpec {
     top_level_visibility: rust_visibility,
     sharing: SharingStrategy {
       wrap_template: "Rc<{0}>",
-      fold_accumulator_shared: false,
       clone_value: "{0}.clone()",
       deref_clone: "(*{0}).clone()",
       iter_owned: "{0}.iter().cloned()"
@@ -263,7 +261,6 @@ fn python_spec() -> LanguageSpec {
     top_level_visibility: "",
     sharing: SharingStrategy {
       wrap_template: "{0}",
-      fold_accumulator_shared: false,
       clone_value: "{0}",
       deref_clone: "{0}",
       iter_owned: "{0}"
@@ -319,7 +316,6 @@ fn go_spec() -> LanguageSpec {
     top_level_visibility: "",
     sharing: SharingStrategy {
       wrap_template: "{0}",
-      fold_accumulator_shared: false,
       clone_value: "{0}",
       deref_clone: "{0}",
       iter_owned: "{0}"

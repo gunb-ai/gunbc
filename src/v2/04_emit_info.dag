@@ -99,7 +99,7 @@ type EmitGraphInfo {
   movable: Map<String, Bool>
   // Bindings known to be owned (not behind Rc). Field accesses on these
   // bindings use move semantics instead of .clone(). Set for fold
-  // accumulators after Rc::try_unwrap when fold_accumulator_shared is false.
+  // accumulators after Rc::try_unwrap.
   owned_bindings: Map<String, Bool>
 }
 

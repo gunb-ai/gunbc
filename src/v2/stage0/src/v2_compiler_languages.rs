@@ -142,7 +142,6 @@ pub struct ImportRule {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SharingStrategy {
     pub wrap_template: String,
-    pub fold_accumulator_shared: bool,
     pub clone_value: String,
     pub deref_clone: String,
     pub iter_owned: String,
@@ -223,7 +222,6 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     top_level_visibility: rust_visibility(),
     sharing: Rc::new(SharingStrategy {
     wrap_template: "Rc<{0}>".to_string(),
-    fold_accumulator_shared: false,
     clone_value: "{0}.clone()".to_string(),
     deref_clone: "(*{0}).clone()".to_string(),
     iter_owned: "{0}.iter().cloned()".to_string(),
@@ -286,7 +284,6 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
     wrap_template: "{0}".to_string(),
-    fold_accumulator_shared: false,
     clone_value: "{0}".to_string(),
     deref_clone: "{0}".to_string(),
     iter_owned: "{0}".to_string(),
@@ -344,7 +341,6 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
     wrap_template: "{0}".to_string(),
-    fold_accumulator_shared: false,
     clone_value: "{0}".to_string(),
     deref_clone: "{0}".to_string(),
     iter_owned: "{0}".to_string(),

@@ -72,8 +72,7 @@ import v2.compiler.languages {
   TestConventions, CloneTemplates,
   test_conventions_for_target, top_level_visibility_for_target,
   clone_templates_for_target,
-  is_value_type, is_string_like, target_primitive_type, try_target_primitive_type,
-  sharing_for_target
+  is_value_type, is_string_like, target_primitive_type, try_target_primitive_type
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 
@@ -2571,9 +2570,9 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
       }
   }
   // Fold accumulators are linearly threaded — owned at each step, not shared.
-  // When fold_accumulator_shared is false and the accumulator is an Rc-wrapped
-  // struct, emit Rc::try_unwrap at iteration start so field accesses move
-  // instead of clone. This keeps Rc refcounts at 1, avoiding O(N) deep copies
+  // When the accumulator is an Rc-wrapped struct, emit Rc::try_unwrap at
+  // iteration start so field accesses move instead of clone. This keeps Rc
+  // refcounts at 1, avoiding O(N) deep copies
   // in Rc::make_mut (the root cause of O(N²) fold behavior).
   // Types stay Rc-wrapped (rc_types unchanged) — only field access on the
   // owned accumulator binding skips .clone() via owned_bindings.
@@ -2592,7 +2591,6 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
     }
     _ => ""
   }
-  let cond_sharing = !sharing_for_target(target: Rust).fold_accumulator_shared
   let cond_required = acc_type_node.return_cardinality == Required
   let cond_rc = emit_map_has(m: rc_types, key: acc_type_name)
   let cond_struct = match lookup_emit_type_summary(emit_info: emit_info, name: acc_type_name) {
@@ -2601,7 +2599,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   }
   let cond_body = fold_body_constructs_acc_struct(lambda_node: fold_lambda_node, acc_type_name: acc_type_name)
   let cond_safe = fold_body_safe_field_moves(lambda_node: fold_lambda_node, acc_name: acc_param_name)
-  let acc_unwrap = cond_sharing && cond_required && cond_rc && cond_struct && cond_body && cond_safe
+  let acc_unwrap = cond_required && cond_rc && cond_struct && cond_body && cond_safe
   let fold_emit_info = if acc_unwrap {
     match fold_lambda_node.expr_data {
       ExprLambda { semantics: _ } =>
