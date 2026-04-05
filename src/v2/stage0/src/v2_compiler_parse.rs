@@ -6283,58 +6283,58 @@ pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn node_to_name_str(n: Rc<Node>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        {
-            let has_children = ((n.children.clone().len() as i64) > 0);
-let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-let is_keyed_container = (is_container_type(n.name.clone()) && ((n.children.clone().len() as i64) == 2));
+    {
+        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional {
-                v2_rt::concat("Optional_".to_string(), node_to_name_str(with_required_cardinality(n.clone())))
+            v2_rt::concat("Optional_".to_string(), node_to_name_str_inner(with_required_cardinality(n.clone())))
 } else {
-                if is_keyed_container {
-                    if ((n.children.clone().len() as i64) > 1) {
-                        v2_rt::concat(v2_rt::concat(n.name.clone(), "_".to_string()), node_to_name_str(last_child_or_self(n.clone())))
+            node_to_name_str_inner(n.clone())
+}
+}
+}
+
+pub fn node_to_name_str_inner(n: Rc<Node>) -> String {
+    {
+        let is_keyed_container = (is_container_type(n.name.clone()) && ((n.children.clone().len() as i64) == 2));
+if is_keyed_container {
+            match n.children.clone().last().cloned() {
+    Some(ch) => v2_rt::concat(v2_rt::concat(n.name.clone(), "_".to_string()), node_to_name_str(ch.clone())),
+    None => n.name.clone(),
+}
+} else {
+            if (n.name.clone().as_str() == "Refined".to_string().as_str()) {
+                match n.children.clone().first().cloned() {
+    Some(ch) => node_to_name_str(ch.clone()),
+    None => n.name.clone(),
+}
+} else {
+                if is_container_type(n.name.clone()) {
+                    match n.children.clone().first().cloned() {
+    Some(ch) => v2_rt::concat("List_".to_string(), node_to_name_str(ch.clone())),
+    None => n.name.clone(),
+}
+} else {
+                    if (n.name.clone().as_str() == "".to_string().as_str()) {
+                        {
+                            let is_conj = (n.connective.clone() == Connective::Conj);
+let is_disj = (n.connective.clone() == Connective::Disj);
+if is_conj {
+                                "Record".to_string()
+} else {
+                                if is_disj {
+                                    "Union".to_string()
+} else {
+                                    n.name.clone()
+}
+}
+}
 } else {
                         n.name.clone()
 }
-} else {
-                    if (n.name.clone().as_str() == "Refined".to_string().as_str()) {
-                        if has_children {
-                            node_to_name_str(first_child_or_self(n.clone()))
-} else {
-                            n.name.clone()
-}
-} else {
-                        if is_container_type(n.name.clone()) {
-                            if has_children {
-                                v2_rt::concat("List_".to_string(), node_to_name_str(first_child_or_self(n.clone())))
-} else {
-                                n.name.clone()
-}
-} else {
-                            if (n.name.clone().as_str() == "".to_string().as_str()) {
-                                {
-                                    let is_conj = (n.connective.clone() == Connective::Conj);
-let is_disj = (n.connective.clone() == Connective::Disj);
-if is_conj {
-                                        "Record".to_string()
-} else {
-                                        if is_disj {
-                                            "Union".to_string()
-} else {
-                                            n.name.clone()
-}
-}
-}
-} else {
-                                n.name.clone()
 }
 }
 }
 }
-}
-}
-    })
 }
 
 pub fn parse_exit_entries(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ExitEntriesResult> {

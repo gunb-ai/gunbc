@@ -2384,7 +2384,7 @@ fn strict_complexity_violation_count() {
 
     // compile.dag bypasses complexity analysis (empty_complexity_report).
     // Call build_complexity_report directly to get real violations.
-    use v2_compiler::v2_compiler_compile::{extract_func_entries, build_recursion_context, front_end_sources, SourceFile};
+    use v2_compiler::v2_compiler_compile::{extract_func_entries, build_recursion_context, front_end_sources};
     use v2_compiler::v2_compiler_complexity::build_complexity_report;
     use v2_compiler::v2_compiler_normalize::normalize_graph;
     use v2_compiler::v2_compiler_infer::reconcile;
@@ -2505,7 +2505,7 @@ fn strict_complexity_violation_count() {
 #[test]
 #[ignore]
 fn diag_parser_scc_edges() {
-    use v2_compiler::v2_compiler_compile::{extract_func_entries, build_recursion_context, front_end_sources, SourceFile};
+    use v2_compiler::v2_compiler_compile::{extract_func_entries, build_recursion_context, front_end_sources};
     use v2_compiler::v2_compiler_complexity::{
         build_complexity_report, build_scc_index, collect_parser_edges_for_scc,
         same_progress_subgraph_has_cycle, FuncEntry, ProgressKind,
@@ -2580,7 +2580,7 @@ fn diag_parser_scc_edges() {
     // Also dump complexity violations for these functions
     let complexity = build_complexity_report(func_entries, recursion_ctx);
     let parser_violations: Vec<_> = complexity.violations.iter()
-        .filter(|v| scc_index.get(&v.func_name).map_or(false, |s| s.members == scc_info.members))
+        .filter(|v| scc_index.get(&v.func_name).is_some_and(|s| s.members == scc_info.members))
         .collect();
     eprintln!("\n  Parser SCC violations: {}", parser_violations.len());
 }
@@ -2592,7 +2592,7 @@ fn diag_parse_node_decl_env() {
     use v2_compiler::v2_compiler_complexity::{
         parser_state_param, collect_parser_progress_edges,
         infer_parser_always_advancing_members, parser_function_names,
-        empty_parser_progress_env, FuncEntry, ProgressKind,
+        empty_parser_progress_env, FuncEntry,
     };
     use v2_compiler::v2_compiler_normalize::normalize_graph;
     use v2_compiler::v2_compiler_infer::reconcile;

@@ -2751,10 +2751,11 @@ fn last_child_or_self(n: Node) -> Node {
 //
 // Split into wrapper (Optional prefix) + inner (child descent) so the CX
 // analyzer sees a 2-member SCC with edges [NonIncreasing, Strict]:
-//   node_to_name_str → node_to_name_str_inner: with_required_cardinality or same n
-//   node_to_name_str_inner → node_to_name_str: structural child via match
+//   node_to_name_str -> node_to_name_str_inner: with_required_cardinality or same n
+//   node_to_name_str_inner -> node_to_name_str: structural child via match
 fn node_to_name_str(n: Node) -> String {
-  if n.return_cardinality == CardOptional {
+  let is_optional = n.return_cardinality == CardOptional
+  if is_optional {
     concat("Optional_", node_to_name_str_inner(n: with_required_cardinality(n: n)))
   } else {
     node_to_name_str_inner(n: n)

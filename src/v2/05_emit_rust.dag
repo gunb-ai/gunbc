@@ -1241,8 +1241,8 @@ fn emit_pattern(pattern: MatchPattern, rc_types: Map<String, Bool>, scrut_type: 
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
+    VariantPattern { name: _, parent_enum: _, field_bindings: _ } =>
+      emit_variant_pattern(pattern: pattern, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
     Wildcard => "_"
   }
 }
@@ -1258,66 +1258,70 @@ fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, t
   }
 }
 
-fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
-  // RC1: Qualify variant names with parent enum using scrutinee type.
-  // Some/None are Rust builtins -- never qualify. For all others, use the
-  // scrutinee type so that variant name collisions (e.g. LitStr in both
-  // TokenShape and LiteralValue) are resolved correctly.
-  let resolved_parent = if name == "Some" || name == "None" { none }
-    else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) }
-  let qualified = match resolved_parent {
-    Some { value: parent } => concat(parent, "::", name)
-    None => name
-  }
-  if name == "Some" && field_bindings |> count == 1 {
-    match field_bindings |> first {
-      Some { value: fb } =>
-        let fb_pat = field_binding_pattern(n: fb)
-        if is_string_lit_pattern(p: fb_pat) {
-          "Some(ref __some_val)"
-        } else {
-          let inner_pat = emit_pattern(pattern: fb_pat, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
-          concat("Some(", inner_pat, ")")
+fn emit_variant_pattern(pattern: MatchPattern, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
+  match pattern {
+    VariantPattern { name: name, parent_enum: parent_enum, field_bindings: field_bindings } =>
+      // RC1: Qualify variant names with parent enum using scrutinee type.
+      // Some/None are Rust builtins -- never qualify. For all others, use the
+      // scrutinee type so that variant name collisions (e.g. LitStr in both
+      // TokenShape and LiteralValue) are resolved correctly.
+      let resolved_parent = if name == "Some" || name == "None" { none }
+        else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) }
+      let qualified = match resolved_parent {
+        Some { value: parent } => concat(parent, "::", name)
+        None => name
+      }
+      if name == "Some" && field_bindings |> count == 1 {
+        match field_bindings |> first {
+          Some { value: fb } =>
+            let fb_pat = field_binding_pattern(n: fb)
+            if is_string_lit_pattern(p: fb_pat) {
+              "Some(ref __some_val)"
+            } else {
+              let inner_pat = emit_pattern(pattern: fb_pat, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
+              concat("Some(", inner_pat, ")")
+            }
+          None => qualified
         }
-      None => qualified
-    }
-  } else if field_bindings |> count == 0 {
-    // Check qualified key first, then try all enum prefixes as fallback
-    // (handles cases where scrut_type is missing for field access expressions).
-    let fielded_key = match resolved_parent {
-      Some { value: parent } => concat(parent, "::", name)
-      None => name
-    }
-    let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
-      Some { value: true } => true
-      _ =>
-        // Strict: also check display-qualified name. No suffix scanning.
-        match map_get(emit_info.fielded_variants, qualified) {
+      } else if field_bindings |> count == 0 {
+        // Check qualified key first, then try all enum prefixes as fallback
+        // (handles cases where scrut_type is missing for field access expressions).
+        let fielded_key = match resolved_parent {
+          Some { value: parent } => concat(parent, "::", name)
+          None => name
+        }
+        let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
           Some { value: true } => true
-          _ => false
+          _ =>
+            // Strict: also check display-qualified name. No suffix scanning.
+            match map_get(emit_info.fielded_variants, qualified) {
+              Some { value: true } => true
+              _ => false
+            }
         }
-    }
-    if is_fielded { concat(qualified, " { .. }") } else { qualified }
-  } else {
-    let effective_bindings = field_bindings |> filter(fb =>
-      match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
-    )
-    if effective_bindings |> count == 0 {
-      concat(qualified, " { .. }")
-    } else {
-      let binding_strs = effective_bindings |> map(fb =>
-        let fb_name = field_binding_name(n: fb)
-        let fb_pat = field_binding_pattern(n: fb)
-        if is_string_lit_pattern(p: fb_pat) {
-          concat("ref ", emit_ident(name: fb_name, target: Rust))
+        if is_fielded { concat(qualified, " { .. }") } else { qualified }
+      } else {
+        let effective_bindings = field_bindings |> filter(fb =>
+          match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
+        )
+        if effective_bindings |> count == 0 {
+          concat(qualified, " { .. }")
         } else {
-            let pat_str = emit_pattern(pattern: fb_pat, rc_types: rc_types, scrut_type: "", source_index: source_index, emit_info: emit_info)
-            concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
+          let binding_strs = effective_bindings |> map(fb =>
+            let fb_name = field_binding_name(n: fb)
+            let fb_pat = field_binding_pattern(n: fb)
+            if is_string_lit_pattern(p: fb_pat) {
+              concat("ref ", emit_ident(name: fb_name, target: Rust))
+            } else {
+                let pat_str = emit_pattern(pattern: fb_pat, rc_types: rc_types, scrut_type: "", source_index: source_index, emit_info: emit_info)
+                concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
+            }
+          )
+          let bindings_str = binding_strs |> join(separator: ", ")
+          concat(qualified, " { ", bindings_str, ", .. }")
         }
-      )
-      let bindings_str = binding_strs |> join(separator: ", ")
-      concat(qualified, " { ", bindings_str, ", .. }")
-    }
+      }
+    _ => ""
   }
 }
 
@@ -1427,74 +1431,78 @@ fn emit_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, 
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, rc_analysis: rc_analysis, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
+    VariantPattern { name: _, parent_enum: _, field_bindings: _ } =>
+      emit_variant_pattern_rc_aware(pattern: pattern, rc_analysis: rc_analysis, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
     Wildcard => "_"
   }
 }
 
-fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, rc_analysis: RcPatternAnalysis, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
-  let resolved_parent = if name == "Some" || name == "None" { none }
-    else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) }
-  let qualified = match resolved_parent {
-    Some { value: parent } => concat(parent, "::", name)
-    None => name
-  }
-  if name == "Some" && field_bindings |> count == 1 {
-    match field_bindings |> first {
-      Some { value: fb } =>
-        let fb_pat = field_binding_pattern(n: fb)
-        if is_string_lit_pattern(p: fb_pat) {
-          "Some(ref __some_val)"
-        } else {
-          let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, rc_types: rc_types, emit_info: emit_info)
-          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
-          concat("Some(", inner_pat, ")")
+fn emit_variant_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
+  match pattern {
+    VariantPattern { name: name, parent_enum: parent_enum, field_bindings: field_bindings } =>
+      let resolved_parent = if name == "Some" || name == "None" { none }
+        else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) }
+      let qualified = match resolved_parent {
+        Some { value: parent } => concat(parent, "::", name)
+        None => name
+      }
+      if name == "Some" && field_bindings |> count == 1 {
+        match field_bindings |> first {
+          Some { value: fb } =>
+            let fb_pat = field_binding_pattern(n: fb)
+            if is_string_lit_pattern(p: fb_pat) {
+              "Some(ref __some_val)"
+            } else {
+              let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, rc_types: rc_types, emit_info: emit_info)
+              let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
+              concat("Some(", inner_pat, ")")
+            }
+          None => qualified
         }
-      None => qualified
-    }
-  } else if field_bindings |> count == 0 {
-    // Check qualified key first, then try all enum prefixes as fallback
-    // (handles cases where scrut_type is missing for field access expressions).
-    let fielded_key = match resolved_parent {
-      Some { value: parent } => concat(parent, "::", name)
-      None => name
-    }
-    let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
-      Some { value: true } => true
-      _ =>
-        // Strict: also check display-qualified name. No suffix scanning.
-        match map_get(emit_info.fielded_variants, qualified) {
+      } else if field_bindings |> count == 0 {
+        // Check qualified key first, then try all enum prefixes as fallback
+        // (handles cases where scrut_type is missing for field access expressions).
+        let fielded_key = match resolved_parent {
+          Some { value: parent } => concat(parent, "::", name)
+          None => name
+        }
+        let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
           Some { value: true } => true
-          _ => false
+          _ =>
+            // Strict: also check display-qualified name. No suffix scanning.
+            match map_get(emit_info.fielded_variants, qualified) {
+              Some { value: true } => true
+              _ => false
+            }
         }
-    }
-    if is_fielded { concat(qualified, " { .. }") } else { qualified }
-  } else {
-    let effective_bindings = field_bindings |> filter(fb =>
-      match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
-    )
-    if effective_bindings |> count == 0 {
-      concat(qualified, " { .. }")
-    } else {
-      let binding_strs = effective_bindings |> map(fb =>
-        let fb_name = field_binding_name(n: fb)
-        let fb_pat = field_binding_pattern(n: fb)
-        if is_string_lit_pattern(p: fb_pat) {
-          concat("ref ", emit_ident(name: fb_name, target: Rust))
+        if is_fielded { concat(qualified, " { .. }") } else { qualified }
+      } else {
+        let effective_bindings = field_bindings |> filter(fb =>
+          match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
+        )
+        if effective_bindings |> count == 0 {
+          concat(qualified, " { .. }")
         } else {
-          if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
-            concat("ref ", emit_ident(name: fb_name, target: Rust))
-          } else {
-            let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", rc_types: rc_types, emit_info: emit_info)
-            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, rc_types: rc_types, scrut_type: "", source_index: source_index, emit_info: emit_info)
-            concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
-          }
+          let binding_strs = effective_bindings |> map(fb =>
+            let fb_name = field_binding_name(n: fb)
+            let fb_pat = field_binding_pattern(n: fb)
+            if is_string_lit_pattern(p: fb_pat) {
+              concat("ref ", emit_ident(name: fb_name, target: Rust))
+            } else {
+              if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
+                concat("ref ", emit_ident(name: fb_name, target: Rust))
+              } else {
+                let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", rc_types: rc_types, emit_info: emit_info)
+                let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, rc_types: rc_types, scrut_type: "", source_index: source_index, emit_info: emit_info)
+                concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
+              }
+            }
+          )
+          let bindings_str = binding_strs |> join(separator: ", ")
+          concat(qualified, " { ", bindings_str, ", .. }")
         }
-      )
-      let bindings_str = binding_strs |> join(separator: ", ")
-      concat(qualified, " { ", bindings_str, ", .. }")
-    }
+      }
+    _ => ""
   }
 }
 

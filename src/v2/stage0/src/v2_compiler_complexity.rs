@@ -1835,9 +1835,7 @@ pub fn expr_contains_descent(expr: Rc<Node>, param_name: String, vars: Rc<HashMa
     Some(last_stmt) => expr_contains_descent(last_stmt.clone(), param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
     None => false,
 },
-    ExprData::ExprVar { .. } => {
-                set_has(vars.clone(), expr_var_name(expr.clone()))
-},
+    ExprData::ExprVar { .. } => set_has(vars.clone(), expr_var_name(expr.clone())),
     ExprData::ExprFieldAccess { .. } => {
                 let base = field_access_base(expr.clone());
 match (*base.expr_data.clone()).clone() {

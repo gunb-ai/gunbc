@@ -1090,10 +1090,10 @@ let has_bind = { let mut __found = false; for arm in arms.clone().iter().cloned(
 }
 
 pub fn emit_pattern(pattern: Rc<MatchPattern>, rc_types: Rc<HashMap<String, bool>>, scrut_type: String, source_index: Option<Rc<NewlineIndex>>, emit_info: Rc<EmitGraphInfo>) -> String {
-    match (*pattern).clone() {
+    match (*pattern.clone()).clone() {
     MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Rust),
     MatchPattern::LitPattern { value: v, .. } => rust_literal_for_pattern(v.clone()),
-    MatchPattern::VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, .. } => emit_variant_pattern(n.clone(), parent_enum.clone(), fbs.clone(), rc_types, scrut_type, source_index, emit_info),
+    MatchPattern::VariantPattern { .. } => emit_variant_pattern(pattern.clone(), rc_types, scrut_type, source_index, emit_info),
     MatchPattern::Wildcard => "_".to_string(),
 }
 }
@@ -1113,12 +1113,13 @@ if ((name.clone().as_str() == "Some".to_string().as_str()) || (name.clone().as_s
 }
 }
 
-pub fn emit_variant_pattern(name: String, parent_enum: Option<String>, field_bindings: Rc<Vec<Rc<Node>>>, rc_types: Rc<HashMap<String, bool>>, scrut_type: String, source_index: Option<Rc<NewlineIndex>>, emit_info: Rc<EmitGraphInfo>) -> String {
-    {
+pub fn emit_variant_pattern(pattern: Rc<MatchPattern>, rc_types: Rc<HashMap<String, bool>>, scrut_type: String, source_index: Option<Rc<NewlineIndex>>, emit_info: Rc<EmitGraphInfo>) -> String {
+    match (*pattern).clone() {
+    MatchPattern::VariantPattern { name: name, parent_enum: parent_enum, field_bindings: field_bindings, .. } => {
         let resolved_parent = if ((name.clone().as_str() == "Some".to_string().as_str()) || (name.clone().as_str() == "None".to_string().as_str())) {
             None
 } else {
-            pattern_parent_enum(name.clone(), parent_enum, scrut_type.clone(), emit_info.type_summaries.clone())
+            pattern_parent_enum(name.clone(), parent_enum.clone(), scrut_type.clone(), emit_info.type_summaries.clone())
 };
 let qualified = match resolved_parent.clone() {
     Some(parent) => v2_rt::concat(v2_rt::concat(parent.clone(), "::".to_string()), name.clone()),
@@ -1188,6 +1189,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(qualified.clone(), " { ".to_string()),
 }
 }
 }
+},
+    _ => "".to_string(),
 }
 }
 
@@ -1291,20 +1294,21 @@ Rc::new(RcMatchAnalysis {
 }
 
 pub fn emit_pattern_rc_aware(pattern: Rc<MatchPattern>, rc_analysis: Rc<RcPatternAnalysis>, rc_types: Rc<HashMap<String, bool>>, scrut_type: String, source_index: Option<Rc<NewlineIndex>>, emit_info: Rc<EmitGraphInfo>) -> String {
-    match (*pattern).clone() {
+    match (*pattern.clone()).clone() {
     MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Rust),
     MatchPattern::LitPattern { value: v, .. } => rust_literal_for_pattern(v.clone()),
-    MatchPattern::VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, .. } => emit_variant_pattern_rc_aware(n.clone(), parent_enum.clone(), fbs.clone(), rc_analysis, rc_types, scrut_type, source_index, emit_info),
+    MatchPattern::VariantPattern { .. } => emit_variant_pattern_rc_aware(pattern.clone(), rc_analysis, rc_types, scrut_type, source_index, emit_info),
     MatchPattern::Wildcard => "_".to_string(),
 }
 }
 
-pub fn emit_variant_pattern_rc_aware(name: String, parent_enum: Option<String>, field_bindings: Rc<Vec<Rc<Node>>>, rc_analysis: Rc<RcPatternAnalysis>, rc_types: Rc<HashMap<String, bool>>, scrut_type: String, source_index: Option<Rc<NewlineIndex>>, emit_info: Rc<EmitGraphInfo>) -> String {
-    {
+pub fn emit_variant_pattern_rc_aware(pattern: Rc<MatchPattern>, rc_analysis: Rc<RcPatternAnalysis>, rc_types: Rc<HashMap<String, bool>>, scrut_type: String, source_index: Option<Rc<NewlineIndex>>, emit_info: Rc<EmitGraphInfo>) -> String {
+    match (*pattern).clone() {
+    MatchPattern::VariantPattern { name: name, parent_enum: parent_enum, field_bindings: field_bindings, .. } => {
         let resolved_parent = if ((name.clone().as_str() == "Some".to_string().as_str()) || (name.clone().as_str() == "None".to_string().as_str())) {
             None
 } else {
-            pattern_parent_enum(name.clone(), parent_enum, scrut_type.clone(), emit_info.type_summaries.clone())
+            pattern_parent_enum(name.clone(), parent_enum.clone(), scrut_type.clone(), emit_info.type_summaries.clone())
 };
 let qualified = match resolved_parent.clone() {
     Some(parent) => v2_rt::concat(v2_rt::concat(parent.clone(), "::".to_string()), name.clone()),
@@ -1380,6 +1384,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(qualified.clone(), " { ".to_string()),
 }
 }
 }
+},
+    _ => "".to_string(),
 }
 }
 
