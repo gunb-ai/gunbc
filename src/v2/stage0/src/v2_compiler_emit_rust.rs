@@ -65,7 +65,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, is_value_type, is_string_like, target_primitive_type, sharing_for_target};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, is_value_type, is_string_like, target_primitive_type, try_target_primitive_type, sharing_for_target};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, rt_type, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
@@ -77,8 +77,9 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope,
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 pub use crate::v2_compiler_ownership::{analyze_ownership, build_movable_set};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, TypedItemKind, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, classify_typed_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, service_has_rest, service_has_shell, service_has_file, service_has_rest_auth, extract_modifier_names};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, TypedItemKind, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, classify_typed_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, TransportKind, classify_transport, extract_modifier_names};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef};
+use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
 pub fn render_rust_type(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>) -> String {
     render_type(build_type_rendering(n, rc_types, Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */), RenderTarget::Rust)
@@ -288,10 +289,17 @@ pub fn is_simple_disj(item: Rc<Node>) -> bool {
 
 pub fn build_rc_types(emit_info: Rc<EmitGraphInfo>) -> Rc<HashMap<String, bool>> {
     {
-        let user_rc = Rc::new(v2_rt::map_values(&emit_info.type_summaries.clone())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, summary: Rc<TypeSummary>| if type_summary_needs_rc(summary.clone()) {
-            v2_rt::rc_map_insert(acc.clone(), summary.name.clone(), true)
+        let user_rc = Rc::new(v2_rt::map_values(&emit_info.type_summaries.clone())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, summary: Rc<TypeSummary>| {
+            let ctx = v2_rt::map_get(&emit_info.value_contexts.clone(), summary.name.clone());
+let is_constant = match ctx.clone() {
+    Some(vc) => vc.is_constant.clone(),
+    None => false,
+};
+if (type_summary_needs_rc(summary.clone()) && !is_constant.clone()) {
+                v2_rt::rc_map_insert(acc.clone(), summary.name.clone(), true)
 } else {
-            acc.clone()
+                acc.clone()
+}
 });
 let collection_keys = Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&rust_container_templates())).iter().cloned() { if ((k.clone().as_str() != "optional".to_string().as_str()) && (k.clone().as_str() != "boolean_algebra".to_string().as_str())) { __result.push(k); } } __result });
 collection_keys.iter().cloned().fold(user_rc.clone(), |acc: _, key: String| {
@@ -699,7 +707,10 @@ let ty = if (((rt_child.connective.clone() == Connective::Conj) && (rt_child.nam
             match v2_rt::map_get(&env.bindings.clone(), rt_child.name.clone()) {
     Some(binding) => if ((binding.resolved.clone().params.clone().len() as i64) > 0) {
                 {
-                    let base = target_primitive_type(RenderTarget::Rust, rt_child.name.clone());
+                    let base = match try_target_primitive_type(RenderTarget::Rust, rt_child.name.clone()) {
+    Some(m) => m.clone(),
+    None => rt_child.name.clone(),
+};
 let param_names = Rc::new({ let mut __result = Vec::new(); for p in binding.resolved.clone().params.clone().iter().cloned() { __result.push(generic_param_name_at(p.clone(), env.source_index.clone())); } __result });
 let with_params = v2_rt::concat(v2_rt::concat(v2_rt::concat(base, "<".to_string()), param_names.join(&", ".to_string())), ">".to_string());
 if emit_map_has(rc_types.clone(), rt_child.name.clone()) {
@@ -809,7 +820,10 @@ let arms = Rc::new({ let mut __result = Vec::new(); for child in children.clone(
 if ((child.children.clone().len() as i64) == 0) {
                     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("            ".to_string(), name.clone()), "::".to_string()), child_text.clone()), " => panic!(\"no ".to_string()), fname.clone()), " on unit variant\"),".to_string())
 } else {
-                    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("            ".to_string(), name.clone()), "::".to_string()), child_text.clone()), " { ".to_string()), emit_ident(fname.clone(), RenderTarget::Rust)), ": __val, .. } => __val.clone(),".to_string())
+                    {
+                        let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("            ".to_string(), name.clone()), "::".to_string()), child_text.clone()), " { ".to_string()), emit_ident(fname.clone(), RenderTarget::Rust)), ": __val, .. } => ".to_string()), apply_type_template1(sharing.clone_value.clone(), "__val".to_string())), ",".to_string())
+}
 }
 }); } __result });
 let arms_str = arms.clone().join(&"\n".to_string());
@@ -1201,7 +1215,7 @@ pub struct RcPatternAnalysis {
     pub ref_bound_fields: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RcMatchAnalysis {
     pub needs_option_deref: bool,
     pub needs_deref: bool,
@@ -1264,7 +1278,7 @@ Rc::new(RcPatternAnalysis {
     })
 }
 
-pub fn analyze_rc_match(scrutinee: Rc<Node>, arms: Rc<Vec<Rc<Node>>>, scrut_type: String, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> Rc<RcMatchAnalysis> {
+pub fn analyze_rc_match(scrutinee: Rc<Node>, arms: Rc<Vec<Rc<Node>>>, scrut_type: String, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> RcMatchAnalysis {
     {
         let arm_analyses = Rc::new({ let mut __result = Vec::new(); for arm in arms.iter().cloned() { __result.push(analyze_rc_pattern(arm_pattern(arm.clone()), scrut_type.clone(), rc_types.clone(), emit_info.clone())); } __result });
 let scrutinee_is_optional = match scrutinee.inferred.clone().as_deref().cloned() {
@@ -1281,14 +1295,14 @@ let scrutinee_is_rc_wrapped = match scrutinee.inferred.clone().as_deref().cloned
 };
 let arms_want_option = { let mut __found = false; for a in arm_analyses.clone().iter().cloned() { if a.matches_option_rc_variant.clone() { __found = true; break; } } __found };
 let arms_want_deref = { let mut __found = false; for a in arm_analyses.clone().iter().cloned() { if a.matches_rc_variant.clone() { __found = true; break; } } __found };
-Rc::new(RcMatchAnalysis {
+RcMatchAnalysis {
     needs_option_deref: arms_want_option,
     needs_deref: if scrutinee_is_optional {
             false
 } else {
             (scrutinee_is_rc_wrapped || arms_want_deref)
 },
-})
+}
 }
 }
 
@@ -1507,7 +1521,8 @@ pub fn emit_var_ref(name: String, binding_kind: Option<Rc<VarBindingKind>>, reso
             emit_keyword(name.clone(), RenderTarget::Rust)
 } else {
             {
-                let variant_parent = effective_variant_parent(name.clone(), binding_kind.clone(), resolved_type.clone(), emit_info.clone());
+                let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+let variant_parent = effective_variant_parent(name.clone(), binding_kind.clone(), resolved_type.clone(), emit_info.clone());
 let ref_str = match variant_parent {
     Some(enum_name) => {
                     let qualified = v2_rt::concat(v2_rt::concat(enum_name.clone(), "::".to_string()), name.clone());
@@ -1537,7 +1552,7 @@ let ident_str = if is_function_value {
                                     ident
 } else {
                                     match resolved_type.clone() {
-    Some(_) => v2_rt::concat(ident, ".clone()".to_string()),
+    Some(_) => apply_type_template1(sharing.clone_value.clone(), ident),
     _ => ident,
 }
 }
@@ -1553,7 +1568,7 @@ let ident_str = if is_movable {
                         ident
 } else {
                         match resolved_type.clone() {
-    Some(_) => v2_rt::concat(ident, ".clone()".to_string()),
+    Some(_) => apply_type_template1(sharing.clone_value.clone(), ident),
     _ => ident,
 }
 };
@@ -1655,28 +1670,31 @@ match matches.first().cloned() {
 }
 }
 } else {
-            match summary {
+            {
+                let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+match summary {
     Some(field_summary) => match field_summary.access_style.clone() {
-    FieldAccessStyle::TupleFirst => v2_rt::concat(base_str, ".0.clone()".to_string()),
-    FieldAccessStyle::TupleSecond => v2_rt::concat(base_str, ".1.clone()".to_string()),
-    FieldAccessStyle::OptionalUnwrap => v2_rt::concat(base_str, ".clone().unwrap()".to_string()),
+    FieldAccessStyle::TupleFirst => apply_type_template1(sharing.clone_value.clone(), v2_rt::concat(base_str, ".0".to_string())),
+    FieldAccessStyle::TupleSecond => apply_type_template1(sharing.clone_value.clone(), v2_rt::concat(base_str, ".1".to_string())),
+    FieldAccessStyle::OptionalUnwrap => v2_rt::concat(apply_type_template1(sharing.clone_value.clone(), base_str), ".unwrap()".to_string()),
     FieldAccessStyle::EnumAccessor => v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field.clone(), RenderTarget::Rust)), "()".to_string()),
     FieldAccessStyle::StoredField => {
-                let base_is_owned = match (*base.expr_data.clone()).clone() {
+                    let base_is_owned = match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-                    let base_name = expr_var_name(base.clone());
+                        let base_name = expr_var_name(base.clone());
 emit_map_has(emit_info.owned_bindings.clone(), base_name)
 },
     _ => false,
 };
 if base_is_owned {
-                    v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field.clone(), RenderTarget::Rust))
+                        v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field.clone(), RenderTarget::Rust))
 } else {
-                    v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field.clone(), RenderTarget::Rust)), ".clone()".to_string())
+                        apply_type_template1(sharing.clone_value.clone(), v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field.clone(), RenderTarget::Rust)))
 }
 },
 },
     None => v2_rt::concat(v2_rt::concat("compile_error!(\"field access missing reconcile summary for '".to_string(), field.clone()), "'\")".to_string()),
+}
 }
 }
 }
@@ -2077,10 +2095,11 @@ let field_strs = match (*update_arg.expr_data.clone()).clone() {
 };
 let fields_str = field_strs.join(&", ".to_string());
 let needs_rc = emit_map_has(rc_types.clone(), type_name.clone());
+let sharing = language_spec(RenderTarget::Rust).sharing.clone();
 let spread = if needs_rc.clone() {
-                    v2_rt::concat(v2_rt::concat("(*".to_string(), base_str), ").clone()".to_string())
+                    apply_type_template1(sharing.deref_clone.clone(), base_str)
 } else {
-                    v2_rt::concat(base_str, ".clone()".to_string())
+                    apply_type_template1(sharing.clone_value.clone(), base_str)
 };
 let raw = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(type_name.clone(), " { ".to_string()), fields_str), ", ..".to_string()), spread), " }".to_string());
 if needs_rc.clone() {
@@ -2242,14 +2261,16 @@ continue;
 
 pub fn emit_typed_for_each(variable: String, collection: Rc<Node>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
-        let coll_str = emit_typed_expr(collection.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
+        let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+let coll_str = emit_typed_expr(collection.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
 let elem_type = for_each_element_type_node(rt_type(collection.clone()));
 let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type);
 let body_str = emit_typed_expr(body, registry.clone(), body_scope, (depth.clone() + 2), rc_types.clone(), emit_info.clone(), 1024);
 let ind1 = make_indent((depth.clone() + 1));
 let ind2 = make_indent((depth.clone() + 2));
 let ind0 = make_indent(depth.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n".to_string(), ind1.clone()), "let mut __collect = Vec::new();\n".to_string()), ind1.clone()), "for ".to_string()), emit_ident(variable.clone(), RenderTarget::Rust)), " in ".to_string()), coll_str), ".iter().cloned() {\n".to_string()), ind2), "__collect.push(".to_string()), body_str), ");\n".to_string()), ind1.clone()), "}\n".to_string()), ind1.clone()), "Rc::new(__collect)\n".to_string()), ind0), "}".to_string())
+let iter_str = apply_type_template1(sharing.iter_owned.clone(), coll_str);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n".to_string(), ind1.clone()), "let mut __collect = Vec::new();\n".to_string()), ind1.clone()), "for ".to_string()), emit_ident(variable.clone(), RenderTarget::Rust)), " in ".to_string()), iter_str), " {\n".to_string()), ind2), "__collect.push(".to_string()), body_str), ");\n".to_string()), ind1.clone()), "}\n".to_string()), ind1.clone()), "Rc::new(__collect)\n".to_string()), ind0), "}".to_string())
 }
 }
 
@@ -2627,7 +2648,8 @@ let fold_fn = match Rc::new(args.clone().iter().cloned().skip(1 as usize).collec
     Some(a) => emit_typed_fold_lambda(arg_value(a.clone()), lambda_acc_type_str, elem_type_str, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), fold_emit_info.clone()),
     None => "compile_error!(\"missing fold function argument\")".to_string(),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".iter().cloned().fold(".to_string()), init_str), ", ".to_string()), fold_fn), ")".to_string())
+let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(apply_type_template1(sharing.iter_owned.clone(), recv_str), ".fold(".to_string()), init_str), ", ".to_string()), fold_fn), ")".to_string())
 }
 }
 
@@ -2655,10 +2677,14 @@ let sort_key_fn = match args.first().cloned() {
     Some(a) => emit_typed_collection_lambda(arg_value(a.clone()), elem_type_str.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()),
     None => "compile_error!(\"missing sort_by key function argument\")".to_string(),
 };
+let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str);
+let a_clone = apply_type_template1(sharing.clone_value.clone(), "a".to_string());
+let b_clone = apply_type_template1(sharing.clone_value.clone(), "b".to_string());
 if (elem_type_str.clone().as_str() == "_".to_string().as_str()) {
-            v2_rt::concat(v2_rt::concat("Rc::new({ let mut __sorted: Vec<_> = ".to_string(), recv_str), ".iter().cloned().collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })".to_string())
+            v2_rt::concat(v2_rt::concat("Rc::new({ let mut __sorted: Vec<_> = ".to_string(), iter_str), ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })".to_string())
 } else {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __sorted: Vec<_> = ".to_string(), recv_str), ".iter().cloned().collect(); __sorted.sort_by(|a: &".to_string()), elem_type_str.clone()), ", b: &".to_string()), elem_type_str.clone()), "| { let __ka = (".to_string()), sort_key_fn.clone()), ")(a.clone()); let __kb = (".to_string()), sort_key_fn.clone()), ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })".to_string())
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __sorted: Vec<_> = ".to_string(), iter_str), ".collect(); __sorted.sort_by(|a: &".to_string()), elem_type_str.clone()), ", b: &".to_string()), elem_type_str.clone()), "| { let __ka = (".to_string()), sort_key_fn.clone()), ")(".to_string()), a_clone), "); let __kb = (".to_string()), sort_key_fn.clone()), ")(".to_string()), b_clone), "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })".to_string())
 }
 }
 }
@@ -2694,10 +2720,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, 
     None => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".map(".to_string()), first_arg_str), ")".to_string()),
 }
 } else {
-            match args.clone().first().cloned() {
+            {
+                let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str);
+match args.clone().first().cloned() {
     Some(a) => match (*arg_value(a.clone()).expr_data.clone()).clone() {
     ExprData::ExprLambda { semantics: semantics, .. } => {
-                let bd = match arg_value(a.clone()).children.clone().first().cloned() {
+                    let bd = match arg_value(a.clone()).children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => arg_value(a.clone()),
 };
@@ -2709,11 +2738,12 @@ let dag_name = match ps.clone().first().cloned() {
 let p = emit_ident(dag_name, RenderTarget::Rust);
 let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
 let body_str = emit_typed_expr(bd, registry.clone(), lambda_scope, depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __result = Vec::new(); for ".to_string(), p), " in ".to_string()), recv_str), ".iter().cloned() { __result.push(".to_string()), body_str), "); } __result })".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __result = Vec::new(); for ".to_string(), p), " in ".to_string()), iter_str), " { __result.push(".to_string()), body_str), "); } __result })".to_string())
 },
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), recv_str), ".iter().cloned().map(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), iter_str), ".map(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
 },
-    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), recv_str), ".iter().cloned().map(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
+    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), iter_str), ".map(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
+}
 }
 }
 }
@@ -2721,8 +2751,10 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 
 pub fn emit_rust_filter_method_call(receiver: Rc<Node>, args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
-        let recv_str = emit_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
+        let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+let recv_str = emit_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
 let first_arg_str = emit_typed_first_arg(args.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
+let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str);
 match args.clone().first().cloned() {
     Some(a) => match (*arg_value(a.clone()).expr_data.clone()).clone() {
     ExprData::ExprLambda { semantics: semantics, .. } => {
@@ -2738,19 +2770,21 @@ let dag_name = match ps.clone().first().cloned() {
 let p = emit_ident(dag_name, RenderTarget::Rust);
 let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
 let body_str = emit_typed_expr(bd, registry.clone(), lambda_scope, depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __result = Vec::new(); for ".to_string(), p.clone()), " in ".to_string()), recv_str), ".iter().cloned() { if ".to_string()), body_str), " { __result.push(".to_string()), p.clone()), "); } } __result })".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __result = Vec::new(); for ".to_string(), p.clone()), " in ".to_string()), iter_str), " { if ".to_string()), body_str), " { __result.push(".to_string()), p.clone()), "); } } __result })".to_string())
 },
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), recv_str), ".iter().cloned().filter(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), iter_str), ".filter(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
 },
-    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), recv_str), ".iter().cloned().filter(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
+    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), iter_str), ".filter(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
 }
 }
 }
 
 pub fn emit_rust_any_method_call(receiver: Rc<Node>, args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
-        let recv_str = emit_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
+        let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+let recv_str = emit_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
 let first_arg_str = emit_typed_first_arg(args.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
+let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str);
 match args.clone().first().cloned() {
     Some(a) => match (*arg_value(a.clone()).expr_data.clone()).clone() {
     ExprData::ExprLambda { semantics: semantics, .. } => {
@@ -2766,19 +2800,21 @@ let dag_name = match ps.clone().first().cloned() {
 let p = emit_ident(dag_name, RenderTarget::Rust);
 let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
 let body_str = emit_typed_expr(bd, registry.clone(), lambda_scope, depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{ let mut __found = false; for ".to_string(), p), " in ".to_string()), recv_str), ".iter().cloned() { if ".to_string()), body_str), " { __found = true; break; } } __found }".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{ let mut __found = false; for ".to_string(), p), " in ".to_string()), iter_str), " { if ".to_string()), body_str), " { __found = true; break; } } __found }".to_string())
 },
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".iter().cloned().any(".to_string()), first_arg_str), ")".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(iter_str, ".any(".to_string()), first_arg_str), ")".to_string()),
 },
-    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".iter().cloned().any(".to_string()), first_arg_str), ")".to_string()),
+    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(iter_str, ".any(".to_string()), first_arg_str), ")".to_string()),
 }
 }
 }
 
 pub fn emit_rust_all_method_call(receiver: Rc<Node>, args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
-        let recv_str = emit_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
+        let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+let recv_str = emit_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
 let first_arg_str = emit_typed_first_arg(args.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
+let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str);
 match args.clone().first().cloned() {
     Some(a) => match (*arg_value(a.clone()).expr_data.clone()).clone() {
     ExprData::ExprLambda { semantics: semantics, .. } => {
@@ -2794,19 +2830,21 @@ let dag_name = match ps.clone().first().cloned() {
 let p = emit_ident(dag_name, RenderTarget::Rust);
 let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
 let body_str = emit_typed_expr(bd, registry.clone(), lambda_scope, depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{ let mut __all = true; for ".to_string(), p), " in ".to_string()), recv_str), ".iter().cloned() { if !(".to_string()), body_str), ") { __all = false; break; } } __all }".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{ let mut __all = true; for ".to_string(), p), " in ".to_string()), iter_str), " { if !(".to_string()), body_str), ") { __all = false; break; } } __all }".to_string())
 },
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".iter().cloned().all(".to_string()), first_arg_str), ")".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(iter_str, ".all(".to_string()), first_arg_str), ")".to_string()),
 },
-    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".iter().cloned().all(".to_string()), first_arg_str), ")".to_string()),
+    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(iter_str, ".all(".to_string()), first_arg_str), ")".to_string()),
 }
 }
 }
 
 pub fn emit_rust_flat_map_method_call(receiver: Rc<Node>, args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
-        let recv_str = emit_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
+        let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+let recv_str = emit_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
 let first_arg_str = emit_typed_first_arg(args.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
+let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str);
 match args.clone().first().cloned() {
     Some(a) => match (*arg_value(a.clone()).expr_data.clone()).clone() {
     ExprData::ExprLambda { semantics: semantics, .. } => {
@@ -2822,11 +2860,12 @@ let dag_name = match ps.clone().first().cloned() {
 let p = emit_ident(dag_name, RenderTarget::Rust);
 let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
 let body_str = emit_typed_expr(bd, registry.clone(), lambda_scope, depth.clone(), rc_types.clone(), emit_info.clone(), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __result = Vec::new(); for ".to_string(), p), " in ".to_string()), recv_str), ".iter().cloned() { __result.extend((*".to_string()), body_str), ").iter().cloned()); } __result })".to_string())
+let inner_iter = apply_type_template1(sharing.iter_owned.clone(), v2_rt::concat(v2_rt::concat("(*".to_string(), body_str), ")".to_string()));
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __result = Vec::new(); for ".to_string(), p), " in ".to_string()), iter_str), " { __result.extend(".to_string()), inner_iter), "); } __result })".to_string())
 },
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), recv_str), ".iter().cloned().flat_map(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), iter_str), ".flat_map(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
 },
-    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), recv_str), ".iter().cloned().flat_map(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
+    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), iter_str), ".flat_map(".to_string()), first_arg_str), ").collect::<Vec<_>>())".to_string()),
 }
 }
 }
@@ -2882,10 +2921,11 @@ let field_strs = match (*update_arg.expr_data.clone()).clone() {
 };
 let fields_str = field_strs.join(&", ".to_string());
 let needs_rc = emit_map_has(rc_types.clone(), type_name.clone());
+let sharing = language_spec(RenderTarget::Rust).sharing.clone();
 let spread = if needs_rc.clone() {
-            v2_rt::concat(v2_rt::concat("(*".to_string(), base_str), ").clone()".to_string())
+            apply_type_template1(sharing.deref_clone.clone(), base_str)
 } else {
-            v2_rt::concat(base_str, ".clone()".to_string())
+            apply_type_template1(sharing.clone_value.clone(), base_str)
 };
 let raw = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(type_name.clone(), " { ".to_string()), fields_str), ", ..".to_string()), spread), " }".to_string());
 if needs_rc.clone() {
@@ -3044,7 +3084,10 @@ if rc_match.needs_option_deref.clone() {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str), ".as_deref().cloned() {\n".to_string()), arms_str), "\n}".to_string())
 } else {
             if rc_match.needs_deref.clone() {
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("match (*".to_string(), scrut_str), ").clone() {\n".to_string()), arms_str), "\n}".to_string())
+                {
+                    let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), apply_type_template1(sharing.deref_clone.clone(), scrut_str)), " {\n".to_string()), arms_str), "\n}".to_string())
+}
 } else {
                 if needs_as_str {
                     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str), ".as_str() {\n".to_string()), arms_str), "\n}".to_string())
@@ -3732,7 +3775,10 @@ if rc_match.needs_option_deref.clone() {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str), ".as_deref().cloned() {\n".to_string()), arms_str), "\n}".to_string())
 } else {
             if rc_match.needs_deref.clone() {
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("match (*".to_string(), scrut_str), ").clone() {\n".to_string()), arms_str), "\n}".to_string())
+                {
+                    let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), apply_type_template1(sharing.deref_clone.clone(), scrut_str)), " {\n".to_string()), arms_str), "\n}".to_string())
+}
 } else {
                 if tco_needs_as_str {
                     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str), ".as_str() {\n".to_string()), arms_str), "\n}".to_string())
@@ -3883,26 +3929,23 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 
 pub fn emit_service_config_fields(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
     {
-        let has_shell = service_has_shell(fallback_transport.clone(), op_children.clone());
-let has_rest = service_has_rest(fallback_transport.clone(), op_children.clone());
-let has_file = service_has_file(fallback_transport.clone(), op_children.clone());
-let has_auth = service_has_rest_auth(fallback_transport.clone(), op_children.clone());
-let shell_field = if has_shell {
+        let fs = compute_service_fields(fallback_transport, op_children);
+let shell_field = if fs.has_shell.clone() {
             "    pub working_dir: Option<String>,\n".to_string()
 } else {
             "".to_string()
 };
-let rest_field = if has_rest {
+let rest_field = if fs.has_rest.clone() {
             "    pub base_url: String,\n".to_string()
 } else {
             "".to_string()
 };
-let auth_field = if has_auth {
+let auth_field = if fs.has_auth.clone() {
             "    pub auth_token: String,\n".to_string()
 } else {
             "".to_string()
 };
-let file_field = if has_file {
+let file_field = if fs.has_file.clone() {
             "    pub base_path: String,\n".to_string()
 } else {
             "".to_string()
@@ -3929,11 +3972,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("impl ".to
 
 pub fn emit_service_new_method(name: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
     {
-        let has_shell = service_has_shell(fallback_transport.clone(), op_children.clone());
-let has_rest = service_has_rest(fallback_transport.clone(), op_children.clone());
-let has_file = service_has_file(fallback_transport.clone(), op_children.clone());
-let has_auth = service_has_rest_auth(fallback_transport.clone(), op_children.clone());
-let base_url_default = if has_rest.clone() {
+        let fs = compute_service_fields(fallback_transport.clone(), op_children);
+let base_url_default = if fs.has_rest.clone() {
             {
                 let fallback_is_rest = is_rest_transport(fallback_transport.clone());
 let from_fallback = if fallback_is_rest {
@@ -3956,22 +3996,22 @@ if (from_fallback.clone().as_str() != "".to_string().as_str()) {
 } else {
             "".to_string()
 };
-let shell_init = if has_shell {
+let shell_init = if fs.has_shell.clone() {
             "        working_dir: None,\n".to_string()
 } else {
             "".to_string()
 };
-let rest_init = if has_rest.clone() {
+let rest_init = if fs.has_rest.clone() {
             v2_rt::concat(v2_rt::concat("        base_url: \"".to_string(), base_url_default), "\".to_string(),\n".to_string())
 } else {
             "".to_string()
 };
-let auth_init = if has_auth {
+let auth_init = if fs.has_auth.clone() {
             "        auth_token: String::new(),\n".to_string()
 } else {
             "".to_string()
 };
-let file_init = if has_file {
+let file_init = if fs.has_file.clone() {
             "        base_path: \".\".to_string(),\n".to_string()
 } else {
             "".to_string()
@@ -4034,18 +4074,11 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(log_line, 
 }
 
 pub fn emit_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, inferred: Rc<Node>) -> String {
-    if is_rest_transport(transport.clone()) {
-        emit_rest_call(op_name, transport.clone(), registry, depth)
-} else {
-        if is_shell_transport(transport.clone()) {
-            emit_shell_call(op_name, transport.clone(), registry, depth, inferred)
-} else {
-            if is_file_transport(transport.clone()) {
-                emit_file_call(op_name, inferred)
-} else {
-                emit_local_call(op_name)
-}
-}
+    match classify_transport(transport.clone()) {
+    TransportKind::RestKind => emit_rest_call(op_name, transport.clone(), registry, depth),
+    TransportKind::ShellKind => emit_shell_call(op_name, transport.clone(), registry, depth, inferred),
+    TransportKind::FileKind => emit_file_call(op_name, inferred),
+    TransportKind::LocalKind => emit_local_call(op_name),
 }
 }
 
@@ -4554,13 +4587,9 @@ if is_optional {
                     "String".to_string()
 } else {
                     if ((n.children.clone().len() as i64) == 0) {
-                        {
-                            let mapped = target_primitive_type(RenderTarget::Rust, n.name.clone());
-if (mapped.clone().as_str() != n.name.clone().as_str()) {
-                                mapped.clone()
-} else {
-                                "String".to_string()
-}
+                        match try_target_primitive_type(RenderTarget::Rust, n.name.clone()) {
+    Some(mapped) => mapped.clone(),
+    None => "String".to_string(),
 }
 } else {
                         "String".to_string()
@@ -4671,11 +4700,12 @@ service_args.join(&", ".to_string())
 
 pub fn emit_main_service_arg_list(wf: Rc<WorkflowFunc>, has_services: bool) -> Rc<Vec<String>> {
     {
-        let resource_args = Rc::new({ let mut __result = Vec::new(); for u in wf.uses.clone().iter().cloned() { __result.push(v2_rt::concat("&".to_string(), resource_use_resource(u.clone()).name.clone())); } __result });
+        let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+let resource_args = Rc::new({ let mut __result = Vec::new(); for u in wf.uses.clone().iter().cloned() { __result.push(v2_rt::concat("&".to_string(), resource_use_resource(u.clone()).name.clone())); } __result });
 let svc_args = Rc::new({ let mut __result = Vec::new(); for sn in wf.service_names.clone().iter().cloned() { __result.push({
             let struct_name = sanitize_service_name(sn.clone());
 if has_services.clone() {
-                v2_rt::concat(v2_rt::concat("&".to_string(), struct_name.clone()), "::new(dry_run.clone())".to_string())
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("&".to_string(), struct_name.clone()), "::new(".to_string()), apply_type_template1(sharing.clone_value.clone(), "dry_run".to_string())), ")".to_string())
 } else {
                 v2_rt::concat(v2_rt::concat("&".to_string(), struct_name.clone()), "::new()".to_string())
 }

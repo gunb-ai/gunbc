@@ -65,12 +65,13 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, try_target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
 use TypedItemKind::*;
 use BackendCapability::*;
+use TransportKind::*;
 use ExprCategory::*;
 use FuncBodyShape::*;
 use TcoExprShape::*;
@@ -1514,7 +1515,10 @@ return emit_container(tr.type_name.clone(), inner_str.clone(), target.clone())
 }
 if ((tr.generic_args.clone().len() as i64) > 0) {
             {
-                let base = emit_primitive_type(tr.type_name.clone(), target.clone());
+                let base = match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
+    Some(m) => m.clone(),
+    None => tr.type_name.clone(),
+};
 let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in tr.generic_args.clone().iter().cloned() { __result.push(render_type(a.clone(), target.clone())); } __result });
 let args_joined = arg_strs.join(&", ".to_string());
 return match target.clone() {
@@ -1541,7 +1545,10 @@ match target.clone() {
 }
 }
 }
-emit_primitive_type(tr.type_name.clone(), target.clone())
+match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
+    Some(m) => m.clone(),
+    None => tr.type_name.clone(),
+}
 }
 }
 
@@ -1637,6 +1644,48 @@ pub fn extract_modifier_names(properties: Rc<Vec<Rc<Node>>>) -> Rc<Vec<String>> 
     Some(modifier) => Rc::new(vec![operation_modifier_name(modifier.clone())]),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceFieldSet {
+    pub has_rest: bool,
+    pub has_shell: bool,
+    pub has_file: bool,
+    pub has_auth: bool,
+}
+
+pub fn compute_service_fields(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> ServiceFieldSet {
+    ServiceFieldSet {
+    has_rest: service_has_rest(fallback_transport.clone(), op_children.clone()),
+    has_shell: service_has_shell(fallback_transport.clone(), op_children.clone()),
+    has_file: service_has_file(fallback_transport.clone(), op_children.clone()),
+    has_auth: service_has_rest_auth(fallback_transport.clone(), op_children.clone()),
+}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum TransportKind {
+    RestKind,
+    ShellKind,
+    FileKind,
+    LocalKind,
+}
+
+pub fn classify_transport(t: Rc<Node>) -> TransportKind {
+    if is_rest_transport(t.clone()) {
+        TransportKind::RestKind
+} else {
+        if is_shell_transport(t.clone()) {
+            TransportKind::ShellKind
+} else {
+            if is_file_transport(t.clone()) {
+                TransportKind::FileKind
+} else {
+                TransportKind::LocalKind
+}
+}
+}
 }
 
 pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
