@@ -178,6 +178,24 @@ fn parameterized_container_no_false_positive() {
     );
 }
 
+#[test]
+fn unknown_type_name_no_arity_false_positive() {
+    // A user-defined type with no children should NOT trigger ArityMismatch.
+    // container_expected_arity returns None for unknown names → no arity check.
+    let source = "module custom\ntype Widget { label: String }\ntype Bag { item: Widget }\n";
+    let result = compile_multi(&[("custom.dag", source)]);
+
+    let arity_diags: Vec<_> = result.diagnostics.iter().filter(|d| {
+        matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. })
+    }).collect();
+
+    assert!(
+        arity_diags.is_empty(),
+        "user-defined type should not trigger ArityMismatch, got: {:?}",
+        diagnostic_messages(&result)
+    );
+}
+
 // ── Empty list without type context ────────────────────────────────────
 
 #[test]

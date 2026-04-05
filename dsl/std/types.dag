@@ -81,7 +81,7 @@ data container_type_arity: Map<String, Int> = {
 }
 
 fn is_container_type(name: String) -> Bool {
-  match map_get(container_type_arity, name) {
+  match container_expected_arity(name: name) {
     Some { value: _ } => true
     None => false
   }

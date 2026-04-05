@@ -97,7 +97,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
 }
 
 pub fn is_container_type(name: String) -> bool {
-    match v2_rt::map_get(&container_type_arity(), name.clone()) {
+    match container_expected_arity(name) {
     Some(_) => true,
     None => false,
 }
