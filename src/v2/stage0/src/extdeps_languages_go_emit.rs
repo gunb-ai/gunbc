@@ -102,6 +102,10 @@ pub fn go_manifest_file() -> String {
     "go.mod".to_string()
 }
 
+pub fn go_string_types() -> Rc<Vec<String>> {
+    Rc::new(vec!["String".to_string(), "Secret".to_string()])
+}
+
 pub fn go_method_templates() -> Rc<HashMap<String, String>> {
     let mut __m = HashMap::new();
     __m.insert("count".to_string(), "len({recv})".to_string());

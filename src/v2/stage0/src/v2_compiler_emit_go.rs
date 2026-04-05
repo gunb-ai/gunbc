@@ -61,9 +61,9 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Go};
 pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffix};
-pub use crate::v2_compiler_languages::{scaffold_for_target, TestConventions, test_conventions_for_target};
+pub use crate::v2_compiler_languages::{scaffold_for_target, TestConventions, test_conventions_for_target, is_string_like};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
-pub use crate::v2_compiler_infer_types::{for_each_element_type_node, rt_type};
+pub use crate::v2_compiler_infer_types::{for_each_element_type_node, rt_type, normalize_access_type_node, node_is_keyed_collection};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
@@ -775,21 +775,39 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_go_typed_index(base: Rc<Node>, index: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
     {
         let spec = language_spec(RenderTarget::Go);
-let base_str = emit_go_typed_expr(base, registry.clone(), scope.clone(), 0, 1024);
+let base_str = emit_go_typed_expr(base.clone(), registry.clone(), scope.clone(), 0, 1024);
 let index_str = emit_go_typed_expr(index, registry.clone(), scope.clone(), 0, 1024);
-apply_type_template2(spec.indexing.clone().list_index.clone(), base_str, index_str)
+let base_node = normalize_access_type_node(rt_type(base.clone()));
+let is_map = node_is_keyed_collection(base_node.clone());
+if is_string_like(RenderTarget::Go, base_node.name.clone()) {
+            apply_type_template2(spec.indexing.clone().string_index.clone(), base_str, index_str)
+} else {
+            if is_map {
+                apply_type_template2(spec.indexing.clone().map_index.clone(), base_str, index_str)
+} else {
+                apply_type_template2(spec.indexing.clone().list_index.clone(), base_str, index_str)
+}
+}
 }
 }
 
 pub fn emit_go_typed_slice(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
     {
         let spec = language_spec(RenderTarget::Go);
-let base_str = emit_go_typed_expr(base, registry.clone(), scope.clone(), 0, 1024);
+let base_str = emit_go_typed_expr(base.clone(), registry.clone(), scope.clone(), 0, 1024);
 let start_str = emit_go_typed_expr(start, registry.clone(), scope.clone(), 0, 1024);
 let end_str = emit_go_typed_expr(end, registry.clone(), scope.clone(), 0, 1024);
-match spec.indexing.clone().list_slice.clone() {
+let base_node = normalize_access_type_node(rt_type(base.clone()));
+if is_string_like(RenderTarget::Go, base_node.name.clone()) {
+            match spec.indexing.clone().string_slice.clone() {
+    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
+    None => emit_error_expr("unsupported string slice for target".to_string(), RenderTarget::Go),
+}
+} else {
+            match spec.indexing.clone().list_slice.clone() {
     Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
     None => emit_error_expr("unsupported slice for target".to_string(), RenderTarget::Go),
+}
 }
 }
 }

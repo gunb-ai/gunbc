@@ -67,10 +67,11 @@ import v2.std.core {
 import v2.compiler.artifact { RenderTarget, Go }
 import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix }
 import v2.compiler.languages {
-  scaffold_for_target, TestConventions, test_conventions_for_target
+  scaffold_for_target, TestConventions, test_conventions_for_target,
+  is_string_like
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
-import v2.compiler.infer_types { for_each_element_type_node, rt_type }
+import v2.compiler.infer_types { for_each_element_type_node, rt_type, normalize_access_type_node, node_is_keyed_collection }
 import v2.compiler.infer_method {
 }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
@@ -802,7 +803,15 @@ fn emit_go_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>,
   let spec = language_spec(target: Go)
   let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0, fuel: 1024)
   let index_str = emit_go_typed_expr(texpr: index, registry: registry, scope: scope, depth: 0, fuel: 1024)
-  apply_type_template2(template: spec.indexing.list_index, arg0: base_str, arg1: index_str)
+  let base_node = normalize_access_type_node(n: rt_type(n: base))
+  let is_map = node_is_keyed_collection(n: base_node)
+  if is_string_like(target: Go, name: base_node.name) {
+    apply_type_template2(template: spec.indexing.string_index, arg0: base_str, arg1: index_str)
+  } else if is_map {
+    apply_type_template2(template: spec.indexing.map_index, arg0: base_str, arg1: index_str)
+  } else {
+    apply_type_template2(template: spec.indexing.list_index, arg0: base_str, arg1: index_str)
+  }
 }
 
 fn emit_go_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
@@ -810,9 +819,17 @@ fn emit_go_typed_slice(base: Node, start: Node, end: Node, registry: Map<String,
   let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0, fuel: 1024)
   let start_str = emit_go_typed_expr(texpr: start, registry: registry, scope: scope, depth: 0, fuel: 1024)
   let end_str = emit_go_typed_expr(texpr: end, registry: registry, scope: scope, depth: 0, fuel: 1024)
-  match spec.indexing.list_slice {
-    Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
-    None => emit_error_expr(message: "unsupported slice for target", target: Go)
+  let base_node = normalize_access_type_node(n: rt_type(n: base))
+  if is_string_like(target: Go, name: base_node.name) {
+    match spec.indexing.string_slice {
+      Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
+      None => emit_error_expr(message: "unsupported string slice for target", target: Go)
+    }
+  } else {
+    match spec.indexing.list_slice {
+      Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
+      None => emit_error_expr(message: "unsupported slice for target", target: Go)
+    }
   }
 }
 

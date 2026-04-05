@@ -65,7 +65,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, try_target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
@@ -1514,7 +1514,10 @@ return emit_container(tr.type_name.clone(), inner_str.clone(), target.clone())
 }
 if ((tr.generic_args.clone().len() as i64) > 0) {
             {
-                let base = emit_primitive_type(tr.type_name.clone(), target.clone());
+                let base = match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
+    Some(m) => m.clone(),
+    None => tr.type_name.clone(),
+};
 let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in tr.generic_args.clone().iter().cloned() { __result.push(render_type(a.clone(), target.clone())); } __result });
 let args_joined = arg_strs.join(&", ".to_string());
 return match target.clone() {
@@ -1541,7 +1544,10 @@ match target.clone() {
 }
 }
 }
-emit_primitive_type(tr.type_name.clone(), target.clone())
+match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
+    Some(m) => m.clone(),
+    None => tr.type_name.clone(),
+}
 }
 }
 

@@ -79,9 +79,10 @@ impl TypeRepr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ValueContext {
     pub has_fn_fields: bool,
+    pub is_constant: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -99,7 +100,7 @@ pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub recursive_type_set: Rc<HashMap<String, bool>>,
     pub fielded_variants: Rc<HashMap<String, bool>>,
-    pub value_contexts: Rc<HashMap<String, Rc<ValueContext>>>,
+    pub value_contexts: Rc<HashMap<String, ValueContext>>,
     pub ownership_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub movable: Rc<HashMap<String, bool>>,
 }
@@ -131,7 +132,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     type_summaries: v2_rt::rc_empty_map::<Rc<TypeSummary>>(),
     recursive_type_set: v2_rt::rc_empty_map::<bool>(),
     fielded_variants: v2_rt::rc_empty_map::<bool>(),
-    value_contexts: v2_rt::rc_empty_map::<Rc<ValueContext>>(),
+    value_contexts: v2_rt::rc_empty_map::<ValueContext>(),
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     movable: v2_rt::rc_empty_map::<bool>(),
 })

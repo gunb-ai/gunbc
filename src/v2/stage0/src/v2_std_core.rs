@@ -1930,7 +1930,7 @@ pub fn no_span() -> Rc<SourceSpan> {
     make_span(0, 0)
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LineCol {
     pub line: i64,
     pub col: i64,
@@ -1959,7 +1959,7 @@ Rc::new(NewlineIndex {
 }
 }
 
-pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> Rc<LineCol> {
+pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
     {
         let clamped = if (offset.clone() < 0) {
             0
@@ -1976,10 +1976,10 @@ let line_start = if (line.clone() <= 1) {
 }
 };
 let col = ((clamped.clone() - line_start) + 1);
-Rc::new(LineCol {
+LineCol {
     line: line.clone(),
     col: col,
-})
+}
 }
 }
 
