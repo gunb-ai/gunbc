@@ -65,7 +65,8 @@ import v2.std.core {
 import v2.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
   rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates,
-  rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy
+  rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy,
+  HigherOrderMethodSpec, rust_higher_order_methods
 }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
@@ -2633,73 +2634,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
   }
 }
 
-fn emit_rust_filter_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let sharing = language_spec(target: Rust).sharing
-  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
-  match args |> first {
-    Some { value: a } =>
-      match arg_value(n: a).expr_data {
-        ExprLambda { semantics: semantics } =>
-          let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-          let ps = lambda_param_names_at(texpr: arg_value(n: a), source_index: scope.type_env.source_index)
-          let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-          let p = emit_ident(name: dag_name, target: Rust)
-          let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
-          let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-          concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { if ", body_str, " { __result.push(", p, "); } } __result })")
-        _ => concat("Rc::new(", iter_str, ".filter(", first_arg_str, ").collect::<Vec<_>>())")
-      }
-    None => concat("Rc::new(", iter_str, ".filter(", first_arg_str, ").collect::<Vec<_>>())")
-  }
-}
-
-fn emit_rust_any_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let sharing = language_spec(target: Rust).sharing
-  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
-  match args |> first {
-    Some { value: a } =>
-      match arg_value(n: a).expr_data {
-        ExprLambda { semantics: semantics } =>
-          let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-          let ps = lambda_param_names_at(texpr: arg_value(n: a), source_index: scope.type_env.source_index)
-          let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-          let p = emit_ident(name: dag_name, target: Rust)
-          let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
-          let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-          concat("{ let mut __found = false; for ", p, " in ", iter_str, " { if ", body_str, " { __found = true; break; } } __found }")
-        _ => concat(iter_str, ".any(", first_arg_str, ")")
-      }
-    None => concat(iter_str, ".any(", first_arg_str, ")")
-  }
-}
-
-fn emit_rust_all_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let sharing = language_spec(target: Rust).sharing
-  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
-  match args |> first {
-    Some { value: a } =>
-      match arg_value(n: a).expr_data {
-        ExprLambda { semantics: semantics } =>
-          let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-          let ps = lambda_param_names_at(texpr: arg_value(n: a), source_index: scope.type_env.source_index)
-          let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-          let p = emit_ident(name: dag_name, target: Rust)
-          let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
-          let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-          concat("{ let mut __all = true; for ", p, " in ", iter_str, " { if !(", body_str, ") { __all = false; break; } } __all }")
-        _ => concat(iter_str, ".all(", first_arg_str, ")")
-      }
-    None => concat(iter_str, ".all(", first_arg_str, ")")
-  }
-}
-
-fn emit_rust_flat_map_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let sharing = language_spec(target: Rust).sharing
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -2715,10 +2650,18 @@ fn emit_rust_flat_map_method_call(receiver: Node, args: List<Node>, registry: Ma
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
           let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           let inner_iter = apply_type_template1(template: sharing.iter_owned, arg0: concat("(*", body_str, ")"))
-          concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.extend(", inner_iter, "); } __result })")
-        _ => concat("Rc::new(", iter_str, ".flat_map(", first_arg_str, ").collect::<Vec<_>>())")
+          let bindings = empty_map() |> map_insert("param", p) |> map_insert("body", body_str) |> map_insert("iter", iter_str) |> map_insert("inner_iter", inner_iter)
+          let raw = apply_named_template(template: ho_spec.inline_template, bindings: bindings)
+          if ho_spec.wraps_in_sharing { concat("Rc::new(", raw, ")") } else { raw }
+        _ =>
+          let bindings = empty_map() |> map_insert("iter", iter_str) |> map_insert("arg", first_arg_str)
+          let raw = apply_named_template(template: ho_spec.fn_ref_template, bindings: bindings)
+          if ho_spec.wraps_in_sharing { concat("Rc::new(", raw, ")") } else { raw }
       }
-    None => concat("Rc::new(", iter_str, ".flat_map(", first_arg_str, ").collect::<Vec<_>>())")
+    None =>
+      let bindings = empty_map() |> map_insert("iter", iter_str) |> map_insert("arg", first_arg_str)
+      let raw = apply_named_template(template: ho_spec.fn_ref_template, bindings: bindings)
+      if ho_spec.wraps_in_sharing { concat("Rc::new(", raw, ")") } else { raw }
   }
 }
 
@@ -2806,15 +2749,13 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
         emit_rust_sort_by_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "map" {
         emit_rust_map_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      } else if method_name == "filter" {
-        emit_rust_filter_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      } else if method_name == "any" {
-        emit_rust_any_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      } else if method_name == "all" {
-        emit_rust_all_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      } else if method_name == "flat_map" {
-        emit_rust_flat_map_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      } else if method_name == "get" {
+      } else {
+        // Higher-order template-driven methods: filter, any, all, flat_map.
+        match rust_higher_order_methods |> filter(s => s.method_name == method_name) |> first {
+          Some { value: ho_spec } =>
+            emit_rust_higher_order_method(ho_spec: ho_spec, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          None =>
+      if method_name == "get" {
         emit_rust_get_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "with" {
         emit_rust_with_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -2847,6 +2788,8 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
             emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
         }
       }
+    }
+    }
     }
     PlainMethodSemantics =>
       let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)

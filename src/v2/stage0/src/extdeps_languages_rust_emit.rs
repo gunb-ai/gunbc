@@ -213,6 +213,23 @@ pub fn rt_functions() -> Rc<HashMap<String, bool>> {
     Rc::new(__m)
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HigherOrderMethodSpec {
+    pub method_name: String,
+    pub inline_template: String,
+    pub fn_ref_template: String,
+    pub wraps_in_sharing: bool,
+}
+
+pub fn rust_higher_order_methods() -> Rc<Vec<Rc<HigherOrderMethodSpec>>> {
+    serde_json::from_value(serde_json::json!([
+        {"method_name": "filter", "inline_template": "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }", "fn_ref_template": "{iter}.filter({arg}).collect::<Vec<_>>()", "wraps_in_sharing": true},
+        {"method_name": "any", "inline_template": "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }", "fn_ref_template": "{iter}.any({arg})", "wraps_in_sharing": false},
+        {"method_name": "all", "inline_template": "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }", "fn_ref_template": "{iter}.all({arg})", "wraps_in_sharing": false},
+        {"method_name": "flat_map", "inline_template": "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }", "fn_ref_template": "{iter}.flat_map({arg}).collect::<Vec<_>>()", "wraps_in_sharing": true}
+    ])).expect("valid data definition")
+}
+
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.passes_by_ref.clone() { __result.push(f); } } __result }).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
 }

@@ -210,3 +210,30 @@ fn rt_passes_by_ref(name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), name)
 }
 
+// -- Higher-order method templates ------------------------------------------
+// Templates for algebra methods that take lambda or function-ref arguments.
+// filter, any, all, flat_map share the same structural pattern:
+//   inline case: extract lambda params/body, substitute into template
+//   fn_ref case: pass function reference through iterator adapter
+//
+// Placeholders (all named, processed by apply_named_template):
+//   {param}      — rendered lambda parameter name
+//   {body}       — rendered lambda body expression
+//   {iter}       — receiver through sharing.iter_owned
+//   {inner_iter} — body through sharing.iter_owned (flat_map only)
+//   {arg}        — rendered first argument (fn_ref case)
+
+type HigherOrderMethodSpec {
+  method_name: String
+  inline_template: String
+  fn_ref_template: String
+  wraps_in_sharing: Bool
+}
+
+data rust_higher_order_methods: List<HigherOrderMethodSpec> = [
+  { method_name: "filter", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ if \{body\} \{ __result.push(\{param\}); \} \} __result \}", fn_ref_template: "\{iter\}.filter(\{arg\}).collect::<Vec<_>>()", wraps_in_sharing: true },
+  { method_name: "any", inline_template: "\{ let mut __found = false; for \{param\} in \{iter\} \{ if \{body\} \{ __found = true; break; \} \} __found \}", fn_ref_template: "\{iter\}.any(\{arg\})", wraps_in_sharing: false },
+  { method_name: "all", inline_template: "\{ let mut __all = true; for \{param\} in \{iter\} \{ if !(\{body\}) \{ __all = false; break; \} \} __all \}", fn_ref_template: "\{iter\}.all(\{arg\})", wraps_in_sharing: false },
+  { method_name: "flat_map", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ __result.extend(\{inner_iter\}); \} __result \}", fn_ref_template: "\{iter\}.flat_map(\{arg\}).collect::<Vec<_>>()", wraps_in_sharing: true }
+]
+

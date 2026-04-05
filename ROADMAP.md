@@ -69,7 +69,7 @@ eliminating these is tracked as future work under M5-full
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (271 pass, 0 fail, 36 ignored) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (283 pass, 0 fail, 39 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | 30 (target: 0) |
@@ -171,7 +171,8 @@ Clone semantics unified in SharingStrategy (CloneTemplates removed).
 TLC-1 landed: `is_zero_arg_callable_ref` dispatches call-vs-value through
 emit_var_ref and emit_typed_expr_base. TLC-3 Go/Python per-collection
 dispatch done. TLC-4 data model landed, annotated-let consumer pending.
-TLC-2 blocked on M5 coercion engine.
+TLC-2 blocked on M5 coercion engine. Higher-order method templates
+(filter/any/all/flat_map) data-driven via `HigherOrderMethodSpec`.
 
 One root cause, two symptoms:
 1. Facts that exist upstream are lost before emit — emission compensates
@@ -211,8 +212,8 @@ mismatches before removal). `emit_node_type` routes through
 - [x] `is_constant` computation with consumer (`is_type_constant` in 05_emit_rust.dag)
 - [x] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
 - [x] Explicit parent-enum ownership facts through resolve/infer/emit
-- [ ] Phase B cleanup: rename `rc_types` parameter → `shared_types` across ~90
-  function signatures (mechanical, no semantic change)
+- [x] Phase B cleanup: rename `rc_types` parameter → `shared_types` across ~423
+  occurrences in emit pipeline (mechanical, no semantic change)
 
 ### CG-2: Expression-level gap closure (TLC-1..4)
 
@@ -244,10 +245,12 @@ Make emission fully data-driven. Adding a backend = adding data.
   `Map<String, String>` data. Templates are pure method syntax; Rc wrapping
   composed separately from sharing authority. Covers count/join/split/first/last/
   enumerate/chars/skip/take + higher-order (map/filter/fold/sort_by/any/all/flat_map).
+- [x] Higher-order method templates: `HigherOrderMethodSpec` type in Rust extdeps
+  with `method_name`, `inline_template`, `fn_ref_template`, `wraps_in_sharing`.
+  Shared `emit_rust_higher_order_method` replaces 4 hardcoded emitters
+  (filter/any/all/flat_map). Data-driven dispatch via method name lookup.
 - [ ] Transport/config: one `.dag` authority (35+ redundant sites → 1)
 - [ ] LanguageSpec completion — all target-language facts data-driven
-  *(method_templates landed as `Map<String, String>?`; structured `MethodTemplate`
-  type with lambda/fn_ref/simple variants is the next step)*
 - [ ] TypeRendering dissolves into coercion engine
 - [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
 
