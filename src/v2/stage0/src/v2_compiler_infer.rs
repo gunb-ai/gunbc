@@ -3422,6 +3422,8 @@ Rc::new(EmitGraphInfo {
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     movable: v2_rt::rc_empty_map::<bool>(),
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
+    fold_eligible_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
+    fold_eligible: v2_rt::rc_empty_map::<bool>(),
 })
 }
 }
