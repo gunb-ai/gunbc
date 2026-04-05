@@ -167,6 +167,18 @@ pub struct AnnotationRequirements {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceFieldTemplates {
+    pub rest_decl: String,
+    pub auth_decl: String,
+    pub shell_decl: String,
+    pub file_decl: String,
+    pub rest_ctor: String,
+    pub auth_ctor: String,
+    pub shell_ctor: String,
+    pub file_ctor: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,
@@ -178,6 +190,7 @@ pub struct LanguageSpec {
     pub indexing: Rc<IndexingSemantics>,
     pub annotations: Rc<AnnotationRequirements>,
     pub method_templates: Option<Rc<HashMap<String, String>>>,
+    pub service_fields: Rc<ServiceFieldTemplates>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -236,6 +249,16 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     lambda_param_untyped: "{0}".to_string(),
 }),
     method_templates: Some(rust_method_templates()),
+    service_fields: Rc::new(ServiceFieldTemplates {
+    rest_decl: "    pub base_url: String,\n".to_string(),
+    auth_decl: "    pub auth_token: String,\n".to_string(),
+    shell_decl: "    pub working_dir: Option<String>,\n".to_string(),
+    file_decl: "    pub base_path: String,\n".to_string(),
+    rest_ctor: "        base_url: \"{0}\".to_string(),\n".to_string(),
+    auth_ctor: "        auth_token: String::new(),\n".to_string(),
+    shell_ctor: "        working_dir: None,\n".to_string(),
+    file_ctor: "        base_path: \".\".to_string(),\n".to_string(),
+}),
 })
 }
 
@@ -295,6 +318,16 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     lambda_param_untyped: "{0}".to_string(),
 }),
     method_templates: Some(python_method_templates()),
+    service_fields: Rc::new(ServiceFieldTemplates {
+    rest_decl: "base_url: str".to_string(),
+    auth_decl: "auth_token: str".to_string(),
+    shell_decl: "working_dir: str | None = None".to_string(),
+    file_decl: "base_path: str".to_string(),
+    rest_ctor: "self.base_url = base_url".to_string(),
+    auth_ctor: "self.auth_token = auth_token".to_string(),
+    shell_ctor: "self.working_dir = working_dir".to_string(),
+    file_ctor: "self.base_path = base_path".to_string(),
+}),
 })
 }
 
@@ -354,6 +387,16 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     lambda_param_untyped: "{0} interface{}".to_string(),
 }),
     method_templates: Some(go_method_templates()),
+    service_fields: Rc::new(ServiceFieldTemplates {
+    rest_decl: "\tBaseURL string".to_string(),
+    auth_decl: "\tAuthToken string".to_string(),
+    shell_decl: "\tWorkingDir string".to_string(),
+    file_decl: "\tBasePath string".to_string(),
+    rest_ctor: "".to_string(),
+    auth_ctor: "".to_string(),
+    shell_ctor: "".to_string(),
+    file_ctor: "".to_string(),
+}),
 })
 }
 

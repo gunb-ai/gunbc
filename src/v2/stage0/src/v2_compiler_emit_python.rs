@@ -68,7 +68,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, TransportKind, classify_transport};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, TransportKind, classify_transport};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
@@ -1195,48 +1195,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_py_service_init(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
     {
         let fs = compute_service_fields(fallback_transport, op_children);
-let params = Rc::new(vec![]);
-let assigns = Rc::new(vec![]);
-let params = if fs.has_rest.clone() {
-            v2_rt::concat(params.clone(), Rc::new(vec!["base_url: str".to_string()]))
-} else {
-            params.clone()
-};
-let assigns = if fs.has_rest.clone() {
-            v2_rt::concat(assigns.clone(), Rc::new(vec!["self.base_url = base_url".to_string()]))
-} else {
-            assigns.clone()
-};
-let params = if fs.has_auth.clone() {
-            v2_rt::concat(params.clone(), Rc::new(vec!["auth_token: str".to_string()]))
-} else {
-            params.clone()
-};
-let assigns = if fs.has_auth.clone() {
-            v2_rt::concat(assigns.clone(), Rc::new(vec!["self.auth_token = auth_token".to_string()]))
-} else {
-            assigns.clone()
-};
-let params = if fs.has_shell.clone() {
-            v2_rt::concat(params.clone(), Rc::new(vec!["working_dir: str | None = None".to_string()]))
-} else {
-            params.clone()
-};
-let assigns = if fs.has_shell.clone() {
-            v2_rt::concat(assigns.clone(), Rc::new(vec!["self.working_dir = working_dir".to_string()]))
-} else {
-            assigns.clone()
-};
-let params = if fs.has_file.clone() {
-            v2_rt::concat(params.clone(), Rc::new(vec!["base_path: str".to_string()]))
-} else {
-            params.clone()
-};
-let assigns = if fs.has_file.clone() {
-            v2_rt::concat(assigns.clone(), Rc::new(vec!["self.base_path = base_path".to_string()]))
-} else {
-            assigns.clone()
-};
+let params = service_field_decls(fs.clone(), language_spec(RenderTarget::Python).service_fields.clone());
+let assigns = service_field_ctors(fs, language_spec(RenderTarget::Python).service_fields.clone());
 if ((params.clone().len() as i64) == 0) {
             "def __init__(self):\n    pass".to_string()
 } else {

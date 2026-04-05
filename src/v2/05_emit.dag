@@ -74,7 +74,7 @@ import v2.compiler.infer_emit_info { TypeSummary, EmitGraphInfo, TypeRendering, 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
-  LanguageSpec, TestConventions,
+  LanguageSpec, TestConventions, ServiceFieldTemplates,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
@@ -1306,6 +1306,27 @@ fn compute_service_fields(fallback_transport: Node, op_children: List<Node>) -> 
     has_file: service_has_file(fallback_transport: fallback_transport, op_children: op_children),
     has_auth: service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
   }
+}
+
+// Shared renderers: apply ServiceFieldTemplates against a ServiceFieldSet.
+// Returns lists so each backend can join with its own separator.
+
+fn service_field_decls(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<String> {
+  let result = []
+  let result = if fs.has_rest { concat(result, [t.rest_decl]) } else { result }
+  let result = if fs.has_auth { concat(result, [t.auth_decl]) } else { result }
+  let result = if fs.has_shell { concat(result, [t.shell_decl]) } else { result }
+  let result = if fs.has_file { concat(result, [t.file_decl]) } else { result }
+  result
+}
+
+fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<String> {
+  let result = []
+  let result = if fs.has_rest { concat(result, [t.rest_ctor]) } else { result }
+  let result = if fs.has_auth { concat(result, [t.auth_ctor]) } else { result }
+  let result = if fs.has_shell { concat(result, [t.shell_ctor]) } else { result }
+  let result = if fs.has_file { concat(result, [t.file_ctor]) } else { result }
+  result
 }
 
 // Transport kind classification: single-dispatch alternative to repeated

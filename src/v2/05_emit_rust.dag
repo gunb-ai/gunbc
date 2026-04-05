@@ -135,7 +135,7 @@ import v2.compiler.emit {
   is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
-  ServiceFieldSet, compute_service_fields,
+  ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
   extract_modifier_names
 }
@@ -3587,12 +3587,9 @@ fn emit_service_struct(name: String, fallback_transport: Node, op_children: List
 
 fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>) -> String {
   let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
-  let shell_field = if fs.has_shell { "    pub working_dir: Option<String>,\n" } else { "" }
-  let rest_field = if fs.has_rest { "    pub base_url: String,\n" } else { "" }
-  let auth_field = if fs.has_auth { "    pub auth_token: String,\n" } else { "" }
-  let file_field = if fs.has_file { "    pub base_path: String,\n" } else { "" }
-  let fields = concat(shell_field, rest_field, auth_field, file_field)
-  if fields == "" { "    // No configuration needed for local binding.\n" } else { fields }
+  let decls = service_field_decls(fs: fs, t: language_spec.service_fields)
+  if decls |> count == 0 { "    // No configuration needed for local binding.\n" }
+  else { decls |> join(separator: "") }
 }
 
 fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
@@ -3624,14 +3621,13 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
     } else { "" }
     if from_fallback != "" { from_fallback } else { "http://localhost" }
   } else { "" }
-  let shell_init = if fs.has_shell { "        working_dir: None,\n" } else { "" }
-  let rest_init = if fs.has_rest { concat("        base_url: \"", base_url_default, "\".to_string(),\n") } else { "" }
-  let auth_init = if fs.has_auth { "        auth_token: String::new(),\n" } else { "" }
-  let file_init = if fs.has_file { "        base_path: \".\".to_string(),\n" } else { "" }
+  let ctors = service_field_ctors(fs: fs, t: language_spec.service_fields)
+  let ctors = ctors |> map(c => apply_type_template1(template: c, arg0: base_url_default))
+  let inits = ctors |> join(separator: "")
   concat(
     "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
     "    ", name, " {\n",
-    shell_init, rest_init, auth_init, file_init,
+    inits,
     "        dry_run,\n",
     "    }\n",
     "}")

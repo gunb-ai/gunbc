@@ -136,6 +136,22 @@ type AnnotationRequirements {
   lambda_param_untyped: String     // e.g. "{0}" (Rust/Py) / "{0} interface{}" (Go)
 }
 
+// -- Service field templates: per-language rendering of transport config fields --
+// Each service struct needs config fields driven by which transports it uses.
+// ServiceFieldSet (in 05_emit.dag) captures the structural fact; these templates
+// capture the per-language rendering. service_field_decls / service_field_ctors
+// (in 05_emit.dag) apply these templates against a ServiceFieldSet.
+type ServiceFieldTemplates {
+  rest_decl: String       // struct field (Rust/Go) or __init__ param (Python)
+  auth_decl: String
+  shell_decl: String
+  file_decl: String
+  rest_ctor: String       // constructor body: Rust uses {0} for base_url default
+  auth_ctor: String
+  shell_ctor: String
+  file_ctor: String
+}
+
 // -- Method templates: per-method rendering for simple algebra method calls ---
 // Map<String, String> keyed by method name, value is a template string with
 // {recv} and {arg} named placeholders. Applied via apply_named_template.
@@ -154,6 +170,7 @@ type LanguageSpec {
   indexing: IndexingSemantics
   annotations: AnnotationRequirements
   method_templates: Map<String, String>?
+  service_fields: ServiceFieldTemplates
 }
 
 // =========================================================================
@@ -214,7 +231,17 @@ fn rust_spec() -> LanguageSpec {
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
     },
-    method_templates: rust_method_templates
+    method_templates: rust_method_templates,
+    service_fields: ServiceFieldTemplates {
+      rest_decl: "    pub base_url: String,\n",
+      auth_decl: "    pub auth_token: String,\n",
+      shell_decl: "    pub working_dir: Option<String>,\n",
+      file_decl: "    pub base_path: String,\n",
+      rest_ctor: "        base_url: \"{0}\".to_string(),\n",
+      auth_ctor: "        auth_token: String::new(),\n",
+      shell_ctor: "        working_dir: None,\n",
+      file_ctor: "        base_path: \".\".to_string(),\n"
+    }
   }
 }
 
@@ -271,7 +298,17 @@ fn python_spec() -> LanguageSpec {
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
     },
-    method_templates: python_method_templates
+    method_templates: python_method_templates,
+    service_fields: ServiceFieldTemplates {
+      rest_decl: "base_url: str",
+      auth_decl: "auth_token: str",
+      shell_decl: "working_dir: str | None = None",
+      file_decl: "base_path: str",
+      rest_ctor: "self.base_url = base_url",
+      auth_ctor: "self.auth_token = auth_token",
+      shell_ctor: "self.working_dir = working_dir",
+      file_ctor: "self.base_path = base_path"
+    }
   }
 }
 
@@ -328,7 +365,17 @@ fn go_spec() -> LanguageSpec {
       lambda_param_typed: "{0} {1}",
       lambda_param_untyped: "{0} interface{}"
     },
-    method_templates: go_method_templates
+    method_templates: go_method_templates,
+    service_fields: ServiceFieldTemplates {
+      rest_decl: "\tBaseURL string",
+      auth_decl: "\tAuthToken string",
+      shell_decl: "\tWorkingDir string",
+      file_decl: "\tBasePath string",
+      rest_ctor: "",
+      auth_ctor: "",
+      shell_ctor: "",
+      file_ctor: ""
+    }
   }
 }
 

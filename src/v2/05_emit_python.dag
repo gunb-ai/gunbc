@@ -106,7 +106,7 @@ import v2.compiler.emit {
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
-  ServiceFieldSet, compute_service_fields,
+  ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport
 }
 
@@ -1202,16 +1202,8 @@ fn emit_py_service_def(
 
 fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>) -> String {
   let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
-  let params = []
-  let assigns = []
-  let params = if fs.has_rest { concat(params, ["base_url: str"]) } else { params }
-  let assigns = if fs.has_rest { concat(assigns, ["self.base_url = base_url"]) } else { assigns }
-  let params = if fs.has_auth { concat(params, ["auth_token: str"]) } else { params }
-  let assigns = if fs.has_auth { concat(assigns, ["self.auth_token = auth_token"]) } else { assigns }
-  let params = if fs.has_shell { concat(params, ["working_dir: str | None = None"]) } else { params }
-  let assigns = if fs.has_shell { concat(assigns, ["self.working_dir = working_dir"]) } else { assigns }
-  let params = if fs.has_file { concat(params, ["base_path: str"]) } else { params }
-  let assigns = if fs.has_file { concat(assigns, ["self.base_path = base_path"]) } else { assigns }
+  let params = service_field_decls(fs: fs, t: language_spec.service_fields)
+  let assigns = service_field_ctors(fs: fs, t: language_spec.service_fields)
   if params |> count == 0 {
     "def __init__(self):\n    pass"
   } else {
