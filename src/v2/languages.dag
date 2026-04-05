@@ -29,6 +29,7 @@ import extdeps.languages.rust.emit {
   rust_serde_tag, rust_serde_rename_template,
   rust_source_extension, rust_source_dir, rust_visibility,
   rust_value_types, rust_string_types,
+  rust_clone_expr, rust_deref_clone_expr, rust_field_clone_expr, rust_iterator_clone_suffix,
   rust_method_templates
 }
 
@@ -112,6 +113,13 @@ type SharingStrategy {
   iter_owned: String        // owned iterator from shared collection: Rust "{0}.iter().cloned()"
 }
 
+type CloneTemplates {
+  clone_expr: String              // "{0}.clone()" — clone an owned expression
+  deref_clone_expr: String        // "(*{0}).clone()" — deref then clone (Rc/Box)
+  field_clone_expr: String        // "{0}.{1}.clone()" — clone a field access
+  iterator_clone_suffix: String   // ".cloned()" — clone iterator elements
+}
+
 // -- Indexing semantics: per-collection-type rendering templates ------------
 // Templates use {0}=base, {1}=index/start, {2}=end (slices).
 // Applied via apply_type_template2 (index) / apply_type_template3 (slice).
@@ -149,6 +157,7 @@ type LanguageSpec {
   test_conventions: TestConventions
   top_level_visibility: String
   sharing: SharingStrategy
+  clone_templates: CloneTemplates?
   indexing: IndexingSemantics
   annotations: AnnotationRequirements
   method_templates: Map<String, String>?
@@ -197,6 +206,12 @@ fn rust_spec() -> LanguageSpec {
       clone_value: "{0}.clone()",
       deref_clone: "(*{0}).clone()",
       iter_owned: "{0}.iter().cloned()"
+    },
+    clone_templates: CloneTemplates {
+      clone_expr: rust_clone_expr,
+      deref_clone_expr: rust_deref_clone_expr,
+      field_clone_expr: rust_field_clone_expr,
+      iterator_clone_suffix: rust_iterator_clone_suffix
     },
     indexing: IndexingSemantics {
       list_index: "{0}[({1}) as usize].clone()",
@@ -253,6 +268,7 @@ fn python_spec() -> LanguageSpec {
       deref_clone: "{0}",
       iter_owned: "{0}"
     },
+    clone_templates: null,
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
       map_index: "{0}[{1}]",
@@ -308,6 +324,7 @@ fn go_spec() -> LanguageSpec {
       deref_clone: "{0}",
       iter_owned: "{0}"
     },
+    clone_templates: null,
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
       map_index: "{0}[{1}]",
@@ -408,6 +425,10 @@ fn top_level_visibility_for_target(target: RenderTarget) -> String {
 
 fn sharing_for_target(target: RenderTarget) -> SharingStrategy {
   language_spec_for_target(target: target).sharing
+}
+
+fn clone_templates_for_target(target: RenderTarget) -> CloneTemplates? {
+  language_spec_for_target(target: target).clone_templates
 }
 
 // Apply sharing wrap template to a type string.

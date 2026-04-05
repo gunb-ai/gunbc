@@ -856,6 +856,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
         target: target
       )
 
+      // Enrich typed graph with fan-out data from ownership analysis.
       // Stage 8: Emit target-language files.
       // The artifact plan is the source of truth for backend selection in the
       // current single-artifact compiler path.

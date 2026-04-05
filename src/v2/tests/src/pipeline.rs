@@ -4408,6 +4408,34 @@ fn type_rendering_named_conj_with_container_template() {
     assert!(!rendered.contains("FreeMonoid"), "FreeMonoid Conj rendered bare name instead of container template: {:?}", rendered);
 }
 
+// ── Boundary regression tests (review feedback 2026-04-02) ─────────────
+
+#[test]
+fn empty_list_arg_infers_type_from_parameter() {
+    let source = "module test_empty_list\ntype Pair { a: Int  b: Int }\nfn sum_list(xs: List<Int>) -> Int { xs |> fold(init: 0, f: (acc, x) => acc + x) }\nfn caller() -> Int { sum_list(xs: []) }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn fold_init_empty_list_infers_accumulator_type() {
+    let source = "module test_fold_init\nfn collect(items: List<Int>) -> List<Int> {\n  items |> fold(init: [], f: (acc, item) => acc |> append(item))\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_insert_does_not_leave_unresolved_map_shape() {
+    let source = "module test_map_ops\nfn build(m: Map<String, Int>) -> Map<String, Int> { map_insert(m, \"key\", 42) }\nfn merge(a: Map<String, Int>, b: Map<String, Int>) -> Map<String, Int> { map_merge(a, b) }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_map_ops.rs");
+    assert!(
+        !content.contains("compile_error"),
+        "map_insert/map_merge must not leave unresolved types at emit"
+    );
+}
+
 // ── apply_named_template correctness ────────────────────────────────────
 
 #[test]
@@ -4444,6 +4472,7 @@ fn apply_named_template_arg_value_containing_recv_placeholder() {
         "substituted value containing {{recv}} was incorrectly rewritten"
     );
 }
+
 
 #[test]
 fn fold_struct_accumulator_linear_ownership() {
@@ -4506,4 +4535,3 @@ fn process(items: List<String>) -> Accum {
         content
     );
 }
-

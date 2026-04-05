@@ -75,7 +75,7 @@ import v2.std.core {
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection,
+  nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved,
   map_node, bare_map_node,
   callable_inferred,
   normalize_access_type_node,
@@ -195,14 +195,16 @@ type BlockInferState {
 
 // SG-9: Tail-recursive block inference. Each accumulated list is a standalone
 // parameter (Rc refcount=1) so list_push avoids deep clone.
-fn infer_block_stmts(remaining: List<Node>, scope: InferScope,
+fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferScope,
     typed_stmts: List<Node>, diag_chunks: List<List<ErrorNode>>,
-    last_type: Node) -> BlockInferState {
+    last_type: Node, expected: Node?) -> BlockInferState {
   match remaining |> first {
     None => BlockInferState { scope: scope, diag_chunks: diag_chunks,
                               last_type: last_type, typed_stmts: typed_stmts }
     Some { value: stmt } =>
-      let stmt_result = infer_expr(texpr: stmt, scope: scope, expected: none)
+      let is_last = remaining_count == 1
+      let stmt_expected = if is_last { expected } else { none }
+      let stmt_result = infer_expr(texpr: stmt, scope: scope, expected: stmt_expected)
       let stmt_typed = stmt_result.typed
       let stmt_diags = stmt_result.diagnostics
       let stmt_rt = rt_type(n: stmt_typed)
@@ -213,10 +215,12 @@ fn infer_block_stmts(remaining: List<Node>, scope: InferScope,
       )
       infer_block_stmts(
         remaining: remaining |> skip(1),
+        remaining_count: remaining_count - 1,
         scope: next_scope,
         typed_stmts: list_push(typed_stmts, stmt_typed),
         diag_chunks: list_push(diag_chunks, stmt_diags),
-        last_type: stmt_rt
+        last_type: stmt_rt,
+        expected: expected
       )
   }
 }
@@ -710,7 +714,7 @@ fn arg_has_name(arg: Node, name: String) -> Bool {
 // Extract fold init arg info from the method args list.
 // Returns the inferred init arg if the method is fold and has enough args.
 // `method_args` should be the args excluding the collection receiver (already skipped for ExprCall).
-fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_args: Int, scope: InferScope) -> ArgInferResult? {
+fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_args: Int, scope: InferScope, expected: Node?) -> ArgInferResult? {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   if is_fold && method_args |> count >= min_args {
     let init_arg = match method_args |> filter(a => arg_has_name(arg: a, name: "init")) |> first {
@@ -719,7 +723,9 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
     }
     match init_arg {
       Some { value: ia } =>
-        let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: none)
+        // Thread expected from caller context so empty collections (empty_map(), [])
+        // can adopt the expected type instead of falling back to bare nodes.
+        let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: expected)
         Some { value: ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: ia), value: init_result.typed, span: ia.span), diagnostics: init_result.diagnostics } }
       None => none
     }
@@ -861,16 +867,10 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
         _ => none
       }
     }
-    // BRIDGE: heuristic child-count check compensates for incomplete upstream
-    // container facts. Blocked on CX-C bounded-primitive fold type propagation.
+    // BRIDGE: fallback to lambda body return type when fold init is under-resolved.
+    // Blocked on CX-C bounded-primitive fold type propagation.
     let acc_under_resolved = match fold_acc {
-      Some { value: acc_type } =>
-        // Map with missing value type
-        (node_is_keyed_collection(n: acc_type) && acc_type.children |> count < 2)
-        // List/collection with missing element type
-        || (node_is_element_collection(n: acc_type) && acc_type.children |> count == 0)
-        // Non-collection init (None or bare value) — always use body return type
-        || (!node_is_keyed_collection(n: acc_type) && !node_is_element_collection(n: acc_type) && !node_is_collection(n: acc_type))
+      Some { value: acc_type } => !is_fully_resolved(n: acc_type)
       None => true
     }
     if acc_under_resolved {
@@ -1081,7 +1081,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let call_method_args = call_args |> skip(1)
       // Use method name string directly for dispatch.
       let call_method_name = Some { value: func_name }
-      let call_fold_info = extract_fold_init_info(method_name: call_method_name, method_args: call_method_args, min_args: 2, scope: scope)
+      let call_fold_info = extract_fold_init_info(method_name: call_method_name, method_args: call_method_args, min_args: 2, scope: scope, expected: expected)
       let call_fold_acc_type = match call_fold_info {
         Some { value: fi } => match rt_node(n: arg_value(n: fi.typed_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
         None => error_type
@@ -1110,8 +1110,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Some { value: p } => param_node_type_expr(n: p)
             None => type_variable_node(id: "callable_param")
           }
-          let is_callable_formal = formal_param_type.params |> count > 0
-          let expected = if is_callable_formal { Some { value: formal_param_type } } else { none }
+          let has_formal = match sig_params |> skip(pair.first) |> first { Some { value: _ } => true  None => false }
+          let expected = if has_formal { Some { value: formal_param_type } } else { none }
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
           ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
         )
@@ -1146,9 +1146,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
         // Refine fold_acc_type from lambda body when init is under-resolved.
-        let call_acc_is_under_resolved = (node_is_keyed_collection(n: call_fold_acc_type) && call_fold_acc_type.children |> count < 2)
-          || (node_is_element_collection(n: call_fold_acc_type) && call_fold_acc_type.children |> count == 0)
-          || (!node_is_keyed_collection(n: call_fold_acc_type) && !node_is_element_collection(n: call_fold_acc_type) && !node_is_collection(n: call_fold_acc_type))
+        let call_acc_is_under_resolved = !is_fully_resolved(n: call_fold_acc_type)
         let refined_call_fold_acc_type = if call_fold_info != none && call_acc_is_under_resolved {
           match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
             Some { value: lambda_arg } => rt_type(n: arg_value(n: lambda_arg))
@@ -1184,13 +1182,19 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
         } else if func_name == "empty_map" {
           // Built-in: empty_map() → Map. Adopt expected type if it's a
-          // parameterized Map (e.g. from struct field or fold accumulator),
-          // otherwise fall back to bare_map_node().
+          // fully parameterized keyed collection (e.g. Map<K,V> from struct
+          // field or fold accumulator), otherwise emit a diagnostic.
           let empty_map_type = match expected {
             Some { value: exp } =>
-              if exp.name == "Map" && exp.children |> count > 0 { exp }
+              if node_is_keyed_collection(n: exp) { exp }
               else { bare_map_node() }
             None => bare_map_node()
+          }
+          let empty_map_diags = match expected {
+            Some { value: exp } =>
+              if node_is_keyed_collection(n: exp) { [] }
+              else { [inference_error(message: "empty_map(): expected type is not a keyed collection", span: span, module_name: scope.module_name)] }
+            None => []
           }
           InferResult {
             typed: make_named_expr_node(
@@ -1199,7 +1203,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               inferred: Some { value: Resolved { node: empty_map_type } },
               span: span
             ),
-            diagnostics: arg_diags
+            diagnostics: concat(arg_diags, empty_map_diags)
           }
         } else if infer_builtin_call_type(name: func_name) != none {
           // Tier 2b: runtime built-in functions
@@ -1325,7 +1329,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
       // Use method name string directly for dispatch.
       let mc_method_name = Some { value: method_name }
-      let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope)
+      let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
       let fold_acc_type = match fold_info {
         Some { value: fi } => match rt_node(n: arg_value(n: fi.typed_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
         None => error_type
@@ -1336,9 +1340,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // Refine fold_acc_type from lambda body when init is under-resolved.
       // The lambda has been inferred (typed_mc_args), so its body return type
       // carries the resolved type from the fold body (e.g., map_merge result).
-      let mc_acc_is_under_resolved = (node_is_keyed_collection(n: fold_acc_type) && fold_acc_type.children |> count < 2)
-        || (node_is_element_collection(n: fold_acc_type) && fold_acc_type.children |> count == 0)
-        || (!node_is_keyed_collection(n: fold_acc_type) && !node_is_element_collection(n: fold_acc_type) && !node_is_collection(n: fold_acc_type))
+      let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type)
       let refined_fold_acc_type = if fold_info != none && mc_acc_is_under_resolved {
         match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
           Some { value: lambda_arg } => rt_type(n: arg_value(n: lambda_arg))
@@ -1407,7 +1409,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         } else {
           none
         }
-        let body_result = infer_expr(texpr: arm_b, scope: arm_scope, expected: none)
+        let body_result = infer_expr(texpr: arm_b, scope: arm_scope, expected: expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
         let guard_unwrapped = match guard_result {
@@ -1468,12 +1470,12 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let cond_result = infer_expr(texpr: cond, scope: scope, expected: none)
       let cond_typed = cond_result.typed
       let cond_diags = cond_result.diagnostics
-      let then_result = infer_expr(texpr: then_expr, scope: scope, expected: none)
+      let then_result = infer_expr(texpr: then_expr, scope: scope, expected: expected)
       let then_typed = then_result.typed
       let then_diags = then_result.diagnostics
       match else_expr {
         Some { value: else_branch } =>
-          let else_result = infer_expr(texpr: else_branch, scope: scope, expected: none)
+          let else_result = infer_expr(texpr: else_branch, scope: scope, expected: expected)
           let else_typed = else_result.typed
           let else_diags = else_result.diagnostics
           let then_rt = rt_type(n: then_typed)
@@ -1556,12 +1558,34 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => unit_type
         }
       } else {
-        unit_type
+        // Empty list: adopt expected element type if available.
+        match expected {
+          Some { value: exp } =>
+            if node_is_element_collection(n: exp) {
+              match exp.children |> first {
+                Some { value: elem } => elem
+                None => unit_type
+              }
+            } else { unit_type }
+          None => unit_type
+        }
       }
+      let empty_list_diags = if count(elem_results) == 0 {
+        match expected {
+          Some { value: exp } =>
+            if node_is_element_collection(n: exp) {
+              match exp.children |> first {
+                Some { value: _ } => []
+                None => [inference_error(message: "empty list literal: expected type has no element type", span: span, module_name: scope.module_name)]
+              }
+            } else { [inference_error(message: "empty list literal: expected type is not a collection", span: span, module_name: scope.module_name)] }
+          None => []
+        }
+      } else { [] }
       let ll_texpr = make_expr_node(expr_data: ExprListLit, children: typed_elements, inferred: Some { value: Resolved { node: named_collection_type(kind_name: "List", element: elem_type_node) } }, span: span)
       InferResult {
         typed: ll_texpr,
-        diagnostics: elem_diags
+        diagnostics: concat(elem_diags, empty_list_diags)
       }
 
     ExprBinOp { op: op } =>
@@ -1693,9 +1717,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let stmts = texpr.children
       if count(stmts) > 0 {
         let state = infer_block_stmts(
-          remaining: stmts, scope: scope,
+          remaining: stmts, remaining_count: count(stmts), scope: scope,
           typed_stmts: [], diag_chunks: [],
-          last_type: unit_type
+          last_type: unit_type, expected: expected
         )
         let blk_texpr = make_expr_node(expr_data: ExprBlock, children: state.typed_stmts, inferred: Some { value: Resolved { node: state.last_type } }, span: span)
         InferResult {
@@ -2028,7 +2052,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
       extend_scope(scope: s, name: resource_use_name(n: u), resolved: resource_use_resource(n: u))
     )
-    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: none)
+    let fn_return_expected = if item.inferred != none { Some { value: rt_type(n: item) } } else { none }
+    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: fn_return_expected)
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
     let resolved_ret = if item.inferred == none {
@@ -2053,7 +2078,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   // Must be checked BEFORE data definition to avoid misclassifying `fn foo() -> T { ... }` as data.
   else if item.body != none && item.params |> count == 0 && item.inferred != none {
     let fn_scope = scope
-    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: none)
+    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: Some { value: rt_type(n: item) })
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
     let resolved_ret = rt_type(n: item)
@@ -2070,7 +2095,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   // Data definition: has body but no params, has type_annotation
   else if item.body != none && item.params |> count == 0 {
-    let val_result = infer_expr(texpr: item.body.value, scope: scope, expected: none)
+    let data_expected = if item.type_annotation != none { Some { value: item.type_annotation.value } } else { none }
+    let val_result = infer_expr(texpr: item.body.value, scope: scope, expected: data_expected)
     let val_typed = val_result.typed
     let val_diags = val_result.diagnostics
     let resolved_ret = if item.type_annotation == none { rt_type(n: val_typed) } else { item.type_annotation.value }

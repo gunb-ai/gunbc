@@ -1560,7 +1560,7 @@ pub fn parser_result_base_var(expr: Rc<Node>) -> Option<String> {
 }
 
 pub fn parser_helper_state_arg_expr(call_node: Rc<Node>) -> Option<Rc<Node>> {
-    Rc::new(call_node.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(None, |acc: Option<Rc<Node>>, pair: (i64, Rc<Node>)| if (acc.clone() != None) {
+    Rc::new(call_node.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(None, |acc: _, pair: (i64, Rc<Node>)| if (acc.clone() != None) {
         acc.clone()
 } else {
         {
@@ -1689,24 +1689,27 @@ pub fn is_conj_with_children(n: Rc<Node>) -> bool {
 }
 
 pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
-    if (ch.inferred.clone() != None) {
-        match (*rt_node(ch.clone())).clone() {
+    match (*rt_node(ch.clone())).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
     NodeType::InferError { .. } => error_type(),
     NodeType::InferVariable { .. } => error_type(),
-    NodeType::Untyped => error_type(),
-}
-} else {
-        leaf_type_node("".to_string(), ch.span.clone())
+    NodeType::Untyped => ch.clone(),
 }
 }
 
 pub fn node_inferred_to_outputs(rt: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     if is_conj_with_children(rt.clone()) {
-        Rc::new({ let mut __result = Vec::new(); for f in Rc::new({ let mut __result = Vec::new(); for ch in rt.children.clone().iter().cloned() { __result.push(make_field_node(ch.name.clone(), child_inferred_or_empty(ch.clone()), Cardinality::Required, ch.body.clone(), None, ch.span.clone())); } __result }).iter().cloned() { if match field_node_type_expr(f.clone()).inferred.clone() {
-    Some(inf) => !is_compiler_error(inf.clone()),
-    None => true,
-} { __result.push(f); } } __result })
+        {
+            let all_children_typed = { let mut __all = true; for ch in rt.children.clone().iter().cloned() { if !(match (*rt_node(ch.clone())).clone() {
+    NodeType::Typed { .. } => true,
+    _ => false,
+}) { __all = false; break; } } __all };
+if all_children_typed {
+                Rc::new({ let mut __result = Vec::new(); for ch in rt.children.clone().iter().cloned() { __result.push(make_field_node(ch.name.clone(), child_inferred_or_empty(ch.clone()), Cardinality::Required, ch.body.clone(), None, ch.span.clone())); } __result })
+} else {
+                Rc::new(vec![])
+}
+}
 } else {
         Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, rt.span.clone())])
 }

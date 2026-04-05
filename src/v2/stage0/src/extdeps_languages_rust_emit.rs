@@ -140,6 +140,22 @@ pub fn rust_serde_rename_template() -> String {
     "".to_string()
 }
 
+pub fn rust_clone_expr() -> String {
+    "{0}.clone()".to_string()
+}
+
+pub fn rust_deref_clone_expr() -> String {
+    "(*{0}).clone()".to_string()
+}
+
+pub fn rust_field_clone_expr() -> String {
+    "{0}.{1}.clone()".to_string()
+}
+
+pub fn rust_iterator_clone_suffix() -> String {
+    ".cloned()".to_string()
+}
+
 pub fn rust_source_extension() -> String {
     ".rs".to_string()
 }
