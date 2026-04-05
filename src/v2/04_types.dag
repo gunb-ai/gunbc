@@ -100,11 +100,10 @@ fn node_is_element_collection(n: Node) -> Bool {
 
 fn is_fully_resolved(n: Node) -> Bool {
   let self_is_type_var = match n.inferred { Some { value: inf } => is_type_variable(inferred: inf)  None => false }
-  let has_type_var_child = n.children |> any(ch => match ch.inferred { Some { value: inf } => is_type_variable(inferred: inf)  None => false })
-  if self_is_type_var || has_type_var_child { false }
-  else if node_is_keyed_collection(n: n) { n.children |> count >= 2 }
-  else if node_is_element_collection(n: n) { n.children |> count > 0 }
-  else { true }
+  if self_is_type_var { false }
+  else if node_is_keyed_collection(n: n) && (n.children |> count) < 2 { false }
+  else if node_is_element_collection(n: n) && (n.children |> count) == 0 { false }
+  else { n.children |> all(ch => is_fully_resolved(n: ch)) }
 }
 
 fn container_node(kind_name: String, element: Node) -> Node {

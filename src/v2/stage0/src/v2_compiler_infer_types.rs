@@ -97,29 +97,27 @@ pub fn node_is_element_collection(n: Rc<Node>) -> bool {
 }
 
 pub fn is_fully_resolved(n: Rc<Node>) -> bool {
-    {
-        let self_is_type_var = match n.inferred.clone() {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        {
+            let self_is_type_var = match n.inferred.clone() {
     Some(inf) => is_type_variable(inf.clone()),
     None => false,
 };
-let has_type_var_child = { let mut __found = false; for ch in n.children.clone().iter().cloned() { if match ch.inferred.clone() {
-    Some(inf) => is_type_variable(inf.clone()),
-    None => false,
-} { __found = true; break; } } __found };
-if (self_is_type_var || has_type_var_child) {
-            false
+if self_is_type_var {
+                false
 } else {
-            if node_is_keyed_collection(n.clone()) {
-                ((n.children.clone().len() as i64) >= 2)
+                if (node_is_keyed_collection(n.clone()) && ((n.children.clone().len() as i64) < 2)) {
+                    false
 } else {
-                if node_is_element_collection(n.clone()) {
-                    ((n.children.clone().len() as i64) > 0)
+                    if (node_is_element_collection(n.clone()) && ((n.children.clone().len() as i64) == 0)) {
+                        false
 } else {
-                    true
+                        { let mut __all = true; for ch in n.children.clone().iter().cloned() { if !(is_fully_resolved(ch.clone())) { __all = false; break; } } __all }
 }
 }
 }
 }
+    })
 }
 
 pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {

@@ -148,8 +148,8 @@ Open items:
 - [ ] Incomplete parameterized types rejected at normalization, not infer
 - [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit
 - [ ] Thread `expected` to all formal params, not just callable ones — currently only threaded to fold init + literal special cases, not general parameter inference; also overloads the `expected` boundary (non-callable expected can silently type lambda args)
-- [x] Refine fold accumulators structurally via `is_fully_resolved` — now checks TypeVariable on self + children, plus collection arity; non-collection concrete types correctly resolve
-- [ ] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
+- [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
+- [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
 ### Acceptance
 

@@ -1182,15 +1182,18 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         } else if func_name == "empty_map" {
           // Built-in: empty_map() → Map. Adopt expected type if it's a
           // fully parameterized keyed collection (e.g. Map<K,V> from struct
-          // field or fold accumulator), otherwise fall back to bare_map_node().
-          // NOTE: bare_map_node produces Map with 0 children. Replacing with
-          // type variables requires emitter support for TypeVariable rendering
-          // (tracked as M2 debt — emitter emits compile_error! on TypeVariable).
+          // field or fold accumulator), otherwise emit a diagnostic.
           let empty_map_type = match expected {
             Some { value: exp } =>
               if node_is_keyed_collection(n: exp) { exp }
               else { bare_map_node() }
             None => bare_map_node()
+          }
+          let empty_map_diags = match expected {
+            Some { value: exp } =>
+              if node_is_keyed_collection(n: exp) { [] }
+              else { [inference_error(message: "empty_map(): expected type is not a keyed collection", span: span, module_name: scope.module_name)] }
+            None => []
           }
           InferResult {
             typed: make_named_expr_node(
@@ -1199,7 +1202,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               inferred: Some { value: Resolved { node: empty_map_type } },
               span: span
             ),
-            diagnostics: arg_diags
+            diagnostics: concat(arg_diags, empty_map_diags)
           }
         } else if infer_builtin_call_type(name: func_name) != none {
           // Tier 2b: runtime built-in functions

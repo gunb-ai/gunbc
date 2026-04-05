@@ -1280,13 +1280,21 @@ Rc::new(InferResult {
 },
     None => bare_map_node(),
 };
+let empty_map_diags = match expected.clone() {
+    Some(exp) => if node_is_keyed_collection(exp.clone()) {
+                                    Rc::new(vec![])
+} else {
+                                    Rc::new(vec![inference_error("empty_map(): expected type is not a keyed collection".to_string(), span.clone(), scope.module_name.clone())])
+},
+    None => Rc::new(vec![]),
+};
 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
 }), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
     node: empty_map_type,
 })), span.clone()),
-    diagnostics: arg_diags,
+    diagnostics: v2_rt::concat(arg_diags, empty_map_diags),
 })
 }
 } else {
