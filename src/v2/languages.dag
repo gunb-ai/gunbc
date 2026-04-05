@@ -104,12 +104,11 @@ type ImportRule {
 
 type SharingStrategy {
   wrap_template: String
-  // Clone templates: {0}=value, {1}=key (for get_cloned).
+  // Clone templates: {0}=value.
   // In GC'd languages these are identity — no ownership transfer needed.
   clone_value: String       // owned copy of a value: Rust "{0}.clone()", Python/Go "{0}"
   deref_clone: String       // owned copy through shared pointer: Rust "(*{0}).clone()"
   iter_owned: String        // owned iterator from shared collection: Rust "{0}.iter().cloned()"
-  get_cloned: String        // map get with owned result: Rust "{0}.get({1}).cloned()"
 }
 
 // -- Indexing semantics: per-collection-type rendering templates ------------
@@ -195,8 +194,7 @@ fn rust_spec() -> LanguageSpec {
       wrap_template: "Rc<{0}>",
       clone_value: "{0}.clone()",
       deref_clone: "(*{0}).clone()",
-      iter_owned: "{0}.iter().cloned()",
-      get_cloned: "{0}.get({1}).cloned()"
+      iter_owned: "{0}.iter().cloned()"
     },
     indexing: IndexingSemantics {
       list_index: "{0}[({1}) as usize].clone()",
@@ -250,8 +248,7 @@ fn python_spec() -> LanguageSpec {
       wrap_template: "{0}",
       clone_value: "{0}",
       deref_clone: "{0}",
-      iter_owned: "{0}",
-      get_cloned: "{0}.get({1})"
+      iter_owned: "{0}"
     },
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
@@ -305,8 +302,7 @@ fn go_spec() -> LanguageSpec {
       wrap_template: "{0}",
       clone_value: "{0}",
       deref_clone: "{0}",
-      iter_owned: "{0}",
-      get_cloned: "{0}[{1}]"
+      iter_owned: "{0}"
     },
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",

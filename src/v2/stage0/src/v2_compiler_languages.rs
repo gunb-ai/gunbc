@@ -145,7 +145,6 @@ pub struct SharingStrategy {
     pub clone_value: String,
     pub deref_clone: String,
     pub iter_owned: String,
-    pub get_cloned: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -217,7 +216,6 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     clone_value: "{0}.clone()".to_string(),
     deref_clone: "(*{0}).clone()".to_string(),
     iter_owned: "{0}.iter().cloned()".to_string(),
-    get_cloned: "{0}.get({1}).cloned()".to_string(),
 }),
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[({1}) as usize].clone()".to_string(),
@@ -274,7 +272,6 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     clone_value: "{0}".to_string(),
     deref_clone: "{0}".to_string(),
     iter_owned: "{0}".to_string(),
-    get_cloned: "{0}.get({1})".to_string(),
 }),
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[{1}]".to_string(),
@@ -331,7 +328,6 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     clone_value: "{0}".to_string(),
     deref_clone: "{0}".to_string(),
     iter_owned: "{0}".to_string(),
-    get_cloned: "{0}[{1}]".to_string(),
 }),
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[{1}]".to_string(),
