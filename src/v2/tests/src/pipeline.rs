@@ -2500,6 +2500,155 @@ fn strict_complexity_violation_count() {
     );
 }
 
+// Diagnostic: compile only 02_parse.dag and dump parser SCC edge classifications.
+// Avoids OOM from full self-compile while giving ground truth on edge progress.
+#[test]
+#[ignore]
+fn diag_parser_scc_edges() {
+    use v2_compiler::v2_compiler_compile::{extract_func_entries, build_recursion_context, front_end_sources, SourceFile};
+    use v2_compiler::v2_compiler_complexity::{
+        build_complexity_report, build_scc_index, collect_parser_edges_for_scc,
+        same_progress_subgraph_has_cycle, FuncEntry, ProgressKind,
+    };
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
+    use v2_compiler::v2_compiler_infer::reconcile;
+
+    let ws = crate::helpers::workspace_root();
+    let content = std::fs::read_to_string(ws.join("src/v2/02_parse.dag")).unwrap();
+    let sources = crate::helpers::resolve_imports_transitively("src/v2/02_parse.dag", &content);
+    let frontend = front_end_sources(Rc::new(sources));
+    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let norm = normalize_graph(graph);
+    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
+    let func_entries = extract_func_entries(typed.clone());
+    let recursion_ctx = build_recursion_context(typed);
+
+    let func_index: HashMap<String, Rc<FuncEntry>> =
+        func_entries.iter().cloned().map(|e| (e.name.clone(), e)).collect();
+    let func_index_rc = Rc::new(func_index);
+
+    let scc_index = build_scc_index(func_entries.clone(), func_index_rc.clone());
+
+    // Find the large parser SCC (the one containing parse_type_expr)
+    let scc_info = scc_index.get("parse_type_expr")
+        .expect("parse_type_expr must be in SCC index");
+
+    eprintln!("\n=== Parser SCC: {} members ===", scc_info.members.len());
+
+    let scc_name_set: HashMap<String, bool> = scc_info.members.iter()
+        .cloned().map(|n| (n, true)).collect();
+    let edges = collect_parser_edges_for_scc(
+        scc_info.members.clone(),
+        func_index_rc.clone(),
+        Rc::new(scc_name_set),
+    );
+
+    eprintln!("Total edges: {}", edges.len());
+
+    let mut unknown_edges = Vec::new();
+    let mut same_edges = Vec::new();
+    let mut strict_edges = Vec::new();
+
+    for edge in edges.iter() {
+        match &edge.progress {
+            ProgressKind::ProgressUnknown => unknown_edges.push(edge.clone()),
+            ProgressKind::ProgressSame => same_edges.push(edge.clone()),
+            ProgressKind::ProgressStrict => strict_edges.push(edge.clone()),
+        }
+    }
+
+    eprintln!("\n  Unknown: {}", unknown_edges.len());
+    for e in &unknown_edges {
+        eprintln!("    {} -> {}", e.caller, e.callee);
+    }
+
+    eprintln!("\n  Same: {}", same_edges.len());
+    for e in &same_edges {
+        eprintln!("    {} -> {}", e.caller, e.callee);
+    }
+
+    eprintln!("\n  Strict: {}", strict_edges.len());
+    for e in &strict_edges {
+        eprintln!("    {} -> {}", e.caller, e.callee);
+    }
+
+    let has_cycle = same_progress_subgraph_has_cycle(
+        scc_info.members.clone(), edges.clone(),
+    );
+    eprintln!("\n  Same-subgraph has cycle: {}", has_cycle);
+
+    // Also dump complexity violations for these functions
+    let complexity = build_complexity_report(func_entries, recursion_ctx);
+    let parser_violations: Vec<_> = complexity.violations.iter()
+        .filter(|v| scc_index.get(&v.func_name).map_or(false, |s| s.members == scc_info.members))
+        .collect();
+    eprintln!("\n  Parser SCC violations: {}", parser_violations.len());
+}
+
+#[test]
+#[ignore]
+fn diag_parse_node_decl_env() {
+    use v2_compiler::v2_compiler_compile::{extract_func_entries, front_end_sources};
+    use v2_compiler::v2_compiler_complexity::{
+        parser_state_param, collect_parser_progress_edges,
+        infer_parser_always_advancing_members, parser_function_names,
+        empty_parser_progress_env, FuncEntry, ProgressKind,
+    };
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
+    use v2_compiler::v2_compiler_infer::reconcile;
+
+    let ws = crate::helpers::workspace_root();
+    let content = std::fs::read_to_string(ws.join("src/v2/02_parse.dag")).unwrap();
+    let sources = crate::helpers::resolve_imports_transitively("src/v2/02_parse.dag", &content);
+    let frontend = front_end_sources(Rc::new(sources));
+    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let norm = normalize_graph(graph);
+    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
+    let func_entries = extract_func_entries(typed.clone());
+
+    let func_index: HashMap<String, Rc<FuncEntry>> =
+        func_entries.iter().cloned().map(|e| (e.name.clone(), e)).collect();
+    let func_index_rc = Rc::new(func_index);
+
+    let pnd = func_index_rc.get("parse_node_decl").expect("parse_node_decl must exist");
+    let state_param = parser_state_param(pnd.params.clone()).expect("must have state param");
+
+    // Build parser_always_advancing exactly as the SCC analysis does
+    let parser_always_advancing = infer_parser_always_advancing_members(
+        parser_function_names(func_index_rc.clone()),
+        func_index_rc.clone(),
+    );
+
+    // Build scc_name_set for the parser SCC containing parse_node_decl
+    use v2_compiler::v2_compiler_complexity::build_scc_index;
+    let scc_index = build_scc_index(func_entries.clone(), func_index_rc.clone());
+    let scc_info = scc_index.get("parse_node_decl")
+        .expect("parse_node_decl must be in SCC index");
+    let scc_name_set: Rc<HashMap<String, bool>> = Rc::new(
+        scc_info.members.iter().cloned().map(|n| (n, true)).collect()
+    );
+
+    eprintln!("\n=== collect_parser_progress_edges on parse_node_decl body ===");
+    eprintln!("body expr_data: {:?}", pnd.body.expr_data);
+    eprintln!("body children count: {}", pnd.body.children.len());
+
+    // Call exactly what the SCC analysis calls
+    let edges = collect_parser_progress_edges(
+        "parse_node_decl".to_string(),
+        pnd.body.clone(),
+        state_param.clone(),
+        scc_name_set.clone(),
+        empty_parser_progress_env(),
+        parser_always_advancing.clone(),
+        Rc::new(HashMap::new()),
+    );
+
+    eprintln!("Edges from collect_parser_progress_edges: {}", edges.len());
+    for e in edges.iter() {
+        eprintln!("  {} -> {} : {:?}", e.caller, e.callee, e.progress);
+    }
+}
+
 // ── Serialization fidelity tests ──────────────────────────────────────
 //
 // Verify that serialize_expr_data preserves full kind fidelity for

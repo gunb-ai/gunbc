@@ -731,7 +731,52 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         None => ProgressUnknown
       }
 
+    ExprBlock =>
+      parser_block_state_progress(
+        stmts: expr.children,
+        state_param: state_param,
+        env: env,
+        parser_always_advancing: parser_always_advancing,
+        consumed_true_set: consumed_true_set
+      )
+
     _ => ProgressUnknown
+  }
+}
+
+// Process a block of statements for parser state progress.
+// Walks let-bindings to build up the env, then evaluates
+// the final expression (block value) with accumulated env.
+fn parser_block_state_progress(stmts: List<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+  match stmts |> last {
+    None => ProgressUnknown
+    Some { value: last_stmt } =>
+      let leading = stmts |> take(n: (stmts |> count) - 1)
+      let final_env = leading |> fold(init: env, f: (acc_env, stmt) =>
+        match stmt.expr_data {
+          ExprLet =>
+            match let_body(texpr: stmt) {
+              None =>
+                parser_env_with_binding(
+                  name: let_binding_name(texpr: stmt),
+                  value_expr: let_value(texpr: stmt),
+                  env: acc_env,
+                  state_param: state_param,
+                  parser_always_advancing: parser_always_advancing,
+                  consumed_true_set: consumed_true_set
+                )
+              Some { value: _ } => acc_env
+            }
+          _ => acc_env
+        }
+      )
+      parser_state_expr_progress(
+        expr: last_stmt,
+        state_param: state_param,
+        env: final_env,
+        parser_always_advancing: parser_always_advancing,
+        consumed_true_set: consumed_true_set
+      )
   }
 }
 
@@ -1328,14 +1373,15 @@ fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserPro
   CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
+// Check whether the ProgressSame-only subgraph contains a multi-node
+// cycle.  Same-progress self-edges (accumulator self-recursion) are
+// excluded: each iteration also calls another SCC member whose cross-
+// function path is acyclic and terminates at a Strict edge, so the
+// parser state advances at least once per iteration.
 fn same_progress_subgraph_has_cycle(members: List<String>, edges: List<ParserProgressEdge>) -> Bool {
-  let same_edges = edges |> filter(edge => edge.progress == ProgressSame)
-  if same_edges |> any(edge => edge.caller == edge.callee) {
-    true
-  } else {
-    let graph = build_call_graph_from_parser_edges(names: members, edges: same_edges)
-    graph_has_multi_node_scc(names: members, graph: graph)
-  }
+  let same_cross_edges = edges |> filter(edge => edge.progress == ProgressSame && edge.caller != edge.callee)
+  let graph = build_call_graph_from_parser_edges(names: members, edges: same_cross_edges)
+  graph_has_multi_node_scc(names: members, graph: graph)
 }
 
 // Shared authority for parser-edge collection within an SCC.
@@ -2039,7 +2085,7 @@ fn is_sub_value_extractor(expr: Node) -> Bool {
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: expr)
-      callee == "rt_type" || callee == "param_node_type_expr"
+      callee == "rt_type" || callee == "param_node_type_expr" || callee == "field_binding_pattern"
     _ => false
   }
 }
@@ -2114,9 +2160,12 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
           Some { value: last_stmt } => expr_contains_descent(expr: last_stmt, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
           None => false
         }
+      // CX-Q: bare param is NOT descent — only proper sub-values are.
+      // param.field IS descent (field access reduces tree), but param alone
+      // is Same/NonIncreasing. Conflating them caused is_if_option_descent
+      // to promote `if cond { param } else { none }` as descent.
       ExprVar { binding_kind: _ } =>
-        let vname = expr_var_name(texpr: expr)
-        vname == param_name || set_has(m: vars, key: vname)
+        set_has(m: vars, key: expr_var_name(texpr: expr))
       // CX-E: param.field or descent_var.field is a sub-value (acyclic construction).
       ExprFieldAccess =>
         let base = field_access_base(texpr: expr)
@@ -2189,16 +2238,17 @@ fn is_if_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, 
 // CX-J: Match-option descent for let-bindings.
 // Recognizes `match descent_expr { Some { value: v } => v, None => default }`
 // where the scrutinee contains descent and a variant arm extracts the value.
-// Safe under the same reasoning as RC-2: the non-descent arm produces a
-// constant/base value that terminates in bounded additional steps.
+// Requires: at least one arm extracts a variant binding, AND all non-extracting
+// arms are safe (don't return param_name directly — that would pass through
+// the original value without descent).
 fn is_match_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Bool {
   match val.expr_data {
     ExprMatch =>
       let scrut = match_scrutinee(texpr: val)
       let scrut_has_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
       if scrut_has_descent {
-        // At least one arm extracts a variant binding and returns it directly
-        match_arm_nodes(texpr: val) |> any(arm_node =>
+        // At least one arm must extract a variant binding and return it
+        let has_extraction = match_arm_nodes(texpr: val) |> any(arm_node =>
           match arm_pattern(n: arm_node) {
             VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
               let binding_names = bindings |> fold(init: empty_map(), f: (acc, fb) =>
@@ -2212,6 +2262,19 @@ fn is_match_option_descent(val: Node, param_name: String, vars: Map<String, Bool
             _ => false
           }
         )
+        // All non-extracting arms must not return param directly
+        let all_safe = match_arm_nodes(texpr: val) |> all(arm_node =>
+          match arm_pattern(n: arm_node) {
+            VariantPattern { name: _, parent_enum: _, field_bindings: _ } => true
+            _ =>
+              let arm_b = arm_body(n: arm_node)
+              match arm_b.expr_data {
+                ExprVar { binding_kind: _ } => expr_var_name(texpr: arm_b) != param_name
+                _ => true
+              }
+          }
+        )
+        has_extraction && all_safe
       } else { false }
     _ => false
   }
@@ -2736,22 +2799,15 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           sname == param_name || set_has(m: vars, key: sname)
         _ => false
       }
-      // CX-N: when branching_only, find the max self-calls across arms
-      // and skip arms with fewer calls — they can't produce the branching factor.
-      // Proof: max_path(B, c) = max_path(B, 0) + c, so relative ordering is
-      // invariant under continue_calls; using continue_calls=0 is correct.
-      let max_arm_calls = if branching_only {
-        match_arm_nodes(texpr: body) |> fold(init: 0, f: (acc, arm_node) =>
-          let c = max_path_self_calls(body: arm_body(n: arm_node), func_name: func_name)
-          if c > acc { c } else { acc }
-        )
-      } else { 0 }
+      // CX-N: when branching_only, skip base-case arms (0 self-calls).
+      // Arms with ≥1 self-call MUST still provide descent evidence — a light
+      // arm that calls self(param) without descent would diverge.
       // Each arm gets INDEPENDENT vars — arm-local bindings don't leak
       let arms_ev = match_arm_nodes(texpr: body) |> fold(init: none, f: (acc, arm_node) =>
-        let dominated = if branching_only {
-          max_path_self_calls(body: arm_body(n: arm_node), func_name: func_name) < max_arm_calls
+        let is_base_case = if branching_only {
+          max_path_self_calls(body: arm_body(n: arm_node), func_name: func_name) == 0
         } else { false }
-        if dominated { acc }
+        if is_base_case { acc }
         else {
           let arm_vars = if scrut_is_descent || scrut_is_param {
             match arm_pattern(n: arm_node) {
@@ -2773,17 +2829,17 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
     ExprIf =>
       // Both branches start from the SAME vars
       let cond_ev = collect_evidence_incremental(body: if_condition(texpr: body), func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only)
-      // CX-N: when branching_only, skip the lighter branch.
+      // CX-N: when branching_only, skip base-case branches (0 self-calls).
+      // Branches with ≥1 self-call must still provide descent evidence.
       let then_branch = if_then_branch(texpr: body)
       let else_opt = if_else_branch(texpr: body)
       let then_path = if branching_only { max_path_self_calls(body: then_branch, func_name: func_name) } else { 0 }
       let else_path = if branching_only {
         match else_opt { Some { value: eb } => max_path_self_calls(body: eb, func_name: func_name), None => 0 }
       } else { 0 }
-      let max_if_branch = if then_path > else_path { then_path } else { else_path }
-      let then_ev = if branching_only && then_path < max_if_branch { none }
+      let then_ev = if branching_only && then_path == 0 { none }
         else { collect_evidence_incremental(body: then_branch, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only) }
-      let else_ev = if branching_only && else_path < max_if_branch { none }
+      let else_ev = if branching_only && else_path == 0 { none }
         else {
           match else_opt {
             Some { value: eb } => collect_evidence_incremental(body: eb, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only)
@@ -3235,18 +3291,20 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: body)
       let own_edges = if set_has(m: target_set, key: callee) {
-        // SCC peer call. Check ALL named arguments for descent evidence.
-        // Any argument carrying a descent expression proves structural progress,
-        // regardless of which callee parameter it targets.
+        // SCC peer call. Only classify the argument whose name matches the
+        // tracked parameter — descent on an unrelated callee parameter does
+        // not witness progress for the measured dimension.
         let progress = body.children |> fold(init: ProgressUnknown, f: (acc, arg_node) =>
           match arg_name(n: arg_node) {
-            Some { value: _ } =>
-              let arg_progress = classify_scc_call_progress(arg_expr: arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars)
-              match arg_progress {
-                ProgressStrict => ProgressStrict
-                ProgressSame => match acc { ProgressStrict => acc  _ => ProgressSame }
-                ProgressUnknown => acc
-              }
+            Some { value: aname } =>
+              if aname == param_name {
+                let arg_progress = classify_scc_call_progress(arg_expr: arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars)
+                match arg_progress {
+                  ProgressStrict => ProgressStrict
+                  ProgressSame => match acc { ProgressStrict => acc  _ => ProgressSame }
+                  ProgressUnknown => acc
+                }
+              } else { acc }
             None => acc
           }
         )

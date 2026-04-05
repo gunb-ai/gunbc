@@ -758,9 +758,27 @@ match arm_progresses.clone().first().cloned() {
     None => ProgressKind::ProgressUnknown,
 }
 },
+    ExprData::ExprBlock => parser_block_state_progress(expr.children.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
     _ => ProgressKind::ProgressUnknown,
 }
     })
+}
+
+pub fn parser_block_state_progress(stmts: Rc<Vec<Rc<Node>>>, state_param: Rc<ParserStateParam>, env: Rc<ParserProgressEnv>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>) -> ProgressKind {
+    match stmts.clone().last().cloned() {
+    None => ProgressKind::ProgressUnknown,
+    Some(last_stmt) => {
+        let leading = Rc::new(stmts.clone().iter().cloned().take(((stmts.clone().len() as i64) - 1) as usize).collect::<Vec<_>>());
+let final_env = leading.iter().cloned().fold(env.clone(), |acc_env: Rc<ParserProgressEnv>, stmt: Rc<Node>| match (*stmt.expr_data.clone()).clone() {
+    ExprData::ExprLet => match let_body(stmt.clone()) {
+    None => parser_env_with_binding(let_binding_name(stmt.clone()), let_value(stmt.clone()), acc_env.clone(), state_param.clone(), parser_always_advancing.clone(), consumed_true_set.clone()),
+    Some(_) => acc_env.clone(),
+},
+    _ => acc_env.clone(),
+});
+parser_state_expr_progress(last_stmt.clone(), state_param.clone(), final_env, parser_always_advancing.clone(), consumed_true_set.clone())
+},
+}
 }
 
 pub fn parser_result_source_for_expr(expr: Rc<Node>, state_param: Rc<ParserStateParam>, env: Rc<ParserProgressEnv>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>) -> Rc<ParserResultSource> {
@@ -1149,15 +1167,9 @@ Rc::new(CallGraph {
 
 pub fn same_progress_subgraph_has_cycle(members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ParserProgressEdge>>>) -> bool {
     {
-        let same_edges = Rc::new({ let mut __result = Vec::new(); for edge in edges.iter().cloned() { if (edge.progress.clone() == ProgressKind::ProgressSame) { __result.push(edge); } } __result });
-if { let mut __found = false; for edge in same_edges.clone().iter().cloned() { if (edge.caller.clone().as_str() == edge.callee.clone().as_str()) { __found = true; break; } } __found } {
-            true
-} else {
-            {
-                let graph = build_call_graph_from_parser_edges(members.clone(), same_edges.clone());
+        let same_cross_edges = Rc::new({ let mut __result = Vec::new(); for edge in edges.iter().cloned() { if ((edge.progress.clone() == ProgressKind::ProgressSame) && (edge.caller.clone().as_str() != edge.callee.clone().as_str())) { __result.push(edge); } } __result });
+let graph = build_call_graph_from_parser_edges(members.clone(), same_cross_edges);
 graph_has_multi_node_scc(members.clone(), graph)
-}
-}
 }
 }
 
@@ -1764,7 +1776,7 @@ pub fn is_sub_value_extractor(expr: Rc<Node>) -> bool {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
         let callee = expr_call_func(expr.clone());
-((callee.clone().as_str() == "rt_type".to_string().as_str()) || (callee.clone().as_str() == "param_node_type_expr".to_string().as_str()))
+(((callee.clone().as_str() == "rt_type".to_string().as_str()) || (callee.clone().as_str() == "param_node_type_expr".to_string().as_str())) || (callee.clone().as_str() == "field_binding_pattern".to_string().as_str()))
 },
     _ => false,
 }
@@ -1824,8 +1836,7 @@ pub fn expr_contains_descent(expr: Rc<Node>, param_name: String, vars: Rc<HashMa
     None => false,
 },
     ExprData::ExprVar { .. } => {
-                let vname = expr_var_name(expr.clone());
-((vname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), vname.clone()))
+                set_has(vars.clone(), expr_var_name(expr.clone()))
 },
     ExprData::ExprFieldAccess { .. } => {
                 let base = field_access_base(expr.clone());
@@ -1884,11 +1895,12 @@ pub fn is_match_option_descent(val: Rc<Node>, param_name: String, vars: Rc<HashM
     match (*val.expr_data.clone()).clone() {
     ExprData::ExprMatch => {
         let scrut = match_scrutinee(val.clone());
-let scrut_has_descent = expr_contains_descent(scrut, param_name, vars, check_child, check_list);
+let scrut_has_descent = expr_contains_descent(scrut, param_name.clone(), vars, check_child, check_list);
 if scrut_has_descent {
-            { let mut __found = false; for arm_node in match_arm_nodes(val.clone()).iter().cloned() { if match (*arm_pattern(arm_node.clone())).clone() {
+            {
+                let has_extraction = { let mut __found = false; for arm_node in match_arm_nodes(val.clone()).iter().cloned() { if match (*arm_pattern(arm_node.clone())).clone() {
     MatchPattern::VariantPattern { field_bindings: bindings, .. } => {
-                let binding_names = bindings.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, fb: Rc<Node>| collect_field_binding_names(fb.clone(), acc.clone()));
+                    let binding_names = bindings.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, fb: Rc<Node>| collect_field_binding_names(fb.clone(), acc.clone()));
 let arm_b = arm_body(arm_node.clone());
 match (*arm_b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => set_has(binding_names.clone(), expr_var_name(arm_b.clone())),
@@ -1896,7 +1908,19 @@ match (*arm_b.expr_data.clone()).clone() {
 }
 },
     _ => false,
-} { __found = true; break; } } __found }
+} { __found = true; break; } } __found };
+let all_safe = { let mut __all = true; for arm_node in match_arm_nodes(val.clone()).iter().cloned() { if !(match (*arm_pattern(arm_node.clone())).clone() {
+    MatchPattern::VariantPattern { .. } => true,
+    _ => {
+                    let arm_b = arm_body(arm_node.clone());
+match (*arm_b.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => (expr_var_name(arm_b.clone()).as_str() != param_name.clone().as_str()),
+    _ => true,
+}
+},
+}) { __all = false; break; } } __all };
+(has_extraction && all_safe)
+}
 } else {
             false
 }
@@ -2400,25 +2424,13 @@ let scrut_is_param = match (*scrut.expr_data.clone()).clone() {
 },
     _ => false,
 };
-let max_arm_calls = if branching_only.clone() {
-                match_arm_nodes(body.clone()).iter().cloned().fold(0, |acc: i64, arm_node: Rc<Node>| {
-                    let c = max_path_self_calls(arm_body(arm_node.clone()), func_name.clone());
-if (c.clone() > acc.clone()) {
-                        c.clone()
-} else {
-                        acc.clone()
-}
-})
-} else {
-                0
-};
 let arms_ev = match_arm_nodes(body.clone()).iter().cloned().fold(None, |acc: Option<DescentEvidence>, arm_node: Rc<Node>| {
-                let dominated = if branching_only.clone() {
-                    (max_path_self_calls(arm_body(arm_node.clone()), func_name.clone()) < max_arm_calls.clone())
+                let is_base_case = if branching_only.clone() {
+                    (max_path_self_calls(arm_body(arm_node.clone()), func_name.clone()) == 0)
 } else {
                     false
 };
-if dominated.clone() {
+if is_base_case.clone() {
                     acc.clone()
 } else {
                     {
@@ -2459,17 +2471,12 @@ let else_path = if branching_only.clone() {
 } else {
                 0
 };
-let max_if_branch = if (then_path.clone() > else_path.clone()) {
-                then_path.clone()
-} else {
-                else_path.clone()
-};
-let then_ev = if (branching_only.clone() && (then_path.clone() < max_if_branch.clone())) {
+let then_ev = if (branching_only.clone() && (then_path == 0)) {
                 None
 } else {
                 collect_evidence_incremental(then_branch.clone(), func_name.clone(), param_name.clone(), vars.clone(), check_child.clone(), check_list.clone(), branching_only.clone())
 };
-let else_ev = if (branching_only.clone() && (else_path.clone() < max_if_branch.clone())) {
+let else_ev = if (branching_only.clone() && (else_path == 0)) {
                 None
 } else {
                 match else_opt.clone() {
@@ -3004,8 +3011,9 @@ pub fn collect_scc_child_edges(body: Rc<Node>, caller: String, param_name: Strin
 let own_edges = if set_has(target_set.clone(), callee.clone()) {
                 {
                     let progress = body.children.clone().iter().cloned().fold(ProgressKind::ProgressUnknown, |acc: ProgressKind, arg_node: Rc<Node>| match arg_name(arg_node.clone()) {
-    Some(_) => {
-                        let arg_progress = classify_scc_call_progress(arg_value(arg_node.clone()), param_name.clone(), descent_vars.clone());
+    Some(aname) => if (aname.clone().as_str() == param_name.clone().as_str()) {
+                        {
+                            let arg_progress = classify_scc_call_progress(arg_value(arg_node.clone()), param_name.clone(), descent_vars.clone());
 match arg_progress.clone() {
     ProgressKind::ProgressStrict => ProgressKind::ProgressStrict,
     ProgressKind::ProgressSame => match acc.clone() {
@@ -3014,6 +3022,9 @@ match arg_progress.clone() {
 },
     ProgressKind::ProgressUnknown => acc.clone(),
 }
+}
+} else {
+                        acc.clone()
 },
     None => acc.clone(),
 });

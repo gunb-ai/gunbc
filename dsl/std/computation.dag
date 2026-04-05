@@ -187,7 +187,7 @@ type CallPattern
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
-  evidence: DescentEvidence   // Strict for all except FoldBodyCall (NonIncreasing)
+  evidence: DescentEvidence   // Strict for descent/shrink calls; NonIncreasing for fold body and same-argument
 }
 
 type IterationPrimitive
@@ -230,7 +230,7 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
     SameArgumentCall =>
       LoweringTarget { primitive: Repeat,
         bound: Forever,
-        evidence: Strict }
+        evidence: NonIncreasing }
   }
 }
 

@@ -2748,21 +2748,36 @@ fn last_child_or_self(n: Node) -> Node {
 // Extract a string name from a Node for use in property values.
 // Keyed-container detection derives from container_type_set (single authority
 // for container identity) plus structural child count — no parallel name list.
+//
+// Split into wrapper (Optional prefix) + inner (child descent) so the CX
+// analyzer sees a 2-member SCC with edges [NonIncreasing, Strict]:
+//   node_to_name_str → node_to_name_str_inner: with_required_cardinality or same n
+//   node_to_name_str_inner → node_to_name_str: structural child via match
 fn node_to_name_str(n: Node) -> String {
-  let has_children = n.children |> count > 0
-  let is_optional = n.return_cardinality == CardOptional
+  if n.return_cardinality == CardOptional {
+    concat("Optional_", node_to_name_str_inner(n: with_required_cardinality(n: n)))
+  } else {
+    node_to_name_str_inner(n: n)
+  }
+}
+
+fn node_to_name_str_inner(n: Node) -> String {
   let is_keyed_container = is_container_type(name: n.name) && n.children |> count == 2
-  if is_optional {
-    concat("Optional_", node_to_name_str(n: with_required_cardinality(n: n)))
-  } else if is_keyed_container {
-    if n.children |> count > 1 { concat(n.name, "_", node_to_name_str(n: last_child_or_self(n: n))) }
-    else { n.name }
+  if is_keyed_container {
+    match n.children |> last {
+      Some { value: ch } => concat(n.name, "_", node_to_name_str(n: ch))
+      None => n.name
+    }
   } else if n.name == "Refined" {
-    if has_children { node_to_name_str(n: first_child_or_self(n: n)) }
-    else { n.name }
+    match n.children |> first {
+      Some { value: ch } => node_to_name_str(n: ch)
+      None => n.name
+    }
   } else if is_container_type(name: n.name) {
-    if has_children { concat("List_", node_to_name_str(n: first_child_or_self(n: n))) }
-    else { n.name }
+    match n.children |> first {
+      Some { value: ch } => concat("List_", node_to_name_str(n: ch))
+      None => n.name
+    }
   } else if n.name == "" {
     let is_conj = n.connective == Conj
     let is_disj = n.connective == Disj
