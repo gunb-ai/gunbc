@@ -103,11 +103,8 @@ pub fn is_container_type(name: String) -> bool {
 }
 }
 
-pub fn container_expected_arity(name: String) -> i64 {
-    match v2_rt::map_get(&container_type_arity(), name.clone()) {
-    Some(arity) => arity,
-    None => 0,
-}
+pub fn container_expected_arity(name: String) -> Option<i64> {
+    v2_rt::map_get(&container_type_arity(), name.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

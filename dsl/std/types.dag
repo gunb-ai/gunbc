@@ -87,11 +87,8 @@ fn is_container_type(name: String) -> Bool {
   }
 }
 
-fn container_expected_arity(name: String) -> Int {
-  match map_get(container_type_arity, name) {
-    Some { value: arity } => arity
-    None => 0
-  }
+fn container_expected_arity(name: String) -> Int? {
+  map_get(container_type_arity, name)
 }
 
 // Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
