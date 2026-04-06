@@ -1528,7 +1528,17 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // children: [value] or [value, body]
       let val_expr = let_value(texpr: texpr)
       let body_expr = let_body(texpr: texpr)
-      let val_result = infer_expr(texpr: val_expr, scope: scope, expected: none)
+      // Tail-return pattern: `let x = value; x` — value type equals outer expected.
+      let is_tail_return = match body_expr {
+        Some { value: bd } =>
+          match bd.expr_data {
+            ExprVar { binding_kind: _ } => bd.name == let_name
+            _ => false
+          }
+        None => false
+      }
+      let val_expected = if is_tail_return { expected } else { none }
+      let val_result = infer_expr(texpr: val_expr, scope: scope, expected: val_expected)
       let val_typed = val_result.typed
       let val_diags = val_result.diagnostics
       let val_type = rt_type(n: val_typed)
@@ -1912,7 +1922,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       // children: [value]
       let inner_expr = return_value(texpr: texpr)
-      let inner_result = infer_expr(texpr: inner_expr, scope: scope, expected: none)
+      let inner_result = infer_expr(texpr: inner_expr, scope: scope, expected: expected)
       let ret_texpr = make_expr_node(expr_data: ExprReturn, children: [inner_result.typed], inferred: Some { value: Resolved { node: rt_type(n: inner_result.typed) } }, span: span)
       InferResult {
         typed: ret_texpr,

@@ -1613,7 +1613,19 @@ Rc::new(InferResult {
 let span = texpr.span.clone();
 let val_expr = let_value(texpr.clone());
 let body_expr = let_body(texpr.clone());
-let val_result = infer_expr(val_expr, scope.clone(), None);
+let is_tail_return = match body_expr.clone() {
+    Some(bd) => match (*bd.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => (bd.name.clone().as_str() == let_name.clone().as_str()),
+    _ => false,
+},
+    None => false,
+};
+let val_expected = if is_tail_return {
+                expected.clone()
+} else {
+                None
+};
+let val_result = infer_expr(val_expr, scope.clone(), val_expected);
 let val_typed = val_result.typed.clone();
 let val_diags = val_result.diagnostics.clone();
 let val_type = rt_type(val_typed.clone());
@@ -1993,7 +2005,7 @@ Rc::new(InferResult {
     ExprData::ExprReturn => {
             let span = texpr.span.clone();
 let inner_expr = return_value(texpr.clone());
-let inner_result = infer_expr(inner_expr, scope.clone(), None);
+let inner_result = infer_expr(inner_expr, scope.clone(), expected.clone());
 let ret_texpr = make_expr_node(Rc::new(ExprData::ExprReturn), Rc::new(vec![inner_result.typed.clone()]), Some(Rc::new(InferredNode::Resolved {
     node: rt_type(inner_result.typed.clone()),
 })), span.clone());
