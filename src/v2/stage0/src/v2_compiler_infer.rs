@@ -66,7 +66,7 @@ use crate::v2_std_core::UnaryOpKind::{Not, Neg};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport};
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, map_node, bare_map_node, callable_inferred, normalize_access_type_node, bridge_placeholder_type_names, is_bridge_placeholder, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, map_node, bare_map_node, callable_inferred, normalize_access_type_node, bridge_placeholder_type_names, is_bridge_placeholder, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type, list_of_element};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, RecursiveVariantFieldWitness, put_recursive_variant_field_witness, merge_recursive_variant_fields};
@@ -830,6 +830,24 @@ pub fn is_lambda_expr(e: Rc<Node>) -> bool {
 }
 }
 
+pub fn seed_override_map() -> Rc<HashMap<String, Rc<Node>>> {
+    Rc::new(vec!["".to_string()]).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, k: String| v2_rt::rc_map_insert(acc.clone(), k.clone(), unit_type()))
+}
+
+pub fn fold_override_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
+    {
+        let seed = seed_override_map();
+v2_rt::rc_map_insert(Rc::new(v2_rt::map_keys(&seed)).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, k: String| acc.clone()), key, value)
+}
+}
+
+pub fn empty_override_map() -> Rc<HashMap<String, Rc<Node>>> {
+    {
+        let seed = seed_override_map();
+Rc::new(v2_rt::map_keys(&seed)).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, k: String| acc.clone())
+}
+}
+
 pub fn refine_collection_result_type(semantics: Option<Rc<MethodSemantics>>, typed_args: Rc<Vec<Rc<Node>>>, receiver_type: Rc<Node>, fallback: Rc<Node>) -> Rc<Node> {
     {
         let receiver_type_name = receiver_type.name.clone();
@@ -1215,7 +1233,7 @@ let refined_call_fold_acc_type = if ((call_fold_info.clone() != None) && call_ac
                         call_fold_acc_type.clone()
 };
 let method_resolution = resolve_known_method_node(method_receiver.clone(), first_arg_type.clone(), func_name.clone(), if (call_fold_info.clone() != None) {
-                        Some(refined_call_fold_acc_type)
+                        Some(refined_call_fold_acc_type.clone())
 } else {
                         None
 }, scope.service_registry.clone());
@@ -1228,7 +1246,34 @@ let base_result_type = match method_resolution.result_type.clone() {
     Some(mt) => mt.clone(),
     None => error_type(),
 };
-let bridge_result_type = refine_collection_result_type(method_resolution.semantics.clone(), remaining.clone(), first_arg_type.clone(), base_result_type);
+let structural_result = if (method_resolution.semantics.clone() == None) {
+                                base_result_type
+} else {
+                                match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
+    MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. } => match at.clone() {
+    Some(t) => if template_return_has_variables(t.clone()) {
+                                    {
+                                        let call_arg_types = Rc::new({ let mut __result = Vec::new(); for a in remaining.clone().iter().cloned() { __result.push(rt_type(arg_value(a.clone()))); } __result });
+let fold_overrides = if (call_fold_info.clone() != None) {
+                                            fold_override_map("FoldAccumulator".to_string(), refined_call_fold_acc_type.clone())
+} else {
+                                            empty_override_map()
+};
+resolve_type_variables_from_template(t.clone(), call_arg_types, first_arg_type.clone(), fold_overrides)
+}
+} else {
+                                    base_result_type
+},
+    None => base_result_type,
+},
+    _ => base_result_type,
+}
+};
+let bridge_result_type = if is_fully_resolved(structural_result.clone()) {
+                                structural_result.clone()
+} else {
+                                refine_collection_result_type(method_resolution.semantics.clone(), remaining.clone(), first_arg_type.clone(), structural_result.clone())
+};
 let remaining_arg_nodes = Rc::new({ let mut __result = Vec::new(); for ta in remaining.clone().iter().cloned() { __result.push(make_arg_node(arg_name(ta.clone()), arg_value(ta.clone()), span.clone())); } __result });
 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprMethodCall {
@@ -1412,7 +1457,7 @@ let refined_fold_acc_type = if ((fold_info.clone() != None) && mc_acc_is_under_r
                 fold_acc_type.clone()
 };
 let method_resolution = resolve_known_method_node(recv_typed.clone(), recv_rt.clone(), method_name.clone(), if (fold_info.clone() != None) {
-                Some(refined_fold_acc_type)
+                Some(refined_fold_acc_type.clone())
 } else {
                 None
 }, scope.service_registry.clone());
@@ -1434,7 +1479,34 @@ let base_result_type = match method_resolution.result_type.clone() {
 }
 },
 };
-let result_type = refine_collection_result_type(method_resolution.semantics.clone(), typed_mc_args.clone(), recv_rt.clone(), base_result_type);
+let mc_structural_result = if (method_resolution.semantics.clone() == None) {
+                base_result_type
+} else {
+                match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
+    MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. } => match at.clone() {
+    Some(t) => if template_return_has_variables(t.clone()) {
+                    {
+                        let mc_arg_types = Rc::new({ let mut __result = Vec::new(); for a in typed_mc_args.clone().iter().cloned() { __result.push(rt_type(arg_value(a.clone()))); } __result });
+let mc_fold_overrides = if (fold_info.clone() != None) {
+                            fold_override_map("FoldAccumulator".to_string(), refined_fold_acc_type.clone())
+} else {
+                            empty_override_map()
+};
+resolve_type_variables_from_template(t.clone(), mc_arg_types, recv_rt.clone(), mc_fold_overrides)
+}
+} else {
+                    base_result_type
+},
+    None => base_result_type,
+},
+    _ => base_result_type,
+}
+};
+let result_type = if is_fully_resolved(mc_structural_result.clone()) {
+                mc_structural_result.clone()
+} else {
+                refine_collection_result_type(method_resolution.semantics.clone(), typed_mc_args.clone(), recv_rt.clone(), mc_structural_result.clone())
+};
 let method_semantics = if (method_resolution.semantics.clone() != None) {
                 method_resolution.semantics.clone()
 } else {
