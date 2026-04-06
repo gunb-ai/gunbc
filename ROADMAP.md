@@ -171,7 +171,7 @@ of propagating error state. `node_inferred_to_outputs` builds outputs
 from fabricated types. Highest-confidence correctness bug (reviewer
 2026-04-02).
 
-- [~] `child_inferred_or_empty` no longer fabricates Unit — `Untyped` returns the child's own structure (partial: reuses raw structure as type authority, not explicit error propagation)
+- [x] `child_inferred_or_empty` no longer fabricates Unit — fail-closed: all non-Typed states (Untyped, InferError, InferVariable) propagate `error_type`. `node_inferred_to_outputs` gate ensures only Typed children reach here.
 - [x] `node_inferred_to_outputs` refuses error-typed children (fail-closed) — all-or-nothing gate via `rt_node` check; returns `[]` if any child is not `Typed`
 
 ### Incomplete parameterization and bidirectional inference
@@ -189,7 +189,7 @@ Symptoms:
 
 Open items:
 - [x] Incomplete parameterized types rejected at normalization — `container_expected_arity` returns `Int?` (fail-closed: unknown names → None, no false positives on operations sharing container names)
-- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators. Empty list `[]` diagnostic blocked on expected-type propagation through list element inference (160 false positives from `[]` in record literal fields like `param_types: []`)
+- [~] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; `expected` now threads through ExprLet body (fold-init in let context receives expected). Remaining: fold-init path with no caller expected still falls back to `bare_map_node()`. Empty list `[]` diagnostic blocked on expected-type propagation through list element inference (160 false positives from `[]` in record literal fields like `param_types: []`). Dead `infer_lambda_with_element_type` deleted.
 - [x] Thread `expected` to formal params at matching positions — over-arity args no longer receive synthetic expected types; non-callable expected boundary overload remains open
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
