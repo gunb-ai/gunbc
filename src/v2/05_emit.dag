@@ -69,18 +69,12 @@ import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope
 }
-import v2.compiler.infer_emit_info {
-  TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering,
-  TypedItemKind, TypedItemStruct, TypedItemEnum, TypedItemTypeAlias,
-  TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction,
-  TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled,
-  lookup_item_kind, is_type_alias_return_node
-}
+import v2.compiler.infer_emit_info { TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering }
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
-  LanguageSpec, TestConventions,
+  LanguageSpec, TestConventions, ServiceFieldTemplates,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
@@ -124,6 +118,17 @@ type TcoReassignInput {
   depth: Int
 }
 
+type TypedItemKind
+  = TypedItemTypeDef
+  | TypedItemTypeAlias
+  | TypedItemTypeDecl
+  | TypedItemFunction
+  | TypedItemDataDef
+  | TypedItemServiceDef
+  | TypedItemResourceDef
+  | TypedItemUnhandled
+
+
 // =========================================================================
 // Backend capability contract -- what each backend declares it can handle.
 // Used by the artifact planner and equivalence validator.
@@ -162,10 +167,9 @@ fn has_mock_prefix(name: String) -> Bool {
 }
 
 fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
-  let emit_info = typed.emit_graph_info
   typed.modules |> flat_map(tm =>
     tm.items
-      |> filter(item => lookup_item_kind(emit_info: emit_info, name: item.name) == TypedItemServiceDef)
+      |> filter(item => is_service_item(item: item))
       |> flat_map(item =>
         item.children
           |> filter(c => c.properties |> any(p => has_mock_prefix(name: p.name)))
@@ -885,11 +889,11 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 
 // =========================================================================
 // Type rendering: all targets. Routes through build_type_rendering + render_type.
-// Go/Python callers pass no rc_types; Rust uses render_rust_type in 05_emit_rust.dag.
+// Go/Python callers pass no shared_types; Rust uses render_rust_type in 05_emit_rust.dag.
 // =========================================================================
 
 fn emit_node_type(n: Node, target: RenderTarget) -> String {
-  render_type(tr: build_type_rendering(n: n, rc_types: empty_map(), recursive_types: empty_map()), target: target)
+  render_type(tr: build_type_rendering(n: n, shared_types: empty_map(), recursive_types: empty_map()), target: target)
 }
 
 // =========================================================================
@@ -904,7 +908,7 @@ fn tr_default() -> TypeRendering {
   }
 }
 
-fn build_type_rendering(n: Node, rc_types: Map<String, Bool>, recursive_types: Map<String, Bool>) -> TypeRendering {
+fn build_type_rendering(n: Node, shared_types: Map<String, Bool>, recursive_types: Map<String, Bool>) -> TypeRendering {
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
 
@@ -920,9 +924,9 @@ fn build_type_rendering(n: Node, rc_types: Map<String, Bool>, recursive_types: M
 
   // Callable: fn(A, B) -> R
   if n.name == "Callable" {
-    let param_renderings = n.params |> map(p => build_type_rendering(n: param_node_type_expr(n: p), rc_types: rc_types, recursive_types: recursive_types))
+    let param_renderings = n.params |> map(p => build_type_rendering(n: param_node_type_expr(n: p), shared_types: shared_types, recursive_types: recursive_types))
     let ret = match n.inferred {
-      Some { value: Resolved { node: rt } } => Some { value: build_type_rendering(n: rt, rc_types: rc_types, recursive_types: recursive_types) }
+      Some { value: Resolved { node: rt } } => Some { value: build_type_rendering(n: rt, shared_types: shared_types, recursive_types: recursive_types) }
       _ => none
     }
     return TypeRendering {
@@ -935,7 +939,7 @@ fn build_type_rendering(n: Node, rc_types: Map<String, Bool>, recursive_types: M
   // Optional wrapping
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
-    let inner_tr = build_type_rendering(n: with_required_cardinality(n: n), rc_types: rc_types, recursive_types: recursive_types)
+    let inner_tr = build_type_rendering(n: with_required_cardinality(n: n), shared_types: shared_types, recursive_types: recursive_types)
     return TypeRendering {
       type_name: "optional", inner: Some { value: inner_tr },
       element: none, key: none, value: none, params: [], return_type: none,
@@ -947,16 +951,16 @@ fn build_type_rendering(n: Node, rc_types: Map<String, Bool>, recursive_types: M
   let is_conj = n.connective == Conj
   let is_disj = n.connective == Disj
   if !is_conj && !is_disj {
-    build_type_rendering_leaf(n: n, rc_types: rc_types, recursive_types: recursive_types)
+    build_type_rendering_leaf(n: n, shared_types: shared_types, recursive_types: recursive_types)
   } else if is_conj {
-    build_type_rendering_conj(n: n, rc_types: rc_types, recursive_types: recursive_types)
+    build_type_rendering_conj(n: n, shared_types: shared_types, recursive_types: recursive_types)
   } else {
-    build_type_rendering_disj(n: n, rc_types: rc_types)
+    build_type_rendering_disj(n: n, shared_types: shared_types)
   }
 }
 
-fn build_type_rendering_leaf(n: Node, rc_types: Map<String, Bool>, recursive_types: Map<String, Bool>) -> TypeRendering {
-  let shared = emit_map_has(m: rc_types, key: n.name)
+fn build_type_rendering_leaf(n: Node, shared_types: Map<String, Bool>, recursive_types: Map<String, Bool>) -> TypeRendering {
+  let shared = emit_map_has(m: shared_types, key: n.name)
   if n.children |> count == 0 {
     // Bare type (no children)
     let bare_is_map = is_container_type(name: n.name) && to_snake(name: n.name) == "map"
@@ -972,7 +976,7 @@ fn build_type_rendering_leaf(n: Node, rc_types: Map<String, Bool>, recursive_typ
       TypeRendering { type_name: to_snake(name: n.name), element: Some { value: leaf_type_rendering(name: "_") }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
     } else if has_container_template && param_count == 1 {
       let inner = match n.params |> first {
-        Some { value: p } => build_type_rendering(n: param_node_type_expr(n: p), rc_types: rc_types, recursive_types: recursive_types)
+        Some { value: p } => build_type_rendering(n: param_node_type_expr(n: p), shared_types: shared_types, recursive_types: recursive_types)
         None => leaf_type_rendering(name: "_")
       }
       TypeRendering { type_name: to_snake(name: n.name), element: Some { value: inner }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
@@ -986,17 +990,17 @@ fn build_type_rendering_leaf(n: Node, rc_types: Map<String, Bool>, recursive_typ
     let is_map = node_is_keyed_collection(n: n)
     if is_map {
       let k = match n.children |> first {
-        Some { value: kn } => build_type_rendering(n: kn, rc_types: rc_types, recursive_types: recursive_types)
+        Some { value: kn } => build_type_rendering(n: kn, shared_types: shared_types, recursive_types: recursive_types)
         None => leaf_type_rendering(name: "_")
       }
       let v = match n.children |> skip(1) |> first {
-        Some { value: vn } => build_type_rendering(n: vn, rc_types: rc_types, recursive_types: recursive_types)
+        Some { value: vn } => build_type_rendering(n: vn, shared_types: shared_types, recursive_types: recursive_types)
         None => leaf_type_rendering(name: "_")
       }
       TypeRendering { type_name: n.name, key: Some { value: k }, value: Some { value: v }, shared: shared, element: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
     } else if n.children |> count == 1 {
       let child_tr = match n.children |> first {
-        Some { value: child } => build_type_rendering(n: child, rc_types: rc_types, recursive_types: recursive_types)
+        Some { value: child } => build_type_rendering(n: child, shared_types: shared_types, recursive_types: recursive_types)
         None => leaf_type_rendering(name: "_")
       }
       let is_container = node_is_collection(n: n)
@@ -1007,7 +1011,7 @@ fn build_type_rendering_leaf(n: Node, rc_types: Map<String, Bool>, recursive_typ
       }
     } else {
       // Multi-child leaf: Tuple or generic type
-      let child_trs = n.children |> map(c => build_type_rendering(n: c, rc_types: rc_types, recursive_types: recursive_types))
+      let child_trs = n.children |> map(c => build_type_rendering(n: c, shared_types: shared_types, recursive_types: recursive_types))
       if n.name == "Tuple" {
         TypeRendering { type_name: "Tuple", is_tuple: true, params: child_trs, element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
       } else {
@@ -1017,13 +1021,13 @@ fn build_type_rendering_leaf(n: Node, rc_types: Map<String, Bool>, recursive_typ
   }
 }
 
-fn build_type_rendering_conj(n: Node, rc_types: Map<String, Bool>, recursive_types: Map<String, Bool>) -> TypeRendering {
-  let shared = emit_map_has(m: rc_types, key: n.name)
+fn build_type_rendering_conj(n: Node, shared_types: Map<String, Bool>, recursive_types: Map<String, Bool>) -> TypeRendering {
+  let shared = emit_map_has(m: shared_types, key: n.name)
 
   // Refined: unwrap to base type
   if n.name == "Refined" {
     return match n.children |> first {
-      Some { value: base } => build_type_rendering(n: base, rc_types: rc_types, recursive_types: recursive_types)
+      Some { value: base } => build_type_rendering(n: base, shared_types: shared_types, recursive_types: recursive_types)
       None => TypeRendering { type_name: "Refined", element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false, is_error: false, error_label: "" }
     }
   }
@@ -1031,11 +1035,11 @@ fn build_type_rendering_conj(n: Node, rc_types: Map<String, Bool>, recursive_typ
   // Tuple
   if n.name == "Tuple" {
     let first_child = match n.children |> first {
-      Some { value: c } => if c.inferred != none { build_type_rendering(n: rt_type(n: c), rc_types: rc_types, recursive_types: recursive_types) } else { build_type_rendering(n: c, rc_types: rc_types, recursive_types: recursive_types) }
+      Some { value: c } => if c.inferred != none { build_type_rendering(n: rt_type(n: c), shared_types: shared_types, recursive_types: recursive_types) } else { build_type_rendering(n: c, shared_types: shared_types, recursive_types: recursive_types) }
       None => leaf_type_rendering(name: "_")
     }
     let second_child = match n.children |> skip(1) |> first {
-      Some { value: c } => if c.inferred != none { build_type_rendering(n: rt_type(n: c), rc_types: rc_types, recursive_types: recursive_types) } else { build_type_rendering(n: c, rc_types: rc_types, recursive_types: recursive_types) }
+      Some { value: c } => if c.inferred != none { build_type_rendering(n: rt_type(n: c), shared_types: shared_types, recursive_types: recursive_types) } else { build_type_rendering(n: c, shared_types: shared_types, recursive_types: recursive_types) }
       None => leaf_type_rendering(name: "_")
     }
     return TypeRendering { type_name: "Tuple", is_tuple: true, params: [first_child, second_child], element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
@@ -1061,7 +1065,7 @@ fn build_type_rendering_conj(n: Node, rc_types: Map<String, Bool>, recursive_typ
   // Anonymous product
   let field_renderings = n.children |> map(child =>
     if child.inferred != none {
-      build_type_rendering(n: rt_type(n: child), rc_types: rc_types, recursive_types: recursive_types)
+      build_type_rendering(n: rt_type(n: child), shared_types: shared_types, recursive_types: recursive_types)
     } else {
       TypeRendering { type_name: "", is_error: true, error_label: "anonymous product field missing inferred", element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false }
     }
@@ -1069,8 +1073,8 @@ fn build_type_rendering_conj(n: Node, rc_types: Map<String, Bool>, recursive_typ
   TypeRendering { type_name: "", params: field_renderings, is_tuple: true, element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
 }
 
-fn build_type_rendering_disj(n: Node, rc_types: Map<String, Bool>) -> TypeRendering {
-  let shared = emit_map_has(m: rc_types, key: n.name)
+fn build_type_rendering_disj(n: Node, shared_types: Map<String, Bool>) -> TypeRendering {
+  let shared = emit_map_has(m: shared_types, key: n.name)
   if n.name != "" {
     TypeRendering { type_name: n.name, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
   } else {
@@ -1194,12 +1198,22 @@ fn render_type_base(tr: TypeRendering, target: RenderTarget) -> String {
 // Shared item-level helpers -- identical across all backends
 // =========================================================================
 
+// Check if a return type indicates a type alias (not Unit).
+// Unit is the only return type that signals "this is not an alias" —
+// bare items like `type Unit` have rt_type name "Unit".
+fn is_type_alias_return_node(n: Node) -> Bool {
+  n.name != "Unit"
+}
+
+// Check if a typed node is a service item.
+fn is_service_item(item: Node) -> Bool {
+  item.transport != none && item.children |> count > 0
+}
+
 // Check if a resolved graph has any service definitions.
-// Uses precomputed item_kinds from EmitGraphInfo.
 fn has_service_items(typed: ResolvedGraph) -> Bool {
-  let emit_info = typed.emit_graph_info
   typed.modules |> any(tm =>
-    tm.items |> any(item => lookup_item_kind(emit_info: emit_info, name: item.name) == TypedItemServiceDef)
+    tm.items |> any(item => is_service_item(item: item))
   )
 }
 
@@ -1228,6 +1242,43 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
   }
 }
 
+// Structural transport queries: check if any operation in the service
+// uses a specific transport kind. Generic helper eliminates per-kind duplication.
+fn service_has_transport_kind(kind: String, fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = is_transport_kind(t: fallback_transport, kind: kind)
+  let from_ops = op_children |> any(op =>
+    if op.transport != none { is_transport_kind(t: op.transport.value, kind: kind) } else { false }
+  )
+  from_fallback || from_ops
+}
+
+fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  service_has_transport_kind(kind: transport_kind_rest, fallback_transport: fallback_transport, op_children: op_children)
+}
+
+fn service_has_shell(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  service_has_transport_kind(kind: transport_kind_shell, fallback_transport: fallback_transport, op_children: op_children)
+}
+
+fn service_has_file(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  service_has_transport_kind(kind: transport_kind_file, fallback_transport: fallback_transport, op_children: op_children)
+}
+
+// Check if any REST operation (or the service-level fallback) has auth.
+fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let fallback_is_rest = is_rest_transport(t: fallback_transport)
+  let from_fallback = if fallback_is_rest {
+    transport_has_auth(t: fallback_transport)
+  } else { false }
+  let from_ops = op_children |> any(op =>
+    if op.transport != none {
+      let t = op.transport.value
+      if is_rest_transport(t: t) { transport_has_auth(t: t) } else { false }
+    } else { false }
+  )
+  from_fallback || from_ops
+}
+
 // Extract operation modifier names from a list of property field inits.
 fn extract_modifier_names(properties: List<Node>) -> List<String> {
   properties |> flat_map(p =>
@@ -1236,6 +1287,46 @@ fn extract_modifier_names(properties: List<Node>) -> List<String> {
       None => []
     }
   )
+}
+
+// Consolidated service field detection: returns which transport-driven
+// config fields a service struct needs. Single call replaces 4 separate
+// predicate calls that all three backends were duplicating.
+type ServiceFieldSet {
+  has_rest: Bool
+  has_shell: Bool
+  has_file: Bool
+  has_auth: Bool
+}
+
+fn compute_service_fields(fallback_transport: Node, op_children: List<Node>) -> ServiceFieldSet {
+  ServiceFieldSet {
+    has_rest: service_has_rest(fallback_transport: fallback_transport, op_children: op_children),
+    has_shell: service_has_shell(fallback_transport: fallback_transport, op_children: op_children),
+    has_file: service_has_file(fallback_transport: fallback_transport, op_children: op_children),
+    has_auth: service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
+  }
+}
+
+// Shared renderers: apply ServiceFieldTemplates against a ServiceFieldSet.
+// Returns lists so each backend can join with its own separator.
+
+fn service_field_decls(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<String> {
+  let result = []
+  let result = if fs.has_rest { concat(result, [t.rest_decl]) } else { result }
+  let result = if fs.has_auth { concat(result, [t.auth_decl]) } else { result }
+  let result = if fs.has_shell { concat(result, [t.shell_decl]) } else { result }
+  let result = if fs.has_file { concat(result, [t.file_decl]) } else { result }
+  result
+}
+
+fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<String> {
+  let result = []
+  let result = if fs.has_rest { concat(result, [t.rest_ctor]) } else { result }
+  let result = if fs.has_auth { concat(result, [t.auth_ctor]) } else { result }
+  let result = if fs.has_shell { concat(result, [t.shell_ctor]) } else { result }
+  let result = if fs.has_file { concat(result, [t.file_ctor]) } else { result }
+  result
 }
 
 // Transport kind classification: single-dispatch alternative to repeated
@@ -1257,6 +1348,43 @@ fn classify_transport(t: Node) -> TransportKind {
 // Sustainability invariant: "No duplicate representations."
 // These classifiers are the single authority for item/type/transport kind.
 // =========================================================================
+
+// Classify a typed item into one of the structural categories.
+// Returns: "type_def", "type_alias", "type_decl", "function", "data_def",
+//          "service_def", "resource_def", "extern_func", or "unhandled".
+// For "function", callers must further check item.uses to distinguish fn vs func.
+fn classify_typed_item(item: Node) -> TypedItemKind {
+  let item_has_structure = item.connective != NoConnective
+  let is_bare_leaf = item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+  let kind = if is_bare_leaf && is_type_alias_return_node(n: rt_type(n: item)) {
+    TypedItemTypeAlias
+  } else if is_bare_leaf && !is_type_alias_return_node(n: rt_type(n: item)) {
+    // Bare leaf declarations with no alias body (e.g., `type Bool`, `type Unit`).
+    // These are type-system declarations handled by the type map — emitting a
+    // definition would duplicate what the type map already provides.
+    TypedItemTypeDecl
+  } else if item_has_structure && item.transport == none {
+    TypedItemTypeDef
+  } else if item.body != none && item.type_annotation == none {
+    TypedItemFunction
+  } else if item.body != none && item.type_annotation != none {
+    TypedItemDataDef
+  } else if item.transport != none && item.children |> count > 0 {
+    TypedItemServiceDef
+  } else if (item.transport == none && item.children |> count > 0) || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none) {
+    // Resources: either with capabilities (children > 0) or without (have properties but no body/transport/children).
+    // Note: inferred may be Some { value: Unit } because the reconciler defaults pass-through items to Unit.
+    TypedItemResourceDef
+  } else if item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0 {
+    // Bare parameterized type declaration (e.g., type List<element>).
+    // These are type-system declarations and intentionally emit no runtime code.
+    TypedItemTypeDecl
+  } else {
+    TypedItemUnhandled
+  }
+  kind
+}
+
 
 // =========================================================================
 // Shared ExprData fold spine -- target-agnostic expression classification
@@ -1534,6 +1662,15 @@ fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String
     _ =>
       let spec = language_spec(target: target)
       apply_type_template2(template: spec.annotations.let_binding_inferred, arg0: emit_ident(name: name, target: target), arg1: value)
+  }
+}
+
+fn emit_let_binding_annotated(name: String, type_str: String, value: String, target: RenderTarget) -> String {
+  match target {
+    Dag => concat("let ", name, ": ", type_str, " = ", value)
+    _ =>
+      let spec = language_spec(target: target)
+      apply_type_template3(template: spec.annotations.let_binding_annotated, arg0: emit_ident(name: name, target: target), arg1: type_str, arg2: value)
   }
 }
 

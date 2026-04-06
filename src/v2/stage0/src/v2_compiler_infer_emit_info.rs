@@ -46,15 +46,14 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, with_required_cardinality, Connective, param_node_name, local_transport_node, is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file, is_rest_transport, transport_has_auth, Cardinality};
+pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, with_required_cardinality, Connective, param_node_name, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, TupleFirst, TupleSecond};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
-use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
+use crate::v2_std_core::Connective::{Conj, NoConnective};
 use crate::v2_std_core::Cardinality::{CardOptional};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, rt_type, emit_map_has, child_inferred_or_name, node_type_equals};
 use TypeRepr::*;
-use TypedItemKind::*;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
@@ -80,187 +79,6 @@ impl TypeRepr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum TypedItemKind {
-    TypedItemStruct,
-    TypedItemEnum,
-    TypedItemTypeAlias,
-    TypedItemTypeDecl,
-    TypedItemFunction,
-    TypedItemTransportFunction,
-    TypedItemDataDef,
-    TypedItemServiceDef,
-    TypedItemResourceDef,
-    TypedItemUnhandled,
-}
-
-pub fn is_type_alias_return_node(n: Rc<Node>) -> bool {
-    (n.name.clone().as_str() != "Unit".to_string().as_str())
-}
-
-pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
-    {
-        let item_has_structure = (item.connective.clone() != Connective::NoConnective);
-let is_bare_leaf = (((((item_has_structure.clone() == false) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0));
-if (is_bare_leaf.clone() && is_type_alias_return_node(rt_type(item.clone()))) {
-            TypedItemKind::TypedItemTypeAlias
-} else {
-            if (is_bare_leaf.clone() && !is_type_alias_return_node(rt_type(item.clone()))) {
-                TypedItemKind::TypedItemTypeDecl
-} else {
-                if (item_has_structure.clone() && (item.transport.clone() == None)) {
-                    match item.connective.clone() {
-    Connective::Conj => TypedItemKind::TypedItemStruct,
-    Connective::Disj => TypedItemKind::TypedItemEnum,
-    Connective::NoConnective => TypedItemKind::TypedItemEnum,
-}
-} else {
-                    if ((item.body.clone() != None) && (item.type_annotation.clone() == None)) {
-                        match ((item.uses.clone().len() as i64) > 0) {
-    true => TypedItemKind::TypedItemTransportFunction,
-    false => TypedItemKind::TypedItemFunction,
-}
-} else {
-                        if ((item.body.clone() != None) && (item.type_annotation.clone() != None)) {
-                            TypedItemKind::TypedItemDataDef
-} else {
-                            if ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0)) {
-                                TypedItemKind::TypedItemServiceDef
-} else {
-                                if (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0)) || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0)) && ((item.properties.clone().len() as i64) > 0)) && (item.body.clone() == None))) {
-                                    TypedItemKind::TypedItemResourceDef
-} else {
-                                    if (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)) {
-                                        TypedItemKind::TypedItemTypeDecl
-} else {
-                                        TypedItemKind::TypedItemUnhandled
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-
-pub fn lookup_item_kind(emit_info: Rc<EmitGraphInfo>, name: String) -> TypedItemKind {
-    match v2_rt::map_get(&emit_info.item_kinds.clone(), name) {
-    Some(k) => k.clone(),
-    None => TypedItemKind::TypedItemUnhandled,
-}
-}
-
-pub fn is_type_item_kind(emit_info: Rc<EmitGraphInfo>, name: String) -> bool {
-    {
-        let k = lookup_item_kind(emit_info, name);
-((k.clone() == TypedItemKind::TypedItemStruct) || (k.clone() == TypedItemKind::TypedItemEnum))
-}
-}
-
-pub fn is_function_item_kind(emit_info: Rc<EmitGraphInfo>, name: String) -> bool {
-    {
-        let k = lookup_item_kind(emit_info, name);
-((k.clone() == TypedItemKind::TypedItemFunction) || (k.clone() == TypedItemKind::TypedItemTransportFunction))
-}
-}
-
-pub fn classify_service_fields(item: Rc<Node>) -> ServiceFieldSet {
-    {
-        let fallback = if (item.transport.clone() == None) {
-            local_transport_node(item.span.clone())
-} else {
-            item.transport.clone().clone().unwrap()
-};
-let ops = item.children.clone();
-let has_rest = (is_transport_kind(fallback.clone(), transport_kind_rest()) || { let mut __found = false; for op in ops.clone().iter().cloned() { if if (op.transport.clone() != None) {
-            is_transport_kind(op.transport.clone().clone().unwrap(), transport_kind_rest())
-} else {
-            false
-} { __found = true; break; } } __found });
-let has_shell = (is_transport_kind(fallback.clone(), transport_kind_shell()) || { let mut __found = false; for op in ops.clone().iter().cloned() { if if (op.transport.clone() != None) {
-            is_transport_kind(op.transport.clone().clone().unwrap(), transport_kind_shell())
-} else {
-            false
-} { __found = true; break; } } __found });
-let has_file = (is_transport_kind(fallback.clone(), transport_kind_file()) || { let mut __found = false; for op in ops.clone().iter().cloned() { if if (op.transport.clone() != None) {
-            is_transport_kind(op.transport.clone().clone().unwrap(), transport_kind_file())
-} else {
-            false
-} { __found = true; break; } } __found });
-let has_auth = if is_rest_transport(fallback.clone()) {
-            transport_has_auth(fallback.clone())
-} else {
-            false
-};
-let has_auth = (has_auth.clone() || { let mut __found = false; for op in ops.clone().iter().cloned() { if if (op.transport.clone() != None) {
-            {
-                let t = op.transport.clone().clone().unwrap();
-if is_rest_transport(t.clone()) {
-                    transport_has_auth(t.clone())
-} else {
-                    false
-}
-}
-} else {
-            false
-} { __found = true; break; } } __found });
-ServiceFieldSet {
-    has_rest: has_rest,
-    has_shell: has_shell,
-    has_file: has_file,
-    has_auth: has_auth.clone(),
-}
-}
-}
-
-pub fn lookup_service_fields(emit_info: Rc<EmitGraphInfo>, name: String) -> ServiceFieldSet {
-    match v2_rt::map_get(&emit_info.service_fields.clone(), name) {
-    Some(fs) => fs.clone(),
-    None => ServiceFieldSet {
-    has_rest: false,
-    has_shell: false,
-    has_file: false,
-    has_auth: false,
-},
-}
-}
-
-pub fn classify_function_signature(item: Rc<Node>) -> Rc<FunctionSignature> {
-    Rc::new(FunctionSignature {
-    params: item.params.clone(),
-    return_type: rt_type(item.clone()),
-    body: item.body.clone().clone().unwrap(),
-    uses: item.uses.clone(),
-})
-}
-
-pub fn lookup_function_signature(emit_info: Rc<EmitGraphInfo>, name: String) -> Option<Rc<FunctionSignature>> {
-    v2_rt::map_get(&emit_info.function_signatures.clone(), name)
-}
-
-pub fn classify_resource_definition(item: Rc<Node>) -> Rc<ResourceDefinition> {
-    Rc::new(ResourceDefinition {
-    capabilities: Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { __result.push(Rc::new(CapabilitySignature {
-    name: c.name.clone(),
-    params: c.params.clone(),
-    return_type: rt_type(c.clone()),
-})); } __result }),
-})
-}
-
-pub fn lookup_resource_definition(emit_info: Rc<EmitGraphInfo>, name: String) -> Option<Rc<ResourceDefinition>> {
-    v2_rt::map_get(&emit_info.resource_definitions.clone(), name)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ValueContext {
-    pub has_fn_fields: bool,
-    pub is_constant: bool,
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeSummary {
     pub name: String,
@@ -269,6 +87,7 @@ pub struct TypeSummary {
     pub field_type_map: Rc<HashMap<String, String>>,
     pub variant_name_set: Rc<HashMap<String, bool>>,
     pub generic_param_names: Rc<Vec<String>>,
+    pub has_fn_fields: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -276,44 +95,13 @@ pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub recursive_type_set: Rc<HashMap<String, bool>>,
     pub fielded_variants: Rc<HashMap<String, bool>>,
-    pub value_contexts: Rc<HashMap<String, ValueContext>>,
+    pub shared_types: Rc<HashMap<String, bool>>,
     pub ownership_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub movable: Rc<HashMap<String, bool>>,
+    pub variant_to_enum: Rc<HashMap<String, String>>,
     pub owned_bindings: Rc<HashMap<String, bool>>,
-    pub item_kinds: Rc<HashMap<String, TypedItemKind>>,
-    pub service_fields: Rc<HashMap<String, ServiceFieldSet>>,
-    pub function_signatures: Rc<HashMap<String, Rc<FunctionSignature>>>,
-    pub resource_definitions: Rc<HashMap<String, Rc<ResourceDefinition>>>,
     pub fold_eligible_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub fold_eligible: Rc<HashMap<String, bool>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FunctionSignature {
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub return_type: Rc<Node>,
-    pub body: Rc<Node>,
-    pub uses: Rc<Vec<Rc<Node>>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ServiceFieldSet {
-    pub has_rest: bool,
-    pub has_shell: bool,
-    pub has_file: bool,
-    pub has_auth: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CapabilitySignature {
-    pub name: String,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub return_type: Rc<Node>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ResourceDefinition {
-    pub capabilities: Rc<Vec<Rc<CapabilitySignature>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -343,14 +131,11 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     type_summaries: v2_rt::rc_empty_map::<Rc<TypeSummary>>(),
     recursive_type_set: v2_rt::rc_empty_map::<bool>(),
     fielded_variants: v2_rt::rc_empty_map::<bool>(),
-    value_contexts: v2_rt::rc_empty_map::<ValueContext>(),
+    shared_types: v2_rt::rc_empty_map::<bool>(),
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     movable: v2_rt::rc_empty_map::<bool>(),
+    variant_to_enum: v2_rt::rc_empty_map::<String>(),
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
-    item_kinds: v2_rt::rc_empty_map::<TypedItemKind>(),
-    service_fields: v2_rt::rc_empty_map::<ServiceFieldSet>(),
-    function_signatures: v2_rt::rc_empty_map::<Rc<FunctionSignature>>(),
-    resource_definitions: v2_rt::rc_empty_map::<Rc<ResourceDefinition>>(),
     fold_eligible_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     fold_eligible: v2_rt::rc_empty_map::<bool>(),
 })
@@ -409,7 +194,7 @@ pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: String)
 pub fn derive_variant_to_enum(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>) -> Rc<HashMap<String, String>> {
     Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, summary: Rc<TypeSummary>| match (*summary.repr.clone()).clone() {
     TypeRepr::EnumRepr { .. } => Rc::new(v2_rt::map_keys(&summary.variant_name_set.clone())).iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, String>>, vn: String| match v2_rt::map_get(&inner, vn.clone()) {
-    Some(_) => inner.clone(),
+    Some(_) => v2_rt::rc_map_insert(inner.clone(), vn.clone(), "".to_string()),
     None => v2_rt::rc_map_insert(inner.clone(), vn.clone(), summary.name.clone()),
 }),
     _ => acc.clone(),
@@ -570,6 +355,10 @@ pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
 }
 let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result });
 let is_product = (item.connective.clone() == Connective::Conj);
+let has_fn = { let mut __found = false; for child in item.children.clone().iter().cloned() { if match child.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => (rt.name.clone().as_str() == "Callable".to_string().as_str()),
+    _ => false,
+} { __found = true; break; } } __found };
 if is_product {
             Some(Rc::new(TypeSummary {
     name: item.name.clone(),
@@ -578,6 +367,7 @@ if is_product {
     field_type_map: build_field_type_map(item.children.clone()),
     variant_name_set: v2_rt::rc_empty_map::<bool>(),
     generic_param_names: gpn,
+    has_fn_fields: has_fn,
 }))
 } else {
             {
@@ -591,6 +381,7 @@ Some(Rc::new(TypeSummary {
     field_type_map: v2_rt::rc_empty_map::<String>(),
     variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), child.name.clone(), true)),
     generic_param_names: gpn,
+    has_fn_fields: has_fn,
 }))
 }
 }
@@ -602,14 +393,21 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     Some(summary) => {
         let with_variants = match (*summary.repr.clone()).clone() {
     TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.type_summaries.clone(), |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
-            v2_rt::rc_map_insert(acc.clone(), variant.name.clone(), Rc::new(TypeSummary {
+            {
+                let v_has_fn = { let mut __found = false; for vc in variant.children.clone().iter().cloned() { if match vc.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => (rt.name.clone().as_str() == "Callable".to_string().as_str()),
+    _ => false,
+} { __found = true; break; } } __found };
+v2_rt::rc_map_insert(acc.clone(), variant.name.clone(), Rc::new(TypeSummary {
     name: variant.name.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(variant.children.clone()),
     field_type_map: build_field_type_map(variant.children.clone()),
     variant_name_set: v2_rt::rc_empty_map::<bool>(),
     generic_param_names: Rc::new(vec![]),
+    has_fn_fields: v_has_fn.clone(),
 }))
+}
 } else {
             acc.clone()
 }),

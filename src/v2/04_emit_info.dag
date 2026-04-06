@@ -17,18 +17,14 @@ import v2.std.core {
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
   with_required_cardinality,
-  Connective, Conj, Disj, NoConnective,
+  Connective, Conj, NoConnective,
   CardOptional,
-  param_node_name,
-  local_transport_node,
-  is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file,
-  is_rest_transport, transport_has_auth
+  param_node_name
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,
   rt_type, emit_map_has, child_inferred_or_name, node_type_equals
 }
-
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
@@ -42,171 +38,6 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 
 type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 
-// =========================================================================
-// TypedItemKind — enriched item classification precomputed during reconcile.
-//
-// Eliminates post-classification re-interrogation of connective and uses:
-//   TypeDef → split into Struct / Enum (no connective re-check)
-//   Function → split into Function / TransportFunction (no uses re-check)
-// =========================================================================
-
-type TypedItemKind
-  = TypedItemStruct
-  | TypedItemEnum
-  | TypedItemTypeAlias
-  | TypedItemTypeDecl
-  | TypedItemFunction
-  | TypedItemTransportFunction
-  | TypedItemDataDef
-  | TypedItemServiceDef
-  | TypedItemResourceDef
-  | TypedItemUnhandled
-
-// Check if a return type indicates a type alias (not Unit).
-// Unit is the only return type that signals "this is not an alias" —
-// bare items like `type Unit` have rt_type name "Unit".
-fn is_type_alias_return_node(n: Node) -> Bool {
-  n.name != "Unit"
-}
-
-// Classify a typed item into one of the enriched structural categories.
-// Splits TypeDef by connective (Struct vs Enum) and Function by uses
-// (Function vs TransportFunction) so emit never re-interrogates these.
-fn classify_typed_item(item: Node) -> TypedItemKind {
-  let item_has_structure = item.connective != NoConnective
-  let is_bare_leaf = item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
-  if is_bare_leaf && is_type_alias_return_node(n: rt_type(n: item)) {
-    TypedItemTypeAlias
-  } else if is_bare_leaf && !is_type_alias_return_node(n: rt_type(n: item)) {
-    TypedItemTypeDecl
-  } else if item_has_structure && item.transport == none {
-    match item.connective {
-      Conj => TypedItemStruct
-      Disj => TypedItemEnum
-      NoConnective => TypedItemEnum
-    }
-  } else if item.body != none && item.type_annotation == none {
-    match item.uses |> count > 0 {
-      true => TypedItemTransportFunction
-      false => TypedItemFunction
-    }
-  } else if item.body != none && item.type_annotation != none {
-    TypedItemDataDef
-  } else if item.transport != none && item.children |> count > 0 {
-    TypedItemServiceDef
-  } else if (item.transport == none && item.children |> count > 0) || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none) {
-    TypedItemResourceDef
-  } else if item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0 {
-    TypedItemTypeDecl
-  } else {
-    TypedItemUnhandled
-  }
-}
-
-// Lookup an item's precomputed kind from EmitGraphInfo.
-fn lookup_item_kind(emit_info: EmitGraphInfo, name: String) -> TypedItemKind {
-  match map_get(emit_info.item_kinds, name) {
-    Some { value: k } => k
-    None => TypedItemUnhandled
-  }
-}
-
-fn is_type_item_kind(emit_info: EmitGraphInfo, name: String) -> Bool {
-  let k = lookup_item_kind(emit_info: emit_info, name: name)
-  k == TypedItemStruct || k == TypedItemEnum
-}
-
-fn is_function_item_kind(emit_info: EmitGraphInfo, name: String) -> Bool {
-  let k = lookup_item_kind(emit_info: emit_info, name: name)
-  k == TypedItemFunction || k == TypedItemTransportFunction
-}
-
-// Classify a service item's transport capabilities by scanning its
-// fallback transport and operation children. Called once per service
-// during reconcile; result stored in EmitGraphInfo.service_fields.
-fn classify_service_fields(item: Node) -> ServiceFieldSet {
-  let fallback = if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
-  let ops = item.children
-  let has_rest = is_transport_kind(t: fallback, kind: transport_kind_rest) || ops |> any(op =>
-    if op.transport != none { is_transport_kind(t: op.transport.value, kind: transport_kind_rest) } else { false }
-  )
-  let has_shell = is_transport_kind(t: fallback, kind: transport_kind_shell) || ops |> any(op =>
-    if op.transport != none { is_transport_kind(t: op.transport.value, kind: transport_kind_shell) } else { false }
-  )
-  let has_file = is_transport_kind(t: fallback, kind: transport_kind_file) || ops |> any(op =>
-    if op.transport != none { is_transport_kind(t: op.transport.value, kind: transport_kind_file) } else { false }
-  )
-  let has_auth = if is_rest_transport(t: fallback) { transport_has_auth(t: fallback) } else { false }
-  let has_auth = has_auth || ops |> any(op =>
-    if op.transport != none {
-      let t = op.transport.value
-      if is_rest_transport(t: t) { transport_has_auth(t: t) } else { false }
-    } else { false }
-  )
-  ServiceFieldSet {
-    has_rest: has_rest,
-    has_shell: has_shell,
-    has_file: has_file,
-    has_auth: has_auth
-  }
-}
-
-// Lookup precomputed service fields from EmitGraphInfo.
-fn lookup_service_fields(emit_info: EmitGraphInfo, name: String) -> ServiceFieldSet {
-  match map_get(emit_info.service_fields, name) {
-    Some { value: fs } => fs
-    None => ServiceFieldSet { has_rest: false, has_shell: false, has_file: false, has_auth: false }
-  }
-}
-
-// Classify a function item into a FunctionSignature. Called once per
-// function during reconcile; result stored in EmitGraphInfo.function_signatures.
-fn classify_function_signature(item: Node) -> FunctionSignature {
-  FunctionSignature {
-    params: item.params,
-    return_type: rt_type(n: item),
-    body: item.body.value,
-    uses: item.uses
-  }
-}
-
-// Lookup precomputed function signature from EmitGraphInfo.
-fn lookup_function_signature(emit_info: EmitGraphInfo, name: String) -> FunctionSignature? {
-  map_get(emit_info.function_signatures, name)
-}
-
-// Classify a resource item into a ResourceDefinition. Called once per
-// resource during reconcile; result stored in EmitGraphInfo.resource_definitions.
-fn classify_resource_definition(item: Node) -> ResourceDefinition {
-  ResourceDefinition {
-    capabilities: item.children |> map(c => CapabilitySignature {
-      name: c.name,
-      params: c.params,
-      return_type: rt_type(n: c)
-    })
-  }
-}
-
-// Lookup precomputed resource definition from EmitGraphInfo.
-fn lookup_resource_definition(emit_info: EmitGraphInfo, name: String) -> ResourceDefinition? {
-  map_get(emit_info.resource_definitions, name)
-}
-
-// ValueContext: orthogonal facts about how a named value is used,
-// determining its target-language representation. Precomputed in
-// EmitGraphInfo so the emitter reads facts instead of heuristics.
-//
-// The emitter reads ValueContext × LanguageSpec to choose representation:
-//   has_fn_fields × Rust → skip PartialEq/Debug derives
-//
-type ValueContext {
-  has_fn_fields: Bool
-  // True when the type is a fixed-width carrier: not recursive, no fn-typed
-  // fields, and all fields are value types (Int, Bool, Float) or it's a
-  // unit-only enum. The emitter uses this to skip Rc wrapping in Rust.
-  is_constant: Bool
-}
-
 type TypeSummary {
   name: String
   repr: TypeRepr
@@ -214,6 +45,9 @@ type TypeSummary {
   field_type_map: Map<String, String>
   variant_name_set: Map<String, Bool>
   generic_param_names: List<String>
+  // True when any direct child field resolves to a function type (params > 0).
+  // Used by Rust emitter to skip PartialEq/Debug derives (dyn Fn doesn't impl them).
+  has_fn_fields: Bool
 }
 
 // EmitGraphInfo: the reconcile→emit boundary contract.
@@ -239,10 +73,13 @@ type EmitGraphInfo {
   // Used by pattern emission to decide Variant vs Variant { .. }.
   // Keyed by variant name → true if variant has children.
   fielded_variants: Map<String, Bool>
-  // Per-type value context: orthogonal facts about how each named type
-  // is used, keyed by type name. Emitter reads these instead of locally
-  // inspecting resolved children.
-  value_contexts: Map<String, ValueContext>
+  // Per-type sharing decision: maps type names that need shared-pointer
+  // wrapping (Rc in Rust) to true. Computed from type_summaries ×
+  // recursive_type_set. The Rust emitter also adds collection types.
+  // This is the SINGLE authority for sharing decisions — build_type_rendering
+  // reads it, and direct emit sites read it for Rc-aware pattern matching
+  // and construction.
+  shared_types: Map<String, Bool>
   // Per-function ownership index: func_name → movable bindings set.
   // Built from ownership analysis. The emitter looks up the current
   // function's movable set and stores it in `movable` during item dispatch.
@@ -251,68 +88,19 @@ type EmitGraphInfo {
   // dispatching to emit_fn_def/emit_func_def. Bindings in this set have
   // fan-out=1 and can be moved instead of cloned.
   movable: Map<String, Bool>
+  // Precomputed variant → parent enum name map. Built from type_summaries
+  // by derive_variant_to_enum. Replaces heuristic lookups at emit sites.
+  variant_to_enum: Map<String, String>
   // Bindings known to be owned (not behind Rc). Field accesses on these
   // bindings use move semantics instead of .clone(). Set for fold
   // accumulators after Rc::try_unwrap.
   owned_bindings: Map<String, Bool>
-  // Per-item structural classification: item.name → TypedItemKind.
-  // Precomputed during reconcile so emit reads enriched kinds (Struct/Enum,
-  // Function/TransportFunction) without re-interrogating Node fields.
-  item_kinds: Map<String, TypedItemKind>
-  // Per-service transport capability facts: service_name → ServiceFieldSet.
-  // Precomputed during reconcile so emit reads which transport fields a
-  // service needs without scanning operations at render time.
-  service_fields: Map<String, ServiceFieldSet>
-  // Per-function precomputed signature: params, return_type, body, uses.
-  // Precomputed during reconcile so emit reads structured facts instead of
-  // reaching into Node.params / Node.body / rt_type at render time.
-  function_signatures: Map<String, FunctionSignature>
-  // Per-resource precomputed definition: capabilities with params and return types.
-  // Precomputed during reconcile so emit reads structured capability data
-  // instead of filtering/inspecting child Nodes.
-  resource_definitions: Map<String, ResourceDefinition>
   // Per-function fold accumulator unwrap eligibility: func_name → (acc_type_name → true).
   // Built from structural proofs in ownership.dag. The emitter combines this
   // with rc_types to decide Rc::try_unwrap rendering.
   fold_eligible_index: Map<String, Map<String, Bool>>
   // Current function's eligible fold accumulator types. Set by emit_typed_item.
   fold_eligible: Map<String, Bool>
-}
-
-// FunctionSignature: structural facts about a function item, precomputed
-// during reconcile. Captures the conjunction of params + return_type +
-// body + uses that emit otherwise extracts ad-hoc from the Node tree.
-type FunctionSignature {
-  params: List<Node>
-  return_type: Node
-  body: Node
-  uses: List<Node>
-}
-
-// ServiceFieldSet: transport capability facts for a service definition.
-// Precomputed once per service during reconcile. Each boolean indicates
-// whether any operation (or the fallback transport) uses that transport kind.
-type ServiceFieldSet {
-  has_rest: Bool
-  has_shell: Bool
-  has_file: Bool
-  has_auth: Bool
-}
-
-// CapabilitySignature: structural facts about a resource capability,
-// precomputed during reconcile. Captures name + params + return_type
-// that emit otherwise extracts ad-hoc from capability child Nodes.
-type CapabilitySignature {
-  name: String
-  params: List<Node>
-  return_type: Node
-}
-
-// ResourceDefinition: precomputed facts about a resource item.
-// Capabilities are pre-extracted from the item's children so emit
-// reads structured data instead of filtering/inspecting child Nodes.
-type ResourceDefinition {
-  capabilities: List<CapabilitySignature>
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -351,14 +139,11 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_map(),
     fielded_variants: empty_map(),
-    value_contexts: empty_map(),
+    shared_types: empty_map(),
     ownership_index: empty_map(),
     movable: empty_map(),
+    variant_to_enum: empty_map(),
     owned_bindings: empty_map(),
-    item_kinds: empty_map(),
-    service_fields: empty_map(),
-    function_signatures: empty_map(),
-    resource_definitions: empty_map(),
     fold_eligible_index: empty_map(),
     fold_eligible: empty_map()
   }
@@ -423,18 +208,15 @@ fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> Type
 
 // Derive variant_to_enum: a module-local CACHE, not the authority.
 // Authority is type_summaries.variant_name_set (O(1) structural check).
-// This cache is first-write-wins: ambiguous variants get an arbitrary
-// parent that the module-level vtoe correction fixes via structural
-// lookup through variant_belongs_to_enum. The cache is lossy by design —
-// it accelerates the common case (unique variants); the correction pass
-// handles the rest.
+// Ambiguous variants (name shared by multiple enums) get an empty-string
+// sentinel so effective_variant_parent falls through to structural resolution.
 fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {
   map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
     match summary.repr {
       EnumRepr { unit_only: _ } =>
         fold(map_keys(summary.variant_name_set), init: acc, f: (inner, vn) =>
           match map_get(inner, vn) {
-            Some { value: _ } => inner
+            Some { value: _ } => map_insert(inner, vn, "")
             None => map_insert(inner, vn, summary.name)
           }
         )
@@ -610,6 +392,12 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   }
   let gpn = item.params |> map(p => param_node_name(n: p))
   let is_product = item.connective == Conj
+  let has_fn = item.children |> any(child =>
+    match child.inferred {
+      Some { value: Resolved { node: rt } } => rt.name == "Callable"
+      _ => false
+    }
+  )
   if is_product {
     Some { value: TypeSummary {
       name: item.name,
@@ -617,7 +405,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
       field_summaries: build_struct_field_summaries(children: item.children),
       field_type_map: build_field_type_map(children: item.children),
       variant_name_set: empty_map(),
-      generic_param_names: gpn
+      generic_param_names: gpn,
+      has_fn_fields: has_fn
     } }
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
@@ -627,7 +416,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
       field_summaries: build_enum_field_summaries(variants: item.children),
       field_type_map: empty_map(),
       variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, child.name, true)),
-      generic_param_names: gpn
+      generic_param_names: gpn,
+      has_fn_fields: has_fn
     } }
   }
 }
@@ -641,13 +431,20 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
             if variant.children |> count > 0 {
+              let v_has_fn = variant.children |> any(vc =>
+                match vc.inferred {
+                  Some { value: Resolved { node: rt } } => rt.name == "Callable"
+                  _ => false
+                }
+              )
               map_insert(acc, variant.name, TypeSummary {
                 name: variant.name,
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(children: variant.children),
                 field_type_map: build_field_type_map(children: variant.children),
                 variant_name_set: empty_map(),
-                generic_param_names: []
+                generic_param_names: [],
+                has_fn_fields: v_has_fn
               })
             } else { acc }
           )

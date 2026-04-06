@@ -62,14 +62,14 @@ pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope};
-pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering, TypedItemKind, lookup_item_kind, is_type_alias_return_node};
-use crate::v2_compiler_infer_emit_info::TypedItemKind::{TypedItemStruct, TypedItemEnum, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled};
+pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, try_target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, try_target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
+use TypedItemKind::*;
 use BackendCapability::*;
 use TransportKind::*;
 use ExprCategory::*;
@@ -111,6 +111,19 @@ pub struct TcoReassignInput {
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 
+pub enum TypedItemKind {
+    TypedItemTypeDef,
+    TypedItemTypeAlias,
+    TypedItemTypeDecl,
+    TypedItemFunction,
+    TypedItemDataDef,
+    TypedItemServiceDef,
+    TypedItemResourceDef,
+    TypedItemUnhandled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+
 pub enum BackendCapability {
     CapServiceEmit,
     CapAsyncTransport,
@@ -145,9 +158,7 @@ pub fn has_mock_prefix(name: String) -> bool {
 }
 
 pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProjection>>> {
-    {
-        let emit_info = typed.emit_graph_info.clone();
-Rc::new({ let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if (lookup_item_kind(emit_info.clone(), item.name.clone()) == TypedItemKind::TypedItemServiceDef) { __result.push(item); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for c in Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { if { let mut __found = false; for p in c.properties.clone().iter().cloned() { if has_mock_prefix(p.name.clone()) { __found = true; break; } } __found } { __result.push(c); } } __result }).iter().cloned() { __result.push(Rc::new(TestProjection {
+    Rc::new({ let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_service_item(item.clone()) { __result.push(item); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for c in Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { if { let mut __found = false; for p in c.properties.clone().iter().cloned() { if has_mock_prefix(p.name.clone()) { __found = true; break; } } __found } { __result.push(c); } } __result }).iter().cloned() { __result.push(Rc::new(TestProjection {
     module_name: tm.module.clone().name.clone(),
     service_name: item.name.clone(),
     operation_name: c.name.clone(),
@@ -156,7 +167,6 @@ Rc::new({ let mut __result = Vec::new(); for tm in typed.modules.clone().iter().
     mock_field_inits: Rc::new({ let mut __result = Vec::new(); for p in c.properties.clone().iter().cloned() { if has_mock_prefix(p.name.clone()) { __result.push(p); } } __result }),
     source_index: tm.type_env.clone().source_index.clone(),
 })); } __result })).iter().cloned()); } __result })).iter().cloned()); } __result })
-}
 }
 
 pub fn derive_module_imports(items: Rc<Vec<Rc<Node>>>, import_rules: Rc<Vec<Rc<ImportRule>>>, target: RenderTarget) -> Rc<Vec<String>> {
@@ -881,7 +891,7 @@ pub fn tr_default() -> Rc<TypeRendering> {
 })
 }
 
-pub fn build_type_rendering(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
+pub fn build_type_rendering(n: Rc<Node>, shared_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let n_is_error = if (n.inferred.clone() != None) {
@@ -917,9 +927,9 @@ if ((n_is_type_var || n_is_error.clone()) && ((n.children.clone().len() as i64) 
 }
 if (n.name.clone().as_str() == "Callable".to_string().as_str()) {
                 {
-                    let param_renderings = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(build_type_rendering(param_node_type_expr(p.clone()), rc_types.clone(), recursive_types.clone())); } __result });
+                    let param_renderings = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(build_type_rendering(param_node_type_expr(p.clone()), shared_types.clone(), recursive_types.clone())); } __result });
 let ret = match n.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => Some(build_type_rendering(rt.clone(), rc_types.clone(), recursive_types.clone())),
+    Some(InferredNode::Resolved { node: rt, .. }) => Some(build_type_rendering(rt.clone(), shared_types.clone(), recursive_types.clone())),
     _ => None,
 };
 return Rc::new(TypeRendering {
@@ -942,7 +952,7 @@ return Rc::new(TypeRendering {
 let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional {
                 {
-                    let inner_tr = build_type_rendering(with_required_cardinality(n.clone()), rc_types.clone(), recursive_types.clone());
+                    let inner_tr = build_type_rendering(with_required_cardinality(n.clone()), shared_types.clone(), recursive_types.clone());
 return Rc::new(TypeRendering {
     type_name: "optional".to_string(),
     inner: Some(inner_tr),
@@ -963,21 +973,21 @@ return Rc::new(TypeRendering {
 let is_conj = (n.connective.clone() == Connective::Conj);
 let is_disj = (n.connective.clone() == Connective::Disj);
 if (!is_conj.clone() && !is_disj) {
-                build_type_rendering_leaf(n.clone(), rc_types.clone(), recursive_types.clone())
+                build_type_rendering_leaf(n.clone(), shared_types.clone(), recursive_types.clone())
 } else {
                 if is_conj.clone() {
-                    build_type_rendering_conj(n.clone(), rc_types.clone(), recursive_types.clone())
+                    build_type_rendering_conj(n.clone(), shared_types.clone(), recursive_types.clone())
 } else {
-                    build_type_rendering_disj(n.clone(), rc_types.clone())
+                    build_type_rendering_disj(n.clone(), shared_types.clone())
 }
 }
 }
     })
 }
 
-pub fn build_type_rendering_leaf(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
+pub fn build_type_rendering_leaf(n: Rc<Node>, shared_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
     {
-        let shared = emit_map_has(rc_types.clone(), n.name.clone());
+        let shared = emit_map_has(shared_types.clone(), n.name.clone());
 if ((n.children.clone().len() as i64) == 0) {
             {
                 let bare_is_map = (is_container_type(n.name.clone()) && (to_snake(n.name.clone()).as_str() == "map".to_string().as_str()));
@@ -1024,7 +1034,7 @@ if bare_is_map.clone() {
                         if (has_container_template && (param_count == 1)) {
                             {
                                 let inner = match n.params.clone().first().cloned() {
-    Some(p) => build_type_rendering(param_node_type_expr(p.clone()), rc_types.clone(), recursive_types.clone()),
+    Some(p) => build_type_rendering(param_node_type_expr(p.clone()), shared_types.clone(), recursive_types.clone()),
     None => leaf_type_rendering("_".to_string()),
 };
 Rc::new(TypeRendering {
@@ -1087,11 +1097,11 @@ Rc::new(TypeRendering {
 if is_map {
                     {
                         let k = match n.children.clone().first().cloned() {
-    Some(kn) => build_type_rendering(kn.clone(), rc_types.clone(), recursive_types.clone()),
+    Some(kn) => build_type_rendering(kn.clone(), shared_types.clone(), recursive_types.clone()),
     None => leaf_type_rendering("_".to_string()),
 };
 let v = match n.children.clone().get(1 as usize).cloned() {
-    Some(vn) => build_type_rendering(vn.clone(), rc_types.clone(), recursive_types.clone()),
+    Some(vn) => build_type_rendering(vn.clone(), shared_types.clone(), recursive_types.clone()),
     None => leaf_type_rendering("_".to_string()),
 };
 Rc::new(TypeRendering {
@@ -1114,7 +1124,7 @@ Rc::new(TypeRendering {
                     if ((n.children.clone().len() as i64) == 1) {
                         {
                             let child_tr = match n.children.clone().first().cloned() {
-    Some(child) => build_type_rendering(child.clone(), rc_types.clone(), recursive_types.clone()),
+    Some(child) => build_type_rendering(child.clone(), shared_types.clone(), recursive_types.clone()),
     None => leaf_type_rendering("_".to_string()),
 };
 let is_container = node_is_collection(n.clone());
@@ -1154,7 +1164,7 @@ if is_container {
 }
 } else {
                         {
-                            let child_trs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(build_type_rendering(c.clone(), rc_types.clone(), recursive_types.clone())); } __result });
+                            let child_trs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(build_type_rendering(c.clone(), shared_types.clone(), recursive_types.clone())); } __result });
 if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
                                 Rc::new(TypeRendering {
     type_name: "Tuple".to_string(),
@@ -1196,12 +1206,12 @@ if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
 }
 }
 
-pub fn build_type_rendering_conj(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
+pub fn build_type_rendering_conj(n: Rc<Node>, shared_types: Rc<HashMap<String, bool>>, recursive_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
     {
-        let shared = emit_map_has(rc_types.clone(), n.name.clone());
+        let shared = emit_map_has(shared_types.clone(), n.name.clone());
 if (n.name.clone().as_str() == "Refined".to_string().as_str()) {
             return match n.children.clone().first().cloned() {
-    Some(base) => build_type_rendering(base.clone(), rc_types.clone(), recursive_types.clone()),
+    Some(base) => build_type_rendering(base.clone(), shared_types.clone(), recursive_types.clone()),
     None => Rc::new(TypeRendering {
     type_name: "Refined".to_string(),
     element: None,
@@ -1223,17 +1233,17 @@ if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
             {
                 let first_child = match n.children.clone().first().cloned() {
     Some(c) => if (c.inferred.clone() != None) {
-                    build_type_rendering(rt_type(c.clone()), rc_types.clone(), recursive_types.clone())
+                    build_type_rendering(rt_type(c.clone()), shared_types.clone(), recursive_types.clone())
 } else {
-                    build_type_rendering(c.clone(), rc_types.clone(), recursive_types.clone())
+                    build_type_rendering(c.clone(), shared_types.clone(), recursive_types.clone())
 },
     None => leaf_type_rendering("_".to_string()),
 };
 let second_child = match n.children.clone().get(1 as usize).cloned() {
     Some(c) => if (c.inferred.clone() != None) {
-                    build_type_rendering(rt_type(c.clone()), rc_types.clone(), recursive_types.clone())
+                    build_type_rendering(rt_type(c.clone()), shared_types.clone(), recursive_types.clone())
 } else {
-                    build_type_rendering(c.clone(), rc_types.clone(), recursive_types.clone())
+                    build_type_rendering(c.clone(), shared_types.clone(), recursive_types.clone())
 },
     None => leaf_type_rendering("_".to_string()),
 };
@@ -1314,7 +1324,7 @@ return Rc::new(TypeRendering {
 }
 }
 let field_renderings = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(if (child.inferred.clone() != None) {
-            build_type_rendering(rt_type(child.clone()), rc_types.clone(), recursive_types.clone())
+            build_type_rendering(rt_type(child.clone()), shared_types.clone(), recursive_types.clone())
 } else {
             Rc::new(TypeRendering {
     type_name: "".to_string(),
@@ -1350,9 +1360,9 @@ Rc::new(TypeRendering {
 }
 }
 
-pub fn build_type_rendering_disj(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
+pub fn build_type_rendering_disj(n: Rc<Node>, shared_types: Rc<HashMap<String, bool>>) -> Rc<TypeRendering> {
     {
-        let shared = emit_map_has(rc_types, n.name.clone());
+        let shared = emit_map_has(shared_types, n.name.clone());
 if (n.name.clone().as_str() != "".to_string().as_str()) {
             Rc::new(TypeRendering {
     type_name: n.name.clone(),
@@ -1542,11 +1552,16 @@ match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
 }
 }
 
-pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
-    {
-        let emit_info = typed.emit_graph_info.clone();
-{ let mut __found = false; for tm in typed.modules.clone().iter().cloned() { if { let mut __found = false; for item in tm.items.clone().iter().cloned() { if (lookup_item_kind(emit_info.clone(), item.name.clone()) == TypedItemKind::TypedItemServiceDef) { __found = true; break; } } __found } { __found = true; break; } } __found }
+pub fn is_type_alias_return_node(n: Rc<Node>) -> bool {
+    (n.name.clone().as_str() != "Unit".to_string().as_str())
 }
+
+pub fn is_service_item(item: Rc<Node>) -> bool {
+    ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
+}
+
+pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
+    { let mut __found = false; for tm in typed.modules.clone().iter().cloned() { if { let mut __found = false; for item in tm.items.clone().iter().cloned() { if is_service_item(item.clone()) { __found = true; break; } } __found } { __found = true; break; } } __found }
 }
 
 pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
@@ -1564,11 +1579,130 @@ pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> R
 }
 }
 
+pub fn service_has_transport_kind(kind: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+    {
+        let from_fallback = is_transport_kind(fallback_transport, kind.clone());
+let from_ops = { let mut __found = false; for op in op_children.iter().cloned() { if if (op.transport.clone() != None) {
+            is_transport_kind(op.transport.clone().clone().unwrap(), kind.clone())
+} else {
+            false
+} { __found = true; break; } } __found };
+(from_fallback || from_ops)
+}
+}
+
+pub fn service_has_rest(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+    service_has_transport_kind(transport_kind_rest(), fallback_transport, op_children)
+}
+
+pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+    service_has_transport_kind(transport_kind_shell(), fallback_transport, op_children)
+}
+
+pub fn service_has_file(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+    service_has_transport_kind(transport_kind_file(), fallback_transport, op_children)
+}
+
+pub fn service_has_rest_auth(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+    {
+        let fallback_is_rest = is_rest_transport(fallback_transport.clone());
+let from_fallback = if fallback_is_rest {
+            transport_has_auth(fallback_transport.clone())
+} else {
+            false
+};
+let from_ops = { let mut __found = false; for op in op_children.iter().cloned() { if if (op.transport.clone() != None) {
+            {
+                let t = op.transport.clone().clone().unwrap();
+if is_rest_transport(t.clone()) {
+                    transport_has_auth(t.clone())
+} else {
+                    false
+}
+}
+} else {
+            false
+} { __found = true; break; } } __found };
+(from_fallback || from_ops)
+}
+}
+
 pub fn extract_modifier_names(properties: Rc<Vec<Rc<Node>>>) -> Rc<Vec<String>> {
     Rc::new({ let mut __result = Vec::new(); for p in properties.iter().cloned() { __result.extend((*match field_init_operation_modifier(p.clone()) {
     Some(modifier) => Rc::new(vec![operation_modifier_name(modifier.clone())]),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceFieldSet {
+    pub has_rest: bool,
+    pub has_shell: bool,
+    pub has_file: bool,
+    pub has_auth: bool,
+}
+
+pub fn compute_service_fields(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> ServiceFieldSet {
+    ServiceFieldSet {
+    has_rest: service_has_rest(fallback_transport.clone(), op_children.clone()),
+    has_shell: service_has_shell(fallback_transport.clone(), op_children.clone()),
+    has_file: service_has_file(fallback_transport.clone(), op_children.clone()),
+    has_auth: service_has_rest_auth(fallback_transport.clone(), op_children.clone()),
+}
+}
+
+pub fn service_field_decls(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) -> Rc<Vec<String>> {
+    {
+        let result = Rc::new(vec![]);
+let result = if fs.has_rest.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.rest_decl.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_auth.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.auth_decl.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_shell.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.shell_decl.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_file.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.file_decl.clone()]))
+} else {
+            result.clone()
+};
+result.clone()
+}
+}
+
+pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) -> Rc<Vec<String>> {
+    {
+        let result = Rc::new(vec![]);
+let result = if fs.has_rest.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.rest_ctor.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_auth.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.auth_ctor.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_shell.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.shell_ctor.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_file.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.file_ctor.clone()]))
+} else {
+            result.clone()
+};
+result.clone()
+}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1593,6 +1727,47 @@ pub fn classify_transport(t: Rc<Node>) -> TransportKind {
                 TransportKind::LocalKind
 }
 }
+}
+}
+
+pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
+    {
+        let item_has_structure = (item.connective.clone() != Connective::NoConnective);
+let is_bare_leaf = (((((item_has_structure.clone() == false) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0));
+let kind = if (is_bare_leaf.clone() && is_type_alias_return_node(rt_type(item.clone()))) {
+            TypedItemKind::TypedItemTypeAlias
+} else {
+            if (is_bare_leaf.clone() && !is_type_alias_return_node(rt_type(item.clone()))) {
+                TypedItemKind::TypedItemTypeDecl
+} else {
+                if (item_has_structure.clone() && (item.transport.clone() == None)) {
+                    TypedItemKind::TypedItemTypeDef
+} else {
+                    if ((item.body.clone() != None) && (item.type_annotation.clone() == None)) {
+                        TypedItemKind::TypedItemFunction
+} else {
+                        if ((item.body.clone() != None) && (item.type_annotation.clone() != None)) {
+                            TypedItemKind::TypedItemDataDef
+} else {
+                            if ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0)) {
+                                TypedItemKind::TypedItemServiceDef
+} else {
+                                if (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0)) || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0)) && ((item.properties.clone().len() as i64) > 0)) && (item.body.clone() == None))) {
+                                    TypedItemKind::TypedItemResourceDef
+} else {
+                                    if (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)) {
+                                        TypedItemKind::TypedItemTypeDecl
+} else {
+                                        TypedItemKind::TypedItemUnhandled
+}
+}
+}
+}
+}
+}
+}
+};
+kind
 }
 }
 
@@ -1895,6 +2070,16 @@ pub fn emit_let_binding(name: String, value: String, target: RenderTarget) -> St
     _ => {
         let spec = language_spec(target.clone());
 apply_type_template2(spec.annotations.clone().let_binding_inferred.clone(), emit_ident(name, target.clone()), value)
+},
+}
+}
+
+pub fn emit_let_binding_annotated(name: String, type_str: String, value: String, target: RenderTarget) -> String {
+    match target.clone() {
+    RenderTarget::Dag => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), name), ": ".to_string()), type_str), " = ".to_string()), value),
+    _ => {
+        let spec = language_spec(target.clone());
+apply_type_template3(spec.annotations.clone().let_binding_annotated.clone(), emit_ident(name, target.clone()), type_str, value)
 },
 }
 }

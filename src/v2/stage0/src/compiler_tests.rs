@@ -976,9 +976,8 @@ mod compiler_tests {
                 );
 
                 // Phase 5: Emit (Rust target)
-                let ownership = crate::v2_compiler_compile::extract_ownership_proofs(typed.clone());
                 let t_stage = Instant::now();
-                let emit_result = crate::v2_compiler_emit_rust::emit_rust(typed, ownership);
+                let emit_result = crate::v2_compiler_emit_rust::emit_rust(typed);
                 let emit_total = t_stage.elapsed();
                 let phase5_diags: usize = emit_result
                     .diagnostics
