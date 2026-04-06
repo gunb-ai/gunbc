@@ -22,6 +22,7 @@ module v2.compiler.coercion
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr }
+import std.types { container_expected_arity }
 import extdeps.languages.rust.types {
   rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
   rust_optional_template
@@ -163,9 +164,20 @@ fn apply_inhabitant_template2(template: String, first: String, second: String) -
   replace(replace(template, "\{0\}", first), "\{1\}", second)
 }
 
-// =========================================================================
-// Container identity constants (hardcoded; should be derived from algebra arity)
-// =========================================================================
+// Container kind classification: derived from container_type_arity in std/types.dag.
+// Keyed containers (arity 2) vs element containers (arity 1).
+// These functions replace the hardcoded coercion_keyed_container_names and
+// coercion_element_container_names data constants that were never consumed.
+fn is_keyed_container(name: String) -> Bool {
+  match container_expected_arity(name: name) {
+    Some { value: arity } => arity == 2
+    None => false
+  }
+}
 
-data coercion_keyed_container_names: List<String> = ["Map", "PartialFunction"]
-data coercion_element_container_names: List<String> = ["List", "Set", "NonEmptyList", "NonEmptySet", "FreeMonoid"]
+fn is_element_container(name: String) -> Bool {
+  match container_expected_arity(name: name) {
+    Some { value: arity } => arity == 1
+    None => false
+  }
+}
