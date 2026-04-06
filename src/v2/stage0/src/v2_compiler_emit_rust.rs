@@ -1260,7 +1260,8 @@ if is_string_lit_pattern(fb_pat.clone()) {
 } else {
                                     {
                                         let pat_str = emit_pattern(fb_pat.clone(), shared_types.clone(), "".to_string(), source_index.clone(), emit_info.clone());
-v2_rt::concat(v2_rt::concat(emit_ident(fb_name.clone(), RenderTarget::Rust), ": ".to_string()), pat_str.clone())
+let field_ident = emit_ident(fb_name.clone(), RenderTarget::Rust);
+if pat_str == field_ident { field_ident.clone() } else { v2_rt::concat(v2_rt::concat(field_ident, ": ".to_string()), pat_str.clone()) }
 }
 }
 }); } __result });
@@ -1451,7 +1452,8 @@ if is_string_lit_pattern(fb_pat.clone()) {
                                         {
                                             let inner_analysis = analyze_rc_pattern(fb_pat.clone(), "".to_string(), shared_types.clone(), emit_info.clone());
 let pat_str = emit_pattern_rc_aware(fb_pat.clone(), inner_analysis.clone(), shared_types.clone(), "".to_string(), source_index.clone(), emit_info.clone());
-v2_rt::concat(v2_rt::concat(emit_ident(fb_name.clone(), RenderTarget::Rust), ": ".to_string()), pat_str.clone())
+let field_ident = emit_ident(fb_name.clone(), RenderTarget::Rust);
+if pat_str == field_ident { field_ident.clone() } else { v2_rt::concat(v2_rt::concat(field_ident, ": ".to_string()), pat_str.clone()) }
 }
 }
 }
