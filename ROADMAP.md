@@ -213,8 +213,9 @@ correct-but-suboptimal code and blocks new backends.
 Clone semantics unified in SharingStrategy (CloneTemplates removed).
 TLC-1 partial: `is_zero_arg_callable_ref` is an emitter-side guardrail
 (L1 violation — `rt.name=="Callable"` check); upstream concept modeling
-needed (Tier 2.6). TLC-3 Rust per-collection dispatch done; Go/Python
-still route through `list_index` unconditionally. TLC-4 partial:
+needed (Tier 2.6). TLC-3 done: all three backends dispatch per
+collection type via `IndexingSemantics` templates (pre-existing;
+prior description was stale). TLC-4 partial:
 `emit_let_binding_annotated` infrastructure exists but disabled for
 bootstrap convergence (.dag type inference produces `()` for empty
 collection element types). TLC-2 blocked on M5 coercion engine.
@@ -281,10 +282,11 @@ backends.
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
   *Blocked: requires M5 coercion engine for type/wrap authority.*
-- [~] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
+- [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
-  Rust dispatches on collection type. Go/Python still route through
-  `list_index`/`list_slice` unconditionally — per-collection dispatch pending.
+  All three backends dispatch per collection type via shared
+  `IndexingSemantics` data + `is_string_like`/`node_is_keyed_collection`
+  (pre-existing; prior description was stale).
 - [~] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
   in LanguageSpec — let binding templates (inferred/annotated), lambda param
   templates (typed/untyped). Infrastructure exists (`emit_let_binding_annotated`)
@@ -687,8 +689,10 @@ are in [`src/v2/CM.md`](src/v2/CM.md). Summary:
 
 **Work items:**
 - [x] Design: determine irreducible structural facts about items
-- [x] Surface existing fields (`body`, `transport`, `connective`, `params`) to
-  every consumption site — no new classification type
+- [~] Surface existing fields (`body`, `transport`, `connective`, `params`) to
+  every consumption site — no new classification type.
+  Shared predicates exist; ~55 raw structural interrogation sites not
+  yet migrated to use them.
 - [~] Implement: fail-closed boundaries (no TypedItemUnhandled, no `""` fallbacks)
   `TypedItemUnhandled` variant deleted; else branches still emit error
   markers (compile_error/panic/comment) — need upstream diagnostic instead.
