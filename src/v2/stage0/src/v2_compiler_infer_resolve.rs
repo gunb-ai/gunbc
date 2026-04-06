@@ -1435,8 +1435,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let tp_names = fn_type_param_names(item.clone());
-let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| Rc::new(TypeEnv {
-    bindings: v2_rt::rc_map_insert(e.bindings.clone(), tp_name.clone(), Rc::new(TypeBinding {
+let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| { let e = Rc::try_unwrap(e).unwrap_or_else(|rc| (*rc).clone()); Rc::new(TypeEnv {
+    bindings: v2_rt::rc_map_insert(e.bindings, tp_name.clone(), Rc::new(TypeBinding {
     name: tp_name.clone(),
     resolved: Rc::new(Node {
     name: tp_name.clone(),
@@ -1460,11 +1460,11 @@ let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: S
     expr_data: Rc::new(ExprData::NoExprData),
 }),
 })),
-    recursive_types: e.recursive_types.clone(),
-    recursive_type_set: e.recursive_type_set.clone(),
-    recursive_variant_fields: e.recursive_variant_fields.clone(),
-    source_index: e.source_index.clone(),
-}));
+    recursive_types: e.recursive_types,
+    recursive_type_set: e.recursive_type_set,
+    recursive_variant_fields: e.recursive_variant_fields,
+    source_index: e.source_index,
+}) });
 let param_results = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(resolve_param(p.clone(), env.clone(), module_name.clone())); } __result });
 let resolved_params = Rc::new({ let mut __result = Vec::new(); for pr in param_results.clone().iter().cloned() { __result.push(pr.param.clone()); } __result });
 let param_diags = Rc::new({ let mut __result = Vec::new(); for pr in param_results.clone().iter().cloned() { __result.extend((*pr.diagnostics.clone()).iter().cloned()); } __result });

@@ -91,6 +91,10 @@ type EmitGraphInfo {
   // Precomputed variant → parent enum name map. Built from type_summaries
   // by derive_variant_to_enum. Replaces heuristic lookups at emit sites.
   variant_to_enum: Map<String, String>
+  // Bindings known to be owned (not behind Rc). Field accesses on these
+  // bindings use move semantics instead of .clone(). Set for fold
+  // accumulators after Rc::try_unwrap.
+  owned_bindings: Map<String, Bool>
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -132,7 +136,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     shared_types: empty_map(),
     ownership_index: empty_map(),
     movable: empty_map(),
-    variant_to_enum: empty_map()
+    variant_to_enum: empty_map(),
+    owned_bindings: empty_map()
   }
 }
 

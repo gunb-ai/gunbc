@@ -145,8 +145,8 @@ Symptoms:
 - Callback shapes (`fn(Acc, T) -> Acc`) synthesized at inference time, not declared
 
 Open items:
-- [x] Incomplete parameterized types rejected at normalization — `check_bare_containers` uses `container_expected_arity` as single arity authority
-- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators
+- [x] Incomplete parameterized types rejected at normalization — `container_expected_arity` returns `Int?` (fail-closed: unknown names → None, no false positives on operations sharing container names)
+- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators. Empty list `[]` diagnostic blocked on expected-type propagation through list element inference (160 false positives from `[]` in record literal fields like `param_types: []`)
 - [x] Thread `expected` to formal params at matching positions — over-arity args no longer receive synthetic expected types; non-callable expected boundary overload remains open
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
@@ -249,7 +249,7 @@ Make emission fully data-driven. Adding a backend = adding data.
   with `method_name`, `inline_template`, `fn_ref_template`, `wraps_in_sharing`.
   Shared `emit_rust_higher_order_method` replaces 4 hardcoded emitters
   (filter/any/all/flat_map). Data-driven dispatch via method name lookup.
-- [ ] Transport/config: one `.dag` authority (35+ redundant sites → 1)
+- [~] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend sites are inherent rendering differences.
 - [ ] LanguageSpec completion — all target-language facts data-driven
 - [ ] TypeRendering dissolves into coercion engine
 - [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
@@ -336,7 +336,7 @@ instead of hardcoding them.
 - Tier 1 (data tables → .dag): DONE
 - Tier 2 (factor enrich_kernel_type): DONE
 - Tier 2.5 (algebra bridge fidelity):
-  - [ ] `CallableOf` variant for higher-order callback shapes
+  - [x] `CallableOf` variant for higher-order callback shapes
   - [ ] Derive T/K/V type parameter names from algebra declarations
 - Tier 2.6 (functional system modeling):
   - [ ] Model function application as a concept (apply/call vs function-value-ref)
@@ -548,9 +548,9 @@ Non-recursive authority leaks (same class of unfinished migration):
 | Leak | Fix |
 |------|-----|
 | `Node.name` as authority (~256 sites) | M4 Lane 2 |
-| Transport/config duplication (35+ sites) | One .dag authority |
+| Transport/config per-backend rendering | Inherent per-language differences |
 | Bare parameterized types | Reject at normalization |
-| Missing `CallableOf` | M4 Tier 2.5 |
+| ~~Missing `CallableOf`~~ | ~~M4 Tier 2.5~~ (DONE) |
 | Semantic strings (parent_enum, service_name) | Structural Node references |
 
 ## Pipeline Algebraic Grounding

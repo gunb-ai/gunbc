@@ -99,6 +99,7 @@ pub struct EmitGraphInfo {
     pub ownership_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub movable: Rc<HashMap<String, bool>>,
     pub variant_to_enum: Rc<HashMap<String, String>>,
+    pub owned_bindings: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -132,6 +133,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     movable: v2_rt::rc_empty_map::<bool>(),
     variant_to_enum: v2_rt::rc_empty_map::<String>(),
+    owned_bindings: v2_rt::rc_empty_map::<bool>(),
 })
 }
 
