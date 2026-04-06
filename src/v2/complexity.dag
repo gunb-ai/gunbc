@@ -338,10 +338,18 @@ fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
 
 // Check if a set of proof edges forms a valid termination proof:
 // the subgraph of non-descending edges (all dims NonIncreasing) must be acyclic.
+// A non-descending self-loop (caller == callee) IS a cycle — the function calls
+// itself without making progress on any dimension.
 fn proof_has_non_descending_cycle(members: List<String>, edges: List<ProofEdge>) -> Bool {
   let non_descending = edges |> filter(e => is_lexicographic_descent(evidence: e.evidence) == false)
-  let nd_graph = build_call_graph_from_proof_edges(names: members, edges: non_descending)
-  graph_has_multi_node_scc(names: members, graph: nd_graph)
+  // Self-loops that are non-descending are immediate cycles.
+  let has_self_cycle = non_descending |> any(e => e.caller == e.callee)
+  if has_self_cycle { true }
+  else {
+    // Cross-edges: check for multi-node cycles via SCC detection.
+    let nd_graph = build_call_graph_from_proof_edges(names: members, edges: non_descending)
+    graph_has_multi_node_scc(names: members, graph: nd_graph)
+  }
 }
 
 fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
@@ -3697,23 +3705,29 @@ fn scalar_output() -> Map<String, CostExpr> {
 // =========================================================================
 
 // Derive size preservation from algebra facts: a method preserves the receiver
-// size variable if its cost_shape produces a collection or it has a size_effect.
-// No method name dispatch — reads structural facts from AlgebraMethodSemantics.
+// size variable if its result is a same-shape collection (ShrinkEffect or
+// IdentityEffect), or if its cost_shape produces a collection.
+// ProjectionEffect (first/last) does NOT preserve collection size — it
+// projects a single element from the collection.
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
   if method_semantics == none { false }
   else {
     match method_semantics.value {
       AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: cs } =>
-        // Any size effect (shrink/identity/projection) means a collection operation
-        let has_effect = se != none
-        // Cost shapes that produce collections preserve receiver size
+        // ShrinkEffect and IdentityEffect return same-shape collections
+        let preserves_shape = match se {
+          Some { value: ShrinkEffect } => true
+          Some { value: IdentityEffect } => true
+          _ => false
+        }
+        // Cost shapes that produce collections also preserve receiver size
         let produces_collection = match cs {
           Some { value: ShapeIterateBody { produces_collection: pc } } => pc
           Some { value: ShapeLinearScan { produces_collection: pc } } => pc
           Some { value: ShapeSortBody } => true
           _ => false
         }
-        has_effect || produces_collection
+        preserves_shape || produces_collection
       _ => false
     }
   }

@@ -329,8 +329,15 @@ continue;
 pub fn proof_has_non_descending_cycle(members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
     {
         let non_descending = Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { if (is_lexicographic_descent(e.evidence.clone()) == false) { __result.push(e); } } __result });
-let nd_graph = build_call_graph_from_proof_edges(members.clone(), non_descending);
+let has_self_cycle = { let mut __found = false; for e in non_descending.clone().iter().cloned() { if (e.caller.clone().as_str() == e.callee.clone().as_str()) { __found = true; break; } } __found };
+if has_self_cycle {
+            true
+} else {
+            {
+                let nd_graph = build_call_graph_from_proof_edges(members.clone(), non_descending.clone());
 graph_has_multi_node_scc(members.clone(), nd_graph)
+}
+}
 }
 }
 
@@ -3369,14 +3376,18 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
 } else {
         match (*method_semantics.clone().unwrap()).clone() {
     MethodSemantics::AlgebraMethodSemantics { size_effect: se, cost_shape: cs, .. } => {
-            let has_effect = (se.clone() != None);
+            let preserves_shape = match se.clone() {
+    Some(CollectionSizeEffect::ShrinkEffect) => true,
+    Some(CollectionSizeEffect::IdentityEffect) => true,
+    _ => false,
+};
 let produces_collection = match cs.clone().as_deref().cloned() {
     Some(CostShape::ShapeIterateBody { produces_collection: pc, .. }) => pc.clone(),
     Some(CostShape::ShapeLinearScan { produces_collection: pc, .. }) => pc.clone(),
     Some(CostShape::ShapeSortBody) => true,
     _ => false,
 };
-(has_effect || produces_collection)
+(preserves_shape || produces_collection)
 },
     _ => false,
 }

@@ -829,7 +829,9 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: Some(CollectionSizeEffect::IdentityEffect),
-    cost_shape: None,
+    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
+    produces_collection: true,
+})),
 }), Rc::new(AlgebraFieldTemplate {
     name: "join".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::NamedTemplate {
