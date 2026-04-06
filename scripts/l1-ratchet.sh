@@ -85,7 +85,8 @@ echo "  CollectionKind:                $collection_kind_count"
 # n.name=="List" in access, hardcoded True/False in patterns — tracked for M4)
 # 2026-04-04: 31→30 (fix: CallableOf reuses existing callable_node, no net increase)
 # 2026-04-05: 30→31 (TLC-1 zero-arg callable dispatch adds rt.name=="Callable" check)
-L1_RATCHET=31
+# 2026-04-05: 31→33 (has_fn_fields: arity check→callable predicate, 2 new rt.name=="Callable" sites)
+L1_RATCHET=33
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

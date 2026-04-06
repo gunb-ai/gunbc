@@ -190,7 +190,7 @@ pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: String)
 pub fn derive_variant_to_enum(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>) -> Rc<HashMap<String, String>> {
     Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, summary: Rc<TypeSummary>| match (*summary.repr.clone()).clone() {
     TypeRepr::EnumRepr { .. } => Rc::new(v2_rt::map_keys(&summary.variant_name_set.clone())).iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, String>>, vn: String| match v2_rt::map_get(&inner, vn.clone()) {
-    Some(_) => inner.clone(),
+    Some(_) => v2_rt::rc_map_insert(inner.clone(), vn.clone(), "".to_string()),
     None => v2_rt::rc_map_insert(inner.clone(), vn.clone(), summary.name.clone()),
 }),
     _ => acc.clone(),
@@ -352,7 +352,7 @@ pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
 let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result });
 let is_product = (item.connective.clone() == Connective::Conj);
 let has_fn = { let mut __found = false; for child in item.children.clone().iter().cloned() { if match child.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => ((rt.params.clone().len() as i64) > 0),
+    Some(InferredNode::Resolved { node: rt, .. }) => (rt.name.clone().as_str() == "Callable".to_string().as_str()),
     _ => false,
 } { __found = true; break; } } __found };
 if is_product {
@@ -391,7 +391,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.type_summaries.clone(), |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
             {
                 let v_has_fn = { let mut __found = false; for vc in variant.children.clone().iter().cloned() { if match vc.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => ((rt.params.clone().len() as i64) > 0),
+    Some(InferredNode::Resolved { node: rt, .. }) => (rt.name.clone().as_str() == "Callable".to_string().as_str()),
     _ => false,
 } { __found = true; break; } } __found };
 v2_rt::rc_map_insert(acc.clone(), variant.name.clone(), Rc::new(TypeSummary {

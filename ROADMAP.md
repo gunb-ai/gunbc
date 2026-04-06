@@ -72,7 +72,7 @@ eliminating these is tracked as future work under M5-full
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (283 pass, 0 fail, 39 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
-| L1 ratchet | `scripts/l1-ratchet.sh --check` | 30 (target: 0) |
+| L1 ratchet | `scripts/l1-ratchet.sh --check` | 33 (target: 0) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
 ## Ratchet Counts
@@ -80,7 +80,7 @@ eliminating these is tracked as future work under M5-full
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
-| L1 type knowledge | 30 | 0 | Down from 70; name-based workarounds tracked for M4 |
+| L1 type knowledge | 33 | 0 | Down from 70; name-based workarounds tracked for M4 |
 | Complexity violations | 164 | 0 | Down from 315; unfinished algebraic grounding |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
@@ -170,7 +170,8 @@ correct-but-suboptimal code and blocks new backends.
 Clone semantics unified in SharingStrategy (CloneTemplates removed).
 TLC-1 landed: `is_zero_arg_callable_ref` dispatches call-vs-value through
 emit_var_ref and emit_typed_expr_base. TLC-3 Go/Python per-collection
-dispatch done. TLC-4 data model landed, annotated-let consumer pending.
+dispatch done. TLC-4 complete: annotated-let consumer wired in all three
+Rust let-binding sites via `emit_let_binding_annotated`.
 TLC-2 blocked on M5 coercion engine. Higher-order method templates
 (filter/any/all/flat_map) data-driven via `HigherOrderMethodSpec`.
 
@@ -205,11 +206,12 @@ mismatches before removal). `emit_node_type` routes through
 
 **Sharing and ownership**
 
-- [x] `rc_types` derived from `is_constant` (no wrap for fixed-width carriers)
+- [x] Sharing derived from `is_type_constant` + `TypeSummary` (no Rc wrap for fixed-width carriers)
 - [x] `build_rc_types` eliminated — replaced by `build_shared_types` in Rust emitter
 - [x] `ValueContext` deleted — `has_fn_fields` moved to `TypeSummary`, sharing
-  authority consolidated into `EmitGraphInfo.shared_types`
-- [x] `is_constant` computation with consumer (`is_type_constant` in 05_emit_rust.dag)
+  authority consolidated into `EmitGraphInfo.shared_types` (still Rust-emitter-local;
+  upstream boundary derivation deferred to coercion engine)
+- [x] `is_type_constant` in 05_emit_rust.dag consulted by `build_shared_types`
 - [x] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
 - [x] Explicit parent-enum ownership facts through resolve/infer/emit
 - [x] Phase B cleanup: rename `rc_types` parameter → `shared_types` across ~423

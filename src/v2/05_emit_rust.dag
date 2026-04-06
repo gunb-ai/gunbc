@@ -494,7 +494,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     shared_types: shared,
     ownership_index: base_info.ownership_index,
     movable: base_info.movable,
-    variant_to_enum: base_info.variant_to_enum
+    variant_to_enum: base_info.variant_to_enum,
+    owned_bindings: empty_map()
   }
   let shared_types = emit_info.shared_types
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map())
@@ -1664,12 +1665,16 @@ fn emit_var_clone_or_move(ident: String, name: String, resolved_type: InferredNo
 }
 
 fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, emit_info: EmitGraphInfo) -> String? {
-  // Primary: precomputed variant_to_enum map (O(1) lookup, no heuristics).
-  match map_get(emit_info.variant_to_enum, name) {
+  // Primary: precomputed variant_to_enum map (O(1) lookup).
+  // Empty string is ambiguity sentinel — fall through to structural check.
+  let cached = match map_get(emit_info.variant_to_enum, name) {
+    Some { value: p } => if p != "" { Some { value: p } } else { none }
+    None => none
+  }
+  match cached {
     Some { value: parent } => Some { value: parent }
     None =>
-      // Fallback: resolved type may name the parent for ambiguous variants
-      // or variants from external modules not in type_summaries.
+      // Fallback: resolved type for ambiguous variants or external modules.
       match resolved_type {
         Some { value: Resolved { node: rt } } =>
           if rt.name != "" && rt.name != name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: name, enum_name: rt.name) {

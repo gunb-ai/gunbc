@@ -424,6 +424,7 @@ let emit_info = Rc::new(EmitGraphInfo {
     ownership_index: base_info.ownership_index.clone(),
     movable: base_info.movable.clone(),
     variant_to_enum: base_info.variant_to_enum.clone(),
+    owned_bindings: v2_rt::rc_empty_map::<bool>(),
 });
 let shared_types = emit_info.shared_types.clone();
 emit_module_full(typed_module.clone(), registry, emit_info.clone(), shared_types, v2_rt::rc_empty_map::<String>())
@@ -1567,7 +1568,11 @@ if is_movable {
 }
 
 pub fn effective_variant_parent(name: String, binding_kind: Option<Rc<VarBindingKind>>, resolved_type: Option<Rc<InferredNode>>, emit_info: Rc<EmitGraphInfo>) -> Option<String> {
-    match v2_rt::map_get(&emit_info.variant_to_enum.clone(), name.clone()) {
+    let cached = match v2_rt::map_get(&emit_info.variant_to_enum.clone(), name.clone()) {
+    Some(p) => if (p.clone().as_str() != "".to_string().as_str()) { Some(p.clone()) } else { None },
+    None => None,
+};
+match cached {
     Some(parent) => Some(parent.clone()),
     None => match resolved_type.as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => if (((rt.name.clone().as_str() != "".to_string().as_str()) && (rt.name.clone().as_str() != name.clone().as_str())) && variant_belongs_to_enum(emit_info.type_summaries.clone(), name.clone(), rt.name.clone())) {
