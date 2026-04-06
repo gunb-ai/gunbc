@@ -1424,25 +1424,6 @@ continue;
 } },
     _ => { break false; },
 } },
-    ExprData::ExprCall { .. } => { let callee = expr_call_func(expr.clone());
-if (callee.clone().as_str() == "skip".to_string().as_str()) {
-            break { let mut __found = false; for arg_node in expr.children.clone().iter().cloned() { if {
-                let arg = arg_value(arg_node.clone());
-match (*arg.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { .. } => {
-                    let base = field_access_base(arg.clone());
-let field = field_access_field(arg.clone());
-(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => (expr_var_name(base.clone()).as_str() == param_name.clone().as_str()),
-    _ => false,
-})
-},
-    _ => false,
-}
-} { __found = true; break; } } __found };
-} else {
-            break false;
-} },
     _ => { break false; },
 }
 }
@@ -1454,7 +1435,7 @@ pub fn is_structural_children(expr: Rc<Node>, param_name: String, vars: Rc<HashM
     ExprData::ExprFieldAccess { .. } => {
             let base = field_access_base(expr.clone());
 let field = field_access_field(expr.clone());
-(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => set_has(vars.clone(), expr_var_name(base.clone())),
     _ => false,
 })
@@ -1463,30 +1444,6 @@ let field = field_access_field(expr.clone());
     Some(CollectionSizeEffect::ShrinkEffect) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
     Some(CollectionSizeEffect::IdentityEffect) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
     _ => false,
-},
-    ExprData::ExprCall { .. } => {
-            let callee = expr_call_func(expr.clone());
-if (callee.as_str() == "skip".to_string().as_str()) {
-                { let mut __found = false; for arg_node in expr.children.clone().iter().cloned() { if {
-                    let arg = arg_value(arg_node.clone());
-match (*arg.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { .. } => {
-                        let base = field_access_base(arg.clone());
-let field = field_access_field(arg.clone());
-(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                            let bname = expr_var_name(base.clone());
-((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), bname.clone()))
-},
-    _ => false,
-})
-},
-    _ => false,
-}
-} { __found = true; break; } } __found }
-} else {
-                false
-}
 },
     _ => false,
 })

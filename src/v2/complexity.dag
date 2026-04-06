@@ -1796,25 +1796,8 @@ fn is_children_of_param(expr: Node, param_name: String, vars: Map<String, Bool>)
         Some { value: ShrinkEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
         _ => false
       }
-    // CX-J: Handle `skip(param.children, N)` — function-call form of skip.
-    ExprCall { call_semantics: _ } =>
-      let callee = expr_call_func(texpr: expr)
-      if callee == "skip" {
-        expr.children |> any(arg_node =>
-          let arg = arg_value(n: arg_node)
-          match arg.expr_data {
-            ExprFieldAccess =>
-              let base = field_access_base(texpr: arg)
-              let field = field_access_field(texpr: arg)
-              is_children_list_field(field_name: field)
-              && match base.expr_data {
-                ExprVar { binding_kind: _ } => expr_var_name(texpr: base) == param_name
-                _ => false
-              }
-            _ => false
-          }
-        )
-      } else { false }
+    // CX-J: skip(param.children, N) function-call form is normalized to
+    // ExprMethodCall by inference (04_infer.dag Tier 2 bridge). Dead post-inference.
     _ => false
   }
 }
@@ -1840,27 +1823,8 @@ fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool
         Some { value: IdentityEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
         _ => false
       }
-    // CX-J: Handle `skip(descent_var.children, N)` — function-call form of skip.
-    ExprCall { call_semantics: _ } =>
-      let callee = expr_call_func(texpr: expr)
-      if callee == "skip" {
-        expr.children |> any(arg_node =>
-          let arg = arg_value(n: arg_node)
-          match arg.expr_data {
-            ExprFieldAccess =>
-              let base = field_access_base(texpr: arg)
-              let field = field_access_field(texpr: arg)
-              is_children_list_field(field_name: field)
-              && match base.expr_data {
-                ExprVar { binding_kind: _ } =>
-                  let bname = expr_var_name(texpr: base)
-                  bname == param_name || set_has(m: vars, key: bname)
-                _ => false
-              }
-            _ => false
-          }
-        )
-      } else { false }
+    // CX-J: skip(descent_var.children, N) function-call form is normalized to
+    // ExprMethodCall by inference (04_infer.dag Tier 2 bridge). Dead post-inference.
     _ => false
   }
 }
