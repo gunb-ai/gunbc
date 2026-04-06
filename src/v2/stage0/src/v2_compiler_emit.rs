@@ -1692,6 +1692,38 @@ result.clone()
 }
 }
 
+pub fn is_type_def_item(item: Rc<Node>) -> bool {
+    ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None))
+}
+
+pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
+    (((((item.connective.clone() == Connective::NoConnective) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0))
+}
+
+pub fn is_type_alias_item(item: Rc<Node>) -> bool {
+    (is_bare_leaf_item(item.clone()) && is_type_alias_return_node(rt_type(item.clone())))
+}
+
+pub fn is_type_decl_item(item: Rc<Node>) -> bool {
+    ((is_bare_leaf_item(item.clone()) && !is_type_alias_return_node(rt_type(item.clone()))) || (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)))
+}
+
+pub fn is_function_item(item: Rc<Node>) -> bool {
+    ((item.body.clone() != None) && (item.type_annotation.clone() == None))
+}
+
+pub fn is_data_def_item(item: Rc<Node>) -> bool {
+    ((item.body.clone() != None) && (item.type_annotation.clone() != None))
+}
+
+pub fn is_service_def_item(item: Rc<Node>) -> bool {
+    ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
+}
+
+pub fn is_resource_def_item(item: Rc<Node>) -> bool {
+    (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0)) || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0)) && ((item.properties.clone().len() as i64) > 0)) && (item.body.clone() == None)))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 
 pub enum TransportKind {

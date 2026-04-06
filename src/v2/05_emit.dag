@@ -1320,6 +1320,46 @@ fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<St
   result
 }
 
+// =========================================================================
+// Item structural predicates — shared boolean queries on Node fields.
+// No taxonomy enum (CM: consumers compose the predicates they need).
+// Each predicate reads one structural fact from the Node.
+// =========================================================================
+
+fn is_type_def_item(item: Node) -> Bool {
+  item.connective != NoConnective && item.transport == none
+}
+
+fn is_bare_leaf_item(item: Node) -> Bool {
+  item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+}
+
+fn is_type_alias_item(item: Node) -> Bool {
+  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: rt_type(n: item))
+}
+
+fn is_type_decl_item(item: Node) -> Bool {
+  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: rt_type(n: item)))
+  || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0)
+}
+
+fn is_function_item(item: Node) -> Bool {
+  item.body != none && item.type_annotation == none
+}
+
+fn is_data_def_item(item: Node) -> Bool {
+  item.body != none && item.type_annotation != none
+}
+
+fn is_service_def_item(item: Node) -> Bool {
+  item.transport != none && item.children |> count > 0
+}
+
+fn is_resource_def_item(item: Node) -> Bool {
+  (item.transport == none && item.children |> count > 0)
+  || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none)
+}
+
 // Transport kind classification: single-dispatch alternative to repeated
 // if/else chains in each backend's transport_call emitter.
 type TransportKind = RestKind | ShellKind | FileKind | LocalKind
