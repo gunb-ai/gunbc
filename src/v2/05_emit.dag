@@ -1755,6 +1755,11 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
 
 // DAG references to zero-arg functions are calls; all backends need explicit parens.
 // Checks FunctionValueBinding + resolved Callable type has no params.
+//
+// L1 VIOLATION: name-proxy check on resolved type (boundary sufficiency).
+// Inference should encode "this is a call" in the IR (ExprCall
+// normalization), not leave emit to re-derive it from type-name + arity.
+// Dissolves with M4/Tier 2.6: model function application upstream.
 fn is_zero_arg_callable_ref(binding_kind: VarBindingKind?, resolved_type: InferredNode?) -> Bool {
   match binding_kind {
     Some { value: FunctionValueBinding } =>

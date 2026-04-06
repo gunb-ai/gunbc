@@ -165,15 +165,28 @@ pub fn apply_inhabitant_template2(template: String, first: String, second: Strin
     v2_rt::replace(v2_rt::replace(template, "{0}".to_string(), first), "{1}".to_string(), second)
 }
 
+pub fn coercion_container_arity(name: String) -> Option<i64> {
+    match container_expected_arity(name.clone()) {
+    Some(arity) => Some(arity.clone()),
+    None => match dag_container_to_algebra(name.clone()) {
+    Some(algebra) => match lookup_inhabitant(RenderTarget::Rust, algebra.clone()) {
+    Some(inh) => Some(inh.arity.clone()),
+    None => None,
+},
+    None => None,
+},
+}
+}
+
 pub fn is_keyed_container(name: String) -> bool {
-    match container_expected_arity(name) {
+    match coercion_container_arity(name) {
     Some(arity) => (arity.clone() == 2),
     None => false,
 }
 }
 
 pub fn is_element_container(name: String) -> bool {
-    match container_expected_arity(name) {
+    match coercion_container_arity(name) {
     Some(arity) => (arity.clone() == 1),
     None => false,
 }

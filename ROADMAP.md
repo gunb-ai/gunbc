@@ -271,7 +271,9 @@ backends.
 - [~] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
   render as `name()` via `is_zero_arg_callable_ref` (FunctionValueBinding +
   Callable node with empty params). Dispatched in emit_var_ref and
-  emit_typed_expr_base. **Partial:** emitter-side guardrail only —
+  emit_typed_expr_base. `is_zero_arg_callable_ref` moved to shared
+  05_emit.dag; Go/Python emit_expr_var now consult it (PR #324).
+  **Partial:** emitter-side guardrail only —
   `rt.name == "Callable"` is an L1 violation. Upstream concept modeling
   (Tier 2.6) dissolves this. Imported zero-arg function refs untested.
 - [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
