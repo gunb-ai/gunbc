@@ -1242,7 +1242,7 @@ fn emit_go_service_def(
 
 fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
   let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
-  let decls = service_field_decls(fs: fs, t: language_spec.service_fields)
+  let decls = service_field_decls(fs: fs, t: language_spec(target: Go).service_fields)
   if decls |> count == 0 {
     concat("type ", name, " struct{}")
   } else {

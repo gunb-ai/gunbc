@@ -510,7 +510,9 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     ownership_index: base_info.ownership_index,
     movable: base_info.movable,
     variant_to_enum: base_info.variant_to_enum,
-    owned_bindings: empty_map()
+    owned_bindings: empty_map(),
+    fold_eligible_index: base_info.fold_eligible_index,
+    fold_eligible: empty_map()
   }
   let shared_types = emit_info.shared_types
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map())
@@ -1092,8 +1094,8 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-      let type_str = render_type(tr: build_type_rendering(n: rt_type(n: v), shared_types: shared_types, recursive_types: emit_info.recursive_type_set), target: Rust)
-      let let_line = emit_let_binding_annotated(name: n, type_str: type_str, value: val_str, target: Rust)
+      // Type annotations disabled for bootstrap convergence (Pass A).
+      let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match inner {
         Some { value: bd } =>
@@ -3034,8 +3036,8 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
 
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let type_str = render_type(tr: build_type_rendering(n: rt_type(n: value), shared_types: shared_types, recursive_types: emit_info.recursive_type_set), target: Rust)
-  let let_line = emit_let_binding_annotated(name: name, type_str: type_str, value: val_str, target: Rust)
+  // Type annotations disabled for bootstrap convergence (Pass A).
+  let let_line = emit_let_binding(name: name, value: val_str, target: Rust)
   match body {
     Some { value: bd } =>
       let next_scope = extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
@@ -3490,8 +3492,8 @@ fn emit_tco_init_stmt(stmt: Node, params: List<Node>, registry: Map<String, Item
       let is_param = params |> any(p => param_node_name(n: p) == n)
       if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") }
       else {
-        let type_str = render_type(tr: build_type_rendering(n: rt_type(n: v), shared_types: shared_types, recursive_types: emit_info.recursive_type_set), target: Rust)
-        emit_let_binding_annotated(name: n, type_str: type_str, value: val_str, target: Rust)
+        // Type annotations disabled for bootstrap convergence (Pass A).
+        emit_let_binding(name: n, value: val_str, target: Rust)
       }
     _ => emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   }
@@ -3719,7 +3721,7 @@ fn emit_service_struct(name: String, fallback_transport: Node, op_children: List
 
 fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>) -> String {
   let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
-  let decls = service_field_decls(fs: fs, t: language_spec.service_fields)
+  let decls = service_field_decls(fs: fs, t: language_spec(target: Rust).service_fields)
   if decls |> count == 0 { "    // No configuration needed for local binding.\n" }
   else { decls |> join(separator: "") }
 }
@@ -3753,7 +3755,7 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
     } else { "" }
     if from_fallback != "" { from_fallback } else { "http://localhost" }
   } else { "" }
-  let ctors = service_field_ctors(fs: fs, t: language_spec.service_fields)
+  let ctors = service_field_ctors(fs: fs, t: language_spec(target: Rust).service_fields)
   let ctors = ctors |> map(c => apply_type_template1(template: c, arg0: base_url_default))
   let inits = ctors |> join(separator: "")
   concat(

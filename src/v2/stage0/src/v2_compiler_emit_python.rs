@@ -1196,13 +1196,13 @@ pub fn emit_py_service_init(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc
     {
         let fs = compute_service_fields(fallback_transport, op_children);
 let params = service_field_decls(fs.clone(), language_spec(RenderTarget::Python).service_fields.clone());
-let assigns = service_field_ctors(fs, language_spec(RenderTarget::Python).service_fields.clone());
+let assigns = service_field_ctors(fs.clone(), language_spec(RenderTarget::Python).service_fields.clone());
 if ((params.clone().len() as i64) == 0) {
             "def __init__(self):\n    pass".to_string()
 } else {
             {
                 let params_str = v2_rt::concat("self, ".to_string(), params.clone().join(&", ".to_string()));
-let assigns_str = Rc::new({ let mut __result = Vec::new(); for a in assigns.clone().iter().cloned() { __result.push(v2_rt::concat("    ".to_string(), a.clone())); } __result }).join(&"\n".to_string());
+let assigns_str = Rc::new({ let mut __result = Vec::new(); for a in assigns.iter().cloned() { __result.push(v2_rt::concat("    ".to_string(), a.clone())); } __result }).join(&"\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat("def __init__(".to_string(), params_str), "):\n".to_string()), assigns_str)
 }
 }

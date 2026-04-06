@@ -65,7 +65,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo, TypeRendering, leaf_type_rendering};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ReservedWordStrategy, ImportRule, ServiceFieldTemplates, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, try_target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, target_primitive_type, try_target_primitive_type, target_container_template, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
@@ -1652,37 +1652,57 @@ pub fn compute_service_fields(fallback_transport: Rc<Node>, op_children: Rc<Vec<
 }
 
 pub fn service_field_decls(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) -> Rc<Vec<String>> {
-    let mut result: Vec<String> = Vec::new();
-    if fs.has_rest {
-        result.push(t.rest_decl.clone());
+    {
+        let result = Rc::new(vec![]);
+let result = if fs.has_rest.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.rest_decl.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_auth.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.auth_decl.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_shell.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.shell_decl.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_file.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.file_decl.clone()]))
+} else {
+            result.clone()
+};
+result.clone()
 }
-    if fs.has_auth {
-        result.push(t.auth_decl.clone());
-}
-    if fs.has_shell {
-        result.push(t.shell_decl.clone());
-}
-    if fs.has_file {
-        result.push(t.file_decl.clone());
-}
-    Rc::new(result)
 }
 
 pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) -> Rc<Vec<String>> {
-    let mut result: Vec<String> = Vec::new();
-    if fs.has_rest {
-        result.push(t.rest_ctor.clone());
+    {
+        let result = Rc::new(vec![]);
+let result = if fs.has_rest.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.rest_ctor.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_auth.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.auth_ctor.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_shell.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.shell_ctor.clone()]))
+} else {
+            result.clone()
+};
+let result = if fs.has_file.clone() {
+            v2_rt::concat(result.clone(), Rc::new(vec![t.file_ctor.clone()]))
+} else {
+            result.clone()
+};
+result.clone()
 }
-    if fs.has_auth {
-        result.push(t.auth_ctor.clone());
-}
-    if fs.has_shell {
-        result.push(t.shell_ctor.clone());
-}
-    if fs.has_file {
-        result.push(t.file_ctor.clone());
-}
-    Rc::new(result)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
