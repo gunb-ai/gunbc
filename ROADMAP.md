@@ -171,7 +171,7 @@ of propagating error state. `node_inferred_to_outputs` builds outputs
 from fabricated types. Highest-confidence correctness bug (reviewer
 2026-04-02).
 
-- [x] `child_inferred_or_empty` propagates error state structurally
+- [~] `child_inferred_or_empty` no longer fabricates Unit — `Untyped` returns the child's own structure (partial: reuses raw structure as type authority, not explicit error propagation)
 - [x] `node_inferred_to_outputs` refuses error-typed children (fail-closed) — all-or-nothing gate via `rt_node` check; returns `[]` if any child is not `Typed`
 
 ### Incomplete parameterization and bidirectional inference
@@ -754,10 +754,17 @@ Each criterion is a claim: "this class of mistake is unrepresentable."
 Consumers read existing structural authorities; the wrong question
 can't be asked. See `src/v2/CM.md` for full design rationale.
 
+**One clear end-state:** The existing structural data (Node fields,
+connective, method_def, AlgebraFieldTemplate) flows through stage
+boundaries intact to every consumer that needs it. No new parallel
+classification types. No lossy boundaries that drop distinctions
+consumers need. Reading a field IS reading the authority — that is
+not re-derivation.
+
 | Model | Claim | How to verify |
 |-------|-------|---------------|
-| MM-1 | Item facts are existing Node fields; classification is unnecessary | Emit reads `body`, `transport`, `connective` directly — no `classify_*` forests |
-| MM-2 | Connective / TypeSummary.repr is the authority; re-interpretation is unnecessary | Emit reads connective or repr — no inline `.connective == Conj` checks |
+| MM-1 | Existing Node fields flow to emit intact; classification is unnecessary | No `classify_*` forests; emit reads `body`, `transport`, `connective` from the Node at the boundary |
+| MM-2 | Connective / TypeSummary.repr is the authority; re-interpretation is unnecessary | Emit reads connective or repr — no inline `.connective == Conj` checks. TypeSummary.repr is only the single authority if proven non-lossy for ALL consumers, not just emit |
 | MM-3 | method_def / AlgebraFieldTemplate is the authority; name dispatch is unnecessary | Emit reads structural method facts — no `method_name ==` string dispatch |
 
 **Invariant guardrail:** Consume existing authorities, never duplicate.

@@ -561,57 +561,134 @@ Each criterion is a structural claim: "this class of mistake is
 **unrepresentable**." Not "we haven't written it" but "the types and
 module boundaries prevent it from being written."
 
-### MM-1: Item classification is unrepresentable in emit
+**Governing constraint (from review):** Every acceptance criterion
+must resolve to ONE clear end-state. The existing authorities
+(Node fields, connective, method_def, AlgebraFieldTemplate) are the
+ground truth. The fix is making them reachable at every consumption
+site. If a boundary needs to carry facts to a consumer, it must be
+exact and non-lossy — no stripping of data the consumer needs, no
+new parallel interpretation types. This means:
+- No new `ItemKind`/`TypeShape`/`AlgebraMethodKind` classification types
+- No lossy boundary that drops distinctions downstream consumers need
+- The existing structural data flows through stage boundaries intact
 
-**Claim:** Emit functions cannot access raw item structural fields
-(`body`, `transport`, `uses`, `type_annotation`, `properties`) for
-dispatch decisions. The boundary carries the existing fields in a
-form that makes re-classification unnecessary.
+### MM-1: Item re-classification dissolves
 
-**Test:** The emit modules (`05_emit*.dag`) do not independently
-classify items. They receive the structural facts and pattern-match
-on what they need.
+**Problem:** Four classification forests re-derive item kind from
+raw Node fields because the fields aren't reachable at the boundary.
 
-**What this implies for the design:** The existing fields ARE the
-authority. The fix is making them reachable at the emit boundary —
-not wrapping them in a new classification type. If emit needs to
-know "has body?", body must be accessible, not re-derived from
-side-table lookups.
+**End-state:** The existing structural fields (`body`, `transport`,
+`connective`, `params`, `uses`) flow through the infer→emit boundary
+intact. Emit reads them directly — not from side-tables, not from a
+parallel classification type, not re-derived from heuristics. The
+four classification forests dissolve because every consumer reads the
+same structural facts from the same Node.
 
-### MM-2: Connective re-interpretation is unrepresentable in emit
+**Constraint:** This does NOT mean emit performs ad-hoc semantic
+interpretation of raw fields. The fields themselves are the semantic
+facts (body = has internal evidence, transport = has external
+grounding, connective = structural composition). Reading a field is
+reading the authority, not re-deriving it.
 
-**Claim:** Emit functions do not re-interpret connective. They receive
-connective (or its existing downstream authority, `TypeSummary.repr`)
-and dispatch on that directly.
+**Edge cases (from analysis):** Some field combinations are
+semantically ambiguous (empty service, resource with properties but
+no capabilities, fn/interface/pattern producing identical shapes).
+These should be resolved at the parser or normalizer — not left for
+downstream to improvise. See §Arity boundaries below.
 
-**Test:** The emit modules do not contain multi-branch if-else chains
-that check `.connective == Conj` / `Disj`. Type rendering is an
-exhaustive match on the existing authority.
+### MM-2: Connective re-interpretation dissolves
 
-**What this implies for the design:** Connective is already the
-authority. `TypeSummary.repr` is already a valid consumer. The fix
-is extending `TypeSummary.repr` to cover all type rendering (not
-just type definitions), not adding a third interpretation layer.
+**Problem:** 57 sites re-derive "product or coproduct?" from
+connective.
 
-### MM-3: Method name dispatch is unrepresentable in emit
+**End-state:** Connective is the authority. `TypeSummary.repr`
+(StructRepr/EnumRepr) is the existing derived consumer for emit.
+The fix is extending `TypeSummary.repr` to cover all type rendering
+(not just type definitions). `TypeSummary.repr` is only safe as the
+single authority if it is proven non-lossy — it must preserve every
+distinction that lookup, types, complexity, and ownership need, not
+just emit. If it collapses distinctions that other consumers need,
+those consumers should read connective directly.
 
-**Claim:** Emit functions cannot access `method_def.name` as a dispatch
-key. They receive the existing method structural facts from the
-algebra framework and dispatch on those.
+**Constraint:** No new TypeShape enum. Either connective or
+TypeSummary.repr is the authority at each site, never both.
 
-**Test:** The `method_def` Node and `AlgebraFieldTemplate` already
-carry method identity (parameter types, return type, receiver shape).
-Emit functions read these structural facts instead of matching on
-name strings. Nullary function invocation is represented as ExprCall
-in the expression IR (normalized during inference), not detected by
-type-name checks at render time.
+### MM-3: Method name dispatch dissolves
 
-**What this implies for the design:** The algebra framework IS the
-method identity authority. The fix is surfacing `AlgebraFieldTemplate`
-facts through the pipeline to emit — not adding a parallel
-`AlgebraMethodKind` enum. For nullary calls, the expression IR is
-the authority — ExprVar→ExprCall normalization in inference, not a
-new binding kind variant.
+**Problem:** 21 sites dispatch on `method_def.name` strings.
+
+**End-state:** The `method_def` Node and `AlgebraFieldTemplate`
+already carry method identity (parameter types, return type, receiver
+shape). Emit reads these structural facts instead of matching on
+name strings. Nullary function invocation is ExprCall in the IR
+(normalized during inference), not detected by type-name checks.
+
+**Constraint:** The algebra framework IS the method identity
+authority. The fix is surfacing `AlgebraFieldTemplate` facts through
+the pipeline — not adding a parallel enum. For nullary calls, the
+expression IR is the authority (ExprVar→ExprCall normalization).
+
+---
+
+## Arity boundaries: where the model is silent
+
+Open-ended modeling (Node with optional fields, containers with
+variable children) produces a combinatorial space much larger than
+the set of semantically valid configurations. At the boundaries —
+arity 0, arity > expected, ambiguous field combinations — the model
+is silent and code improvises. Each improvisation is a future refactor.
+
+### Node field combinations
+
+Three keywords (`fn`, `interface`, `pattern`) produce identical field
+shapes. The keyword dissolves after parsing — downstream can't
+distinguish intent. Two independent classifiers (`item_kind` in
+04_items.dag, `classify_typed_item` in 04_emit_info.dag) operate
+on the same Node field space with different priority chains and
+**can disagree** (resource with properties but no capabilities:
+item_kind → OtherItem, classify_typed_item → ResourceDef).
+
+Ambiguous combinations the parser produces but nobody specified:
+
+| Combination | Parser accepts? | Semantic question |
+|-------------|----------------|-------------------|
+| Service with 0 operations | Yes | Valid (forward decl)? Or error? |
+| Resource with 0 capabilities | Yes | Valid? Hits TypedItemUnhandled |
+| fn with only type params, no value params | Yes | Body can't use params at value level |
+| interface → identical shape as fn | Yes | Intent lost after parsing |
+
+**Principle:** Each ambiguous combination should be resolved at the
+parser or normalizer — not left for downstream to improvise. If the
+combination is valid, its semantics must be specified. If invalid,
+the parser should reject it (construction over ratchets).
+
+### Container arity boundaries
+
+`container_type_arity` covers List(1), Map(2), Set(1) but is silent
+at the boundaries:
+
+| Scenario | What happens | Should happen |
+|----------|-------------|---------------|
+| `Map<String>` (under-arity) | Silently filled to `Map<String, Unit>` | Diagnostic or expected-type propagation |
+| `List<Int, String>` (over-arity) | Falls through all predicates | Diagnostic: arity mismatch |
+| `Optional<Optional<T>>` | Collapses to `Optional<T>` silently | Document or diagnose (idempotent optionality) |
+| Callable/lambda param mismatch | Excess gets TypeVariable | Diagnostic: arity mismatch |
+| `index` on FreeMonoid | Declared as T (non-optional) | Should be T? (partial function) |
+
+Types not in `container_type_arity` at all: Optional, Callable,
+Tuple, FreeMonoid, PartialFunction, BooleanAlgebra. These have no
+arity validation even for the common case.
+
+**Connection to fail-open:** The `bare_map_node()` chain (§fail-open
+analysis above) is a specific instance of this pattern. When arity
+is unvalidated, under-parameterized types propagate through the
+pipeline and force downstream fallbacks.
+
+**Principle:** Arity constraints should be declared once (in the
+algebra profile or type declaration) and enforced at normalization.
+Over-arity and under-arity should produce diagnostics, not silent
+patches. The algebra profile already carries parameter counts — the
+normalizer should read them.
 
 ---
 
@@ -650,10 +727,12 @@ not named as concepts:
 | **Evidence** | Node provides backing for its claim (body = internal, transport = external) | Witness/proof — epistemic | Signal |
 | **Morphism** | Node describes a mapping (params → return type) | Implication — logical entailment | Reduction (rewrite rule) |
 
-Structure/Evidence/Morphism are the compiler-level manifestation of
-the three foundational categories. The heuristic forests exist because
-the compiler re-derives these from raw Node fields instead of consuming
-them as named primitives.
+Structure/Evidence/Morphism are **analysis vocabulary** — a way to
+talk about what existing Node fields mean. They are NOT proposed as
+stored metadata or a new boundary layer. The heuristic forests exist
+because consumers re-derive these properties from raw Node fields
+instead of reading the fields directly. The fix is making the fields
+reachable, not adding a Structure/Evidence/Morphism annotation.
 
 The surface sugar composes these:
 
