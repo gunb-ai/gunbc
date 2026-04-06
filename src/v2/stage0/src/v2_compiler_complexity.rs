@@ -1930,7 +1930,7 @@ continue;
 }
 }
 
-pub fn matches_on_expr_data(body: Rc<Node>, param_name: String) -> bool {
+pub fn matches_on_sub_value_field(body: Rc<Node>, param_name: String) -> bool {
     match unwrap_to_match(body) {
     Some(m) => {
         let scrut = match_scrutinee(m.clone());
@@ -1938,7 +1938,7 @@ match (*scrut.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
             let base = field_access_base(scrut.clone());
 let field = field_access_field(scrut.clone());
-((field.as_str() == "expr_data".to_string().as_str()) && match (*base.expr_data.clone()).clone() {
+(is_sub_value_field(field) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => (expr_var_name(base.clone()).as_str() == param_name.as_str()),
     _ => false,
 })
@@ -1953,7 +1953,7 @@ let field = field_access_field(scrut.clone());
 pub fn is_container_child_descent(body: Rc<Node>, func_name: String, params: Rc<Vec<Rc<Node>>>) -> bool {
     { let mut __found = false; for p in params.iter().cloned() { if {
         let pname = param_node_name(p.clone());
-(matches_on_expr_data(body.clone(), pname.clone()) && all_self_calls_descend(body.clone(), func_name.clone(), pname.clone(), true, false))
+(matches_on_sub_value_field(body.clone(), pname.clone()) && all_self_calls_descend(body.clone(), func_name.clone(), pname.clone(), true, false))
 } { __found = true; break; } } __found }
 }
 

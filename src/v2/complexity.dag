@@ -2383,8 +2383,8 @@ fn unwrap_to_match(body: Node) -> Node? {
   }
 }
 
-// Check if the body matches on `param_name.expr_data`.
-fn matches_on_expr_data(body: Node, param_name: String) -> Bool {
+// Check if the body matches on a sub-value field of param_name (e.g., param.expr_data).
+fn matches_on_sub_value_field(body: Node, param_name: String) -> Bool {
   match unwrap_to_match(body: body) {
     Some { value: m } =>
       let scrut = match_scrutinee(texpr: m)
@@ -2392,7 +2392,7 @@ fn matches_on_expr_data(body: Node, param_name: String) -> Bool {
         ExprFieldAccess =>
           let base = field_access_base(texpr: scrut)
           let field = field_access_field(texpr: scrut)
-          field == "expr_data"
+          is_sub_value_field(field_name: field)
           && match base.expr_data {
             ExprVar { binding_kind: _ } => expr_var_name(texpr: base) == param_name
             _ => false
@@ -2413,7 +2413,7 @@ fn is_container_child_descent(body: Node, func_name: String, params: List<Node>)
     let pname = param_node_name(n: p)
     // Precondition: body must match on param.expr_data — without this, descent
     // could be inferred from accessor names alone on non-Node values.
-    matches_on_expr_data(body: body, param_name: pname)
+    matches_on_sub_value_field(body: body, param_name: pname)
     && all_self_calls_descend(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
   )
 }

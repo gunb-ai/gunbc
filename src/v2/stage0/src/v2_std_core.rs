@@ -1106,6 +1106,9 @@ pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
             __m.insert("type_annotation".to_string(), NodeFieldRole::SubValueField);
             __m.insert("properties".to_string(), NodeFieldRole::SubValueField);
             __m.insert("uses".to_string(), NodeFieldRole::SubValueField);
+            __m.insert("expr_data".to_string(), NodeFieldRole::SubValueField);
+            __m.insert("match_pattern".to_string(), NodeFieldRole::SubValueField);
+            __m.insert("inferred".to_string(), NodeFieldRole::SubValueField);
             Rc::new(__m)
         };
     }
