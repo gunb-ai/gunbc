@@ -5,61 +5,17 @@
 
 #![allow(clippy::disallowed_macros)]
 
-// ── Helper: copy the curated bootstrap source tree into a temp workspace ──
+// ── Helper: return the real workspace source roots ──
 //
-// The file set is still curated, but the directory layout now matches the
-// real compiler entrypoints so bootstrap tests exercise `--source-root`
-// import-driven resolution instead of the older flattened `--source-dir`
-// mode.
+// The compiler reads .dag files read-only via --source-root, so tests
+// point directly at the workspace tree instead of copying files into
+// a temp dir. This eliminates the FF-9 curated-file-list workaround
+// and ensures bootstrap tests always see the same sources as the real
+// compiler.
 
-fn prepare_source_tree(workspace_dir: &std::path::Path) {
+fn source_roots() -> (std::path::PathBuf, std::path::PathBuf) {
     let ws = crate::helpers::workspace_root();
-    let v2_dir = workspace_dir.join("src/v2");
-    let dsl_dir = workspace_dir.join("dsl");
-    std::fs::create_dir_all(&v2_dir).unwrap();
-    std::fs::create_dir_all(&dsl_dir).unwrap();
-
-    // Copy v2 compiler .dag files into the flat bootstrap source dir.
-    for entry in std::fs::read_dir(ws.join("src/v2")).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            std::fs::copy(&path, v2_dir.join(entry.file_name())).unwrap();
-        }
-    }
-
-    // Copy language extdeps
-    let lang_dirs = ["rust", "python", "go"];
-    for lang in &lang_dirs {
-        let dst_dir = workspace_dir.join(format!("dsl/extdeps/languages/{}", lang));
-        std::fs::create_dir_all(&dst_dir).unwrap();
-        for file in &["emit.dag", "types.dag"] {
-            let src = ws.join(format!("dsl/extdeps/languages/{}/{}", lang, file));
-            if src.exists() {
-                std::fs::copy(&src, dst_dir.join(file)).unwrap();
-            }
-        }
-    }
-    {
-        let dag_syntax_src = ws.join("dsl/extdeps/languages/dag/syntax.dag");
-        if dag_syntax_src.exists() {
-            let dst_dir = workspace_dir.join("dsl/extdeps/languages/dag");
-            std::fs::create_dir_all(&dst_dir).unwrap();
-            std::fs::copy(&dag_syntax_src, dst_dir.join("syntax.dag")).unwrap();
-        }
-    }
-
-    // Copy all std modules (avoid curated list — new std/ files break bootstrap tests)
-    let std_src = ws.join("dsl/std");
-    let dst_dir = workspace_dir.join("dsl/std");
-    std::fs::create_dir_all(&dst_dir).unwrap();
-    for entry in std::fs::read_dir(&std_src).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            std::fs::copy(&path, dst_dir.join(entry.file_name())).unwrap();
-        }
-    }
+    (ws.join("src/v2"), ws.join("dsl"))
 }
 
 // ── 1. stage0_cargo_check ───────────────────────────────────────────────
@@ -126,11 +82,7 @@ fn strict_compile_diagnostic_count() {
         stage0_bin.display()
     );
 
-    // Prepare source directory with all .dag files
-    let sources_dir = std::env::temp_dir().join("v2-diag-sources");
-    let _ = std::fs::remove_dir_all(&sources_dir);
-    std::fs::create_dir_all(&sources_dir).unwrap();
-    prepare_source_tree(&sources_dir);
+    let (v2_root, dsl_root) = source_roots();
 
     let out_dir = std::env::temp_dir().join("v2-diag-output");
     let _ = std::fs::remove_dir_all(&out_dir);
@@ -138,9 +90,9 @@ fn strict_compile_diagnostic_count() {
     let output = std::process::Command::new(&stage0_bin)
         .arg("compile")
         .arg("--source-root")
-        .arg(sources_dir.join("src/v2"))
+        .arg(&v2_root)
         .arg("--source-root")
-        .arg(sources_dir.join("dsl"))
+        .arg(&dsl_root)
         .arg("--output-dir")
         .arg(&out_dir)
         .output()
@@ -168,7 +120,6 @@ fn strict_compile_diagnostic_count() {
     );
 
     // Cleanup
-    let _ = std::fs::remove_dir_all(&sources_dir);
     let _ = std::fs::remove_dir_all(&out_dir);
 }
 
@@ -293,12 +244,7 @@ fn bootstrap_stage0_to_stage1() {
 
     let ws = crate::helpers::workspace_root();
     let stage0_bin = ws.join("target/release/v2-compiler");
-
-    // Prepare source directory
-    let sources_dir = std::env::temp_dir().join("v2-bootstrap-sources");
-    let _ = std::fs::remove_dir_all(&sources_dir);
-    std::fs::create_dir_all(&sources_dir).unwrap();
-    prepare_source_tree(&sources_dir);
+    let (v2_root, dsl_root) = source_roots();
 
     // Run stage0 to compile stage1
     let stage1_dir = std::env::temp_dir().join("v2-bootstrap-stage1");
@@ -306,9 +252,9 @@ fn bootstrap_stage0_to_stage1() {
     let output = std::process::Command::new(&stage0_bin)
         .arg("compile")
         .arg("--source-root")
-        .arg(sources_dir.join("src/v2"))
+        .arg(&v2_root)
         .arg("--source-root")
-        .arg(sources_dir.join("dsl"))
+        .arg(&dsl_root)
         .arg("--output-dir")
         .arg(&stage1_dir)
         .output()
@@ -331,7 +277,6 @@ fn bootstrap_stage0_to_stage1() {
                  complexity violations to 0.",
                 diag_count
             );
-            let _ = std::fs::remove_dir_all(&sources_dir);
             let _ = std::fs::remove_dir_all(&stage1_dir);
             return;
         }
@@ -394,7 +339,6 @@ fn bootstrap_stage0_to_stage1() {
         error_count, EMITTED_RUST_ERROR_RATCHET
     );
 
-    let _ = std::fs::remove_dir_all(&sources_dir);
     let _ = std::fs::remove_dir_all(&stage1_dir);
 }
 
@@ -420,12 +364,7 @@ fn bootstrap_fixed_point() {
         String::from_utf8_lossy(&build.stderr)
     );
     let stage0_bin = ws.join("target/release/v2-compiler");
-
-    // Prepare sources
-    let sources_dir = std::env::temp_dir().join("v2-fp-sources");
-    let _ = std::fs::remove_dir_all(&sources_dir);
-    std::fs::create_dir_all(&sources_dir).unwrap();
-    prepare_source_tree(&sources_dir);
+    let (v2_root, dsl_root) = source_roots();
 
     // Stage0 -> stage1
     let stage1_dir = std::env::temp_dir().join("v2-fp-stage1");
@@ -433,9 +372,9 @@ fn bootstrap_fixed_point() {
     let s1 = std::process::Command::new(&stage0_bin)
         .arg("compile")
         .arg("--source-root")
-        .arg(sources_dir.join("src/v2"))
+        .arg(&v2_root)
         .arg("--source-root")
-        .arg(sources_dir.join("dsl"))
+        .arg(&dsl_root)
         .arg("--output-dir")
         .arg(&stage1_dir)
         .output()
@@ -469,9 +408,9 @@ fn bootstrap_fixed_point() {
     let s2 = std::process::Command::new(&stage1_bin)
         .arg("compile")
         .arg("--source-root")
-        .arg(sources_dir.join("src/v2"))
+        .arg(&v2_root)
         .arg("--source-root")
-        .arg(sources_dir.join("dsl"))
+        .arg(&dsl_root)
         .arg("--output-dir")
         .arg(&stage2_dir)
         .output()
@@ -512,7 +451,6 @@ fn bootstrap_fixed_point() {
     );
 
     // Cleanup
-    let _ = std::fs::remove_dir_all(&sources_dir);
     let _ = std::fs::remove_dir_all(&stage1_dir);
     let _ = std::fs::remove_dir_all(&stage2_dir);
 }
@@ -619,12 +557,7 @@ fn performance_ratchet() {
     assert!(build.status.success(), "stage0 build failed");
 
     let stage0_bin = ws.join("target/release/v2-compiler");
-
-    // Prepare sources
-    let sources_dir = std::env::temp_dir().join("v2-perf-sources");
-    let _ = std::fs::remove_dir_all(&sources_dir);
-    std::fs::create_dir_all(&sources_dir).unwrap();
-    prepare_source_tree(&sources_dir);
+    let (v2_root, dsl_root) = source_roots();
 
     let out_dir = std::env::temp_dir().join("v2-perf-output");
     let _ = std::fs::remove_dir_all(&out_dir);
@@ -634,9 +567,9 @@ fn performance_ratchet() {
     let output = std::process::Command::new(&stage0_bin)
         .arg("compile")
         .arg("--source-root")
-        .arg(sources_dir.join("src/v2"))
+        .arg(&v2_root)
         .arg("--source-root")
-        .arg(sources_dir.join("dsl"))
+        .arg(&dsl_root)
         .arg("--output-dir")
         .arg(&out_dir)
         .output()
@@ -659,6 +592,5 @@ fn performance_ratchet() {
     );
 
     // Cleanup
-    let _ = std::fs::remove_dir_all(&sources_dir);
     let _ = std::fs::remove_dir_all(&out_dir);
 }
