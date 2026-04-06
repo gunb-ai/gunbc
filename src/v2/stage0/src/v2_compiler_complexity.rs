@@ -419,12 +419,36 @@ continue;
 pub fn proof_has_non_descending_cycle(members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
     {
         let non_descending = Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { if (is_lexicographic_descent(e.evidence.clone()) == false) { __result.push(e); } } __result });
-let nd_progress_edges = Rc::new({ let mut __result = Vec::new(); for e in non_descending.iter().cloned() { __result.push(Rc::new(ParserProgressEdge {
-    caller: e.caller.clone(),
-    callee: e.callee.clone(),
-    progress: ProgressKind::ProgressSame,
-})); } __result });
-same_progress_subgraph_has_cycle(members, nd_progress_edges)
+let nd_graph = build_call_graph_from_proof_edges(members.clone(), non_descending);
+graph_has_multi_node_scc(members.clone(), nd_graph)
+}
+}
+
+pub fn build_call_graph_from_proof_edges(names: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> Rc<CallGraph> {
+    {
+        let initial_forward = names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])));
+let initial_reverse = names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])));
+let graph_acc = Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { if (e.caller.clone().as_str() != e.callee.clone().as_str()) { __result.push(e); } } __result }).iter().cloned().fold(Rc::new(CallGraphAcc {
+    forward: initial_forward,
+    reverse: initial_reverse,
+}), |acc: Rc<CallGraphAcc>, edge: Rc<ProofEdge>| {
+            let forward_neighbors = match v2_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
+    Some(ns) => v2_rt::concat(ns.clone(), Rc::new(vec![edge.callee.clone()])),
+    None => Rc::new(vec![edge.callee.clone()]),
+};
+let reverse_neighbors = match v2_rt::map_get(&acc.reverse.clone(), edge.callee.clone()) {
+    Some(ns) => v2_rt::concat(ns.clone(), Rc::new(vec![edge.caller.clone()])),
+    None => Rc::new(vec![edge.caller.clone()]),
+};
+Rc::new(CallGraphAcc {
+    forward: v2_rt::rc_map_insert(acc.forward.clone(), edge.caller.clone(), forward_neighbors.clone()),
+    reverse: v2_rt::rc_map_insert(acc.reverse.clone(), edge.callee.clone(), reverse_neighbors.clone()),
+})
+});
+Rc::new(CallGraph {
+    forward: graph_acc.forward.clone(),
+    reverse: graph_acc.reverse.clone(),
+})
 }
 }
 

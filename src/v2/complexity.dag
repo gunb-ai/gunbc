@@ -372,10 +372,32 @@ fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
 // the subgraph of non-descending edges (all dims NonIncreasing) must be acyclic.
 fn proof_has_non_descending_cycle(members: List<String>, edges: List<ProofEdge>) -> Bool {
   let non_descending = edges |> filter(e => is_lexicographic_descent(evidence: e.evidence) == false)
-  let nd_progress_edges = non_descending |> map(e =>
-    ParserProgressEdge { caller: e.caller, callee: e.callee, progress: ProgressSame }
+  let nd_graph = build_call_graph_from_proof_edges(names: members, edges: non_descending)
+  graph_has_multi_node_scc(names: members, graph: nd_graph)
+}
+
+fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
+  let initial_forward = names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, [])
   )
-  same_progress_subgraph_has_cycle(members: members, edges: nd_progress_edges)
+  let initial_reverse = names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, [])
+  )
+  let graph_acc = edges |> filter(e => e.caller != e.callee) |> fold(init: CallGraphAcc { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+    let forward_neighbors = match map_get(acc.forward, edge.caller) {
+      Some { value: ns } => concat(ns, [edge.callee])
+      None => [edge.callee]
+    }
+    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
+      Some { value: ns } => concat(ns, [edge.caller])
+      None => [edge.caller]
+    }
+    CallGraphAcc {
+      forward: map_insert(acc.forward, edge.caller, forward_neighbors),
+      reverse: map_insert(acc.reverse, edge.callee, reverse_neighbors)
+    }
+  )
+  CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
 // Check if a CostExpr contains a placeholder for a self-recursive call.
