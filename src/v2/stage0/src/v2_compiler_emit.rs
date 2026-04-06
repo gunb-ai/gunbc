@@ -46,9 +46,10 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, Connective, Cardinality};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, Connective, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
+use crate::v2_std_core::VarBindingKind::{FunctionValueBinding};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::BinOp::{NullCoalesce};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
@@ -69,7 +70,6 @@ pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFie
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
-use TypedItemKind::*;
 use BackendCapability::*;
 use TransportKind::*;
 use ExprCategory::*;
@@ -107,19 +107,6 @@ pub struct TcoReassignInput {
     pub args: Rc<Vec<Rc<Node>>>,
     pub scope: Rc<InferScope>,
     pub depth: i64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum TypedItemKind {
-    TypedItemTypeDef,
-    TypedItemTypeAlias,
-    TypedItemTypeDecl,
-    TypedItemFunction,
-    TypedItemDataDef,
-    TypedItemServiceDef,
-    TypedItemResourceDef,
-    TypedItemUnhandled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1705,6 +1692,38 @@ result.clone()
 }
 }
 
+pub fn is_type_def_item(item: Rc<Node>) -> bool {
+    ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None))
+}
+
+pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
+    (((((item.connective.clone() == Connective::NoConnective) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0))
+}
+
+pub fn is_type_alias_item(item: Rc<Node>) -> bool {
+    (is_bare_leaf_item(item.clone()) && is_type_alias_return_node(rt_type(item.clone())))
+}
+
+pub fn is_type_decl_item(item: Rc<Node>) -> bool {
+    ((is_bare_leaf_item(item.clone()) && !is_type_alias_return_node(rt_type(item.clone()))) || (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)))
+}
+
+pub fn is_function_item(item: Rc<Node>) -> bool {
+    ((item.body.clone() != None) && (item.type_annotation.clone() == None))
+}
+
+pub fn is_data_def_item(item: Rc<Node>) -> bool {
+    ((item.body.clone() != None) && (item.type_annotation.clone() != None))
+}
+
+pub fn is_service_def_item(item: Rc<Node>) -> bool {
+    ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
+}
+
+pub fn is_resource_def_item(item: Rc<Node>) -> bool {
+    (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0)) || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0)) && ((item.properties.clone().len() as i64) > 0)) && (item.body.clone() == None)))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 
 pub enum TransportKind {
@@ -1727,47 +1746,6 @@ pub fn classify_transport(t: Rc<Node>) -> TransportKind {
                 TransportKind::LocalKind
 }
 }
-}
-}
-
-pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
-    {
-        let item_has_structure = (item.connective.clone() != Connective::NoConnective);
-let is_bare_leaf = (((((item_has_structure.clone() == false) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0));
-let kind = if (is_bare_leaf.clone() && is_type_alias_return_node(rt_type(item.clone()))) {
-            TypedItemKind::TypedItemTypeAlias
-} else {
-            if (is_bare_leaf.clone() && !is_type_alias_return_node(rt_type(item.clone()))) {
-                TypedItemKind::TypedItemTypeDecl
-} else {
-                if (item_has_structure.clone() && (item.transport.clone() == None)) {
-                    TypedItemKind::TypedItemTypeDef
-} else {
-                    if ((item.body.clone() != None) && (item.type_annotation.clone() == None)) {
-                        TypedItemKind::TypedItemFunction
-} else {
-                        if ((item.body.clone() != None) && (item.type_annotation.clone() != None)) {
-                            TypedItemKind::TypedItemDataDef
-} else {
-                            if ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0)) {
-                                TypedItemKind::TypedItemServiceDef
-} else {
-                                if (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0)) || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0)) && ((item.properties.clone().len() as i64) > 0)) && (item.body.clone() == None))) {
-                                    TypedItemKind::TypedItemResourceDef
-} else {
-                                    if (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)) {
-                                        TypedItemKind::TypedItemTypeDecl
-} else {
-                                        TypedItemKind::TypedItemUnhandled
-}
-}
-}
-}
-}
-}
-}
-};
-kind
 }
 }
 
@@ -2156,6 +2134,16 @@ pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) ->
     RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), l_str.clone()), " if ".to_string()), l_str.clone()), " is not None else ".to_string()), r_str), ")".to_string()),
     RenderTarget::Go => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func() interface{} { if ".to_string(), l_str.clone()), " != nil { return ".to_string()), l_str.clone()), " }; return ".to_string()), r_str), " }()".to_string()),
     RenderTarget::Dag => v2_rt::concat(v2_rt::concat(l_str.clone(), " ?? ".to_string()), r_str),
+}
+}
+
+pub fn is_zero_arg_callable_ref(binding_kind: Option<Rc<VarBindingKind>>, resolved_type: Option<Rc<InferredNode>>) -> bool {
+    match binding_kind.as_deref().cloned() {
+    Some(VarBindingKind::FunctionValueBinding) => match resolved_type.as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => ((rt.name.clone().as_str() == "Callable".to_string().as_str()) && ((rt.params.clone().len() as i64) == 0)),
+    _ => false,
+},
+    _ => false,
 }
 }
 

@@ -91,6 +91,35 @@ fn container_expected_arity(name: String) -> Int? {
   map_get(container_type_arity, name)
 }
 
+// Container → algebra mapping: mirrors the type alias declarations below.
+// Co-located with the declarations it describes (List = FreeMonoid, etc.).
+// Includes surface names, snake_case variants, and algebra self-mappings
+// so that any naming convention resolves to the canonical algebra identity.
+// TODO: derive programmatically from type alias declarations once M4
+// structural identity provides a reflection mechanism.
+data container_to_algebra: Map<String, String> = {
+  "List": "FreeMonoid",
+  "list": "FreeMonoid",
+  "NonEmptyList": "FreeMonoid",
+  "non_empty_list": "FreeMonoid",
+  "FreeMonoid": "FreeMonoid",
+  "free_monoid": "FreeMonoid",
+  "Set": "BooleanAlgebra",
+  "set": "BooleanAlgebra",
+  "NonEmptySet": "BooleanAlgebra",
+  "non_empty_set": "BooleanAlgebra",
+  "BooleanAlgebra": "BooleanAlgebra",
+  "boolean_algebra": "BooleanAlgebra",
+  "Map": "PartialFunction",
+  "map": "PartialFunction",
+  "PartialFunction": "PartialFunction",
+  "partial_function": "PartialFunction"
+}
+
+fn container_to_algebra_name(name: String) -> String? {
+  map_get(container_to_algebra, name)
+}
+
 // Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
 // Target: Bool = BooleanAlgebra over {True, False}.
 type Bool = True | False

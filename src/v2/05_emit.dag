@@ -24,6 +24,7 @@ import v2.std.core {
   authored_name_at, NewlineIndex,
   expr_var_name_at, expr_call_func_at, let_binding_name_at,
   ExprData, NoExprData,
+  VarBindingKind, FunctionValueBinding,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp,
@@ -117,16 +118,6 @@ type TcoReassignInput {
   scope: InferScope
   depth: Int
 }
-
-type TypedItemKind
-  = TypedItemTypeDef
-  | TypedItemTypeAlias
-  | TypedItemTypeDecl
-  | TypedItemFunction
-  | TypedItemDataDef
-  | TypedItemServiceDef
-  | TypedItemResourceDef
-  | TypedItemUnhandled
 
 
 // =========================================================================
@@ -1329,6 +1320,46 @@ fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<St
   result
 }
 
+// =========================================================================
+// Item structural predicates — shared boolean queries on Node fields.
+// No taxonomy enum (CM: consumers compose the predicates they need).
+// Each predicate reads one structural fact from the Node.
+// =========================================================================
+
+fn is_type_def_item(item: Node) -> Bool {
+  item.connective != NoConnective && item.transport == none
+}
+
+fn is_bare_leaf_item(item: Node) -> Bool {
+  item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+}
+
+fn is_type_alias_item(item: Node) -> Bool {
+  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: rt_type(n: item))
+}
+
+fn is_type_decl_item(item: Node) -> Bool {
+  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: rt_type(n: item)))
+  || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0)
+}
+
+fn is_function_item(item: Node) -> Bool {
+  item.body != none && item.type_annotation == none
+}
+
+fn is_data_def_item(item: Node) -> Bool {
+  item.body != none && item.type_annotation != none
+}
+
+fn is_service_def_item(item: Node) -> Bool {
+  item.transport != none && item.children |> count > 0
+}
+
+fn is_resource_def_item(item: Node) -> Bool {
+  (item.transport == none && item.children |> count > 0)
+  || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none)
+}
+
 // Transport kind classification: single-dispatch alternative to repeated
 // if/else chains in each backend's transport_call emitter.
 type TransportKind = RestKind | ShellKind | FileKind | LocalKind
@@ -1340,50 +1371,6 @@ fn classify_transport(t: Node) -> TransportKind {
   else { LocalKind }
 }
 
-// =========================================================================
-// Shared classification functions -- target-agnostic item/type/transport
-// dispatch. Each backend calls these to determine WHAT kind of thing it's
-// looking at, then applies its own rendering for HOW to emit it.
-//
-// Sustainability invariant: "No duplicate representations."
-// These classifiers are the single authority for item/type/transport kind.
-// =========================================================================
-
-// Classify a typed item into one of the structural categories.
-// Returns: "type_def", "type_alias", "type_decl", "function", "data_def",
-//          "service_def", "resource_def", "extern_func", or "unhandled".
-// For "function", callers must further check item.uses to distinguish fn vs func.
-fn classify_typed_item(item: Node) -> TypedItemKind {
-  let item_has_structure = item.connective != NoConnective
-  let is_bare_leaf = item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
-  let kind = if is_bare_leaf && is_type_alias_return_node(n: rt_type(n: item)) {
-    TypedItemTypeAlias
-  } else if is_bare_leaf && !is_type_alias_return_node(n: rt_type(n: item)) {
-    // Bare leaf declarations with no alias body (e.g., `type Bool`, `type Unit`).
-    // These are type-system declarations handled by the type map — emitting a
-    // definition would duplicate what the type map already provides.
-    TypedItemTypeDecl
-  } else if item_has_structure && item.transport == none {
-    TypedItemTypeDef
-  } else if item.body != none && item.type_annotation == none {
-    TypedItemFunction
-  } else if item.body != none && item.type_annotation != none {
-    TypedItemDataDef
-  } else if item.transport != none && item.children |> count > 0 {
-    TypedItemServiceDef
-  } else if (item.transport == none && item.children |> count > 0) || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none) {
-    // Resources: either with capabilities (children > 0) or without (have properties but no body/transport/children).
-    // Note: inferred may be Some { value: Unit } because the reconciler defaults pass-through items to Unit.
-    TypedItemResourceDef
-  } else if item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0 {
-    // Bare parameterized type declaration (e.g., type List<element>).
-    // These are type-system declarations and intentionally emit no runtime code.
-    TypedItemTypeDecl
-  } else {
-    TypedItemUnhandled
-  }
-  kind
-}
 
 
 // =========================================================================
@@ -1749,6 +1736,24 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
     Python => concat("(", l_str, " if ", l_str, " is not None else ", r_str, ")")
     Go => concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
     Dag => concat(l_str, " ?? ", r_str)
+  }
+}
+
+// DAG references to zero-arg functions are calls; all backends need explicit parens.
+// Checks FunctionValueBinding + resolved Callable type has no params.
+//
+// L1 VIOLATION: name-proxy check on resolved type (boundary sufficiency).
+// Inference should encode "this is a call" in the IR (ExprCall
+// normalization), not leave emit to re-derive it from type-name + arity.
+// Dissolves with M4/Tier 2.6: model function application upstream.
+fn is_zero_arg_callable_ref(binding_kind: VarBindingKind?, resolved_type: InferredNode?) -> Bool {
+  match binding_kind {
+    Some { value: FunctionValueBinding } =>
+      match resolved_type {
+        Some { value: Resolved { node: rt } } => rt.name == "Callable" && (rt.params |> count) == 0
+        _ => false
+      }
+    _ => false
   }
 }
 

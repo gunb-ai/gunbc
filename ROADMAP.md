@@ -213,8 +213,9 @@ correct-but-suboptimal code and blocks new backends.
 Clone semantics unified in SharingStrategy (CloneTemplates removed).
 TLC-1 partial: `is_zero_arg_callable_ref` is an emitter-side guardrail
 (L1 violation — `rt.name=="Callable"` check); upstream concept modeling
-needed (Tier 2.6). TLC-3 Rust per-collection dispatch done; Go/Python
-still route through `list_index` unconditionally. TLC-4 partial:
+needed (Tier 2.6). TLC-3 done: all three backends dispatch per
+collection type via `IndexingSemantics` templates (pre-existing;
+prior description was stale). TLC-4 partial:
 `emit_let_binding_annotated` infrastructure exists but disabled for
 bootstrap convergence (.dag type inference produces `()` for empty
 collection element types). TLC-2 blocked on M5 coercion engine.
@@ -270,19 +271,22 @@ backends.
 
 - [~] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
   render as `name()` via `is_zero_arg_callable_ref` (FunctionValueBinding +
-  Callable node with empty params). Dispatched in emit_var_ref and
-  emit_typed_expr_base. **Partial:** emitter-side guardrail only —
-  `rt.name == "Callable"` is an L1 violation. Upstream concept modeling
+  Callable node with empty params). Dispatched in Rust emit_var_ref and
+  emit_typed_expr_base only. Go/Python keyword mapping (none/true/false)
+  landed (PR #324); zero-arg callable detection kept Rust-scoped per
+  review — widening an L1 violation across backends without upstream
+  modeling violates boundary sufficiency. Upstream concept modeling
   (Tier 2.6) dissolves this. Imported zero-arg function refs untested.
 - [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
   *Blocked: requires M5 coercion engine for type/wrap authority.*
-- [~] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
+- [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
-  Rust dispatches on collection type. Go/Python still route through
-  `list_index`/`list_slice` unconditionally — per-collection dispatch pending.
+  All three backends dispatch per collection type via shared
+  `IndexingSemantics` data + `is_string_like`/`node_is_keyed_collection`
+  (pre-existing; prior description was stale).
 - [~] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
   in LanguageSpec — let binding templates (inferred/annotated), lambda param
   templates (typed/untyped). Infrastructure exists (`emit_let_binding_annotated`)
@@ -687,11 +691,18 @@ are in [`src/v2/CM.md`](src/v2/CM.md). Summary:
 - `TypedItemUnhandled` / `""` / `false` fail-open fallbacks: 8 sites
 
 **Work items:**
-- [ ] Design: determine irreducible structural facts about items
-- [ ] Surface existing fields (`body`, `transport`, `connective`, `params`) to
-  every consumption site — no new classification type
-- [ ] Implement: fail-closed boundaries (no TypedItemUnhandled, no `""` fallbacks)
-- [ ] Delete: all `classify_*` forests, all fail-open fallbacks, all name-keyed side-tables
+- [x] Design: determine irreducible structural facts about items
+- [~] Surface existing fields (`body`, `transport`, `connective`, `params`) to
+  every consumption site — no new classification type.
+  Shared predicates exist; ~55 raw structural interrogation sites not
+  yet migrated to use them.
+- [~] Implement: fail-closed boundaries (no TypedItemUnhandled, no `""` fallbacks)
+  `TypedItemUnhandled` variant deleted; else branches still emit error
+  markers (compile_error/panic/comment) — need upstream diagnostic instead.
+- [x] Delete: all `classify_*` forests, all fail-open fallbacks, all name-keyed side-tables
+  PR #324: `TypedItemKind` enum + `classify_typed_item` dissolved. Shared
+  boolean predicates (`is_type_def_item`, `is_function_item`, etc.) in
+  05_emit.dag replace the taxonomy. Backends compose predicates directly.
 
 **Acceptance:** Emit dispatches on existing Node structural fields
 directly. Classification forests dissolve because consumers pattern-match

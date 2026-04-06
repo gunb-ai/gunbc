@@ -117,6 +117,36 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
     v2_rt::map_get(&container_type_arity(), name)
 }
 
+pub fn container_to_algebra() -> Rc<HashMap<String, String>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, String>> = {
+            let mut __m = HashMap::new();
+            __m.insert("List".to_string(), "FreeMonoid".to_string());
+            __m.insert("list".to_string(), "FreeMonoid".to_string());
+            __m.insert("NonEmptyList".to_string(), "FreeMonoid".to_string());
+            __m.insert("non_empty_list".to_string(), "FreeMonoid".to_string());
+            __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
+            __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
+            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("NonEmptySet".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("non_empty_set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("Map".to_string(), "PartialFunction".to_string());
+            __m.insert("map".to_string(), "PartialFunction".to_string());
+            __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
+            __m.insert("partial_function".to_string(), "PartialFunction".to_string());
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn container_to_algebra_name(name: String) -> Option<String> {
+    v2_rt::map_get(&container_to_algebra(), name)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 
 pub enum Bool {
