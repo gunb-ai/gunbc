@@ -2411,12 +2411,12 @@ match arith_evidence.clone() {
 }
 },
 });
-match structural_proof.clone() {
+let single_dim_proof = match structural_proof.clone() {
     Some(_) => structural_proof.clone(),
     None => match parser_state_param(params.clone()) {
     Some(state_param) => {
             let self_set = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), true);
-let edges = collect_parser_progress_edges(func_name.clone(), body.clone(), state_param.clone(), self_set, empty_parser_progress_env(), parser_always_advancing, v2_rt::rc_empty_map::<bool>());
+let edges = collect_parser_progress_edges(func_name.clone(), body.clone(), state_param.clone(), self_set.clone(), empty_parser_progress_env(), parser_always_advancing, v2_rt::rc_empty_map::<bool>());
 if (((edges.clone().len() as i64) > 0) && { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() == ProgressKind::ProgressStrict)) { __all = false; break; } } __all }) {
                 Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::TokenPosition {
@@ -2428,6 +2428,20 @@ if (((edges.clone().len() as i64) > 0) && { let mut __all = true; for edge in ed
 }
 },
     None => None,
+},
+};
+match single_dim_proof.clone() {
+    Some(_) => single_dim_proof.clone(),
+    None => {
+            let self_set = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), true);
+let func_entry = Rc::new(FuncEntry {
+    name: func_name.clone(),
+    body: body.clone(),
+    params: params.clone(),
+    span: body.span.clone(),
+});
+let func_index = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), func_entry);
+construct_scc_termination_proof(Rc::new(vec![func_name.clone()]), func_index, self_set.clone())
 },
 }
 }

@@ -2830,7 +2830,7 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
   )
   // If structural dimensions didn't prove, try TokenPosition (parser state advance).
   // This subsumes the old self_calls_have_strict_parser_progress classifier.
-  match structural_proof {
+  let single_dim_proof = match structural_proof {
     Some { value: _ } => structural_proof
     None =>
       match parser_state_param(params: params) {
@@ -2850,6 +2850,17 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
           } else { none }
         None => none
       }
+  }
+  // If single-dimension proofs failed, try lexicographic composition.
+  // Treat the single function as a 1-member SCC and use the SCC proof constructor
+  // which already supports lexicographic [TreeSize, ListLength] and [TreeSize, TokenPosition].
+  match single_dim_proof {
+    Some { value: _ } => single_dim_proof
+    None =>
+      let self_set = map_insert(empty_map(), func_name, true)
+      let func_entry = FuncEntry { name: func_name, body: body, params: params, span: body.span }
+      let func_index = map_insert(empty_map(), func_name, func_entry)
+      construct_scc_termination_proof(members: [func_name], func_index: func_index, scc_name_set: self_set)
   }
 }
 
