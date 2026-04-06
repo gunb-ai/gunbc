@@ -856,7 +856,7 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       let args_str = arg_strs |> join(separator: ", ")
       concat("await ", var_name, ".", emit_ident(name: method, target: Python), "(", args_str, ")")
     }
-    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, algebra_template: _ } =>
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, size_effect: _ } =>
       let mn = method_def.name
       emit_py_algebra_method_call(method_name: mn, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
     PlainMethodSemantics =>

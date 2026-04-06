@@ -63,8 +63,8 @@ use crate::v2_std_core::BinOp::{Sub, Div};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::LiteralValue::{LitNull, LitInt};
-pub use crate::std_algebra::{AlgebraFieldTemplate, AlgebraTypeTemplate};
-use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, NamedTemplate, OptionalOf, ReceiverCollectionOf};
+pub use crate::std_algebra::{CollectionSizeEffect};
+use crate::std_algebra::CollectionSizeEffect::{ShrinkEffect, ProjectionEffect, IdentityEffect};
 use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
@@ -376,39 +376,10 @@ pub fn is_algebra_iteration_method(method_semantics: Option<Rc<MethodSemantics>>
 }
 }
 
-pub fn method_algebra_template(method_semantics: Option<Rc<MethodSemantics>>) -> Option<Rc<AlgebraFieldTemplate>> {
+pub fn method_size_effect(method_semantics: Option<Rc<MethodSemantics>>) -> Option<CollectionSizeEffect> {
     match method_semantics.as_deref().cloned() {
-    Some(MethodSemantics::AlgebraMethodSemantics { algebra_template: t, .. }) => t.clone(),
+    Some(MethodSemantics::AlgebraMethodSemantics { size_effect: se, .. }) => se.clone(),
     _ => None,
-}
-}
-
-pub fn is_element_projection_template(template: Rc<AlgebraFieldTemplate>) -> bool {
-    match (*template.return_type.clone()).clone() {
-    AlgebraTypeTemplate::OptionalOf { ref inner, .. } => { let AlgebraTypeTemplate::ReceiverElement = inner.as_ref() else { unreachable!() }; true },
-    _ => false,
-}
-}
-
-pub fn is_int_param_template(t: Rc<AlgebraTypeTemplate>) -> bool {
-    match (*t).clone() {
-    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => (n.clone().as_str() == "Int".to_string().as_str()),
-    _ => false,
-}
-}
-
-pub fn is_collection_shrink_template(template: Rc<AlgebraFieldTemplate>) -> bool {
-    match (*template.return_type.clone()).clone() {
-    AlgebraTypeTemplate::ReceiverSelf => { let mut __found = false; for p in template.param_types.clone().iter().cloned() { if is_int_param_template(p.clone()) { __found = true; break; } } __found },
-    _ => false,
-}
-}
-
-pub fn is_collection_identity_template(template: Rc<AlgebraFieldTemplate>) -> bool {
-    match (*template.return_type.clone()).clone() {
-    AlgebraTypeTemplate::ReceiverSelf => !is_collection_shrink_template(template.clone()),
-    AlgebraTypeTemplate::ReceiverCollectionOf { .. } => true,
-    _ => false,
 }
 }
 
@@ -1575,21 +1546,17 @@ break (is_children_list_field(field.clone()) && match (*base.expr_data.clone()).
     _ => false,
 }); },
     ExprData::ExprVar { .. } => { break set_has(vars.clone(), expr_var_name(expr.clone())); },
-    ExprData::ExprMethodCall { method_semantics: ms, .. } => { match method_algebra_template(ms.clone()) {
-    Some(t) => { if is_collection_shrink_template(t.clone()) {
-            {
-                let __tco_0 = method_receiver(expr);
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => { match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => { {
+            let __tco_0 = method_receiver(expr);
 let __tco_1 = param_name;
 let __tco_2 = vars;
 expr = __tco_0;
 param_name = __tco_1;
 vars = __tco_2;
 continue;
-}
-} else {
-            break false;
 } },
-    None => { break false; },
+    _ => { break false; },
 } },
     ExprData::ExprCall { .. } => { let callee = expr_call_func(expr.clone());
 if (callee.clone().as_str() == "skip".to_string().as_str()) {
@@ -1626,13 +1593,10 @@ let field = field_access_field(expr.clone());
     _ => false,
 })
 },
-    ExprData::ExprMethodCall { method_semantics: ms, .. } => match method_algebra_template(ms.clone()) {
-    Some(t) => if (is_collection_shrink_template(t.clone()) || is_collection_identity_template(t.clone())) {
-            is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone())
-} else {
-            false
-},
-    None => false,
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
+    Some(CollectionSizeEffect::IdentityEffect) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
+    _ => false,
 },
     ExprData::ExprCall { .. } => {
             let callee = expr_call_func(expr.clone());
@@ -1668,13 +1632,9 @@ pub fn is_child_descent_expr(expr: Rc<Node>, param_name: String, vars: Rc<HashMa
         true
 } else {
         match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { method_semantics: ms, .. } => match method_algebra_template(ms.clone()) {
-    Some(t) => if is_element_projection_template(t.clone()) {
-            is_children_of_param(method_receiver(expr.clone()), param_name.clone(), vars.clone())
-} else {
-            false
-},
-    None => false,
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ProjectionEffect) => is_children_of_param(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
+    _ => false,
 },
     _ => false,
 }
@@ -1718,9 +1678,9 @@ pub fn extractor_inner_arg(expr: Rc<Node>) -> Rc<Node> {
 pub fn is_list_shrink_expr(expr: Rc<Node>, param_name: String) -> bool {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprMethodCall { method_semantics: ms, .. } => {
-        let is_shrink = match method_algebra_template(ms.clone()) {
-    Some(t) => is_collection_shrink_template(t.clone()),
-    None => false,
+        let is_shrink = match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => true,
+    _ => false,
 };
 ((is_shrink && match (*method_receiver(expr.clone()).expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => (expr_var_name(method_receiver(expr.clone())).as_str() == param_name.as_str()),
@@ -1775,12 +1735,8 @@ let base = field_access_base(expr.clone());
 },
     ExprData::ExprMethodCall { method_semantics: ms, .. } => {
                 let receiver = method_receiver(expr.clone());
-match method_algebra_template(ms.clone()) {
-    Some(t) => if ((is_element_projection_template(t.clone()) || is_collection_shrink_template(t.clone())) || is_collection_identity_template(t.clone())) {
-                    expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone())
-} else {
-                    false
-},
+match method_size_effect(ms.clone()) {
+    Some(_) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
     None => false,
 }
 },

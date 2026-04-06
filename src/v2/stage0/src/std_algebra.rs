@@ -49,6 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 use Ordering::*;
 use AlgebraProfile::*;
 use AlgebraTypeTemplate::*;
+use CollectionSizeEffect::*;
 
 #[derive(Clone)]
 pub struct Magma<T> {
@@ -240,6 +241,34 @@ pub struct AlgebraFieldTemplate {
     pub name: String,
     pub param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
     pub return_type: Rc<AlgebraTypeTemplate>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum CollectionSizeEffect {
+    ShrinkEffect,
+    ProjectionEffect,
+    IdentityEffect,
+}
+
+pub fn algebra_size_effects() -> Rc<HashMap<String, CollectionSizeEffect>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, CollectionSizeEffect>> = {
+            let mut __m = HashMap::new();
+            __m.insert("skip".to_string(), CollectionSizeEffect::ShrinkEffect);
+            __m.insert("first".to_string(), CollectionSizeEffect::ProjectionEffect);
+            __m.insert("last".to_string(), CollectionSizeEffect::ProjectionEffect);
+            __m.insert("filter".to_string(), CollectionSizeEffect::IdentityEffect);
+            __m.insert("reverse".to_string(), CollectionSizeEffect::IdentityEffect);
+            __m.insert("enumerate".to_string(), CollectionSizeEffect::IdentityEffect);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn lookup_algebra_size_effect(method_name: String) -> Option<CollectionSizeEffect> {
+    v2_rt::lookup(&algebra_size_effects(), method_name)
 }
 
 pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {

@@ -61,9 +61,7 @@ import v2.std.core {
   is_tree_size_preserving, is_tree_size_reducing
 }
 import std.algebra {
-  AlgebraFieldTemplate, AlgebraTypeTemplate,
-  ReceiverSelf, ReceiverElement, NamedTemplate,
-  OptionalOf, ReceiverCollectionOf
+  CollectionSizeEffect, ShrinkEffect, ProjectionEffect, IdentityEffect
 }
 
 // =========================================================================
@@ -323,45 +321,16 @@ type EvidenceBlockAcc {
 // rather than string-matching method names.
 fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, algebra_template: _ } } => true
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _ } } => true
     _ => false
   }
 }
 
-// Extract the algebra template from method semantics (None for plain/service/user-defined methods).
-fn method_algebra_template(method_semantics: MethodSemantics?) -> AlgebraFieldTemplate? {
+// Extract size effect from method semantics (None for plain/service/non-size-effect methods).
+fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffect? {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, algebra_template: t } } => t
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se } } => se
     _ => none
-  }
-}
-
-// Template return_type is OptionalOf { inner: ReceiverElement } — element extraction (first, last).
-fn is_element_projection_template(template: AlgebraFieldTemplate) -> Bool {
-  match template.return_type {
-    OptionalOf { inner: ReceiverElement } => true
-    _ => false
-  }
-}
-
-fn is_int_param_template(t: AlgebraTypeTemplate) -> Bool {
-  match t { NamedTemplate { name: n } => n == "Int", _ => false }
-}
-
-// Template return_type is ReceiverSelf and param_types contains NamedTemplate("Int") — collection shrink (skip, take).
-fn is_collection_shrink_template(template: AlgebraFieldTemplate) -> Bool {
-  match template.return_type {
-    ReceiverSelf => template.param_types |> any(p => is_int_param_template(t: p))
-    _ => false
-  }
-}
-
-// Template return_type is ReceiverSelf (without Int param) or ReceiverCollectionOf — structural identity (filter, reverse, enumerate).
-fn is_collection_identity_template(template: AlgebraFieldTemplate) -> Bool {
-  match template.return_type {
-    ReceiverSelf => !is_collection_shrink_template(template: template)
-    ReceiverCollectionOf { element: _ } => true
-    _ => false
   }
 }
 
@@ -1925,12 +1894,10 @@ fn is_children_of_param(expr: Node, param_name: String, vars: Map<String, Bool>)
     ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name(texpr: expr))
     ExprMethodCall { method_semantics: ms } =>
       // Handle `param.children |> skip(N)` — projection from children list.
-      match method_algebra_template(method_semantics: ms) {
-        Some { value: t } =>
-          if is_collection_shrink_template(template: t) {
-            is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
-          } else { false }
-        None => false
+      match method_size_effect(method_semantics: ms) {
+        Some { value: ShrinkEffect } =>
+          is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        _ => false
       }
     // CX-J: Handle `skip(param.children, N)` — function-call form of skip.
     ExprCall { call_semantics: _ } =>
@@ -1971,12 +1938,10 @@ fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool
         _ => false
       }
     ExprMethodCall { method_semantics: ms } =>
-      match method_algebra_template(method_semantics: ms) {
-        Some { value: t } =>
-          if is_collection_shrink_template(template: t) || is_collection_identity_template(template: t) {
-            is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
-          } else { false }
-        None => false
+      match method_size_effect(method_semantics: ms) {
+        Some { value: ShrinkEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        Some { value: IdentityEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        _ => false
       }
     // CX-J: Handle `skip(descent_var.children, N)` — function-call form of skip.
     ExprCall { call_semantics: _ } =>
@@ -2010,12 +1975,10 @@ fn is_child_descent_expr(expr: Node, param_name: String, vars: Map<String, Bool>
   else {
     match expr.expr_data {
       ExprMethodCall { method_semantics: ms } =>
-        match method_algebra_template(method_semantics: ms) {
-          Some { value: t } =>
-            if is_element_projection_template(template: t) {
-              is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
-            } else { false }
-          None => false
+        match method_size_effect(method_semantics: ms) {
+          Some { value: ProjectionEffect } =>
+            is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+          _ => false
         }
       _ => false
     }
@@ -2068,9 +2031,9 @@ fn extractor_inner_arg(expr: Node) -> Node {
 fn is_list_shrink_expr(expr: Node, param_name: String) -> Bool {
   match expr.expr_data {
     ExprMethodCall { method_semantics: ms } =>
-      let is_shrink = match method_algebra_template(method_semantics: ms) {
-        Some { value: t } => is_collection_shrink_template(template: t)
-        None => false
+      let is_shrink = match method_size_effect(method_semantics: ms) {
+        Some { value: ShrinkEffect } => true
+        _ => false
       }
       is_shrink
       && match method_receiver(texpr: expr).expr_data {
@@ -2144,15 +2107,14 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
             bname == param_name || set_has(m: vars, key: bname)
           _ => false
         }
-      // CX-M: element projection, list shrink, and collection identity methods
+      // CX-M: only methods with an explicit size effect (projection, shrink, identity)
       // preserve or extract descent. If the receiver is descent, the result is descent.
+      // Methods without a declared size effect (map, count, etc.) do not propagate descent.
       ExprMethodCall { method_semantics: ms } =>
         let receiver = method_receiver(texpr: expr)
-        match method_algebra_template(method_semantics: ms) {
-          Some { value: t } =>
-            if is_element_projection_template(template: t) || is_collection_shrink_template(template: t) || is_collection_identity_template(template: t) {
-              expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
-            } else { false }
+        match method_size_effect(method_semantics: ms) {
+          Some { value: _ } =>
+            expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
           None => false
         }
       _ => false
@@ -3854,7 +3816,7 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, algebra_template: _ } =>
+      AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, size_effect: _ } =>
         is_size_preserving_method(method_name: method_def.name)
       _ => false
     }
@@ -4412,7 +4374,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       // Plain/Service/None fall through to default cost.
       let method_cost_result = if ms == none { none } else {
         match ms.value {
-          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, algebra_template: _ } => {
+          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _ } => {
             let md_name = md.name
             let shape_match = method_cost_shape(method_name: md_name)
             match shape_match {

@@ -837,7 +837,7 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
   // Extract method_name from AlgebraMethodSemantics for direct string dispatch.
   let method_name = if semantics == none { none } else {
     match semantics.value {
-      AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, algebra_template: _ } => Some { value: md.name }
+      AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _ } => Some { value: md.name }
       _ => none
     }
   }
@@ -862,7 +862,7 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
     // type instead — it carries the resolved type from the fold body.
     let fold_acc = if semantics == none { none } else {
       match semantics.value {
-        AlgebraMethodSemantics { method_def: _, fold_accumulator_type: fat, algebra_template: _ } => fat
+        AlgebraMethodSemantics { method_def: _, fold_accumulator_type: fat, size_effect: _ } => fat
         _ => none
       }
     }

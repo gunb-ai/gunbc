@@ -360,6 +360,28 @@ type AlgebraFieldTemplate {
   return_type: AlgebraTypeTemplate
 }
 
+// Operation size effects — explicit contracts for complexity analysis.
+// Each algebra method that affects collection size or extracts elements
+// declares its effect here. The complexity analyzer consumes these facts
+// as the single authority for descent evidence — no template-shape inference.
+type CollectionSizeEffect
+  = ShrinkEffect         // output collection strictly smaller than input (skip)
+  | ProjectionEffect     // extracts single element from collection (first, last)
+  | IdentityEffect       // preserves structural children identity (filter, reverse, enumerate)
+
+data algebra_size_effects: Map<String, CollectionSizeEffect> = {
+  "skip": ShrinkEffect,
+  "first": ProjectionEffect,
+  "last": ProjectionEffect,
+  "filter": IdentityEffect,
+  "reverse": IdentityEffect,
+  "enumerate": IdentityEffect
+}
+
+fn lookup_algebra_size_effect(method_name: String) -> CollectionSizeEffect? {
+  lookup(algebra_size_effects, key: method_name)
+}
+
 data kernel_algebra_profile: Map<String, AlgebraProfile> = {
   "Int": OrderedRingProfile,
   "Float": ApproximateFieldProfile,
