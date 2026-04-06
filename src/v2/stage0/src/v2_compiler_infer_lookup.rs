@@ -373,7 +373,7 @@ pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, me
         let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
 match tier0_result {
     Some(mfr) => {
-            let size_effect = lookup_algebra_size_effect(method_name.clone());
+            let size_effect = lookup_algebra_size_effect(receiver_type.name.clone(), method_name.clone());
 let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {
     method_def: mfr.field_node.clone(),
     fold_accumulator_type: fold_accumulator_type.clone(),
