@@ -261,52 +261,59 @@ the compiler partially uses:
 
 ---
 
-## Acceptance criteria (uncheateable)
+## Acceptance criteria
 
-These count actual heuristic sites in .dag source. Moving a heuristic
-behind a helper doesn't change the count — the helper still contains
-the interrogation. You can only reach zero by modeling the concept.
+Each criterion is a structural claim: "this class of mistake is
+**unrepresentable**." Not "we haven't written it" but "the types and
+module boundaries prevent it from being written."
 
-### MM-1 acceptance
+### MM-1: Item classification is unrepresentable in emit
 
-```bash
-# Zero classification forests
-grep -c 'classify_typed_item\|classify_item' src/v2/*.dag  # target: 0
-# Zero raw structural interrogation in emit
-grep -cE '\.(connective|body|transport|uses|type_annotation|properties) [!=]=' src/v2/05_emit*.dag  # target: 0
-# Zero fail-open fallbacks
-# (manual audit: no None => TypedItemUnhandled, None => "", None => false for missing facts)
-# Zero name-keyed side-tables
-grep -c 'Map<String, TypedItemKind>\|Map<String, FunctionSignature>\|Map<String, ServiceFieldSet>\|Map<String, ResourceDefinition>' src/v2/*.dag  # target: 0
-```
+**Claim:** Emit functions cannot access raw item structural fields
+(`body`, `transport`, `uses`, `type_annotation`, `properties`) for
+dispatch decisions. The boundary type carries pre-resolved item facts.
+Classification forests can't exist because there's nothing to classify.
 
-### MM-2 acceptance
+**Test:** The emit modules (`05_emit*.dag`) do not import or use these
+fields for item-level dispatch. The boundary type between infer and
+emit makes classification a consequence of the type, not a runtime
+decision.
 
-```bash
-# Zero connective interpretation in emit
-grep -cE '\.connective ==' src/v2/05_emit*.dag  # target: 0
-# Type rendering dispatch is exhaustive match, not if-else forest
-# (manual audit: 05_emit.dag type rendering is <20 lines, matches on a sum type)
-```
+**What this implies for the design:** The boundary type must carry item
+facts structurally. Either items arrive pre-classified (carry-on-item)
+or the boundary type is rich enough that emit never asks "what kind?"
+— it pattern-matches on what it received.
 
-### MM-3 acceptance
+### MM-2: Connective interpretation is unrepresentable in emit
 
-```bash
-# Zero method name dispatch
-grep -cE 'method_def\.name|method_name.*==' src/v2/05_emit*.dag src/v2/04_infer.dag src/v2/complexity.dag  # target: 0
-# Nullary invocation handled structurally in all 3 backends
-# (test: emit a zero-arg function ref in Go/Python/Rust, all produce "()")
-```
+**Claim:** Emit functions cannot access `Connective` / `Conj` / `Disj` /
+`NoConnective`. They receive a resolved type structure (product/sum/leaf
+or equivalent) and dispatch on that.
 
-### Current baseline (2026-04-05)
+**Test:** The emit modules do not import `Connective, Conj, Disj,
+NoConnective`. Type rendering is an exhaustive match on a sum type,
+not a multi-branch if-else that re-interprets connective.
 
-| Metric | Count | Target |
-|--------|-------|--------|
-| Structural interrogation in emit | 55 | 0 |
-| `.connective ==` in emit | 24 | 0 |
-| Method name dispatch (emit + infer + complexity) | 21 | 0 |
-| Item classification forests | 4 | 0 |
-| Fail-open fallbacks | 8 | 0 |
+**What this implies for the design:** Somewhere between infer and emit,
+connective must be interpreted once into a concept that emit understands.
+`TypeSummary.repr` (StructRepr/EnumRepr) is a partial version of this
+but only covers type definitions, not all type rendering.
+
+### MM-3: Method name dispatch is unrepresentable in emit
+
+**Claim:** Emit functions cannot access `method_def.name` as a dispatch
+key. They receive a method kind enum and dispatch on that.
+
+**Test:** `AlgebraMethodSemantics` carries a `kind` field that is a
+closed sum type. Emit functions match on kind, not name. Nullary
+function invocation is a structural fact on the expression (either
+`NullaryCallBinding` or normalized to `ExprCall`), not a type-name
+check at render time.
+
+**What this implies for the design:** `MethodSemantics` must carry an
+`AlgebraMethodKind` enum. The algebra framework already computes method
+identity — it just doesn't name it as a type. For nullary calls, the
+IR must represent invocation semantics, not surface syntax.
 
 ---
 

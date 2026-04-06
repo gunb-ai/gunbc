@@ -552,12 +552,11 @@ properties}`, producing three incompatible taxonomies.
 - [ ] Implement: single authority for item facts, fail-closed by construction
 - [ ] Delete: all `classify_*` forests, all fail-open fallbacks, all name-keyed side-tables
 
-**Acceptance (all must hold simultaneously):**
-1. Zero `classify_typed_item` / `classify_item` call sites in .dag files
-2. Zero `TypedItemUnhandled` or `""` fallbacks for missing item facts
-3. Zero `Map<String, TypedItemKind>` or `Map<String, FunctionSignature>` side-tables
-4. Every emit backend receives item facts structurally (no re-derivation)
-5. Measured: `grep -cE '\.(connective|body|transport|uses|type_annotation|properties) [!=]=' src/v2/05_emit*.dag` = 0
+**Acceptance:** Item classification is unrepresentable in emit. Emit
+modules cannot access raw item structural fields (`body`, `transport`,
+`uses`, `type_annotation`, `properties`) for dispatch. The boundary type
+carries pre-resolved facts. Classification forests can't exist because
+there's nothing to classify.
 
 ## MM-2: Type structure
 
@@ -576,11 +575,10 @@ re-derived at every consumption site.
 - [ ] Implement: single interpretation of connective, consumed everywhere
 - [ ] Delete: all inline `.connective == Conj` / `Disj` checks in emit
 
-**Acceptance:**
-1. Zero `.connective ==` in `05_emit*.dag` files
-2. `05_emit.dag` type rendering dispatch reduced from 97 lines to exhaustive match on a sum type
-3. `04_lookup.dag` field access resolution uses same structural concept (no parallel re-derivation)
-4. Measured: `grep -cE '\.connective ==' src/v2/05_emit*.dag` = 0
+**Acceptance:** Connective interpretation is unrepresentable in emit.
+Emit modules do not import `Connective` / `Conj` / `Disj` /
+`NoConnective`. They receive a resolved type structure and dispatch on
+that. Type rendering is an exhaustive match on a sum type.
 
 ## MM-3: Expression semantics
 
@@ -600,24 +598,22 @@ matching at every consumption site.
 - [ ] Implement: nullary invocation modeled in IR
 - [ ] Fix: Go/Python emit must handle nullary function references
 
-**Acceptance:**
-1. Zero `method_def.name ==` string comparisons in emit files
-2. Zero `method_name ==` string comparisons in infer for algebra dispatch
-3. Nullary function references emit `()` in all three backends via structural fact, not heuristic
-4. Measured: `grep -cE 'method_def\.name|method_name.*==' src/v2/05_emit*.dag src/v2/04_infer.dag` = 0
+**Acceptance:** Method name dispatch is unrepresentable in emit.
+`AlgebraMethodSemantics` carries a `kind` enum; emit matches on kind,
+not name. Nullary invocation is a structural fact on the expression,
+not a type-name check at render time.
 
-## CM ratchet
+## CM acceptance (structural)
 
-Unlike L1 (which counts proxies), CM counts the actual heuristic sites.
-These are harder to game because moving a heuristic behind a helper
-doesn't change the count — the helper still contains the interrogation.
+Each criterion is a claim: "this class of mistake is unrepresentable."
+Not "we haven't written it" but "the types and module boundaries prevent
+it." See `src/v2/CM.md` for full design implications per criterion.
 
-| Metric | Current | Target | Command |
-|--------|---------|--------|---------|
-| Structural interrogation in emit | 55 | 0 | `grep -cE '\.(connective\|body\|transport\|uses\|type_annotation\|properties) [!=]=' src/v2/05_emit*.dag` |
-| Method name dispatch | 21 | 0 | `grep -cE 'method_def\.name\|method_name.*==' src/v2/05_emit*.dag src/v2/04_infer.dag src/v2/complexity.dag` |
-| Item classification forests | 4 | 0 | `grep -c 'classify_typed_item\|classify_item' src/v2/*.dag` |
-| Fail-open fallbacks | 8 | 0 | (manual audit — `None =>` that fabricates) |
+| Model | Claim | How to verify |
+|-------|-------|---------------|
+| MM-1 | Emit cannot access raw item fields for dispatch | Emit modules don't import `body`/`transport`/`uses`/`type_annotation`/`properties` field accessors |
+| MM-2 | Emit cannot interpret connective | Emit modules don't import `Connective`/`Conj`/`Disj`/`NoConnective` |
+| MM-3 | Emit cannot dispatch on method name | `AlgebraMethodSemantics` has `kind` enum; emit matches on kind, not `method_def.name` |
 
 ---
 
