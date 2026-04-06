@@ -51,7 +51,7 @@ use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{NoConnective};
 use crate::v2_std_core::CompilerDiagnostic::{ArityMismatch};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule};
-pub use crate::std_types::{is_container_type, container_expected_arity};
+pub use crate::std_types::{container_expected_arity};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizeResult {
@@ -66,16 +66,18 @@ pub fn check_bare_containers(n: Rc<Node>, module_name: String) -> Rc<Vec<Rc<Erro
     Some(_) => true,
     None => false,
 } || ((n.uses.clone().len() as i64) > 0)) || ((n.properties.clone().len() as i64) > 0));
-let is_bare = ((((is_container_type(n.name.clone()) && ((n.children.clone().len() as i64) == 0)) && ((n.params.clone().len() as i64) == 0)) && (n.connective.clone() == Connective::NoConnective)) && !has_structure);
-let self_diags = if is_bare {
+let self_diags = match container_expected_arity(n.name.clone()) {
+    Some(expected) => if (((((n.children.clone().len() as i64) == 0) && ((n.params.clone().len() as i64) == 0)) && (n.connective.clone() == Connective::NoConnective)) && !has_structure) {
                 Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ArityMismatch {
     name: n.name.clone(),
-    expected: container_expected_arity(n.name.clone()),
+    expected: expected.clone(),
     got: 0,
     span: n.span.clone(),
 }), module_name.clone())])
 } else {
                 Rc::new(vec![])
+},
+    None => Rc::new(vec![]),
 };
 let child_diags = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.extend((*check_bare_containers(c.clone(), module_name.clone())).iter().cloned()); } __result });
 let param_diags = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.extend((*check_bare_containers(p.clone(), module_name.clone())).iter().cloned()); } __result });

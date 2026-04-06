@@ -106,10 +106,16 @@ pub fn is_fully_resolved(n: Rc<Node>) -> bool {
 if self_is_type_var {
                 false
 } else {
-                if (is_container_type(n.name.clone()) && ((n.children.clone().len() as i64) < container_expected_arity(n.name.clone()))) {
-                    false
+                {
+                    let under_param = match container_expected_arity(n.name.clone()) {
+    Some(expected) => ((n.children.clone().len() as i64) < expected.clone()),
+    None => false,
+};
+if under_param {
+                        false
 } else {
-                    { let mut __all = true; for ch in n.children.clone().iter().cloned() { if !(is_fully_resolved(ch.clone())) { __all = false; break; } } __all }
+                        { let mut __all = true; for ch in n.children.clone().iter().cloned() { if !(is_fully_resolved(ch.clone())) { __all = false; break; } } __all }
+}
 }
 }
 }

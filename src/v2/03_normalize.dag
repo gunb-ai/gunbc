@@ -18,7 +18,7 @@ import v2.std.core {
   NoConnective, ArityMismatch
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule }
-import std.types { is_container_type, container_expected_arity }
+import std.types { container_expected_arity }
 
 // =========================================================================
 // Output types
@@ -35,14 +35,15 @@ type NormalizeResult {
 
 fn check_bare_containers(n: Node, module_name: String) -> List<ErrorNode> {
   let has_structure = match n.body { Some { value: _ } => true  None => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
-  let is_bare = is_container_type(name: n.name) && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure
-  let self_diags = if is_bare {
-    [make_error_node(
-      diagnostic: ArityMismatch { name: n.name, expected: container_expected_arity(name: n.name), got: 0, span: n.span },
-      module_name: module_name
-    )]
-  } else {
-    []
+  let self_diags = match container_expected_arity(name: n.name) {
+    Some { value: expected } =>
+      if (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure {
+        [make_error_node(
+          diagnostic: ArityMismatch { name: n.name, expected: expected, got: 0, span: n.span },
+          module_name: module_name
+        )]
+      } else { [] }
+    None => []
   }
   let child_diags = flat_map(n.children, c => check_bare_containers(n: c, module_name: module_name))
   let param_diags = flat_map(n.params, p => check_bare_containers(n: p, module_name: module_name))
