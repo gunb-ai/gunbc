@@ -552,32 +552,40 @@ CX-D (model facts in std/)
 
 ### Work items
 
-- **CX-D**: Model operation facts → heuristics dissolve. **Unblocked.**
-  This is the primary remaining work. Three categories of structural
-  facts are missing from the function model:
-  (1) **Operation size contracts** — which operations shrink their
-      input (list methods, Option unwrap) and by how much.
+- **CX-D**: Model operation facts → heuristics dissolve. **Partial.**
+  Three categories of structural facts:
+  (1) **Operation size contracts** — [x] `CollectionSizeEffect`
+      (ShrinkEffect/ProjectionEffect/IdentityEffect) declared per-method
+      on `AlgebraFieldTemplate` in `dsl/std/algebra.dag`. Complexity reads
+      `size_effect` from `AlgebraMethodSemantics`. `ListMethodKind` and
+      `classify_list_method` deleted. `take` is explicitly `none` (not
+      unconditional shrink). **Done (PR #328).**
   (2) **Type structure facts** — field sub-value relationships
-      (child access produces a smaller tree).
+      (child access produces a smaller tree). Not started.
   (3) **Coproduct projection facts** — match arms narrow the type,
-      producing strictly smaller data.
-  The analyzer consumes these facts as single authority. The lowering
-  table in `std/computation.dag` (CallPattern → LoweringTarget) already
-  models (1) but has no downstream consumer in complexity.dag.
-  Dissolves all Theme A and Theme B items. Unblocks producer-patch
-  reversals (02_parse.dag, 04_types.dag).
+      producing strictly smaller data. Not started.
+  The lowering table in `std/computation.dag` (CallPattern → LoweringTarget)
+  already models (1) but has no downstream consumer in complexity.dag.
+  Remaining Theme A items: child-descent hardcodes `"children"`,
+  `is_tree_size_preserving_wrapper` hardcodes callee name.
 - **CX-A**: DescentEvidence lattice unification — parser mutual recursion.
-  **Blocked-by: CX-D** (needs structural evidence facts).
-  Files: `complexity.dag`, `dsl/std/termination.dag`.
-  Done: TokenPosition dimension, SCC proof constructor, edge classification.
-  Deferred: ProgressSame self-edge filtering is heuristic (Theme C);
-  ParserResultDirectState duplicates facts (Theme C).
+  **Partial.** Lattice, parser SCC proofs, lexicographic [TreeSize,
+  TokenPosition] all implemented. `proof_has_non_descending_cycle` now
+  builds graph directly from `ProofEdge` — `ProgressSame` bridge removed
+  **(PR #328).**
+  Deferred: `is_valid_proof` stub in termination.dag (blocked on
+  bootstrap); `ParserResultDirectState` duplication (refactoring);
+  `branching_proof_safe` only accepts TreeSize/ListLength (extend to
+  lexicographic).
 - **CX-B**: CostExpr/SizeExpr dissolution — cost expressions become flat
   products of SizeBounds from `std/computation.dag`'s lowering table.
-  **Blocked-by: CX-D** (needs operation size contracts consumed).
-  Planned: RecursionPattern → LoweringTarget, UnresolvableRecursion
-  deleted. See [migration phases](docs/cx-computation-model.md#migration-phases).
-  Not started.
+  **Partial.** `CostShape` type moved to `dsl/std/algebra.dag`, declared
+  per-method on `AlgebraFieldTemplate`. `method_cost_shape_table` (19-entry
+  `Map<String, CostShape>`) deleted. Complexity reads `cost_shape` from
+  `AlgebraMethodSemantics` **(PR #328).**
+  Remaining: flatten recursive CostExpr/SizeExpr into flat SizeBound
+  products (Phase 4 — eliminates 18 cost algebra functions).
+  See [migration phases](docs/cx-computation-model.md#migration-phases).
 - **CX-C**: Signature-driven fold evidence — self-calls inside
   `children |> fold` callbacks get structural descent proofs.
   **Blocked-by: CX-D** (needs operation size contracts for fold).
@@ -740,10 +748,11 @@ authority.
 invocation, method kind, built-in refinement) re-derived from name
 matching at every consumption site.
 
-**Current counts (2026-04-05):**
-- `method_def.name` / `method_name ==` dispatch: 21 sites (emit_rust: 12, infer: 5, complexity: 4)
+**Current counts (2026-04-06):**
+- `method_def.name` / `method_name ==` dispatch: ~17 sites (emit_rust: 12, infer: 5, complexity: 0 — size effect and cost shape now read from AlgebraMethodSemantics)
 - Nullary function detection: 3 sites in emit_rust, 0 in Go/Python (bug)
 - Built-in call type refinement by name: 4 sites in infer
+- `is_size_preserving_method`: 8-way string dispatch in complexity (follow-up: derive from size_effect)
 
 **Work items:**
 - [ ] Surface existing `method_def` Node and `AlgebraFieldTemplate`
