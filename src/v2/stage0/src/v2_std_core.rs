@@ -67,6 +67,8 @@ use UnaryOpKind::*;
 use StringPart::*;
 use OperationModifier::*;
 use CompilerDiagnostic::*;
+use NodeFieldRole::*;
+use FunctionSizeEffect::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Token {
@@ -1067,6 +1069,66 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
 
 pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
     v2_rt::lookup(&expr_child_roles(), variant_name)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum NodeFieldRole {
+    ChildrenListField,
+    SubValueField,
+    MetadataField,
+}
+
+pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
+    let mut __m = HashMap::new();
+    __m.insert("children".to_string(), NodeFieldRole::ChildrenListField);
+    __m.insert("params".to_string(), NodeFieldRole::ChildrenListField);
+    Rc::new(__m)
+}
+
+pub fn is_children_list_field(field_name: String) -> bool {
+    match v2_rt::lookup(&node_field_roles(), field_name) {
+    Some(NodeFieldRole::ChildrenListField) => true,
+    _ => false,
+}
+}
+
+pub fn is_sub_value_field(field_name: String) -> bool {
+    match v2_rt::lookup(&node_field_roles(), field_name) {
+    Some(NodeFieldRole::SubValueField) => true,
+    Some(NodeFieldRole::ChildrenListField) => true,
+    _ => false,
+}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum FunctionSizeEffect {
+    TreeSizePreserving,
+    TreeSizeReducing,
+}
+
+pub fn function_size_effects() -> Rc<HashMap<String, FunctionSizeEffect>> {
+    let mut __m = HashMap::new();
+    __m.insert("with_required_cardinality".to_string(), FunctionSizeEffect::TreeSizePreserving);
+    __m.insert("rt_type".to_string(), FunctionSizeEffect::TreeSizeReducing);
+    __m.insert("param_node_type_expr".to_string(), FunctionSizeEffect::TreeSizeReducing);
+    __m.insert("field_binding_pattern".to_string(), FunctionSizeEffect::TreeSizeReducing);
+    Rc::new(__m)
+}
+
+pub fn is_tree_size_preserving(func_name: String) -> bool {
+    match v2_rt::lookup(&function_size_effects(), func_name) {
+    Some(FunctionSizeEffect::TreeSizePreserving) => true,
+    _ => false,
+}
+}
+
+pub fn is_tree_size_reducing(func_name: String) -> bool {
+    match v2_rt::lookup(&function_size_effects(), func_name) {
+    Some(FunctionSizeEffect::TreeSizeReducing) => true,
+    _ => false,
+}
 }
 
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {

@@ -43,7 +43,9 @@ import v2.std.core {
   expr_call_func, expr_var_name, field_access_base, field_access_field,
   LiteralValue, LitNull, LitInt,
   is_child_accessor_in_model,
-  lambda_param_names, lambda_body
+  lambda_param_names, lambda_body,
+  is_children_list_field, is_sub_value_field,
+  is_tree_size_preserving, is_tree_size_reducing
 }
 
 // =========================================================================
@@ -1953,7 +1955,7 @@ fn is_children_of_param(expr: Node, param_name: String, vars: Map<String, Bool>)
     ExprFieldAccess =>
       let base = field_access_base(texpr: expr)
       let field = field_access_field(texpr: expr)
-      (field == "children" || field == "params")
+      is_children_list_field(field_name: field)
       && match base.expr_data {
         ExprVar { binding_kind: _ } => expr_var_name(texpr: base) == param_name
         _ => false
@@ -1976,7 +1978,7 @@ fn is_children_of_param(expr: Node, param_name: String, vars: Map<String, Bool>)
             ExprFieldAccess =>
               let base = field_access_base(texpr: arg)
               let field = field_access_field(texpr: arg)
-              (field == "children" || field == "params")
+              is_children_list_field(field_name: field)
               && match base.expr_data {
                 ExprVar { binding_kind: _ } => expr_var_name(texpr: base) == param_name
                 _ => false
@@ -1999,7 +2001,7 @@ fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool
     ExprFieldAccess =>
       let base = field_access_base(texpr: expr)
       let field = field_access_field(texpr: expr)
-      (field == "children" || field == "params")
+      is_children_list_field(field_name: field)
       && match base.expr_data {
         ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name(texpr: base))
         _ => false
@@ -2024,7 +2026,7 @@ fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool
             ExprFieldAccess =>
               let base = field_access_base(texpr: arg)
               let field = field_access_field(texpr: arg)
-              (field == "children" || field == "params")
+              is_children_list_field(field_name: field)
               && match base.expr_data {
                 ExprVar { binding_kind: _ } =>
                   let bname = expr_var_name(texpr: base)
@@ -2064,7 +2066,7 @@ fn is_tree_size_preserving_wrapper(expr: Node) -> Bool {
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: expr)
-      callee == "with_required_cardinality"
+      is_tree_size_preserving(func_name: callee)
     _ => false
   }
 }
@@ -2085,7 +2087,7 @@ fn is_sub_value_extractor(expr: Node) -> Bool {
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: expr)
-      callee == "rt_type" || callee == "param_node_type_expr" || callee == "field_binding_pattern"
+      is_tree_size_reducing(func_name: callee)
     _ => false
   }
 }
@@ -2166,10 +2168,13 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
       // to promote `if cond { param } else { none }` as descent.
       ExprVar { binding_kind: _ } =>
         set_has(m: vars, key: expr_var_name(texpr: expr))
-      // CX-E: param.field or descent_var.field is a sub-value (acyclic construction).
+      // CX-E: param.field or descent_var.field is a sub-value (acyclic construction),
+      // but only if the field is a known sub-value field (structural witness).
       ExprFieldAccess =>
+        let field = field_access_field(texpr: expr)
         let base = field_access_base(texpr: expr)
-        match base.expr_data {
+        is_sub_value_field(field_name: field)
+        && match base.expr_data {
           ExprVar { binding_kind: _ } =>
             let bname = expr_var_name(texpr: base)
             bname == param_name || set_has(m: vars, key: bname)
@@ -2326,7 +2331,7 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
         ExprFieldAccess =>
           let base = field_access_base(texpr: val)
           let field = field_access_field(texpr: val)
-          (field == "children" || field == "params")
+          is_children_list_field(field_name: field)
           && match base.expr_data {
             ExprVar { binding_kind: _ } =>
               let bname = expr_var_name(texpr: base)
@@ -2442,7 +2447,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
         ExprFieldAccess =>
           let base = field_access_base(texpr: val)
           let field = field_access_field(texpr: val)
-          (field == "children" || field == "params")
+          is_children_list_field(field_name: field)
           && match base.expr_data {
             ExprVar { binding_kind: _ } =>
               let bname = expr_var_name(texpr: base)
@@ -2770,7 +2775,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         ExprFieldAccess =>
           let base = field_access_base(texpr: val)
           let field = field_access_field(texpr: val)
-          (field == "children" || field == "params")
+          is_children_list_field(field_name: field)
           && match base.expr_data {
             ExprVar { binding_kind: _ } =>
               let bname = expr_var_name(texpr: base)
@@ -2910,7 +2915,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
               ExprFieldAccess =>
                 let base = field_access_base(texpr: val)
                 let field = field_access_field(texpr: val)
-                (field == "children" || field == "params")
+                is_children_list_field(field_name: field)
                 && match base.expr_data {
                   ExprVar { binding_kind: _ } =>
                     let bname = expr_var_name(texpr: base)

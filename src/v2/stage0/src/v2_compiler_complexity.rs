@@ -51,7 +51,7 @@ pub use crate::v2_compiler_emit::{to_string};
 pub use crate::v2_compiler_parse::{ParserResultWitness, parser_progress_flag_var, parser_passthrough_state_expr, parser_result_witness, ParserCallIdentity};
 use crate::v2_compiler_parse::ParserResultWitness::{ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque};
 use crate::v2_compiler_parse::ParserCallIdentity::{ParserCallHelper, ParserCallFunction};
-pub use crate::v2_std_core::{Node, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_value, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_call_func, expr_var_name, field_access_base, field_access_field, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body};
+pub use crate::v2_std_core::{Node, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_value, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_call_func, expr_var_name, field_access_base, field_access_field, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprBinOp, ExprUnaryOp, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda};
 use crate::v2_std_core::BinOp::{Sub, Div};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
@@ -1652,7 +1652,7 @@ pub fn is_children_of_param(mut expr: Rc<Node>, mut param_name: String, mut vars
         match (*expr.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => { let base = field_access_base(expr.clone());
 let field = field_access_field(expr.clone());
-break (((field.clone().as_str() == "children".to_string().as_str()) || (field.clone().as_str() == "params".to_string().as_str())) && match (*base.expr_data.clone()).clone() {
+break (is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => (expr_var_name(base.clone()).as_str() == param_name.clone().as_str()),
     _ => false,
 }); },
@@ -1677,7 +1677,7 @@ match (*arg.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
                     let base = field_access_base(arg.clone());
 let field = field_access_field(arg.clone());
-(((field.clone().as_str() == "children".to_string().as_str()) || (field.clone().as_str() == "params".to_string().as_str())) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => (expr_var_name(base.clone()).as_str() == param_name.clone().as_str()),
     _ => false,
 })
@@ -1699,7 +1699,7 @@ pub fn is_structural_children(expr: Rc<Node>, param_name: String, vars: Rc<HashM
     ExprData::ExprFieldAccess { .. } => {
             let base = field_access_base(expr.clone());
 let field = field_access_field(expr.clone());
-(((field.clone().as_str() == "children".to_string().as_str()) || (field.clone().as_str() == "params".to_string().as_str())) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => set_has(vars.clone(), expr_var_name(base.clone())),
     _ => false,
 })
@@ -1720,7 +1720,7 @@ match (*arg.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
                         let base = field_access_base(arg.clone());
 let field = field_access_field(arg.clone());
-(((field.clone().as_str() == "children".to_string().as_str()) || (field.clone().as_str() == "params".to_string().as_str())) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
                             let bname = expr_var_name(base.clone());
 ((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), bname.clone()))
@@ -1759,7 +1759,7 @@ pub fn is_tree_size_preserving_wrapper(expr: Rc<Node>) -> bool {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
         let callee = expr_call_func(expr.clone());
-(callee.as_str() == "with_required_cardinality".to_string().as_str())
+is_tree_size_preserving(callee)
 },
     _ => false,
 }
@@ -1776,7 +1776,7 @@ pub fn is_sub_value_extractor(expr: Rc<Node>) -> bool {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
         let callee = expr_call_func(expr.clone());
-(((callee.clone().as_str() == "rt_type".to_string().as_str()) || (callee.clone().as_str() == "param_node_type_expr".to_string().as_str())) || (callee.clone().as_str() == "field_binding_pattern".to_string().as_str()))
+is_tree_size_reducing(callee)
 },
     _ => false,
 }
@@ -1837,14 +1837,15 @@ pub fn expr_contains_descent(expr: Rc<Node>, param_name: String, vars: Rc<HashMa
 },
     ExprData::ExprVar { .. } => set_has(vars.clone(), expr_var_name(expr.clone())),
     ExprData::ExprFieldAccess { .. } => {
-                let base = field_access_base(expr.clone());
-match (*base.expr_data.clone()).clone() {
+                let field = field_access_field(expr.clone());
+let base = field_access_base(expr.clone());
+(is_sub_value_field(field) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
                     let bname = expr_var_name(base.clone());
 ((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), bname.clone()))
 },
     _ => false,
-}
+})
 },
     ExprData::ExprMethodCall { .. } => {
                 let mname = expr_call_func(expr.clone());
@@ -1970,7 +1971,7 @@ let is_children_list = match (*val.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
                 let base = field_access_base(val.clone());
 let field = field_access_field(val.clone());
-(((field.clone().as_str() == "children".to_string().as_str()) || (field.clone().as_str() == "params".to_string().as_str())) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
                     let bname = expr_var_name(base.clone());
 ((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), bname.clone()))
@@ -2060,7 +2061,7 @@ let is_children_list = match (*val.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
                 let base = field_access_base(val.clone());
 let field = field_access_field(val.clone());
-(((field.clone().as_str() == "children".to_string().as_str()) || (field.clone().as_str() == "params".to_string().as_str())) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
                     let bname = expr_var_name(base.clone());
 ((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), bname.clone()))
@@ -2387,7 +2388,7 @@ let is_children_list = match (*val.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
                 let base = field_access_base(val.clone());
 let field = field_access_field(val.clone());
-(((field.clone().as_str() == "children".to_string().as_str()) || (field.clone().as_str() == "params".to_string().as_str())) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
                     let bname = expr_var_name(base.clone());
 ((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), bname.clone()))
@@ -2554,7 +2555,7 @@ let is_children_list = match (*val.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
                         let base = field_access_base(val.clone());
 let field = field_access_field(val.clone());
-(((field.clone().as_str() == "children".to_string().as_str()) || (field.clone().as_str() == "params".to_string().as_str())) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
                             let bname = expr_var_name(base.clone());
 ((bname.clone().as_str() == param_name.clone().as_str()) || set_has(acc.vars.clone(), bname.clone()))
