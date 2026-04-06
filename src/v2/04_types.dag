@@ -181,6 +181,12 @@ fn placeholder_type_node(name: String) -> Node {
   nominal_type_ref(name: name)
 }
 
+// Parametric placeholder names in algebra templates. These represent
+// unbound type variables in the algebra declaration, NOT concrete types.
+fn is_algebra_placeholder_name(name: String) -> Bool {
+  name == "MappedElement" || name == "FoldAccumulator"
+}
+
 fn nominal_type_ref(name: String) -> Node {
   leaf_node_with_span(name: name, span: make_span(start: 0, end: 0))
 }
@@ -201,7 +207,12 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node) -> Node {
     ReceiverElement => elem
     ReceiverKey => key_node
     ReceiverValue => val_node
-    NamedTemplate { name: n } => placeholder_type_node(name: n)
+    NamedTemplate { name: n } =>
+      // Concrete type names (Bool, Int, Ordering, String) stay as nominal refs.
+      // Parametric placeholders (MappedElement, FoldAccumulator) become
+      // TypeVariables so the binding is preserved for structural resolution.
+      if is_algebra_placeholder_name(name: n) { type_variable_node(id: n) }
+      else { nominal_type_ref(name: n) }
     ReceiverCollectionOf { element: inner } => container_node(kind_name: base.name, element: instantiate_algebra_type(template: inner, base: base))
     ListOf { element: inner } => container_node(kind_name: "List", element: instantiate_algebra_type(template: inner, base: base))
     OptionalOf { inner: inner } => with_optional_cardinality(n: instantiate_algebra_type(template: inner, base: base))

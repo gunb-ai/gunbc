@@ -351,6 +351,10 @@ pub fn placeholder_type_node(name: String) -> Rc<Node> {
     nominal_type_ref(name)
 }
 
+pub fn is_algebra_placeholder_name(name: String) -> bool {
+    ((name.clone().as_str() == "MappedElement".to_string().as_str()) || (name.clone().as_str() == "FoldAccumulator".to_string().as_str()))
+}
+
 pub fn nominal_type_ref(name: String) -> Rc<Node> {
     leaf_node_with_span(name, make_span(0, 0))
 }
@@ -373,7 +377,11 @@ match (*template).clone() {
     AlgebraTypeTemplate::ReceiverElement => elem,
     AlgebraTypeTemplate::ReceiverKey => key_node,
     AlgebraTypeTemplate::ReceiverValue => val_node,
-    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => placeholder_type_node(n.clone()),
+    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => if is_algebra_placeholder_name(n.clone()) {
+                type_variable_node(n.clone())
+} else {
+                nominal_type_ref(n.clone())
+},
     AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => container_node(base.name.clone(), instantiate_algebra_type(inner.clone(), base.clone())),
     AlgebraTypeTemplate::ListOf { element: inner, .. } => container_node("List".to_string(), instantiate_algebra_type(inner.clone(), base.clone())),
     AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => with_optional_cardinality(instantiate_algebra_type(inner.clone(), base.clone())),
