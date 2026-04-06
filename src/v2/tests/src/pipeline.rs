@@ -4902,3 +4902,91 @@ fn build_summary(items: List<String>) -> Summary {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
+
+// ── Multi-module BRIDGE fabrication investigation ─────────────────────
+//
+// Single-module fold(init: empty_map()) produces turbofish (no BRIDGE).
+// Self-compile (multi-module) produces 58 BRIDGE fabrications. These
+// tests isolate which multi-module patterns trigger the gap.
+
+#[test]
+fn multi_module_fold_cross_type_bridge_check() {
+    // Type defined in module A, fold accumulator building Map<String, A.Type>
+    // in module B. This mirrors the self-compile pattern where TypeBinding
+    // is defined in 04_env.dag but fold accumulators are in 04_infer.dag.
+    let files = &[
+        ("types.dag", r#"module mylib.types
+type Entry { label: String, count: Int }
+"#),
+        ("funcs.dag", r#"module mylib.funcs
+import mylib.types { Entry }
+fn build_index(items: List<Entry>) -> Map<String, Entry> {
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, item.label, item)
+  )
+}
+"#),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/mylib_funcs.rs");
+    eprintln!("multi_module fold output:\n{}", content);
+    assert!(
+        !content.contains("compile_error"),
+        "cross-module fold must not produce compile errors"
+    );
+    assert!(
+        !content.contains("BRIDGE"),
+        "cross-module fold must not produce BRIDGE fabrication: {content}"
+    );
+}
+
+#[test]
+fn multi_module_fold_map_string_bool_bridge_check() {
+    // Simplest cross-module fold: Map<String, Bool> accumulator.
+    // Mirrors self-compile: fold(init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+    let files = &[
+        ("types.dag", r#"module mylib.types
+type Item { name: String }
+"#),
+        ("funcs.dag", r#"module mylib.funcs
+import mylib.types { Item }
+fn name_set(items: List<Item>) -> Map<String, Bool> {
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, item.name, true)
+  )
+}
+"#),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/mylib_funcs.rs");
+    eprintln!("multi_module Map<String,Bool> fold:\n{}", content);
+    assert!(
+        !content.contains("BRIDGE"),
+        "cross-module Map<String, Bool> fold must not produce BRIDGE: {content}"
+    );
+}
+
+#[test]
+fn fold_in_let_value_no_bridge() {
+    // Fixed: fold in let VALUE position (expected: none) now resolves
+    // accumulator type via map_insert refinement on bare containers.
+    // Root cause was node_is_keyed_collection requiring children.count==2,
+    // which is always false for bare Map (children.count==0).
+    let source = r#"module test_let_value
+fn process(items: List<String>) -> Map<String, Bool> {
+  let index = items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, item, true)
+  )
+  index
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_let_value.rs");
+    assert!(
+        !content.contains("BRIDGE"),
+        "fold in let value must not produce BRIDGE: {content}"
+    );
+}
