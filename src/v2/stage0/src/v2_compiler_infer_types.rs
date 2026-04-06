@@ -710,7 +710,7 @@ if (left_err || right_err) {
                                                 if ((left.children.clone().len() as i64) != (right.children.clone().len() as i64)) {
                                                     false
 } else {
-                                                    { let mut __all = true; for pair in Rc::new(left.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match Rc::new(right.children.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>()).first().cloned() {
+                                                    { let mut __all = true; for pair in Rc::new(left.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match right.children.clone().get(pair.0.clone() as usize).cloned() {
     Some(right_child) => node_type_equals(pair.1.clone(), right_child.clone()),
     None => false,
 }) { __all = false; break; } } __all }
@@ -756,11 +756,11 @@ let right_first = match right.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => right.clone(),
 };
-let left_second = match Rc::new(left.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+let left_second = match left.children.clone().get(1 as usize).cloned() {
     Some(v) => v.clone(),
     None => left.clone(),
 };
-let right_second = match Rc::new(right.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+let right_second = match right.children.clone().get(1 as usize).cloned() {
     Some(v) => v.clone(),
     None => right.clone(),
 };
@@ -775,7 +775,7 @@ let right_second = match Rc::new(right.children.clone().iter().cloned().skip(1 a
                                                                             false
 } else {
                                                                             {
-                                                                                let params_eq = { let mut __all = true; for pair in Rc::new(left.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match Rc::new(right.params.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>()).first().cloned() {
+                                                                                let params_eq = { let mut __all = true; for pair in Rc::new(left.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match right.params.clone().get(pair.0.clone() as usize).cloned() {
     Some(right_param) => node_type_equals(param_node_type_expr(pair.1.clone()), param_node_type_expr(right_param.clone())),
     None => false,
 }) { __all = false; break; } } __all };
@@ -902,7 +902,7 @@ pub fn method_receiver_element_node(receiver_type: Rc<Node>) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(receiver_type.clone());
 let maybe_element = if node_is_keyed_collection(normed.clone()) {
-            Rc::new(normed.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned()
+            normed.children.clone().get(1 as usize).cloned()
 } else {
             if ((normed.connective.clone() == Connective::NoConnective) && ((normed.children.clone().len() as i64) == 1)) {
                 normed.children.clone().first().cloned()

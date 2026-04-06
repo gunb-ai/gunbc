@@ -56,13 +56,22 @@ when it self-compiles (fixed point convergence). **Blocks all other
 lanes from editing stage0 Rust directly.**
 
 Note: "zero manual patches" means zero patches to *generated* files.
-Nine hand-maintained files are still copied during regeneration
-(main.rs, v2_rt.rs, compiler_tests.rs, extdeps_languages_dag_syntax.rs,
-v2_coercion.rs, v2_compiler_infer_method.rs, std_types.rs,
-v2_compiler_tokenize.rs, extdeps_languages_rust_emit.rs).
-The last five are thread-local cache shims for performance;
-eliminating these is tracked as future work under M5-full
-(language plugin extraction).
+Four hand-maintained files are still copied during regeneration
+(main.rs, v2_rt.rs, compiler_tests.rs, v2_coercion.rs).
+Goal is zero — all stage0 content should be 100% generated.
+Remaining files and what blocks elimination:
+
+| File | Role | Blocker |
+|------|------|---------|
+| `main.rs` | CLI entrypoint | Need .dag entrypoint construct |
+| `v2_rt.rs` | Runtime shims (Rc ops, string ops) | Need .dag runtime codegen or inline emit |
+| `compiler_tests.rs` | Test harness | Need .dag test generation |
+| `v2_coercion.rs` | Coercion registries | No .dag counterpart yet |
+
+Previously eliminated (PR #316): v2_compiler_infer_method.rs, std_types.rs,
+extdeps_languages_rust_emit.rs, v2_compiler_tokenize.rs,
+extdeps_languages_dag_syntax.rs — via thread_local! caching in emitter
+and `chars_to_string` runtime function for O(1) tokenizer substring.
 
 ## CI Gates
 

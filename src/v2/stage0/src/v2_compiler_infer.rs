@@ -154,13 +154,13 @@ let stmt_diags = stmt_result.diagnostics.clone();
 let stmt_rt = rt_type(stmt_typed.clone());
 let next_scope = scope_after_stmt_node(stmt.clone(), stmt_rt.clone(), scope.clone());
 {
-            let __tco_0 = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = (remaining_count.clone() - 1);
+            let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = (remaining_count - 1);
 let __tco_2 = next_scope.clone();
-let __tco_3 = v2_rt::rc_list_push(typed_stmts.clone(), stmt_typed.clone());
-let __tco_4 = v2_rt::rc_list_push(diag_chunks.clone(), stmt_diags.clone());
+let __tco_3 = v2_rt::rc_list_push(typed_stmts, stmt_typed.clone());
+let __tco_4 = v2_rt::rc_list_push(diag_chunks, stmt_diags.clone());
 let __tco_5 = stmt_rt.clone();
-let __tco_6 = expected.clone();
+let __tco_6 = expected;
 remaining = __tco_0;
 remaining_count = __tco_1;
 scope = __tco_2;
@@ -307,9 +307,9 @@ Rc::new(InferScopeComponents {
 }
 });
 {
-            let __tco_0 = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = parent_index.clone();
-let __tco_2 = env.clone();
+            let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = parent_index;
+let __tco_2 = env;
 let __tco_3 = parent_result.func_sigs.clone();
 let __tco_4 = parent_result.svc_registry.clone();
 let __tco_5 = parent_result.svc_locals.clone();
@@ -322,12 +322,12 @@ svc_locals = __tco_5;
 continue;
 } },
     None => { {
-            let __tco_0 = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = parent_index.clone();
-let __tco_2 = env.clone();
-let __tco_3 = func_sigs.clone();
-let __tco_4 = svc_registry.clone();
-let __tco_5 = svc_locals.clone();
+            let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = parent_index;
+let __tco_2 = env;
+let __tco_3 = func_sigs;
+let __tco_4 = svc_registry;
+let __tco_5 = svc_locals;
 remaining = __tco_0;
 parent_index = __tco_1;
 env = __tco_2;
@@ -960,7 +960,7 @@ if acc_under_resolved {
 },
     None => fallback.clone(),
 };
-match Rc::new(typed_args.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+match typed_args.clone().get(1 as usize).cloned() {
     Some(val_arg) => map_node(key_type, match (*rt_node(arg_value(val_arg.clone()))).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
     NodeType::InferError { .. } => fallback.clone(),
@@ -1192,11 +1192,11 @@ v2_rt::concat(Rc::new(vec![Rc::new(ArgInferResult {
 } else {
                 Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(call_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
                     let a = pair.1.clone();
-let formal_param_type = match Rc::new(sig_params.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>()).first().cloned() {
+let formal_param_type = match sig_params.clone().get(pair.0.clone() as usize).cloned() {
     Some(p) => param_node_type_expr(p.clone()),
     None => type_variable_node("callable_param".to_string()),
 };
-let has_formal = match Rc::new(sig_params.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>()).first().cloned() {
+let has_formal = match sig_params.clone().get(pair.0.clone() as usize).cloned() {
     Some(_) => true,
     None => false,
 };
@@ -1737,7 +1737,7 @@ let lam_scope = if (expected.clone() != None) {
                 {
                     let exp = expected.clone().unwrap();
 if ((exp.params.clone().len() as i64) > 0) {
-                        Rc::new(lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| match Rc::new(exp.params.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>()).first().cloned() {
+                        Rc::new(lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| match exp.params.clone().get(pair.0.clone() as usize).cloned() {
     Some(cp) => extend_scope(acc.clone(), pair.1.clone(), param_node_type_expr(cp.clone())),
     None => extend_scope(acc.clone(), pair.1.clone(), type_variable_node("callable_param".to_string())),
 })
@@ -3040,13 +3040,13 @@ let next_svc_locals = match contribution.svc_local.clone() {
     None => svc_locals.clone(),
 };
 {
-            let __tco_0 = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = v2_rt::rc_list_push(resolved_items.clone(), contribution.resolved_item.clone());
+            let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = v2_rt::rc_list_push(resolved_items, contribution.resolved_item.clone());
 let __tco_2 = next_func_sigs.clone();
 let __tco_3 = next_svc_registry.clone();
 let __tco_4 = next_svc_locals.clone();
-let __tco_5 = v2_rt::rc_map_insert(item_registry.clone(), contribution.item_info.clone().name.clone(), contribution.item_info.clone());
-let __tco_6 = v2_rt::rc_list_push(diag_chunks.clone(), contribution.resolve_diagnostics.clone());
+let __tco_5 = v2_rt::rc_map_insert(item_registry, contribution.item_info.clone().name.clone(), contribution.item_info.clone());
+let __tco_6 = v2_rt::rc_list_push(diag_chunks, contribution.resolve_diagnostics.clone());
 remaining = __tco_0;
 resolved_items = __tco_1;
 func_sigs = __tco_2;
@@ -3287,11 +3287,11 @@ let __tco_1 = Rc::new(TypeEnv {
     recursive_variant_fields: env.recursive_variant_fields.clone(),
     source_index: env.source_index.clone(),
 });
-let __tco_2 = module_name.clone();
-let __tco_3 = v2_rt::concat(diagnostics.clone(), ready_accum.diagnostics.clone());
-let __tco_4 = local_names.clone();
-let __tco_5 = deps_map.clone();
-let __tco_6 = (fuel.clone() - 1);
+let __tco_2 = module_name;
+let __tco_3 = v2_rt::concat(diagnostics, ready_accum.diagnostics.clone());
+let __tco_4 = local_names;
+let __tco_5 = deps_map;
+let __tco_6 = (fuel - 1);
 remaining = __tco_0;
 env = __tco_1;
 module_name = __tco_2;
@@ -3446,12 +3446,12 @@ let tc_result = typecheck_module(resolved.clone(), module_index.clone(), source_
 let typed = tc_result.typed.clone();
 let tc_diags = tc_result.diagnostics.clone();
 {
-            let __tco_0 = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = v2_rt::rc_list_push(modules.clone(), typed.clone());
-let __tco_2 = v2_rt::rc_map_insert(module_index.clone(), typed.module.clone().name.clone(), typed.clone());
-let __tco_3 = v2_rt::rc_map_merge(item_registry.clone(), typed.item_registry.clone());
-let __tco_4 = v2_rt::rc_list_push(v2_rt::rc_list_push(diag_chunks.clone(), parent_result.diagnostics.clone()), tc_diags.clone());
-let __tco_5 = source_indices.clone();
+            let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = v2_rt::rc_list_push(modules, typed.clone());
+let __tco_2 = v2_rt::rc_map_insert(module_index, typed.module.clone().name.clone(), typed.clone());
+let __tco_3 = v2_rt::rc_map_merge(item_registry, typed.item_registry.clone());
+let __tco_4 = v2_rt::rc_list_push(v2_rt::rc_list_push(diag_chunks, parent_result.diagnostics.clone()), tc_diags.clone());
+let __tco_5 = source_indices;
 remaining = __tco_0;
 modules = __tco_1;
 module_index = __tco_2;

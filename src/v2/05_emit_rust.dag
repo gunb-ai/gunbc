@@ -2798,6 +2798,26 @@ fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<St
   if needs_rc { concat("Rc::new(", raw, ")") } else { raw }
 }
 
+// Peephole: fuse skip(n) followed by first into .get(n) for O(1) indexed access.
+fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match receiver.expr_data {
+    ExprMethodCall { method_semantics: _ } =>
+      if expr_method_name(texpr: receiver) == "skip" {
+        let skip_recv = method_receiver(texpr: receiver)
+        let skip_args = method_arg_nodes(texpr: receiver)
+        let recv_str = emit_typed_expr(texpr: skip_recv, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+        let arg_str = emit_typed_first_arg(args: skip_args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".get(", arg_str, " as usize).cloned()")
+      } else {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+        concat(recv_str, ".first().cloned()")
+      }
+    _ =>
+      let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+      concat(recv_str, ".first().cloned()")
+  }
+}
+
 fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let function_name = method_name
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
@@ -2855,6 +2875,8 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
         let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024))
         let all_arg_strs = concat([recv_str], arg_strs)
         emit_nested_rt_concat(remaining: all_arg_strs, acc: "", rc_types: rc_types)
+      } else if method_name == "first" {
+        emit_rust_first_method_call(receiver: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
       } else {
         // Template-driven methods: lookup in language extdep data.
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
@@ -3630,9 +3652,27 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   }
 }
 
+// Check if an expression tree contains a reference to a variable name.
+fn expr_references_var(node: Node, var_name: String) -> Bool {
+  match node.expr_data {
+    ExprVar { binding_kind: _ } => expr_var_name(texpr: node) == var_name
+    _ => node.children |> any(c => expr_references_var(node: c, var_name: var_name))
+  }
+}
+
 fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let ordered_args = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024))
   let si = scope.type_env.source_index
+  let arg_values = args |> map(a => arg_value(n: a))
+  // Mark TCO params as movable when they appear in at most one arg
+  // expression. This avoids .clone() on Rc containers, preventing
+  // O(n) deep copies inside Rc::make_mut (e.g. token list in TCO loops).
+  let tco_movable = params |> fold(acc: emit_info.movable, f: (m, p) =>
+    let pname = param_node_name_at(n: p, source_index: si)
+    let ref_count = arg_values |> fold(acc: 0, f: (n, av) =>
+      if expr_references_var(node: av, var_name: pname) { n + 1 } else { n })
+    if ref_count <= 1 { map_insert(m, pname, true) } else { m })
+  let tco_emit_info = with(emit_info, { movable: tco_movable })
+  let ordered_args = arg_values |> map(av => emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: tco_emit_info, fuel: 1024))
   let param_names = params |> map(p => emit_ident(name: param_node_name_at(n: p, source_index: si), target: Rust))
   let all_lines = tco_reassign_core(
     ordered_args: ordered_args, param_names: param_names,
@@ -3943,52 +3983,56 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  // Data defs emit as constructor functions. Use rc_types for type
-  // rendering so returned types match the sharing model (e.g., Rc<Node>).
   let ty_str = render_rust_type(n: type_node, rc_types: rc_types)
   let fn_name = to_snake(name: name)
   let needs_rc = map_contains_key(rc_types, type_node.name)
   if is_simple_type_node(n: type_node) {
+    // Copy types (Int, Bool, Float) — inline, no caching
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
     concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
-  } else if has_nested_records_node(n: type_node) && !data_value_has_cross_refs(value: value) {
-    let json_str = emit_data_value_json(value: value, source_index: scope.type_env.source_index)
+  } else {
+    // Non-Copy data defs get thread_local caching.
+    // Avoids O(n) reconstruction on every call (maps, records, JSON deser).
+    let body = emit_data_def_body(type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, needs_rc: needs_rc)
     concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
-      "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
-      "        .expect(\"valid data definition\")\n",
+      "    thread_local! {\n",
+      "        static CACHED: ", ty_str, " = {\n",
+      body, "\n",
+      "        };\n",
+      "    }\n",
+      "    CACHED.with(|c| c.clone())\n",
       "}")
+  }
+}
+
+fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
+  if has_nested_records_node(n: type_node) && !data_value_has_cross_refs(value: value) {
+    let json_str = emit_data_value_json(value: value, source_index: scope.type_env.source_index)
+    concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
+      "                .expect(\"valid data definition\")")
   } else {
     let is_map = node_is_keyed_collection(n: type_node)
     if is_map {
-    match value.expr_data {
-      ExprRecordLit { parent_enum: _ } =>
-        let inserts = value.children |> map(f =>
-          let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-          concat("    __m.insert(\"", field_init_node_name(n: f), "\".to_string(), ", val_str, ");")
-
-        )
-        let inserts_str = inserts |> join(separator: "\n")
-        concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
-          "    let mut __m = HashMap::new();\n",
-          inserts_str, "\n",
-          "    Rc::new(__m)\n",
-          "}")
-      _ =>
-        let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-        concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
-          "    ", val_str, "\n",
-          "}")
-    }
+      match value.expr_data {
+        ExprRecordLit { parent_enum: _ } =>
+          let inserts = value.children |> map(f =>
+            let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+            concat("            __m.insert(\"", field_init_node_name(n: f), "\".to_string(), ", val_str, ");")
+          )
+          let inserts_str = inserts |> join(separator: "\n")
+          concat("            let mut __m = HashMap::new();\n",
+            inserts_str, "\n",
+            "            Rc::new(__m)")
+        _ =>
+          let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+          concat("            ", val_str)
+      }
     } else {
       let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      // Record and list literals are already Rc-wrapped by their emitters.
-      // Only add Rc::new() for other expressions to avoid double-wrapping.
       let is_already_wrapped = match value.expr_data { ExprRecordLit { parent_enum: _ } => true  ExprListLit => true  _ => false }
       let wrap_start = if needs_rc && !is_already_wrapped { "Rc::new(" } else { "" }
       let wrap_end = if needs_rc && !is_already_wrapped { ")" } else { "" }
-      concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
-        "    ", wrap_start, val_str, wrap_end, "\n",
-        "}")
+      concat("            ", wrap_start, val_str, wrap_end)
     }
   }
 }

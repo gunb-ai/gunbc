@@ -418,6 +418,75 @@ fn tokenizer_scales_linearly_with_file_size() {
     );
 }
 
+#[test]
+fn tokenizer_scanning_scales_linearly() {
+    use std::time::Instant;
+
+    let small_source = read_v2_file("src/v2/ownership.dag");
+    let large_source = read_v2_file("src/v2/02_parse.dag");
+
+    let start = Instant::now();
+    let small_tokens = tokenize(&small_source);
+    let small_count = small_tokens.len();
+    let small_time = start.elapsed();
+
+    let start = Instant::now();
+    let large_tokens = tokenize(&large_source);
+    let large_count = large_tokens.len();
+    let large_time = start.elapsed();
+
+    let size_ratio = large_source.len() as f64 / small_source.len() as f64;
+    let time_ratio = large_time.as_secs_f64() / small_time.as_secs_f64().max(0.001);
+
+    eprintln!(
+        "scan-only: small: {}B, {} tokens, {:.3}s | large: {}B, {} tokens, {:.3}s | size ratio: {:.1}x, time ratio: {:.1}x",
+        small_source.len(), small_count, small_time.as_secs_f64(),
+        large_source.len(), large_count, large_time.as_secs_f64(),
+        size_ratio, time_ratio,
+    );
+
+    assert!(
+        time_ratio < size_ratio * 2.0,
+        "scanning appears super-linear: size ratio {:.1}x but time ratio {:.1}x (expected < {:.1}x)",
+        size_ratio, time_ratio, size_ratio * 2.0,
+    );
+}
+
+#[test]
+fn parser_scales_linearly_with_token_count() {
+    use std::time::Instant;
+
+    let small_source = read_v2_file("src/v2/ownership.dag");
+    let large_source = read_v2_file("src/v2/02_parse.dag");
+
+    let small_tokens = tokenize(&small_source);
+    let large_tokens = tokenize(&large_source);
+
+    let start = Instant::now();
+    let _small_result = v2_compiler::v2_compiler_parse::parse(small_tokens.clone());
+    let small_time = start.elapsed();
+
+    let start = Instant::now();
+    let _large_result = v2_compiler::v2_compiler_parse::parse(large_tokens.clone());
+    let large_time = start.elapsed();
+
+    let token_ratio = large_tokens.len() as f64 / small_tokens.len() as f64;
+    let time_ratio = large_time.as_secs_f64() / small_time.as_secs_f64().max(0.001);
+
+    eprintln!(
+        "parse: small: {} tokens, {:.3}s | large: {} tokens, {:.3}s | token ratio: {:.1}x, time ratio: {:.1}x",
+        small_tokens.len(), small_time.as_secs_f64(),
+        large_tokens.len(), large_time.as_secs_f64(),
+        token_ratio, time_ratio,
+    );
+
+    assert!(
+        time_ratio < token_ratio * 2.0,
+        "parsing appears super-linear: token ratio {:.1}x but time ratio {:.1}x (expected < {:.1}x)",
+        token_ratio, time_ratio, token_ratio * 2.0,
+    );
+}
+
 // ── Phase 2: tokenizer e2e ──────────────────────────────────────────────
 
 #[test]

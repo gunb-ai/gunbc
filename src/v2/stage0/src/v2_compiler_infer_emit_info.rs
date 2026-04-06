@@ -252,7 +252,7 @@ pub fn is_pair_children(children: Rc<Vec<Rc<Node>>>) -> bool {
         false
 } else {
         match children.clone().first().cloned() {
-    Some(c0) => match Rc::new(children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(c0) => match children.clone().get(1 as usize).cloned() {
     Some(c1) => ((c0.name.clone().as_str() == "first".to_string().as_str()) && (c1.name.clone().as_str() == "second".to_string().as_str())),
     None => false,
 },

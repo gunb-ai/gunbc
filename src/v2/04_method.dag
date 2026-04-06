@@ -85,6 +85,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "char_at", string_type)
   let m = map_insert(m, "substring", string_type)
   let m = map_insert(m, "from_code_point", string_type)
+  let m = map_insert(m, "chars_to_string", string_type)
   let m = map_insert(m, "to_string", string_type)
   let m = map_insert(m, "concat", string_type)
   // Map-returning functions

@@ -67,45 +67,55 @@ use AuthScheme::*;
 use CodegenBackend::*;
 
 pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
-    let mut __m = HashMap::new();
-    __m.insert("String".to_string(), true);
-    __m.insert("Int".to_string(), true);
-    __m.insert("Bool".to_string(), true);
-    __m.insert("Float".to_string(), true);
-    __m.insert("Secret".to_string(), true);
-    __m.insert("Json".to_string(), true);
-    __m.insert("Unit".to_string(), true);
-    __m.insert("Bytes".to_string(), true);
-    Rc::new(__m)
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("String".to_string(), true);
+            __m.insert("Int".to_string(), true);
+            __m.insert("Bool".to_string(), true);
+            __m.insert("Float".to_string(), true);
+            __m.insert("Secret".to_string(), true);
+            __m.insert("Json".to_string(), true);
+            __m.insert("Unit".to_string(), true);
+            __m.insert("Bytes".to_string(), true);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn is_kernel_type(name: String) -> bool {
-    match v2_rt::map_get(&kernel_type_set(), name.clone()) {
+    match v2_rt::map_get(&kernel_type_set(), name) {
     Some(_) => true,
     None => false,
 }
 }
 
 pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
-    let mut __m = HashMap::new();
-    __m.insert("List".to_string(), 1);
-    __m.insert("Set".to_string(), 1);
-    __m.insert("NonEmptyList".to_string(), 1);
-    __m.insert("NonEmptySet".to_string(), 1);
-    __m.insert("Map".to_string(), 2);
-    Rc::new(__m)
+    thread_local! {
+        static CACHED: Rc<HashMap<String, i64>> = {
+            let mut __m = HashMap::new();
+            __m.insert("List".to_string(), 1);
+            __m.insert("Set".to_string(), 1);
+            __m.insert("NonEmptyList".to_string(), 1);
+            __m.insert("NonEmptySet".to_string(), 1);
+            __m.insert("Map".to_string(), 2);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn is_container_type(name: String) -> bool {
-    match v2_rt::map_get(&container_type_arity(), name.clone()) {
+    match v2_rt::map_get(&container_type_arity(), name) {
     Some(_) => true,
     None => false,
 }
 }
 
 pub fn container_expected_arity(name: String) -> i64 {
-    match v2_rt::map_get(&container_type_arity(), name.clone()) {
-    Some(arity) => arity,
+    match v2_rt::map_get(&container_type_arity(), name) {
+    Some(arity) => arity.clone(),
     None => 0,
 }
 }
@@ -535,7 +545,7 @@ pub struct TestResult {
     pub duration_ms: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Summary {
     pub total: i64,
     pub passed: i64,
