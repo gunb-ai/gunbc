@@ -1259,12 +1259,17 @@ if is_string_lit_pattern(fb_pat.clone()) {
                                     v2_rt::concat("ref ".to_string(), emit_ident(fb_name.clone(), RenderTarget::Rust))
 } else {
                                     {
-                                        let pat_str = emit_pattern(fb_pat.clone(), shared_types.clone(), "".to_string(), source_index.clone(), emit_info.clone());
-let field_ident = emit_ident(fb_name.clone(), RenderTarget::Rust);
-if (pat_str.clone().as_str() == field_ident.clone().as_str()) {
-                                            field_ident.clone()
+                                        let is_shorthand = match (*fb_pat.clone()).clone() {
+    MatchPattern::Bind { name: n, .. } => (n.clone().as_str() == fb_name.clone().as_str()),
+    _ => false,
+};
+if is_shorthand.clone() {
+                                            emit_ident(fb_name.clone(), RenderTarget::Rust)
 } else {
-                                            v2_rt::concat(v2_rt::concat(field_ident.clone(), ": ".to_string()), pat_str.clone())
+                                            {
+                                                let pat_str = emit_pattern(fb_pat.clone(), shared_types.clone(), "".to_string(), source_index.clone(), emit_info.clone());
+v2_rt::concat(v2_rt::concat(emit_ident(fb_name.clone(), RenderTarget::Rust), ": ".to_string()), pat_str.clone())
+}
 }
 }
 }
@@ -1454,13 +1459,18 @@ if is_string_lit_pattern(fb_pat.clone()) {
                                         v2_rt::concat("ref ".to_string(), emit_ident(fb_name.clone(), RenderTarget::Rust))
 } else {
                                         {
-                                            let inner_analysis = analyze_rc_pattern(fb_pat.clone(), "".to_string(), shared_types.clone(), emit_info.clone());
-let pat_str = emit_pattern_rc_aware(fb_pat.clone(), inner_analysis.clone(), shared_types.clone(), "".to_string(), source_index.clone(), emit_info.clone());
-let field_ident = emit_ident(fb_name.clone(), RenderTarget::Rust);
-if (pat_str.clone().as_str() == field_ident.clone().as_str()) {
-                                                field_ident.clone()
+                                            let is_shorthand = match (*fb_pat.clone()).clone() {
+    MatchPattern::Bind { name: n, .. } => (n.clone().as_str() == fb_name.clone().as_str()),
+    _ => false,
+};
+if is_shorthand.clone() {
+                                                emit_ident(fb_name.clone(), RenderTarget::Rust)
 } else {
-                                                v2_rt::concat(v2_rt::concat(field_ident.clone(), ": ".to_string()), pat_str.clone())
+                                                {
+                                                    let inner_analysis = analyze_rc_pattern(fb_pat.clone(), "".to_string(), shared_types.clone(), emit_info.clone());
+let pat_str = emit_pattern_rc_aware(fb_pat.clone(), inner_analysis.clone(), shared_types.clone(), "".to_string(), source_index.clone(), emit_info.clone());
+v2_rt::concat(v2_rt::concat(emit_ident(fb_name.clone(), RenderTarget::Rust), ": ".to_string()), pat_str.clone())
+}
 }
 }
 }
