@@ -194,35 +194,68 @@ Open items:
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
-### Debug: emit BRIDGE fabrication (58 fold + 23 standalone)
+### BRIDGE fabrication progress (83 → 29)
 
-The Rust emitter produces `Rc::new(HashMap::new()) /* BRIDGE: ... */`
-when it cannot resolve the map value type for turbofish generation.
-81 sites in stage0 (58 fold-init, 23 standalone `empty_map()`).
+BRIDGE count reduced from 83 to 29. Root cause found and fixed:
+`node_is_keyed_collection` required `children.count == 2` in
+`refine_collection_result_type`'s `map_insert` branch, but the branch
+also required `children.count == 0` (bare container). Contradictory —
+the branch never fired. Fixed with `is_container_type` + arity check.
 
-**Key finding:** single-module tests produce correct turbofish — the
-fold refinement chain (lambda body return type → `fold_accumulator_type`
-in `AlgebraMethodSemantics`) works. Multi-module self-compile does not.
-Same inference code, different behavior.
+Remaining 29 BRIDGEs (25 real + 4 emitter template strings):
+- 10 complexity.dag: standalone `empty_map()` in let-VALUE/match-arm
+- 7 emit_rust.dag: template binding maps `Map<String, String>`
+- 2 emit_go/python: same template binding pattern
+- 2 infer.dag: build_type_env fold patterns
+- 1 infer_method.dag: builtin_function_registry init
+- 1 infer_types.dag: bridge_placeholder_type_names init
+- 1 infer_sigs.dag: parent_resolved fold
+- 1 resolve.dag: module resolution
 
-The gap is between single-module and multi-module type resolution.
-Possible causes:
-- Cross-module type nodes have different shape (children, connective)
-  than same-module type nodes, causing `render_rust_type` to return `""`
-- Multi-pass type resolution produces intermediate node states that
-  the fold refinement doesn't handle
-- The `fold_accumulator_type` carried in `method_semantics` is correct
-  at inference time but the type node it references becomes stale after
-  cross-module resolution completes
+All remaining are standalone `empty_map()` with `expected: None` —
+no method return type to refine. They need expected-type propagation
+from usage context (broader bidirectional inference).
+
+### Design direction: compositional type parameter resolution
+
+**Root cause (deeper than BRIDGE):** The algebra template system
+destroys parametric bindings. `PartialFunction<K, V> { insert: fn(K, V)
+-> PF<K, V> }` has K/V shared across params and return. But
+`instantiate_algebra_field` resolves everything from the receiver
+alone — bare receivers produce `error_type`, losing the binding.
+`refine_collection_result_type` (85 lines, 6 method-name dispatches)
+exists entirely to compensate.
+
+**Compositional fix (planned, not yet implemented):**
+
+Phase A — TypeVariable preservation:
+  `algebra_child_or_placeholder` returns `TypeVariable { id: "K" }`
+  instead of `error_type`. Preserves the parametric binding through
+  instantiation. BLOCKED: requires Phase B first — 47 downstream
+  sites break because emit can't render TypeVariable nodes.
+
+Phase B — TypeVariable rendering in emit:
+  Emit must handle TypeVariable nodes: either render as `_` (let Rust
+  infer) or `compile_error!` (fail-closed). This is the unblocking
+  prerequisite for Phase A. Changes in `05_emit.dag` type rendering.
+
+Phase C — Structural return type resolution:
+  After method args are inferred, resolve TypeVariables in the return
+  type by matching param positions to inferred arg types. Replaces
+  `refine_collection_result_type` with structural dispatch (no method-
+  name checks). The algebra field's callable params carry the binding
+  positions; the args carry the resolved types.
+
+Phase D — Delete compensation:
+  `refine_collection_result_type` dissolves. `bridge_placeholder_type_
+  names` infrastructure dissolves. Dead param_types in algebra method
+  fields become live.
+
+Dependency: B → A → C → D. Each phase is independently testable.
 
 **Goal:** fail-closed. Emit must produce fully-typed turbofish or
 `compile_error!`, never silently emit untyped `HashMap::new()` and
-rely on rustc to recover. The current 81 BRIDGE sites are fabrications
-(INVARIANTS.md IV-6/IV-7/IV-8).
-
-**Next step:** build a multi-module test that reproduces the BRIDGE
-in the test harness, then trace what `fold_accumulator_type` contains
-at emit time vs. single-module.
+rely on rustc to recover.
 
 ### Acceptance
 

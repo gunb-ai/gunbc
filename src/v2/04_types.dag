@@ -52,6 +52,13 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
+// Type variable node: structurally distinct from nominal refs (name: "",
+// inferred: TypeVariable). Used by algebra instantiation when the receiver
+// is bare — preserves parametric bindings instead of collapsing to error_type.
+fn type_variable_node(id: String) -> Node {
+  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
 // =========================================================================
 // Node constructors
 // =========================================================================
