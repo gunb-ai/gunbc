@@ -120,6 +120,21 @@ pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     CACHED.with(|c| c.clone())
 }
 
+pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("split".to_string(), true);
+            __m.insert("enumerate".to_string(), true);
+            __m.insert("chars".to_string(), true);
+            __m.insert("skip".to_string(), true);
+            __m.insert("take".to_string(), true);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn rust_reserved() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
@@ -133,15 +148,6 @@ pub fn rust_reserved_escape_prefix() -> String {
     thread_local! {
         static CACHED: String = {
             "r#".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_value_types() -> Rc<Vec<String>> {
-    thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["Int".to_string(), "Bool".to_string(), "Float".to_string()])
         };
     }
     CACHED.with(|c| c.clone())
@@ -242,12 +248,13 @@ pub struct RuntimeFunction {
     pub name: String,
     pub bridge_name: String,
     pub passes_by_ref: bool,
+    pub wraps_result: bool,
 }
 
 pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<RuntimeFunction>>> = {
-            serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true}]))
+            serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false, "wraps_result": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true, "wraps_result": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true, "wraps_result": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true, "wraps_result": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true, "wraps_result": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true, "wraps_result": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true, "wraps_result": false}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false, "wraps_result": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false, "wraps_result": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false, "wraps_result": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false, "wraps_result": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false, "wraps_result": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true, "wraps_result": false}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true, "wraps_result": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false, "wraps_result": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true, "wraps_result": false}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true, "wraps_result": false}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false, "wraps_result": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false, "wraps_result": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true, "wraps_result": false}, {"name": "append", "bridge_name": "append", "passes_by_ref": false, "wraps_result": true}]))
                 .expect("valid data definition")
         };
     }
@@ -287,6 +294,7 @@ pub fn rt_functions() -> Rc<HashMap<String, bool>> {
             __m.insert("reverse".to_string(), true);
             __m.insert("replace".to_string(), true);
             __m.insert("chars_to_string".to_string(), true);
+            __m.insert("append".to_string(), true);
             Rc::new(__m)
         };
     }
@@ -295,6 +303,10 @@ pub fn rt_functions() -> Rc<HashMap<String, bool>> {
 
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.passes_by_ref.clone() { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
+}
+
+pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
+    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.wraps_result.clone() { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
 }
 
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {

@@ -60,6 +60,10 @@ data rust_method_templates: Map<String, String> = {
   "take": "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()"
 }
 
+data rust_method_wraps_result: Map<String, Bool> = {
+  "split": true, "enumerate": true, "chars": true, "skip": true, "take": true
+}
+
 // -- Reserved words ------------------------------------------------------
 // Ref: Rust Reference, Appendix A: Keywords
 data rust_reserved: List<String> = [
@@ -77,12 +81,6 @@ data rust_reserved: List<String> = [
 // Ref: Rust Reference, Appendix B: Raw identifiers
 // Mirrors rust_reserved_words.strategy.prefix from std.languages.
 data rust_reserved_escape_prefix: String = "r#"
-
-// -- Value-semantic types ------------------------------------------------
-// Types with Copy semantics in Rust — no Rc wrapping, no .clone().
-// These are the types whose DAG algebra resolves to fixed-width carriers.
-// Ref: Rust Reference 10.1.2 "Copy trait"
-data rust_value_types: List<String> = ["Int", "Bool", "Float"]
 
 // -- String-like types ---------------------------------------------------
 // Types that render as Rust &str/.as_str() for comparison operations.
@@ -122,38 +120,40 @@ type RuntimeFunction {
   name: String
   bridge_name: String
   passes_by_ref: Bool
+  wraps_result: Bool
 }
 
 data rt_function_registry: List<RuntimeFunction> = [
-  { name: "concat",             bridge_name: "concat",           passes_by_ref: false },
-  { name: "char_at",            bridge_name: "char_at",          passes_by_ref: true },
-  { name: "string_length",      bridge_name: "string_length",    passes_by_ref: true },
-  { name: "substring",          bridge_name: "substring",        passes_by_ref: true },
-  { name: "string_contains",    bridge_name: "string_contains",  passes_by_ref: true },
-  { name: "scan_while",         bridge_name: "scan_while",       passes_by_ref: true },
-  { name: "skip_horizontal_ws", bridge_name: "skip_horizontal_ws", passes_by_ref: true },
-  { name: "scan_to_eol",        bridge_name: "scan_to_eol",      passes_by_ref: true },
-  { name: "scan_string_end",    bridge_name: "scan_string_end",  passes_by_ref: true },
-  { name: "code_point",         bridge_name: "code_point",       passes_by_ref: false },
-  { name: "from_code_point",    bridge_name: "from_code_point",  passes_by_ref: false },
-  { name: "lookup",             bridge_name: "lookup",           passes_by_ref: true },
-  { name: "index_by",           bridge_name: "rc_index_by",      passes_by_ref: false },
-  { name: "empty_map",          bridge_name: "rc_empty_map",     passes_by_ref: false },
-  { name: "map_insert",         bridge_name: "rc_map_insert",    passes_by_ref: false },
-  { name: "map_merge",          bridge_name: "rc_map_merge",     passes_by_ref: false },
-  { name: "list_concat",        bridge_name: "rc_list_concat",   passes_by_ref: false },
-  { name: "str_eq",             bridge_name: "str_eq",           passes_by_ref: false },
-  { name: "filesystem_read",    bridge_name: "filesystem_read",  passes_by_ref: false },
-  { name: "list_push",          bridge_name: "rc_list_push",     passes_by_ref: false },
-  { name: "map_get",            bridge_name: "map_get",          passes_by_ref: true },
-  { name: "map_keys",           bridge_name: "map_keys",         passes_by_ref: true },
-  { name: "map_values",         bridge_name: "map_values",       passes_by_ref: true },
-  { name: "parse_int",          bridge_name: "parse_int",        passes_by_ref: false },
-  { name: "map_contains_key",   bridge_name: "map_contains_key", passes_by_ref: true },
-  { name: "map_has",            bridge_name: "map_has",          passes_by_ref: true },
-  { name: "reverse",            bridge_name: "reverse",          passes_by_ref: false },
-  { name: "replace",            bridge_name: "replace",          passes_by_ref: false },
-  { name: "chars_to_string",    bridge_name: "chars_to_string",  passes_by_ref: true }
+  { name: "concat",             bridge_name: "concat",           passes_by_ref: false, wraps_result: false },
+  { name: "char_at",            bridge_name: "char_at",          passes_by_ref: true,  wraps_result: false },
+  { name: "string_length",      bridge_name: "string_length",    passes_by_ref: true,  wraps_result: false },
+  { name: "substring",          bridge_name: "substring",        passes_by_ref: true,  wraps_result: false },
+  { name: "string_contains",    bridge_name: "string_contains",  passes_by_ref: true,  wraps_result: false },
+  { name: "scan_while",         bridge_name: "scan_while",       passes_by_ref: true,  wraps_result: false },
+  { name: "skip_horizontal_ws", bridge_name: "skip_horizontal_ws", passes_by_ref: true, wraps_result: false },
+  { name: "scan_to_eol",        bridge_name: "scan_to_eol",      passes_by_ref: true,  wraps_result: false },
+  { name: "scan_string_end",    bridge_name: "scan_string_end",  passes_by_ref: true,  wraps_result: false },
+  { name: "code_point",         bridge_name: "code_point",       passes_by_ref: false, wraps_result: false },
+  { name: "from_code_point",    bridge_name: "from_code_point",  passes_by_ref: false, wraps_result: false },
+  { name: "lookup",             bridge_name: "lookup",           passes_by_ref: true,  wraps_result: false },
+  { name: "index_by",           bridge_name: "rc_index_by",      passes_by_ref: false, wraps_result: false },
+  { name: "empty_map",          bridge_name: "rc_empty_map",     passes_by_ref: false, wraps_result: false },
+  { name: "map_insert",         bridge_name: "rc_map_insert",    passes_by_ref: false, wraps_result: false },
+  { name: "map_merge",          bridge_name: "rc_map_merge",     passes_by_ref: false, wraps_result: false },
+  { name: "list_concat",        bridge_name: "rc_list_concat",   passes_by_ref: false, wraps_result: false },
+  { name: "str_eq",             bridge_name: "str_eq",           passes_by_ref: false, wraps_result: false },
+  { name: "filesystem_read",    bridge_name: "filesystem_read",  passes_by_ref: false, wraps_result: false },
+  { name: "list_push",          bridge_name: "rc_list_push",     passes_by_ref: false, wraps_result: false },
+  { name: "map_get",            bridge_name: "map_get",          passes_by_ref: true,  wraps_result: false },
+  { name: "map_keys",           bridge_name: "map_keys",         passes_by_ref: true,  wraps_result: true },
+  { name: "map_values",         bridge_name: "map_values",       passes_by_ref: true,  wraps_result: true },
+  { name: "parse_int",          bridge_name: "parse_int",        passes_by_ref: false, wraps_result: false },
+  { name: "map_contains_key",   bridge_name: "map_contains_key", passes_by_ref: true,  wraps_result: false },
+  { name: "map_has",            bridge_name: "map_has",          passes_by_ref: true,  wraps_result: false },
+  { name: "reverse",            bridge_name: "reverse",          passes_by_ref: false, wraps_result: false },
+  { name: "replace",            bridge_name: "replace",          passes_by_ref: false, wraps_result: false },
+  { name: "chars_to_string",    bridge_name: "chars_to_string",  passes_by_ref: true,  wraps_result: false },
+  { name: "append",             bridge_name: "append",           passes_by_ref: false, wraps_result: true }
 ]
 
 // Helper functions: O(1) lookup via indexed maps built from the registry.
@@ -167,6 +167,10 @@ data rt_function_registry: List<RuntimeFunction> = [
 // language gains computed data declarations, these maps should become
 // `rt_function_registry |> fold(...)`.
 
+// Derived indexes from rt_function_registry. Hand-maintained mirrors —
+// content must match the registry. When .dag gains computed data
+// declarations, these become rt_function_registry |> fold(...).
+
 data rt_functions: Map<String, Bool> = {
   "concat": true, "char_at": true, "string_length": true,
   "substring": true, "string_contains": true, "scan_while": true,
@@ -178,13 +182,18 @@ data rt_functions: Map<String, Bool> = {
   "map_keys": true, "map_values": true,
   "parse_int": true, "map_contains_key": true, "map_has": true,
   "reverse": true, "replace": true,
-  "chars_to_string": true
+  "chars_to_string": true, "append": true
 }
 
-// Derived from rt_function_registry — single authority for passes_by_ref.
 fn rt_ref_map_functions() -> Map<String, Bool> {
   rt_function_registry
     |> filter(f => f.passes_by_ref)
+    |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
+}
+
+fn rt_wraps_result() -> Map<String, Bool> {
+  rt_function_registry
+    |> filter(f => f.wraps_result)
     |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
 }
 

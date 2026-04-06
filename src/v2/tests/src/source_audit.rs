@@ -893,8 +893,6 @@ fn no_expr_data_before_catch_all_in_core() {
 fn rt_functions_map_consistent_with_registry() {
     let source = read_v2_file("dsl/extdeps/languages/rust/emit.dag");
 
-    // Extract function names from rt_function_registry entries.
-    // Each entry is `{ name: "...", bridge_name: "...", passes_by_ref: ... }`.
     let registry_names: Vec<&str> = source
         .lines()
         .filter(|l| l.contains("name:") && l.contains("bridge_name:"))
@@ -906,8 +904,6 @@ fn rt_functions_map_consistent_with_registry() {
         })
         .collect();
 
-    // Extract keys from rt_functions map.
-    // Entries are `"name": true` (possibly multiple per line, comma-separated).
     let rt_section_start = source.find("data rt_functions:").expect("rt_functions must exist");
     let rt_section = &source[rt_section_start..];
     let rt_end = rt_section.find('}').unwrap_or(rt_section.len());
@@ -921,29 +917,51 @@ fn rt_functions_map_consistent_with_registry() {
         })
         .collect();
 
-    assert!(
-        !registry_names.is_empty(),
-        "rt_function_registry should have entries"
-    );
-    assert!(
-        !rt_names.is_empty(),
-        "rt_functions map should have entries"
-    );
+    assert!(!registry_names.is_empty(), "rt_function_registry should have entries");
+    assert!(!rt_names.is_empty(), "rt_functions map should have entries");
 
     for name in &registry_names {
-        assert!(
-            rt_names.contains(name),
-            "rt_function_registry entry '{}' missing from rt_functions map — \
-             derived maps must stay in sync with the registry",
-            name
-        );
+        assert!(rt_names.contains(name),
+            "rt_function_registry entry '{}' missing from rt_functions map", name);
     }
     for name in &rt_names {
+        assert!(registry_names.contains(name),
+            "rt_functions map entry '{}' has no corresponding rt_function_registry entry", name);
+    }
+}
+
+#[test]
+fn is_copy_checkpoint_parity() {
+    // Derive all assertions from rust_type_checkpoints — single authority.
+    // Every checkpoint must return Some(is_copy), never None.
+    // User-defined types (no checkpoint) correctly return None.
+    use v2_compiler::v2_compiler_coercion::is_copy;
+    use v2_compiler::v2_compiler_emit::RenderTarget;
+    use v2_compiler::extdeps_languages_rust_types::rust_type_checkpoints;
+
+    let checkpoints = rust_type_checkpoints();
+    assert!(
+        !checkpoints.is_empty(),
+        "rust_type_checkpoints should have entries"
+    );
+
+    // Every declared checkpoint must return Some(_), not None
+    for cp in checkpoints.iter() {
+        let result = is_copy(RenderTarget::Rust, cp.dag_name.clone());
         assert!(
-            registry_names.contains(name),
-            "rt_functions map entry '{}' has no corresponding rt_function_registry entry — \
-             derived maps must stay in sync with the registry",
-            name
+            result.is_some(),
+            "TypeCheckpoint '{}' should return Some from is_copy, got None — \
+             checkpoint exists but is_copy can't find it",
+            cp.dag_name
+        );
+        assert_eq!(
+            result, cp.is_copy,
+            "TypeCheckpoint '{}' is_copy mismatch: checkpoint says {:?}, is_copy returns {:?}",
+            cp.dag_name, cp.is_copy, result
         );
     }
+
+    // User-defined types must return None (no checkpoint exists)
+    let result = is_copy(RenderTarget::Rust, "MyStruct".to_string());
+    assert_eq!(result, None, "user-defined type should return None from is_copy");
 }
