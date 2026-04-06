@@ -65,8 +65,9 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, HigherOrderMethodSpec, rust_higher_order_methods};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_value_type, is_string_like, target_primitive_type, try_target_primitive_type};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_value_type, is_string_like, target_primitive_type};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, rt_type, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
@@ -772,10 +773,7 @@ let ty = if (((rt_child.connective.clone() == Connective::Conj) && (rt_child.nam
             match v2_rt::map_get(&env.bindings.clone(), rt_child.name.clone()) {
     Some(binding) => if ((binding.resolved.clone().params.clone().len() as i64) > 0) {
                 {
-                    let base = match try_target_primitive_type(RenderTarget::Rust, rt_child.name.clone()) {
-    Some(m) => m.clone(),
-    None => rt_child.name.clone(),
-};
+                    let base = coerce_primitive_type(RenderTarget::Rust, rt_child.name.clone());
 let param_names = Rc::new({ let mut __result = Vec::new(); for p in binding.resolved.clone().params.clone().iter().cloned() { __result.push(generic_param_name_at(p.clone(), env.source_index.clone())); } __result });
 let with_params = v2_rt::concat(v2_rt::concat(v2_rt::concat(base, "<".to_string()), param_names.join(&", ".to_string())), ">".to_string());
 if emit_map_has(shared_types.clone(), rt_child.name.clone()) {
@@ -4558,9 +4556,13 @@ if is_optional {
                     "String".to_string()
 } else {
                     if ((n.children.clone().len() as i64) == 0) {
-                        match try_target_primitive_type(RenderTarget::Rust, n.name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => "String".to_string(),
+                        {
+                            let mapped = coerce_primitive_type(RenderTarget::Rust, n.name.clone());
+if (mapped.clone().as_str() != n.name.clone().as_str()) {
+                                mapped.clone()
+} else {
+                                "String".to_string()
+}
 }
 } else {
                         "String".to_string()

@@ -73,9 +73,10 @@ import v2.compiler.languages {
   TestConventions,
   test_conventions_for_target, top_level_visibility_for_target,
   sharing_for_target,
-  is_value_type, is_string_like, target_primitive_type, try_target_primitive_type
+  is_value_type, is_string_like, target_primitive_type
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
+import v2.compiler.coercion { coerce_primitive_type }
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
@@ -863,7 +864,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
     match map_get(env.bindings, rt_child.name) {
       Some { value: binding } =>
         if binding.resolved.params |> count > 0 {
-          let base = match try_target_primitive_type(target: Rust, name: rt_child.name) { Some { value: m } => m  None => rt_child.name }
+          let base = coerce_primitive_type(target: Rust, dag_name: rt_child.name)
           let param_names = binding.resolved.params |> map(p => generic_param_name_at(n: p, source_index: env.source_index))
           let with_params = concat(base, "<", param_names |> join(separator: ", "), ">")
           if emit_map_has(m: shared_types, key: rt_child.name) { concat("Rc<", with_params, ">") }
@@ -4361,10 +4362,8 @@ fn emit_cli_param_type_node(n: Node) -> String {
   } else if has_structure {
     "String"
   } else if n.children |> count == 0 {
-    match try_target_primitive_type(target: Rust, name: n.name) {
-      Some { value: mapped } => mapped
-      None => "String"
-    }
+    let mapped = coerce_primitive_type(target: Rust, dag_name: n.name)
+    if mapped != n.name { mapped } else { "String" }
   } else {
     "String"
   }

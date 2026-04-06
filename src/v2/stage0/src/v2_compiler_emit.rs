@@ -59,7 +59,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
 pub use crate::v2_compiler_infer_types::{rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
-pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name};
@@ -1420,8 +1420,9 @@ pub fn render_type_base(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
     {
         if (tr.type_name.clone().as_str() == "Callable".to_string().as_str()) {
             {
-                let param_strs = Rc::new({ let mut __result = Vec::new(); for p in tr.params.clone().iter().cloned() { __result.push(render_type(p.clone(), target.clone())); } __result });
-let param_str = param_strs.join(&", ".to_string());
+                let repr = target_callable(target.clone());
+let param_strs = Rc::new({ let mut __result = Vec::new(); for p in tr.params.clone().iter().cloned() { __result.push(render_type(p.clone(), target.clone())); } __result });
+let param_str = param_strs.join(&repr.param_separator.clone());
 let ret_str = match tr.return_type.clone() {
     Some(rt) => render_type(rt.clone(), target.clone()),
     None => match target.clone() {
@@ -1430,15 +1431,15 @@ let ret_str = match tr.return_type.clone() {
     _ => "()".to_string(),
 },
 };
+let callable_str = v2_rt::replace(v2_rt::replace(repr.template.clone(), "{params}".to_string(), param_str.clone()), "{return}".to_string(), ret_str.clone());
 return match target.clone() {
+    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("Rc<dyn ".to_string(), v2_rt::replace(callable_str, "fn(".to_string(), "Fn(".to_string())), ">".to_string()),
     RenderTarget::Go => if (ret_str.clone().as_str() == "".to_string().as_str()) {
-                    v2_rt::concat(v2_rt::concat("func(".to_string(), param_str), ")".to_string())
+                    v2_rt::concat(v2_rt::concat("func(".to_string(), param_str.clone()), ")".to_string())
 } else {
-                    v2_rt::concat(v2_rt::concat(v2_rt::concat("func(".to_string(), param_str), ") ".to_string()), ret_str.clone())
+                    callable_str
 },
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Callable[[".to_string(), param_str), "], ".to_string()), ret_str.clone()), "]".to_string()),
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc<dyn Fn(".to_string(), param_str), ") -> ".to_string()), ret_str.clone()), ">".to_string()),
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat("Fn(".to_string(), param_str), ") -> ".to_string()), ret_str.clone()),
+    _ => callable_str,
 }
 }
 }

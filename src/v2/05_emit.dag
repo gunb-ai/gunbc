@@ -61,7 +61,7 @@ import v2.std.core {
 import v2.compiler.infer_env { TypeEnv, TypeBinding, RecursiveVariantFieldWitness }
 import v2.compiler.infer_types { rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection }
 import std.types { is_container_type, container_to_algebra_name }
-import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template }
+import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -1092,10 +1092,11 @@ fn render_type(tr: TypeRendering, target: RenderTarget) -> String {
 }
 
 fn render_type_base(tr: TypeRendering, target: RenderTarget) -> String {
-  // Callable
+  // Callable: render via CallableRepr data from coercion
   if tr.type_name == "Callable" {
+    let repr = target_callable(target: target)
     let param_strs = tr.params |> map(p => render_type(tr: p, target: target))
-    let param_str = param_strs |> join(separator: ", ")
+    let param_str = param_strs |> join(separator: repr.param_separator)
     let ret_str = match tr.return_type {
       Some { value: rt } => render_type(tr: rt, target: target)
       None => match target {
@@ -1104,11 +1105,13 @@ fn render_type_base(tr: TypeRendering, target: RenderTarget) -> String {
         _ => "()"
       }
     }
+    let callable_str = replace(replace(repr.template, "\{params\}", param_str), "\{return\}", ret_str)
+    // Rust: callable values need Rc<dyn Fn> wrapping (ValueContext concern —
+    // the base template is fn pointer syntax, stored callables need trait object).
     return match target {
-      Go => if ret_str == "" { concat("func(", param_str, ")") } else { concat("func(", param_str, ") ", ret_str) }
-      Python => concat("Callable[[", param_str, "], ", ret_str, "]")
-      Rust => concat("Rc<dyn Fn(", param_str, ") -> ", ret_str, ">")
-      _ => concat("Fn(", param_str, ") -> ", ret_str)
+      Rust => concat("Rc<dyn ", replace(callable_str, "fn(", "Fn("), ">")
+      Go => if ret_str == "" { concat("func(", param_str, ")") } else { callable_str }
+      _ => callable_str
     }
   }
   // Optional
