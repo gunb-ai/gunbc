@@ -949,17 +949,6 @@ infer_parser_always_advancing_members(members, func_index.clone())
 }
 }
 
-pub fn self_calls_have_strict_parser_progress(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, parser_always_advancing: Rc<HashMap<String, bool>>) -> bool {
-    match parser_state_param(params) {
-    Some(state_param) => {
-        let self_set = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), true);
-let edges = collect_parser_progress_edges(func_name.clone(), body, state_param.clone(), self_set, empty_parser_progress_env(), parser_always_advancing, v2_rt::rc_empty_map::<bool>());
-(((edges.clone().len() as i64) > 0) && { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() == ProgressKind::ProgressStrict)) { __all = false; break; } } __all })
-},
-    None => false,
-}
-}
-
 pub fn build_call_graph_from_parser_edges(names: Rc<Vec<String>>, edges: Rc<Vec<Rc<ParserProgressEdge>>>) -> Rc<CallGraph> {
     {
         let initial_forward = names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])));
@@ -1309,27 +1298,6 @@ continue;
 }
 }
 
-pub fn collect_descending_witness_names(body: Rc<Node>, descending_witness_names: Rc<HashMap<String, String>>) -> Rc<HashMap<String, String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*body.expr_data.clone()).clone() {
-    ExprData::ExprLet => {
-            let value_witnesses = collect_descending_witness_names(let_value(body.clone()), descending_witness_names);
-let next_witnesses_base = descending_name_set_without_key(value_witnesses.clone(), let_binding_name(body.clone()));
-let next_witnesses = match expr_descending_witness_source(let_value(body.clone()), value_witnesses.clone()) {
-    Some(source_param) => v2_rt::rc_map_insert(next_witnesses_base, let_binding_name(body.clone()), source_param.clone()),
-    None => next_witnesses_base,
-};
-match let_body(body.clone()) {
-    Some(b) => collect_descending_witness_names(b.clone(), next_witnesses),
-    None => next_witnesses,
-}
-},
-    ExprData::ExprBlock => body.children.clone().iter().cloned().fold(descending_witness_names, |acc: Rc<HashMap<String, String>>, stmt: Rc<Node>| collect_descending_witness_names(stmt.clone(), acc.clone())),
-    _ => body.children.clone().iter().cloned().fold(descending_witness_names, |acc: Rc<HashMap<String, String>>, child: Rc<Node>| collect_descending_witness_names(child.clone(), acc.clone())),
-}
-    })
-}
-
 pub fn condition_param_names(expr: Rc<Node>, param_set: Rc<HashMap<String, String>>) -> Rc<HashMap<String, String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
@@ -1379,42 +1347,6 @@ pub fn recursive_param_name_for_arg(idx: i64, arg_node: Rc<Node>, params: Rc<Vec
     Some(name) => Some(name.clone()),
     None => Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(params.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() == idx.clone()) { __result.push(pair); } } __result }).iter().cloned() { __result.push(param_node_name(pair.1.clone())); } __result }).first().cloned(),
 }
-}
-
-pub fn is_descending_witness_arg(expr: Rc<Node>, func_name: String, param_name: String, descending_witness_names: Rc<HashMap<String, String>>) -> bool {
-    if (count_self_calls(expr.clone(), func_name) > 0) {
-        false
-} else {
-        match expr_descending_witness_source(expr.clone(), descending_witness_names) {
-    Some(source_param) => (source_param.clone().as_str() == param_name.as_str()),
-    None => false,
-}
-}
-}
-
-pub fn self_calls_have_descending_witness(body: Rc<Node>, func_name: String, params: Rc<Vec<Rc<Node>>>, descending_witness_names: Rc<HashMap<String, String>>) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*body.expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => {
-            let own_ok = if (expr_call_func(body.clone()).as_str() == func_name.clone().as_str()) {
-                {
-                    let arg_nodes = body.children.clone();
-let args = Rc::new({ let mut __result = Vec::new(); for arg_node in arg_nodes.clone().iter().cloned() { __result.push(arg_value(arg_node.clone())); } __result });
-let arg_shape_ok = { let mut __all = true; for arg_expr in args.iter().cloned() { if !((count_self_calls(arg_expr.clone(), func_name.clone()) == 0)) { __all = false; break; } } __all };
-let witness_ok = { let mut __found = false; for pair in Rc::new(arg_nodes.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if match recursive_param_name_for_arg(pair.0.clone(), pair.1.clone(), params.clone()) {
-    Some(param_name) => is_descending_witness_arg(arg_value(pair.1.clone()), func_name.clone(), param_name.clone(), descending_witness_names.clone()),
-    None => false,
-} { __found = true; break; } } __found };
-(arg_shape_ok && witness_ok)
-}
-} else {
-                true
-};
-(own_ok && { let mut __all = true; for child in body.children.clone().iter().cloned() { if !(self_calls_have_descending_witness(child.clone(), func_name.clone(), params.clone(), descending_witness_names.clone())) { __all = false; break; } } __all })
-},
-    _ => { let mut __all = true; for child in body.children.clone().iter().cloned() { if !(self_calls_have_descending_witness(child.clone(), func_name.clone(), params.clone(), descending_witness_names.clone())) { __all = false; break; } } __all },
-}
-    })
 }
 
 pub fn is_descending_expr(expr: Rc<Node>) -> bool {
@@ -2440,11 +2372,12 @@ merge_optional_evidence(acc.clone(), ce.clone())
     })
 }
 
-pub fn construct_termination_proof(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>) -> Option<Rc<TerminationProof>> {
-    params.iter().cloned().fold(None, |best: _, p: Rc<Node>| match best.clone() {
+pub fn construct_termination_proof(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, parser_always_advancing: Rc<HashMap<String, bool>>) -> Option<Rc<TerminationProof>> {
+    {
+        let structural_proof = params.clone().iter().cloned().fold(None, |best: _, p: Rc<Node>| match best.clone() {
     Some(_) => best.clone(),
     None => {
-        let pname = param_node_name(p.clone());
+            let pname = param_node_name(p.clone());
 let tree_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), true, false);
 match tree_evidence.clone() {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
@@ -2453,7 +2386,7 @@ match tree_evidence.clone() {
 })]),
 })),
     _ => {
-            let list_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, true);
+                let list_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, true);
 match list_evidence.clone() {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::ListLength {
@@ -2461,7 +2394,7 @@ match list_evidence.clone() {
 })]),
 })),
     _ => {
-                let arith_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, false);
+                    let arith_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, false);
 match arith_evidence.clone() {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::ArithmeticValue {
@@ -2475,7 +2408,27 @@ match arith_evidence.clone() {
 },
 }
 },
-})
+});
+match structural_proof.clone() {
+    Some(_) => structural_proof.clone(),
+    None => match parser_state_param(params.clone()) {
+    Some(state_param) => {
+            let self_set = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), true);
+let edges = collect_parser_progress_edges(func_name.clone(), body.clone(), state_param.clone(), self_set, empty_parser_progress_env(), parser_always_advancing, v2_rt::rc_empty_map::<bool>());
+if (((edges.clone().len() as i64) > 0) && { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() == ProgressKind::ProgressStrict)) { __all = false; break; } } __all }) {
+                Some(Rc::new(TerminationProof {
+    dimensions: Rc::new(vec![Rc::new(RankingDimension::TokenPosition {
+    param: state_param.name.clone(),
+})]),
+}))
+} else {
+                None
+}
+},
+    None => None,
+},
+}
+}
 }
 
 pub fn construct_branching_termination_proof(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>) -> Option<Rc<TerminationProof>> {
@@ -2537,7 +2490,7 @@ if (path_calls.clone() == 0) {
             lower_call_pattern(Rc::new(CallPattern::FoldBodyCall))
 } else {
             {
-                let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone());
+                let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone(), parser_always_advancing);
 let proof_safe_for_branching = match proof.clone() {
     Some(p) => { let mut __all = true; for dim in p.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
     RankingDimension::TreeSize { .. } => true,
@@ -2582,23 +2535,7 @@ match proof.clone() {
     None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
 }
 } else {
-                    {
-                        let initial_witnesses = recursive_measure_param_names(body.clone(), params.clone());
-let descending_witness_names = collect_descending_witness_names(body.clone(), initial_witnesses);
-if self_calls_have_descending_witness(body.clone(), func_name.clone(), params.clone(), descending_witness_names) {
-                            lower_call_pattern(Rc::new(CallPattern::ChildAccessorCall {
-    accessor: "children".to_string(),
-}))
-} else {
-                            if self_calls_have_strict_parser_progress(func_name.clone(), body.clone(), params.clone(), parser_always_advancing) {
-                                lower_call_pattern(Rc::new(CallPattern::ParserAdvanceCall {
-    witness: "state".to_string(),
-}))
-} else {
-                                lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
-}
-}
-}
+                    lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
 },
 }
 }

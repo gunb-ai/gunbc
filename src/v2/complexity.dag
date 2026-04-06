@@ -1255,24 +1255,6 @@ fn infer_all_parser_always_advancing(func_index: Map<String, FuncEntry>) -> Map<
   infer_parser_always_advancing_members(members: members, func_index: func_index)
 }
 
-fn self_calls_have_strict_parser_progress(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>) -> Bool {
-  match parser_state_param(params: params) {
-    Some { value: state_param } =>
-      let self_set = map_insert(empty_map(), func_name, true)
-      let edges = collect_parser_progress_edges(
-        caller: func_name,
-        body: body,
-        state_param: state_param,
-        scc_name_set: self_set,
-        env: empty_parser_progress_env(),
-        parser_always_advancing: parser_always_advancing,
-        consumed_true_set: empty_map()
-      )
-      (edges |> count) > 0 && (edges |> all(edge => edge.progress == ProgressStrict))
-    None => false
-  }
-}
-
 fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
   let initial_forward = names |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, [])
@@ -1674,32 +1656,6 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
 // arm. For ExprIf/ExprMatch to propagate witnesses, ALL branches must yield
 // descent from the same parameter — a requirement that is not yet enforced.
 // This is tracked in ROADMAP §I1.
-fn collect_descending_witness_names(body: Node, descending_witness_names: Map<String, String>) -> Map<String, String> {
-  match body.expr_data {
-    ExprLet =>
-      let value_witnesses = collect_descending_witness_names(body: let_value(texpr: body), descending_witness_names: descending_witness_names)
-      let next_witnesses_base = descending_name_set_without_key(names: value_witnesses, key: let_binding_name(texpr: body))
-      let next_witnesses = match expr_descending_witness_source(expr: let_value(texpr: body), descending_witness_names: value_witnesses) {
-        Some { value: source_param } => map_insert(next_witnesses_base, let_binding_name(texpr: body), source_param)
-        None => next_witnesses_base
-      }
-      match let_body(texpr: body) {
-        Some { value: b } => collect_descending_witness_names(body: b, descending_witness_names: next_witnesses)
-        None => next_witnesses
-      }
-
-    ExprBlock =>
-      body.children |> fold(init: descending_witness_names, f: (acc, stmt) =>
-        collect_descending_witness_names(body: stmt, descending_witness_names: acc)
-      )
-
-    _ =>
-      body.children |> fold(init: descending_witness_names, f: (acc, child) =>
-        collect_descending_witness_names(body: child, descending_witness_names: acc)
-      )
-  }
-}
-
 fn condition_param_names(expr: Node, param_set: Map<String, String>) -> Map<String, String> {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
@@ -1757,56 +1713,6 @@ fn recursive_param_name_for_arg(idx: Int, arg_node: Node, params: List<Node>) ->
     Some { value: name } => Some { value: name }
     None =>
       params |> enumerate |> filter(pair => pair.first == idx) |> map(pair => param_node_name(n: pair.second)) |> first
-  }
-}
-
-fn is_descending_witness_arg(expr: Node, func_name: String, param_name: String, descending_witness_names: Map<String, String>) -> Bool {
-  if count_self_calls(body: expr, func_name: func_name) > 0 { false }
-  else {
-    match expr_descending_witness_source(expr: expr, descending_witness_names: descending_witness_names) {
-      Some { value: source_param } => source_param == param_name
-      None => false
-    }
-  }
-}
-
-fn self_calls_have_descending_witness(body: Node, func_name: String, params: List<Node>, descending_witness_names: Map<String, String>) -> Bool {
-  match body.expr_data {
-    ExprCall { call_semantics: _ } =>
-      let own_ok = if expr_call_func(texpr: body) == func_name {
-        let arg_nodes = body.children
-        let args = arg_nodes |> map(arg_node => arg_value(n: arg_node))
-        let arg_shape_ok = args |> all(arg_expr =>
-          count_self_calls(body: arg_expr, func_name: func_name) == 0
-        )
-        let witness_ok = arg_nodes |> enumerate |> any(pair =>
-          match recursive_param_name_for_arg(idx: pair.first, arg_node: pair.second, params: params) {
-            Some { value: param_name } =>
-              is_descending_witness_arg(
-                expr: arg_value(n: pair.second),
-                func_name: func_name,
-                param_name: param_name,
-                descending_witness_names: descending_witness_names
-              )
-            None => false
-          }
-        )
-        arg_shape_ok && witness_ok
-      } else { true }
-      own_ok
-      && (body.children |> all(child =>
-        self_calls_have_descending_witness(
-          body: child,
-          func_name: func_name,
-          params: params,
-          descending_witness_names: descending_witness_names
-        )
-      ))
-
-    _ =>
-      body.children |> all(child =>
-        self_calls_have_descending_witness(body: child, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
-      )
   }
 }
 
@@ -2888,9 +2794,11 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
   }
 }
 
-fn construct_termination_proof(func_name: String, body: Node, params: List<Node>) -> TerminationProof? {
-  // Try each parameter as a candidate ranking dimension
-  params |> fold(init: none, f: (best, p) =>
+fn construct_termination_proof(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>) -> TerminationProof? {
+  // Try each parameter as a candidate ranking dimension.
+  // Order: TreeSize → ListLength → ArithmeticValue → TokenPosition.
+  // Returns on first success (single-dimension proof).
+  let structural_proof = params |> fold(init: none, f: (best, p) =>
     match best {
       Some { value: _ } => best  // already found a proof
       None =>
@@ -2918,6 +2826,29 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
         }
     }
   )
+  // If structural dimensions didn't prove, try TokenPosition (parser state advance).
+  // This subsumes the old self_calls_have_strict_parser_progress classifier.
+  match structural_proof {
+    Some { value: _ } => structural_proof
+    None =>
+      match parser_state_param(params: params) {
+        Some { value: state_param } =>
+          let self_set = map_insert(empty_map(), func_name, true)
+          let edges = collect_parser_progress_edges(
+            caller: func_name,
+            body: body,
+            state_param: state_param,
+            scc_name_set: self_set,
+            env: empty_parser_progress_env(),
+            parser_always_advancing: parser_always_advancing,
+            consumed_true_set: empty_map()
+          )
+          if (edges |> count) > 0 && (edges |> all(edge => edge.progress == ProgressStrict)) {
+            Some { value: TerminationProof { dimensions: [TokenPosition { param: state_param.name }] } }
+          } else { none }
+        None => none
+      }
+  }
 }
 
 fn construct_branching_termination_proof(func_name: String, body: Node, params: List<Node>) -> TerminationProof? {
@@ -2971,7 +2902,7 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // because children are disjoint subtrees (each node visited once).
     // ArithmeticValue descent (param - N) is only safe for single-call paths;
     // with multiple calls (e.g., fib(n-1) + fib(n-2)) it's O(2^n).
-    let proof = construct_termination_proof(func_name: func_name, body: body, params: params)
+    let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
     let proof_safe_for_branching = match proof {
       Some { value: p } =>
         p.dimensions |> all(dim =>
@@ -3014,6 +2945,9 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
           lower_call_pattern(pattern: SameArgumentCall)
         }
       None =>
+        // Proof constructor tried all dimensions (TreeSize, ListLength,
+        // ArithmeticValue, TokenPosition) and found nothing.
+        // For branching recursion, try the branching-only proof.
         if path_calls > 1 {
           match branching_proof {
             Some { value: bp } =>
@@ -3025,16 +2959,7 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
             None => lower_call_pattern(pattern: SameArgumentCall)
           }
         } else {
-          // Fall back to old classifiers for single-call patterns
-          let initial_witnesses = recursive_measure_param_names(body: body, params: params)
-          let descending_witness_names = collect_descending_witness_names(body: body, descending_witness_names: initial_witnesses)
-          if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names) {
-            lower_call_pattern(pattern: ChildAccessorCall { accessor: "children" })
-          } else if self_calls_have_strict_parser_progress(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing) {
-            lower_call_pattern(pattern: ParserAdvanceCall { witness: "state" })
-          } else {
-            lower_call_pattern(pattern: SameArgumentCall)
-          }
+          lower_call_pattern(pattern: SameArgumentCall)
         }
     }
   }
