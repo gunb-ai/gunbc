@@ -1,5 +1,11 @@
 // Coercion engine: data-driven type coercion from .dag algebra declarations.
 //
+// STATUS: transitional / test-only.
+// This module eliminates the hand-maintained v2_coercion.rs stage0 mirror
+// but is NOT yet the live compiler coercion authority. The emit path still
+// has its own inline coercion logic. Full M5-style end-to-end coercion
+// authority is future work.
+//
 // Replaces the hand-maintained v2_coercion.rs with a generated module.
 // Reads per-language coercion data from extdeps/languages/*/types.dag
 // and provides lookup functions for the test harness.
@@ -82,6 +88,8 @@ fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> TypeCheckpoint? 
   target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
 }
 
+// Transitional: fail-open (returns dag_name on miss). M5-full should
+// fail-closed once all surface types have checkpoint declarations.
 fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
     Some { value: cp } => cp.target_type
@@ -107,6 +115,9 @@ fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
 // Surface name -> algebra name mapping.
 // The .dag language uses List, Set, Map as surface names.
 // The coercion engine resolves through algebra identities.
+// TODO: these are hardcoded string tables, not derived from a canonical
+// container declaration. A stronger model would carry algebra identity
+// structurally from one authority (e.g. inhabitant/arity data).
 data container_to_algebra: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
@@ -153,7 +164,7 @@ fn apply_inhabitant_template2(template: String, first: String, second: String) -
 }
 
 // =========================================================================
-// Container identity constants (derived from algebra arity)
+// Container identity constants (hardcoded; should be derived from algebra arity)
 // =========================================================================
 
 data coercion_keyed_container_names: List<String> = ["Map", "PartialFunction"]

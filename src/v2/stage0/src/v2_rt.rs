@@ -93,9 +93,10 @@ pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
 }
 
 pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
-    let start = start.max(0) as usize;
-    let end = end.max(0) as usize;
-    chars[start..end.min(chars.len())]
+    let len = chars.len();
+    let start = (start.max(0) as usize).min(len);
+    let end = (end.max(0) as usize).min(len).max(start);
+    chars[start..end]
         .iter()
         .filter_map(|&cp| char::from_u32(cp as u32))
         .collect()
