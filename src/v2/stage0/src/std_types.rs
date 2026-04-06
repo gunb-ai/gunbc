@@ -147,21 +147,6 @@ pub fn container_to_algebra_name(name: String) -> Option<String> {
     v2_rt::map_get(&container_to_algebra(), name)
 }
 
-pub fn algebra_arity() -> Rc<HashMap<String, i64>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, i64>> = {
-            let mut __m = HashMap::new();
-            __m.insert("FreeMonoid".to_string(), 1);
-            __m.insert("BooleanAlgebra".to_string(), 1);
-            __m.insert("PartialFunction".to_string(), 2);
-            __m.insert("OrderedRing".to_string(), 0);
-            __m.insert("ApproximateField".to_string(), 0);
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 
 pub enum Bool {

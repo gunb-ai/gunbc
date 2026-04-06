@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr};
-pub use crate::std_types::{container_expected_arity, container_to_algebra_name, algebra_arity};
+pub use crate::std_types::{container_to_algebra_name};
 pub use crate::extdeps_languages_rust_types::{rust_type_checkpoints, rust_algebra_inhabitants, rust_callable, rust_optional_template};
 pub use crate::extdeps_languages_python_types::{python_type_checkpoints, python_algebra_inhabitants, python_callable, python_optional_template};
 pub use crate::extdeps_languages_go_types::{go_type_checkpoints, go_algebra_inhabitants, go_callable, go_optional_template};
@@ -133,28 +133,4 @@ pub fn apply_inhabitant_template1(template: String, inner: String) -> String {
 
 pub fn apply_inhabitant_template2(template: String, first: String, second: String) -> String {
     v2_rt::replace(v2_rt::replace(template, "{0}".to_string(), first), "{1}".to_string(), second)
-}
-
-pub fn coercion_container_arity(name: String) -> Option<i64> {
-    match container_expected_arity(name.clone()) {
-    Some(arity) => Some(arity.clone()),
-    None => match container_to_algebra_name(name.clone()) {
-    Some(algebra) => v2_rt::map_get(&algebra_arity(), algebra.clone()),
-    None => None,
-},
-}
-}
-
-pub fn is_keyed_container(name: String) -> bool {
-    match coercion_container_arity(name) {
-    Some(arity) => (arity.clone() == 2),
-    None => false,
-}
-}
-
-pub fn is_element_container(name: String) -> bool {
-    match coercion_container_arity(name) {
-    Some(arity) => (arity.clone() == 1),
-    None => false,
-}
 }

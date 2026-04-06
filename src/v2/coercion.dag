@@ -22,7 +22,7 @@ module v2.compiler.coercion
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr }
-import std.types { container_expected_arity, container_to_algebra_name, algebra_arity }
+import std.types { container_to_algebra_name }
 import extdeps.languages.rust.types {
   rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
   rust_optional_template
@@ -139,32 +139,3 @@ fn apply_inhabitant_template2(template: String, first: String, second: String) -
   replace(replace(template, "\{0\}", first), "\{1\}", second)
 }
 
-// Container arity resolution: surface names via container_type_arity,
-// algebra names via container_to_algebra → algebra_arity.
-// All authorities imported from std/types.dag (co-located with declarations).
-fn coercion_container_arity(name: String) -> Int? {
-  match container_expected_arity(name: name) {
-    Some { value: arity } => Some { value: arity }
-    None =>
-      match container_to_algebra_name(name: name) {
-        Some { value: algebra } => map_get(algebra_arity, algebra)
-        None => none
-      }
-  }
-}
-
-// Container kind classification: keyed (arity 2) vs element (arity 1).
-// Resolves both surface names (List, Map) and algebra names (FreeMonoid, PartialFunction).
-fn is_keyed_container(name: String) -> Bool {
-  match coercion_container_arity(name: name) {
-    Some { value: arity } => arity == 2
-    None => false
-  }
-}
-
-fn is_element_container(name: String) -> Bool {
-  match coercion_container_arity(name: name) {
-    Some { value: arity } => arity == 1
-    None => false
-  }
-}

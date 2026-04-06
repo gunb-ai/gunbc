@@ -120,18 +120,6 @@ fn container_to_algebra_name(name: String) -> String? {
   map_get(container_to_algebra, name)
 }
 
-// Algebra arity: target-independent type-parameter count per algebra.
-// Arity is a property of the algebraic structure, not the target language.
-// Source of truth should be std/algebra.dag once it carries arity; until
-// then this table is the cross-language authority.
-data algebra_arity: Map<String, Int> = {
-  "FreeMonoid": 1,
-  "BooleanAlgebra": 1,
-  "PartialFunction": 2,
-  "OrderedRing": 0,
-  "ApproximateField": 0
-}
-
 // Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
 // Target: Bool = BooleanAlgebra over {True, False}.
 type Bool = True | False
