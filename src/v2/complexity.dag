@@ -2008,7 +2008,9 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
       ExprMethodCall { method_semantics: ms } =>
         let receiver = method_receiver(texpr: expr)
         match method_size_effect(method_semantics: ms) {
-          Some { value: _ } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          Some { value: ShrinkEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          Some { value: ProjectionEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          Some { value: IdentityEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
           None => false
         }
       _ => false

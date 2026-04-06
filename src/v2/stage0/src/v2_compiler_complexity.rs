@@ -1602,7 +1602,9 @@ let base = field_access_base(expr.clone());
     ExprData::ExprMethodCall { method_semantics: ms, .. } => {
                 let receiver = method_receiver(expr.clone());
 match method_size_effect(ms.clone()) {
-    Some(_) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
+    Some(CollectionSizeEffect::ShrinkEffect) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
+    Some(CollectionSizeEffect::ProjectionEffect) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
+    Some(CollectionSizeEffect::IdentityEffect) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
     None => false,
 }
 },

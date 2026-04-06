@@ -998,10 +998,3 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<Algeb
     AlgebraProfile::PartialFunctionProfile => partial_function_templates(),
 }
 }
-
-pub fn lookup_algebra_method_template(method_name: String) -> Option<Rc<AlgebraFieldTemplate>> {
-    {
-        let all_profiles = Rc::new(vec![AlgebraProfile::FreeMonoidCollectionProfile, AlgebraProfile::BooleanAlgebraCollectionProfile, AlgebraProfile::FreeMonoidScalarProfile, AlgebraProfile::PartialFunctionProfile, AlgebraProfile::OrderedRingProfile, AlgebraProfile::ApproximateFieldProfile, AlgebraProfile::BooleanAlgebraProfile]);
-Rc::new({ let mut __result = Vec::new(); for t in Rc::new({ let mut __result = Vec::new(); for p in all_profiles.iter().cloned() { __result.extend((*algebra_templates_for_profile(p.clone())).iter().cloned()); } __result }).iter().cloned() { if (t.name.clone().as_str() == method_name.clone().as_str()) { __result.push(t); } } __result }).first().cloned()
-}
-}

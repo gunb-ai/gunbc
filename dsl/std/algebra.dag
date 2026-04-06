@@ -525,21 +525,3 @@ fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTe
   }
 }
 
-// Look up the algebra template for a method by scanning all algebra profiles.
-// Returns the matching template where the method is declared.
-// For non-kernel types or unknown methods, returns none.
-fn lookup_algebra_method_template(method_name: String) -> AlgebraFieldTemplate? {
-  let all_profiles = [
-    FreeMonoidCollectionProfile,
-    BooleanAlgebraCollectionProfile,
-    FreeMonoidScalarProfile,
-    PartialFunctionProfile,
-    OrderedRingProfile,
-    ApproximateFieldProfile,
-    BooleanAlgebraProfile
-  ]
-  all_profiles
-    |> flat_map(p => algebra_templates_for_profile(profile: p))
-    |> filter(t => t.name == method_name)
-    |> first
-}
