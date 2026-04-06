@@ -63,13 +63,14 @@ use crate::v2_std_core::BinOp::{Sub, Div};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::LiteralValue::{LitNull, LitInt};
+pub use crate::std_algebra::{CollectionSizeEffect, CostShape};
+use crate::std_algebra::CollectionSizeEffect::{ShrinkEffect, ProjectionEffect, IdentityEffect};
+use crate::std_algebra::CostShape::{ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody};
 use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
-use CostShape::*;
 use ProgressKind::*;
 use ParserResultSource::*;
-use ListMethodKind::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 
@@ -131,96 +132,6 @@ pub enum Certainty {
     Proven,
     Conservative,
     Unknown,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum CostShape {
-    ShapeConstant,
-    ShapeLinearScan {
-        produces_collection: bool,
-    },
-    ShapeIterateBody {
-        produces_collection: bool,
-    },
-    ShapeSortBody,
-}
-impl CostShape {
-    pub fn produces_collection(&self) -> bool {
-        match self {
-            CostShape::ShapeConstant => panic!("no produces_collection on unit variant"),
-            CostShape::ShapeLinearScan { produces_collection: __val, .. } => __val.clone(),
-            CostShape::ShapeIterateBody { produces_collection: __val, .. } => __val.clone(),
-            CostShape::ShapeSortBody => panic!("no produces_collection on unit variant"),
-        }
-    }
-}
-
-pub fn method_cost_shape_table() -> Rc<HashMap<String, Rc<CostShape>>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, Rc<CostShape>>> = {
-            let mut __m = HashMap::new();
-            __m.insert("map".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("flat_map".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("filter".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("enumerate".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("skip".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("take".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("fold".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}));
-            __m.insert("any".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}));
-            __m.insert("all".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}));
-            __m.insert("sort_by".to_string(), Rc::new(CostShape::ShapeSortBody));
-            __m.insert("count".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("first".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("last".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("join".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("string_contains".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("concat".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("chars".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-}));
-            __m.insert("split".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-}));
-            __m.insert("append".to_string(), Rc::new(CostShape::ShapeConstant));
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn method_cost_shape(method_name: String) -> Option<Rc<CostShape>> {
-    v2_rt::lookup(&method_cost_shape_table(), method_name)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -368,34 +279,17 @@ pub struct EvidenceBlockAcc {
     pub vars: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ListMethodKind {
-    SkipMethod,
-    FirstMethod,
-    LastMethod,
-}
-
-pub fn classify_list_method(name: String) -> Option<ListMethodKind> {
-    if (name.clone().as_str() == "skip".to_string().as_str()) {
-        Some(ListMethodKind::SkipMethod)
-} else {
-        if (name.clone().as_str() == "first".to_string().as_str()) {
-            Some(ListMethodKind::FirstMethod)
-} else {
-            if (name.clone().as_str() == "last".to_string().as_str()) {
-                Some(ListMethodKind::LastMethod)
-} else {
-                None
-}
-}
-}
-}
-
 pub fn is_algebra_iteration_method(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
     match method_semantics.as_deref().cloned() {
     Some(MethodSemantics::AlgebraMethodSemantics { .. }) => true,
     _ => false,
+}
+}
+
+pub fn method_size_effect(method_semantics: Option<Rc<MethodSemantics>>) -> Option<CollectionSizeEffect> {
+    match method_semantics.as_deref().cloned() {
+    Some(MethodSemantics::AlgebraMethodSemantics { size_effect: se, .. }) => se.clone(),
+    _ => None,
 }
 }
 
@@ -435,12 +329,43 @@ continue;
 pub fn proof_has_non_descending_cycle(members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
     {
         let non_descending = Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { if (is_lexicographic_descent(e.evidence.clone()) == false) { __result.push(e); } } __result });
-let nd_progress_edges = Rc::new({ let mut __result = Vec::new(); for e in non_descending.iter().cloned() { __result.push(Rc::new(ParserProgressEdge {
-    caller: e.caller.clone(),
-    callee: e.callee.clone(),
-    progress: ProgressKind::ProgressSame,
-})); } __result });
-same_progress_subgraph_has_cycle(members, nd_progress_edges)
+let has_self_cycle = { let mut __found = false; for e in non_descending.clone().iter().cloned() { if (e.caller.clone().as_str() == e.callee.clone().as_str()) { __found = true; break; } } __found };
+if has_self_cycle {
+            true
+} else {
+            {
+                let nd_graph = build_call_graph_from_proof_edges(members.clone(), non_descending.clone());
+graph_has_multi_node_scc(members.clone(), nd_graph)
+}
+}
+}
+}
+
+pub fn build_call_graph_from_proof_edges(names: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> Rc<CallGraph> {
+    {
+        let initial_forward = names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])));
+let initial_reverse = names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])));
+let graph_acc = Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { if (e.caller.clone().as_str() != e.callee.clone().as_str()) { __result.push(e); } } __result }).iter().cloned().fold(Rc::new(CallGraphAcc {
+    forward: initial_forward,
+    reverse: initial_reverse,
+}), |acc: Rc<CallGraphAcc>, edge: Rc<ProofEdge>| {
+            let forward_neighbors = match v2_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
+    Some(ns) => v2_rt::concat(ns.clone(), Rc::new(vec![edge.callee.clone()])),
+    None => Rc::new(vec![edge.callee.clone()]),
+};
+let reverse_neighbors = match v2_rt::map_get(&acc.reverse.clone(), edge.callee.clone()) {
+    Some(ns) => v2_rt::concat(ns.clone(), Rc::new(vec![edge.caller.clone()])),
+    None => Rc::new(vec![edge.caller.clone()]),
+};
+Rc::new(CallGraphAcc {
+    forward: v2_rt::rc_map_insert(acc.forward.clone(), edge.caller.clone(), forward_neighbors.clone()),
+    reverse: v2_rt::rc_map_insert(acc.reverse.clone(), edge.callee.clone(), reverse_neighbors.clone()),
+})
+});
+Rc::new(CallGraph {
+    forward: graph_acc.forward.clone(),
+    reverse: graph_acc.reverse.clone(),
+})
 }
 }
 
@@ -1031,17 +956,6 @@ infer_parser_always_advancing_members(members, func_index.clone())
 }
 }
 
-pub fn self_calls_have_strict_parser_progress(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, parser_always_advancing: Rc<HashMap<String, bool>>) -> bool {
-    match parser_state_param(params) {
-    Some(state_param) => {
-        let self_set = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), true);
-let edges = collect_parser_progress_edges(func_name.clone(), body, state_param.clone(), self_set, empty_parser_progress_env(), parser_always_advancing, v2_rt::rc_empty_map::<bool>());
-(((edges.clone().len() as i64) > 0) && { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() == ProgressKind::ProgressStrict)) { __all = false; break; } } __all })
-},
-    None => false,
-}
-}
-
 pub fn build_call_graph_from_parser_edges(names: Rc<Vec<String>>, edges: Rc<Vec<Rc<ParserProgressEdge>>>) -> Rc<CallGraph> {
     {
         let initial_forward = names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])));
@@ -1391,27 +1305,6 @@ continue;
 }
 }
 
-pub fn collect_descending_witness_names(body: Rc<Node>, descending_witness_names: Rc<HashMap<String, String>>) -> Rc<HashMap<String, String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*body.expr_data.clone()).clone() {
-    ExprData::ExprLet => {
-            let value_witnesses = collect_descending_witness_names(let_value(body.clone()), descending_witness_names);
-let next_witnesses_base = descending_name_set_without_key(value_witnesses.clone(), let_binding_name(body.clone()));
-let next_witnesses = match expr_descending_witness_source(let_value(body.clone()), value_witnesses.clone()) {
-    Some(source_param) => v2_rt::rc_map_insert(next_witnesses_base, let_binding_name(body.clone()), source_param.clone()),
-    None => next_witnesses_base,
-};
-match let_body(body.clone()) {
-    Some(b) => collect_descending_witness_names(b.clone(), next_witnesses),
-    None => next_witnesses,
-}
-},
-    ExprData::ExprBlock => body.children.clone().iter().cloned().fold(descending_witness_names, |acc: Rc<HashMap<String, String>>, stmt: Rc<Node>| collect_descending_witness_names(stmt.clone(), acc.clone())),
-    _ => body.children.clone().iter().cloned().fold(descending_witness_names, |acc: Rc<HashMap<String, String>>, child: Rc<Node>| collect_descending_witness_names(child.clone(), acc.clone())),
-}
-    })
-}
-
 pub fn condition_param_names(expr: Rc<Node>, param_set: Rc<HashMap<String, String>>) -> Rc<HashMap<String, String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
@@ -1461,42 +1354,6 @@ pub fn recursive_param_name_for_arg(idx: i64, arg_node: Rc<Node>, params: Rc<Vec
     Some(name) => Some(name.clone()),
     None => Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(params.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() == idx.clone()) { __result.push(pair); } } __result }).iter().cloned() { __result.push(param_node_name(pair.1.clone())); } __result }).first().cloned(),
 }
-}
-
-pub fn is_descending_witness_arg(expr: Rc<Node>, func_name: String, param_name: String, descending_witness_names: Rc<HashMap<String, String>>) -> bool {
-    if (count_self_calls(expr.clone(), func_name) > 0) {
-        false
-} else {
-        match expr_descending_witness_source(expr.clone(), descending_witness_names) {
-    Some(source_param) => (source_param.clone().as_str() == param_name.as_str()),
-    None => false,
-}
-}
-}
-
-pub fn self_calls_have_descending_witness(body: Rc<Node>, func_name: String, params: Rc<Vec<Rc<Node>>>, descending_witness_names: Rc<HashMap<String, String>>) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*body.expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => {
-            let own_ok = if (expr_call_func(body.clone()).as_str() == func_name.clone().as_str()) {
-                {
-                    let arg_nodes = body.children.clone();
-let args = Rc::new({ let mut __result = Vec::new(); for arg_node in arg_nodes.clone().iter().cloned() { __result.push(arg_value(arg_node.clone())); } __result });
-let arg_shape_ok = { let mut __all = true; for arg_expr in args.iter().cloned() { if !((count_self_calls(arg_expr.clone(), func_name.clone()) == 0)) { __all = false; break; } } __all };
-let witness_ok = { let mut __found = false; for pair in Rc::new(arg_nodes.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if match recursive_param_name_for_arg(pair.0.clone(), pair.1.clone(), params.clone()) {
-    Some(param_name) => is_descending_witness_arg(arg_value(pair.1.clone()), func_name.clone(), param_name.clone(), descending_witness_names.clone()),
-    None => false,
-} { __found = true; break; } } __found };
-(arg_shape_ok && witness_ok)
-}
-} else {
-                true
-};
-(own_ok && { let mut __all = true; for child in body.children.clone().iter().cloned() { if !(self_calls_have_descending_witness(child.clone(), func_name.clone(), params.clone(), descending_witness_names.clone())) { __all = false; break; } } __all })
-},
-    _ => { let mut __all = true; for child in body.children.clone().iter().cloned() { if !(self_calls_have_descending_witness(child.clone(), func_name.clone(), params.clone(), descending_witness_names.clone())) { __all = false; break; } } __all },
-}
-    })
 }
 
 pub fn is_descending_expr(expr: Rc<Node>) -> bool {
@@ -1562,8 +1419,8 @@ break (is_children_list_field(field.clone()) && match (*base.expr_data.clone()).
     _ => false,
 }); },
     ExprData::ExprVar { .. } => { break set_has(vars.clone(), expr_var_name(expr.clone())); },
-    ExprData::ExprMethodCall { .. } => { match classify_list_method(expr_call_func(expr.clone())) {
-    Some(ListMethodKind::SkipMethod) => { {
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => { match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => { {
             let __tco_0 = method_receiver(expr);
 let __tco_1 = param_name;
 let __tco_2 = vars;
@@ -1573,25 +1430,6 @@ vars = __tco_2;
 continue;
 } },
     _ => { break false; },
-} },
-    ExprData::ExprCall { .. } => { let callee = expr_call_func(expr.clone());
-if (callee.clone().as_str() == "skip".to_string().as_str()) {
-            break { let mut __found = false; for arg_node in expr.children.clone().iter().cloned() { if {
-                let arg = arg_value(arg_node.clone());
-match (*arg.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { .. } => {
-                    let base = field_access_base(arg.clone());
-let field = field_access_field(arg.clone());
-(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => (expr_var_name(base.clone()).as_str() == param_name.clone().as_str()),
-    _ => false,
-})
-},
-    _ => false,
-}
-} { __found = true; break; } } __found };
-} else {
-            break false;
 } },
     _ => { break false; },
 }
@@ -1604,41 +1442,15 @@ pub fn is_structural_children(expr: Rc<Node>, param_name: String, vars: Rc<HashM
     ExprData::ExprFieldAccess { .. } => {
             let base = field_access_base(expr.clone());
 let field = field_access_field(expr.clone());
-(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => set_has(vars.clone(), expr_var_name(base.clone())),
     _ => false,
 })
 },
-    ExprData::ExprMethodCall { .. } => {
-            let mname = expr_call_func(expr.clone());
-match classify_list_method(mname.clone()) {
-    Some(ListMethodKind::SkipMethod) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
-    _ => ((((mname.clone().as_str() == "enumerate".to_string().as_str()) || (mname.clone().as_str() == "filter".to_string().as_str())) || (mname.clone().as_str() == "reverse".to_string().as_str())) && is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone())),
-}
-},
-    ExprData::ExprCall { .. } => {
-            let callee = expr_call_func(expr.clone());
-if (callee.as_str() == "skip".to_string().as_str()) {
-                { let mut __found = false; for arg_node in expr.children.clone().iter().cloned() { if {
-                    let arg = arg_value(arg_node.clone());
-match (*arg.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { .. } => {
-                        let base = field_access_base(arg.clone());
-let field = field_access_field(arg.clone());
-(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                            let bname = expr_var_name(base.clone());
-((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), bname.clone()))
-},
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
+    Some(CollectionSizeEffect::IdentityEffect) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
     _ => false,
-})
-},
-    _ => false,
-}
-} { __found = true; break; } } __found }
-} else {
-                false
-}
 },
     _ => false,
 })
@@ -1650,9 +1462,8 @@ pub fn is_child_descent_expr(expr: Rc<Node>, param_name: String, vars: Rc<HashMa
         true
 } else {
         match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { .. } => match classify_list_method(expr_call_func(expr.clone())) {
-    Some(ListMethodKind::FirstMethod) => is_children_of_param(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
-    Some(ListMethodKind::LastMethod) => is_children_of_param(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ProjectionEffect) => is_children_of_param(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
     _ => false,
 },
     _ => false,
@@ -1696,12 +1507,12 @@ pub fn extractor_inner_arg(expr: Rc<Node>) -> Rc<Node> {
 
 pub fn is_list_shrink_expr(expr: Rc<Node>, param_name: String) -> bool {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { .. } => {
-        let is_skip = match classify_list_method(expr_call_func(expr.clone())) {
-    Some(ListMethodKind::SkipMethod) => true,
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => {
+        let is_shrink = match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => true,
     _ => false,
 };
-((is_skip && match (*method_receiver(expr.clone()).expr_data.clone()).clone() {
+((is_shrink && match (*method_receiver(expr.clone()).expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => (expr_var_name(method_receiver(expr.clone())).as_str() == param_name.as_str()),
     _ => false,
 }) && match method_arg_nodes(expr.clone()).first().cloned() {
@@ -1752,10 +1563,14 @@ let base = field_access_base(expr.clone());
     _ => false,
 })
 },
-    ExprData::ExprMethodCall { .. } => {
-                let mname = expr_call_func(expr.clone());
-let receiver = method_receiver(expr.clone());
-((((((mname.clone().as_str() == "first".to_string().as_str()) || (mname.clone().as_str() == "last".to_string().as_str())) || (mname.clone().as_str() == "skip".to_string().as_str())) || (mname.clone().as_str() == "filter".to_string().as_str())) || (mname.clone().as_str() == "reverse".to_string().as_str())) && expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()))
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => {
+                let receiver = method_receiver(expr.clone());
+match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
+    Some(CollectionSizeEffect::ProjectionEffect) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
+    Some(CollectionSizeEffect::IdentityEffect) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
+    None => false,
+}
 },
     _ => false,
 }
@@ -2523,11 +2338,12 @@ merge_optional_evidence(acc.clone(), ce.clone())
     })
 }
 
-pub fn construct_termination_proof(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>) -> Option<Rc<TerminationProof>> {
-    params.iter().cloned().fold(None, |best: _, p: Rc<Node>| match best.clone() {
+pub fn construct_termination_proof(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, parser_always_advancing: Rc<HashMap<String, bool>>) -> Option<Rc<TerminationProof>> {
+    {
+        let structural_proof = params.clone().iter().cloned().fold(None, |best: _, p: Rc<Node>| match best.clone() {
     Some(_) => best.clone(),
     None => {
-        let pname = param_node_name(p.clone());
+            let pname = param_node_name(p.clone());
 let tree_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), true, false);
 match tree_evidence.clone() {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
@@ -2536,7 +2352,7 @@ match tree_evidence.clone() {
 })]),
 })),
     _ => {
-            let list_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, true);
+                let list_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, true);
 match list_evidence.clone() {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::ListLength {
@@ -2544,7 +2360,7 @@ match list_evidence.clone() {
 })]),
 })),
     _ => {
-                let arith_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, false);
+                    let arith_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, false);
 match arith_evidence.clone() {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::ArithmeticValue {
@@ -2558,7 +2374,41 @@ match arith_evidence.clone() {
 },
 }
 },
-})
+});
+let single_dim_proof = match structural_proof.clone() {
+    Some(_) => structural_proof.clone(),
+    None => match parser_state_param(params.clone()) {
+    Some(state_param) => {
+            let self_set = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), true);
+let edges = collect_parser_progress_edges(func_name.clone(), body.clone(), state_param.clone(), self_set.clone(), empty_parser_progress_env(), parser_always_advancing, v2_rt::rc_empty_map::<bool>());
+if (((edges.clone().len() as i64) > 0) && { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() == ProgressKind::ProgressStrict)) { __all = false; break; } } __all }) {
+                Some(Rc::new(TerminationProof {
+    dimensions: Rc::new(vec![Rc::new(RankingDimension::TokenPosition {
+    param: state_param.name.clone(),
+})]),
+}))
+} else {
+                None
+}
+},
+    None => None,
+},
+};
+match single_dim_proof.clone() {
+    Some(_) => single_dim_proof.clone(),
+    None => {
+            let self_set = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), true);
+let func_entry = Rc::new(FuncEntry {
+    name: func_name.clone(),
+    body: body.clone(),
+    params: params.clone(),
+    span: body.span.clone(),
+});
+let func_index = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), func_entry);
+construct_scc_termination_proof(Rc::new(vec![func_name.clone()]), func_index, self_set.clone())
+},
+}
+}
 }
 
 pub fn construct_branching_termination_proof(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>) -> Option<Rc<TerminationProof>> {
@@ -2620,7 +2470,7 @@ if (path_calls.clone() == 0) {
             lower_call_pattern(Rc::new(CallPattern::FoldBodyCall))
 } else {
             {
-                let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone());
+                let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone(), parser_always_advancing);
 let proof_safe_for_branching = match proof.clone() {
     Some(p) => { let mut __all = true; for dim in p.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
     RankingDimension::TreeSize { .. } => true,
@@ -2665,23 +2515,7 @@ match proof.clone() {
     None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
 }
 } else {
-                    {
-                        let initial_witnesses = recursive_measure_param_names(body.clone(), params.clone());
-let descending_witness_names = collect_descending_witness_names(body.clone(), initial_witnesses);
-if self_calls_have_descending_witness(body.clone(), func_name.clone(), params.clone(), descending_witness_names) {
-                            lower_call_pattern(Rc::new(CallPattern::ChildAccessorCall {
-    accessor: "children".to_string(),
-}))
-} else {
-                            if self_calls_have_strict_parser_progress(func_name.clone(), body.clone(), params.clone(), parser_always_advancing) {
-                                lower_call_pattern(Rc::new(CallPattern::ParserAdvanceCall {
-    witness: "state".to_string(),
-}))
-} else {
-                                lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
-}
-}
-}
+                    lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
 },
 }
 }
@@ -3536,16 +3370,25 @@ result
 }
 }
 
-pub fn is_size_preserving_method(method_name: String) -> bool {
-    ((((((((method_name.clone().as_str() == "map".to_string().as_str()) || (method_name.clone().as_str() == "filter".to_string().as_str())) || (method_name.clone().as_str() == "flat_map".to_string().as_str())) || (method_name.clone().as_str() == "skip".to_string().as_str())) || (method_name.clone().as_str() == "enumerate".to_string().as_str())) || (method_name.clone().as_str() == "sort_by".to_string().as_str())) || (method_name.clone().as_str() == "concat".to_string().as_str())) || (method_name.clone().as_str() == "reverse".to_string().as_str()))
-}
-
 pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
     if (method_semantics.clone() == None) {
         false
 } else {
         match (*method_semantics.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_def, .. } => is_size_preserving_method(method_def.name.clone()),
+    MethodSemantics::AlgebraMethodSemantics { size_effect: se, cost_shape: cs, .. } => {
+            let preserves_shape = match se.clone() {
+    Some(CollectionSizeEffect::ShrinkEffect) => true,
+    Some(CollectionSizeEffect::IdentityEffect) => true,
+    _ => false,
+};
+let produces_collection = match cs.clone().as_deref().cloned() {
+    Some(CostShape::ShapeIterateBody { produces_collection: pc, .. }) => pc.clone(),
+    Some(CostShape::ShapeLinearScan { produces_collection: pc, .. }) => pc.clone(),
+    Some(CostShape::ShapeSortBody) => true,
+    _ => false,
+};
+(preserves_shape || produces_collection)
+},
     _ => false,
 }
 }
@@ -4162,10 +4005,7 @@ let method_cost_result = if (ms.clone() == None) {
                 None
 } else {
                 match (*ms.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_def: md, .. } => {
-                    let md_name = md.name.clone();
-let shape_match = method_cost_shape(md_name);
-match shape_match {
+    MethodSemantics::AlgebraMethodSemantics { method_def: md, cost_shape: cs, .. } => match cs.clone() {
     Some(shape) => Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder, func_index.clone(), scc_index.clone(), parser_always_advancing.clone(), recursion_ctx.clone())),
     None => Some(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
@@ -4180,7 +4020,6 @@ match shape_match {
 }),
     table: recv_r.table.clone(),
 })),
-}
 },
     _ => None,
 }
