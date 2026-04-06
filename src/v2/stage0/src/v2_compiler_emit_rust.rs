@@ -310,7 +310,7 @@ if (ft_count < field_count) {
 
 pub fn build_shared_types(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>, recursive_type_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, bool>> {
     {
-        let user_shared = Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, summary: Rc<TypeSummary>| {
+        let user_shared = Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, summary: Rc<TypeSummary>| {
             let needs_sharing = match (*summary.repr.clone()).clone() {
     TypeRepr::StructRepr => true,
     TypeRepr::EnumRepr { unit_only, .. } => (unit_only.clone() == false),
@@ -322,7 +322,7 @@ if (needs_sharing.clone() && !is_type_constant(summary.clone(), recursive_type_s
 }
 });
 let collection_keys = Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&rust_container_templates())).iter().cloned() { if ((k.clone().as_str() != "optional".to_string().as_str()) && (k.clone().as_str() != "boolean_algebra".to_string().as_str())) { __result.push(k); } } __result });
-collection_keys.iter().cloned().fold(user_shared.clone(), |acc: _, key: String| {
+collection_keys.iter().cloned().fold(user_shared.clone(), |acc: Rc<HashMap<String, bool>>, key: String| {
             let pascal = to_pascal(key.clone());
 v2_rt::rc_map_insert(acc.clone(), pascal.clone(), true)
 })
@@ -386,10 +386,10 @@ if ((workflow_default_diags.clone().len() as i64) > 0) {
     diagnostics: workflow_default_diags.clone(),
 })
 }
-let svc_module_map = typed.modules.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, tm: Rc<TypedModule>| {
+let svc_module_map = typed.modules.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
             let svc_items = Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_service_item(item.clone()) { __result.push(item); } } __result });
 let mod_filename = module_to_filename(tm.module.clone().name.clone());
-svc_items.clone().iter().cloned().fold(acc.clone(), |a: _, svc: Rc<Node>| v2_rt::rc_map_insert(a.clone(), svc.name.clone(), mod_filename.clone()))
+svc_items.clone().iter().cloned().fold(acc.clone(), |a: Rc<HashMap<String, String>>, svc: Rc<Node>| v2_rt::rc_map_insert(a.clone(), svc.name.clone(), mod_filename.clone()))
 });
 let test_projections = extract_test_projections(typed.clone());
 let module_files = Rc::new({ let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.push(emit_module_full(tm.clone(), registry.clone(), emit_info.clone(), shared_types.clone(), svc_module_map.clone())); } __result });

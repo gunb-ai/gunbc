@@ -67,6 +67,30 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 }
 }
 
+pub fn type_variable_node(id: String) -> Rc<Node> {
+    Rc::new(Node {
+    name: "".to_string(),
+    span: make_span(0, 0),
+    ident_span: None,
+    children: Rc::new(vec![]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: Some(Rc::new(InferredNode::TypeVariable {
+    id: id,
+})),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})
+}
+
 pub fn child_inferred_or_name(ch: Rc<Node>) -> Rc<Node> {
     if (ch.inferred.clone() == None) {
         nominal_type_ref(ch.name.clone())
@@ -327,6 +351,10 @@ pub fn placeholder_type_node(name: String) -> Rc<Node> {
     nominal_type_ref(name)
 }
 
+pub fn is_algebra_placeholder_name(name: String) -> bool {
+    ((name.clone().as_str() == "MappedElement".to_string().as_str()) || (name.clone().as_str() == "FoldAccumulator".to_string().as_str()))
+}
+
 pub fn nominal_type_ref(name: String) -> Rc<Node> {
     leaf_node_with_span(name, make_span(0, 0))
 }
@@ -334,7 +362,7 @@ pub fn nominal_type_ref(name: String) -> Rc<Node> {
 pub fn algebra_child_or_placeholder(base: Rc<Node>, child_index: i64, placeholder: String) -> Rc<Node> {
     match Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(base.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() == child_index.clone()) { __result.push(pair); } } __result }).iter().cloned() { __result.push(pair.1.clone()); } __result }).first().cloned() {
     Some(child) => child.clone(),
-    None => error_type(),
+    None => type_variable_node(placeholder),
 }
 }
 
@@ -349,7 +377,11 @@ match (*template).clone() {
     AlgebraTypeTemplate::ReceiverElement => elem,
     AlgebraTypeTemplate::ReceiverKey => key_node,
     AlgebraTypeTemplate::ReceiverValue => val_node,
-    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => placeholder_type_node(n.clone()),
+    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => if is_algebra_placeholder_name(n.clone()) {
+                type_variable_node(n.clone())
+} else {
+                nominal_type_ref(n.clone())
+},
     AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => container_node(base.name.clone(), instantiate_algebra_type(inner.clone(), base.clone())),
     AlgebraTypeTemplate::ListOf { element: inner, .. } => container_node("List".to_string(), instantiate_algebra_type(inner.clone(), base.clone())),
     AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(instantiate_algebra_type(inner.clone(), base.clone())),
@@ -1057,9 +1089,9 @@ let n4 = collect_field_template_names(boolean_algebra_collection_templates(), n3
 let n5 = collect_field_template_names(boolean_algebra_templates(), n4);
 let n6 = collect_field_template_names(approximate_field_templates(), n5);
 let all_template_names = collect_field_template_names(ordered_ring_templates(), n6);
-let concrete_types = Rc::new(v2_rt::map_keys(&kernel_algebra_profile())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let concrete_types = Rc::new(v2_rt::map_keys(&kernel_algebra_profile())).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let concrete_types = v2_rt::rc_map_insert(v2_rt::rc_map_insert(concrete_types.clone(), "Char".to_string(), true), "Ordering".to_string(), true);
-Rc::new(v2_rt::map_keys(&all_template_names)).iter().cloned().fold(type_params.clone(), |acc: _, name: String| match v2_rt::map_get(&concrete_types, name.clone()) {
+Rc::new(v2_rt::map_keys(&all_template_names)).iter().cloned().fold(type_params.clone(), |acc: Rc<HashMap<String, bool>>, name: String| match v2_rt::map_get(&concrete_types, name.clone()) {
     Some(_) => acc.clone(),
     None => v2_rt::rc_map_insert(acc.clone(), name.clone(), true),
 })

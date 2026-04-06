@@ -926,15 +926,14 @@ fn is_conj_with_children(n: Node) -> Bool {
 }
 
 // Extract the inferred type from a child Node.
-// Typed: use resolved type. Error/Variable: propagate error_type.
-// Untyped: use the child's own structure as the type authority.
+// Typed: use resolved type. All other states: propagate error_type (fail-closed).
 // Note: node_inferred_to_outputs gate ensures only Typed children reach here.
 fn child_inferred_or_empty(ch: Node) -> Node {
   match rt_node(n: ch) {
     Typed { node: rt } => rt
     InferError { message: _, span: _ } => error_type
     InferVariable { id: _ } => error_type
-    Untyped => ch
+    Untyped => error_type
   }
 }
 

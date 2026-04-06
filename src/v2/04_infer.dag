@@ -70,7 +70,8 @@ import v2.std.core {
   with_optional_cardinality, with_required_cardinality,
   no_span, make_span, NewlineIndex,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
-  error_type
+  error_type,
+  is_container_type, container_expected_arity
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
@@ -774,55 +775,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
 // lambda params from the element type instead of type variables.
 // -------------------------------------------------------------------------
 
-fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: InferScope) -> InferResult {
-  match lambda_expr.expr_data {
-    ExprLambda { semantics: _ } =>
-      let span = lambda_expr.span
-      let lam_body = lambda_body(texpr: lambda_expr)
-      let lam_params = lambda_param_names(texpr: lambda_expr)
-      let param_types = if lam_params |> count == 1 {
-        [element_type]
-      } else {
-        lam_params |> enumerate |> map(pair =>
-          if pair.first == (lam_params |> count) - 1 {
-            element_type
-          } else {
-            type_variable_node(id: "lambda_non_last_param")
-          }
-        )
-      }
-      let typed_scope = if lam_params |> count == 1 {
-        match lam_params |> first {
-          Some { value: p } => extend_scope(scope: scope, name: p, resolved: element_type)
-          None => scope
-        }
-      } else {
-        fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
-          if pair.first == (lam_params |> count) - 1 {
-            extend_scope(scope: acc, name: pair.second, resolved: element_type)
-          } else {
-            extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_non_last_param"))
-          }
-        )
-      }
-      let body_result = infer_expr(texpr: lam_body, scope: typed_scope, expected: none)
-      let body_typed = body_result.typed
-      let lam_param_nodes = lambda_expr.children |> skip(1)
-      InferResult {
-        typed: make_expr_node(
-          expr_data: ExprLambda {
-            semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
-          },
-          children: concat([body_typed], lam_param_nodes),
-          inferred: Some { value: Resolved { node: rt_type(n: body_typed) } },
-          span: span
-        ),
-        diagnostics: body_result.diagnostics
-      }
-    _ => infer_expr(texpr: lambda_expr, scope: scope, expected: none)
-  }
-}
-
 fn is_lambda_expr(e: Node) -> Bool {
   match e.expr_data {
     ExprLambda { semantics: _ } => true
@@ -891,7 +843,7 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
       }
       None => fallback
     }
-  } else if method_name_is(opt: method_name, expected: "map_insert") && receiver_type.children |> count == 0 && receiver_is_map && typed_args |> count >= 2 {
+  } else if method_name_is(opt: method_name, expected: "map_insert") && receiver_type.children |> count == 0 && is_container_type(name: receiver_type.name) && container_expected_arity(name: receiver_type.name) == Some { value: 2 } && typed_args |> count >= 2 {
     let key_type = match typed_args |> first {
       Some { value: key_arg } => match rt_node(n: arg_value(n: key_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
@@ -901,7 +853,7 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
         map_node(key: key_type, value: match rt_node(n: arg_value(n: val_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback })
       None => fallback
     }
-  } else if method_name_is(opt: method_name, expected: "map_merge") && receiver_is_map && typed_args |> count >= 1 {
+  } else if method_name_is(opt: method_name, expected: "map_merge") && (receiver_is_map || (is_container_type(name: receiver_type.name) && container_expected_arity(name: receiver_type.name) == Some { value: 2 })) && typed_args |> count >= 1 {
     let overlay_type = match typed_args |> first {
       Some { value: overlay_arg } => match rt_node(n: arg_value(n: overlay_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => receiver_type  InferVariable { id: _ } => receiver_type  Untyped => receiver_type }
       None => receiver_type
@@ -1659,7 +1611,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let lam_param_nodes = texpr.children |> skip(1)
       // If expected carries an element type, use it for lambda params.
       // Single param or last param gets the element type; others get TypeVariable.
-      // This unifies infer_lambda_with_element_type into the main path.
+      // Unified lambda element-type threading: expected flows to param scope.
       let lam_scope = if expected != none {
         let exp = expected.value
         if exp.params |> count > 0 {
@@ -2210,6 +2162,24 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 //   3. Local type definitions from the module's items
 // =========================================================================
 
+// Collect type bindings from parent environments, filtering out bridge
+// placeholder names. Typed return ensures fold(init: empty_map()) resolves
+// to Map<String, TypeBinding>.
+fn collect_filtered_bindings(envs: List<TypeEnv>, placeholder_names: Map<String, Bool>) -> Map<String, TypeBinding> {
+  fold(envs, init: empty_map(), f: (acc, env) =>
+    fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
+      if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
+        bacc
+      } else {
+        match map_get(env.bindings, name) {
+          Some { value: binding } => map_insert(bacc, name, binding)
+          None => bacc
+        }
+      }
+    )
+  )
+}
+
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> BuildTypeEnvResult {
   let placeholder_names = bridge_placeholder_type_names()
   // Seed the kernel with primitive types so they resolve even when
@@ -2265,18 +2235,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
   // Bridge placeholder slots remain available inside std.types declarations,
   // but importing modules must not see them as ambient user-facing types.
-  let std_import_bindings = fold(std_types_parent_env, init: empty_map(), f: (acc, env) =>
-    fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-      if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
-        bacc
-      } else {
-        match map_get(env.bindings, name) {
-          Some { value: binding } => map_insert(bacc, name, binding)
-          None => bacc
-        }
-      }
-    )
-  )
+  let std_import_bindings = collect_filtered_bindings(envs: std_types_parent_env, placeholder_names: placeholder_names)
   let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Some { value: typed_parent } =>
@@ -2437,18 +2396,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
   // Mirror the same std.types-only placeholder filtering in the unresolved path.
-  let std_import_bindings = fold(std_types_parent_env, init: empty_map(), f: (acc, env) =>
-    fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-      if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
-        bacc
-      } else {
-        match map_get(env.bindings, name) {
-          Some { value: binding } => map_insert(bacc, name, binding)
-          None => bacc
-        }
-      }
-    )
-  )
+  let std_import_bindings = collect_filtered_bindings(envs: std_types_parent_env, placeholder_names: placeholder_names)
   let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Some { value: typed_parent } =>

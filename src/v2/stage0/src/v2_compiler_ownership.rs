@@ -475,7 +475,7 @@ pub fn fold_body_safe_field_moves(lambda_node: Rc<Node>, acc_name: String) -> bo
     ExprData::ExprLambda { .. } => {
         let body = lambda_body(lambda_node.clone());
 let moves = collect_acc_field_moves(body, acc_name);
-let deduped = moves.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |seen: _, field: String| v2_rt::rc_map_insert(seen.clone(), field.clone(), true));
+let deduped = moves.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |seen: Rc<HashMap<String, bool>>, field: String| v2_rt::rc_map_insert(seen.clone(), field.clone(), true));
 ((Rc::new(v2_rt::map_keys(&deduped)).len() as i64) == (moves.clone().len() as i64))
 },
     _ => true,

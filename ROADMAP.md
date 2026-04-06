@@ -171,7 +171,7 @@ of propagating error state. `node_inferred_to_outputs` builds outputs
 from fabricated types. Highest-confidence correctness bug (reviewer
 2026-04-02).
 
-- [~] `child_inferred_or_empty` no longer fabricates Unit — `Untyped` returns the child's own structure (partial: reuses raw structure as type authority, not explicit error propagation)
+- [x] `child_inferred_or_empty` no longer fabricates Unit — fail-closed: all non-Typed states (Untyped, InferError, InferVariable) propagate `error_type`. `node_inferred_to_outputs` gate ensures only Typed children reach here.
 - [x] `node_inferred_to_outputs` refuses error-typed children (fail-closed) — all-or-nothing gate via `rt_node` check; returns `[]` if any child is not `Typed`
 
 ### Incomplete parameterization and bidirectional inference
@@ -189,15 +189,79 @@ Symptoms:
 
 Open items:
 - [x] Incomplete parameterized types rejected at normalization — `container_expected_arity` returns `Int?` (fail-closed: unknown names → None, no false positives on operations sharing container names)
-- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators. Empty list `[]` diagnostic blocked on expected-type propagation through list element inference (160 false positives from `[]` in record literal fields like `param_types: []`)
+- [~] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; `expected` now threads through ExprLet body (fold-init in let context receives expected). Remaining: fold-init path with no caller expected still falls back to `bare_map_node()`. Empty list `[]` diagnostic blocked on expected-type propagation through list element inference (160 false positives from `[]` in record literal fields like `param_types: []`). Dead `infer_lambda_with_element_type` deleted.
 - [x] Thread `expected` to formal params at matching positions — over-arity args no longer receive synthetic expected types; non-callable expected boundary overload remains open
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
+
+### BRIDGE fabrication progress (83 → 29)
+
+BRIDGE count reduced from 83 to 29. Root cause found and fixed:
+`node_is_keyed_collection` required `children.count == 2` in
+`refine_collection_result_type`'s `map_insert` branch, but the branch
+also required `children.count == 0` (bare container). Contradictory —
+the branch never fired. Fixed with `is_container_type` + arity check.
+
+Remaining 29 BRIDGEs (25 real + 4 emitter template strings):
+- 10 complexity.dag: standalone `empty_map()` in let-VALUE/match-arm
+- 7 emit_rust.dag: template binding maps `Map<String, String>`
+- 2 emit_go/python: same template binding pattern
+- 2 infer.dag: build_type_env fold patterns
+- 1 infer_method.dag: builtin_function_registry init
+- 1 infer_types.dag: bridge_placeholder_type_names init
+- 1 infer_sigs.dag: parent_resolved fold
+- 1 resolve.dag: module resolution
+
+All remaining are standalone `empty_map()` with `expected: None` —
+no method return type to refine. They need expected-type propagation
+from usage context (broader bidirectional inference).
+
+### Design direction: compositional type parameter resolution
+
+**Root cause (deeper than BRIDGE):** The algebra template system
+destroys parametric bindings. `PartialFunction<K, V> { insert: fn(K, V)
+-> PF<K, V> }` has K/V shared across params and return. But
+`instantiate_algebra_field` resolves everything from the receiver
+alone — bare receivers produce `error_type`, losing the binding.
+`refine_collection_result_type` (85 lines, 6 method-name dispatches)
+exists entirely to compensate.
+
+**Compositional fix (planned, not yet implemented):**
+
+Phase A — TypeVariable preservation:
+  `algebra_child_or_placeholder` returns `TypeVariable { id: "K" }`
+  instead of `error_type`. Preserves the parametric binding through
+  instantiation. BLOCKED: requires Phase B first — 47 downstream
+  sites break because emit can't render TypeVariable nodes.
+
+Phase B — TypeVariable rendering in emit:
+  Emit must handle TypeVariable nodes: either render as `_` (let Rust
+  infer) or `compile_error!` (fail-closed). This is the unblocking
+  prerequisite for Phase A. Changes in `05_emit.dag` type rendering.
+
+Phase C — Structural return type resolution:
+  After method args are inferred, resolve TypeVariables in the return
+  type by matching param positions to inferred arg types. Replaces
+  `refine_collection_result_type` with structural dispatch (no method-
+  name checks). The algebra field's callable params carry the binding
+  positions; the args carry the resolved types.
+
+Phase D — Delete compensation:
+  `refine_collection_result_type` dissolves. `bridge_placeholder_type_
+  names` infrastructure dissolves. Dead param_types in algebra method
+  fields become live.
+
+Dependency: B → A → C → D. Each phase is independently testable.
+
+**Goal:** fail-closed. Emit must produce fully-typed turbofish or
+`compile_error!`, never silently emit untyped `HashMap::new()` and
+rely on rustc to recover.
 
 ### Acceptance
 
 No fabricated type args, no generic/wrong fallback return types, no
 error-typed children reaching emit. Fallback count promoted to CI.
+BRIDGE fabrication count at 0.
 Ownership and clone correctness tracked under CG lane.
 
 ---
