@@ -109,8 +109,6 @@ import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_owner
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
-  TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
-  TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, is_zero_arg_callable_ref,
@@ -129,7 +127,7 @@ import v2.compiler.emit {
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item,
+  is_type_alias_return_node,
   has_mock_prefix,
   extract_test_projections,
   is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
@@ -524,7 +522,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let prelude = emit_prelude()
   // Collect locally-defined type names so imports can skip them.
   let local_type_names = typed_module.items
-    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef)
+    |> filter(item => item.connective != NoConnective && item.transport == none)
     |> map(item => item.name)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
@@ -550,7 +548,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // RC1: For enums defined in this module, add `use EnumName::*;` so
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
-    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && item.connective == Disj)
+    |> filter(item => item.connective == Disj && item.transport == none)
     |> map(item => concat("use ", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
@@ -734,17 +732,20 @@ fn emit_non_empty_wrappers() -> String {
 fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  let kind = classify_typed_item(item: item)
-  if (kind == TypedItemTypeDef) {
+  // Structural dispatch on Node fields directly (CM: no shared taxonomy).
+  let item_has_structure = item.connective != NoConnective
+  let is_bare_leaf = !item_has_structure && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+  if item_has_structure && item.transport == none {
+    // Type definition (struct or enum) — connective determines which
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info)
-  } else if (kind == TypedItemTypeAlias) {
+  } else if is_bare_leaf && is_type_alias_return_node(n: rt_type(n: item)) {
+    // Type alias
     concat(rust_visibility_prefix(), "type ", item_text, " = ", render_rust_type(n: rt_type(n: item), shared_types: shared_types), ";")
-  } else if (kind == TypedItemTypeDecl) {
+  } else if is_bare_leaf || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0) {
+    // Type declaration (no runtime code): bare leaf or parameterized decl
     ""
-  } else if (kind == TypedItemFunction) {
-    // Set movable bindings for this function from the ownership index.
-    // TCO transforms the code structure, so ownership analysis from the
-    // original AST may not apply — skip optimization for TCO functions.
+  } else if item.body != none && item.type_annotation == none {
+    // Function
     let fn_movable = if is_tco_eligible(name: item_text, body: item.body.value, registry: registry) {
       empty_map()
     } else {
@@ -774,11 +775,14 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
     } else {
       emit_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
     }
-  } else if (kind == TypedItemDataDef) {
+  } else if item.body != none && item.type_annotation != none {
+    // Data definition
     emit_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, shared_types: shared_types, emit_info: emit_info)
-  } else if (kind == TypedItemServiceDef) {
+  } else if item.transport != none && item.children |> count > 0 {
+    // Service definition
     emit_service_def(item: item, registry: registry, shared_types: shared_types, env: env)
-  } else if (kind == TypedItemResourceDef) {
+  } else if (item.transport == none && item.children |> count > 0) || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none) {
+    // Resource definition
     emit_resource_def(item: item, shared_types: shared_types, env: env)
   } else {
     concat("compile_error!(\"unhandled item: ", item_text, "\");")

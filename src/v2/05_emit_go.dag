@@ -91,8 +91,6 @@ import v2.compiler.infer {
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
-  TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction,
-  TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, is_zero_arg_callable_ref,
@@ -112,7 +110,7 @@ import v2.compiler.emit {
   has_nested_records_node,
   is_service_item,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item,
+  is_type_alias_return_node,
   extract_test_projections,
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
@@ -328,8 +326,8 @@ fn go_package_name(module_name: String) -> String {
 
 fn emit_go_imports(items: List<Node>, imports: List<Node>) -> String {
   let has_services = items |> any(item => is_service_item(item: item))
-  let has_types = items |> any(item => classify_typed_item(item: item) == TypedItemTypeDef)
-  let has_functions = items |> any(item => classify_typed_item(item: item) == TypedItemFunction)
+  let has_types = items |> any(item => item.connective != NoConnective && item.transport == none)
+  let has_functions = items |> any(item => item.body != none && item.type_annotation == none)
   let std_imports = collect_go_std_imports(has_services: has_services, has_types: has_types, has_functions: has_functions)
   let pkg_imports = imports |> map(imp =>
     let mod_name = module_to_filename(name: imp.name)
@@ -361,24 +359,26 @@ fn collect_go_std_imports(has_services: Bool, has_types: Bool, has_functions: Bo
 fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  let kind = classify_typed_item(item: item)
-  if (kind == TypedItemTypeDef) {
+  // Structural dispatch on Node fields directly (CM: no shared taxonomy).
+  let item_has_structure = item.connective != NoConnective
+  let is_bare_leaf = !item_has_structure && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+  if item_has_structure && item.transport == none {
     emit_go_type_def_from_connective(item: item, env: env)
-  } else if (kind == TypedItemTypeAlias) {
+  } else if is_bare_leaf && is_type_alias_return_node(n: rt_type(n: item)) {
     emit_go_type_alias(name: item_text, base: rt_type(n: item))
-  } else if (kind == TypedItemTypeDecl) {
+  } else if is_bare_leaf || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0) {
     ""
-  } else if (kind == TypedItemFunction) {
+  } else if item.body != none && item.type_annotation == none {
     if item.uses |> count > 0 {
       emit_go_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
       emit_go_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
     }
-  } else if (kind == TypedItemDataDef) {
+  } else if item.body != none && item.type_annotation != none {
     emit_go_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
-  } else if (kind == TypedItemServiceDef) {
+  } else if item.transport != none && item.children |> count > 0 {
     emit_go_service_def(item: item, registry: registry, env: env)
-  } else if (kind == TypedItemResourceDef) {
+  } else if (item.transport == none && item.children |> count > 0) || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none) {
     emit_go_resource_def(item: item, env: env)
   } else {
     concat("func init() { panic(\"EMIT BUG: unhandled item: ", item_text, "\") }")

@@ -70,7 +70,6 @@ pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFie
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
-use TypedItemKind::*;
 use BackendCapability::*;
 use TransportKind::*;
 use ExprCategory::*;
@@ -108,19 +107,6 @@ pub struct TcoReassignInput {
     pub args: Rc<Vec<Rc<Node>>>,
     pub scope: Rc<InferScope>,
     pub depth: i64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum TypedItemKind {
-    TypedItemTypeDef,
-    TypedItemTypeAlias,
-    TypedItemTypeDecl,
-    TypedItemFunction,
-    TypedItemDataDef,
-    TypedItemServiceDef,
-    TypedItemResourceDef,
-    TypedItemUnhandled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1728,47 +1714,6 @@ pub fn classify_transport(t: Rc<Node>) -> TransportKind {
                 TransportKind::LocalKind
 }
 }
-}
-}
-
-pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
-    {
-        let item_has_structure = (item.connective.clone() != Connective::NoConnective);
-let is_bare_leaf = (((((item_has_structure.clone() == false) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0));
-let kind = if (is_bare_leaf.clone() && is_type_alias_return_node(rt_type(item.clone()))) {
-            TypedItemKind::TypedItemTypeAlias
-} else {
-            if (is_bare_leaf.clone() && !is_type_alias_return_node(rt_type(item.clone()))) {
-                TypedItemKind::TypedItemTypeDecl
-} else {
-                if (item_has_structure.clone() && (item.transport.clone() == None)) {
-                    TypedItemKind::TypedItemTypeDef
-} else {
-                    if ((item.body.clone() != None) && (item.type_annotation.clone() == None)) {
-                        TypedItemKind::TypedItemFunction
-} else {
-                        if ((item.body.clone() != None) && (item.type_annotation.clone() != None)) {
-                            TypedItemKind::TypedItemDataDef
-} else {
-                            if ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0)) {
-                                TypedItemKind::TypedItemServiceDef
-} else {
-                                if (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0)) || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0)) && ((item.properties.clone().len() as i64) > 0)) && (item.body.clone() == None))) {
-                                    TypedItemKind::TypedItemResourceDef
-} else {
-                                    if (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)) {
-                                        TypedItemKind::TypedItemTypeDecl
-} else {
-                                        TypedItemKind::TypedItemUnhandled
-}
-}
-}
-}
-}
-}
-}
-};
-kind
 }
 }
 
