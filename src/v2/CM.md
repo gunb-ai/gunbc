@@ -317,30 +317,116 @@ IR must represent invocation semantics, not surface syntax.
 
 ---
 
-## Principles for resolution
+## Foundational principle: classification is not primitive
 
-1. **Model the concept, don't classify the node.** The question "is this
-   a function?" is already wrong — it's an interpretation. The stable
-   facts are "has body", "has transport", "has params". If emit needs a
-   classification, it should be a consequence of structural facts, not
-   a side-table lookup.
+The heuristic forests exist because the compiler classifies nodes into
+categories (type, function, service) that are not primitive concepts.
+They are surface sugar — named compositions of more fundamental
+properties. See `MODELING.md §four-layer model`:
 
-2. **Compute once, carry structurally.** If a fact is derived during
-   inference, it must reach emit without re-derivation. Either on the
-   item itself or in a boundary type that's fail-closed by construction.
+```
+Surface sugar:      service, fn, type, operation    (user intent)
+Composition layer:  Node, children, edges           (how things connect)
+Semantic kernel:    types, effects, contracts        (what flows through nodes)
+Foundation:         logical algebra                  (why it's sound)
+```
 
-3. **No fail-open fallbacks.** If a lookup can miss, the map isn't
-   total. Either make it total (every item guaranteed present) or make
-   the miss impossible by carrying the fact structurally.
+`MODELING.md` already states: *"The sugar informs the parser what fields
+to expect. It does not flow into the compiler core as identity."*
 
-4. **Name keys are identity proxies.** Every `Map<String, X>` keyed by
-   item name is a proxy for structural identity. The dissolution is
-   carrying X on the item itself, not improving the key.
+The compiler violates this. Surface identity (is-this-a-function,
+is-this-a-service) leaks into every stage — not as an explicit concept,
+but as implicit field-presence heuristics that re-derive it. The
+classification forests are the compiler re-inventing surface sugar
+because it doesn't have the underlying primitives.
 
-5. **String dispatch is a missing enum.** Every `method_def.name == "fold"`
-   is a missing `AlgebraMethodKind` variant. Every `t.name == "rest"`
-   is a missing `TransportKind` variant (partially fixed).
+### What the classifications are really asking
 
-6. **The graph represents semantics, emission only renders.** If the
-   emitter makes a semantic decision (nullary call, clone vs move,
-   method dispatch), that decision belongs upstream.
+Every classification forest is asking about combinations of a few
+orthogonal properties. These properties are already on Node but are
+not named as concepts:
+
+| Property | What it means | Foundation |
+|----------|---------------|------------|
+| **Structure** | Node asserts a data shape (connective + children) | Conjunction/Disjunction — logical structure |
+| **Evidence** | Node provides backing for its claim (body = internal, transport = external) | Witness/proof — epistemic |
+| **Morphism** | Node describes a mapping (params → return type) | Implication — logical entailment |
+
+The surface sugar composes these:
+
+| Sugar | Decomposition |
+|-------|---------------|
+| `type` | Structure, no evidence (the claim IS the structure) |
+| `fn` | Morphism + internal evidence |
+| `func` | Morphism + internal evidence + external binding |
+| `service` | External evidence + structured children (operations) |
+| `resource` | Structure + external identity (capabilities) |
+| `data` | Internal evidence + type constraint (ground term) |
+
+The downstream consumer never needs to know "is this a function?" — it
+needs to know "does this have a morphism?" and "does this have internal
+evidence?" Those are the actual questions. The classification is a
+lossy proxy for them.
+
+### The pattern: concepts are emergent, not primitive
+
+This is the same pattern as recursion. "Recursion" was treated as a
+concept that needed to be detected and classified (is this safe? is
+this tail-recursive?). In reality, recursion is emergent from three
+primitives: fold (structural descent), descend (child traversal), and
+repeat (bounded iteration). Once the primitives were modeled, the
+classification problem dissolved — you didn't need to ask "is this
+safe recursion?" because the primitives were safe by construction.
+
+The same principle applies here:
+
+- **Item classification** (MM-1): "type/function/service" are emergent
+  from structure/evidence/morphism. Model the primitives and the
+  classifications become sugar that the parser uses and the compiler
+  doesn't need.
+
+- **Type structure** (MM-2): "product/sum/leaf" are emergent from
+  connective (already primitive). The missing piece is a named
+  interpretation that the compiler can consume without re-deriving.
+  Connective IS the primitive — it just needs to be the vocabulary
+  the compiler thinks in, rather than something it checks via
+  `.connective == Conj`.
+
+- **Method identity** (MM-3): "fold/map/filter" are emergent from
+  algebraic structure. A fold is a monoid homomorphism. A map is a
+  functor application. A filter is set comprehension. The algebra
+  framework already knows this — the missing piece is naming the
+  operational shape so dispatch doesn't fall back to string matching.
+
+### Design direction
+
+The goal is not to carry classification forward from the parser, but
+to model the underlying primitives so classification is unnecessary.
+The compiler should work at the composition and semantic kernel layers,
+never at the surface sugar layer. When it needs to dispatch, it
+dispatches on primitives (structure? evidence? morphism?), not on
+named compositions (type? function? service?).
+
+This means the primitives need to be modeled in `dsl/std/` — the same
+way connective, cardinality, and algebraic structure already are.
+They become part of the shared concept library that the compiler both
+generates code for and consumes. The compiler moves parts of itself
+into higher-level abstractions that it itself processes.
+
+### Practical principles
+
+1. **Surface sugar does not flow past the parser.** If the compiler
+   asks "is this a function?" it's using sugar as identity.
+
+2. **Classify by dispatching on primitives, not named compositions.**
+   The question is "does this have evidence?" not "is this a function?"
+
+3. **If a concept keeps getting re-derived, it's a missing primitive.**
+   The re-derivation is the compiler telling you what it needs modeled.
+
+4. **Unrepresentability over discipline.** Design the types so the
+   wrong question can't be asked, not so that people avoid asking it.
+
+5. **The graph represents semantics, emission only renders.** If the
+   emitter makes a semantic decision, that decision belongs upstream
+   in the semantic kernel.
