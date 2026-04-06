@@ -1630,7 +1630,7 @@ Rc::new(InferResult {
 } else {
                 {
                     let extended = extend_scope(scope.clone(), let_name.clone(), val_type);
-let body_result = infer_expr(body_expr.clone().unwrap(), extended, None);
+let body_result = infer_expr(body_expr.clone().unwrap(), extended, expected.clone());
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
 let let_texpr2 = make_named_expr_node(let_name.clone(), Rc::new(ExprData::ExprLet), Rc::new(vec![val_typed.clone(), body_typed.clone()]), Some(Rc::new(InferredNode::Resolved {
@@ -1651,7 +1651,18 @@ infer_record_lit(record_lit_type_name(texpr.clone()), field_inits, span.clone(),
     ExprData::ExprListLit => {
             let span = texpr.span.clone();
 let elements = texpr.children.clone();
-let elem_results = Rc::new({ let mut __result = Vec::new(); for e in elements.iter().cloned() { __result.push(infer_expr(e.clone(), scope.clone(), None)); } __result });
+let elem_expected = match expected.clone() {
+    Some(exp) => if node_is_element_collection(exp.clone()) {
+                match exp.children.clone().first().cloned() {
+    Some(elem) => Some(elem.clone()),
+    None => None,
+}
+} else {
+                None
+},
+    None => None,
+};
+let elem_results = Rc::new({ let mut __result = Vec::new(); for e in elements.iter().cloned() { __result.push(infer_expr(e.clone(), scope.clone(), elem_expected.clone())); } __result });
 let typed_elements = Rc::new({ let mut __result = Vec::new(); for r in elem_results.clone().iter().cloned() { __result.push(r.typed.clone()); } __result });
 let elem_diags = Rc::new({ let mut __result = Vec::new(); for r in elem_results.clone().iter().cloned() { __result.extend((*r.diagnostics.clone()).iter().cloned()); } __result });
 let elem_type_node = if ((elem_results.clone().len() as i64) > 0) {
@@ -1767,7 +1778,19 @@ if ((exp.params.clone().len() as i64) > 0) {
 } else {
                 extend_scope_with_params(scope.clone(), lam_params.clone())
 };
-let body_result = infer_expr(lam_body, lam_scope.clone(), None);
+let body_expected = if (expected.clone() != None) {
+                {
+                    let exp = expected.clone().unwrap();
+if ((exp.params.clone().len() as i64) > 0) {
+                        Some(callable_inferred(exp.clone()))
+} else {
+                        None
+}
+}
+} else {
+                None
+};
+let body_result = infer_expr(lam_body, lam_scope.clone(), body_expected);
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
 let lam_texpr = make_expr_node(Rc::new(ExprData::ExprLambda {

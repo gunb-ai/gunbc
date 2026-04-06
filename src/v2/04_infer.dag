@@ -1540,7 +1540,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         }
       } else {
         let extended = extend_scope(scope: scope, name: let_name, resolved: val_type)
-        let body_result = infer_expr(texpr: body_expr.value, scope: extended, expected: none)
+        let body_result = infer_expr(texpr: body_expr.value, scope: extended, expected: expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
         let let_texpr2 = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed, body_typed], inferred: Some { value: Resolved { node: rt_type(n: body_typed) } }, span: span)
@@ -1560,7 +1560,14 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       // children: element expressions
       let elements = texpr.children
-      let elem_results = elements |> map(e => infer_expr(texpr: e, scope: scope, expected: none))
+      let elem_expected = match expected {
+        Some { value: exp } =>
+          if node_is_element_collection(n: exp) {
+            match exp.children |> first { Some { value: elem } => Some { value: elem }  None => none }
+          } else { none }
+        None => none
+      }
+      let elem_results = elements |> map(e => infer_expr(texpr: e, scope: scope, expected: elem_expected))
       let typed_elements = elem_results |> map(r => r.typed)
       let elem_diags = flat_map(elem_results, r => r.diagnostics)
       let elem_type_node = if count(elem_results) > 0 {
@@ -1673,7 +1680,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       } else {
         extend_scope_with_params(scope: scope, params: lam_params)
       }
-      let body_result = infer_expr(texpr: lam_body, scope: lam_scope, expected: none)
+      let body_expected = if expected != none {
+        let exp = expected.value
+        if exp.params |> count > 0 {
+          Some { value: callable_inferred(n: exp) }
+        } else { none }
+      } else { none }
+      let body_result = infer_expr(texpr: lam_body, scope: lam_scope, expected: body_expected)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
       let lam_texpr = make_expr_node(
