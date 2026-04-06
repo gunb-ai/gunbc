@@ -46,11 +46,9 @@ $STAGE0_CMD compile \
         [ "$mod" = "lib" ] && continue
         [ "$mod" = "main" ] && continue
         [ "$mod" = "v2_rt" ] && continue
-        [ "$mod" = "v2_coercion" ] && continue
         [ "$mod" = "compiler_tests" ] && continue
         echo "pub mod $mod;"
     done
-    echo 'pub mod v2_coercion;'
     echo 'pub mod v2_rt;'
     echo ''
     echo '#[cfg(test)]'
@@ -60,13 +58,9 @@ $STAGE0_CMD compile \
 # Copy hand-maintained files from committed stage0.
 # These files have manual additions that the emitter doesn't produce:
 #   main.rs: FF-9 import resolution, CLI entrypoint
-#   v2_rt.rs: runtime shims (Rc::make_mut, string ops, etc.)
 #   compiler_tests.rs: test harness
-#   v2_coercion.rs: lazy_static coercion registries (no .dag counterpart yet)
-cp "$STAGE0_DIR/src/v2_rt.rs" "$OUTPUT_DIR/src/v2_rt.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/compiler_tests.rs" "$OUTPUT_DIR/src/compiler_tests.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/main.rs" "$OUTPUT_DIR/src/main.rs" 2>/dev/null || true
-cp "$STAGE0_DIR/src/v2_coercion.rs" "$OUTPUT_DIR/src/v2_coercion.rs" 2>/dev/null || true
 
 # --output-dir mode: leave output in place, caller handles it
 if [ -n "$OUTPUT_ONLY" ]; then
