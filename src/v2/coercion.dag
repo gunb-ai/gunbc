@@ -164,18 +164,27 @@ fn apply_inhabitant_template2(template: String, first: String, second: String) -
   replace(replace(template, "\{0\}", first), "\{1\}", second)
 }
 
+// Algebra arity: target-independent type-parameter count per algebra.
+// Arity is a property of the algebraic structure, not the target language.
+// Source of truth should be std/algebra.dag once it carries arity; until
+// then this table is the cross-language authority.
+data algebra_arity: Map<String, Int> = {
+  "FreeMonoid": 1,
+  "BooleanAlgebra": 1,
+  "PartialFunction": 2,
+  "OrderedRing": 0,
+  "ApproximateField": 0
+}
+
 // Container arity resolution: surface names via container_type_arity (std/types.dag),
-// algebra names via container_to_algebra → InhabitantDecl.arity.
+// algebra names via container_to_algebra → algebra_arity (target-independent).
 // Covers both "List" (surface) and "FreeMonoid" (algebra) naming domains.
 fn coercion_container_arity(name: String) -> Int? {
   match container_expected_arity(name: name) {
     Some { value: arity } => Some { value: arity }
     None =>
       match dag_container_to_algebra(name: name) {
-        Some { value: algebra } => match lookup_inhabitant(target: Rust, algebra: algebra) {
-          Some { value: inh } => Some { value: inh.arity }
-          None => none
-        }
+        Some { value: algebra } => map_get(algebra_arity, algebra)
         None => none
       }
   }

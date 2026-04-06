@@ -112,7 +112,6 @@ type EmitGraphInfo {
 // to algebraic relationships that the coercion engine will formalize.
 type TypeRendering {
   type_name: String                   // identity: "Int", "list", "Token", "map"
-  connective: Connective              // structural form: Conj (product), Disj (coproduct), NoConnective (leaf/callable/optional)
   element: TypeRendering?             // List<THIS>, Set<THIS>
   key: TypeRendering?                 // Map<THIS, V>
   value: TypeRendering?               // Map<K, THIS>
@@ -153,7 +152,6 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
 fn leaf_type_rendering(name: String) -> TypeRendering {
   TypeRendering {
     type_name: name,
-    connective: NoConnective,
     element: none,
     key: none,
     value: none,
@@ -172,7 +170,6 @@ fn leaf_type_rendering(name: String) -> TypeRendering {
 fn leaf_type_rendering_shared(name: String) -> TypeRendering {
   TypeRendering {
     type_name: name,
-    connective: NoConnective,
     element: none,
     key: none,
     value: none,

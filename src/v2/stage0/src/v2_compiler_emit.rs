@@ -877,7 +877,6 @@ pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
 pub fn tr_default() -> Rc<TypeRendering> {
     Rc::new(TypeRendering {
     type_name: "".to_string(),
-    connective: Connective::NoConnective,
     element: None,
     key: None,
     value: None,
@@ -913,7 +912,6 @@ if ((n_is_type_var || n_is_error.clone()) && ((n.children.clone().len() as i64) 
 } else {
                     "TypeVariable".to_string()
 },
-    connective: Connective::NoConnective,
     is_error: true,
     error_label: n.name.clone(),
     element: None,
@@ -937,7 +935,6 @@ let ret = match n.inferred.clone().as_deref().cloned() {
 };
 return Rc::new(TypeRendering {
     type_name: "Callable".to_string(),
-    connective: Connective::NoConnective,
     params: param_renderings,
     return_type: ret,
     element: None,
@@ -959,7 +956,6 @@ if is_optional {
                     let inner_tr = build_type_rendering(with_required_cardinality(n.clone()), shared_types.clone(), recursive_types.clone());
 return Rc::new(TypeRendering {
     type_name: "optional".to_string(),
-    connective: Connective::NoConnective,
     inner: Some(inner_tr),
     element: None,
     key: None,
@@ -1005,7 +1001,6 @@ let param_count = (n.params.clone().len() as i64);
 if bare_is_map.clone() {
                     Rc::new(TypeRendering {
     type_name: "map".to_string(),
-    connective: Connective::NoConnective,
     key: Some(leaf_type_rendering("_".to_string())),
     value: Some(leaf_type_rendering("_".to_string())),
     shared: shared,
@@ -1023,7 +1018,6 @@ if bare_is_map.clone() {
                     if bare_is_collection {
                         Rc::new(TypeRendering {
     type_name: to_snake(n.name.clone()),
-    connective: Connective::NoConnective,
     element: Some(leaf_type_rendering("_".to_string())),
     shared: shared,
     key: None,
@@ -1046,7 +1040,6 @@ if bare_is_map.clone() {
 };
 Rc::new(TypeRendering {
     type_name: to_snake(n.name.clone()),
-    connective: Connective::NoConnective,
     element: Some(inner),
     shared: shared,
     key: None,
@@ -1065,7 +1058,6 @@ Rc::new(TypeRendering {
                             if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
                                 Rc::new(TypeRendering {
     type_name: "Tuple".to_string(),
-    connective: Connective::NoConnective,
     is_tuple: true,
     shared: shared,
     element: None,
@@ -1082,7 +1074,6 @@ Rc::new(TypeRendering {
 } else {
                                 Rc::new(TypeRendering {
     type_name: n.name.clone(),
-    connective: Connective::NoConnective,
     shared: shared,
     element: None,
     key: None,
@@ -1116,7 +1107,6 @@ let v = match n.children.clone().get(1 as usize).cloned() {
 };
 Rc::new(TypeRendering {
     type_name: n.name.clone(),
-    connective: Connective::NoConnective,
     key: Some(k),
     value: Some(v),
     shared: shared,
@@ -1142,7 +1132,6 @@ let is_container = node_is_collection(n.clone());
 if is_container {
                                 Rc::new(TypeRendering {
     type_name: to_snake(n.name.clone()),
-    connective: Connective::NoConnective,
     element: Some(child_tr),
     shared: shared,
     key: None,
@@ -1159,7 +1148,6 @@ if is_container {
 } else {
                                 Rc::new(TypeRendering {
     type_name: n.name.clone(),
-    connective: Connective::NoConnective,
     generic_args: Rc::new(vec![child_tr]),
     shared: shared,
     element: None,
@@ -1181,7 +1169,6 @@ if is_container {
 if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
                                 Rc::new(TypeRendering {
     type_name: "Tuple".to_string(),
-    connective: Connective::NoConnective,
     is_tuple: true,
     params: child_trs,
     element: None,
@@ -1198,7 +1185,6 @@ if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
 } else {
                                 Rc::new(TypeRendering {
     type_name: n.name.clone(),
-    connective: Connective::NoConnective,
     generic_args: child_trs,
     shared: shared,
     element: None,
@@ -1229,7 +1215,6 @@ if (n.name.clone().as_str() == "Refined".to_string().as_str()) {
     Some(base) => build_type_rendering(base.clone(), shared_types.clone(), recursive_types.clone()),
     None => Rc::new(TypeRendering {
     type_name: "Refined".to_string(),
-    connective: Connective::Conj,
     element: None,
     key: None,
     value: None,
@@ -1265,7 +1250,6 @@ let second_child = match n.children.clone().get(1 as usize).cloned() {
 };
 return Rc::new(TypeRendering {
     type_name: "Tuple".to_string(),
-    connective: Connective::Conj,
     is_tuple: true,
     params: Rc::new(vec![first_child, second_child]),
     element: None,
@@ -1292,7 +1276,6 @@ if has_template {
                     if (snake.clone().as_str() == "map".to_string().as_str()) {
                         return Rc::new(TypeRendering {
     type_name: "map".to_string(),
-    connective: Connective::Conj,
     key: Some(leaf_type_rendering("_".to_string())),
     value: Some(leaf_type_rendering("_".to_string())),
     shared: shared.clone(),
@@ -1309,7 +1292,6 @@ if has_template {
 } else {
                         return Rc::new(TypeRendering {
     type_name: snake.clone(),
-    connective: Connective::Conj,
     element: Some(leaf_type_rendering("_".to_string())),
     shared: shared.clone(),
     key: None,
@@ -1327,7 +1309,6 @@ if has_template {
 }
 return Rc::new(TypeRendering {
     type_name: n.name.clone(),
-    connective: Connective::Conj,
     shared: shared.clone(),
     element: None,
     key: None,
@@ -1348,7 +1329,6 @@ let field_renderings = Rc::new({ let mut __result = Vec::new(); for child in n.c
 } else {
             Rc::new(TypeRendering {
     type_name: "".to_string(),
-    connective: Connective::Conj,
     is_error: true,
     error_label: "anonymous product field missing inferred".to_string(),
     element: None,
@@ -1365,7 +1345,6 @@ let field_renderings = Rc::new({ let mut __result = Vec::new(); for child in n.c
 }); } __result });
 Rc::new(TypeRendering {
     type_name: "".to_string(),
-    connective: Connective::Conj,
     params: field_renderings,
     is_tuple: true,
     element: None,
@@ -1388,7 +1367,6 @@ pub fn build_type_rendering_disj(n: Rc<Node>, shared_types: Rc<HashMap<String, b
 if (n.name.clone().as_str() != "".to_string().as_str()) {
             Rc::new(TypeRendering {
     type_name: n.name.clone(),
-    connective: Connective::Disj,
     shared: shared,
     element: None,
     key: None,
@@ -1405,7 +1383,6 @@ if (n.name.clone().as_str() != "".to_string().as_str()) {
 } else {
             Rc::new(TypeRendering {
     type_name: "".to_string(),
-    connective: Connective::Disj,
     is_error: true,
     error_label: "anonymous coproduct reached TypeRendering builder".to_string(),
     element: None,

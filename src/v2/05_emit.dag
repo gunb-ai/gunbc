@@ -903,7 +903,7 @@ fn emit_node_type(n: Node, target: RenderTarget) -> String {
 
 fn tr_default() -> TypeRendering {
   TypeRendering {
-    type_name: "", connective: NoConnective, element: none, key: none, value: none,
+    type_name: "", element: none, key: none, value: none,
     params: [], return_type: none, inner: none, generic_args: [],
     shared: false, boxed: false, is_tuple: false, is_error: false, error_label: ""
   }
@@ -917,7 +917,7 @@ fn build_type_rendering(n: Node, shared_types: Map<String, Bool>, recursive_type
   if (n_is_type_var || n_is_error) && n.children |> count == 0 {
     return TypeRendering {
       type_name: if n_is_error { "CompilerError" } else { "TypeVariable" },
-      connective: NoConnective, is_error: true, error_label: n.name,
+      is_error: true, error_label: n.name,
       element: none, key: none, value: none, params: [], return_type: none,
       inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false
     }
@@ -931,7 +931,7 @@ fn build_type_rendering(n: Node, shared_types: Map<String, Bool>, recursive_type
       _ => none
     }
     return TypeRendering {
-      type_name: "Callable", connective: NoConnective, params: param_renderings, return_type: ret,
+      type_name: "Callable", params: param_renderings, return_type: ret,
       element: none, key: none, value: none, inner: none, generic_args: [],
       shared: false, boxed: false, is_tuple: false, is_error: false, error_label: ""
     }
@@ -942,7 +942,7 @@ fn build_type_rendering(n: Node, shared_types: Map<String, Bool>, recursive_type
   if is_optional {
     let inner_tr = build_type_rendering(n: with_required_cardinality(n: n), shared_types: shared_types, recursive_types: recursive_types)
     return TypeRendering {
-      type_name: "optional", connective: NoConnective, inner: Some { value: inner_tr },
+      type_name: "optional", inner: Some { value: inner_tr },
       element: none, key: none, value: none, params: [], return_type: none,
       generic_args: [], shared: false, boxed: false, is_tuple: false, is_error: false, error_label: ""
     }
@@ -972,19 +972,19 @@ fn build_type_rendering_leaf(n: Node, shared_types: Map<String, Bool>, recursive
     }
     let param_count = n.params |> count
     if bare_is_map {
-      TypeRendering { type_name: "map", connective: NoConnective, key: Some { value: leaf_type_rendering(name: "_") }, value: Some { value: leaf_type_rendering(name: "_") }, shared: shared, element: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      TypeRendering { type_name: "map", key: Some { value: leaf_type_rendering(name: "_") }, value: Some { value: leaf_type_rendering(name: "_") }, shared: shared, element: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
     } else if bare_is_collection {
-      TypeRendering { type_name: to_snake(name: n.name), connective: NoConnective, element: Some { value: leaf_type_rendering(name: "_") }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      TypeRendering { type_name: to_snake(name: n.name), element: Some { value: leaf_type_rendering(name: "_") }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
     } else if has_container_template && param_count == 1 {
       let inner = match n.params |> first {
         Some { value: p } => build_type_rendering(n: param_node_type_expr(n: p), shared_types: shared_types, recursive_types: recursive_types)
         None => leaf_type_rendering(name: "_")
       }
-      TypeRendering { type_name: to_snake(name: n.name), connective: NoConnective, element: Some { value: inner }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      TypeRendering { type_name: to_snake(name: n.name), element: Some { value: inner }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
     } else if n.name == "Tuple" {
-      TypeRendering { type_name: "Tuple", connective: NoConnective, is_tuple: true, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_error: false, error_label: "" }
+      TypeRendering { type_name: "Tuple", is_tuple: true, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_error: false, error_label: "" }
     } else {
-      TypeRendering { type_name: n.name, connective: NoConnective, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      TypeRendering { type_name: n.name, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
     }
   } else {
     // Leaf with children
@@ -998,7 +998,7 @@ fn build_type_rendering_leaf(n: Node, shared_types: Map<String, Bool>, recursive
         Some { value: vn } => build_type_rendering(n: vn, shared_types: shared_types, recursive_types: recursive_types)
         None => leaf_type_rendering(name: "_")
       }
-      TypeRendering { type_name: n.name, connective: NoConnective, key: Some { value: k }, value: Some { value: v }, shared: shared, element: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      TypeRendering { type_name: n.name, key: Some { value: k }, value: Some { value: v }, shared: shared, element: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
     } else if n.children |> count == 1 {
       let child_tr = match n.children |> first {
         Some { value: child } => build_type_rendering(n: child, shared_types: shared_types, recursive_types: recursive_types)
@@ -1006,17 +1006,17 @@ fn build_type_rendering_leaf(n: Node, shared_types: Map<String, Bool>, recursive
       }
       let is_container = node_is_collection(n: n)
       if is_container {
-        TypeRendering { type_name: to_snake(name: n.name), connective: NoConnective, element: Some { value: child_tr }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+        TypeRendering { type_name: to_snake(name: n.name), element: Some { value: child_tr }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
       } else {
-        TypeRendering { type_name: n.name, connective: NoConnective, generic_args: [child_tr], shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, boxed: false, is_tuple: false, is_error: false, error_label: "" }
+        TypeRendering { type_name: n.name, generic_args: [child_tr], shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, boxed: false, is_tuple: false, is_error: false, error_label: "" }
       }
     } else {
       // Multi-child leaf: Tuple or generic type
       let child_trs = n.children |> map(c => build_type_rendering(n: c, shared_types: shared_types, recursive_types: recursive_types))
       if n.name == "Tuple" {
-        TypeRendering { type_name: "Tuple", connective: NoConnective, is_tuple: true, params: child_trs, element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
+        TypeRendering { type_name: "Tuple", is_tuple: true, params: child_trs, element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
       } else {
-        TypeRendering { type_name: n.name, connective: NoConnective, generic_args: child_trs, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, boxed: false, is_tuple: false, is_error: false, error_label: "" }
+        TypeRendering { type_name: n.name, generic_args: child_trs, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, boxed: false, is_tuple: false, is_error: false, error_label: "" }
       }
     }
   }
@@ -1029,7 +1029,7 @@ fn build_type_rendering_conj(n: Node, shared_types: Map<String, Bool>, recursive
   if n.name == "Refined" {
     return match n.children |> first {
       Some { value: base } => build_type_rendering(n: base, shared_types: shared_types, recursive_types: recursive_types)
-      None => TypeRendering { type_name: "Refined", connective: Conj, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false, is_error: false, error_label: "" }
+      None => TypeRendering { type_name: "Refined", element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false, is_error: false, error_label: "" }
     }
   }
 
@@ -1043,7 +1043,7 @@ fn build_type_rendering_conj(n: Node, shared_types: Map<String, Bool>, recursive
       Some { value: c } => if c.inferred != none { build_type_rendering(n: rt_type(n: c), shared_types: shared_types, recursive_types: recursive_types) } else { build_type_rendering(n: c, shared_types: shared_types, recursive_types: recursive_types) }
       None => leaf_type_rendering(name: "_")
     }
-    return TypeRendering { type_name: "Tuple", connective: Conj, is_tuple: true, params: [first_child, second_child], element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
+    return TypeRendering { type_name: "Tuple", is_tuple: true, params: [first_child, second_child], element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
   }
 
   // Named product — check container template
@@ -1055,12 +1055,12 @@ fn build_type_rendering_conj(n: Node, shared_types: Map<String, Bool>, recursive
     }
     if has_template {
       if snake == "map" {
-        return TypeRendering { type_name: "map", connective: Conj, key: Some { value: leaf_type_rendering(name: "_") }, value: Some { value: leaf_type_rendering(name: "_") }, shared: shared, element: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+        return TypeRendering { type_name: "map", key: Some { value: leaf_type_rendering(name: "_") }, value: Some { value: leaf_type_rendering(name: "_") }, shared: shared, element: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
       } else {
-        return TypeRendering { type_name: snake, connective: Conj, element: Some { value: leaf_type_rendering(name: "_") }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+        return TypeRendering { type_name: snake, element: Some { value: leaf_type_rendering(name: "_") }, shared: shared, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
       }
     }
-    return TypeRendering { type_name: n.name, connective: Conj, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+    return TypeRendering { type_name: n.name, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
   }
 
   // Anonymous product
@@ -1068,18 +1068,18 @@ fn build_type_rendering_conj(n: Node, shared_types: Map<String, Bool>, recursive
     if child.inferred != none {
       build_type_rendering(n: rt_type(n: child), shared_types: shared_types, recursive_types: recursive_types)
     } else {
-      TypeRendering { type_name: "", connective: Conj, is_error: true, error_label: "anonymous product field missing inferred", element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false }
+      TypeRendering { type_name: "", is_error: true, error_label: "anonymous product field missing inferred", element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false }
     }
   )
-  TypeRendering { type_name: "", connective: Conj, params: field_renderings, is_tuple: true, element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
+  TypeRendering { type_name: "", params: field_renderings, is_tuple: true, element: none, key: none, value: none, return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_error: false, error_label: "" }
 }
 
 fn build_type_rendering_disj(n: Node, shared_types: Map<String, Bool>) -> TypeRendering {
   let shared = emit_map_has(m: shared_types, key: n.name)
   if n.name != "" {
-    TypeRendering { type_name: n.name, connective: Disj, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
+    TypeRendering { type_name: n.name, shared: shared, element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], boxed: false, is_tuple: false, is_error: false, error_label: "" }
   } else {
-    TypeRendering { type_name: "", connective: Disj, is_error: true, error_label: "anonymous coproduct reached TypeRendering builder", element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false }
+    TypeRendering { type_name: "", is_error: true, error_label: "anonymous coproduct reached TypeRendering builder", element: none, key: none, value: none, params: [], return_type: none, inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false }
   }
 }
 

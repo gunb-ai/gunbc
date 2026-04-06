@@ -107,7 +107,6 @@ pub struct EmitGraphInfo {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeRendering {
     pub type_name: String,
-    pub connective: Connective,
     pub element: Option<Rc<TypeRendering>>,
     pub key: Option<Rc<TypeRendering>>,
     pub value: Option<Rc<TypeRendering>>,
@@ -145,7 +144,6 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
 pub fn leaf_type_rendering(name: String) -> Rc<TypeRendering> {
     Rc::new(TypeRendering {
     type_name: name,
-    connective: Connective::NoConnective,
     element: None,
     key: None,
     value: None,
@@ -164,7 +162,6 @@ pub fn leaf_type_rendering(name: String) -> Rc<TypeRendering> {
 pub fn leaf_type_rendering_shared(name: String) -> Rc<TypeRendering> {
     Rc::new(TypeRendering {
     type_name: name,
-    connective: Connective::NoConnective,
     element: None,
     key: None,
     value: None,
