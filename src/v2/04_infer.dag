@@ -1690,10 +1690,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       } else {
         extend_scope_with_params(scope: scope, params: lam_params)
       }
+      // Thread callable return type to body. Checks both params > 0 (multi-arg)
+      // and name == "Callable" (zero-arg callables like fn() -> Int).
+      // L1: name check is transitional until M4 structural callable identity.
       let body_expected = if expected != none {
         let exp = expected.value
-        if exp.params |> count > 0 {
-          Some { value: callable_inferred(n: exp) }
+        if exp.params |> count > 0 || exp.name == "Callable" {
+          match exp.inferred {
+            Some { value: Resolved { node: rt } } => Some { value: rt }
+            _ => none
+          }
         } else { none }
       } else { none }
       let body_result = infer_expr(texpr: lam_body, scope: lam_scope, expected: body_expected)

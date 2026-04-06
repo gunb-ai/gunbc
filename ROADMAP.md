@@ -269,14 +269,10 @@ mismatches before removal). `emit_node_type` routes through
 Each gap is a missing LanguageSpec fact. Closing them unblocks new
 backends.
 
-- [~] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
-  render as `name()` via `is_zero_arg_callable_ref` (FunctionValueBinding +
-  Callable node with empty params). Dispatched in Rust emit_var_ref and
-  emit_typed_expr_base only. Go/Python keyword mapping (none/true/false)
-  landed (PR #324); zero-arg callable detection kept Rust-scoped per
-  review — widening an L1 violation across backends without upstream
-  modeling violates boundary sufficiency. Upstream concept modeling
-  (Tier 2.6) dissolves this. Imported zero-arg function refs untested.
+- [x] **TLC-1: Call syntax / reference distinction.** Inference normalizes
+  ExprVar → ExprCall for zero-arg function references (PR #329). All three
+  backends emit `name()` via existing ExprCall handling. `is_zero_arg_callable_ref`
+  dissolved (L1 33→32). Imported zero-arg function refs untested.
 - [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `v2_rt::map_keys` returns
