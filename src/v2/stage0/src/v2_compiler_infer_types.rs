@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 pub use crate::std_types::{SourceSpan, is_container_type, container_expected_arity};
 pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile, partial_function_templates, free_monoid_collection_templates, free_monoid_scalar_templates, boolean_algebra_collection_templates, boolean_algebra_templates, approximate_field_templates, ordered_ring_templates};
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
-use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf};
+use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf, AlgebraTypeVariable};
 pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, rt_node, has_inferred, is_compiler_error, NodeType, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, ExprData};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -351,10 +351,6 @@ pub fn placeholder_type_node(name: String) -> Rc<Node> {
     nominal_type_ref(name)
 }
 
-pub fn is_algebra_placeholder_name(name: String) -> bool {
-    ((name.clone().as_str() == "MappedElement".to_string().as_str()) || (name.clone().as_str() == "FoldAccumulator".to_string().as_str()))
-}
-
 pub fn nominal_type_ref(name: String) -> Rc<Node> {
     leaf_node_with_span(name, make_span(0, 0))
 }
@@ -377,11 +373,8 @@ match (*template).clone() {
     AlgebraTypeTemplate::ReceiverElement => elem,
     AlgebraTypeTemplate::ReceiverKey => key_node,
     AlgebraTypeTemplate::ReceiverValue => val_node,
-    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => if is_algebra_placeholder_name(n.clone()) {
-                type_variable_node(n.clone())
-} else {
-                nominal_type_ref(n.clone())
-},
+    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(n.clone()),
+    AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => type_variable_node(var_id.clone()),
     AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => container_node(base.name.clone(), instantiate_algebra_type(inner.clone(), base.clone())),
     AlgebraTypeTemplate::ListOf { element: inner, .. } => container_node("List".to_string(), instantiate_algebra_type(inner.clone(), base.clone())),
     AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(instantiate_algebra_type(inner.clone(), base.clone())),
@@ -414,6 +407,117 @@ enrich_base_with_fields(name.clone(), base.clone(), fields)
 },
     None => base.clone(),
 }
+}
+}
+
+pub fn unify_template(template: Rc<AlgebraTypeTemplate>, concrete: Rc<Node>, receiver: Rc<Node>, subst: Rc<HashMap<String, Rc<Node>>>) -> Rc<HashMap<String, Rc<Node>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*template).clone() {
+    AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => if (v2_rt::map_get(&subst, var_id.clone()) != None) {
+            subst.clone()
+} else {
+            v2_rt::rc_map_insert(subst.clone(), var_id.clone(), concrete.clone())
+},
+    AlgebraTypeTemplate::CallableOf { return_type: ret_template, .. } => unify_template(ret_template.clone(), concrete.clone(), receiver.clone(), subst.clone()),
+    AlgebraTypeTemplate::ReceiverCollectionOf { element: elem_template, .. } => match concrete.children.clone().first().cloned() {
+    Some(child) => unify_template(elem_template.clone(), child.clone(), receiver.clone(), subst.clone()),
+    None => subst.clone(),
+},
+    AlgebraTypeTemplate::ListOf { element: elem_template, .. } => match concrete.children.clone().first().cloned() {
+    Some(child) => unify_template(elem_template.clone(), child.clone(), receiver.clone(), subst.clone()),
+    None => subst.clone(),
+},
+    AlgebraTypeTemplate::OptionalOf { inner: inner_template, .. } => match concrete.children.clone().first().cloned() {
+    Some(child) => unify_template(inner_template.clone(), child.clone(), receiver.clone(), subst.clone()),
+    None => subst.clone(),
+},
+    AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => {
+            let s2 = match concrete.children.clone().first().cloned() {
+    Some(c) => unify_template(ft.clone(), c.clone(), receiver.clone(), subst.clone()),
+    None => subst.clone(),
+};
+match concrete.children.clone().get(1 as usize).cloned() {
+    Some(c) => unify_template(st.clone(), c.clone(), receiver.clone(), s2),
+    None => s2,
+}
+},
+    _ => subst.clone(),
+}
+    })
+}
+
+pub fn build_type_substitution(param_templates: Rc<Vec<Rc<AlgebraTypeTemplate>>>, arg_types: Rc<Vec<Rc<Node>>>, receiver: Rc<Node>, base_subst: Rc<HashMap<String, Rc<Node>>>) -> Rc<HashMap<String, Rc<Node>>> {
+    {
+        let non_receiver_templates = Rc::new({ let mut __result = Vec::new(); for t in param_templates.iter().cloned() { if match (*t.clone()).clone() {
+    AlgebraTypeTemplate::ReceiverSelf => false,
+    _ => true,
+} { __result.push(t); } } __result });
+let pairs = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(non_receiver_templates.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() < (arg_types.clone().len() as i64)) { __result.push(pair); } } __result });
+pairs.iter().cloned().fold(base_subst.clone(), |subst: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<AlgebraTypeTemplate>)| {
+            let arg_type = match Rc::new({ let mut __result = Vec::new(); for ap in Rc::new({ let mut __result = Vec::new(); for ap in Rc::new(arg_types.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (ap.0.clone() == pair.0.clone()) { __result.push(ap); } } __result }).iter().cloned() { __result.push(ap.1.clone()); } __result }).first().cloned() {
+    Some(a) => a.clone(),
+    None => error_type(),
+};
+unify_template(pair.1.clone(), arg_type.clone(), receiver.clone(), subst.clone())
+})
+}
+}
+
+pub fn apply_type_substitution(template: Rc<AlgebraTypeTemplate>, subst: Rc<HashMap<String, Rc<Node>>>, receiver: Rc<Node>) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*template).clone() {
+    AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => match v2_rt::map_get(&subst, var_id.clone()) {
+    Some(resolved) => resolved.clone(),
+    None => type_variable_node(var_id.clone()),
+},
+    AlgebraTypeTemplate::ReceiverSelf => receiver.clone(),
+    AlgebraTypeTemplate::ReceiverElement => match receiver.children.clone().first().cloned() {
+    Some(child) => child.clone(),
+    None => type_variable_node("T".to_string()),
+},
+    AlgebraTypeTemplate::ReceiverKey => match receiver.children.clone().first().cloned() {
+    Some(child) => child.clone(),
+    None => type_variable_node("K".to_string()),
+},
+    AlgebraTypeTemplate::ReceiverValue => match receiver.children.clone().get(1 as usize).cloned() {
+    Some(child) => child.clone(),
+    None => type_variable_node("V".to_string()),
+},
+    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(n.clone()),
+    AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => container_node(receiver.name.clone(), apply_type_substitution(inner.clone(), subst.clone(), receiver.clone())),
+    AlgebraTypeTemplate::ListOf { element: inner, .. } => container_node("List".to_string(), apply_type_substitution(inner.clone(), subst.clone(), receiver.clone())),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(apply_type_substitution(inner.clone(), subst.clone(), receiver.clone())),
+    AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => tuple_node(apply_type_substitution(ft.clone(), subst.clone(), receiver.clone()), apply_type_substitution(st.clone(), subst.clone(), receiver.clone())),
+    AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => {
+            let param_nodes = Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(apply_type_substitution(tp.clone(), subst.clone(), receiver.clone())); } __result });
+callable_node(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node("_".to_string(), pn.clone(), None, no_span())); } __result }), apply_type_substitution(r.clone(), subst.clone(), receiver.clone()))
+},
+}
+    })
+}
+
+pub fn template_return_has_variables(template: Rc<AlgebraFieldTemplate>) -> bool {
+    has_type_variable(template.return_type.clone())
+}
+
+pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*t).clone() {
+    AlgebraTypeTemplate::AlgebraTypeVariable { .. } => true,
+    AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => has_type_variable(inner.clone()),
+    AlgebraTypeTemplate::ListOf { element: inner, .. } => has_type_variable(inner.clone()),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => has_type_variable(inner.clone()),
+    AlgebraTypeTemplate::TupleOf { first: f, second: s, .. } => (has_type_variable(f.clone()) || has_type_variable(s.clone())),
+    AlgebraTypeTemplate::CallableOf { return_type: r, .. } => has_type_variable(r.clone()),
+    _ => false,
+}
+    })
+}
+
+pub fn resolve_type_variables_from_template(template: Rc<AlgebraFieldTemplate>, arg_types: Rc<Vec<Rc<Node>>>, receiver_type: Rc<Node>, overrides: Rc<HashMap<String, Rc<Node>>>) -> Rc<Node> {
+    {
+        let subst = build_type_substitution(template.param_types.clone(), arg_types, receiver_type.clone(), overrides);
+apply_type_substitution(template.return_type.clone(), subst, receiver_type.clone())
 }
 }
 
@@ -1068,6 +1172,7 @@ collect_named_templates(s.clone(), acc2)
             let acc2 = p.clone().iter().cloned().fold(acc, |a: Rc<HashMap<String, bool>>, tp: Rc<AlgebraTypeTemplate>| collect_named_templates(tp.clone(), a.clone()));
 collect_named_templates(r.clone(), acc2)
 },
+    AlgebraTypeTemplate::AlgebraTypeVariable { .. } => acc,
 }
     })
 }

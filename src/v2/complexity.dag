@@ -289,7 +289,7 @@ type EvidenceBlockAcc {
 // rather than string-matching method names.
 fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _ } } => true
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } } => true
     _ => false
   }
 }
@@ -299,7 +299,7 @@ fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
 // and algebra methods without a declared size effect.
 fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffect? {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se } } => se
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } } => se
     _ => none
   }
 }
@@ -3709,7 +3709,7 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: cs } =>
+      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: cs, algebra_template: _ } =>
         // ShrinkEffect and IdentityEffect return same-shape collections
         let preserves_shape = match se {
           Some { value: ShrinkEffect } => true
@@ -4280,7 +4280,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       // Plain/Service/None fall through to default cost.
       let method_cost_result = if ms == none { none } else {
         match ms.value {
-          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: cs } => {
+          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: cs, algebra_template: _ } => {
             match cs {
               Some { value: shape } =>
                 Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx) }

@@ -253,6 +253,7 @@ type MethodFieldResult {
   result_type: Node
   size_effect: CollectionSizeEffect?
   cost_shape: CostShape?
+  algebra_template: AlgebraFieldTemplate?
 }
 
 fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldResult? {
@@ -263,11 +264,11 @@ fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldRes
         Some { value: Resolved { node: rt } } =>
           if rt.params |> count > 0 {
             match rt.inferred {
-              Some { value: Resolved { node: return_type } } => Some { value: MethodFieldResult { field_node: field, result_type: return_type, size_effect: none, cost_shape: none } }
-              _ => Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none } }
+              Some { value: Resolved { node: return_type } } => Some { value: MethodFieldResult { field_node: field, result_type: return_type, size_effect: none, cost_shape: none, algebra_template: none } }
+              _ => Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
             }
           } else {
-            Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none } }
+            Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
           }
         _ => none
       }
@@ -306,7 +307,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> MethodF
           }
           match template_match {
             Some { value: t } =>
-              Some { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape } }
+              Some { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Some { value: t } } }
             None => base_result
           }
         None => none
@@ -350,7 +351,7 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
       // Method found structurally — carry the method definition node.
       // mfr.field_node is the algebra field node (from the enriched type).
       // It carries the method's name, type signature, and structural properties.
-      let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape }
+      let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template }
       let resolved_type = substitute_algebra_result(
         result_type: mfr.result_type,
         receiver_type: receiver_type,

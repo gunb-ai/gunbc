@@ -302,6 +302,7 @@ pub struct MethodFieldResult {
     pub result_type: Rc<Node>,
     pub size_effect: Option<CollectionSizeEffect>,
     pub cost_shape: Option<Rc<CostShape>>,
+    pub algebra_template: Option<Rc<AlgebraFieldTemplate>>,
 }
 
 pub fn lookup_field_in_product(product: Rc<Node>, method_name: String) -> Option<Rc<MethodFieldResult>> {
@@ -316,12 +317,14 @@ match matching.first().cloned() {
     result_type: return_type.clone(),
     size_effect: None,
     cost_shape: None,
+    algebra_template: None,
 })),
     _ => Some(Rc::new(MethodFieldResult {
     field_node: field.clone(),
     result_type: rt.clone(),
     size_effect: None,
     cost_shape: None,
+    algebra_template: None,
 })),
 }
 } else {
@@ -330,6 +333,7 @@ match matching.first().cloned() {
     result_type: rt.clone(),
     size_effect: None,
     cost_shape: None,
+    algebra_template: None,
 }))
 },
     _ => None,
@@ -372,6 +376,7 @@ match template_match {
     result_type: mfr.result_type.clone(),
     size_effect: t.size_effect.clone(),
     cost_shape: t.cost_shape.clone(),
+    algebra_template: Some(t.clone()),
 })),
     None => base_result.clone(),
 }
@@ -412,6 +417,7 @@ match tier0_result {
     fold_accumulator_type: fold_accumulator_type.clone(),
     size_effect: mfr.size_effect.clone(),
     cost_shape: mfr.cost_shape.clone(),
+    algebra_template: mfr.algebra_template.clone(),
 });
 let resolved_type = substitute_algebra_result(mfr.result_type.clone(), receiver_type.clone(), fold_accumulator_type.clone());
 Rc::new(KnownMethodResolution {

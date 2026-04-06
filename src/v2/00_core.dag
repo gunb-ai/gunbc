@@ -22,7 +22,7 @@ import std.syntax {
   BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull
 }
-import std.algebra { CollectionSizeEffect, CostShape }
+import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 
 // =========================================================================
 // Tokens
@@ -198,7 +198,7 @@ type LambdaSemantics {
 
 type MethodSemantics
   = PlainMethodSemantics
-  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: CollectionSizeEffect?, cost_shape: CostShape? }
+  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: CollectionSizeEffect?, cost_shape: CostShape?, algebra_template: AlgebraFieldTemplate? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
