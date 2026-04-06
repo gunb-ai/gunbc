@@ -27,12 +27,14 @@ Modeling guidelines: [MODELING.md](MODELING.md)
             ┌─ Lane 1: M2 (boundary sufficiency) ──┐
 M1 COMPLETE─┤                                       ├→ M4 (structural identity)
 Bootstrap D ┼─ Lane 2: CG (codegen correctness) ───┘       └→ M5 → M6 → M7
-  COMPLETE  ├─ Lane 3: CX (315 → 0; ratchet at 315, main at 164)
+  COMPLETE  ├─ Lane 3: CX (164 → 0)
             └─ PERF (continuous — parallel to all lanes)
+            CM: cross-cutting design lens (informs all lanes) → src/v2/CM.md
 
 Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
 Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, ownership, languages
 Lane 3 owns: complexity, dsl/std/
+CM informs how Lanes 1-3 approach work; does not own files separately
 PERF owns: performance ratchets, bootstrap convergence tests, timing budgets
 M4 follows Lanes 1+2 (needs structural facts + clean render path)
 ```
@@ -169,7 +171,7 @@ of propagating error state. `node_inferred_to_outputs` builds outputs
 from fabricated types. Highest-confidence correctness bug (reviewer
 2026-04-02).
 
-- [x] `child_inferred_or_empty` propagates error state structurally
+- [~] `child_inferred_or_empty` no longer fabricates Unit — `Untyped` returns the child's own structure (partial: reuses raw structure as type authority, not explicit error propagation)
 - [x] `node_inferred_to_outputs` refuses error-typed children (fail-closed) — all-or-nothing gate via `rt_node` check; returns `[]` if any child is not `Typed`
 
 ### Incomplete parameterization and bidirectional inference
@@ -636,62 +638,144 @@ No test >2s without justification. Self-compile time tracked per-PR.
 
 ---
 
+# CM: Compiler Concept Modeling (cross-cutting retrospective)
+
+**Analysis:** [`src/v2/CM.md`](src/v2/CM.md),
+[`src/v2/CM-inventory.md`](src/v2/CM-inventory.md)
+(will fold into MODELING.md when stable)
+
+**Principle:** Surface existing structural authorities to every
+consumer. Never add parallel classification types. Consume existing
+authorities, never duplicate. After each feature, retro for new
+modeling gaps.
+
+**What CM analysis found for each lane:**
+
+| Lane | CM diagnosis | Highest-leverage fix |
+|------|-------------|---------------------|
+| M2 (Lane 1) | `ExprLet` erases expected type → bare_map_node chain → 5+ downstream fallbacks | Propagate expected through ExprLet; normalize ExprVar→ExprCall for nullary |
+| CG (Lane 2) | 39 heuristic sites, all "existing authority not surfaced" | Surface connective through TypeRendering; surface AlgebraFieldTemplate to emit |
+| CX (Lane 3) | 4 analyzer heuristics = 4 missing std/ facts | Model operation size contracts in std/computation.dag |
+| M4 | CM provides endgame rationale: structural fields ARE identity, names are rendering sugar | Surface structural fields; delete Node.name |
+
+**Unowned files (~42 heuristic sites in 04_resolve, 04_access, coercion, 00_core):**
+No lane addresses these. Highest-value: coercion.dag container-to-algebra
+table (should derive from algebra declarations), 04_resolve.dag alias
+resolution (4 fail-open sites).
+
+**Arity boundaries (cross-cutting):** Container under/over-arity,
+empty services/resources, Optional collapse, Callable/lambda mismatch.
+Enforce arity from algebra profile at normalization. See CM.md §Arity
+boundaries.
+
+**Relationship to other lanes:** M2, CG, and CX all generate work
+items that are actually CM problems. When a PR "moves a heuristic
+upstream," that's CM work wearing an M2/CG hat.
+
+## MM-1/2/3: Detailed analysis in CM.md
+
+Full heuristic inventory, acceptance criteria, and design constraints
+are in [`src/v2/CM.md`](src/v2/CM.md). Summary:
+
+## MM-1: Item identity
+
+**Problem:** 4 independent classification forests, ~27 branches total.
+- Raw structural interrogation in emit (`.connective ==`, `.body !=`, `.transport ==`): 55 sites
+- `TypedItemUnhandled` / `""` / `false` fail-open fallbacks: 8 sites
+
+**Work items:**
+- [ ] Design: determine irreducible structural facts about items
+- [ ] Surface existing fields (`body`, `transport`, `connective`, `params`) to
+  every consumption site — no new classification type
+- [ ] Implement: fail-closed boundaries (no TypedItemUnhandled, no `""` fallbacks)
+- [ ] Delete: all `classify_*` forests, all fail-open fallbacks, all name-keyed side-tables
+
+**Acceptance:** Emit dispatches on existing Node structural fields
+directly. Classification forests dissolve because consumers pattern-match
+on the facts they need (`body != none`, `connective`) rather than on a
+derived taxonomy.
+
+## MM-2: Type structure
+
+**Problem:** `Conj/Disj/NoConnective` is a primitive, but its
+interpretation (product → struct, sum → enum, leaf → primitive) is
+re-derived at every consumption site.
+
+**Current counts (2026-04-05):**
+- `.connective ==` in emit + lookup + types: 57 sites
+- `TypeSummary.repr` (StructRepr/EnumRepr) exists but only used by some consumers
+- Type rendering dispatch in `05_emit.dag:1095-1191`: 97 lines, 7 branches
+
+**Work items:**
+- [ ] Surface connective (the existing authority) to all consumers that
+  currently re-derive it — connective and `TypeSummary.repr` are the
+  authorities; no new interpretation type
+- [ ] Extend `TypeSummary.repr` to cover all type rendering, not just
+  type definitions
+- [ ] Delete: all inline `.connective == Conj` / `Disj` re-interpretation
+  in emit
+
+**Acceptance:** Emit reads connective or `TypeSummary.repr` (existing
+authorities) directly. No multi-branch re-interpretation of connective
+in emit — type rendering is an exhaustive match on the existing
+authority.
+
+## MM-3: Expression semantics
+
+**Problem:** Method identity is a string. Call semantics (nullary
+invocation, method kind, built-in refinement) re-derived from name
+matching at every consumption site.
+
+**Current counts (2026-04-05):**
+- `method_def.name` / `method_name ==` dispatch: 21 sites (emit_rust: 12, infer: 5, complexity: 4)
+- Nullary function detection: 3 sites in emit_rust, 0 in Go/Python (bug)
+- Built-in call type refinement by name: 4 sites in infer
+
+**Work items:**
+- [ ] Surface existing `method_def` Node and `AlgebraFieldTemplate`
+  structural facts through the pipeline to emit — these ARE method
+  identity; no new dispatch enum
+- [ ] Normalize ExprVar → ExprCall during inference for nullary
+  functions — the expression IR is the authority for invocation
+  semantics
+- [ ] Fix: Go/Python emit must handle nullary function references
+  (ExprCall normalization fixes all backends at once)
+
+**Acceptance:** Emit reads method structural facts from existing
+`method_def` / `AlgebraFieldTemplate` authorities, not name strings.
+Nullary invocation is ExprCall in the IR (normalized during inference),
+not a type-name check at render time.
+
+## CM acceptance (structural)
+
+Each criterion is a claim: "this class of mistake is unrepresentable."
+Consumers read existing structural authorities; the wrong question
+can't be asked. See `src/v2/CM.md` for full design rationale.
+
+**One clear end-state:** The existing structural data (Node fields,
+connective, method_def, AlgebraFieldTemplate) flows through stage
+boundaries intact to every consumer that needs it. No new parallel
+classification types. No lossy boundaries that drop distinctions
+consumers need. Reading a field IS reading the authority — that is
+not re-derivation.
+
+| Model | Claim | How to verify |
+|-------|-------|---------------|
+| MM-1 | Existing Node fields flow to emit intact; classification is unnecessary | No `classify_*` forests; emit reads `body`, `transport`, `connective` from the Node at the boundary |
+| MM-2 | Connective / TypeSummary.repr is the authority; re-interpretation is unnecessary | Emit reads connective or repr — no inline `.connective == Conj` checks. TypeSummary.repr is only the single authority if proven non-lossy for ALL consumers, not just emit |
+| MM-3 | method_def / AlgebraFieldTemplate is the authority; name dispatch is unnecessary | Emit reads structural method facts — no `method_name ==` string dispatch |
+
+**Invariant guardrail:** Consume existing authorities, never duplicate.
+Any proposed new fact layer or boundary type must demonstrate that
+(a) no existing authority carries the needed fact, (b) the existing
+authority cannot be surfaced to the consumer, and (c) the new layer
+lands with a real downstream consumer in the same change. Speculative
+metadata is rejected — the repo has already deleted prior boundary
+layers that introduced unused or lossy fact tables.
+
+---
+
 # Layer 3: Deferred
-
-Theory, long-horizon, and items that land after root-cause tracks complete.
-
-## CM: Compiler Concept Modeling (continuous track)
-
-**Root cause:** The compiler interrogates structural properties (connective,
-children count, param count, transport presence) to answer semantic questions
-that should be modeled facts. Each ad-hoc question is a symptom of a missing
-concept. Until the compiler models its own domain in `.dag`, these questions
-will keep spawning in every new feature and every refactor.
-
-**Principle:** Model actual facts, let properties emerge. Improper
-modeling spawns downstream questions. Model the underlying concept and
-the questions dissolve. Same pattern as fold/descend/repeat dissolving
-ad-hoc iteration logic.
-
-Emergent properties — recursion, termination, complexity classes — are
-NOT modeled directly. They fall out of composing structural facts about
-data and operations. Iteration (fold/descend/repeat) is explicit because
-it is an intentional primitive. Recursion is emergent because programs
-don't "know" they're recursing. The CX analyzer's heuristics (Theme A)
-are CM gaps: each name-matching classifier is a missing concept in std/.
-
-### Concept categories (by impact)
-
-| Category | Pattern | Sites | Missing concept |
-|----------|---------|-------|-----------------|
-| Item classification | body+params+uses+connective combinatorics 3× | ~40 branches | Precomputed `ItemKind` on Node |
-| Connective branching | `Conj`/`Disj`/`NoConnective` if-else everywhere | 30+ branches | Explicit `TypeStructure` (product/coproduct/scalar) |
-| Collection detection | Name + children-count checks for List/Map/Set | ~15 sites | Structural `CollectionShape` from algebra |
-| Arity as semantics | `params |> count` as proxy for callable/generic | ~10 sites | Explicit `Callable`/`GenericSignature` properties |
-| Optional handling | Cardinality modifier + synthetic Some bridges | ~10 sites | First-class Optional as coproduct (M7) |
-| Function application | Type-name + arity check for call vs value-ref | ~5 sites | Modeled apply/call concept (M4 Tier 2.6) |
-| Transport/service | `transport != none && children > 0` repeated | ~8 sites | Explicit `ServiceDefinition` property |
-| Function signatures | body+params+uses conjunctions | ~12 sites | `FunctionSignature` semantic property |
-| Property/resource | `properties |> count > 0` as resource proxy | ~5 sites | Explicit `ResourceDefinition` marker |
-| Underresolved types | Sentinel names ("Dynamic", "Error") | ~6 sites | Explicit `ResolutionState` enum |
-
-### Dissolution strategy
-
-Items dissolve into existing milestones as they become unblocked:
-
-- **M4** dissolves: collection detection, arity-as-semantics, function
-  application (Tier 2.6), connective branching (partially)
-- **M7** dissolves: Optional handling, connective branching (fully),
-  underresolved type sentinels
-- **Independent**: item classification, transport/service, function
-  signatures, property/resource — these can be precomputed in inference
-  and stored on EmitGraphInfo without waiting for other milestones
-
-### Acceptance
-
-No ad-hoc structural interrogation in emission. Inference precomputes
-all semantic facts. Compiler concepts modeled in `.dag` declarations
-readable by the compiler itself.
 
 ## P1: Modeling Consolidation
 
