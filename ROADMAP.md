@@ -27,7 +27,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
             ┌─ Lane 1: M2 (boundary sufficiency) ──┐
 M1 COMPLETE─┤                                       ├→ M4 (structural identity)
 Bootstrap D ┼─ Lane 2: CG (codegen correctness) ───┘       └→ M5 → M6 → M7
-  COMPLETE  ├─ Lane 3: CX (164 → 0)
+  COMPLETE  ├─ Lane 3: CX (315 → 0; ratchet at 315, main at 164)
             └─ PERF (continuous — parallel to all lanes)
 
 Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
@@ -425,16 +425,55 @@ then deleted. `Node.name` field deleted.
 
 ---
 
-## CX: Complexity Analyzer (164 → 0) (Lane 3)
+## CX: Complexity Analyzer (Lane 3)
 
-**Root cause:** 164 violations are ungrounded algebraic concepts, not
-analyzer bugs. The path to 0 is grounding each concept in std/, not
-extending the analyzer.
+**Status:** Down from 315 → 164 (main) → 76 after PR #318.
+Ratchet constants not yet lowered (315/316).
+
+**Root cause:** The analyzer maintains parallel heuristic classifiers
+instead of consuming the structural facts already modeled in std/.
+Violations are not analyzer bugs — they are missing facts about data
+and operations. The path to 0 is modeling those facts, not extending
+the analyzer with name-matching heuristics.
+
+### Design principles
+
+**Recursion is emergent.** Recursion is not a first-class concept to
+model or analyze. It falls out of functions calling each other — just
+like real programs don't "know" they're recursing. Only iteration
+primitives (fold/descend/repeat) are modeled explicitly because they
+are intentional developer constructs. The analyzer never tries to
+"prove recursion terminates" — it computes the tightest bound it can
+from structural facts about data and operations.
+
+**All programs are bounded.** All data is ultimately quantifiable
+(Bit/Word64). The analyzer reports HOW bounded, not WHETHER bounded.
+If it can't derive a tight bound, the answer is Forever (2^63-1), not
+a violation. Forever < infinity — it is "heat death of the universe"
+scale, a concrete finite quantity. The system never deals with actual
+infinity.
+
+**No rejected patterns.** Every call pattern has a finite bound.
+`self(same_arg)` → `repeat(Forever)`. The analyzer computes bounds;
+it never rejects. CX violations mean "the analyzer couldn't derive a
+bound from available facts" — the fix is providing the missing fact,
+not adding a heuristic recognizer.
+
+**Complexity classes are emergent.** Linear, quadratic, Forever are
+themselves emergent properties of numbers and arithmetic. The
+underlying number modeling is anemic for now but should improve. As
+arithmetic facts become richer, complexity classes will emerge with
+greater precision without analyzer changes.
+
+**CX heuristics are CM gaps.** Every name-matching classifier in the
+analyzer (Theme A items below) is a symptom of a missing concept in
+std/. The fix path is the same as CM: model the fact, let the
+property emerge, and the heuristic dissolves.
 
 Computation model and migration plan:
 [docs/cx-computation-model.md](docs/cx-computation-model.md)
 
-DFA triage maps all 164 to four algebraic root causes:
+DFA triage maps violations to four algebraic root causes:
 
 | Root cause | Count | Fix |
 |-----------|-------|-----|
@@ -443,36 +482,113 @@ DFA triage maps all 164 to four algebraic root causes:
 | CostExpr/SizeExpr | ~30 | Flat product-of-bounds (std/computation.dag) |
 | Accessor-on-var | ~14 | Signature-driven fold (std/algebra.dag) |
 
+### PR #318 work (CX-K through CX-R)
+
+Reduced violation count via heuristic descent recognizers. Review
+flagged 15 items as heuristics-over-structure — the count dropped but
+the approach needs migration to structural authorities before the
+remaining path is sound. Work accomplished:
+
+- SCC proof constructor with TokenPosition progress dimension
+- Parser edge classification (`collect_parser_edges_for_scc`)
+- `is_algebra_iteration_method` reads `AlgebraMethodSemantics`
+- Children iteration produces descent evidence
+- Match-based descent detection (is_match_option_descent)
+- Field projection descent recognition
+- SCC parameter name unification in emit_pattern (CX-Q/CX-R)
+- Soundness fixes: branching_only, all_safe, any-argument fabrication
+
+### Review feedback (deferred — 15 items from PR #318)
+
+Per Review Queue Discipline, these are recorded but not stacked:
+
+**Theme A: Heuristic descent recognizers** (read structural facts instead)
+- `complexity.dag:1962` — child-descent hardcodes `"children"` and list-methods
+- `complexity.dag:2056` — `is_tree_size_preserving_wrapper` hardcodes callee name
+- `complexity.dag:2088` — hardcoded `rt_type`, `param_node_type_expr`, `field_binding_pattern` as sub-value extractors
+- `complexity.dag:2170` — treats any `param.field` as descent without structural witness
+- `complexity.dag:2244` — `is_match_option_descent` is shape heuristic for missing Option/Result facts
+- `complexity.dag:2312` — `lambda_param_names |> last` heuristic for missing method-signature facts
+
+**Theme B: Producer patches** (fix analyzer root cause instead)
+- `02_parse.dag:2759` — `node_to_name_str` split to make SCC shape friendlier
+- `04_types.dag:418` — optional-cardinality split to make analyzer see Same edge
+
+**Theme C: Fabrication / scope issues** (unsound)
+- `complexity.dag:275` — `ParserResultDirectState` duplicates state-progress fact
+- `complexity.dag:1382` — filtering `ProgressSame` self-edges fabricates acyclicity
+- `complexity.dag:2346` — `val_inner_vars` leaks arm-local bindings into outer scope
+- `complexity.dag:3061` — `branching_proof_safe` fallback fabricates LinearRecursion
+- `same_progress_subgraph_has_cycle` drops self-loops for 1-node SCCs
+
+**Theme D: Boundary / testing**
+- `tests/pipeline.rs:2505` — diagnostic tests read workspace source tree (not hermetic)
+- `05_emit_rust.dag:1334` — `emit_variant_pattern` returns empty string on impossible input
+
+### Dependency chain
+
+```
+CX-D (model facts in std/)
+ ├→ CX-B (wire LoweringTarget into analyzer, delete RecursionPattern)
+ ├→ CX-A (consume DescentEvidence from std/termination.dag)
+ ├→ CX-C (consume operation size contracts for fold evidence)
+ └→ CX-E (re-enable gate once violations = 0)
+      └→ PERF-3 (memory ratchet — can't validate until CX re-enabled)
+```
+
+**Dead code:** Three std/ declarations exist with no downstream consumer:
+- `computation.dag: LoweringTarget` — defined, lowering table complete,
+  but `complexity.dag` never reads it (CX-B not started)
+- `termination.dag: is_valid_proof` — declared, returns `false`
+  (CX-A not wired)
+- `complexity.dag: RecursionPattern` (stage0 Rust) — should be replaced
+  by `LoweringTarget` but both coexist with no bridge
+
 ### Work items
 
-- **CX-A**: DescentEvidence lattice unification — parser mutual recursion
-  gets structural termination proofs. Files: `complexity.dag`,
-  `dsl/std/termination.dag`. Expected: 164 → ~150.
-  Progress: TokenPosition dimension added to SCC proof constructor;
-  single-function parser recursion verified. SCC parser-proof path
-  not yet covered by end-to-end test.
+- **CX-D**: Model operation facts → heuristics dissolve. **Unblocked.**
+  This is the primary remaining work. Three categories of structural
+  facts are missing from the function model:
+  (1) **Operation size contracts** — which operations shrink their
+      input (list methods, Option unwrap) and by how much.
+  (2) **Type structure facts** — field sub-value relationships
+      (child access produces a smaller tree).
+  (3) **Coproduct projection facts** — match arms narrow the type,
+      producing strictly smaller data.
+  The analyzer consumes these facts as single authority. The lowering
+  table in `std/computation.dag` (CallPattern → LoweringTarget) already
+  models (1) but has no downstream consumer in complexity.dag.
+  Dissolves all Theme A and Theme B items. Unblocks producer-patch
+  reversals (02_parse.dag, 04_types.dag).
+- **CX-A**: DescentEvidence lattice unification — parser mutual recursion.
+  **Blocked-by: CX-D** (needs structural evidence facts).
+  Files: `complexity.dag`, `dsl/std/termination.dag`.
+  Done: TokenPosition dimension, SCC proof constructor, edge classification.
+  Deferred: ProgressSame self-edge filtering is heuristic (Theme C);
+  ParserResultDirectState duplicates facts (Theme C).
 - **CX-B**: CostExpr/SizeExpr dissolution — cost expressions become flat
   products of SizeBounds from `std/computation.dag`'s lowering table.
+  **Blocked-by: CX-D** (needs operation size contracts consumed).
   Planned: RecursionPattern → LoweringTarget, UnresolvableRecursion
   deleted. See [migration phases](docs/cx-computation-model.md#migration-phases).
-  Expected: ~150 → ~120.
+  Not started.
 - **CX-C**: Signature-driven fold evidence — self-calls inside
   `children |> fold` callbacks get structural descent proofs.
-  Expected: ~120 → ~80.
-  Progress: `is_algebra_iteration_method` reads `AlgebraMethodSemantics`
-  from ExprMethodCall; structural children iteration produces descent
-  evidence. Lambda element position still uses `last` convention
-  (Phase 3 blocker).
-- **CX-D**: MatchPattern dissolution + remaining concept grounding.
-  Expected: ~80 → 0.
+  **Blocked-by: CX-D** (needs operation size contracts for fold).
+  Done: `is_algebra_iteration_method` reads `AlgebraMethodSemantics`;
+  children iteration produces descent evidence.
+  Deferred: lambda element uses `last` convention (Theme A);
+  child-descent hardcodes `"children"` (Theme A).
 - **CX-E**: Re-enable complexity gate — remove `complexity_diags = []`,
   un-ignore 14 complexity tests (10 `complexity_*`, 3 `soundness_*`,
   1 `structural_classify_*`; all `#[ignore]` with "CX track" comment).
+  **Blocked-by: CX-A, CX-B, CX-C** (0 violations required).
 
 ### Acceptance
 
 0 violations without suppression. CX gate re-enabled. Node is the only
-recursive type consumed by complexity analysis.
+recursive type consumed by complexity analysis. All descent evidence
+reads structural facts — no heuristic name-matching in the analyzer.
 
 ---
 
@@ -490,7 +606,7 @@ lanes — any lane can introduce a regression.
 | Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]` |
 | Full DSL compile | `pipeline::full_dsl_compiles` | `#[ignore]`, GREEN |
 | Stage0 freshness gate | `scripts/check-stage0-freshness.sh` | CI blocking |
-| Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, 314 |
+| Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, ratchet 316 |
 
 ### Work items
 
@@ -502,7 +618,9 @@ lanes — any lane can introduce a regression.
 - **PERF-3**: Track self-compile memory. The CX OOM root cause was
   repeated complexity classification on large compiles, not raw budget.
   Add a memory-usage ratchet or at minimum log peak RSS during
-  `performance_ratchet`.
+  `performance_ratchet`. **Blocked-by: CX-E** (complexity analysis
+  currently disabled for memory; can't validate memory ratchet until
+  CX is re-enabled and the classification OOM is resolved).
 - **PERF-4**: Test suite wall-clock ratchet. Current: ~270s for 271
   tests. Budget TBD. Individual tests >2s are suspect (per project
   convention). Add per-test timing visibility.
@@ -530,9 +648,17 @@ that should be modeled facts. Each ad-hoc question is a symptom of a missing
 concept. Until the compiler models its own domain in `.dag`, these questions
 will keep spawning in every new feature and every refactor.
 
-**Principle:** Improper modeling spawns downstream questions. Model the
-underlying concept and the questions dissolve. Same pattern as
-fold/descend/repeat dissolving ad-hoc iteration logic.
+**Principle:** Model actual facts, let properties emerge. Improper
+modeling spawns downstream questions. Model the underlying concept and
+the questions dissolve. Same pattern as fold/descend/repeat dissolving
+ad-hoc iteration logic.
+
+Emergent properties — recursion, termination, complexity classes — are
+NOT modeled directly. They fall out of composing structural facts about
+data and operations. Iteration (fold/descend/repeat) is explicit because
+it is an intentional primitive. Recursion is emergent because programs
+don't "know" they're recursing. The CX analyzer's heuristics (Theme A)
+are CM gaps: each name-matching classifier is a missing concept in std/.
 
 ### Concept categories (by impact)
 

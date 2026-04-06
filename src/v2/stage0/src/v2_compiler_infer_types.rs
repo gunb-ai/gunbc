@@ -658,65 +658,79 @@ if (same_kind && left_is_unit_inner) {
 }
 
 pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        {
-            let left_err = if (left.inferred.clone() != None) {
-                is_compiler_error(left.inferred.clone().clone().unwrap())
+    {
+        let left_err = if (left.inferred.clone() != None) {
+            is_compiler_error(left.inferred.clone().clone().unwrap())
 } else {
-                false
+            false
 };
 let right_err = if (right.inferred.clone() != None) {
-                is_compiler_error(right.inferred.clone().clone().unwrap())
+            is_compiler_error(right.inferred.clone().clone().unwrap())
 } else {
-                false
+            false
 };
 let left_tv = if (left.inferred.clone() != None) {
-                is_type_variable(left.inferred.clone().clone().unwrap())
+            is_type_variable(left.inferred.clone().clone().unwrap())
 } else {
-                false
+            false
 };
 let right_tv = if (right.inferred.clone() != None) {
-                is_type_variable(right.inferred.clone().clone().unwrap())
+            is_type_variable(right.inferred.clone().clone().unwrap())
 } else {
-                false
+            false
 };
 let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
 let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
-let left_leaf = (((left.connective.clone() == Connective::NoConnective) && ((left.children.clone().len() as i64) == 0)) && ((left.properties.clone().len() as i64) == 0));
-let right_leaf = (((right.connective.clone() == Connective::NoConnective) && ((right.children.clone().len() as i64) == 0)) && ((right.properties.clone().len() as i64) == 0));
-let left_struct = (left.connective.clone() != Connective::NoConnective);
-let right_struct = (right.connective.clone() != Connective::NoConnective);
 let right_is_unit_eq = ((right.connective.clone() == Connective::Conj) && ((right.children.clone().len() as i64) == 0));
 let left_is_unit_eq = ((left.connective.clone() == Connective::Conj) && ((left.children.clone().len() as i64) == 0));
 if (left_err || right_err) {
+            true
+} else {
+            if (left_tv.clone() && right_tv.clone()) {
                 true
 } else {
-                if (left_tv.clone() && right_tv.clone()) {
-                    true
+                if (left_tv.clone() || right_tv.clone()) {
+                    false
 } else {
-                    if (left_tv.clone() || right_tv.clone()) {
-                        false
+                    if (left_opt.clone() && right_is_unit_eq) {
+                        true
 } else {
-                        if (left_opt.clone() && right_is_unit_eq) {
+                        if (left_is_unit_eq && right_opt.clone()) {
                             true
 } else {
-                            if (left_is_unit_eq && right_opt.clone()) {
-                                true
+                            if (left_opt.clone() && right_opt.clone()) {
+                                node_type_equals_core(with_required_cardinality(left.clone()), with_required_cardinality(right.clone()))
 } else {
-                                if (left_leaf.clone() && right_leaf.clone()) {
-                                    (left.name.clone().as_str() == right.name.clone().as_str())
+                                node_type_equals_core(left.clone(), right.clone())
+}
+}
+}
+}
+}
+}
+}
+}
+
+pub fn node_type_equals_core(left: Rc<Node>, right: Rc<Node>) -> bool {
+    {
+        let left_leaf = (((left.connective.clone() == Connective::NoConnective) && ((left.children.clone().len() as i64) == 0)) && ((left.properties.clone().len() as i64) == 0));
+let right_leaf = (((right.connective.clone() == Connective::NoConnective) && ((right.children.clone().len() as i64) == 0)) && ((right.properties.clone().len() as i64) == 0));
+let left_struct = (left.connective.clone() != Connective::NoConnective);
+let right_struct = (right.connective.clone() != Connective::NoConnective);
+if (left_leaf.clone() && right_leaf.clone()) {
+            (left.name.clone().as_str() == right.name.clone().as_str())
 } else {
-                                    if (left_struct.clone() && right_struct.clone()) {
-                                        if (left.name.clone().as_str() != right.name.clone().as_str()) {
-                                            false
+            if (left_struct.clone() && right_struct.clone()) {
+                if (left.name.clone().as_str() != right.name.clone().as_str()) {
+                    false
 } else {
-                                            if ((left.connective.clone() == Connective::Conj) != (right.connective.clone() == Connective::Conj)) {
-                                                false
+                    if ((left.connective.clone() == Connective::Conj) != (right.connective.clone() == Connective::Conj)) {
+                        false
 } else {
-                                                if ((left.children.clone().len() as i64) != (right.children.clone().len() as i64)) {
-                                                    false
+                        if ((left.children.clone().len() as i64) != (right.children.clone().len() as i64)) {
+                            false
 } else {
-                                                    { let mut __all = true; for pair in Rc::new(left.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match right.children.clone().get(pair.0.clone() as usize).cloned() {
+                            { let mut __all = true; for pair in Rc::new(left.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match right.children.clone().get(pair.0.clone() as usize).cloned() {
     Some(right_child) => node_type_equals(pair.1.clone(), right_child.clone()),
     None => false,
 }) { __all = false; break; } } __all }
@@ -724,20 +738,20 @@ if (left_err || right_err) {
 }
 }
 } else {
-                                        if (left_leaf.clone() && right_struct.clone()) {
-                                            (left.name.clone().as_str() == right.name.clone().as_str())
+                if (left_leaf.clone() && right_struct.clone()) {
+                    (left.name.clone().as_str() == right.name.clone().as_str())
 } else {
-                                            if (left_struct.clone() && right_leaf.clone()) {
-                                                (left.name.clone().as_str() == right.name.clone().as_str())
+                    if (left_struct.clone() && right_leaf.clone()) {
+                        (left.name.clone().as_str() == right.name.clone().as_str())
 } else {
-                                                {
-                                                    let left_is_container = node_is_element_collection(left.clone());
+                        {
+                            let left_is_container = node_is_element_collection(left.clone());
 let right_is_container = node_is_element_collection(right.clone());
 if (left_is_container && right_is_container) {
-                                                        if (left.name.clone().as_str() != right.name.clone().as_str()) {
-                                                            false
+                                if (left.name.clone().as_str() != right.name.clone().as_str()) {
+                                    false
 } else {
-                                                            match left.children.clone().first().cloned() {
+                                    match left.children.clone().first().cloned() {
     Some(left_el) => match right.children.clone().first().cloned() {
     Some(right_el) => node_type_equals(left_el.clone(), right_el.clone()),
     None => false,
@@ -746,49 +760,40 @@ if (left_is_container && right_is_container) {
 }
 }
 } else {
-                                                        if (left_opt.clone() && right_opt.clone()) {
-                                                            node_type_equals(with_required_cardinality(left.clone()), with_required_cardinality(right.clone()))
-} else {
-                                                            {
-                                                                let both_maps = (node_is_keyed_collection(left.clone()) && node_is_keyed_collection(right.clone()));
+                                {
+                                    let both_maps = (node_is_keyed_collection(left.clone()) && node_is_keyed_collection(right.clone()));
 if both_maps {
-                                                                    if (((left.children.clone().len() as i64) == 2) && ((right.children.clone().len() as i64) == 2)) {
-                                                                        {
-                                                                            let left_first = match left.children.clone().first().cloned() {
-    Some(v) => v.clone(),
-    None => left.clone(),
-};
-let right_first = match right.children.clone().first().cloned() {
-    Some(v) => v.clone(),
-    None => right.clone(),
-};
-let left_second = match left.children.clone().get(1 as usize).cloned() {
-    Some(v) => v.clone(),
-    None => left.clone(),
-};
-let right_second = match right.children.clone().get(1 as usize).cloned() {
-    Some(v) => v.clone(),
-    None => right.clone(),
-};
-(node_type_equals(left_first, right_first) && node_type_equals(left_second, right_second))
+                                        if (((left.children.clone().len() as i64) == 2) && ((right.children.clone().len() as i64) == 2)) {
+                                            match left.children.clone().first().cloned() {
+    Some(left_first) => match right.children.clone().first().cloned() {
+    Some(right_first) => match left.children.clone().get(1 as usize).cloned() {
+    Some(left_second) => match right.children.clone().get(1 as usize).cloned() {
+    Some(right_second) => (node_type_equals(left_first.clone(), right_first.clone()) && node_type_equals(left_second.clone(), right_second.clone())),
+    None => false,
+},
+    None => false,
+},
+    None => false,
+},
+    None => false,
 }
 } else {
-                                                                        false
+                                            false
 }
 } else {
-                                                                    if (((left.params.clone().len() as i64) > 0) && ((right.params.clone().len() as i64) > 0)) {
-                                                                        if ((left.params.clone().len() as i64) != (right.params.clone().len() as i64)) {
-                                                                            false
+                                        if (((left.params.clone().len() as i64) > 0) && ((right.params.clone().len() as i64) > 0)) {
+                                            if ((left.params.clone().len() as i64) != (right.params.clone().len() as i64)) {
+                                                false
 } else {
-                                                                            {
-                                                                                let params_eq = { let mut __all = true; for pair in Rc::new(left.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match right.params.clone().get(pair.0.clone() as usize).cloned() {
+                                                {
+                                                    let params_eq = { let mut __all = true; for pair in Rc::new(left.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match right.params.clone().get(pair.0.clone() as usize).cloned() {
     Some(right_param) => node_type_equals(param_node_type_expr(pair.1.clone()), param_node_type_expr(right_param.clone())),
     None => false,
 }) { __all = false; break; } } __all };
 if (params_eq == false) {
-                                                                                    false
+                                                        false
 } else {
-                                                                                    match left.inferred.clone().as_deref().cloned() {
+                                                        match left.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: left_ret, .. }) => match right.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: right_ret, .. }) => node_type_equals(left_ret.clone(), right_ret.clone()),
     None => false,
@@ -801,7 +806,7 @@ if (params_eq == false) {
 }
 }
 } else {
-                                                                        false
+                                            false
 }
 }
 }
@@ -812,13 +817,6 @@ if (params_eq == false) {
 }
 }
 }
-}
-}
-}
-}
-}
-}
-    })
 }
 
 pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
