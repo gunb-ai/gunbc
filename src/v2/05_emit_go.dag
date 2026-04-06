@@ -116,7 +116,7 @@ import v2.compiler.emit {
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
-  ServiceFieldSet, compute_service_fields,
+  ServiceFieldSet, compute_service_fields, service_field_decls,
   TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport
 }
 // =========================================================================
@@ -1242,15 +1242,11 @@ fn emit_go_service_def(
 
 fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
   let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
-  let rest_field = if fs.has_rest { "\tBaseURL string" } else { "" }
-  let auth_field = if fs.has_auth { "\n\tAuthToken string" } else { "" }
-  let shell_field = if fs.has_shell { "\tWorkingDir string" } else { "" }
-  let file_field = if fs.has_file { "\tBasePath string" } else { "" }
-  let fields = concat(rest_field, auth_field, shell_field, file_field)
-  if fields == "" {
+  let decls = service_field_decls(fs: fs, t: language_spec(target: Go).service_fields)
+  if decls |> count == 0 {
     concat("type ", name, " struct{}")
   } else {
-    concat("type ", name, " struct {\n", fields, "\n}")
+    concat("type ", name, " struct {\n", decls |> join(separator: "\n"), "\n}")
   }
 }
 
