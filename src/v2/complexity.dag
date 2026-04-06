@@ -3732,18 +3732,24 @@ fn scalar_output() -> Map<String, CostExpr> {
 // Size-preserving methods (map, filter, etc.) pass through to the inner receiver.
 // =========================================================================
 
-fn is_size_preserving_method(method_name: String) -> Bool {
-  method_name == "map" || method_name == "filter" || method_name == "flat_map"
-  || method_name == "skip" || method_name == "enumerate" || method_name == "sort_by"
-  || method_name == "concat" || method_name == "reverse"
-}
-
+// Derive size preservation from algebra facts: a method preserves the receiver
+// size variable if its cost_shape produces a collection or it has a size_effect.
+// No method name dispatch — reads structural facts from AlgebraMethodSemantics.
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, size_effect: _, cost_shape: _ } =>
-        is_size_preserving_method(method_name: method_def.name)
+      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: cs } =>
+        // Any size effect (shrink/identity/projection) means a collection operation
+        let has_effect = se != none
+        // Cost shapes that produce collections preserve receiver size
+        let produces_collection = match cs {
+          Some { value: ShapeIterateBody { produces_collection: pc } } => pc
+          Some { value: ShapeLinearScan { produces_collection: pc } } => pc
+          Some { value: ShapeSortBody } => true
+          _ => false
+        }
+        has_effect || produces_collection
       _ => false
     }
   }

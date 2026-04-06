@@ -3406,16 +3406,21 @@ result
 }
 }
 
-pub fn is_size_preserving_method(method_name: String) -> bool {
-    ((((((((method_name.clone().as_str() == "map".to_string().as_str()) || (method_name.clone().as_str() == "filter".to_string().as_str())) || (method_name.clone().as_str() == "flat_map".to_string().as_str())) || (method_name.clone().as_str() == "skip".to_string().as_str())) || (method_name.clone().as_str() == "enumerate".to_string().as_str())) || (method_name.clone().as_str() == "sort_by".to_string().as_str())) || (method_name.clone().as_str() == "concat".to_string().as_str())) || (method_name.clone().as_str() == "reverse".to_string().as_str()))
-}
-
 pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
     if (method_semantics.clone() == None) {
         false
 } else {
         match (*method_semantics.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_def, .. } => is_size_preserving_method(method_def.name.clone()),
+    MethodSemantics::AlgebraMethodSemantics { size_effect: se, cost_shape: cs, .. } => {
+            let has_effect = (se.clone() != None);
+let produces_collection = match cs.clone().as_deref().cloned() {
+    Some(CostShape::ShapeIterateBody { produces_collection: pc, .. }) => pc.clone(),
+    Some(CostShape::ShapeLinearScan { produces_collection: pc, .. }) => pc.clone(),
+    Some(CostShape::ShapeSortBody) => true,
+    _ => false,
+};
+(has_effect || produces_collection)
+},
     _ => false,
 }
 }
