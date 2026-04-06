@@ -271,11 +271,11 @@ backends.
 
 - [~] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
   render as `name()` via `is_zero_arg_callable_ref` (FunctionValueBinding +
-  Callable node with empty params). Dispatched in emit_var_ref and
-  emit_typed_expr_base. `is_zero_arg_callable_ref` moved to shared
-  05_emit.dag; Go/Python emit_expr_var now consult it (PR #324).
-  **Partial:** emitter-side guardrail only —
-  `rt.name == "Callable"` is an L1 violation. Upstream concept modeling
+  Callable node with empty params). Dispatched in Rust emit_var_ref and
+  emit_typed_expr_base only. Go/Python keyword mapping (none/true/false)
+  landed (PR #324); zero-arg callable detection kept Rust-scoped per
+  review — widening an L1 violation across backends without upstream
+  modeling violates boundary sufficiency. Upstream concept modeling
   (Tier 2.6) dissolves this. Imported zero-arg function refs untested.
 - [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
