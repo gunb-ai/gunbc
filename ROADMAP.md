@@ -687,15 +687,15 @@ properties}`, producing three incompatible taxonomies.
 
 **Work items:**
 - [ ] Design: determine irreducible structural facts about items
-- [ ] Design: decide carry-on-item vs single-classification vs direct structural match
-- [ ] Implement: single authority for item facts, fail-closed by construction
+- [ ] Surface existing fields (`body`, `transport`, `connective`, `params`) to
+  every consumption site — no new classification type
+- [ ] Implement: fail-closed boundaries (no TypedItemUnhandled, no `""` fallbacks)
 - [ ] Delete: all `classify_*` forests, all fail-open fallbacks, all name-keyed side-tables
 
-**Acceptance:** Item classification is unrepresentable in emit. Emit
-modules cannot access raw item structural fields (`body`, `transport`,
-`uses`, `type_annotation`, `properties`) for dispatch. The boundary type
-carries pre-resolved facts. Classification forests can't exist because
-there's nothing to classify.
+**Acceptance:** Emit dispatches on existing Node structural fields
+directly. Classification forests dissolve because consumers pattern-match
+on the facts they need (`body != none`, `connective`) rather than on a
+derived taxonomy.
 
 ## MM-2: Type structure
 
@@ -709,15 +709,18 @@ re-derived at every consumption site.
 - Type rendering dispatch in `05_emit.dag:1095-1191`: 97 lines, 7 branches
 
 **Work items:**
-- [ ] Design: determine whether `TypeSummary.repr` can become the single interpretation authority
-- [ ] Design: determine whether non-emit consumers (lookup, types) should use same or different concept
-- [ ] Implement: single interpretation of connective, consumed everywhere
-- [ ] Delete: all inline `.connective == Conj` / `Disj` checks in emit
+- [ ] Surface connective (the existing authority) to all consumers that
+  currently re-derive it — connective and `TypeSummary.repr` are the
+  authorities; no new interpretation type
+- [ ] Extend `TypeSummary.repr` to cover all type rendering, not just
+  type definitions
+- [ ] Delete: all inline `.connective == Conj` / `Disj` re-interpretation
+  in emit
 
-**Acceptance:** Connective interpretation is unrepresentable in emit.
-Emit modules do not import `Connective` / `Conj` / `Disj` /
-`NoConnective`. They receive a resolved type structure and dispatch on
-that. Type rendering is an exhaustive match on a sum type.
+**Acceptance:** Emit reads connective or `TypeSummary.repr` (existing
+authorities) directly. No multi-branch re-interpretation of connective
+in emit — type rendering is an exhaustive match on the existing
+authority.
 
 ## MM-3: Expression semantics
 
@@ -731,35 +734,39 @@ matching at every consumption site.
 - Built-in call type refinement by name: 4 sites in infer
 
 **Work items:**
-- [ ] Design: `AlgebraMethodKind` enum on `MethodSemantics` (fold/map/filter/sort_by/...)
-- [ ] Design: nullary invocation — `NullaryCallBinding` vs ExprVar→ExprCall normalization
-- [ ] Implement: method dispatch via kind enum, not name string
-- [ ] Implement: nullary invocation modeled in IR
+- [ ] Surface existing `method_def` Node and `AlgebraFieldTemplate`
+  structural facts through the pipeline to emit — these ARE method
+  identity; no new dispatch enum
+- [ ] Normalize ExprVar → ExprCall during inference for nullary
+  functions — the expression IR is the authority for invocation
+  semantics
 - [ ] Fix: Go/Python emit must handle nullary function references
+  (ExprCall normalization fixes all backends at once)
 
-**Acceptance:** Method name dispatch is unrepresentable in emit.
-`AlgebraMethodSemantics` carries a `kind` enum; emit matches on kind,
-not name. Nullary invocation is a structural fact on the expression,
+**Acceptance:** Emit reads method structural facts from existing
+`method_def` / `AlgebraFieldTemplate` authorities, not name strings.
+Nullary invocation is ExprCall in the IR (normalized during inference),
 not a type-name check at render time.
 
 ## CM acceptance (structural)
 
 Each criterion is a claim: "this class of mistake is unrepresentable."
-The boundary type between stages carries the needed facts so the wrong
-question can't be asked. See `src/v2/CM.md` for full design rationale.
+Consumers read existing structural authorities; the wrong question
+can't be asked. See `src/v2/CM.md` for full design rationale.
 
 | Model | Claim | How to verify |
 |-------|-------|---------------|
-| MM-1 | Emit receives item facts structurally; classification is unnecessary | Boundary type carries resolved facts; emit dispatches on those, not raw Node fields |
-| MM-2 | Emit receives resolved type structure; connective re-interpretation is unnecessary | Boundary type carries product/sum/leaf interpretation; emit never re-derives from connective |
-| MM-3 | Emit receives method identity as a typed concept; name dispatch is unnecessary | `MethodSemantics` carries a kind enum; emit matches on kind, not name strings |
+| MM-1 | Item facts are existing Node fields; classification is unnecessary | Emit reads `body`, `transport`, `connective` directly — no `classify_*` forests |
+| MM-2 | Connective / TypeSummary.repr is the authority; re-interpretation is unnecessary | Emit reads connective or repr — no inline `.connective == Conj` checks |
+| MM-3 | method_def / AlgebraFieldTemplate is the authority; name dispatch is unnecessary | Emit reads structural method facts — no `method_name ==` string dispatch |
 
-**Invariant guardrail:** Any new fact layer or boundary type introduced
-under CM must be (a) an exact derivation from upstream data, (b) non-lossy
-(preserves every distinction downstream consumers need), and (c) landed
-with a real downstream consumer in the same change. Speculative metadata
-is rejected — the repo has already deleted prior boundary layers that
-introduced unused or lossy fact tables.
+**Invariant guardrail:** Consume existing authorities, never duplicate.
+Any proposed new fact layer or boundary type must demonstrate that
+(a) no existing authority carries the needed fact, (b) the existing
+authority cannot be surfaced to the consumer, and (c) the new layer
+lands with a real downstream consumer in the same change. Speculative
+metadata is rejected — the repo has already deleted prior boundary
+layers that introduced unused or lossy fact tables.
 
 ---
 

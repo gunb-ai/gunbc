@@ -148,7 +148,7 @@ by keywords. The ontological concerns are:
 | Lines | Heuristic | Cat | Question | With ontology |
 |-------|-----------|-----|----------|---------------|
 | 83-112 | `inferred_to_outputs`: connective + name checks | A | How many output fields? | Algebra (Product: expand fields, Coproduct: wrap) |
-| 114-131 | `item_kind`: 7-branch priority chain | R | What emission category? | Node decomposition: `has_reduction? what_kind?` replaces 7 branches |
+| 114-131 | `item_kind`: 7-branch priority chain | R | What emission category? | Consumers read existing fields (`body`, `transport`, `connective`) directly — no derived wrapper |
 
 ### 04_resolve.dag
 
@@ -166,7 +166,7 @@ by keywords. The ontological concerns are:
 
 | Lines | Heuristic | Cat | Question | With ontology |
 |-------|-----------|-----|----------|---------------|
-| 67-69 | `params > 0 && body != none` | S | Is this a function? | `has_reduction? && reduction.has_params?` |
+| 67-69 | `params > 0 && body != none` | S | Is this a function? | These ARE the existing structural facts — the check is already correct, just needs to be reachable at all sites |
 | 119-236 | `dsig.inferred != none` repeated | S | Has return annotation? | Legitimate presence check |
 
 ### 04_types.dag
@@ -196,7 +196,7 @@ by keywords. The ontological concerns are:
 
 | Lines | Heuristic | Cat | Question | With ontology |
 |-------|-----------|-----|----------|---------------|
-| 842-903 | Method result type: 7-way name match | R | What type does this method return? | AlgebraMethodKind carries return-type semantics |
+| 842-903 | Method result type: 7-way name match | R | What type does this method return? | Existing `AlgebraFieldTemplate` already carries return-type structure — surface it |
 | 1008-1070 | Field access: 5-branch cascade | A | Struct/enum/container/optional? | TypeShape dispatch |
 | 1130-1189 | Call tier: 5-branch cascade | R | Direct call / method / builtin? | ReductionKind: DirectApplication / MethodApplication / BuiltinRule |
 | 1215-1258 | Built-in refinement: 4-way name match | R | Special return type? | Builtin = named rewrite rule; return type from rule declaration |
@@ -252,7 +252,7 @@ by keywords. The ontological concerns are:
 |-------|-----------|-----|----------|---------------|
 | 1685-1750 | Nullary detection: 3-tier | R | Append `()`? | Is-redex: structural on expression |
 | 2286-2338 | Index dispatch: string/map/list | A | Index syntax? | Algebra profile: FreeMonoid → integer index, PartialFunction → key lookup |
-| 2853-2901 | Method dispatch: 13-way name match | R | Rendering template? | AlgebraMethodKind enum; fold/map/filter are rewrite-rule kinds |
+| 2853-2901 | Method dispatch: 13-way name match | R | Rendering template? | Read existing `AlgebraFieldTemplate` + `method_def` structural facts |
 | 2944-2957 | Match scrutinee Rc: 4 branches | A | Ownership at match? | Sharing from TypeSummary |
 | 3101-3123 | Field optionality: 3 fallbacks | A | Optional field? | Cardinality from type declaration |
 | 3170-3239 | Variant parent + struct name: 8 fallback paths | S | Type identity? | Structural: variant → parent is a graph edge, not name lookup |
@@ -271,7 +271,7 @@ by keywords. The ontological concerns are:
 
 | Lines | Heuristic | Cat | Question | With ontology |
 |-------|-----------|-----|----------|---------------|
-| 212-220, 240-241 | `fname == "fold"` / `mname == "fold"` | R | Threaded semantics? | Fold = specific RewriteRuleKind. Threaded is structural on the call, not name |
+| 212-220, 240-241 | `fname == "fold"` / `mname == "fold"` | R | Threaded semantics? | Read existing algebra framework facts — fold's structural properties are already declared in `AlgebraFieldTemplate` |
 | 225, 254 | `a.name == "init"` | S | Fold accumulator arg? | Fold's accumulator position from algebra declaration |
 | 360-378 | Consumer count branching | S | Ownership class? | Legitimate count-based classification |
 | 390-395 | `LocalValueBinding` match | S | Movable? | Legitimate variant classification |
@@ -350,7 +350,7 @@ inspects the same fields with subtly different priority.
 
 **Ontological fix:** Direct dissolution. Node decomposition into
 Signal/Algebra/Reduction makes classification a pattern match:
-`{has_algebra: true, has_reduction: Internal}` → FnItem.
+`{connective: NoConnective, body: present, transport: absent}` → FnItem.
 Computed once, carried structurally. The four forests merge.
 
 ### Pattern 3: Name-as-identity (~30 sites)
@@ -363,7 +363,7 @@ a structural fact:
 - `"Callable"` = the type of a Reduction (function type)
 - `"Refined"` = Product with a constraint child
 - `"List"` = FreeMonoid with arity 1
-- `"fold"` = catamorphic RewriteRuleKind
+- `"fold"` = catamorphic operation (structural facts in `AlgebraFieldTemplate`)
 - `"first"/"last"` = FreeMonoid accessor with known size contract
 Once the structural fact has a typed representation, the name
 becomes rendering sugar (how it's displayed), not identity.
