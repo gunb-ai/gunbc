@@ -49,11 +49,11 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, Connective, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
-use crate::v2_std_core::VarBindingKind::{FunctionValueBinding};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::BinOp::{NullCoalesce};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{CardOptional};
+use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
@@ -2134,16 +2134,6 @@ pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) ->
     RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), l_str.clone()), " if ".to_string()), l_str.clone()), " is not None else ".to_string()), r_str), ")".to_string()),
     RenderTarget::Go => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func() interface{} { if ".to_string(), l_str.clone()), " != nil { return ".to_string()), l_str.clone()), " }; return ".to_string()), r_str), " }()".to_string()),
     RenderTarget::Dag => v2_rt::concat(v2_rt::concat(l_str.clone(), " ?? ".to_string()), r_str),
-}
-}
-
-pub fn is_zero_arg_callable_ref(binding_kind: Option<Rc<VarBindingKind>>, resolved_type: Option<Rc<InferredNode>>) -> bool {
-    match binding_kind.as_deref().cloned() {
-    Some(VarBindingKind::FunctionValueBinding) => match resolved_type.as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => ((rt.name.clone().as_str() == "Callable".to_string().as_str()) && ((rt.params.clone().len() as i64) == 0)),
-    _ => false,
-},
-    _ => false,
 }
 }
 

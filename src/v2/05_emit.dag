@@ -24,7 +24,7 @@ import v2.std.core {
   authored_name_at, NewlineIndex,
   expr_var_name_at, expr_call_func_at, let_binding_name_at,
   ExprData, NoExprData,
-  VarBindingKind, FunctionValueBinding,
+  VarBindingKind,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp,
@@ -1739,23 +1739,6 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
   }
 }
 
-// DAG references to zero-arg functions are calls; all backends need explicit parens.
-// Checks FunctionValueBinding + resolved Callable type has no params.
-//
-// L1 VIOLATION: name-proxy check on resolved type (boundary sufficiency).
-// Inference should encode "this is a call" in the IR (ExprCall
-// normalization), not leave emit to re-derive it from type-name + arity.
-// Dissolves with M4/Tier 2.6: model function application upstream.
-fn is_zero_arg_callable_ref(binding_kind: VarBindingKind?, resolved_type: InferredNode?) -> Bool {
-  match binding_kind {
-    Some { value: FunctionValueBinding } =>
-      match resolved_type {
-        Some { value: Resolved { node: rt } } => rt.name == "Callable" && (rt.params |> count) == 0
-        _ => false
-      }
-    _ => false
-  }
-}
 
 // =========================================================================
 // emit_shared_expr — full shared ExprData dispatcher (P4.2 step 5)

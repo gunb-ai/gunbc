@@ -961,13 +961,25 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         None =>
           match lookup_func_sig(func_env: scope.func_env, name: name) {
             Some { value: fsig } =>
-              ok_infer(texpr: make_named_expr_node(
-                name: name,
-                expr_data: ExprVar { binding_kind: Some { value: FunctionValueBinding } },
-                children: [],
-                inferred: Some { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
-                span: span
-              ))
+              // Zero-arg function reference IS an invocation — normalize to ExprCall.
+              // Multi-arg function reference is a value (Callable type).
+              if (fsig.params |> count) == 0 {
+                ok_infer(texpr: make_named_expr_node(
+                  name: name,
+                  expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+                  children: [],
+                  inferred: Some { value: Resolved { node: fsig.inferred } },
+                  span: span
+                ))
+              } else {
+                ok_infer(texpr: make_named_expr_node(
+                  name: name,
+                  expr_data: ExprVar { binding_kind: Some { value: FunctionValueBinding } },
+                  children: [],
+                  inferred: Some { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
+                  span: span
+                ))
+              }
             None =>
               let err_texpr = make_named_expr_node(
                 name: name,

@@ -1045,11 +1045,19 @@ ok_infer(make_named_expr_node(name.clone(), Rc::new(ExprData::ExprVar {
 })), span.clone()))
 },
     None => match lookup_func_sig(scope.func_env.clone(), name.clone()) {
-    Some(fsig) => ok_infer(make_named_expr_node(name.clone(), Rc::new(ExprData::ExprVar {
+    Some(fsig) => if ((fsig.params.clone().len() as i64) == 0) {
+                ok_infer(make_named_expr_node(name.clone(), Rc::new(ExprData::ExprCall {
+    call_semantics: Some(CallSemantics::PlainCallSemantics),
+}), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
+    node: fsig.inferred.clone(),
+})), span.clone()))
+} else {
+                ok_infer(make_named_expr_node(name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(Rc::new(VarBindingKind::FunctionValueBinding)),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: resolved_callable_type(fsig.params.clone(), fsig.inferred.clone()),
-})), span.clone())),
+})), span.clone()))
+},
     None => {
                 let err_texpr = make_named_expr_node(name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: None,
