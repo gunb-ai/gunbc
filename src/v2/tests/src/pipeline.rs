@@ -4727,3 +4727,178 @@ fn process(items: List<String>) -> Accum {
         "fold with multi-move must not be eligible for unwrap optimization"
     );
 }
+
+// ── ExprLet expected-type propagation regression tests ────────────────
+//
+// The ExprLet body now receives the outer `expected` type (M2 commit
+// d5e58ea56). These tests verify that expected context flows correctly
+// through let bodies without mistyping lambda parameters.
+
+#[test]
+fn let_body_fold_init_empty_map_receives_expected() {
+    // Regression: fold(init: empty_map()) inside a let body should receive
+    // the function return type as expected context, allowing empty_map()
+    // to adopt the fully parameterized Map type.
+    let source = r#"module test_let_fold
+fn build_index(items: List<String>) -> Map<String, Bool> {
+  let separator = "_"
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, concat(item, separator), true)
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_let_fold.rs");
+    assert!(
+        !content.contains("compile_error"),
+        "let-wrapped fold(init: empty_map()) must not produce compile errors"
+    );
+    assert!(
+        !content.contains("BRIDGE"),
+        "fold init should not produce BRIDGE fabrication: {content}"
+    );
+}
+
+#[test]
+fn fold_init_empty_map_without_let_no_bridge() {
+    // fold(init: empty_map()) directly in function body (no let wrapper)
+    // should produce turbofish, not BRIDGE fabrication.
+    let source = r#"module test_fold_no_expected
+fn build(items: List<String>) -> Map<String, Bool> {
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, item, true)
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_fold_no_expected.rs");
+    assert!(
+        !content.contains("BRIDGE"),
+        "fold init should not produce BRIDGE: {content}"
+    );
+}
+
+#[test]
+fn fold_init_empty_map_with_struct_value_no_bridge() {
+    // fold(init: empty_map()) building Map<String, StructType> should
+    // produce turbofish, not BRIDGE. Tests cross-type fold accumulator.
+    let source = r#"module test_fold_struct
+type Entry { label: String, count: Int }
+fn index_items(items: List<Entry>) -> Map<String, Entry> {
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, item.label, item)
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_fold_struct.rs");
+    eprintln!("fold_struct output:\n{}", content);
+    assert!(
+        !content.contains("BRIDGE"),
+        "fold with struct value type should not produce BRIDGE: {content}"
+    );
+}
+
+#[test]
+fn let_body_callable_expected_types_lambda_params() {
+    // When the let body contains a lambda under a callable expected type
+    // (e.g., from a function signature), the lambda params should be typed
+    // from the callable's param types, not from the raw expected.
+    let source = r#"module test_let_callable
+fn apply_transform(items: List<Int>) -> List<Int> {
+  let threshold = 10
+  items |> filter(x => x > threshold)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_let_callable.rs");
+    assert!(
+        !content.contains("compile_error"),
+        "lambda under callable expected in let body must compile cleanly"
+    );
+}
+
+#[test]
+fn let_body_non_callable_expected_does_not_mistype_lambda() {
+    // When expected is a non-callable type (e.g., Map<String, Bool>),
+    // lambdas inside method calls in the let body should NOT get their
+    // params typed from the outer expected — they should get typed from
+    // the collection element type via the method inference path.
+    let source = r#"module test_let_noncallable
+fn summarize(items: List<Int>) -> Map<String, Bool> {
+  let doubled = items |> map(x => x * 2)
+  let positive = doubled |> filter(x => x > 0)
+  positive |> fold(init: empty_map(), f: (acc, x) =>
+    map_insert(acc, x |> to_string, true)
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_let_noncallable.rs");
+    assert!(
+        !content.contains("compile_error"),
+        "non-callable expected must not mistype lambda params in let body"
+    );
+}
+
+#[test]
+fn nested_let_in_match_propagates_expected() {
+    // Expected type should flow through nested let inside match arms.
+    let source = r#"module test_nested_let_match
+fn classify(items: List<Int>) -> Map<String, Int> {
+  match items |> first {
+    Some { value: head } =>
+      let label = if head > 0 { "positive" } else { "negative" }
+      items |> fold(init: empty_map(), f: (acc, x) =>
+        map_insert(acc, label, x)
+      )
+    None => empty_map()
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn nested_let_in_if_propagates_expected() {
+    // Expected type should flow through let inside if branches.
+    let source = r#"module test_nested_let_if
+fn process(items: List<Int>, flag: Bool) -> List<Int> {
+  if flag {
+    let offset = 1
+    items |> map(x => x + offset)
+  } else {
+    let scale = 2
+    items |> map(x => x * scale)
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn let_in_record_field_propagates_expected() {
+    // Expected type from struct field should flow through let bodies
+    // when constructing record literals.
+    let source = r#"module test_let_record
+type Summary { counts: Map<String, Int>, total: Int }
+fn build_summary(items: List<String>) -> Summary {
+  let n = items |> count
+  Summary {
+    counts: items |> fold(init: empty_map(), f: (acc, item) =>
+      map_insert(acc, item, 1)
+    ),
+    total: n
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
