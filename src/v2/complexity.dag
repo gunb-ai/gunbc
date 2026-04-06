@@ -60,6 +60,10 @@ import v2.std.core {
   is_children_list_field, is_sub_value_field,
   is_tree_size_preserving, is_tree_size_reducing
 }
+import std.algebra {
+  CollectionSizeEffect, ShrinkEffect, ProjectionEffect, IdentityEffect,
+  CostShape, ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody
+}
 
 // =========================================================================
 // Size expressions -- symbolic sizes for analysis
@@ -122,41 +126,8 @@ type Certainty = Proven | Conservative | Unknown
 //   produces_collection -- whether the method outputs a collection
 // =========================================================================
 
-type CostShape
-  = ShapeConstant
-  | ShapeLinearScan { produces_collection: Bool }
-  | ShapeIterateBody { produces_collection: Bool }
-  | ShapeSortBody
-
-// Data table: method name -> cost shape. Single authority on what cost
-// structure each algebra method has. Adding a method's cost = one line here.
-// Methods not in this table are assumed O(1) (bridge methods).
-data method_cost_shape_table: Map<String, CostShape> = {
-  "map": ShapeIterateBody { produces_collection: true },
-  "flat_map": ShapeIterateBody { produces_collection: true },
-  "filter": ShapeIterateBody { produces_collection: true },
-  "enumerate": ShapeIterateBody { produces_collection: true },
-  "skip": ShapeIterateBody { produces_collection: true },
-  "take": ShapeIterateBody { produces_collection: true },
-  "fold": ShapeIterateBody { produces_collection: false },
-  "any": ShapeIterateBody { produces_collection: false },
-  "all": ShapeIterateBody { produces_collection: false },
-  "sort_by": ShapeSortBody,
-  "count": ShapeLinearScan { produces_collection: false },
-  "first": ShapeLinearScan { produces_collection: false },
-  "last": ShapeLinearScan { produces_collection: false },
-  "join": ShapeLinearScan { produces_collection: false },
-  "string_contains": ShapeLinearScan { produces_collection: false },
-  "concat": ShapeLinearScan { produces_collection: false },
-  "chars": ShapeLinearScan { produces_collection: true },
-  "split": ShapeLinearScan { produces_collection: true },
-  "append": ShapeConstant
-}
-
-// Look up a method's cost shape from the data table.
-fn method_cost_shape(method_name: String) -> CostShape? {
-  lookup(method_cost_shape_table, key: method_name)
-}
+// CostShape type and per-method cost shapes are declared in dsl/std/algebra.dag
+// on each AlgebraFieldTemplate. Imported above.
 
 // Child accessor identity is now derived from the IR child layout model
 // in 00_core.dag (expr_child_roles / wrapper_child_roles). The hardcoded
@@ -313,27 +284,23 @@ type EvidenceBlockAcc {
   vars: Map<String, Bool>
 }
 
-// Structural classification of list methods relevant to descent proofs.
-// Replaces raw method-name string dispatch with a closed enum.
-type ListMethodKind
-  = SkipMethod     // skip(N): drops first N elements, List shrinks by N
-  | FirstMethod    // first: projects head element (descent from list to element)
-  | LastMethod     // last: projects tail element (descent from list to element)
-
-fn classify_list_method(name: String) -> ListMethodKind? {
-  if name == "skip" { Some { value: SkipMethod } }
-  else if name == "first" { Some { value: FirstMethod } }
-  else if name == "last" { Some { value: LastMethod } }
-  else { none }
-}
-
 // CX-C: Check if a method has algebra iteration semantics (fold, map, etc.)
 // by reading the structural MethodSemantics fact carried on ExprMethodCall,
 // rather than string-matching method names.
 fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _ } } => true
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _ } } => true
     _ => false
+  }
+}
+
+// Extract size effect from method semantics. Returns the CollectionSizeEffect
+// declared on the algebra template, or none for plain/service/user-defined methods
+// and algebra methods without a declared size effect.
+fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffect? {
+  match method_semantics {
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se } } => se
+    _ => none
   }
 }
 
@@ -371,12 +338,38 @@ fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
 
 // Check if a set of proof edges forms a valid termination proof:
 // the subgraph of non-descending edges (all dims NonIncreasing) must be acyclic.
+// A non-descending self-loop (caller == callee) IS a cycle — the function calls
+// itself without making progress on any dimension.
 fn proof_has_non_descending_cycle(members: List<String>, edges: List<ProofEdge>) -> Bool {
   let non_descending = edges |> filter(e => is_lexicographic_descent(evidence: e.evidence) == false)
-  let nd_progress_edges = non_descending |> map(e =>
-    ParserProgressEdge { caller: e.caller, callee: e.callee, progress: ProgressSame }
+  // Self-loops that are non-descending are immediate cycles.
+  let has_self_cycle = non_descending |> any(e => e.caller == e.callee)
+  if has_self_cycle { true }
+  else {
+    // Cross-edges: check for multi-node cycles via SCC detection.
+    let nd_graph = build_call_graph_from_proof_edges(names: members, edges: non_descending)
+    graph_has_multi_node_scc(names: members, graph: nd_graph)
+  }
+}
+
+fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
+  let initial_forward = seed_adjacency_map(names: names)
+  let initial_reverse = seed_adjacency_map(names: names)
+  let graph_acc = edges |> filter(e => e.caller != e.callee) |> fold(init: CallGraphAcc { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+    let forward_neighbors = match map_get(acc.forward, edge.caller) {
+      Some { value: ns } => concat(ns, [edge.callee])
+      None => [edge.callee]
+    }
+    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
+      Some { value: ns } => concat(ns, [edge.caller])
+      None => [edge.caller]
+    }
+    CallGraphAcc {
+      forward: map_insert(acc.forward, edge.caller, forward_neighbors),
+      reverse: map_insert(acc.reverse, edge.callee, reverse_neighbors)
+    }
   )
-  same_progress_subgraph_has_cycle(members: members, edges: nd_progress_edges)
+  CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
 // Check if a CostExpr contains a placeholder for a self-recursive call.
@@ -1266,24 +1259,6 @@ fn infer_all_parser_always_advancing(func_index: Map<String, FuncEntry>) -> Map<
   infer_parser_always_advancing_members(members: members, func_index: func_index)
 }
 
-fn self_calls_have_strict_parser_progress(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>) -> Bool {
-  match parser_state_param(params: params) {
-    Some { value: state_param } =>
-      let self_set = map_insert(empty_map(), func_name, true)
-      let edges = collect_parser_progress_edges(
-        caller: func_name,
-        body: body,
-        state_param: state_param,
-        scc_name_set: self_set,
-        env: empty_parser_progress_env(),
-        parser_always_advancing: parser_always_advancing,
-        consumed_true_set: empty_map()
-      )
-      (edges |> count) > 0 && (edges |> all(edge => edge.progress == ProgressStrict))
-    None => false
-  }
-}
-
 // Build an adjacency map seeded with empty neighbor lists for each name.
 // Typed return ensures [] resolves to List<String>, not List<Unit>.
 fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
@@ -1689,32 +1664,6 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
 // arm. For ExprIf/ExprMatch to propagate witnesses, ALL branches must yield
 // descent from the same parameter — a requirement that is not yet enforced.
 // This is tracked in ROADMAP §I1.
-fn collect_descending_witness_names(body: Node, descending_witness_names: Map<String, String>) -> Map<String, String> {
-  match body.expr_data {
-    ExprLet =>
-      let value_witnesses = collect_descending_witness_names(body: let_value(texpr: body), descending_witness_names: descending_witness_names)
-      let next_witnesses_base = descending_name_set_without_key(names: value_witnesses, key: let_binding_name(texpr: body))
-      let next_witnesses = match expr_descending_witness_source(expr: let_value(texpr: body), descending_witness_names: value_witnesses) {
-        Some { value: source_param } => map_insert(next_witnesses_base, let_binding_name(texpr: body), source_param)
-        None => next_witnesses_base
-      }
-      match let_body(texpr: body) {
-        Some { value: b } => collect_descending_witness_names(body: b, descending_witness_names: next_witnesses)
-        None => next_witnesses
-      }
-
-    ExprBlock =>
-      body.children |> fold(init: descending_witness_names, f: (acc, stmt) =>
-        collect_descending_witness_names(body: stmt, descending_witness_names: acc)
-      )
-
-    _ =>
-      body.children |> fold(init: descending_witness_names, f: (acc, child) =>
-        collect_descending_witness_names(body: child, descending_witness_names: acc)
-      )
-  }
-}
-
 fn condition_param_names(expr: Node, param_set: Map<String, String>) -> Map<String, String> {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
@@ -1772,56 +1721,6 @@ fn recursive_param_name_for_arg(idx: Int, arg_node: Node, params: List<Node>) ->
     Some { value: name } => Some { value: name }
     None =>
       params |> enumerate |> filter(pair => pair.first == idx) |> map(pair => param_node_name(n: pair.second)) |> first
-  }
-}
-
-fn is_descending_witness_arg(expr: Node, func_name: String, param_name: String, descending_witness_names: Map<String, String>) -> Bool {
-  if count_self_calls(body: expr, func_name: func_name) > 0 { false }
-  else {
-    match expr_descending_witness_source(expr: expr, descending_witness_names: descending_witness_names) {
-      Some { value: source_param } => source_param == param_name
-      None => false
-    }
-  }
-}
-
-fn self_calls_have_descending_witness(body: Node, func_name: String, params: List<Node>, descending_witness_names: Map<String, String>) -> Bool {
-  match body.expr_data {
-    ExprCall { call_semantics: _ } =>
-      let own_ok = if expr_call_func(texpr: body) == func_name {
-        let arg_nodes = body.children
-        let args = arg_nodes |> map(arg_node => arg_value(n: arg_node))
-        let arg_shape_ok = args |> all(arg_expr =>
-          count_self_calls(body: arg_expr, func_name: func_name) == 0
-        )
-        let witness_ok = arg_nodes |> enumerate |> any(pair =>
-          match recursive_param_name_for_arg(idx: pair.first, arg_node: pair.second, params: params) {
-            Some { value: param_name } =>
-              is_descending_witness_arg(
-                expr: arg_value(n: pair.second),
-                func_name: func_name,
-                param_name: param_name,
-                descending_witness_names: descending_witness_names
-              )
-            None => false
-          }
-        )
-        arg_shape_ok && witness_ok
-      } else { true }
-      own_ok
-      && (body.children |> all(child =>
-        self_calls_have_descending_witness(
-          body: child,
-          func_name: func_name,
-          params: params,
-          descending_witness_names: descending_witness_names
-        )
-      ))
-
-    _ =>
-      body.children |> all(child =>
-        self_calls_have_descending_witness(body: child, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
-      )
   }
 }
 
@@ -1899,31 +1798,14 @@ fn is_children_of_param(expr: Node, param_name: String, vars: Map<String, Bool>)
       }
     // CX-K: a variable previously bound to param.children is also children.
     ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name(texpr: expr))
-    ExprMethodCall { method_semantics: _ } =>
+    ExprMethodCall { method_semantics: ms } =>
       // Handle `param.children |> skip(N)` — projection from children list.
-      match classify_list_method(name: expr_call_func(texpr: expr)) {
-        Some { value: SkipMethod } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+      match method_size_effect(method_semantics: ms) {
+        Some { value: ShrinkEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
         _ => false
       }
-    // CX-J: Handle `skip(param.children, N)` — function-call form of skip.
-    ExprCall { call_semantics: _ } =>
-      let callee = expr_call_func(texpr: expr)
-      if callee == "skip" {
-        expr.children |> any(arg_node =>
-          let arg = arg_value(n: arg_node)
-          match arg.expr_data {
-            ExprFieldAccess =>
-              let base = field_access_base(texpr: arg)
-              let field = field_access_field(texpr: arg)
-              is_children_list_field(field_name: field)
-              && match base.expr_data {
-                ExprVar { binding_kind: _ } => expr_var_name(texpr: base) == param_name
-                _ => false
-              }
-            _ => false
-          }
-        )
-      } else { false }
+    // CX-J: skip(param.children, N) function-call form is normalized to
+    // ExprMethodCall by inference (04_infer.dag Tier 2 bridge). Dead post-inference.
     _ => false
   }
 }
@@ -1943,37 +1825,14 @@ fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool
         ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name(texpr: base))
         _ => false
       }
-    ExprMethodCall { method_semantics: _ } =>
-      let mname = expr_call_func(texpr: expr)
-      match classify_list_method(name: mname) {
-        Some { value: SkipMethod } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
-        _ =>
-          // CX-L: enumerate, filter, reverse preserve structural children identity.
-          // enumerate wraps in pairs (element at .second), filter/reverse reorder.
-          (mname == "enumerate" || mname == "filter" || mname == "reverse")
-          && is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+    ExprMethodCall { method_semantics: ms } =>
+      match method_size_effect(method_semantics: ms) {
+        Some { value: ShrinkEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        Some { value: IdentityEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        _ => false
       }
-    // CX-J: Handle `skip(descent_var.children, N)` — function-call form of skip.
-    ExprCall { call_semantics: _ } =>
-      let callee = expr_call_func(texpr: expr)
-      if callee == "skip" {
-        expr.children |> any(arg_node =>
-          let arg = arg_value(n: arg_node)
-          match arg.expr_data {
-            ExprFieldAccess =>
-              let base = field_access_base(texpr: arg)
-              let field = field_access_field(texpr: arg)
-              is_children_list_field(field_name: field)
-              && match base.expr_data {
-                ExprVar { binding_kind: _ } =>
-                  let bname = expr_var_name(texpr: base)
-                  bname == param_name || set_has(m: vars, key: bname)
-                _ => false
-              }
-            _ => false
-          }
-        )
-      } else { false }
+    // CX-J: skip(descent_var.children, N) function-call form is normalized to
+    // ExprMethodCall by inference (04_infer.dag Tier 2 bridge). Dead post-inference.
     _ => false
   }
 }
@@ -1984,10 +1843,9 @@ fn is_child_descent_expr(expr: Node, param_name: String, vars: Map<String, Bool>
   if is_accessor_of_param(expr: expr, param_name: param_name, vars: vars) { true }
   else {
     match expr.expr_data {
-      ExprMethodCall { method_semantics: _ } =>
-        match classify_list_method(name: expr_call_func(texpr: expr)) {
-          Some { value: FirstMethod } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
-          Some { value: LastMethod } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+      ExprMethodCall { method_semantics: ms } =>
+        match method_size_effect(method_semantics: ms) {
+          Some { value: ProjectionEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
           _ => false
         }
       _ => false
@@ -2040,12 +1898,12 @@ fn extractor_inner_arg(expr: Node) -> Node {
 // param |> skip(N) where N >= 1 (proven by positive integer literal).
 fn is_list_shrink_expr(expr: Node, param_name: String) -> Bool {
   match expr.expr_data {
-    ExprMethodCall { method_semantics: _ } =>
-      let is_skip = match classify_list_method(name: expr_call_func(texpr: expr)) {
-        Some { value: SkipMethod } => true
+    ExprMethodCall { method_semantics: ms } =>
+      let is_shrink = match method_size_effect(method_semantics: ms) {
+        Some { value: ShrinkEffect } => true
         _ => false
       }
-      is_skip
+      is_shrink
       && match method_receiver(texpr: expr).expr_data {
         ExprVar { binding_kind: _ } => expr_var_name(texpr: method_receiver(texpr: expr)) == param_name
         _ => false
@@ -2117,13 +1975,16 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
             bname == param_name || set_has(m: vars, key: bname)
           _ => false
         }
-      // CX-M: first/last extract an element from a collection; skip/filter/reverse
-      // preserve collection identity. If the receiver is descent, the result is descent.
-      ExprMethodCall { method_semantics: _ } =>
-        let mname = expr_call_func(texpr: expr)
+      // CX-M: methods with a declared size effect (projection, shrink, identity)
+      // preserve or extract descent. If the receiver is descent, the result is descent.
+      ExprMethodCall { method_semantics: ms } =>
         let receiver = method_receiver(texpr: expr)
-        (mname == "first" || mname == "last" || mname == "skip" || mname == "filter" || mname == "reverse")
-        && expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+        match method_size_effect(method_semantics: ms) {
+          Some { value: ShrinkEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          Some { value: ProjectionEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          Some { value: IdentityEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          None => false
+        }
       _ => false
     }
   }
@@ -2907,9 +2768,11 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
   }
 }
 
-fn construct_termination_proof(func_name: String, body: Node, params: List<Node>) -> TerminationProof? {
-  // Try each parameter as a candidate ranking dimension
-  params |> fold(init: none, f: (best, p) =>
+fn construct_termination_proof(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>) -> TerminationProof? {
+  // Try each parameter as a candidate ranking dimension.
+  // Order: TreeSize → ListLength → ArithmeticValue → TokenPosition.
+  // Returns on first success (single-dimension proof).
+  let structural_proof = params |> fold(init: none, f: (best, p) =>
     match best {
       Some { value: _ } => best  // already found a proof
       None =>
@@ -2937,6 +2800,40 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
         }
     }
   )
+  // If structural dimensions didn't prove, try TokenPosition (parser state advance).
+  // This subsumes the old self_calls_have_strict_parser_progress classifier.
+  let single_dim_proof = match structural_proof {
+    Some { value: _ } => structural_proof
+    None =>
+      match parser_state_param(params: params) {
+        Some { value: state_param } =>
+          let self_set = map_insert(empty_map(), func_name, true)
+          let edges = collect_parser_progress_edges(
+            caller: func_name,
+            body: body,
+            state_param: state_param,
+            scc_name_set: self_set,
+            env: empty_parser_progress_env(),
+            parser_always_advancing: parser_always_advancing,
+            consumed_true_set: empty_map()
+          )
+          if (edges |> count) > 0 && (edges |> all(edge => edge.progress == ProgressStrict)) {
+            Some { value: TerminationProof { dimensions: [TokenPosition { param: state_param.name }] } }
+          } else { none }
+        None => none
+      }
+  }
+  // If single-dimension proofs failed, try lexicographic composition.
+  // Treat the single function as a 1-member SCC and use the SCC proof constructor
+  // which already supports lexicographic [TreeSize, ListLength] and [TreeSize, TokenPosition].
+  match single_dim_proof {
+    Some { value: _ } => single_dim_proof
+    None =>
+      let self_set = map_insert(empty_map(), func_name, true)
+      let func_entry = FuncEntry { name: func_name, body: body, params: params, span: body.span }
+      let func_index = map_insert(empty_map(), func_name, func_entry)
+      construct_scc_termination_proof(members: [func_name], func_index: func_index, scc_name_set: self_set)
+  }
 }
 
 fn construct_branching_termination_proof(func_name: String, body: Node, params: List<Node>) -> TerminationProof? {
@@ -2990,7 +2887,7 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // because children are disjoint subtrees (each node visited once).
     // ArithmeticValue descent (param - N) is only safe for single-call paths;
     // with multiple calls (e.g., fib(n-1) + fib(n-2)) it's O(2^n).
-    let proof = construct_termination_proof(func_name: func_name, body: body, params: params)
+    let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
     let proof_safe_for_branching = match proof {
       Some { value: p } =>
         p.dimensions |> all(dim =>
@@ -3033,6 +2930,9 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
           lower_call_pattern(pattern: SameArgumentCall)
         }
       None =>
+        // Proof constructor tried all dimensions (TreeSize, ListLength,
+        // ArithmeticValue, TokenPosition) and found nothing.
+        // For branching recursion, try the branching-only proof.
         if path_calls > 1 {
           match branching_proof {
             Some { value: bp } =>
@@ -3044,16 +2944,7 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
             None => lower_call_pattern(pattern: SameArgumentCall)
           }
         } else {
-          // Fall back to old classifiers for single-call patterns
-          let initial_witnesses = recursive_measure_param_names(body: body, params: params)
-          let descending_witness_names = collect_descending_witness_names(body: body, descending_witness_names: initial_witnesses)
-          if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names) {
-            lower_call_pattern(pattern: ChildAccessorCall { accessor: "children" })
-          } else if self_calls_have_strict_parser_progress(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing) {
-            lower_call_pattern(pattern: ParserAdvanceCall { witness: "state" })
-          } else {
-            lower_call_pattern(pattern: SameArgumentCall)
-          }
+          lower_call_pattern(pattern: SameArgumentCall)
         }
     }
   }
@@ -3809,18 +3700,30 @@ fn scalar_output() -> Map<String, CostExpr> {
 // Size-preserving methods (map, filter, etc.) pass through to the inner receiver.
 // =========================================================================
 
-fn is_size_preserving_method(method_name: String) -> Bool {
-  method_name == "map" || method_name == "filter" || method_name == "flat_map"
-  || method_name == "skip" || method_name == "enumerate" || method_name == "sort_by"
-  || method_name == "concat" || method_name == "reverse"
-}
-
+// Derive size preservation from algebra facts: a method preserves the receiver
+// size variable if its result is a same-shape collection (ShrinkEffect or
+// IdentityEffect), or if its cost_shape produces a collection.
+// ProjectionEffect (first/last) does NOT preserve collection size — it
+// projects a single element from the collection.
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _ } =>
-        is_size_preserving_method(method_name: method_def.name)
+      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: cs } =>
+        // ShrinkEffect and IdentityEffect return same-shape collections
+        let preserves_shape = match se {
+          Some { value: ShrinkEffect } => true
+          Some { value: IdentityEffect } => true
+          _ => false
+        }
+        // Cost shapes that produce collections also preserve receiver size
+        let produces_collection = match cs {
+          Some { value: ShapeIterateBody { produces_collection: pc } } => pc
+          Some { value: ShapeLinearScan { produces_collection: pc } } => pc
+          Some { value: ShapeSortBody } => true
+          _ => false
+        }
+        preserves_shape || produces_collection
       _ => false
     }
   }
@@ -4377,10 +4280,8 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       // Plain/Service/None fall through to default cost.
       let method_cost_result = if ms == none { none } else {
         match ms.value {
-          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } => {
-            let md_name = md.name
-            let shape_match = method_cost_shape(method_name: md_name)
-            match shape_match {
+          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: cs } => {
+            match cs {
               Some { value: shape } =>
                 Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx) }
               None =>

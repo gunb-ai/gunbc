@@ -120,7 +120,7 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
 
 pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({ let mut __result = Vec::new(); for proof in proofs.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for decision in proof.decisions.clone().iter().cloned() { __result.extend((*match (*decision.clone()).clone() {
-    OwnershipDecision::SharedError { binding: binding, consumer_count: count, sites: sites, .. } => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::OwnershipViolation {
+    OwnershipDecision::SharedError { binding, consumer_count: count, sites, .. } => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::OwnershipViolation {
     binding: binding.clone(),
     fn_name: proof.func_name.clone(),
     consumers: count.clone(),
@@ -323,7 +323,7 @@ pub fn serialize_match_pattern(pattern: Rc<MatchPattern>) -> String {
     match (*pattern).clone() {
     MatchPattern::Bind { name: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Bind\", \"name\": ".to_string(), json_quote(inner.clone())), "}".to_string()),
     MatchPattern::LitPattern { value: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"LitPattern\", \"value\": ".to_string(), serialize_literal(inner.clone())), "}".to_string()),
-    MatchPattern::VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"VariantPattern\", \"name\": ".to_string(), json_quote(inner.clone())), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"field_bindings\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { __result.push(serialize_field_binding(fb.clone())); } __result }))), "}".to_string()),
+    MatchPattern::VariantPattern { name: inner, parent_enum, field_bindings, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"VariantPattern\", \"name\": ".to_string(), json_quote(inner.clone())), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"field_bindings\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { __result.push(serialize_field_binding(fb.clone())); } __result }))), "}".to_string()),
     MatchPattern::Wildcard => "{\"kind\": \"Wildcard\"}".to_string(),
 }
 }
@@ -364,11 +364,11 @@ pub fn serialize_lambda_semantics(value: Option<Rc<LambdaSemantics>>) -> String 
 pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>) -> String {
     match value.as_deref().cloned() {
     Some(MethodSemantics::PlainMethodSemantics) => "{\"kind\": \"PlainMethodSemantics\"}".to_string(),
-    Some(MethodSemantics::AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, .. }) => {
+    Some(MethodSemantics::AlgebraMethodSemantics { method_def, fold_accumulator_type, .. }) => {
         let mn = method_def.name.clone();
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ".to_string(), json_quote(mn)), ", \"fold_accumulator_type\": ".to_string()), json_optional_node(fold_accumulator_type.clone())), "}".to_string())
 },
-    Some(MethodSemantics::ServiceMethodSemantics { service_name: service_name, op_params: op_params, .. }) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ".to_string(), json_quote(service_name.clone())), ", \"op_params\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for p in op_params.clone().iter().cloned() { __result.push(serialize_param(p.clone())); } __result }))), "}".to_string()),
+    Some(MethodSemantics::ServiceMethodSemantics { service_name, op_params, .. }) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ".to_string(), json_quote(service_name.clone())), ", \"op_params\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for p in op_params.clone().iter().cloned() { __result.push(serialize_param(p.clone())); } __result }))), "}".to_string()),
     None => "null".to_string(),
 }
 }
@@ -379,38 +379,38 @@ pub fn serialize_expr_data(expr_node: Rc<Node>) -> String {
 let name = expr_node.name.clone();
 match (*expr_node.expr_data.clone()).clone() {
     ExprData::NoExprData => "{\"kind\": \"NoExprData\"}".to_string(),
-    ExprData::ExprLiteral { value: value, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLiteral\", \"value\": ".to_string(), serialize_literal(value.clone())), "}".to_string()),
-    ExprData::ExprError { kind: kind, message: message, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprError\", \"error_kind\": ".to_string(), json_quote(expr_error_kind_name(kind.clone()))), ", \"message\": ".to_string()), json_quote(message.clone())), "}".to_string()),
-    ExprData::ExprVar { binding_kind: binding_kind, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprVar\", \"name\": ".to_string(), json_quote(name)), ", \"binding_kind\": ".to_string()), match binding_kind.clone() {
+    ExprData::ExprLiteral { value, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLiteral\", \"value\": ".to_string(), serialize_literal(value.clone())), "}".to_string()),
+    ExprData::ExprError { kind, message, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprError\", \"error_kind\": ".to_string(), json_quote(expr_error_kind_name(kind.clone()))), ", \"message\": ".to_string()), json_quote(message.clone())), "}".to_string()),
+    ExprData::ExprVar { binding_kind, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprVar\", \"name\": ".to_string(), json_quote(name)), ", \"binding_kind\": ".to_string()), match binding_kind.clone() {
     Some(inner) => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": ".to_string(), json_quote(var_binding_kind_name(inner.clone()))), match (*inner.clone()).clone() {
-    VarBindingKind::VariantValueBinding { parent_enum: parent_enum, .. } => v2_rt::concat(", \"parent_enum\": ".to_string(), json_quote(parent_enum.clone())),
+    VarBindingKind::VariantValueBinding { parent_enum, .. } => v2_rt::concat(", \"parent_enum\": ".to_string(), json_quote(parent_enum.clone())),
     _ => "".to_string(),
 }), "}".to_string()),
     None => "null".to_string(),
 }), "}".to_string()),
-    ExprData::ExprFieldAccess { summary: summary, .. } => {
+    ExprData::ExprFieldAccess { summary, .. } => {
             let field = field_access_field(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprFieldAccess\", \"field\": ".to_string(), json_quote(field)), ", \"summary\": ".to_string()), match summary.clone() {
     Some(inner) => serialize_field_summary(inner.clone()),
     None => "null".to_string(),
 }), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
-    ExprData::ExprCall { call_semantics: call_semantics, .. } => {
+    ExprData::ExprCall { call_semantics, .. } => {
             let func = expr_call_func(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprCall\", \"func\": ".to_string(), json_quote(func)), ", \"call_semantics\": ".to_string()), serialize_call_semantics(call_semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
-    ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => {
+    ExprData::ExprMethodCall { method_semantics, .. } => {
             let method = expr_method_name(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMethodCall\", \"method\": ".to_string(), json_quote(method)), ", \"method_semantics\": ".to_string()), serialize_method_semantics(method_semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
-    ExprData::ExprBinOp { op: op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBinOp\", \"op\": ".to_string(), json_quote(bin_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprUnaryOp { op: op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprUnaryOp\", \"op\": ".to_string(), json_quote(unary_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprLambda { semantics: semantics, .. } => {
+    ExprData::ExprBinOp { op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBinOp\", \"op\": ".to_string(), json_quote(bin_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
+    ExprData::ExprUnaryOp { op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprUnaryOp\", \"op\": ".to_string(), json_quote(unary_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
+    ExprData::ExprLambda { semantics, .. } => {
             let params = lambda_param_names(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLambda\", \"params\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(json_quote(p.clone())); } __result }))), ", \"semantics\": ".to_string()), serialize_lambda_semantics(semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprLet => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLet\", \"name\": ".to_string(), json_quote(name)), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprRecordLit { parent_enum: parent_enum, .. } => {
+    ExprData::ExprRecordLit { parent_enum, .. } => {
             let type_name = record_lit_type_name(expr_node.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprRecordLit\", \"type_name\": ".to_string(), json_optional_string(type_name)), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
@@ -433,9 +433,9 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprForEac
 
 pub fn serialize_inferred_node(inferred: Rc<InferredNode>) -> String {
     match (*inferred).clone() {
-    InferredNode::Resolved { node: node, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Resolved\", \"node\": ".to_string(), serialize_node(node.clone())), "}".to_string()),
-    InferredNode::CompilerError { message: message, span: span, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"CompilerError\", \"message\": ".to_string(), json_quote(message.clone())), ", \"span\": ".to_string()), serialize_span(span.clone())), "}".to_string()),
-    InferredNode::TypeVariable { id: id, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"TypeVariable\", \"id\": ".to_string(), json_quote(id.clone())), "}".to_string()),
+    InferredNode::Resolved { node, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Resolved\", \"node\": ".to_string(), serialize_node(node.clone())), "}".to_string()),
+    InferredNode::CompilerError { message, span, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"CompilerError\", \"message\": ".to_string(), json_quote(message.clone())), ", \"span\": ".to_string()), serialize_span(span.clone())), "}".to_string()),
+    InferredNode::TypeVariable { id, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"TypeVariable\", \"id\": ".to_string(), json_quote(id.clone())), "}".to_string()),
 }
 }
 

@@ -14,6 +14,7 @@ module v2.compiler.emit_python
 
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
+  VarBindingKind, FunctionValueBinding,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   param_node_type_expr,
   authored_name_at, NewlineIndex,
@@ -80,8 +81,6 @@ import v2.compiler.infer {
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
-  TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction,
-  TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op,
@@ -101,7 +100,7 @@ import v2.compiler.emit {
   language_spec,
   is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
-  classify_typed_item,
+  is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item,
   extract_test_projections,
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
@@ -332,8 +331,8 @@ fn emit_py_imports(imports: List<Node>) -> String {
 
 fn emit_py_prelude(typed_module: TypedModule) -> String {
   let items = typed_module.items
-  let has_structs = items |> any(item => classify_typed_item(item: item) == TypedItemTypeDef && item.connective == Conj)
-  let has_enums = items |> any(item => classify_typed_item(item: item) == TypedItemTypeDef && item.connective == Disj)
+  let has_structs = items |> any(item => is_type_def_item(item: item) && item.connective == Conj)
+  let has_enums = items |> any(item => is_type_def_item(item: item) && item.connective == Disj)
   let has_services = items |> any(item => is_service_item(item: item))
 
   let future_import = "from __future__ import annotations\n"
@@ -352,24 +351,24 @@ fn emit_py_prelude(typed_module: TypedModule) -> String {
 fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  let kind = classify_typed_item(item: item)
-  if (kind == TypedItemTypeDef) {
+  // Structural dispatch via shared predicates (CM: no taxonomy enum).
+  if is_type_def_item(item: item) {
     emit_py_type_def_from_connective(item: item, env: env)
-  } else if (kind == TypedItemTypeAlias) {
+  } else if is_type_alias_item(item: item) {
     concat(item_text, " = ", emit_node_type(n: rt_type(n: item), target: Python))
-  } else if (kind == TypedItemTypeDecl) {
+  } else if is_type_decl_item(item: item) {
     ""
-  } else if (kind == TypedItemFunction) {
+  } else if is_function_item(item: item) {
     if item.uses |> count > 0 {
       emit_py_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
       emit_py_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
     }
-  } else if (kind == TypedItemDataDef) {
+  } else if is_data_def_item(item: item) {
     emit_py_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
-  } else if (kind == TypedItemServiceDef) {
+  } else if is_service_def_item(item: item) {
     emit_py_service_def(item: item, registry: registry, env: env)
-  } else if (kind == TypedItemResourceDef) {
+  } else if is_resource_def_item(item: item) {
     emit_py_resource_def(item: item, env: env)
   } else {
     concat("# unhandled node: ", item_text)
@@ -577,7 +576,11 @@ fn emit_py_expr_var(expr: Node, source_index: NewlineIndex?) -> String {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
       let n = expr_var_name_at(texpr: expr, source_index: source_index)
-      emit_ident(name: n, target: Python)
+      if n == "none" { emit_keyword(key: "null", target: Python) }
+      else if n == "true" || n == "false" { emit_keyword(key: n, target: Python) }
+      else {
+        emit_ident(name: n, target: Python)
+      }
     _ => emit_error_expr(message: "emit_py_expr_var expected ExprVar", target: Python)
   }
 }
@@ -856,7 +859,7 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       let args_str = arg_strs |> join(separator: ", ")
       concat("await ", var_name, ".", emit_ident(name: method, target: Python), "(", args_str, ")")
     }
-    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _ } =>
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, size_effect: _, cost_shape: _ } =>
       let mn = method_def.name
       emit_py_algebra_method_call(method_name: mn, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
     PlainMethodSemantics =>

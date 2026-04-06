@@ -46,8 +46,9 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, MatchPattern, LiteralValue, field_binding_pattern, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, record_lit_type_name, lambda_body, cast_expr, cast_target, return_value, foreach_variable, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, leaf_node, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, Cardinality};
+pub use crate::v2_std_core::{Node, InferredNode, VarBindingKind, is_import_node, import_is_all, import_specific_names, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, MatchPattern, LiteralValue, field_binding_pattern, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, record_lit_type_name, lambda_body, cast_expr, cast_target, return_value, foreach_variable, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, leaf_node, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
+use crate::v2_std_core::VarBindingKind::{FunctionValueBinding};
 use crate::v2_std_core::BinOp::{NullCoalesce};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
@@ -69,8 +70,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, TransportKind, classify_transport};
-use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, TransportKind, classify_transport};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
 pub fn emit_go_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<String>>, mut scope: Rc<InferScope>, mut registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut depth: i64) -> Rc<BlockEmitState> {
@@ -274,8 +274,8 @@ match parts.last().cloned() {
 pub fn emit_go_imports(items: Rc<Vec<Rc<Node>>>, imports: Rc<Vec<Rc<Node>>>) -> String {
     {
         let has_services = { let mut __found = false; for item in items.clone().iter().cloned() { if is_service_item(item.clone()) { __found = true; break; } } __found };
-let has_types = { let mut __found = false; for item in items.clone().iter().cloned() { if (classify_typed_item(item.clone()) == TypedItemKind::TypedItemTypeDef) { __found = true; break; } } __found };
-let has_functions = { let mut __found = false; for item in items.clone().iter().cloned() { if (classify_typed_item(item.clone()) == TypedItemKind::TypedItemFunction) { __found = true; break; } } __found };
+let has_types = { let mut __found = false; for item in items.clone().iter().cloned() { if is_type_def_item(item.clone()) { __found = true; break; } } __found };
+let has_functions = { let mut __found = false; for item in items.clone().iter().cloned() { if is_function_item(item.clone()) { __found = true; break; } } __found };
 let std_imports = collect_go_std_imports(has_services, has_types, has_functions);
 let pkg_imports = Rc::new({ let mut __result = Vec::new(); for imp in imports.iter().cloned() { __result.push({
             let mod_name = module_to_filename(imp.name.clone());
@@ -313,30 +313,29 @@ pub fn emit_go_typed_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
     {
         let env = scope.type_env.clone();
 let item_text = authored_name(env.clone(), item.clone());
-let kind = classify_typed_item(item.clone());
-if (kind.clone() == TypedItemKind::TypedItemTypeDef) {
+if is_type_def_item(item.clone()) {
             emit_go_type_def_from_connective(item.clone(), env.clone())
 } else {
-            if (kind.clone() == TypedItemKind::TypedItemTypeAlias) {
+            if is_type_alias_item(item.clone()) {
                 emit_go_type_alias(item_text, rt_type(item.clone()))
 } else {
-                if (kind.clone() == TypedItemKind::TypedItemTypeDecl) {
+                if is_type_decl_item(item.clone()) {
                     "".to_string()
 } else {
-                    if (kind.clone() == TypedItemKind::TypedItemFunction) {
+                    if is_function_item(item.clone()) {
                         if ((item.uses.clone().len() as i64) > 0) {
                             emit_go_func_def(item_text, item.params.clone(), rt_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry, scope.clone())
 } else {
                             emit_go_fn_def(item_text, item.params.clone(), rt_type(item.clone()), item.body.clone().clone().unwrap(), registry, scope.clone())
 }
 } else {
-                        if (kind.clone() == TypedItemKind::TypedItemDataDef) {
+                        if is_data_def_item(item.clone()) {
                             emit_go_data_def(item_text, item.type_annotation.clone().clone().unwrap(), item.body.clone().clone().unwrap(), registry, scope.clone())
 } else {
-                            if (kind.clone() == TypedItemKind::TypedItemServiceDef) {
+                            if is_service_def_item(item.clone()) {
                                 emit_go_service_def(item.clone(), registry, env.clone())
 } else {
-                                if (kind.clone() == TypedItemKind::TypedItemResourceDef) {
+                                if is_resource_def_item(item.clone()) {
                                     emit_go_resource_def(item.clone(), env.clone())
 } else {
                                     v2_rt::concat(v2_rt::concat("func init() { panic(\"EMIT BUG: unhandled item: ".to_string(), item_text), "\") }".to_string())
@@ -537,7 +536,15 @@ pub fn emit_go_expr_var(expr: Rc<Node>, depth: i64, source_index: Option<Rc<Newl
 match (*expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
             let n = expr_var_name_at(expr.clone(), source_index);
-v2_rt::concat(prefix, emit_ident(n, RenderTarget::Go))
+if (n.clone().as_str() == "none".to_string().as_str()) {
+                v2_rt::concat(prefix, emit_keyword("null".to_string(), RenderTarget::Go))
+} else {
+                if ((n.clone().as_str() == "true".to_string().as_str()) || (n.clone().as_str() == "false".to_string().as_str())) {
+                    v2_rt::concat(prefix, emit_keyword(n.clone(), RenderTarget::Go))
+} else {
+                    v2_rt::concat(prefix, emit_ident(n.clone(), RenderTarget::Go))
+}
+}
 },
     _ => v2_rt::concat(prefix, emit_error_expr("emit_go_expr_var expected ExprVar".to_string(), RenderTarget::Go)),
 }
@@ -548,7 +555,7 @@ pub fn emit_go_expr_field_access(expr: Rc<Node>, registry: Rc<HashMap<String, Rc
     {
         let prefix = make_indent(depth);
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { summary: summary, .. } => {
+    ExprData::ExprFieldAccess { summary, .. } => {
             let f = expr.name.clone();
 let b = field_access_base(expr.clone());
 if is_typed_service_call_receiver(expr.clone()) {
@@ -582,7 +589,7 @@ pub fn emit_go_expr_method_call(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<
     {
         let prefix = make_indent(depth);
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => {
+    ExprData::ExprMethodCall { method_semantics, .. } => {
             let r = method_receiver(expr.clone());
 let a = method_arg_nodes(expr.clone());
 let m = expr_method_name_at(expr.clone(), scope.type_env.clone().source_index.clone());
@@ -869,7 +876,7 @@ let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.iter().clo
 let args_str = arg_strs.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(var_name, ".".to_string()), go_export_ident(method)), "(".to_string()), args_str), ")".to_string())
 },
-    MethodSemantics::AlgebraMethodSemantics { method_def: method_def, .. } => {
+    MethodSemantics::AlgebraMethodSemantics { method_def, .. } => {
             let mn = method_def.name.clone();
 emit_go_algebra_method_call(mn, receiver.clone(), args, registry.clone(), scope.clone())
 },

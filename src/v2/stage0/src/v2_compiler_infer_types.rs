@@ -384,8 +384,8 @@ match (*template).clone() {
 },
     AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => container_node(base.name.clone(), instantiate_algebra_type(inner.clone(), base.clone())),
     AlgebraTypeTemplate::ListOf { element: inner, .. } => container_node("List".to_string(), instantiate_algebra_type(inner.clone(), base.clone())),
-    AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => with_optional_cardinality(instantiate_algebra_type(inner.clone(), base.clone())),
-    AlgebraTypeTemplate::TupleOf { first: first, second: second, .. } => tuple_node(instantiate_algebra_type(first.clone(), base.clone()), instantiate_algebra_type(second.clone(), base.clone())),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(instantiate_algebra_type(inner.clone(), base.clone())),
+    AlgebraTypeTemplate::TupleOf { first, second, .. } => tuple_node(instantiate_algebra_type(first.clone(), base.clone()), instantiate_algebra_type(second.clone(), base.clone())),
     AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => callable_node(Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), base.clone())); } __result }), instantiate_algebra_type(r.clone(), base.clone())),
 }
 }
@@ -1059,7 +1059,7 @@ pub fn collect_named_templates(template: Rc<AlgebraTypeTemplate>, acc: Rc<HashMa
     AlgebraTypeTemplate::NamedTemplate { name: n, .. } => v2_rt::rc_map_insert(acc, n.clone(), true),
     AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => collect_named_templates(inner.clone(), acc),
     AlgebraTypeTemplate::ListOf { element: inner, .. } => collect_named_templates(inner.clone(), acc),
-    AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => collect_named_templates(inner.clone(), acc),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => collect_named_templates(inner.clone(), acc),
     AlgebraTypeTemplate::TupleOf { first: f, second: s, .. } => {
             let acc2 = collect_named_templates(f.clone(), acc);
 collect_named_templates(s.clone(), acc2)

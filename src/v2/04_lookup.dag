@@ -23,6 +23,10 @@ import v2.std.core {
 
   CardOptional
 }
+import std.algebra {
+  CollectionSizeEffect, CostShape, AlgebraFieldTemplate,
+  kernel_algebra_profile, algebra_templates_for_profile
+}
 import v2.compiler.infer_types {
   child_inferred_or_name,
   nominal_type_ref,
@@ -247,6 +251,8 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
 type MethodFieldResult {
   field_node: Node
   result_type: Node
+  size_effect: CollectionSizeEffect?
+  cost_shape: CostShape?
 }
 
 fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldResult? {
@@ -257,11 +263,11 @@ fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldRes
         Some { value: Resolved { node: rt } } =>
           if rt.params |> count > 0 {
             match rt.inferred {
-              Some { value: Resolved { node: return_type } } => Some { value: MethodFieldResult { field_node: field, result_type: return_type } }
-              _ => Some { value: MethodFieldResult { field_node: field, result_type: rt } }
+              Some { value: Resolved { node: return_type } } => Some { value: MethodFieldResult { field_node: field, result_type: return_type, size_effect: none, cost_shape: none } }
+              _ => Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none } }
             }
           } else {
-            Some { value: MethodFieldResult { field_node: field, result_type: rt } }
+            Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none } }
           }
         _ => none
       }
@@ -286,7 +292,25 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> MethodF
     // so that type nodes in the graph stay as bare leaves.
     let enriched = enrich_kernel_type(name: receiver_type.name, base: receiver_type)
     if enriched.connective == Conj && enriched.children |> count > 0 {
-      lookup_field_in_product(product: enriched, method_name: method_name)
+      let base_result = lookup_field_in_product(product: enriched, method_name: method_name)
+      // Enrich with size_effect/cost_shape from the EXACT profile for this receiver type.
+      // Scoped to receiver_type.name → no global scan, no method name collisions.
+      match base_result {
+        Some { value: mfr } =>
+          let profile = kernel_algebra_profile |> get(receiver_type.name)
+          let template_match = match profile {
+            Some { value: p } =>
+              let templates = algebra_templates_for_profile(profile: p)
+              templates |> filter(t => t.name == method_name) |> first
+            None => none
+          }
+          match template_match {
+            Some { value: t } =>
+              Some { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape } }
+            None => base_result
+          }
+        None => none
+      }
     } else {
       none
     }
@@ -326,7 +350,7 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
       // Method found structurally — carry the method definition node.
       // mfr.field_node is the algebra field node (from the enriched type).
       // It carries the method's name, type signature, and structural properties.
-      let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type }
+      let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape }
       let resolved_type = substitute_algebra_result(
         result_type: mfr.result_type,
         receiver_type: receiver_type,

@@ -49,6 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr};
+pub use crate::std_types::{container_to_algebra_name};
 pub use crate::extdeps_languages_rust_types::{rust_type_checkpoints, rust_algebra_inhabitants, rust_callable, rust_optional_template};
 pub use crate::extdeps_languages_python_types::{python_type_checkpoints, python_algebra_inhabitants, python_callable, python_optional_template};
 pub use crate::extdeps_languages_go_types::{go_type_checkpoints, go_algebra_inhabitants, go_callable, go_optional_template};
@@ -116,38 +117,8 @@ pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<Inh
     Rc::new({ let mut __result = Vec::new(); for inh in target_inhabitants(target).iter().cloned() { if (inh.algebra.clone().as_str() == algebra.clone().as_str()) { __result.push(inh); } } __result }).first().cloned()
 }
 
-pub fn container_to_algebra() -> Rc<HashMap<String, String>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("List".to_string(), "FreeMonoid".to_string());
-            __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("NonEmptyList".to_string(), "FreeMonoid".to_string());
-            __m.insert("non_empty_list".to_string(), "FreeMonoid".to_string());
-            __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
-            __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
-            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("NonEmptySet".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("non_empty_set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("Map".to_string(), "PartialFunction".to_string());
-            __m.insert("map".to_string(), "PartialFunction".to_string());
-            __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
-            __m.insert("partial_function".to_string(), "PartialFunction".to_string());
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn dag_container_to_algebra(name: String) -> Option<String> {
-    v2_rt::lookup(&container_to_algebra(), name)
-}
-
 pub fn coerce_container_template(target: RenderTarget, container_name: String) -> Option<String> {
-    match dag_container_to_algebra(container_name) {
+    match container_to_algebra_name(container_name) {
     Some(algebra) => match lookup_inhabitant(target, algebra.clone()) {
     Some(inh) => Some(inh.template.clone()),
     None => None,
@@ -162,22 +133,4 @@ pub fn apply_inhabitant_template1(template: String, inner: String) -> String {
 
 pub fn apply_inhabitant_template2(template: String, first: String, second: String) -> String {
     v2_rt::replace(v2_rt::replace(template, "{0}".to_string(), first), "{1}".to_string(), second)
-}
-
-pub fn coercion_keyed_container_names() -> Rc<Vec<String>> {
-    thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["Map".to_string(), "PartialFunction".to_string()])
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn coercion_element_container_names() -> Rc<Vec<String>> {
-    thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["List".to_string(), "Set".to_string(), "NonEmptyList".to_string(), "NonEmptySet".to_string(), "FreeMonoid".to_string()])
-        };
-    }
-    CACHED.with(|c| c.clone())
 }

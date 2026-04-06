@@ -277,8 +277,9 @@ correct-but-suboptimal code and blocks new backends.
 Clone semantics unified in SharingStrategy (CloneTemplates removed).
 TLC-1 partial: `is_zero_arg_callable_ref` is an emitter-side guardrail
 (L1 violation — `rt.name=="Callable"` check); upstream concept modeling
-needed (Tier 2.6). TLC-3 Rust per-collection dispatch done; Go/Python
-still route through `list_index` unconditionally. TLC-4 partial:
+needed (Tier 2.6). TLC-3 done: all three backends dispatch per
+collection type via `IndexingSemantics` templates (pre-existing;
+prior description was stale). TLC-4 partial:
 `emit_let_binding_annotated` infrastructure exists but disabled for
 bootstrap convergence (.dag type inference produces `()` for empty
 collection element types). TLC-2 blocked on M5 coercion engine.
@@ -334,19 +335,22 @@ backends.
 
 - [~] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
   render as `name()` via `is_zero_arg_callable_ref` (FunctionValueBinding +
-  Callable node with empty params). Dispatched in emit_var_ref and
-  emit_typed_expr_base. **Partial:** emitter-side guardrail only —
-  `rt.name == "Callable"` is an L1 violation. Upstream concept modeling
+  Callable node with empty params). Dispatched in Rust emit_var_ref and
+  emit_typed_expr_base only. Go/Python keyword mapping (none/true/false)
+  landed (PR #324); zero-arg callable detection kept Rust-scoped per
+  review — widening an L1 violation across backends without upstream
+  modeling violates boundary sufficiency. Upstream concept modeling
   (Tier 2.6) dissolves this. Imported zero-arg function refs untested.
 - [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
   *Blocked: requires M5 coercion engine for type/wrap authority.*
-- [~] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
+- [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
-  Rust dispatches on collection type. Go/Python still route through
-  `list_index`/`list_slice` unconditionally — per-collection dispatch pending.
+  All three backends dispatch per collection type via shared
+  `IndexingSemantics` data + `is_string_like`/`node_is_keyed_collection`
+  (pre-existing; prior description was stale).
 - [~] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
   in LanguageSpec — let binding templates (inferred/annotated), lambda param
   templates (typed/untyped). Infrastructure exists (`emit_let_binding_annotated`)
@@ -612,32 +616,53 @@ CX-D (model facts in std/)
 
 ### Work items
 
-- **CX-D**: Model operation facts → heuristics dissolve. **Unblocked.**
-  This is the primary remaining work. Three categories of structural
-  facts are missing from the function model:
-  (1) **Operation size contracts** — which operations shrink their
-      input (list methods, Option unwrap) and by how much.
+- **CX-D**: Model operation facts → heuristics dissolve. **Partial.**
+  Three categories of structural facts:
+  (1) **Operation size contracts** — `CollectionSizeEffect`
+      (ShrinkEffect/ProjectionEffect/IdentityEffect) declared per-method
+      on `AlgebraFieldTemplate`. `CostShape` (cost class) also on template.
+      Complexity reads both from `AlgebraMethodSemantics`. Deleted:
+      `ListMethodKind`, `classify_list_method`, `method_cost_shape_table`,
+      `is_size_preserving_method`. `take` is explicitly `none`.
+      Remaining modeling gap: `CollectionSizeEffect` mixes cardinality,
+      structural-identity, and projection — reviewer wants orthogonal facts.
+      `CostShape.produces_collection` duplicates `return_type` — should
+      derive from template. `size_effect`/`cost_shape` on `MethodSemantics`
+      is a bridge; endgame: facts on the resolved method Node. **(PR #328)**
   (2) **Type structure facts** — field sub-value relationships
-      (child access produces a smaller tree).
+      (child access produces a smaller tree). Not started.
   (3) **Coproduct projection facts** — match arms narrow the type,
-      producing strictly smaller data.
-  The analyzer consumes these facts as single authority. The lowering
-  table in `std/computation.dag` (CallPattern → LoweringTarget) already
-  models (1) but has no downstream consumer in complexity.dag.
-  Dissolves all Theme A and Theme B items. Unblocks producer-patch
-  reversals (02_parse.dag, 04_types.dag).
+      producing strictly smaller data. Not started.
+  The lowering table in `std/computation.dag` (CallPattern → LoweringTarget)
+  already models (1) but has no downstream consumer in complexity.dag.
+  Remaining Theme A items: `is_tree_size_preserving_wrapper` hardcodes
+  callee name. `is_children_list_field` reads from `node_field_roles`
+  data table (already modeled).
 - **CX-A**: DescentEvidence lattice unification — parser mutual recursion.
-  **Blocked-by: CX-D** (needs structural evidence facts).
-  Files: `complexity.dag`, `dsl/std/termination.dag`.
-  Done: TokenPosition dimension, SCC proof constructor, edge classification.
-  Deferred: ProgressSame self-edge filtering is heuristic (Theme C);
-  ParserResultDirectState duplicates facts (Theme C).
+  **Partial.** Lattice, parser SCC proofs, lexicographic [TreeSize,
+  TokenPosition] all implemented — including single-function lexicographic
+  (delegates to SCC proof constructor). `proof_has_non_descending_cycle`
+  builds graph directly from `ProofEdge` (ProgressSame bridge removed)
+  and detects non-descending self-loops. Old classifiers deleted:
+  `self_calls_have_descending_witness`, `self_calls_have_strict_parser_progress`.
+  All recursion classification goes through unified proof constructor.
+  Dead `skip()` ExprCall handlers removed (inference bridge normalizes).
+  **(PR #328)**
+  Deferred: `is_valid_proof` stub in termination.dag (blocked on
+  bootstrap); `ParserResultDirectState` duplication (refactoring);
+  `branching_proof_safe` only accepts TreeSize/ListLength (extend to
+  lexicographic).
 - **CX-B**: CostExpr/SizeExpr dissolution — cost expressions become flat
   products of SizeBounds from `std/computation.dag`'s lowering table.
-  **Blocked-by: CX-D** (needs operation size contracts consumed).
-  Planned: RecursionPattern → LoweringTarget, UnresolvableRecursion
-  deleted. See [migration phases](docs/cx-computation-model.md#migration-phases).
-  Not started.
+  **Partial.** `CostShape` type moved to `dsl/std/algebra.dag`, declared
+  per-method on `AlgebraFieldTemplate`. `method_cost_shape_table` (19-entry
+  `Map<String, CostShape>`) deleted. Complexity reads `cost_shape` from
+  `AlgebraMethodSemantics`. **(PR #328)**
+  Remaining: flatten recursive CostExpr/SizeExpr into flat SizeBound
+  products (Phase 4 — eliminates 18 cost algebra functions). `CostShape`
+  is a bridge classifier — endgame: derive cost from `std/computation.dag`
+  contracts. `produces_collection` should derive from `return_type`.
+  See [migration phases](docs/cx-computation-model.md#migration-phases).
 - **CX-C**: Signature-driven fold evidence — self-calls inside
   `children |> fold` callbacks get structural descent proofs.
   **Blocked-by: CX-D** (needs operation size contracts for fold).
@@ -668,19 +693,22 @@ lanes — any lane can introduce a regression.
 
 | What | Where | Status |
 |------|-------|--------|
-| Self-compile time ratchet | `bootstrap::performance_ratchet` | `#[ignore]`, 30s budget (~6.5s actual) |
-| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]` |
+| Self-compile time ratchet | `bootstrap::performance_ratchet` | `#[ignore]`, CI gate, 30s budget (~4.8s actual) |
+| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, CI gate, ratchet 0 |
 | Full DSL compile | `pipeline::full_dsl_compiles` | `#[ignore]`, GREEN |
 | Stage0 freshness gate | `scripts/check-stage0-freshness.sh` | CI blocking |
 | Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, ratchet 316 |
 
 ### Work items
 
-- **PERF-1**: Un-ignore `performance_ratchet` in CI. Currently 30s
-  budget with ~6.5s actual. Gate on this to catch O(n^2) regressions
-  early. Requires CI runner has `cargo build --release` capacity.
-- **PERF-2**: Un-ignore `bootstrap_stage0_to_stage1` in CI. This is
-  the full regen + convergence test. Proves pass-1 = pass-2 on every PR.
+- **PERF-1**: ~~Un-ignore `performance_ratchet` in CI.~~ DONE (PR #326).
+  30s budget, ~4.8s actual. CI gate catches O(n²) regressions.
+- **PERF-2**: `bootstrap_stage0_to_stage1` enabled in CI (PR #326).
+  When emission succeeds, gates emitted-Rust correctness (0 cargo check
+  errors). Returns early without validation when complexity violations
+  block emission — not yet an unconditional gate. Convergence proof
+  (pass-1 = pass-2) remains in `bootstrap_fixed_point` (`#[ignore]`,
+  not yet a CI gate — expensive: two full builds + two compiles).
 - **PERF-3**: Track self-compile memory. The CX OOM root cause was
   repeated complexity classification on large compiles, not raw budget.
   Add a memory-usage ratchet or at minimum log peak RSS during
@@ -748,11 +776,18 @@ are in [`src/v2/CM.md`](src/v2/CM.md). Summary:
 - `TypedItemUnhandled` / `""` / `false` fail-open fallbacks: 8 sites
 
 **Work items:**
-- [ ] Design: determine irreducible structural facts about items
-- [ ] Surface existing fields (`body`, `transport`, `connective`, `params`) to
-  every consumption site — no new classification type
-- [ ] Implement: fail-closed boundaries (no TypedItemUnhandled, no `""` fallbacks)
-- [ ] Delete: all `classify_*` forests, all fail-open fallbacks, all name-keyed side-tables
+- [x] Design: determine irreducible structural facts about items
+- [~] Surface existing fields (`body`, `transport`, `connective`, `params`) to
+  every consumption site — no new classification type.
+  Shared predicates exist; ~55 raw structural interrogation sites not
+  yet migrated to use them.
+- [~] Implement: fail-closed boundaries (no TypedItemUnhandled, no `""` fallbacks)
+  `TypedItemUnhandled` variant deleted; else branches still emit error
+  markers (compile_error/panic/comment) — need upstream diagnostic instead.
+- [x] Delete: all `classify_*` forests, all fail-open fallbacks, all name-keyed side-tables
+  PR #324: `TypedItemKind` enum + `classify_typed_item` dissolved. Shared
+  boolean predicates (`is_type_def_item`, `is_function_item`, etc.) in
+  05_emit.dag replace the taxonomy. Backends compose predicates directly.
 
 **Acceptance:** Emit dispatches on existing Node structural fields
 directly. Classification forests dissolve because consumers pattern-match
@@ -790,8 +825,8 @@ authority.
 invocation, method kind, built-in refinement) re-derived from name
 matching at every consumption site.
 
-**Current counts (2026-04-05):**
-- `method_def.name` / `method_name ==` dispatch: 21 sites (emit_rust: 12, infer: 5, complexity: 4)
+**Current counts (2026-04-06):**
+- `method_def.name` / `method_name ==` dispatch: ~17 sites (emit_rust: 12, infer: 5, complexity: 0 — all complexity method dispatch reads from AlgebraMethodSemantics)
 - Nullary function detection: 3 sites in emit_rust, 0 in Go/Python (bug)
 - Built-in call type refinement by name: 4 sites in infer
 
