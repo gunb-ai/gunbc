@@ -506,7 +506,10 @@ No test >2s without justification. Self-compile time tracked per-PR.
 
 Theory, long-horizon, and items that land after root-cause tracks complete.
 
-## CM: Compiler Concept Modeling (continuous track)
+## CM: Compiler Concept Modeling (primary focus)
+
+**Full analysis:** [`src/v2/CM.md`](src/v2/CM.md) — missing models,
+per-file heuristic inventory, design directions.
 
 **Root cause:** The compiler interrogates structural properties (connective,
 children count, param count, transport presence) to answer semantic questions
@@ -518,32 +521,24 @@ will keep spawning in every new feature and every refactor.
 underlying concept and the questions dissolve. Same pattern as
 fold/descend/repeat dissolving ad-hoc iteration logic.
 
-### Concept categories (by impact)
+### Three missing models
 
-| Category | Pattern | Sites | Missing concept |
-|----------|---------|-------|-----------------|
-| Item classification | body+params+uses+connective combinatorics 3× | ~40 branches | Precomputed `ItemKind` on Node |
-| Connective branching | `Conj`/`Disj`/`NoConnective` if-else everywhere | 30+ branches | Explicit `TypeStructure` (product/coproduct/scalar) |
-| Collection detection | Name + children-count checks for List/Map/Set | ~15 sites | Structural `CollectionShape` from algebra |
-| Arity as semantics | `params |> count` as proxy for callable/generic | ~10 sites | Explicit `Callable`/`GenericSignature` properties |
-| Optional handling | Cardinality modifier + synthetic Some bridges | ~10 sites | First-class Optional as coproduct (M7) |
-| Function application | Type-name + arity check for call vs value-ref | ~5 sites | Modeled apply/call concept (M4 Tier 2.6) |
-| Transport/service | `transport != none && children > 0` repeated | ~8 sites | Explicit `ServiceDefinition` property |
-| Function signatures | body+params+uses conjunctions | ~12 sites | `FunctionSignature` semantic property |
-| Property/resource | `properties |> count > 0` as resource proxy | ~5 sites | Explicit `ResourceDefinition` marker |
-| Underresolved types | Sentinel names ("Dynamic", "Error") | ~6 sites | Explicit `ResolutionState` enum |
+Everything reduces to three structural gaps. Each generates a family of
+heuristic if-else forests that get shuffled between stages but never
+eliminated. See `src/v2/CM.md` for full inventory.
 
-### Dissolution strategy
+| Model | Gap | Symptom count | Key locations |
+|-------|-----|---------------|---------------|
+| **MM-1: Item identity** | Parser produces uniform Node; 4 stages re-classify | ~40 branches, 3 taxonomies | emit_info:75, items:114, infer:2270, infer:2972 |
+| **MM-2: Type structure** | Conj/Disj interpretation re-derived everywhere | 277 connective refs | lookup:209, emit_info:607, emit:1095, every emit backend |
+| **MM-3: Expression semantics** | Method/call identity is a string | ~30 name-match branches | emit_rust:2853, infer:842, infer:1130, complexity (distributed) |
 
-Items dissolve into existing milestones as they become unblocked:
+### Approach
 
-- **M4** dissolves: collection detection, arity-as-semantics, function
-  application (Tier 2.6), connective branching (partially)
-- **M7** dissolves: Optional handling, connective branching (fully),
-  underresolved type sentinels
-- **Independent**: item classification, transport/service, function
-  signatures, property/resource — these can be precomputed in inference
-  and stored on EmitGraphInfo without waiting for other milestones
+Design the target models holistically before implementing. Ratchets
+measure symptoms; models eliminate causes. Prior work moved heuristics
+upstream (ValueContext, ServiceFieldSet, FoldAccUnwrapProof) — right
+direction, but without target models defined, heuristics just relocate.
 
 ### Acceptance
 
