@@ -544,7 +544,7 @@ pub fn emit_py_expr_var(expr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) 
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprVar { binding_kind: binding_kind, .. } => {
         let n = expr_var_name_at(expr.clone(), source_index);
-if ((n.clone().as_str() == "none".to_string().as_str()) || (n.clone().as_str() == "None".to_string().as_str())) {
+if (n.clone().as_str() == "none".to_string().as_str()) {
             emit_keyword("null".to_string(), RenderTarget::Python)
 } else {
             if ((n.clone().as_str() == "true".to_string().as_str()) || (n.clone().as_str() == "false".to_string().as_str())) {
