@@ -50,6 +50,8 @@ pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan, kernel_type_set, i
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::std_syntax::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull};
+pub use crate::std_algebra::{CollectionSizeEffect};
+use crate::std_algebra::CollectionSizeEffect::*;
 use TokenShape::*;
 use Connective::*;
 use Cardinality::*;
@@ -272,6 +274,7 @@ pub enum MethodSemantics {
     AlgebraMethodSemantics {
         method_def: Rc<Node>,
         fold_accumulator_type: Option<Rc<Node>>,
+        size_effect: Option<CollectionSizeEffect>,
     },
     ServiceMethodSemantics {
         service_name: String,

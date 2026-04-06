@@ -23,6 +23,7 @@ import v2.std.core {
 
   CardOptional
 }
+import std.algebra { lookup_algebra_size_effect }
 import v2.compiler.infer_types {
   child_inferred_or_name,
   nominal_type_ref,
@@ -326,7 +327,8 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
       // Method found structurally — carry the method definition node.
       // mfr.field_node is the algebra field node (from the enriched type).
       // It carries the method's name, type signature, and structural properties.
-      let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type }
+      let size_effect = lookup_algebra_size_effect(method_name: method_name)
+      let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: size_effect }
       let resolved_type = substitute_algebra_result(
         result_type: mfr.result_type,
         receiver_type: receiver_type,

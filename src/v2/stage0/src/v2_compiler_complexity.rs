@@ -63,13 +63,14 @@ use crate::v2_std_core::BinOp::{Sub, Div};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::LiteralValue::{LitNull, LitInt};
+pub use crate::std_algebra::{CollectionSizeEffect};
+use crate::std_algebra::CollectionSizeEffect::{ShrinkEffect, ProjectionEffect, IdentityEffect};
 use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
 use CostShape::*;
 use ProgressKind::*;
 use ParserResultSource::*;
-use ListMethodKind::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 
@@ -368,34 +369,17 @@ pub struct EvidenceBlockAcc {
     pub vars: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum ListMethodKind {
-    SkipMethod,
-    FirstMethod,
-    LastMethod,
-}
-
-pub fn classify_list_method(name: String) -> Option<ListMethodKind> {
-    if (name.clone().as_str() == "skip".to_string().as_str()) {
-        Some(ListMethodKind::SkipMethod)
-} else {
-        if (name.clone().as_str() == "first".to_string().as_str()) {
-            Some(ListMethodKind::FirstMethod)
-} else {
-            if (name.clone().as_str() == "last".to_string().as_str()) {
-                Some(ListMethodKind::LastMethod)
-} else {
-                None
-}
-}
-}
-}
-
 pub fn is_algebra_iteration_method(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
     match method_semantics.as_deref().cloned() {
     Some(MethodSemantics::AlgebraMethodSemantics { .. }) => true,
     _ => false,
+}
+}
+
+pub fn method_size_effect(method_semantics: Option<Rc<MethodSemantics>>) -> Option<CollectionSizeEffect> {
+    match method_semantics.as_deref().cloned() {
+    Some(MethodSemantics::AlgebraMethodSemantics { size_effect: se, .. }) => se.clone(),
+    _ => None,
 }
 }
 
@@ -1562,8 +1546,8 @@ break (is_children_list_field(field.clone()) && match (*base.expr_data.clone()).
     _ => false,
 }); },
     ExprData::ExprVar { .. } => { break set_has(vars.clone(), expr_var_name(expr.clone())); },
-    ExprData::ExprMethodCall { .. } => { match classify_list_method(expr_call_func(expr.clone())) {
-    Some(ListMethodKind::SkipMethod) => { {
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => { match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => { {
             let __tco_0 = method_receiver(expr);
 let __tco_1 = param_name;
 let __tco_2 = vars;
@@ -1609,12 +1593,10 @@ let field = field_access_field(expr.clone());
     _ => false,
 })
 },
-    ExprData::ExprMethodCall { .. } => {
-            let mname = expr_call_func(expr.clone());
-match classify_list_method(mname.clone()) {
-    Some(ListMethodKind::SkipMethod) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
-    _ => ((((mname.clone().as_str() == "enumerate".to_string().as_str()) || (mname.clone().as_str() == "filter".to_string().as_str())) || (mname.clone().as_str() == "reverse".to_string().as_str())) && is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone())),
-}
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
+    Some(CollectionSizeEffect::IdentityEffect) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
+    _ => false,
 },
     ExprData::ExprCall { .. } => {
             let callee = expr_call_func(expr.clone());
@@ -1650,9 +1632,8 @@ pub fn is_child_descent_expr(expr: Rc<Node>, param_name: String, vars: Rc<HashMa
         true
 } else {
         match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { .. } => match classify_list_method(expr_call_func(expr.clone())) {
-    Some(ListMethodKind::FirstMethod) => is_children_of_param(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
-    Some(ListMethodKind::LastMethod) => is_children_of_param(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ProjectionEffect) => is_children_of_param(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
     _ => false,
 },
     _ => false,
@@ -1696,12 +1677,12 @@ pub fn extractor_inner_arg(expr: Rc<Node>) -> Rc<Node> {
 
 pub fn is_list_shrink_expr(expr: Rc<Node>, param_name: String) -> bool {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { .. } => {
-        let is_skip = match classify_list_method(expr_call_func(expr.clone())) {
-    Some(ListMethodKind::SkipMethod) => true,
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => {
+        let is_shrink = match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => true,
     _ => false,
 };
-((is_skip && match (*method_receiver(expr.clone()).expr_data.clone()).clone() {
+((is_shrink && match (*method_receiver(expr.clone()).expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => (expr_var_name(method_receiver(expr.clone())).as_str() == param_name.as_str()),
     _ => false,
 }) && match method_arg_nodes(expr.clone()).first().cloned() {
@@ -1752,10 +1733,12 @@ let base = field_access_base(expr.clone());
     _ => false,
 })
 },
-    ExprData::ExprMethodCall { .. } => {
-                let mname = expr_call_func(expr.clone());
-let receiver = method_receiver(expr.clone());
-((((((mname.clone().as_str() == "first".to_string().as_str()) || (mname.clone().as_str() == "last".to_string().as_str())) || (mname.clone().as_str() == "skip".to_string().as_str())) || (mname.clone().as_str() == "filter".to_string().as_str())) || (mname.clone().as_str() == "reverse".to_string().as_str())) && expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()))
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => {
+                let receiver = method_receiver(expr.clone());
+match method_size_effect(ms.clone()) {
+    Some(_) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
+    None => false,
+}
 },
     _ => false,
 }

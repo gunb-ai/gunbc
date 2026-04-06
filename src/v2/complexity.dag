@@ -60,6 +60,9 @@ import v2.std.core {
   is_children_list_field, is_sub_value_field,
   is_tree_size_preserving, is_tree_size_reducing
 }
+import std.algebra {
+  CollectionSizeEffect, ShrinkEffect, ProjectionEffect, IdentityEffect
+}
 
 // =========================================================================
 // Size expressions -- symbolic sizes for analysis
@@ -313,27 +316,23 @@ type EvidenceBlockAcc {
   vars: Map<String, Bool>
 }
 
-// Structural classification of list methods relevant to descent proofs.
-// Replaces raw method-name string dispatch with a closed enum.
-type ListMethodKind
-  = SkipMethod     // skip(N): drops first N elements, List shrinks by N
-  | FirstMethod    // first: projects head element (descent from list to element)
-  | LastMethod     // last: projects tail element (descent from list to element)
-
-fn classify_list_method(name: String) -> ListMethodKind? {
-  if name == "skip" { Some { value: SkipMethod } }
-  else if name == "first" { Some { value: FirstMethod } }
-  else if name == "last" { Some { value: LastMethod } }
-  else { none }
-}
-
 // CX-C: Check if a method has algebra iteration semantics (fold, map, etc.)
 // by reading the structural MethodSemantics fact carried on ExprMethodCall,
 // rather than string-matching method names.
 fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _ } } => true
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _ } } => true
     _ => false
+  }
+}
+
+// Extract size effect from method semantics. Returns the CollectionSizeEffect
+// declared on the algebra template, or none for plain/service/user-defined methods
+// and algebra methods without a declared size effect.
+fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffect? {
+  match method_semantics {
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se } } => se
+    _ => none
   }
 }
 
@@ -1895,10 +1894,10 @@ fn is_children_of_param(expr: Node, param_name: String, vars: Map<String, Bool>)
       }
     // CX-K: a variable previously bound to param.children is also children.
     ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name(texpr: expr))
-    ExprMethodCall { method_semantics: _ } =>
+    ExprMethodCall { method_semantics: ms } =>
       // Handle `param.children |> skip(N)` — projection from children list.
-      match classify_list_method(name: expr_call_func(texpr: expr)) {
-        Some { value: SkipMethod } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+      match method_size_effect(method_semantics: ms) {
+        Some { value: ShrinkEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
         _ => false
       }
     // CX-J: Handle `skip(param.children, N)` — function-call form of skip.
@@ -1939,15 +1938,11 @@ fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool
         ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name(texpr: base))
         _ => false
       }
-    ExprMethodCall { method_semantics: _ } =>
-      let mname = expr_call_func(texpr: expr)
-      match classify_list_method(name: mname) {
-        Some { value: SkipMethod } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
-        _ =>
-          // CX-L: enumerate, filter, reverse preserve structural children identity.
-          // enumerate wraps in pairs (element at .second), filter/reverse reorder.
-          (mname == "enumerate" || mname == "filter" || mname == "reverse")
-          && is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+    ExprMethodCall { method_semantics: ms } =>
+      match method_size_effect(method_semantics: ms) {
+        Some { value: ShrinkEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        Some { value: IdentityEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        _ => false
       }
     // CX-J: Handle `skip(descent_var.children, N)` — function-call form of skip.
     ExprCall { call_semantics: _ } =>
@@ -1980,10 +1975,9 @@ fn is_child_descent_expr(expr: Node, param_name: String, vars: Map<String, Bool>
   if is_accessor_of_param(expr: expr, param_name: param_name, vars: vars) { true }
   else {
     match expr.expr_data {
-      ExprMethodCall { method_semantics: _ } =>
-        match classify_list_method(name: expr_call_func(texpr: expr)) {
-          Some { value: FirstMethod } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
-          Some { value: LastMethod } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+      ExprMethodCall { method_semantics: ms } =>
+        match method_size_effect(method_semantics: ms) {
+          Some { value: ProjectionEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
           _ => false
         }
       _ => false
@@ -2036,12 +2030,12 @@ fn extractor_inner_arg(expr: Node) -> Node {
 // param |> skip(N) where N >= 1 (proven by positive integer literal).
 fn is_list_shrink_expr(expr: Node, param_name: String) -> Bool {
   match expr.expr_data {
-    ExprMethodCall { method_semantics: _ } =>
-      let is_skip = match classify_list_method(name: expr_call_func(texpr: expr)) {
-        Some { value: SkipMethod } => true
+    ExprMethodCall { method_semantics: ms } =>
+      let is_shrink = match method_size_effect(method_semantics: ms) {
+        Some { value: ShrinkEffect } => true
         _ => false
       }
-      is_skip
+      is_shrink
       && match method_receiver(texpr: expr).expr_data {
         ExprVar { binding_kind: _ } => expr_var_name(texpr: method_receiver(texpr: expr)) == param_name
         _ => false
@@ -2113,13 +2107,14 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
             bname == param_name || set_has(m: vars, key: bname)
           _ => false
         }
-      // CX-M: first/last extract an element from a collection; skip/filter/reverse
-      // preserve collection identity. If the receiver is descent, the result is descent.
-      ExprMethodCall { method_semantics: _ } =>
-        let mname = expr_call_func(texpr: expr)
+      // CX-M: methods with a declared size effect (projection, shrink, identity)
+      // preserve or extract descent. If the receiver is descent, the result is descent.
+      ExprMethodCall { method_semantics: ms } =>
         let receiver = method_receiver(texpr: expr)
-        (mname == "first" || mname == "last" || mname == "skip" || mname == "filter" || mname == "reverse")
-        && expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+        match method_size_effect(method_semantics: ms) {
+          Some { value: _ } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          None => false
+        }
       _ => false
     }
   }
@@ -3819,7 +3814,7 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _ } =>
+      AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, size_effect: _ } =>
         is_size_preserving_method(method_name: method_def.name)
       _ => false
     }
@@ -4377,7 +4372,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       // Plain/Service/None fall through to default cost.
       let method_cost_result = if ms == none { none } else {
         match ms.value {
-          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } => {
+          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _ } => {
             let md_name = md.name
             let shape_match = method_cost_shape(method_name: md_name)
             match shape_match {
