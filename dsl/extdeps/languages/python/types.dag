@@ -17,11 +17,6 @@
 
 module extdeps.languages.python.types
 
-import std.languages {
-  TypeMapping, NamingConvention, NamingCase,
-  TypeDefinitionSyntax, LiteralSyntax
-}
-
 import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr
 }
@@ -136,14 +131,15 @@ data dataclass_decorator: String = "@dataclass"
 data dataclass_import: String = "from dataclasses import dataclass, field"
 data field_default_template: String = "field(default=\{value\})"
 data field_default_factory_template: String = "field(default_factory=\{factory\})"
-data enum_import: String = "from enum import Enum, auto"
+data python_enum_import: String = "from enum import Enum, auto"
 data enum_class_template: String = "class \{name\}(Enum):\n\{variants\}"
 data enum_auto_value: String = "auto()"
 data union_syntax: String = "\{a\} | \{b\}"
 data optional_syntax: String = "\{type\} | None"
 data typing_optional: String = "Optional[\{type\}]"
+data python_optional_template: String = "Optional[\{0\}]"
 data typing_union: String = "Union[\{types\}]"
-data typing_import: String = "from typing import Optional, Union"
+data python_typing_import: String = "from typing import Optional, Union"
 data type_alias_template: String = "\{name\} = \{type\}"
 data generic_param_template: String = "[\{params\}]"
 data typing_generic_import: String = "from typing import Generic, TypeVar"

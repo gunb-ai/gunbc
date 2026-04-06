@@ -4,12 +4,17 @@
 
 pub mod extdeps_languages_dag_syntax;
 pub mod extdeps_languages_go_emit;
+pub mod extdeps_languages_go_types;
 pub mod extdeps_languages_python_emit;
+pub mod extdeps_languages_python_types;
 pub mod extdeps_languages_rust_emit;
+pub mod extdeps_languages_rust_types;
 pub mod std_algebra;
+pub mod std_coercion;
 pub mod std_syntax;
 pub mod std_types;
 pub mod v2_compiler_artifact;
+pub mod v2_compiler_coercion;
 pub mod v2_compiler_compile;
 pub mod v2_compiler_complexity;
 pub mod v2_compiler_emit;
@@ -38,7 +43,6 @@ pub mod v2_compiler_runtime_rust;
 pub mod v2_compiler_tokenize;
 pub mod v2_compiler_trace;
 pub mod v2_std_core;
-pub mod v2_coercion;
 pub mod v2_rt;
 
 #[cfg(test)]
