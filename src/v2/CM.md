@@ -10,6 +10,125 @@ See also: `DESIGN.md` (principles), `ROADMAP.md §CM` (summary table).
 
 ---
 
+## Foundational ontology
+
+The concept DAG (computation.dag §LAYERS) has two foundational
+categories modeled as std/ primitives:
+
+| Category | Captures | std/ home | Math grounding |
+|----------|----------|-----------|----------------|
+| **Signal** | What holds — assertion, state | logic.dag, bit.dag | Classical bivalent logic |
+| **Algebra** | How things combine — structure, laws | algebra.dag | Abstract algebra (Monoid → Field) |
+
+These are categorically distinct. A Bit is a signal (hi/lo). A
+Monoid is a bag (elements accumulate under laws). Neither reduces
+to the other. They compose (BooleanAlgebra is truth values with
+algebraic structure) but remain independent primitives.
+
+A third category is missing: **what happens.** Function calls,
+transports, computation steps — these produce signals and consume
+bags, but the transformation itself is neither. The compiler
+*performs* this third category (that's what compilation is) but
+doesn't *model* it.
+
+### Working candidate: Reduction
+
+From term rewriting systems (Knuth, Bendix 1970) and lambda calculus
+(Church 1936). **β-reduction** (`(λx.M)N → M[N/x]`) formalizes
+"a computation step" — a term matching a rule is replaced by its
+result. This has well-developed theory: Church-Rosser (confluence),
+strong normalization, completion algorithms.
+
+Connection to the existing concept DAG:
+
+| Existing concept | Reduction perspective |
+|-----------------|----------------------|
+| Function definition | A **rewrite rule**: `f(x) → body[x/param]` |
+| Function call site | A **redex** (reducible expression): matches a rule's LHS |
+| Function application | A **reduction step**: match, substitute, produce result |
+| Normal form | Fully evaluated — no more redexes (= emitted target code) |
+| fold/descend/repeat | **Rewrite strategies**: the order in which reductions are applied |
+| Termination proofs | Standard rewrite-termination via ranking functions (already in termination.dag) |
+| Compilation itself | **Reduction to normal form** in the target language |
+
+Reduction is not a concept invented for this compiler. It is how
+lambda calculus formalizes "computation step" — the same way
+Classical formalizes "assertion" and Monoid formalizes "combination."
+
+### Implications for function calls (MM-3)
+
+The ref-vs-call distinction becomes: **is this term a redex?**
+
+| Current (name-based) | With reduction (structural) |
+|-----------------------|----------------------------|
+| `f(arg)` = ExprCall (surface syntax category) | `f(arg)` = redex (matches a rewrite rule) |
+| `f` ref vs `f()` call — ambiguous for nullary fns | arity=0: redex (reducible now). arity>0: value (needs args) |
+| 3 ad-hoc nullary detection sites in emit_rust | Redex-vs-value: structural property on the expression |
+| 21 method name-dispatch sites | Method = named rewrite rule; dispatch on rule structure |
+| Go/Python ignore binding_kind (bug) | All backends read the same structural fact |
+
+Transport unification: an internal function is a rewrite rule with a
+body (internal reduction). A transport is a rewrite rule grounded
+externally (external reduction). Same concept, different grounding
+source. This connects to Evidence in §Foundational principle below.
+
+### Open questions
+
+- **Is reduction the right grounding?** Alternatives considered:
+  modus ponens (too narrow — only implication elimination),
+  eval morphism (requires CCC infrastructure), cut rule (more
+  general but less operational). Reduction chosen because it has
+  the strongest existing theory and connects naturally to
+  compilation (which IS reduction to normal form).
+- **std/ representation?** Possibly `std/reduction.dag` with
+  Redex, RewriteRule, NormalForm. Must connect to Layers 4-6
+  (iteration primitives are rewrite strategies, call patterns
+  are redex classifications).
+- **Relationship to Morphism?** The Morphism property
+  (§Foundational principle) may be the static description
+  ("this Node is a rewrite rule") while reduction is the dynamic
+  description ("applying this rule is a computation step").
+
+### Node and DAG as derived structure
+
+Node and DAG are treated as foundational ("Node is the only recursive
+semantic authority" — ROADMAP). But they are not primitives. They are
+compositions of the three foundational categories:
+
+**Node** = Product of:
+- **connective**: Signal (Conj | Disj | NoConnective — structural assertion)
+- **children**: FreeMonoid<Node> (Algebra — bounded recursive collection)
+- **fields** (params, type_annotation, properties): Product (Algebra — conjunction of facts)
+- **body | transport**: Reduction (rewrite rule — internal or external, or absent)
+
+**DAG** = FreeMonoid<Node> + PartialFunction<Node, FreeMonoid<Node>> where acyclic
+- Nodes form a collection (FreeMonoid)
+- Edges are adjacency (PartialFunction)
+- Acyclicity is a refinement constraint (same mechanism as `where non_empty`)
+
+The bounded kernel invariant restated: Node.children is FreeMonoid<Node>.
+FreeMonoid is bounded by construction (finite list). The "only recursive
+type" property falls out of using a bounded algebraic structure as the
+carrier for self-reference — it's a theorem, not an axiom.
+
+**Connection to MM-1:** If Node decomposes along Signal/Algebra/Reduction,
+then item classification is already answered by the structure:
+
+| Sugar | Signal (connective) | Algebra (fields) | Reduction |
+|-------|---------------------|-------------------|-----------|
+| `type` | Conj or Disj | structure fields | absent |
+| `fn` | NoConnective | params, return | body (internal) |
+| `service` | Conj | config, children | transport (external) |
+| `resource` | Conj | capabilities | external identity |
+| `data` | NoConnective | type constraint | body (ground term) |
+
+The classification forests (MM-1) exist because the compiler treats
+Node as opaque and re-derives this decomposition. If the decomposition
+were the API — if consumers asked "does this have Reduction?" instead
+of "is this a function?" — the forests dissolve.
+
+---
+
 ## The three missing models
 
 Everything below reduces to three structural gaps in the compiler IR.
@@ -346,11 +465,16 @@ Every classification forest is asking about combinations of a few
 orthogonal properties. These properties are already on Node but are
 not named as concepts:
 
-| Property | What it means | Foundation |
-|----------|---------------|------------|
-| **Structure** | Node asserts a data shape (connective + children) | Conjunction/Disjunction — logical structure |
-| **Evidence** | Node provides backing for its claim (body = internal, transport = external) | Witness/proof — epistemic |
-| **Morphism** | Node describes a mapping (params → return type) | Implication — logical entailment |
+| Property | What it means | Foundation | Ontological category (§above) |
+|----------|---------------|------------|-------------------------------|
+| **Structure** | Node asserts a data shape (connective + children) | Conjunction/Disjunction — logical structure | Algebra |
+| **Evidence** | Node provides backing for its claim (body = internal, transport = external) | Witness/proof — epistemic | Signal |
+| **Morphism** | Node describes a mapping (params → return type) | Implication — logical entailment | Reduction (rewrite rule) |
+
+Structure/Evidence/Morphism are the compiler-level manifestation of
+the three foundational categories. The heuristic forests exist because
+the compiler re-derives these from raw Node fields instead of consuming
+them as named primitives.
 
 The surface sugar composes these:
 
@@ -397,6 +521,9 @@ The same principle applies here:
   functor application. A filter is set comprehension. The algebra
   framework already knows this — the missing piece is naming the
   operational shape so dispatch doesn't fall back to string matching.
+  Deeper: function application itself may be the missing primitive
+  (§Foundational ontology). Methods are named rewrite rules;
+  dispatch should be on rule structure, not name strings.
 
 ### Design direction
 
