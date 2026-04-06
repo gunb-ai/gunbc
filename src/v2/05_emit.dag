@@ -912,14 +912,21 @@ fn build_type_rendering(n: Node, shared_types: Map<String, Bool>, recursive_type
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
 
-  // Error / unresolved type variable
-  if (n_is_type_var || n_is_error) && n.children |> count == 0 {
+  // Compiler error: fail-closed, produce compile_error! in target
+  if n_is_error && n.children |> count == 0 {
     return TypeRendering {
-      type_name: if n_is_error { "CompilerError" } else { "TypeVariable" },
+      type_name: "CompilerError",
       is_error: true, error_label: n.name,
       element: none, key: none, value: none, params: [], return_type: none,
       inner: none, generic_args: [], shared: false, boxed: false, is_tuple: false
     }
+  }
+  // TypeVariable: unresolved parametric binding — render as "_" (target
+  // language inference placeholder). NOT an error: the algebra template
+  // produced a type variable because the receiver was bare; downstream
+  // type inference in the target language resolves it.
+  if n_is_type_var && n.children |> count == 0 {
+    return leaf_type_rendering(name: "_")
   }
 
   // Callable: fn(A, B) -> R

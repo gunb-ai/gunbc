@@ -188,7 +188,7 @@ fn nominal_type_ref(name: String) -> Node {
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> Node {
   match base.children |> enumerate |> filter(pair => pair.first == child_index) |> map(pair => pair.second) |> first {
     Some { value: child } => child
-    None => error_type
+    None => type_variable_node(id: placeholder)
   }
 }
 

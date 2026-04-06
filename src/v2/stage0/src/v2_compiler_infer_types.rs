@@ -67,6 +67,30 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 }
 }
 
+pub fn type_variable_node(id: String) -> Rc<Node> {
+    Rc::new(Node {
+    name: "".to_string(),
+    span: make_span(0, 0),
+    ident_span: None,
+    children: Rc::new(vec![]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: Some(Rc::new(InferredNode::TypeVariable {
+    id: id,
+})),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})
+}
+
 pub fn child_inferred_or_name(ch: Rc<Node>) -> Rc<Node> {
     if (ch.inferred.clone() == None) {
         nominal_type_ref(ch.name.clone())
@@ -334,7 +358,7 @@ pub fn nominal_type_ref(name: String) -> Rc<Node> {
 pub fn algebra_child_or_placeholder(base: Rc<Node>, child_index: i64, placeholder: String) -> Rc<Node> {
     match Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(base.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() == child_index.clone()) { __result.push(pair); } } __result }).iter().cloned() { __result.push(pair.1.clone()); } __result }).first().cloned() {
     Some(child) => child.clone(),
-    None => error_type(),
+    None => type_variable_node(placeholder),
 }
 }
 

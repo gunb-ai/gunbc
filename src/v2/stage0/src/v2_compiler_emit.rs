@@ -904,13 +904,9 @@ let n_is_type_var = if (n.inferred.clone() != None) {
 } else {
                 false
 };
-if ((n_is_type_var || n_is_error.clone()) && ((n.children.clone().len() as i64) == 0)) {
+if (n_is_error && ((n.children.clone().len() as i64) == 0)) {
                 return Rc::new(TypeRendering {
-    type_name: if n_is_error.clone() {
-                    "CompilerError".to_string()
-} else {
-                    "TypeVariable".to_string()
-},
+    type_name: "CompilerError".to_string(),
     is_error: true,
     error_label: n.name.clone(),
     element: None,
@@ -924,6 +920,9 @@ if ((n_is_type_var || n_is_error.clone()) && ((n.children.clone().len() as i64) 
     boxed: false,
     is_tuple: false,
 })
+}
+if (n_is_type_var && ((n.children.clone().len() as i64) == 0)) {
+                return leaf_type_rendering("_".to_string())
 }
 if (n.name.clone().as_str() == "Callable".to_string().as_str()) {
                 {
