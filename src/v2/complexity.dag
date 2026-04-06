@@ -2149,7 +2149,10 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
       ExprMethodCall { method_semantics: ms } =>
         let receiver = method_receiver(texpr: expr)
         match method_algebra_template(method_semantics: ms) {
-          Some { value: _ } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          Some { value: t } =>
+            if is_element_projection_template(template: t) || is_collection_shrink_template(template: t) || is_collection_identity_template(template: t) {
+              expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+            } else { false }
           None => false
         }
       _ => false

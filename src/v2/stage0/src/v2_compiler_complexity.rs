@@ -1776,7 +1776,11 @@ let base = field_access_base(expr.clone());
     ExprData::ExprMethodCall { method_semantics: ms, .. } => {
                 let receiver = method_receiver(expr.clone());
 match method_algebra_template(ms.clone()) {
-    Some(_) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
+    Some(t) => if ((is_element_projection_template(t.clone()) || is_collection_shrink_template(t.clone())) || is_collection_identity_template(t.clone())) {
+                    expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone())
+} else {
+                    false
+},
     None => false,
 }
 },
