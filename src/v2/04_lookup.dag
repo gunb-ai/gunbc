@@ -25,6 +25,7 @@ import v2.std.core {
 }
 import std.algebra {
   CollectionSizeEffect, CostShape, AlgebraFieldTemplate,
+  AlgebraTypeTemplate, ReceiverSelf, ReceiverCollectionOf, ListOf,
   kernel_algebra_profile, algebra_templates_for_profile
 }
 import v2.compiler.infer_types {
@@ -254,6 +255,7 @@ type MethodFieldResult {
   size_effect: CollectionSizeEffect?
   cost_shape: CostShape?
   algebra_template: AlgebraFieldTemplate?
+  produces_collection: Bool
 }
 
 fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldResult? {
@@ -264,11 +266,11 @@ fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldRes
         Some { value: Resolved { node: rt } } =>
           if rt.params |> count > 0 {
             match rt.inferred {
-              Some { value: Resolved { node: return_type } } => Some { value: MethodFieldResult { field_node: field, result_type: return_type, size_effect: none, cost_shape: none, algebra_template: none } }
-              _ => Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
+              Some { value: Resolved { node: return_type } } => Some { value: MethodFieldResult { field_node: field, result_type: return_type, size_effect: none, cost_shape: none, algebra_template: none, produces_collection: false } }
+              _ => Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none, produces_collection: false } }
             }
           } else {
-            Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
+            Some { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none, produces_collection: false } }
           }
         _ => none
       }
@@ -307,7 +309,14 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> MethodF
           }
           match template_match {
             Some { value: t } =>
-              Some { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Some { value: t } } }
+              // Derive produces_collection from return_type — no duplicate authority.
+              let pc = match t.return_type {
+                ReceiverSelf => true
+                ReceiverCollectionOf { element: _ } => true
+                ListOf { element: _ } => true
+                _ => false
+              }
+              Some { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Some { value: t }, produces_collection: pc } }
             None => base_result
           }
         None => none
@@ -327,7 +336,7 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
   let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name)
   match tier0_result {
     Some { value: mfr } =>
-      let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template }
+      let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template, produces_collection: mfr.produces_collection }
       KnownMethodResolution {
         semantics: Some { value: semantics },
         result_type: Some { value: mfr.result_type }

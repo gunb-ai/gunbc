@@ -123,7 +123,7 @@ type Certainty = Proven | Conservative | Unknown
 //   ShapeLinearScan    -- O(|receiver|) with O(1) per element (count, join)
 //   ShapeIterateBody   -- O(|receiver| * body_cost) (map, filter, fold)
 //   ShapeSortBody      -- O(|receiver| * body_cost), Conservative (sort_by)
-//   produces_collection -- whether the method outputs a collection
+//   produces_collection -- derived from AlgebraFieldTemplate.return_type
 // =========================================================================
 
 // CostShape type and per-method cost shapes are declared in dsl/std/algebra.dag
@@ -289,7 +289,7 @@ type EvidenceBlockAcc {
 // rather than string-matching method names.
 fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } } => true
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _, produces_collection: _ } } => true
     _ => false
   }
 }
@@ -299,7 +299,7 @@ fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
 // and algebra methods without a declared size effect.
 fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffect? {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } } => se
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _, produces_collection: _ } } => se
     _ => none
   }
 }
@@ -3709,21 +3709,15 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: cs, algebra_template: _ } =>
+      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _, produces_collection: pc } =>
         // ShrinkEffect and IdentityEffect return same-shape collections
         let preserves_shape = match se {
           Some { value: ShrinkEffect } => true
           Some { value: IdentityEffect } => true
           _ => false
         }
-        // Cost shapes that produce collections also preserve receiver size
-        let produces_collection = match cs {
-          Some { value: ShapeIterateBody { produces_collection: pc } } => pc
-          Some { value: ShapeLinearScan { produces_collection: pc } } => pc
-          Some { value: ShapeSortBody } => true
-          _ => false
-        }
-        preserves_shape || produces_collection
+        // produces_collection is derived from return_type at resolution time
+        preserves_shape || pc
       _ => false
     }
   }
@@ -3801,15 +3795,15 @@ fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: M
   }
 }
 
-fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: List<Node>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, parser_always_advancing: Map<String, Bool>, recursion_ctx: RecursionContext) -> SummaryResult {
+fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: SummaryResult, mc_args: List<Node>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, parser_always_advancing: Map<String, Bool>, recursion_ctx: RecursionContext) -> SummaryResult {
   match shape {
-    ShapeIterateBody { produces_collection: pc } =>
+    ShapeIterateBody =>
       let lambda_arg = resolve_lambda_arg(mc_args: mc_args)
       let body_result = resolve_callback_cost(lambda_arg: lambda_arg, recv_r: recv_r, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
       let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
       // Space: non-producing iterators (fold/any/all) produce scalar or body output;
       // producing iterators (map/filter/etc.) produce proportional output
-      let os = if pc == false {
+      let os = if produces_collection == false {
         // fold: use body's output_size; any/all: scalar
         body_result.summary.output_size
       } else {
@@ -3860,9 +3854,9 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
         },
         table: key_result.table
       }
-    ShapeLinearScan { produces_collection: pc } =>
+    ShapeLinearScan =>
       let loop_work = cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 })
-      let scan_os = if pc {
+      let scan_os = if produces_collection {
         let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
         r
       } else {
@@ -4280,10 +4274,10 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       // Plain/Service/None fall through to default cost.
       let method_cost_result = if ms == none { none } else {
         match ms.value {
-          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: cs, algebra_template: _ } => {
+          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: cs, algebra_template: _, produces_collection: pc } => {
             match cs {
               Some { value: shape } =>
-                Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx) }
+                Some { value: cost_of_method_by_shape(shape: shape, produces_collection: pc, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx) }
               None =>
                 // All methods not in the known set (bridge methods) are O(1)
                 Some { value: SummaryResult {

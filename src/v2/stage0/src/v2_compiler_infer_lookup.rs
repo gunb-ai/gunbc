@@ -54,7 +54,8 @@ use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSem
 use crate::v2_std_core::FieldAccessStyle::{OptionalUnwrap};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
-pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile};
+pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTemplate, AlgebraTypeTemplate, kernel_algebra_profile, algebra_templates_for_profile};
+use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverCollectionOf, ListOf};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
@@ -301,8 +302,8 @@ pub struct MethodFieldResult {
     pub field_node: Rc<Node>,
     pub result_type: Rc<Node>,
     pub size_effect: Option<CollectionSizeEffect>,
-    pub cost_shape: Option<Rc<CostShape>>,
-    pub algebra_template: Option<Rc<AlgebraFieldTemplate>>,
+    pub cost_shape: Option<CostShape>,
+    pub produces_collection: bool,
 }
 
 pub fn lookup_field_in_product(product: Rc<Node>, method_name: String) -> Option<Rc<MethodFieldResult>> {
@@ -317,14 +318,14 @@ match matching.first().cloned() {
     result_type: return_type.clone(),
     size_effect: None,
     cost_shape: None,
-    algebra_template: None,
+    produces_collection: false,
 })),
     _ => Some(Rc::new(MethodFieldResult {
     field_node: field.clone(),
     result_type: rt.clone(),
     size_effect: None,
     cost_shape: None,
-    algebra_template: None,
+    produces_collection: false,
 })),
 }
 } else {
@@ -333,7 +334,7 @@ match matching.first().cloned() {
     result_type: rt.clone(),
     size_effect: None,
     cost_shape: None,
-    algebra_template: None,
+    produces_collection: false,
 }))
 },
     _ => None,
@@ -371,13 +372,21 @@ Rc::new({ let mut __result = Vec::new(); for t in templates.iter().cloned() { if
     None => None,
 };
 match template_match {
-    Some(t) => Some(Rc::new(MethodFieldResult {
+    Some(t) => {
+                                let pc = match (*t.return_type.clone()).clone() {
+    AlgebraTypeTemplate::ReceiverSelf => true,
+    AlgebraTypeTemplate::ReceiverCollectionOf { .. } => true,
+    AlgebraTypeTemplate::ListOf { .. } => true,
+    _ => false,
+};
+Some(Rc::new(MethodFieldResult {
     field_node: mfr.field_node.clone(),
     result_type: mfr.result_type.clone(),
     size_effect: t.size_effect.clone(),
     cost_shape: t.cost_shape.clone(),
-    algebra_template: Some(t.clone()),
-})),
+    produces_collection: pc,
+}))
+},
     None => base_result.clone(),
 }
 },
@@ -392,6 +401,21 @@ match template_match {
 }
 }
 
+pub fn substitute_algebra_result(result_type: Rc<Node>, receiver_type: Rc<Node>, fold_accumulator_type: Option<Rc<Node>>) -> Rc<Node> {
+    if method_name_is_fold(result_type.clone(), fold_accumulator_type.clone()) {
+        match fold_accumulator_type.clone() {
+    Some(fat) => fat.clone(),
+    None => result_type.clone(),
+}
+} else {
+        result_type.clone()
+}
+}
+
+pub fn method_name_is_fold(result_type: Rc<Node>, fold_accumulator_type: Option<Rc<Node>>) -> bool {
+    (fold_accumulator_type != None)
+}
+
 pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, method_name: String, fold_accumulator_type: Option<Rc<Node>>, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Rc<KnownMethodResolution> {
     {
         let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
@@ -399,14 +423,15 @@ match tier0_result {
     Some(mfr) => {
             let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {
     method_def: mfr.field_node.clone(),
-    fold_accumulator_type: fold_accumulator_type,
+    fold_accumulator_type: fold_accumulator_type.clone(),
     size_effect: mfr.size_effect.clone(),
     cost_shape: mfr.cost_shape.clone(),
-    algebra_template: mfr.algebra_template.clone(),
+    produces_collection: mfr.produces_collection.clone(),
 });
+let resolved_type = substitute_algebra_result(mfr.result_type.clone(), receiver_type.clone(), fold_accumulator_type.clone());
 Rc::new(KnownMethodResolution {
     semantics: Some(semantics),
-    result_type: Some(mfr.result_type.clone()),
+    result_type: Some(resolved_type),
 })
 },
     None => match check_service_method_call_node(receiver_type.clone(), method_name.clone(), service_registry) {
