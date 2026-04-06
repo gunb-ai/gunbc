@@ -1622,7 +1622,7 @@ Rc::new(InferResult {
 } else {
                 {
                     let extended = extend_scope(scope.clone(), let_name.clone(), val_type);
-let body_result = infer_expr(body_expr.clone().unwrap(), extended, None);
+let body_result = infer_expr(body_expr.clone().unwrap(), extended, expected.clone());
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
 let let_texpr2 = make_named_expr_node(let_name.clone(), Rc::new(ExprData::ExprLet), Rc::new(vec![val_typed.clone(), body_typed.clone()]), Some(Rc::new(InferredNode::Resolved {
