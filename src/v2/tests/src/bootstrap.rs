@@ -49,24 +49,15 @@ fn prepare_source_tree(workspace_dir: &std::path::Path) {
         }
     }
 
-    // Copy std modules
+    // Copy all std modules (avoid curated list — new std/ files break bootstrap tests)
+    let std_src = ws.join("dsl/std");
     let dst_dir = workspace_dir.join("dsl/std");
     std::fs::create_dir_all(&dst_dir).unwrap();
-    let std_files = [
-        "constructors",
-        "types", "algebra", "containers",
-        "logic", "bit", "integer", "float", "string_type",
-        "encoding",
-        "syntax",
-        "termination",
-        "coercion",
-        "computation",
-        "iteration",
-    ];
-    for name in &std_files {
-        let src = ws.join(format!("dsl/std/{}.dag", name));
-        if src.exists() {
-            std::fs::copy(&src, dst_dir.join(format!("{}.dag", name))).unwrap();
+    for entry in std::fs::read_dir(&std_src).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            std::fs::copy(&path, dst_dir.join(entry.file_name())).unwrap();
         }
     }
 }
