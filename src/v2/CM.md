@@ -127,6 +127,60 @@ Node as opaque and re-derives this decomposition. If the decomposition
 were the API — if consumers asked "does this have Reduction?" instead
 of "is this a function?" — the forests dissolve.
 
+### Validation: heuristic forests map to ontological categories
+
+Every heuristic forest in the per-file inventory (§below) asks about
+one or two of the three categories. The reason the questions are hard
+is impedance mismatch: the Node API exposes individual fields (`body`,
+`transport`, `connective`, `params`, `uses`...) but the questions are
+ontological ("has Reduction?", "what kind of Algebra?"). The consumer
+reconstructs the category from raw fields every time.
+
+**MM-1 forests** — all four ask the same three questions:
+
+| Question | Category | How they currently ask |
+|----------|----------|----------------------|
+| Has structure? | Algebra | `connective != NoConnective` |
+| Has a rewrite rule? | Reduction | `body != none`, `transport != none` |
+| What grounding? | Reduction + Signal | `uses |> count > 0`, `transport != none` |
+
+The `item_kind` priority chain is: check Algebra (→ TypeItem), then
+Reduction (→ ServiceItem/FnItem/FuncItem/DataItem). Four forests exist
+because no one projection serves all consumers — but the source data
+(Algebra? Reduction? What kind?) is identical across all four.
+
+**MM-2 sites** — almost entirely Algebra:
+
+| Site | Question | Category |
+|------|----------|----------|
+| `field_summary_for_type` | Conj → struct, Disj → enum | Algebra (product/coproduct) |
+| `build_type_summary` | StructRepr vs EnumRepr | Algebra |
+| `render_type_base` (97 lines) | 7-way string/field dispatch | **Lost Algebra** — connective erased by TypeRendering |
+| `build_type_rendering` "Callable" | `n.name == "Callable"` | Reduction ("is this a function type?") |
+
+The 97-line `render_type_base` exists because TypeRendering is a lossy
+boundary: it flattened Algebra (connective) into string names and
+optional fields. If TypeRendering carried Algebra structurally, most
+branches collapse. The "Callable" special case is Reduction leaking
+through — "is this the type of a rewrite rule?"
+
+**MM-3 sites** — Algebra + Reduction:
+
+| Site | Question | Category |
+|------|----------|----------|
+| 13-way method dispatch | What rendering for this operation? | Algebra (operation kind) |
+| Method result type (7-way) | What type does this produce? | Algebra (map/filter/fold semantics) |
+| Call tier classification | Direct call? Method? Built-in? | Reduction (what kind of application?) |
+| Nullary detection (3 sites) | Append `()`? | Reduction (is this a redex?) |
+| Transport predicates | rest/shell/file/local? | Reduction (what kind of external rule?) |
+
+**Conclusion:** The three ontological categories are not speculative.
+They are exactly the three axes every heuristic forest already asks
+about. The forests exist because the compiler lacks the vocabulary.
+
+Full heuristic-by-heuristic analysis with modeling implications:
+[`CM-inventory.md`](CM-inventory.md)
+
 ---
 
 ## The three missing models
