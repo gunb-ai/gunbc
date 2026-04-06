@@ -63,12 +63,12 @@ use crate::v2_std_core::BinOp::{Sub, Div};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::LiteralValue::{LitNull, LitInt};
-pub use crate::std_algebra::{CollectionSizeEffect};
+pub use crate::std_algebra::{CollectionSizeEffect, CostShape};
 use crate::std_algebra::CollectionSizeEffect::{ShrinkEffect, ProjectionEffect, IdentityEffect};
+use crate::std_algebra::CostShape::{ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody};
 use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
-use CostShape::*;
 use ProgressKind::*;
 use ParserResultSource::*;
 
@@ -132,96 +132,6 @@ pub enum Certainty {
     Proven,
     Conservative,
     Unknown,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum CostShape {
-    ShapeConstant,
-    ShapeLinearScan {
-        produces_collection: bool,
-    },
-    ShapeIterateBody {
-        produces_collection: bool,
-    },
-    ShapeSortBody,
-}
-impl CostShape {
-    pub fn produces_collection(&self) -> bool {
-        match self {
-            CostShape::ShapeConstant => panic!("no produces_collection on unit variant"),
-            CostShape::ShapeLinearScan { produces_collection: __val, .. } => __val.clone(),
-            CostShape::ShapeIterateBody { produces_collection: __val, .. } => __val.clone(),
-            CostShape::ShapeSortBody => panic!("no produces_collection on unit variant"),
-        }
-    }
-}
-
-pub fn method_cost_shape_table() -> Rc<HashMap<String, Rc<CostShape>>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, Rc<CostShape>>> = {
-            let mut __m = HashMap::new();
-            __m.insert("map".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("flat_map".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("filter".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("enumerate".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("skip".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("take".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}));
-            __m.insert("fold".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}));
-            __m.insert("any".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}));
-            __m.insert("all".to_string(), Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}));
-            __m.insert("sort_by".to_string(), Rc::new(CostShape::ShapeSortBody));
-            __m.insert("count".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("first".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("last".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("join".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("string_contains".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("concat".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}));
-            __m.insert("chars".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-}));
-            __m.insert("split".to_string(), Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-}));
-            __m.insert("append".to_string(), Rc::new(CostShape::ShapeConstant));
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn method_cost_shape(method_name: String) -> Option<Rc<CostShape>> {
-    v2_rt::lookup(&method_cost_shape_table(), method_name)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -4169,10 +4079,7 @@ let method_cost_result = if (ms.clone() == None) {
                 None
 } else {
                 match (*ms.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_def: md, .. } => {
-                    let md_name = md.name.clone();
-let shape_match = method_cost_shape(md_name);
-match shape_match {
+    MethodSemantics::AlgebraMethodSemantics { method_def: md, cost_shape: cs, .. } => match cs.clone() {
     Some(shape) => Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder, func_index.clone(), scc_index.clone(), parser_always_advancing.clone(), recursion_ctx.clone())),
     None => Some(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
@@ -4187,7 +4094,6 @@ match shape_match {
 }),
     table: recv_r.table.clone(),
 })),
-}
 },
     _ => None,
 }

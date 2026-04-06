@@ -405,7 +405,7 @@ fn serialize_method_semantics(value: MethodSemantics?) -> String {
   match value {
     Some { value: PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
-    Some { value: AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _ } } =>
+    Some { value: AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _ } } =>
       let mn = method_def.name
       concat(
         "{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ",

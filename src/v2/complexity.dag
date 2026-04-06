@@ -61,7 +61,8 @@ import v2.std.core {
   is_tree_size_preserving, is_tree_size_reducing
 }
 import std.algebra {
-  CollectionSizeEffect, ShrinkEffect, ProjectionEffect, IdentityEffect
+  CollectionSizeEffect, ShrinkEffect, ProjectionEffect, IdentityEffect,
+  CostShape, ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody
 }
 
 // =========================================================================
@@ -125,41 +126,8 @@ type Certainty = Proven | Conservative | Unknown
 //   produces_collection -- whether the method outputs a collection
 // =========================================================================
 
-type CostShape
-  = ShapeConstant
-  | ShapeLinearScan { produces_collection: Bool }
-  | ShapeIterateBody { produces_collection: Bool }
-  | ShapeSortBody
-
-// Data table: method name -> cost shape. Single authority on what cost
-// structure each algebra method has. Adding a method's cost = one line here.
-// Methods not in this table are assumed O(1) (bridge methods).
-data method_cost_shape_table: Map<String, CostShape> = {
-  "map": ShapeIterateBody { produces_collection: true },
-  "flat_map": ShapeIterateBody { produces_collection: true },
-  "filter": ShapeIterateBody { produces_collection: true },
-  "enumerate": ShapeIterateBody { produces_collection: true },
-  "skip": ShapeIterateBody { produces_collection: true },
-  "take": ShapeIterateBody { produces_collection: true },
-  "fold": ShapeIterateBody { produces_collection: false },
-  "any": ShapeIterateBody { produces_collection: false },
-  "all": ShapeIterateBody { produces_collection: false },
-  "sort_by": ShapeSortBody,
-  "count": ShapeLinearScan { produces_collection: false },
-  "first": ShapeLinearScan { produces_collection: false },
-  "last": ShapeLinearScan { produces_collection: false },
-  "join": ShapeLinearScan { produces_collection: false },
-  "string_contains": ShapeLinearScan { produces_collection: false },
-  "concat": ShapeLinearScan { produces_collection: false },
-  "chars": ShapeLinearScan { produces_collection: true },
-  "split": ShapeLinearScan { produces_collection: true },
-  "append": ShapeConstant
-}
-
-// Look up a method's cost shape from the data table.
-fn method_cost_shape(method_name: String) -> CostShape? {
-  lookup(method_cost_shape_table, key: method_name)
-}
+// CostShape type and per-method cost shapes are declared in dsl/std/algebra.dag
+// on each AlgebraFieldTemplate. Imported above.
 
 // Child accessor identity is now derived from the IR child layout model
 // in 00_core.dag (expr_child_roles / wrapper_child_roles). The hardcoded
@@ -321,7 +289,7 @@ type EvidenceBlockAcc {
 // rather than string-matching method names.
 fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _ } } => true
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _ } } => true
     _ => false
   }
 }
@@ -3836,7 +3804,7 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, size_effect: _ } =>
+      AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, size_effect: _, cost_shape: _ } =>
         is_size_preserving_method(method_name: method_def.name)
       _ => false
     }
@@ -4394,10 +4362,8 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       // Plain/Service/None fall through to default cost.
       let method_cost_result = if ms == none { none } else {
         match ms.value {
-          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _ } => {
-            let md_name = md.name
-            let shape_match = method_cost_shape(method_name: md_name)
-            match shape_match {
+          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: cs } => {
+            match cs {
               Some { value: shape } =>
                 Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx) }
               None =>

@@ -54,7 +54,7 @@ use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSem
 use crate::v2_std_core::FieldAccessStyle::{OptionalUnwrap};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
-pub use crate::std_algebra::{lookup_algebra_size_effect};
+pub use crate::std_algebra::{lookup_algebra_method_template};
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};
@@ -373,11 +373,20 @@ pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, me
         let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
 match tier0_result {
     Some(mfr) => {
-            let size_effect = lookup_algebra_size_effect(method_name.clone());
+            let method_template = lookup_algebra_method_template(method_name.clone());
+let size_effect = match method_template.clone() {
+    Some(t) => t.size_effect.clone(),
+    None => None,
+};
+let cost_shape = match method_template.clone() {
+    Some(t) => t.cost_shape.clone(),
+    None => None,
+};
 let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {
     method_def: mfr.field_node.clone(),
     fold_accumulator_type: fold_accumulator_type.clone(),
     size_effect: size_effect,
+    cost_shape: cost_shape,
 });
 let resolved_type = substitute_algebra_result(mfr.result_type.clone(), receiver_type.clone(), fold_accumulator_type.clone());
 Rc::new(KnownMethodResolution {
