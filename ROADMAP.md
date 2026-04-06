@@ -689,7 +689,9 @@ are in [`src/v2/CM.md`](src/v2/CM.md). Summary:
 - [x] Design: determine irreducible structural facts about items
 - [x] Surface existing fields (`body`, `transport`, `connective`, `params`) to
   every consumption site — no new classification type
-- [x] Implement: fail-closed boundaries (no TypedItemUnhandled, no `""` fallbacks)
+- [~] Implement: fail-closed boundaries (no TypedItemUnhandled, no `""` fallbacks)
+  `TypedItemUnhandled` variant deleted; else branches still emit error
+  markers (compile_error/panic/comment) — need upstream diagnostic instead.
 - [x] Delete: all `classify_*` forests, all fail-open fallbacks, all name-keyed side-tables
   PR #324: `TypedItemKind` enum + `classify_typed_item` dissolved. Shared
   boolean predicates (`is_type_def_item`, `is_function_item`, etc.) in
