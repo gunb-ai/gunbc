@@ -823,49 +823,6 @@ Rc::new(ArgInferResult {
 }
 }
 
-pub fn infer_lambda_with_element_type(lambda_expr: Rc<Node>, element_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
-    match (*lambda_expr.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => {
-        let span = lambda_expr.span.clone();
-let lam_body = lambda_body(lambda_expr.clone());
-let lam_params = lambda_param_names(lambda_expr.clone());
-let param_types = if ((lam_params.clone().len() as i64) == 1) {
-            Rc::new(vec![element_type.clone()])
-} else {
-            Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push(if (pair.0.clone() == ((lam_params.clone().len() as i64) - 1)) {
-                element_type.clone()
-} else {
-                type_variable_node("lambda_non_last_param".to_string())
-}); } __result })
-};
-let typed_scope = if ((lam_params.clone().len() as i64) == 1) {
-            match lam_params.clone().first().cloned() {
-    Some(p) => extend_scope(scope, p.clone(), element_type.clone()),
-    None => scope,
-}
-} else {
-            Rc::new(lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope, |acc: Rc<InferScope>, pair: (i64, String)| if (pair.0.clone() == ((lam_params.clone().len() as i64) - 1)) {
-                extend_scope(acc.clone(), pair.1.clone(), element_type.clone())
-} else {
-                extend_scope(acc.clone(), pair.1.clone(), type_variable_node("lambda_non_last_param".to_string()))
-})
-};
-let body_result = infer_expr(lam_body, typed_scope, None);
-let body_typed = body_result.typed.clone();
-let lam_param_nodes = Rc::new(lambda_expr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-Rc::new(InferResult {
-    typed: make_expr_node(Rc::new(ExprData::ExprLambda {
-    semantics: Some(lambda_semantics_from_param_types(param_types)),
-}), v2_rt::concat(Rc::new(vec![body_typed.clone()]), lam_param_nodes), Some(Rc::new(InferredNode::Resolved {
-    node: rt_type(body_typed.clone()),
-})), span),
-    diagnostics: body_result.diagnostics.clone(),
-})
-},
-    _ => infer_expr(lambda_expr.clone(), scope, None),
-}
-}
-
 pub fn is_lambda_expr(e: Rc<Node>) -> bool {
     match (*e.expr_data.clone()).clone() {
     ExprData::ExprLambda { .. } => true,

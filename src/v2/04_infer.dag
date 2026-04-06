@@ -774,55 +774,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
 // lambda params from the element type instead of type variables.
 // -------------------------------------------------------------------------
 
-fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: InferScope) -> InferResult {
-  match lambda_expr.expr_data {
-    ExprLambda { semantics: _ } =>
-      let span = lambda_expr.span
-      let lam_body = lambda_body(texpr: lambda_expr)
-      let lam_params = lambda_param_names(texpr: lambda_expr)
-      let param_types = if lam_params |> count == 1 {
-        [element_type]
-      } else {
-        lam_params |> enumerate |> map(pair =>
-          if pair.first == (lam_params |> count) - 1 {
-            element_type
-          } else {
-            type_variable_node(id: "lambda_non_last_param")
-          }
-        )
-      }
-      let typed_scope = if lam_params |> count == 1 {
-        match lam_params |> first {
-          Some { value: p } => extend_scope(scope: scope, name: p, resolved: element_type)
-          None => scope
-        }
-      } else {
-        fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
-          if pair.first == (lam_params |> count) - 1 {
-            extend_scope(scope: acc, name: pair.second, resolved: element_type)
-          } else {
-            extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_non_last_param"))
-          }
-        )
-      }
-      let body_result = infer_expr(texpr: lam_body, scope: typed_scope, expected: none)
-      let body_typed = body_result.typed
-      let lam_param_nodes = lambda_expr.children |> skip(1)
-      InferResult {
-        typed: make_expr_node(
-          expr_data: ExprLambda {
-            semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
-          },
-          children: concat([body_typed], lam_param_nodes),
-          inferred: Some { value: Resolved { node: rt_type(n: body_typed) } },
-          span: span
-        ),
-        diagnostics: body_result.diagnostics
-      }
-    _ => infer_expr(texpr: lambda_expr, scope: scope, expected: none)
-  }
-}
-
 fn is_lambda_expr(e: Node) -> Bool {
   match e.expr_data {
     ExprLambda { semantics: _ } => true
@@ -1630,7 +1581,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let lam_param_nodes = texpr.children |> skip(1)
       // If expected carries an element type, use it for lambda params.
       // Single param or last param gets the element type; others get TypeVariable.
-      // This unifies infer_lambda_with_element_type into the main path.
+      // Unified lambda element-type threading: expected flows to param scope.
       let lam_scope = if expected != none {
         let exp = expected.value
         if exp.params |> count > 0 {
