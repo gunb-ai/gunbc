@@ -107,6 +107,25 @@ fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, 
 // Signature resolution
 // =========================================================================
 
+// Build a name → true set from a list. Typed return ensures fold(init:
+// empty_map()) resolves to Map<String, Bool>.
+fn build_name_set(names: List<String>) -> Map<String, Bool> {
+  fold(names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+}
+
+// Collect resolved sigs from parent declarations, excluding local functions.
+fn collect_parent_resolved_sigs(declared_sigs: Map<String, DeclaredFuncSig>, local_func_set: Map<String, Bool>) -> Map<String, ResolvedFuncSig> {
+  fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
+    if emit_map_has(m: local_func_set, key: dsig.name) {
+      acc
+    } else if dsig.inferred != none {
+      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+    } else {
+      acc
+    }
+  )
+}
+
 // Convert a single DeclaredFuncSig with inferred: Some to ResolvedFuncSig.
 // Caller must ensure inferred is not None.
 fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
@@ -223,19 +242,9 @@ fn resolve_func_sigs(
   let local_func_names = items
     |> filter(item => item.params |> count > 0 && item.body != none)
     |> map(item => item.name)
-  let local_func_set = fold(local_func_names, init: empty_map(), f: (acc, fn_name) =>
-    map_insert(acc, fn_name, true)
-  )
+  let local_func_set = build_name_set(names: local_func_names)
   let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set)
-  let parent_resolved = fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
-    if emit_map_has(m: local_func_set, key: dsig.name) {
-      acc
-    } else if dsig.inferred != none {
-      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-    } else {
-      acc
-    }
-  )
+  let parent_resolved = collect_parent_resolved_sigs(declared_sigs: declared_sigs, local_func_set: local_func_set)
   topo_resolve_loop(
     remaining: local_func_names,
     resolved: parent_resolved,
