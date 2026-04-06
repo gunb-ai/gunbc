@@ -558,7 +558,7 @@ if (n.clone().as_str() == "none".to_string().as_str()) {
 
 pub fn emit_py_expr_field_access(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { summary: summary, .. } => {
+    ExprData::ExprFieldAccess { summary, .. } => {
         let f = expr.name.clone();
 let b = field_access_base(expr.clone());
 if is_typed_service_call_receiver(expr.clone()) {
@@ -586,7 +586,7 @@ emit_py_typed_call(f, expr.children.clone(), registry, scope.clone(), depth)
 
 pub fn emit_py_expr_method_call(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => {
+    ExprData::ExprMethodCall { method_semantics, .. } => {
         let r = method_receiver(expr.clone());
 let a = method_arg_nodes(expr.clone());
 let m = expr_method_name_at(expr.clone(), scope.type_env.clone().source_index.clone());
@@ -855,7 +855,7 @@ let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.iter().clo
 let args_str = arg_strs.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("await ".to_string(), var_name), ".".to_string()), emit_ident(method, RenderTarget::Python)), "(".to_string()), args_str), ")".to_string())
 },
-    MethodSemantics::AlgebraMethodSemantics { method_def: method_def, .. } => {
+    MethodSemantics::AlgebraMethodSemantics { method_def, .. } => {
             let mn = method_def.name.clone();
 emit_py_algebra_method_call(mn, receiver.clone(), args, registry.clone(), scope.clone(), depth.clone())
 },

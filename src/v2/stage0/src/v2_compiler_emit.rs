@@ -198,7 +198,7 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget, source_index: Opti
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
     ExprData::ExprLiteral { value: v, .. } => emit_literal(v.clone(), target.clone()),
-    ExprData::ExprError { message: message, .. } => emit_error_expr(message.clone(), target.clone()),
+    ExprData::ExprError { message, .. } => emit_error_expr(message.clone(), target.clone()),
     ExprData::ExprVar { .. } => emit_ident(expr_var_name_at(expr.clone(), source_index), target.clone()),
     ExprData::ExprFieldAccess { .. } => {
             let f = expr.name.clone();
@@ -727,14 +727,14 @@ pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
 
 pub fn reserved_prefix(target: RenderTarget) -> String {
     match (*language_spec(target).reserved_words.clone().strategy.clone()).clone() {
-    ReservedWordStrategy::PrefixEscape { prefix: prefix, .. } => prefix.clone(),
+    ReservedWordStrategy::PrefixEscape { prefix, .. } => prefix.clone(),
     _ => "".to_string(),
 }
 }
 
 pub fn reserved_suffix(target: RenderTarget) -> String {
     match (*language_spec(target).reserved_words.clone().strategy.clone()).clone() {
-    ReservedWordStrategy::SuffixEscape { suffix: suffix, .. } => suffix.clone(),
+    ReservedWordStrategy::SuffixEscape { suffix, .. } => suffix.clone(),
     _ => "".to_string(),
 }
 }
@@ -2150,7 +2150,7 @@ pub fn is_zero_arg_callable_ref(binding_kind: Option<Rc<VarBindingKind>>, resolv
 pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>, wrap_result: impl Fn(String) -> String + Clone, recurse: impl Fn(Rc<Node>) -> String + Clone, emit_var: impl Fn(Rc<Node>) -> String + Clone, emit_field_access: impl Fn(Rc<Node>) -> String + Clone, emit_call: impl Fn(Rc<Node>) -> String + Clone, emit_method_call: impl Fn(Rc<Node>) -> String + Clone, emit_match: impl Fn(Rc<Node>) -> String + Clone, emit_if: impl Fn(Rc<Node>) -> String + Clone, emit_let: impl Fn(Rc<Node>) -> String + Clone, emit_record_lit: impl Fn(Rc<Node>) -> String + Clone, emit_string_interp: impl Fn(Rc<Node>) -> String + Clone, emit_block: impl Fn(Rc<Node>) -> String + Clone, emit_cast: impl Fn(Rc<Node>) -> String + Clone, emit_for_each: impl Fn(Rc<Node>) -> String + Clone, emit_index: impl Fn(Rc<Node>) -> String + Clone, emit_slice: impl Fn(Rc<Node>) -> String + Clone, emit_bin_op: impl Fn(Rc<Node>) -> String + Clone) -> String {
     match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprLiteral { value: v, .. } => wrap_result(emit_literal(v.clone(), target.clone())),
-    ExprData::ExprError { message: message, .. } => wrap_result(emit_error_expr(message.clone(), target.clone())),
+    ExprData::ExprError { message, .. } => wrap_result(emit_error_expr(message.clone(), target.clone())),
     ExprData::ExprVar { .. } => emit_var(texpr.clone()),
     ExprData::ExprFieldAccess { .. } => emit_field_access(texpr.clone()),
     ExprData::ExprCall { .. } => emit_call(texpr.clone()),
@@ -2160,7 +2160,7 @@ pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, source_index: Opt
     ExprData::ExprLet => emit_let(texpr.clone()),
     ExprData::ExprRecordLit { .. } => emit_record_lit(texpr.clone()),
     ExprData::ExprBinOp { .. } => emit_bin_op(texpr.clone()),
-    ExprData::ExprUnaryOp { op: op, .. } => {
+    ExprData::ExprUnaryOp { op, .. } => {
         let operand = unaryop_operand(texpr.clone());
 wrap_result(emit_unary_op(op.clone(), recurse(operand), target.clone()))
 },
@@ -2185,7 +2185,7 @@ wrap_result(emit_return(recurse(ret_val), target.clone()))
 
 pub fn emit_default_bin_op(texpr: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, wrap_result: impl Fn(String) -> String + Clone) -> String {
     match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprBinOp { op: op, .. } => {
+    ExprData::ExprBinOp { op, .. } => {
         let left = binop_left(texpr.clone());
 let right = binop_right(texpr.clone());
 let left_str = recurse(left);

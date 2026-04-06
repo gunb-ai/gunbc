@@ -471,7 +471,7 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
 let body_start = (pos.pos.clone() + 1);
 let result = scan_string_body(source.clone(), body_start, Rc::new(vec![]));
 match (*result).clone() {
-    StringScanResult::ClosedString { content: content, end_pos: end_pos, .. } => {
+    StringScanResult::ClosedString { content, end_pos, .. } => {
             let processed = process_escapes(content.clone());
 let token = make_token(processed, make_file_span(source.file.clone(), span_start, (end_pos.clone() + 1)), TokenShape::ShLitStr);
 Rc::new(ScanResult {
@@ -480,7 +480,7 @@ Rc::new(ScanResult {
     interp_depth: pos.interp_depth.clone(),
 })
 },
-    StringScanResult::InterpolationStart { content: content, end_pos: end_pos, .. } => {
+    StringScanResult::InterpolationStart { content, end_pos, .. } => {
             let processed = process_escapes(content.clone());
 let token = make_token(processed, make_file_span(source.file.clone(), span_start, (end_pos.clone() + 1)), TokenShape::ShStrBegin);
 Rc::new(ScanResult {
@@ -489,7 +489,7 @@ Rc::new(ScanResult {
     interp_depth: Rc::new(v2_rt::append(pos.interp_depth.clone(), 0)),
 })
 },
-    StringScanResult::UnterminatedString { content: content, end_pos: end_pos, .. } => {
+    StringScanResult::UnterminatedString { content, end_pos, .. } => {
             let processed = process_escapes(content.clone());
 let token = make_token(processed, make_file_span(source.file.clone(), span_start, end_pos.clone()), TokenShape::ShUnknown);
 Rc::new(ScanResult {
@@ -506,7 +506,7 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
     {
         let result = scan_string_body(source.clone(), pos.pos.clone(), Rc::new(vec![]));
 match (*result).clone() {
-    StringScanResult::ClosedString { content: content, end_pos: end_pos, .. } => {
+    StringScanResult::ClosedString { content, end_pos, .. } => {
             let processed = process_escapes(content.clone());
 let token = make_token(processed, make_file_span(source.file.clone(), span_start, (end_pos.clone() + 1)), TokenShape::ShStrEnd);
 Rc::new(ScanResult {
@@ -515,7 +515,7 @@ Rc::new(ScanResult {
     interp_depth: pos.interp_depth.clone(),
 })
 },
-    StringScanResult::InterpolationStart { content: content, end_pos: end_pos, .. } => {
+    StringScanResult::InterpolationStart { content, end_pos, .. } => {
             let processed = process_escapes(content.clone());
 let token = make_token(processed, make_file_span(source.file.clone(), span_start, (end_pos.clone() + 1)), TokenShape::ShStrMid);
 Rc::new(ScanResult {
@@ -524,7 +524,7 @@ Rc::new(ScanResult {
     interp_depth: Rc::new(v2_rt::append(pos.interp_depth.clone(), 0)),
 })
 },
-    StringScanResult::UnterminatedString { content: content, end_pos: end_pos, .. } => {
+    StringScanResult::UnterminatedString { content, end_pos, .. } => {
             let processed = process_escapes(content.clone());
 let token = make_token(processed, make_file_span(source.file.clone(), span_start, end_pos.clone()), TokenShape::ShUnknown);
 Rc::new(ScanResult {

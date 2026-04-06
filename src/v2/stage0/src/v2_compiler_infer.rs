@@ -522,11 +522,11 @@ pub fn inferred_from_node_type(result: Rc<NodeType>, fallback_message: String, f
     NodeType::Typed { node: resolved, .. } => Rc::new(InferredNode::Resolved {
     node: resolved.clone(),
 }),
-    NodeType::InferError { message: message, span: span, .. } => Rc::new(InferredNode::CompilerError {
+    NodeType::InferError { message, span, .. } => Rc::new(InferredNode::CompilerError {
     message: message.clone(),
     span: span.clone(),
 }),
-    NodeType::InferVariable { id: id, .. } => Rc::new(InferredNode::TypeVariable {
+    NodeType::InferVariable { id, .. } => Rc::new(InferredNode::TypeVariable {
     id: id.clone(),
 }),
     NodeType::Untyped => Rc::new(InferredNode::CompilerError {
@@ -1025,7 +1025,7 @@ ok_infer(make_expr_node(Rc::new(ExprData::ExprLiteral {
     node: infer_literal_node(lit.clone()),
 })), span.clone()))
 },
-    ExprData::ExprError { kind: kind, message: message, .. } => {
+    ExprData::ExprError { kind, message, .. } => {
             let span = texpr.span.clone();
 Rc::new(InferResult {
     typed: make_expr_error_node(kind.clone(), message.clone(), span.clone()),
@@ -1687,7 +1687,7 @@ Rc::new(InferResult {
     diagnostics: v2_rt::concat(elem_diags, empty_list_diags),
 })
 },
-    ExprData::ExprBinOp { op: op, .. } => {
+    ExprData::ExprBinOp { op, .. } => {
             let span = texpr.span.clone();
 let left_expr = binop_left(texpr.clone());
 let right_expr = binop_right(texpr.clone());
@@ -1708,7 +1708,7 @@ Rc::new(InferResult {
     diagnostics: v2_rt::concat(left_diags, right_diags),
 })
 },
-    ExprData::ExprUnaryOp { op: op, .. } => {
+    ExprData::ExprUnaryOp { op, .. } => {
             let span = texpr.span.clone();
 let operand_expr = unaryop_operand(texpr.clone());
 let operand_result = infer_expr(operand_expr, scope.clone(), None);
