@@ -1793,11 +1793,8 @@ if ((exp.params.clone().len() as i64) > 0) {
 let body_expected = if (expected.clone() != None) {
                 {
                     let exp = expected.clone().unwrap();
-if (((exp.params.clone().len() as i64) > 0) || (exp.name.clone().as_str() == "Callable".to_string().as_str())) {
-                        match exp.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => Some(rt.clone()),
-    _ => None,
-}
+if ((exp.params.clone().len() as i64) > 0) {
+                        Some(callable_inferred(exp.clone()))
 } else {
                         None
 }
