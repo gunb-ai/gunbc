@@ -194,10 +194,41 @@ Open items:
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
+### Debug: emit BRIDGE fabrication (58 fold + 23 standalone)
+
+The Rust emitter produces `Rc::new(HashMap::new()) /* BRIDGE: ... */`
+when it cannot resolve the map value type for turbofish generation.
+81 sites in stage0 (58 fold-init, 23 standalone `empty_map()`).
+
+**Key finding:** single-module tests produce correct turbofish — the
+fold refinement chain (lambda body return type → `fold_accumulator_type`
+in `AlgebraMethodSemantics`) works. Multi-module self-compile does not.
+Same inference code, different behavior.
+
+The gap is between single-module and multi-module type resolution.
+Possible causes:
+- Cross-module type nodes have different shape (children, connective)
+  than same-module type nodes, causing `render_rust_type` to return `""`
+- Multi-pass type resolution produces intermediate node states that
+  the fold refinement doesn't handle
+- The `fold_accumulator_type` carried in `method_semantics` is correct
+  at inference time but the type node it references becomes stale after
+  cross-module resolution completes
+
+**Goal:** fail-closed. Emit must produce fully-typed turbofish or
+`compile_error!`, never silently emit untyped `HashMap::new()` and
+rely on rustc to recover. The current 81 BRIDGE sites are fabrications
+(INVARIANTS.md IV-6/IV-7/IV-8).
+
+**Next step:** build a multi-module test that reproduces the BRIDGE
+in the test harness, then trace what `fold_accumulator_type` contains
+at emit time vs. single-module.
+
 ### Acceptance
 
 No fabricated type args, no generic/wrong fallback return types, no
 error-typed children reaching emit. Fallback count promoted to CI.
+BRIDGE fabrication count at 0.
 Ownership and clone correctness tracked under CG lane.
 
 ---
