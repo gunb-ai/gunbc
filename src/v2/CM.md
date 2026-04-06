@@ -152,6 +152,50 @@ levels? Multiplicity may be a modality (orthogonal modifier).
 Naming may be the application-of-partial-functions aspect of
 Algebra. Functors may generalize Reduction to cross-structure maps.
 
+### Where CM does NOT help: fail-open analysis
+
+~39 sites in the inventory return fabricated defaults (unit_type,
+empty string, false) when data is missing. Stress-testing these
+against the CM analysis:
+
+| Category | Sites | CM helps? |
+|----------|-------|-----------|
+| Upstream data genuinely missing | bare_map_node contamination (04_resolve, 04_access), builtin registry (04_method) | **Yes** — modeling eliminates the fallback path |
+| Bridge-era sentinels | Callable/Dynamic/Error suppression, rt_type policy | **Indirectly** — dissolves when builtins become .dag definitions |
+| Defensive: unreachable post-inference | resolve_optional_node `None => unit_type` | **Not via modeling** — path is unreachable; function signature is too wide |
+| Defensive: classification exhaustiveness | TypedItemUnhandled | **Not via modeling** — if-else can't prove completeness |
+| Runtime semantics | char_at `""` on out-of-bounds | **No** — deliberate behavior choice |
+
+The genuine modeling gaps (~3 sites) trace to **one upstream root
+cause**: `bare_map_node()` from inference not propagating expected
+types through fold accumulators. This is the M2 open item already
+on the ROADMAP. CM confirms but doesn't add to that diagnosis.
+
+**However: "defensive programming" is itself a modeling question.**
+
+The two defensive sites ARE structurally eliminable — at the
+type-system level rather than the data level:
+
+- `resolve_optional_node` accepts `InferredNode?` but is only
+  called post-inference where `.inferred` is always `Some`. If
+  the function required `InferredNode` (non-optional), or if
+  post-inference Nodes were a distinct type with `.inferred`
+  guaranteed, the None path would be unrepresentable.
+
+- `TypedItemUnhandled` exists because an if-else chain can't
+  prove exhaustiveness. If the connective × body × transport
+  product space were a finite sum type with exhaustive match,
+  the unhandled case would be unrepresentable.
+
+The principle: every defensive guard is a place where the type
+system can't prove what the programmer knows. The goal is not
+"never write guards" but "push the proof into the structure so
+the guard becomes a compiler error, not a runtime default." Some
+guards are eliminable today (tighten function signatures); some
+require richer type modeling (phase-indexed Nodes, finite product
+decomposition); some are irreducible (runtime bounds checks on
+external input).
+
 ### Node and DAG as derived structure
 
 Node and DAG are treated as foundational ("Node is the only recursive
