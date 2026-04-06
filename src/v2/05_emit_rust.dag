@@ -113,7 +113,7 @@ import v2.compiler.emit {
   TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, is_zero_arg_callable_ref,
   emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body,
   module_emit_scope,
   scope_after_expr,
@@ -1707,19 +1707,6 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
           }
         _ => variant_parent_from_binding_kind(binding_kind: binding_kind)
       }
-  }
-}
-
-// DAG references to zero-arg functions are calls; Rust needs explicit parens.
-// Checks FunctionValueBinding + resolved Callable type has no params.
-fn is_zero_arg_callable_ref(binding_kind: VarBindingKind?, resolved_type: InferredNode?) -> Bool {
-  match binding_kind {
-    Some { value: FunctionValueBinding } =>
-      match resolved_type {
-        Some { value: Resolved { node: rt } } => rt.name == "Callable" && (rt.params |> count) == 0
-        _ => false
-      }
-    _ => false
   }
 }
 

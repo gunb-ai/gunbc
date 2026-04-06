@@ -14,6 +14,7 @@ module v2.compiler.emit_python
 
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
+  VarBindingKind, FunctionValueBinding,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   param_node_type_expr,
   authored_name_at, NewlineIndex,
@@ -84,7 +85,7 @@ import v2.compiler.emit {
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, is_zero_arg_callable_ref,
   emit_string_literal, escape_python_interp_text, escape_string_literal_body,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -575,9 +576,18 @@ fn emit_py_field_access(base: Node, field: String, summary: FieldSummary?, regis
 
 fn emit_py_expr_var(expr: Node, source_index: NewlineIndex?) -> String {
   match expr.expr_data {
-    ExprVar { binding_kind: _ } =>
+    ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: expr, source_index: source_index)
-      emit_ident(name: n, target: Python)
+      if n == "none" || n == "None" { emit_keyword(key: "null", target: Python) }
+      else if n == "true" || n == "false" { emit_keyword(key: n, target: Python) }
+      else {
+        let ident = emit_ident(name: n, target: Python)
+        if is_zero_arg_callable_ref(binding_kind: binding_kind, resolved_type: expr.inferred) {
+          concat(ident, "()")
+        } else {
+          ident
+        }
+      }
     _ => emit_error_expr(message: "emit_py_expr_var expected ExprVar", target: Python)
   }
 }

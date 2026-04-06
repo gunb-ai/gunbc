@@ -24,6 +24,7 @@ import v2.std.core {
   authored_name_at, NewlineIndex,
   expr_var_name_at, expr_call_func_at, let_binding_name_at,
   ExprData, NoExprData,
+  VarBindingKind, FunctionValueBinding,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp,
@@ -1749,6 +1750,19 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
     Python => concat("(", l_str, " if ", l_str, " is not None else ", r_str, ")")
     Go => concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
     Dag => concat(l_str, " ?? ", r_str)
+  }
+}
+
+// DAG references to zero-arg functions are calls; all backends need explicit parens.
+// Checks FunctionValueBinding + resolved Callable type has no params.
+fn is_zero_arg_callable_ref(binding_kind: VarBindingKind?, resolved_type: InferredNode?) -> Bool {
+  match binding_kind {
+    Some { value: FunctionValueBinding } =>
+      match resolved_type {
+        Some { value: Resolved { node: rt } } => rt.name == "Callable" && (rt.params |> count) == 0
+        _ => false
+      }
+    _ => false
   }
 }
 

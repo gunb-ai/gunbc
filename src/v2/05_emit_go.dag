@@ -23,6 +23,7 @@ module v2.compiler.emit_go
 
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
+  VarBindingKind, FunctionValueBinding,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   param_node_type_expr,
   authored_name_at, NewlineIndex,
@@ -94,7 +95,7 @@ import v2.compiler.emit {
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, is_zero_arg_callable_ref,
   emit_string_literal, escape_go_interp_text, escape_string_literal_body,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -594,9 +595,18 @@ fn emit_go_field_access(base: Node, field: String, summary: FieldSummary?, regis
 fn emit_go_expr_var(expr: Node, depth: Int, source_index: NewlineIndex?) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprVar { binding_kind: _ } =>
+    ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: expr, source_index: source_index)
-      concat(prefix, emit_ident(name: n, target: Go))
+      if n == "none" || n == "None" { concat(prefix, emit_keyword(key: "null", target: Go)) }
+      else if n == "true" || n == "false" { concat(prefix, emit_keyword(key: n, target: Go)) }
+      else {
+        let ident = emit_ident(name: n, target: Go)
+        if is_zero_arg_callable_ref(binding_kind: binding_kind, resolved_type: expr.inferred) {
+          concat(prefix, ident, "()")
+        } else {
+          concat(prefix, ident)
+        }
+      }
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_var expected ExprVar", target: Go))
   }
 }
