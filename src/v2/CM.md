@@ -46,10 +46,10 @@ Connection to the existing concept DAG:
 | Function definition | A **rewrite rule**: `f(x) → body[x/param]` |
 | Function call site | A **redex** (reducible expression): matches a rule's LHS |
 | Function application | A **reduction step**: match, substitute, produce result |
-| Normal form | Fully evaluated — no more redexes (= emitted target code) |
+| Normal form | Fully evaluated — no more redexes (within .dag evaluation) |
 | fold/descend/repeat | **Rewrite strategies**: the order in which reductions are applied |
 | Termination proofs | Standard rewrite-termination via ranking functions (already in termination.dag) |
-| Compilation itself | **Reduction to normal form** in the target language |
+| Compilation | **Translation** (functor), not reduction — see §Known gaps |
 
 Reduction is not a concept invented for this compiler. It is how
 lambda calculus formalizes "computation step" — the same way
@@ -77,9 +77,11 @@ source. This connects to Evidence in §Foundational principle below.
 - **Is reduction the right grounding?** Alternatives considered:
   modus ponens (too narrow — only implication elimination),
   eval morphism (requires CCC infrastructure), cut rule (more
-  general but less operational). Reduction chosen because it has
-  the strongest existing theory and connects naturally to
-  compilation (which IS reduction to normal form).
+  general but less operational). Reduction chosen as working
+  candidate for function application / computation steps.
+  **Caveat:** compilation itself is translation (structure-preserving
+  map between representations), not evaluation (reduction to normal
+  form). The emitter is a functor, not a reducer. See §Known gaps.
 - **std/ representation?** Possibly `std/reduction.dag` with
   Redex, RewriteRule, NormalForm. Must connect to Layers 4-6
   (iteration primitives are rewrite strategies, call patterns
@@ -88,6 +90,67 @@ source. This connects to Evidence in §Foundational principle below.
   (§Foundational principle) may be the static description
   ("this Node is a rewrite rule") while reduction is the dynamic
   description ("applying this rule is a computation step").
+
+### Known gaps: where S/A/R doesn't help
+
+Stress-testing against the full heuristic inventory (CM-inventory.md)
+reveals three areas the ontology does not cover:
+
+**Gap 1: Naming/Reference** — how you find the value
+
+Variable lookup, scope threading, alias resolution. These are about
+the relationship between a symbol and its referent, not about what
+the value IS or how it composes or what happens to it.
+
+| Problem | Math structure |
+|---------|---------------|
+| Variable lookup | Partial function application: `Name → Binding` |
+| Scope/environment | Monoid action: environment acts on free variables |
+| Alias resolution | Union-find: equivalence class representative |
+
+In sequent calculus terms, S/A/R covers the right side of the
+turnstile (`⊢ e : T`). Naming covers the left side — the context
+`Γ` that makes the judgment meaningful.
+
+**Gap 2: Multiplicity** — how many times a value is used
+
+Fan-out counting, clone/move/borrow decisions, sharing strategy.
+The entire `ownership.dag` computes which structural rules of linear
+logic apply to each binding:
+
+| Structural rule | Fan-out | ownership.dag |
+|----------------|---------|---------------|
+| Weakening | 0 | Dead code |
+| Linearity | 1 | Move |
+| Contraction | >1 | Rc + clone |
+
+Math: linear logic (Girard 1987), substructural type theory. This
+is a modality on the logic (the exponential `!A`), not a new
+connective — it modifies HOW Signal/Algebra/Reduction work, rather
+than being a peer of them.
+
+**Gap 3: Maps between structures** — relating different algebras
+
+Coercion, TypeRendering, type equality. These are about relationships
+*between* algebraic structures, not operations *within* one:
+
+| Problem | Math structure |
+|---------|---------------|
+| Coercion (Int → i64) | Functor: structure-preserving map between categories |
+| TypeRendering | Forgetful functor: lossy projection with ad-hoc characterization |
+| Type equality | Decidable congruence on Node |
+
+**Crucially: compilation itself belongs here, not under Reduction.**
+The emitter translates between representations (a functor from .dag
+algebra to target algebra). It does not evaluate/reduce programs.
+This aligns with the existing invariant: "Emission is translation,
+not decision-making."
+
+**Open:** Do these three gaps need their own std/ primitives, or are
+they consequences of Signal/Algebra/Reduction applied at different
+levels? Multiplicity may be a modality (orthogonal modifier).
+Naming may be the application-of-partial-functions aspect of
+Algebra. Functors may generalize Reduction to cross-structure maps.
 
 ### Node and DAG as derived structure
 
@@ -214,11 +277,13 @@ body? does it have a transport? does it have structure?" The fields
 themselves ARE the facts. The four taxonomies are redundant
 interpretations that exist because no single taxonomy felt complete.
 
-**Design direction:** Either (a) compute classification once and carry
-it structurally to every consumer (e.g. `ClassifiedItem` wrapper), or
-(b) stop classifying and let consumers pattern-match on the structural
-facts directly. Option (b) is more aligned with "nodes are nodes" but
-requires consumers to express their needs structurally.
+**Design direction:** Stop classifying. The fields (`body`, `transport`,
+`connective`, `params`, `uses`) ARE the structural facts. Consumers
+should pattern-match on the facts they need directly — "does this have
+a body?" not "is this a FnItem?" Adding a `ClassifiedItem` wrapper
+would create a duplicate authority alongside the existing fields.
+The fix is making the existing fields reachable at every consumption
+site, not wrapping them in a new taxonomy.
 
 **Subproblems:**
 - `is_type_alias_return_node` special-cases string `"Unit"` (`04_emit_info.dag:69`)
@@ -246,14 +311,16 @@ Key sites:
 | `complexity.dag` | Structural analysis |
 
 **Design direction:** The connective primitives stay — they're
-foundational. What's missing is a cached interpretation layer. Options:
-- `TypeShape` (Product/Coproduct/Scalar) computed once per type
-- Or: let `TypeSummary.repr` (StructRepr/EnumRepr, already exists)
-  become the single authority that all emit sites consume
+foundational. The connective IS the authority. `TypeSummary.repr`
+(StructRepr/EnumRepr) already exists as a downstream consumer of
+connective — the question is whether all consumers should read
+connective directly (the minimal model) or whether TypeSummary.repr
+should become the single derived consumer that others go through.
 
-`TypeSummary.repr` is already halfway there — the question is whether
-non-emit consumers (lookup, types, complexity) should use it too, or
-whether they need their own structural concept.
+Adding a new TypeShape enum would create a third authority alongside
+connective and TypeSummary.repr — a duplicate representation
+violation. The fix is to make connective reachable to every consumer
+that currently re-derives it, not to add another interpretation layer.
 
 ---
 
@@ -281,22 +348,32 @@ re-derives this from type names or registry lookups (`04_emit_rust.dag`
 lines 1685-1750). Inference already knows at `04_infer.dag:970-977`:
 `binding_kind = FunctionValueBinding` + `fsig.params |> count == 0`.
 
-Two options discussed:
-- **Option A:** Add `NullaryCallBinding` to `VarBindingKind`. Minimal,
-  follows current architecture. Emit pattern-matches without type checks.
-- **Option B:** Normalize ExprVar → ExprCall during inference when the
-  reference IS an invocation. More principled (graph represents
-  semantics, not surface syntax) but changes ExprVar/ExprCall partition.
+**Design direction:** Normalize ExprVar → ExprCall during inference
+when the reference IS an invocation. The expression IR is the authority
+for invocation semantics — the graph should represent what the program
+DOES, not what the surface syntax LOOKS like. Inference already knows
+(`binding_kind = FunctionValueBinding` + zero params); the fix is to
+act on that knowledge by rewriting the expression node.
+
+Adding `NullaryCallBinding` to `VarBindingKind` would encode invocation
+semantics on binding classification (a workaround) instead of the
+expression IR (the root cause). This violates Root-Cause Depth — the
+fix belongs at the expression level, not the binding level.
 
 Note: Go and Python emitters completely ignore `binding_kind` today —
-they destructure with `_` and emit bare identifiers. They likely have
-the same bug for nullary functions.
+they destructure with `_` and emit bare identifiers. They have the
+same nullary bug. ExprVar→ExprCall normalization fixes all three
+backends at once because the authority is in the expression, not the
+binding.
 
-**Design direction for method dispatch:** Add `AlgebraMethodKind` enum
-to `MethodSemantics`. This is localized to the algebra framework and
-eliminates heuristic chains in both infer and emit. The algebra
-framework already has `AlgebraProfile` — method kind is the missing
-companion concept.
+**Design direction for method dispatch:** The `method_def` Node and
+the algebra framework (`AlgebraProfile`, `AlgebraFieldTemplate`)
+already carry method identity structurally. The fix is to surface
+these existing authorities to downstream consumers (emit, complexity)
+through the pipeline boundary, not to add a parallel
+`AlgebraMethodKind` enum. Adding a new dispatch enum would duplicate
+the existing method_def authority — a No-duplicate-representations
+violation. The method_def Node IS the method identity.
 
 ---
 
@@ -444,49 +521,53 @@ module boundaries prevent it from being written."
 
 **Claim:** Emit functions cannot access raw item structural fields
 (`body`, `transport`, `uses`, `type_annotation`, `properties`) for
-dispatch decisions. The boundary type carries pre-resolved item facts.
-Classification forests can't exist because there's nothing to classify.
+dispatch decisions. The boundary carries the existing fields in a
+form that makes re-classification unnecessary.
 
-**Test:** The emit modules (`05_emit*.dag`) do not import or use these
-fields for item-level dispatch. The boundary type between infer and
-emit makes classification a consequence of the type, not a runtime
-decision.
+**Test:** The emit modules (`05_emit*.dag`) do not independently
+classify items. They receive the structural facts and pattern-match
+on what they need.
 
-**What this implies for the design:** The boundary type must carry item
-facts structurally. Either items arrive pre-classified (carry-on-item)
-or the boundary type is rich enough that emit never asks "what kind?"
-— it pattern-matches on what it received.
+**What this implies for the design:** The existing fields ARE the
+authority. The fix is making them reachable at the emit boundary —
+not wrapping them in a new classification type. If emit needs to
+know "has body?", body must be accessible, not re-derived from
+side-table lookups.
 
-### MM-2: Connective interpretation is unrepresentable in emit
+### MM-2: Connective re-interpretation is unrepresentable in emit
 
-**Claim:** Emit functions cannot access `Connective` / `Conj` / `Disj` /
-`NoConnective`. They receive a resolved type structure (product/sum/leaf
-or equivalent) and dispatch on that.
+**Claim:** Emit functions do not re-interpret connective. They receive
+connective (or its existing downstream authority, `TypeSummary.repr`)
+and dispatch on that directly.
 
-**Test:** The emit modules do not import `Connective, Conj, Disj,
-NoConnective`. Type rendering is an exhaustive match on a sum type,
-not a multi-branch if-else that re-interprets connective.
+**Test:** The emit modules do not contain multi-branch if-else chains
+that check `.connective == Conj` / `Disj`. Type rendering is an
+exhaustive match on the existing authority.
 
-**What this implies for the design:** Somewhere between infer and emit,
-connective must be interpreted once into a concept that emit understands.
-`TypeSummary.repr` (StructRepr/EnumRepr) is a partial version of this
-but only covers type definitions, not all type rendering.
+**What this implies for the design:** Connective is already the
+authority. `TypeSummary.repr` is already a valid consumer. The fix
+is extending `TypeSummary.repr` to cover all type rendering (not
+just type definitions), not adding a third interpretation layer.
 
 ### MM-3: Method name dispatch is unrepresentable in emit
 
 **Claim:** Emit functions cannot access `method_def.name` as a dispatch
-key. They receive a method kind enum and dispatch on that.
+key. They receive the existing method structural facts from the
+algebra framework and dispatch on those.
 
-**Test:** `AlgebraMethodSemantics` carries a `kind` field that is a
-closed sum type. Emit functions match on kind, not name. Nullary
-function invocation is a structural fact on the expression (either
-`NullaryCallBinding` or normalized to `ExprCall`), not a type-name
-check at render time.
+**Test:** The `method_def` Node and `AlgebraFieldTemplate` already
+carry method identity (parameter types, return type, receiver shape).
+Emit functions read these structural facts instead of matching on
+name strings. Nullary function invocation is represented as ExprCall
+in the expression IR (normalized during inference), not detected by
+type-name checks at render time.
 
-**What this implies for the design:** `MethodSemantics` must carry an
-`AlgebraMethodKind` enum. The algebra framework already computes method
-identity — it just doesn't name it as a type. For nullary calls, the
-IR must represent invocation semantics, not surface syntax.
+**What this implies for the design:** The algebra framework IS the
+method identity authority. The fix is surfacing `AlgebraFieldTemplate`
+facts through the pipeline to emit — not adding a parallel
+`AlgebraMethodKind` enum. For nullary calls, the expression IR is
+the authority — ExprVar→ExprCall normalization in inference, not a
+new binding kind variant.
 
 ---
 
@@ -573,11 +654,9 @@ The same principle applies here:
 - **Method identity** (MM-3): "fold/map/filter" are emergent from
   algebraic structure. A fold is a monoid homomorphism. A map is a
   functor application. A filter is set comprehension. The algebra
-  framework already knows this — the missing piece is naming the
-  operational shape so dispatch doesn't fall back to string matching.
-  Deeper: function application itself may be the missing primitive
-  (§Foundational ontology). Methods are named rewrite rules;
-  dispatch should be on rule structure, not name strings.
+  framework (`AlgebraFieldTemplate`) already carries this identity —
+  the missing piece is surfacing it through the pipeline to consumers
+  that currently dispatch on name strings instead.
 
 ### Design direction
 
@@ -611,3 +690,14 @@ into higher-level abstractions that it itself processes.
 5. **The graph represents semantics, emission only renders.** If the
    emitter makes a semantic decision, that decision belongs upstream
    in the semantic kernel.
+
+6. **Consume existing authorities, never duplicate them.** When a
+   downstream consumer needs a fact, the fix is to surface the existing
+   authority through the pipeline — not to derive a parallel
+   representation. Adding a new TypeShape alongside connective, or a
+   new AlgebraMethodKind alongside method_def, is `a + 0 = a`
+   reimplemented as `identity_check(a) → a`. The mathematical minimum
+   is one authority per fact. Ontological analysis (Signal/Algebra/
+   Reduction) helps identify what the heuristics are asking; the fix
+   is always "make the existing answer reachable," not "add a new
+   answer."

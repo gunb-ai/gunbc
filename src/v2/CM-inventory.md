@@ -60,13 +60,16 @@ The largest category. Most are:
 2. **Fail-open fabrication** — `None => unit_type`, `None => ""`, `None => false`
 3. **Field-presence assertions** — `body != none`, `transport != none`, `params |> count > 0`
 
-**Modeling implication:** Field-presence assertions (category 3) dissolve
-directly with the Node decomposition. Instead of checking `body != none`
-and `transport != none` separately, consumers check `has_reduction?` and
-`reduction_kind?` (internal/external). Name-based checks (category 1)
-dissolve when the structural property they're approximating becomes a
-first-class fact. Fail-open sites (category 2) are a separate problem —
-they need fail-closed boundaries, not ontological modeling.
+**Modeling implication:** Field-presence assertions (category 3) are
+already correct — `body != none` IS the structural fact. The problem
+is that consumers can't reach these fields at the boundary (they're
+stripped or re-keyed by side-tables). The fix is making existing fields
+(`body`, `transport`, `connective`) reachable at every consumption
+site, not adding derived `has_reduction?` wrappers (that would
+duplicate the existing authority). Name-based checks (category 1)
+dissolve when consumers read the structural fact the name approximates
+(e.g., algebra profile instead of `"List"` string). Fail-open sites
+(category 2) need fail-closed boundaries, not ontological modeling.
 
 ### Algebra sites (~27) — "how does this compose?"
 
@@ -75,12 +78,15 @@ Almost all are connective dispatch:
 2. **Container arity** — `children |> count == 1` vs `== 2` for element vs keyed collections
 3. **Container-to-algebra mapping** — hardcoded string tables (coercion.dag)
 
-**Modeling implication:** Connective dispatch (category 1) dissolves
-with a cached TypeShape (Product/Coproduct/Leaf) or by making
-connective the primary vocabulary everywhere. Container arity (2)
-dissolves when algebra profile carries arity structurally. The
-hardcoded container-to-algebra table (3) is already identified as
-needing derivation from algebra declarations.
+**Modeling implication:** Connective IS the existing authority.
+Consumers that re-derive "product or coproduct?" should read
+connective directly (or its existing downstream authority,
+`TypeSummary.repr`). Adding a new TypeShape enum would duplicate
+connective — the fix is surfacing connective/TypeSummary.repr
+through stage boundaries. Container arity (2) should come from the
+existing algebra profile (which already carries parameter counts).
+The hardcoded container-to-algebra table (3) is already identified
+as needing derivation from algebra declarations.
 
 ### Reduction sites (~44) — "what happens?"
 
@@ -89,14 +95,18 @@ Three clusters:
 2. **Call/application classification** — call tier, nullary detection, binding kind
 3. **Target language dispatch** — per-backend rendering, keyword/primitive coercion
 
-**Modeling implication:** Method name dispatch (category 1) dissolves
-when methods carry an AlgebraMethodKind or a RewriteRuleKind. The
-"fold" special cases in ownership.dag dissolve when fold is a
-structural concept (Threaded edge kind) not a name. Call classification
-(2) dissolves when the IR distinguishes redex-vs-value structurally.
-Target dispatch (3) is inherent — different targets need different
-rendering — but the fail-open fallbacks (fabricated error markers)
-should be fail-closed.
+**Modeling implication:** The `method_def` Node and `AlgebraFieldTemplate`
+already carry method identity structurally. Method name dispatch
+(category 1) dissolves when consumers read from these existing
+authorities instead of matching on name strings — not by adding a
+parallel AlgebraMethodKind enum (duplicate representation). The "fold"
+special cases in ownership.dag dissolve when ownership reads the
+existing algebra framework's structural facts about fold. Call
+classification (2) dissolves when inference normalizes ExprVar→ExprCall
+for nullary functions (making the expression IR the authority). Target
+dispatch (3) is inherent — different targets need different rendering —
+but fail-open fallbacks (fabricated error markers) should be
+fail-closed.
 
 ---
 
@@ -363,10 +373,10 @@ becomes rendering sugar (how it's displayed), not identity.
 TypeRendering erases connective. EmitGraphInfo partially erases
 item identity. Downstream re-infers what was lost.
 
-**Ontological fix:** TypeRendering carries Algebra (Product/Coproduct/
-Leaf) and Reduction (Callable) structurally. The 97-line
-`render_type_base` dispatch reduces to an exhaustive match on
-a small sum type.
+**Fix:** TypeRendering must stop erasing connective. The existing
+connective and TypeSummary.repr authorities should flow through
+to the rendering layer. The 97-line `render_type_base` dispatch
+collapses when it can read the existing authority directly.
 
 ### Pattern 5: Duplicate authority (~8 sites)
 
@@ -374,7 +384,9 @@ Same fact derived independently in multiple places:
 `builtin_function_registry` vs algebra templates, `item_kind` vs
 `classify_typed_item`, `is_zero_arg_func` vs `is_zero_arg_callable_ref`.
 
-**Ontological fix:** Single authority per ontological fact. Algebra
-operations come from algebra profile (one source). Item decomposition
-comes from Node structure (one computation). Redex status comes from
-IR annotation (one site).
+**Fix:** Single authority per fact — consume existing structure, never
+duplicate. Algebra operations come from the existing algebra profile.
+Item identity comes from the existing Node fields. Nullary call status
+comes from ExprVar→ExprCall normalization (making the expression IR
+the sole authority). Each duplicate authority should be deleted in
+favor of the existing one.
