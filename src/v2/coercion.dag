@@ -22,7 +22,7 @@ module v2.compiler.coercion
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr }
-import std.types { container_expected_arity }
+import std.types { container_expected_arity, container_to_algebra_name, algebra_arity }
 import extdeps.languages.rust.types {
   rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
   rust_optional_template
@@ -113,37 +113,12 @@ fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
   target_inhabitants(target: target) |> filter(inh => inh.algebra == algebra) |> first
 }
 
-// Surface name -> algebra name mapping.
-// The .dag language uses List, Set, Map as surface names.
-// The coercion engine resolves through algebra identities.
-// TODO: these are hardcoded string tables, not derived from a canonical
-// container declaration. A stronger model would carry algebra identity
-// structurally from one authority (e.g. inhabitant/arity data).
-data container_to_algebra: Map<String, String> = {
-  "List": "FreeMonoid",
-  "list": "FreeMonoid",
-  "NonEmptyList": "FreeMonoid",
-  "non_empty_list": "FreeMonoid",
-  "FreeMonoid": "FreeMonoid",
-  "free_monoid": "FreeMonoid",
-  "Set": "BooleanAlgebra",
-  "set": "BooleanAlgebra",
-  "NonEmptySet": "BooleanAlgebra",
-  "non_empty_set": "BooleanAlgebra",
-  "BooleanAlgebra": "BooleanAlgebra",
-  "boolean_algebra": "BooleanAlgebra",
-  "Map": "PartialFunction",
-  "map": "PartialFunction",
-  "PartialFunction": "PartialFunction",
-  "partial_function": "PartialFunction"
-}
-
-fn dag_container_to_algebra(name: String) -> String? {
-  lookup(container_to_algebra, key: name)
-}
+// Container → algebra mapping now lives in std/types.dag, co-located with
+// the type declarations it mirrors (type List<T> = FreeMonoid<T>, etc.).
+// Imported as container_to_algebra_name.
 
 fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
-  match dag_container_to_algebra(name: container_name) {
+  match container_to_algebra_name(name: container_name) {
     Some { value: algebra } => match lookup_inhabitant(target: target, algebra: algebra) {
       Some { value: inh } => Some { value: inh.template }
       None => none
@@ -164,26 +139,14 @@ fn apply_inhabitant_template2(template: String, first: String, second: String) -
   replace(replace(template, "\{0\}", first), "\{1\}", second)
 }
 
-// Algebra arity: target-independent type-parameter count per algebra.
-// Arity is a property of the algebraic structure, not the target language.
-// Source of truth should be std/algebra.dag once it carries arity; until
-// then this table is the cross-language authority.
-data algebra_arity: Map<String, Int> = {
-  "FreeMonoid": 1,
-  "BooleanAlgebra": 1,
-  "PartialFunction": 2,
-  "OrderedRing": 0,
-  "ApproximateField": 0
-}
-
-// Container arity resolution: surface names via container_type_arity (std/types.dag),
-// algebra names via container_to_algebra → algebra_arity (target-independent).
-// Covers both "List" (surface) and "FreeMonoid" (algebra) naming domains.
+// Container arity resolution: surface names via container_type_arity,
+// algebra names via container_to_algebra → algebra_arity.
+// All authorities imported from std/types.dag (co-located with declarations).
 fn coercion_container_arity(name: String) -> Int? {
   match container_expected_arity(name: name) {
     Some { value: arity } => Some { value: arity }
     None =>
-      match dag_container_to_algebra(name: name) {
+      match container_to_algebra_name(name: name) {
         Some { value: algebra } => map_get(algebra_arity, algebra)
         None => none
       }
