@@ -205,16 +205,19 @@ correct-but-suboptimal code and blocks new backends.
 
 **Status:** TypeRendering boundary established (emit_node_type_rc deleted).
 Clone semantics unified in SharingStrategy (CloneTemplates removed).
-TLC-1 landed: `is_zero_arg_callable_ref` dispatches call-vs-value through
-emit_var_ref and emit_typed_expr_base. TLC-3 Go/Python per-collection
-dispatch done. TLC-4 complete: annotated-let consumer wired in all three
-Rust let-binding sites via `emit_let_binding_annotated`.
-TLC-2 blocked on M5 coercion engine. Higher-order method templates
-(filter/any/all/flat_map) data-driven via `HigherOrderMethodSpec`.
+TLC-1 partial: `is_zero_arg_callable_ref` is an emitter-side guardrail
+(L1 violation — `rt.name=="Callable"` check); upstream concept modeling
+needed (Tier 2.6). TLC-3 Rust per-collection dispatch done; Go/Python
+still route through `list_index` unconditionally. TLC-4 partial:
+`emit_let_binding_annotated` infrastructure exists but disabled for
+bootstrap convergence (.dag type inference produces `()` for empty
+collection element types). TLC-2 blocked on M5 coercion engine.
+Higher-order method templates (filter/any/all/flat_map) data-driven
+via `HigherOrderMethodSpec`.
 
 One root cause, two symptoms:
 1. Facts that exist upstream are lost before emit — emission compensates
-   with heuristics (411 `rc_types` threading sites, 28 hardcoded
+   with heuristics (411 `shared_types` threading sites, 28 hardcoded
    `.clone()` decisions in the Rust emitter alone)
 2. Target-language facts are missing entirely — expression-level gaps
    (TLC-1..4) force per-backend special cases
@@ -244,10 +247,10 @@ mismatches before removal). `emit_node_type` routes through
 **Sharing and ownership**
 
 - [x] Sharing derived from `is_type_constant` + `TypeSummary` (no Rc wrap for fixed-width carriers)
-- [x] `build_rc_types` eliminated — replaced by `build_shared_types` in Rust emitter
+- [x] `build_rc_types` renamed and reorganized as `build_shared_types` in Rust emitter
 - [x] `ValueContext` deleted — `has_fn_fields` moved to `TypeSummary`, sharing
-  authority consolidated into `EmitGraphInfo.shared_types` (still Rust-emitter-local;
-  upstream boundary derivation deferred to coercion engine)
+  computation lives in `EmitGraphInfo.shared_types` field (still Rust-emitter-local;
+  authority has not moved upstream — deferred to coercion engine)
 - [x] `is_type_constant` in 05_emit_rust.dag consulted by `build_shared_types`
 - [x] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
 - [x] Explicit parent-enum ownership facts through resolve/infer/emit
@@ -259,22 +262,27 @@ mismatches before removal). `emit_node_type` routes through
 Each gap is a missing LanguageSpec fact. Closing them unblocks new
 backends.
 
-- [x] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
+- [~] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
   render as `name()` via `is_zero_arg_callable_ref` (FunctionValueBinding +
-  Callable node with empty params). Dispatched in emit_var_ref (registry hit
-  and miss) and emit_typed_expr_base.
+  Callable node with empty params). Dispatched in emit_var_ref and
+  emit_typed_expr_base. **Partial:** emitter-side guardrail only —
+  `rt.name == "Callable"` is an L1 violation. Upstream concept modeling
+  (Tier 2.6) dissolves this. Imported zero-arg function refs untested.
 - [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
   *Blocked: requires M5 coercion engine for type/wrap authority.*
-- [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
+- [~] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
-  All three backends dispatch on collection type.
-- [x] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
+  Rust dispatches on collection type. Go/Python still route through
+  `list_index`/`list_slice` unconditionally — per-collection dispatch pending.
+- [~] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
   in LanguageSpec — let binding templates (inferred/annotated), lambda param
-  templates (typed/untyped). All three Rust emitter let-binding sites consume
-  `emit_let_binding_annotated` via `build_type_rendering` + `render_type`.
+  templates (typed/untyped). Infrastructure exists (`emit_let_binding_annotated`)
+  but disabled at all three Rust let-binding sites for bootstrap convergence:
+  .dag type inference produces `()` for empty collection element types.
+  Requires M2 inference improvement before re-enabling.
 
 ### CG-3: Parameterization
 
