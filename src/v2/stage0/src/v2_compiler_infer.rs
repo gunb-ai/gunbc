@@ -2304,6 +2304,17 @@ pub fn infer_items(items: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<Vec<Rc
     Rc::new({ let mut __result = Vec::new(); for item in items.iter().cloned() { __result.push(infer_item(item.clone(), scope.clone())); } __result })
 }
 
+pub fn collect_filtered_bindings(envs: Rc<Vec<Rc<TypeEnv>>>, placeholder_names: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    envs.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, env: Rc<TypeEnv>| Rc::new(v2_rt::map_keys(&env.bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
+        bacc.clone()
+} else {
+        match v2_rt::map_get(&env.bindings.clone(), name.clone()) {
+    Some(binding) => v2_rt::rc_map_insert(bacc.clone(), name.clone(), binding.clone()),
+    None => bacc.clone(),
+}
+}))
+}
+
 pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<String, Rc<TypedModule>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<BuildTypeEnvResult> {
     {
         let placeholder_names = bridge_placeholder_type_names();
@@ -2437,17 +2448,10 @@ let imported_parent_envs = Rc::new({ let mut __result = Vec::new(); for imp in m
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs);
-let std_import_bindings = std_types_parent_env.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| Rc::new(v2_rt::map_keys(&env.bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: _, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
-            bacc.clone()
-} else {
-            match v2_rt::map_get(&env.bindings.clone(), name.clone()) {
-    Some(binding) => v2_rt::rc_map_insert(bacc.clone(), name.clone(), binding.clone()),
-    None => bacc.clone(),
-}
-}));
-let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_import_bindings.clone(), |acc: _, imp: Rc<ResolvedImport>| match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
+let std_import_bindings = collect_filtered_bindings(std_types_parent_env.clone(), placeholder_names.clone());
+let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_import_bindings.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
     Some(typed_parent) => if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) {
-            Rc::new(v2_rt::map_keys(&typed_parent.type_env.clone().bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: _, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
+            Rc::new(v2_rt::map_keys(&typed_parent.type_env.clone().bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
                 bacc.clone()
 } else {
                 match v2_rt::map_get(&typed_parent.type_env.clone().bindings.clone(), name.clone()) {
@@ -2743,17 +2747,10 @@ let imported_parent_envs = Rc::new({ let mut __result = Vec::new(); for imp in m
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs);
-let std_import_bindings = std_types_parent_env.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, env: Rc<TypeEnv>| Rc::new(v2_rt::map_keys(&env.bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: _, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
-            bacc.clone()
-} else {
-            match v2_rt::map_get(&env.bindings.clone(), name.clone()) {
-    Some(binding) => v2_rt::rc_map_insert(bacc.clone(), name.clone(), binding.clone()),
-    None => bacc.clone(),
-}
-}));
-let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_import_bindings.clone(), |acc: _, imp: Rc<ResolvedImport>| match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
+let std_import_bindings = collect_filtered_bindings(std_types_parent_env.clone(), placeholder_names.clone());
+let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_import_bindings.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
     Some(typed_parent) => if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) {
-            Rc::new(v2_rt::map_keys(&typed_parent.type_env.clone().bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: _, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
+            Rc::new(v2_rt::map_keys(&typed_parent.type_env.clone().bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
                 bacc.clone()
 } else {
                 match v2_rt::map_get(&typed_parent.type_env.clone().bindings.clone(), name.clone()) {

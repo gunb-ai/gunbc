@@ -2127,6 +2127,24 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 //   3. Local type definitions from the module's items
 // =========================================================================
 
+// Collect type bindings from parent environments, filtering out bridge
+// placeholder names. Typed return ensures fold(init: empty_map()) resolves
+// to Map<String, TypeBinding>.
+fn collect_filtered_bindings(envs: List<TypeEnv>, placeholder_names: Map<String, Bool>) -> Map<String, TypeBinding> {
+  fold(envs, init: empty_map(), f: (acc, env) =>
+    fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
+      if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
+        bacc
+      } else {
+        match map_get(env.bindings, name) {
+          Some { value: binding } => map_insert(bacc, name, binding)
+          None => bacc
+        }
+      }
+    )
+  )
+}
+
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> BuildTypeEnvResult {
   let placeholder_names = bridge_placeholder_type_names()
   // Seed the kernel with primitive types so they resolve even when
@@ -2182,18 +2200,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
   // Bridge placeholder slots remain available inside std.types declarations,
   // but importing modules must not see them as ambient user-facing types.
-  let std_import_bindings = fold(std_types_parent_env, init: empty_map(), f: (acc, env) =>
-    fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-      if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
-        bacc
-      } else {
-        match map_get(env.bindings, name) {
-          Some { value: binding } => map_insert(bacc, name, binding)
-          None => bacc
-        }
-      }
-    )
-  )
+  let std_import_bindings = collect_filtered_bindings(envs: std_types_parent_env, placeholder_names: placeholder_names)
   let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Some { value: typed_parent } =>
@@ -2354,18 +2361,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
   // Mirror the same std.types-only placeholder filtering in the unresolved path.
-  let std_import_bindings = fold(std_types_parent_env, init: empty_map(), f: (acc, env) =>
-    fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-      if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
-        bacc
-      } else {
-        match map_get(env.bindings, name) {
-          Some { value: binding } => map_insert(bacc, name, binding)
-          None => bacc
-        }
-      }
-    )
-  )
+  let std_import_bindings = collect_filtered_bindings(envs: std_types_parent_env, placeholder_names: placeholder_names)
   let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Some { value: typed_parent } =>
