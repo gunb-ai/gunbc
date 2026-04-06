@@ -386,14 +386,13 @@ enrich_base_with_fields(name.clone(), base.clone(), fields)
 }
 
 pub fn lookup_algebra_template(type_name: String, method_name: String) -> Option<Rc<AlgebraFieldTemplate>> {
-    let profile = v2_rt::map_get(&kernel_algebra_profile(), type_name);
-    match profile {
-        Some(p) => {
-            let templates = algebra_templates_for_profile(p);
-            templates.iter().find(|t| t.name == method_name).cloned()
-        }
-        None => None,
-    }
+    {
+        let profile = v2_rt::map_get(&kernel_algebra_profile(), type_name);
+match profile {
+    Some(p) => Rc::new({ let mut __result = Vec::new(); for t in algebra_templates_for_profile(p.clone()).iter().cloned() { if (t.name.clone().as_str() == method_name.clone().as_str()) { __result.push(t); } } __result }).first().cloned(),
+    None => None,
+}
+}
 }
 
 pub fn callable_node(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {

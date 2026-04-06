@@ -54,7 +54,7 @@ use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSem
 use crate::v2_std_core::FieldAccessStyle::{OptionalUnwrap};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
-pub use crate::std_algebra::AlgebraFieldTemplate;
+pub use crate::std_algebra::{AlgebraFieldTemplate};
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, rt_type, rt_node, emit_map_has, enrich_kernel_type, lookup_algebra_template};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};

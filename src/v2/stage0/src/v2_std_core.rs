@@ -50,6 +50,7 @@ pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan, kernel_type_set, i
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::std_syntax::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull};
+pub use crate::std_algebra::{AlgebraFieldTemplate};
 use TokenShape::*;
 use Connective::*;
 use Cardinality::*;
@@ -69,7 +70,6 @@ use OperationModifier::*;
 use CompilerDiagnostic::*;
 use NodeFieldRole::*;
 use FunctionSizeEffect::*;
-pub use crate::std_algebra::AlgebraFieldTemplate;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Token {
