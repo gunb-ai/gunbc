@@ -2851,7 +2851,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", emit_ident(name: method, target: Rust), "(", args_str, ").await?")
     }
-    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type } => {
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, algebra_template: _ } => {
       // Read method identity from the definition node.
       // BRIDGE: reads method_def.name until Lane C provides per-method
       // rendering from language extdeps keyed by the definition node.

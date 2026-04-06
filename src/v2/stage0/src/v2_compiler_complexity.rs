@@ -57,13 +57,13 @@ use crate::std_termination::RankingDimension::{TreeSize, ListLength, ArithmeticV
 use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, ArithmeticDecrease, ParserAdvance, SetRemoval, FoldIteration};
 pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param};
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
-pub use crate::v2_std_core::{Node, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_value, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_call_func, expr_var_name, field_access_base, field_access_field, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing, ListMethodSizeEffect, list_method_size_effect};
+pub use crate::v2_std_core::{Node, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_value, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_call_func, expr_var_name, field_access_base, field_access_field, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing};
+pub use crate::std_algebra::{AlgebraFieldTemplate, AlgebraTypeTemplate};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprBinOp, ExprUnaryOp, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda};
 use crate::v2_std_core::BinOp::{Sub, Div};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::LiteralValue::{LitNull, LitInt};
-use crate::v2_std_core::ListMethodSizeEffect::{ListShrinkEffect, ElementProjection, CollectionIdentity};
 use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
@@ -373,6 +373,30 @@ pub fn is_algebra_iteration_method(method_semantics: Option<Rc<MethodSemantics>>
     Some(MethodSemantics::AlgebraMethodSemantics { .. }) => true,
     _ => false,
 }
+}
+
+pub fn method_algebra_template(method_semantics: Option<Rc<MethodSemantics>>) -> Option<Rc<AlgebraFieldTemplate>> {
+    match method_semantics.as_deref().cloned() {
+        Some(MethodSemantics::AlgebraMethodSemantics { algebra_template, .. }) => algebra_template,
+        _ => None,
+    }
+}
+
+pub fn is_element_projection_template(template: Rc<AlgebraFieldTemplate>) -> bool {
+    matches!(&*template.return_type, AlgebraTypeTemplate::OptionalOf { inner } if matches!(&**inner, AlgebraTypeTemplate::ReceiverElement))
+}
+
+pub fn is_collection_shrink_template(template: Rc<AlgebraFieldTemplate>) -> bool {
+    matches!(&*template.return_type, AlgebraTypeTemplate::ReceiverSelf)
+        && template.param_types.iter().any(|p| matches!(&**p, AlgebraTypeTemplate::NamedTemplate { name } if name == "Int"))
+}
+
+pub fn is_collection_identity_template(template: Rc<AlgebraFieldTemplate>) -> bool {
+    match &*template.return_type {
+        AlgebraTypeTemplate::ReceiverSelf => !is_collection_shrink_template(template.clone()),
+        AlgebraTypeTemplate::ReceiverCollectionOf { .. } => true,
+        _ => false,
+    }
 }
 
 pub fn progress_to_evidence(pk: ProgressKind) -> DescentEvidence {
@@ -1538,8 +1562,8 @@ break (is_children_list_field(field.clone()) && match (*base.expr_data.clone()).
     _ => false,
 }); },
     ExprData::ExprVar { .. } => { break set_has(vars.clone(), expr_var_name(expr.clone())); },
-    ExprData::ExprMethodCall { .. } => { match list_method_size_effect(expr_call_func(expr.clone())).as_deref().cloned() {
-    Some(ListMethodSizeEffect::ListShrinkEffect { .. }) => { {
+    ExprData::ExprMethodCall { method_semantics: ms } => { match method_algebra_template(ms) {
+    Some(t) => { if is_collection_shrink_template(t) { {
             let __tco_0 = method_receiver(expr);
 let __tco_1 = param_name;
 let __tco_2 = vars;
@@ -1547,8 +1571,8 @@ expr = __tco_0;
 param_name = __tco_1;
 vars = __tco_2;
 continue;
-} },
-    _ => { break false; },
+} } else { break false; } },
+    None => { break false; },
 } },
     ExprData::ExprCall { .. } => { let callee = expr_call_func(expr.clone());
 if (callee.clone().as_str() == "skip".to_string().as_str()) {
@@ -1585,12 +1609,10 @@ let field = field_access_field(expr.clone());
     _ => false,
 })
 },
-    ExprData::ExprMethodCall { .. } => {
-            let mname = expr_call_func(expr.clone());
-match list_method_size_effect(mname).as_deref().cloned() {
-    Some(ListMethodSizeEffect::ListShrinkEffect { .. }) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
-    Some(ListMethodSizeEffect::CollectionIdentity) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
-    _ => false,
+    ExprData::ExprMethodCall { method_semantics: ms } => {
+            match method_algebra_template(ms) {
+    Some(t) => if is_collection_shrink_template(t.clone()) || is_collection_identity_template(t) { is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()) } else { false },
+    None => false,
 }
 },
     ExprData::ExprCall { .. } => {
@@ -1627,9 +1649,9 @@ pub fn is_child_descent_expr(expr: Rc<Node>, param_name: String, vars: Rc<HashMa
         true
 } else {
         match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { .. } => match list_method_size_effect(expr_call_func(expr.clone())).as_deref().cloned() {
-    Some(ListMethodSizeEffect::ElementProjection) => is_children_of_param(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
-    _ => false,
+    ExprData::ExprMethodCall { method_semantics: ms } => match method_algebra_template(ms) {
+    Some(t) => if is_element_projection_template(t) { is_children_of_param(method_receiver(expr.clone()), param_name.clone(), vars.clone()) } else { false },
+    None => false,
 },
     _ => false,
 }
@@ -1672,10 +1694,10 @@ pub fn extractor_inner_arg(expr: Rc<Node>) -> Rc<Node> {
 
 pub fn is_list_shrink_expr(expr: Rc<Node>, param_name: String) -> bool {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { .. } => {
-        let is_shrink = match list_method_size_effect(expr_call_func(expr.clone())).as_deref().cloned() {
-    Some(ListMethodSizeEffect::ListShrinkEffect { .. }) => true,
-    _ => false,
+    ExprData::ExprMethodCall { method_semantics: ms } => {
+        let is_shrink = match method_algebra_template(ms) {
+    Some(t) => is_collection_shrink_template(t),
+    None => false,
 };
 ((is_shrink && match (*method_receiver(expr.clone()).expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => (expr_var_name(method_receiver(expr.clone())).as_str() == param_name.as_str()),
@@ -1728,10 +1750,9 @@ let base = field_access_base(expr.clone());
     _ => false,
 })
 },
-    ExprData::ExprMethodCall { .. } => {
-                let mname = expr_call_func(expr.clone());
-let receiver = method_receiver(expr.clone());
-match list_method_size_effect(mname) {
+    ExprData::ExprMethodCall { method_semantics: ms } => {
+                let receiver = method_receiver(expr.clone());
+match method_algebra_template(ms) {
     Some(_) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
     None => false,
 }

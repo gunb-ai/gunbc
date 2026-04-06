@@ -22,6 +22,7 @@ import std.syntax {
   BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull
 }
+import std.algebra { AlgebraFieldTemplate }
 
 // =========================================================================
 // Tokens
@@ -197,7 +198,7 @@ type LambdaSemantics {
 
 type MethodSemantics
   = PlainMethodSemantics
-  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node? }
+  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, algebra_template: AlgebraFieldTemplate? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
@@ -882,32 +883,6 @@ fn is_tree_size_reducing(func_name: String) -> Bool {
     Some { value: TreeSizeReducing } => true
     _ => false
   }
-}
-
-// =========================================================================
-// List method size effects — structural classification for complexity analysis.
-//
-// Each list method either shrinks the list, projects an element, or preserves
-// collection identity. The complexity analyzer reads these facts to derive
-// descent evidence without hardcoding method names.
-// =========================================================================
-
-type ListMethodSizeEffect
-  = ListShrinkEffect { by: Int }    // skip(N): drops N elements, list shrinks
-  | ElementProjection               // first/last: extracts one element (descent from list to element)
-  | CollectionIdentity              // enumerate/filter/reverse: preserves structural children
-
-data list_method_size_effects: Map<String, ListMethodSizeEffect> = {
-  "skip": ListShrinkEffect { by: 1 },
-  "first": ElementProjection,
-  "last": ElementProjection,
-  "enumerate": CollectionIdentity,
-  "filter": CollectionIdentity,
-  "reverse": CollectionIdentity
-}
-
-fn list_method_size_effect(method_name: String) -> ListMethodSizeEffect? {
-  lookup(list_method_size_effects, key: method_name)
 }
 
 // =========================================================================
