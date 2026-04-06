@@ -155,61 +155,66 @@ impl CostShape {
 }
 
 pub fn method_cost_shape_table() -> Rc<HashMap<String, Rc<CostShape>>> {
-    let mut __m = HashMap::new();
-    __m.insert("map".to_string(), Rc::new(CostShape::ShapeIterateBody {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, Rc<CostShape>>> = {
+            let mut __m = HashMap::new();
+            __m.insert("map".to_string(), Rc::new(CostShape::ShapeIterateBody {
     produces_collection: true,
 }));
-    __m.insert("flat_map".to_string(), Rc::new(CostShape::ShapeIterateBody {
+            __m.insert("flat_map".to_string(), Rc::new(CostShape::ShapeIterateBody {
     produces_collection: true,
 }));
-    __m.insert("filter".to_string(), Rc::new(CostShape::ShapeIterateBody {
+            __m.insert("filter".to_string(), Rc::new(CostShape::ShapeIterateBody {
     produces_collection: true,
 }));
-    __m.insert("enumerate".to_string(), Rc::new(CostShape::ShapeIterateBody {
+            __m.insert("enumerate".to_string(), Rc::new(CostShape::ShapeIterateBody {
     produces_collection: true,
 }));
-    __m.insert("skip".to_string(), Rc::new(CostShape::ShapeIterateBody {
+            __m.insert("skip".to_string(), Rc::new(CostShape::ShapeIterateBody {
     produces_collection: true,
 }));
-    __m.insert("take".to_string(), Rc::new(CostShape::ShapeIterateBody {
+            __m.insert("take".to_string(), Rc::new(CostShape::ShapeIterateBody {
     produces_collection: true,
 }));
-    __m.insert("fold".to_string(), Rc::new(CostShape::ShapeIterateBody {
+            __m.insert("fold".to_string(), Rc::new(CostShape::ShapeIterateBody {
     produces_collection: false,
 }));
-    __m.insert("any".to_string(), Rc::new(CostShape::ShapeIterateBody {
+            __m.insert("any".to_string(), Rc::new(CostShape::ShapeIterateBody {
     produces_collection: false,
 }));
-    __m.insert("all".to_string(), Rc::new(CostShape::ShapeIterateBody {
+            __m.insert("all".to_string(), Rc::new(CostShape::ShapeIterateBody {
     produces_collection: false,
 }));
-    __m.insert("sort_by".to_string(), Rc::new(CostShape::ShapeSortBody));
-    __m.insert("count".to_string(), Rc::new(CostShape::ShapeLinearScan {
+            __m.insert("sort_by".to_string(), Rc::new(CostShape::ShapeSortBody));
+            __m.insert("count".to_string(), Rc::new(CostShape::ShapeLinearScan {
     produces_collection: false,
 }));
-    __m.insert("first".to_string(), Rc::new(CostShape::ShapeLinearScan {
+            __m.insert("first".to_string(), Rc::new(CostShape::ShapeLinearScan {
     produces_collection: false,
 }));
-    __m.insert("last".to_string(), Rc::new(CostShape::ShapeLinearScan {
+            __m.insert("last".to_string(), Rc::new(CostShape::ShapeLinearScan {
     produces_collection: false,
 }));
-    __m.insert("join".to_string(), Rc::new(CostShape::ShapeLinearScan {
+            __m.insert("join".to_string(), Rc::new(CostShape::ShapeLinearScan {
     produces_collection: false,
 }));
-    __m.insert("string_contains".to_string(), Rc::new(CostShape::ShapeLinearScan {
+            __m.insert("string_contains".to_string(), Rc::new(CostShape::ShapeLinearScan {
     produces_collection: false,
 }));
-    __m.insert("concat".to_string(), Rc::new(CostShape::ShapeLinearScan {
+            __m.insert("concat".to_string(), Rc::new(CostShape::ShapeLinearScan {
     produces_collection: false,
 }));
-    __m.insert("chars".to_string(), Rc::new(CostShape::ShapeLinearScan {
+            __m.insert("chars".to_string(), Rc::new(CostShape::ShapeLinearScan {
     produces_collection: true,
 }));
-    __m.insert("split".to_string(), Rc::new(CostShape::ShapeLinearScan {
+            __m.insert("split".to_string(), Rc::new(CostShape::ShapeLinearScan {
     produces_collection: true,
 }));
-    __m.insert("append".to_string(), Rc::new(CostShape::ShapeConstant));
-    Rc::new(__m)
+            __m.insert("append".to_string(), Rc::new(CostShape::ShapeConstant));
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn method_cost_shape(method_name: String) -> Option<Rc<CostShape>> {
@@ -525,7 +530,7 @@ pub fn is_lexicographic_descent(mut evidence: Rc<Vec<DescentEvidence>>) -> bool 
     Some(e) => { match e.clone() {
     DescentEvidence::Strict => { break true; },
     DescentEvidence::NonIncreasing => { {
-            let __tco_0 = Rc::new(evidence.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+            let __tco_0 = Rc::new(evidence.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 evidence = __tco_0;
 continue;
 } },
@@ -1012,10 +1017,10 @@ pub fn infer_parser_always_advancing_members_worklist(mut queue: Rc<Vec<String>>
 if set_has(proven.clone(), name.clone()) {
             {
                 let __tco_0 = rest.clone();
-let __tco_1 = func_index.clone();
-let __tco_2 = parser_name_set.clone();
-let __tco_3 = reverse_graph.clone();
-let __tco_4 = proven.clone();
+let __tco_1 = func_index;
+let __tco_2 = parser_name_set;
+let __tco_3 = reverse_graph;
+let __tco_4 = proven;
 queue = __tco_0;
 func_index = __tco_1;
 parser_name_set = __tco_2;
@@ -1032,10 +1037,10 @@ continue;
 };
 {
                     let __tco_0 = deduplicate(v2_rt::concat(rest.clone(), callers.clone()));
-let __tco_1 = func_index.clone();
-let __tco_2 = parser_name_set.clone();
-let __tco_3 = reverse_graph.clone();
-let __tco_4 = v2_rt::rc_map_insert(proven.clone(), name.clone(), true);
+let __tco_1 = func_index;
+let __tco_2 = parser_name_set;
+let __tco_3 = reverse_graph;
+let __tco_4 = v2_rt::rc_map_insert(proven, name.clone(), true);
 queue = __tco_0;
 func_index = __tco_1;
 parser_name_set = __tco_2;
@@ -1046,10 +1051,10 @@ continue;
 } else {
                 {
                     let __tco_0 = rest.clone();
-let __tco_1 = func_index.clone();
-let __tco_2 = parser_name_set.clone();
-let __tco_3 = reverse_graph.clone();
-let __tco_4 = proven.clone();
+let __tco_1 = func_index;
+let __tco_2 = parser_name_set;
+let __tco_3 = reverse_graph;
+let __tco_4 = proven;
 queue = __tco_0;
 func_index = __tco_1;
 parser_name_set = __tco_2;
@@ -1060,10 +1065,10 @@ continue;
 } },
     None => { {
                 let __tco_0 = rest.clone();
-let __tco_1 = func_index.clone();
-let __tco_2 = parser_name_set.clone();
-let __tco_3 = reverse_graph.clone();
-let __tco_4 = proven.clone();
+let __tco_1 = func_index;
+let __tco_2 = parser_name_set;
+let __tco_3 = reverse_graph;
+let __tco_4 = proven;
 queue = __tco_0;
 func_index = __tco_1;
 parser_name_set = __tco_2;
@@ -1450,15 +1455,15 @@ pub fn expr_descending_witness_source(mut expr: Rc<Node>, mut descending_witness
     ExprData::ExprVar { .. } => { break v2_rt::map_get(&descending_witness_names, expr_var_name(expr.clone())); },
     ExprData::ExprBinOp { op: op, .. } => { match op.clone() {
     BinOp::Sub => { {
-            let __tco_0 = binop_left(expr.clone());
-let __tco_1 = descending_witness_names.clone();
+            let __tco_0 = binop_left(expr);
+let __tco_1 = descending_witness_names;
 expr = __tco_0;
 descending_witness_names = __tco_1;
 continue;
 } },
     BinOp::Div => { {
-            let __tco_0 = binop_left(expr.clone());
-let __tco_1 = descending_witness_names.clone();
+            let __tco_0 = binop_left(expr);
+let __tco_1 = descending_witness_names;
 expr = __tco_0;
 descending_witness_names = __tco_1;
 continue;
@@ -1639,8 +1644,8 @@ break ((field.clone().as_str() == "children".to_string().as_str()) && match (*ba
 }); },
     ExprData::ExprMethodCall { .. } => { match classify_list_method(expr_call_func(expr.clone())) {
     Some(ListMethodKind::SkipMethod) => { {
-            let __tco_0 = method_receiver(expr.clone());
-let __tco_1 = param_name.clone();
+            let __tco_0 = method_receiver(expr);
+let __tco_1 = param_name;
 expr = __tco_0;
 param_name = __tco_1;
 continue;
@@ -2685,8 +2690,8 @@ let best_tree = match best.clone().first().cloned() {
 },
     None => DescentEvidence::DescentUnknown,
 };
-let best_list = match Rc::new(best.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
-    Some(bl) => match Rc::new(arg_ev.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+let best_list = match best.clone().get(1 as usize).cloned() {
+    Some(bl) => match arg_ev.clone().get(1 as usize).cloned() {
     Some(al) => match al.clone() {
     DescentEvidence::Strict => DescentEvidence::Strict,
     DescentEvidence::NonIncreasing => match bl.clone() {

@@ -271,6 +271,12 @@ type EmitGraphInfo {
   // Precomputed during reconcile so emit reads structured capability data
   // instead of filtering/inspecting child Nodes.
   resource_definitions: Map<String, ResourceDefinition>
+  // Per-function fold accumulator unwrap eligibility: func_name → (acc_type_name → true).
+  // Built from structural proofs in ownership.dag. The emitter combines this
+  // with rc_types to decide Rc::try_unwrap rendering.
+  fold_eligible_index: Map<String, Map<String, Bool>>
+  // Current function's eligible fold accumulator types. Set by emit_typed_item.
+  fold_eligible: Map<String, Bool>
 }
 
 // FunctionSignature: structural facts about a function item, precomputed
@@ -352,7 +358,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     item_kinds: empty_map(),
     service_fields: empty_map(),
     function_signatures: empty_map(),
-    resource_definitions: empty_map()
+    resource_definitions: empty_map(),
+    fold_eligible_index: empty_map(),
+    fold_eligible: empty_map()
   }
 }
 

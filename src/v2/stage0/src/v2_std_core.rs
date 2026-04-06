@@ -933,7 +933,7 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
 
 pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned()
+        n.children.clone().get(1 as usize).cloned()
 } else {
         None
 }
@@ -992,7 +992,7 @@ pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
 
 pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned()
+        n.children.clone().get(1 as usize).cloned()
 } else {
         None
 }
@@ -1052,13 +1052,23 @@ pub struct ChildRole {
 }
 
 pub fn expr_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
-    serde_json::from_value(serde_json::json!({"ExprFieldAccess": [{"name": "base", "accessor": "field_access_base", "position": 0, "required": true}], "ExprBinOp": [{"name": "left", "accessor": "binop_left", "position": 0, "required": true}, {"name": "right", "accessor": "binop_right", "position": 1, "required": true}], "ExprUnaryOp": [{"name": "operand", "accessor": "unaryop_operand", "position": 0, "required": true}], "ExprIf": [{"name": "condition", "accessor": "if_condition", "position": 0, "required": true}, {"name": "then", "accessor": "if_then_branch", "position": 1, "required": true}, {"name": "else", "accessor": "if_else_branch", "position": 2, "required": false}], "ExprMatch": [{"name": "scrutinee", "accessor": "match_scrutinee", "position": 0, "required": true}], "ExprLet": [{"name": "value", "accessor": "let_value", "position": 0, "required": true}, {"name": "body", "accessor": "let_body", "position": 1, "required": false}], "ExprLambda": [{"name": "body", "accessor": "lambda_body", "position": 0, "required": true}], "ExprMethodCall": [{"name": "receiver", "accessor": "method_receiver", "position": 0, "required": true}], "ExprCast": [{"name": "expr", "accessor": "cast_expr", "position": 0, "required": true}, {"name": "target", "accessor": "cast_target", "position": 1, "required": true}], "ExprForEach": [{"name": "collection", "accessor": "foreach_collection", "position": 0, "required": true}, {"name": "body", "accessor": "foreach_body", "position": 1, "required": true}], "ExprIndex": [{"name": "base", "accessor": "index_base", "position": 0, "required": true}, {"name": "index", "accessor": "index_expr", "position": 1, "required": true}], "ExprSlice": [{"name": "base", "accessor": "slice_base", "position": 0, "required": true}, {"name": "start", "accessor": "slice_start", "position": 1, "required": true}, {"name": "end", "accessor": "slice_end", "position": 2, "required": true}], "ExprReturn": [{"name": "value", "accessor": "return_value", "position": 0, "required": true}]}))
-        .expect("valid data definition")
+    thread_local! {
+        static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
+            serde_json::from_value(serde_json::json!({"ExprFieldAccess": [{"name": "base", "accessor": "field_access_base", "position": 0, "required": true}], "ExprBinOp": [{"name": "left", "accessor": "binop_left", "position": 0, "required": true}, {"name": "right", "accessor": "binop_right", "position": 1, "required": true}], "ExprUnaryOp": [{"name": "operand", "accessor": "unaryop_operand", "position": 0, "required": true}], "ExprIf": [{"name": "condition", "accessor": "if_condition", "position": 0, "required": true}, {"name": "then", "accessor": "if_then_branch", "position": 1, "required": true}, {"name": "else", "accessor": "if_else_branch", "position": 2, "required": false}], "ExprMatch": [{"name": "scrutinee", "accessor": "match_scrutinee", "position": 0, "required": true}], "ExprLet": [{"name": "value", "accessor": "let_value", "position": 0, "required": true}, {"name": "body", "accessor": "let_body", "position": 1, "required": false}], "ExprLambda": [{"name": "body", "accessor": "lambda_body", "position": 0, "required": true}], "ExprMethodCall": [{"name": "receiver", "accessor": "method_receiver", "position": 0, "required": true}], "ExprCast": [{"name": "expr", "accessor": "cast_expr", "position": 0, "required": true}, {"name": "target", "accessor": "cast_target", "position": 1, "required": true}], "ExprForEach": [{"name": "collection", "accessor": "foreach_collection", "position": 0, "required": true}, {"name": "body", "accessor": "foreach_body", "position": 1, "required": true}], "ExprIndex": [{"name": "base", "accessor": "index_base", "position": 0, "required": true}, {"name": "index", "accessor": "index_expr", "position": 1, "required": true}], "ExprSlice": [{"name": "base", "accessor": "slice_base", "position": 0, "required": true}, {"name": "start", "accessor": "slice_start", "position": 1, "required": true}, {"name": "end", "accessor": "slice_end", "position": 2, "required": true}], "ExprReturn": [{"name": "value", "accessor": "return_value", "position": 0, "required": true}]}))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn wrapper_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
-    serde_json::from_value(serde_json::json!({"Arg": [{"name": "value", "accessor": "arg_value", "position": 0, "required": true}], "Arm": [{"name": "guard", "accessor": "arm_guard", "position": 0, "required": false}, {"name": "body", "accessor": "arm_body", "position": -1, "required": true}], "FieldInit": [{"name": "value", "accessor": "field_init_node_value", "position": 0, "required": true}]}))
-        .expect("valid data definition")
+    thread_local! {
+        static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
+            serde_json::from_value(serde_json::json!({"Arg": [{"name": "value", "accessor": "arg_value", "position": 0, "required": true}], "Arm": [{"name": "guard", "accessor": "arm_guard", "position": 0, "required": false}, {"name": "body", "accessor": "arm_body", "position": -1, "required": true}], "FieldInit": [{"name": "value", "accessor": "field_init_node_value", "position": 0, "required": true}]}))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn is_child_accessor_in_model(name: String) -> bool {
@@ -1070,7 +1080,7 @@ pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRo
 }
 
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
-    match Rc::new(texpr.children.clone().iter().cloned().skip(index as usize).collect::<Vec<_>>()).first().cloned() {
+    match texpr.children.clone().get(index as usize).cloned() {
     Some(v) => v.clone(),
     None => make_expr_error_node(ExprErrorKind::InternalExprError, v2_rt::concat("malformed node: missing ".to_string(), role), texpr.span.clone()),
 }
@@ -1148,7 +1158,7 @@ pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    Rc::new(texpr.children.clone().iter().cloned().skip(2 as usize).collect::<Vec<_>>()).first().cloned()
+    texpr.children.clone().get(2 as usize).cloned()
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
@@ -1232,7 +1242,7 @@ pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    Rc::new(texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned()
+    texpr.children.clone().get(1 as usize).cloned()
 }
 
 pub fn let_binding_name(texpr: Rc<Node>) -> String {
@@ -1315,39 +1325,84 @@ if (name.clone().as_str() == "".to_string().as_str()) {
 }
 
 pub fn transport_url_key() -> String {
-    "base_url".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "base_url".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn transport_path_key() -> String {
-    "base_path".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "base_path".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn transport_auth_token_key() -> String {
-    "auth_token".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "auth_token".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn transport_auth_header_key() -> String {
-    "auth_header".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "auth_header".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn transport_auth_scheme_key() -> String {
-    "auth_scheme".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "auth_scheme".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn transport_kind_rest() -> String {
-    "rest".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "rest".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn transport_kind_shell() -> String {
-    "shell".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "shell".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn transport_kind_file() -> String {
-    "file".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "file".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn transport_kind_local() -> String {
-    "local".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "local".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn make_transport_node(name: String, properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
@@ -1767,7 +1822,9 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
 }
 
 pub fn unit_type() -> Rc<Node> {
-    Rc::new(Node {
+    thread_local! {
+        static CACHED: Rc<Node> = {
+            Rc::new(Node {
     name: "Unit".to_string(),
     span: make_span(0, 0),
     ident_span: None,
@@ -1786,10 +1843,15 @@ pub fn unit_type() -> Rc<Node> {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 })
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn bool_type() -> Rc<Node> {
-    Rc::new(Node {
+    thread_local! {
+        static CACHED: Rc<Node> = {
+            Rc::new(Node {
     name: "Bool".to_string(),
     span: make_span(0, 0),
     ident_span: None,
@@ -1808,10 +1870,15 @@ pub fn bool_type() -> Rc<Node> {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 })
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn string_type() -> Rc<Node> {
-    Rc::new(Node {
+    thread_local! {
+        static CACHED: Rc<Node> = {
+            Rc::new(Node {
     name: "String".to_string(),
     span: make_span(0, 0),
     ident_span: None,
@@ -1830,10 +1897,15 @@ pub fn string_type() -> Rc<Node> {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 })
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn int_type() -> Rc<Node> {
-    Rc::new(Node {
+    thread_local! {
+        static CACHED: Rc<Node> = {
+            Rc::new(Node {
     name: "Int".to_string(),
     span: make_span(0, 0),
     ident_span: None,
@@ -1852,10 +1924,15 @@ pub fn int_type() -> Rc<Node> {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 })
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn float_type() -> Rc<Node> {
-    Rc::new(Node {
+    thread_local! {
+        static CACHED: Rc<Node> = {
+            Rc::new(Node {
     name: "Float".to_string(),
     span: make_span(0, 0),
     ident_span: None,
@@ -1874,10 +1951,15 @@ pub fn float_type() -> Rc<Node> {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 })
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn none_type() -> Rc<Node> {
-    Rc::new(Node {
+    thread_local! {
+        static CACHED: Rc<Node> = {
+            Rc::new(Node {
     name: "None".to_string(),
     span: make_span(0, 0),
     ident_span: None,
@@ -1896,14 +1978,24 @@ pub fn none_type() -> Rc<Node> {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 })
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn tuple_type_name() -> String {
-    "Tuple".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "Tuple".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn error_type() -> Rc<Node> {
-    Rc::new(Node {
+    thread_local! {
+        static CACHED: Rc<Node> = {
+            Rc::new(Node {
     name: "".to_string(),
     span: make_span(0, 0),
     ident_span: None,
@@ -1928,6 +2020,9 @@ pub fn error_type() -> Rc<Node> {
     message: "unresolved type".to_string(),
 }),
 })
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn make_span(start: i64, end: i64) -> Rc<SourceSpan> {
@@ -1990,7 +2085,7 @@ let line = ((Rc::new({ let mut __result = Vec::new(); for o in index.offsets.clo
 let line_start = if (line.clone() <= 1) {
             0
 } else {
-            match Rc::new(index.offsets.clone().iter().cloned().skip((line.clone() - 2) as usize).collect::<Vec<_>>()).first().cloned() {
+            match index.offsets.clone().get((line.clone() - 2) as usize).cloned() {
     Some(o) => (o.clone() + 1),
     None => 0,
 }
@@ -2009,12 +2104,12 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
 let line_start = if (line.clone() <= 1) {
             0
 } else {
-            match Rc::new(index.offsets.clone().iter().cloned().skip((line.clone() - 2) as usize).collect::<Vec<_>>()).first().cloned() {
+            match index.offsets.clone().get((line.clone() - 2) as usize).cloned() {
     Some(o) => (o.clone() + 1),
     None => src_len.clone(),
 }
 };
-let line_end = match Rc::new(index.offsets.clone().iter().cloned().skip((line.clone() - 1) as usize).collect::<Vec<_>>()).first().cloned() {
+let line_end = match index.offsets.clone().get((line.clone() - 1) as usize).cloned() {
     Some(o) => o.clone(),
     None => src_len.clone(),
 };

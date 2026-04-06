@@ -161,7 +161,8 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "map_contains_key",   bridge_name: "map_contains_key", passes_by_ref: true },
   { name: "map_has",            bridge_name: "map_has",          passes_by_ref: true },
   { name: "reverse",            bridge_name: "reverse",          passes_by_ref: false },
-  { name: "replace",            bridge_name: "replace",          passes_by_ref: false }
+  { name: "replace",            bridge_name: "replace",          passes_by_ref: false },
+  { name: "chars_to_string",    bridge_name: "chars_to_string",  passes_by_ref: true }
 ]
 
 // Helper functions: O(1) lookup via indexed maps built from the registry.
@@ -185,7 +186,8 @@ data rt_functions: Map<String, Bool> = {
   "filesystem_read": true, "list_push": true, "map_get": true,
   "map_keys": true, "map_values": true,
   "parse_int": true, "map_contains_key": true, "map_has": true,
-  "reverse": true, "replace": true
+  "reverse": true, "replace": true,
+  "chars_to_string": true
 }
 
 // Derived from rt_function_registry — single authority for passes_by_ref.
