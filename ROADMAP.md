@@ -56,13 +56,22 @@ when it self-compiles (fixed point convergence). **Blocks all other
 lanes from editing stage0 Rust directly.**
 
 Note: "zero manual patches" means zero patches to *generated* files.
-Nine hand-maintained files are still copied during regeneration
-(main.rs, v2_rt.rs, compiler_tests.rs, extdeps_languages_dag_syntax.rs,
-v2_coercion.rs, v2_compiler_infer_method.rs, std_types.rs,
-v2_compiler_tokenize.rs, extdeps_languages_rust_emit.rs).
-The last five are thread-local cache shims for performance;
-eliminating these is tracked as future work under M5-full
-(language plugin extraction).
+Four hand-maintained files are still copied during regeneration
+(main.rs, v2_rt.rs, compiler_tests.rs, v2_coercion.rs).
+Goal is zero — all stage0 content should be 100% generated.
+Remaining files and what blocks elimination:
+
+| File | Role | Blocker |
+|------|------|---------|
+| `main.rs` | CLI entrypoint | Need .dag entrypoint construct |
+| `v2_rt.rs` | Runtime shims (Rc ops, string ops) | Need .dag runtime codegen or inline emit |
+| `compiler_tests.rs` | Test harness | Need .dag test generation |
+| `v2_coercion.rs` | Coercion registries | No .dag counterpart yet |
+
+Previously eliminated (PR #316): v2_compiler_infer_method.rs, std_types.rs,
+extdeps_languages_rust_emit.rs, v2_compiler_tokenize.rs,
+extdeps_languages_dag_syntax.rs — via thread_local! caching in emitter
+and `chars_to_string` runtime function for O(1) tokenizer substring.
 
 ## CI Gates
 
@@ -85,6 +94,33 @@ eliminating these is tracked as future work under M5-full
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
+## Bootstrap Dependency Chain
+
+```
+.dag source ──(v2-compiler)──▶ stage0 .rs ──(cargo/rustc)──▶ v2-compiler binary
+     ▲                                                              │
+     └──────────────────────────────────────────────────────────────┘
+```
+
+- **Source of truth:** `.dag` files. Stage0 `.rs` is a derived artifact.
+- **Cycle-breaker:** Committed stage0 allows fresh clones to bootstrap.
+- **Fixed-point:** `regen pass N == regen pass N+1`. Two-pass bootstrap
+  required when the emitter changes its own output.
+- **External dependencies:** cargo, rustc (opaque transforms, not modeled).
+- **Hand-maintained files (9):** Copied back during regen, not overwritten.
+  These are source, not derived. See Bootstrap Status for list.
+
+**Merge workflow problem:** Stage0 `.rs` files are derived, but git
+treats them as text and produces line-level merge conflicts. These
+conflicts carry zero information — the only correct resolution is
+regen. Fix: `.gitattributes` marks generated stage0 files as `-merge`
+(no line-level merge), CI freshness gate ensures committed stage0
+matches `.dag` source. Merge workflow becomes: resolve `.dag` conflicts
+→ accept either side of stage0 → regen → commit.
+
+This dependency chain is currently implicit (shell scripts + convention).
+Modeling it as `.dag` types is tracked under BP-1 (Layer 3).
+
 ## Bootstrap Health Rules
 
 Clean-repo workflow:
@@ -97,6 +133,7 @@ Clean-repo workflow:
 Stabilization rules:
 - No manual `src/v2/stage0/` edits once regeneration is green.
 - CI gate: `check-stage0-freshness.sh` (regenerate → diff → empty).
+- Stage0 generated `.rs` files use `-merge` in `.gitattributes` (no line-level merge).
 - CX gate disabled in both stage0 and `compile.dag` — emission not blocked by complexity violations. Re-enable when CX violations reach 0.
 
 ## Reviewer Root Cause Analysis (2026-04-03)
@@ -590,6 +627,76 @@ Missing std/ concepts: `std/discrimination.dag` (pattern matching),
 - **M7**: Dissolve structural bridges. `connective`, `return_cardinality`,
   `MatchPattern`, `InferredNode` wrapper — all become graph structure
   or metadata on Node.
+
+## BP-1: Build Pipeline Model
+
+The full compilation pipeline — `.dag` source → intermediate
+representation (Rust/Python/Go) → executable artifact — is a
+dependency DAG that should be modeled in `.dag`. Each stage has an
+artifact type, a transform tool, and its own dependencies. This is
+the same problem the compiler solves for user code: resolve a
+dependency graph, detect cycles, determine evaluation order.
+
+```
+.dag source ──(v2-compiler)──▶ .rs/.py/.go ──(cargo/python/go)──▶ binary/runtime
+     ▲                              │
+     └──────── bootstrap cycle ─────┘  (Rust only: stage0 self-compile)
+```
+
+### Existing infrastructure
+
+Pieces already modeled:
+
+| Concept | Where | What it captures |
+|---------|-------|-----------------|
+| Intermediate targets | `src/v2/artifact.dag` `RenderTarget` | Rust, Python, Go, Dag |
+| Artifact taxonomy | `src/v2/artifact.dag` `ArtifactKind` | ServiceBinary, Library, Frontend, GeneratedSupport |
+| Per-target scaffold | `src/v2/languages.dag` `ProjectScaffold` | manifest file, source dir, extension |
+| Cargo as tool | `dsl/extdeps/cargo.dag` | packages, targets, profiles, Build/Test/Clippy ops |
+| Workspace graph | `dsl/extdeps/gunbc.dag` | `CrateRole`, `WorkspacePackage`, 13 packages |
+| Build phases | `dsl/tools/build.dag` | multi-stage cargo pipeline with result aggregation |
+| Codegen execution | `dsl/tools/codegen.dag` | stamp-file-gated conditional codegen |
+| Output paths | `dsl/config/codegen_paths.dag` | output dirs, stamp files, path templates |
+| Pipeline runs | `dsl/gunbc/workflow/types.dag` | `PipelineRun`, `PipelineArtifact`, stage outcomes |
+
+What's missing: the **derivation chain** connecting these — which
+artifact is produced from which source by which tool, the bootstrap
+cycle and its fixed-point condition, and the generated-vs-source
+distinction as structural data.
+
+### Work items
+
+- [ ] **BP-1a: Derivation model.** Types for pipeline stages, derivation
+  edges (source artifact → tool → output artifact), and external tool
+  dependencies. Compose existing `RenderTarget`, `ProjectScaffold`,
+  cargo service, and `ArtifactKind` into an explicit derivation DAG.
+  Location: `dsl/std/pipeline.dag` or extend `dsl/extdeps/gunbc.dag`.
+- [ ] **BP-1b: Bootstrap cycle.** Model the self-compile cycle: stage0
+  as bootstrap seed, the fixed-point condition (pass N == pass N+1),
+  and the two-pass rule (required when emitter changes its own output).
+  Hand-maintained files (9) enumerated as source artifacts distinct
+  from generated artifacts.
+- [ ] **BP-1c: `.gitattributes` generation.** Files the pipeline model
+  marks as "generated" get `-merge` in `.gitattributes`. The
+  `.gitattributes` file is a derived artifact from the pipeline model,
+  not hand-maintained config. Analogous to how `dsl/tools/bootstrap.dag`
+  generates `.gitignore` from `dsl/config/gitignore.dag`.
+- [ ] **BP-1d: Merge workflow.** Document and enforce: resolve `.dag`
+  conflicts → accept either side of generated stage0 → regen → commit.
+  CI freshness gate (`check-stage0-freshness.sh`) is the safety net.
+
+### Acceptance
+
+1. The derivation chain from `.dag` source through intermediate
+   representation to executable is explicit `.dag` data, not
+   shell-script convention.
+2. `.gitattributes` is generated from the pipeline model. Generated
+   files have `-merge`; hand-maintained files do not.
+3. Every file in `src/v2/stage0/src/` is classified as either
+   generated or hand-maintained by the model.
+4. The bootstrap cycle, fixed-point condition, and two-pass rule are
+   structural facts in the model.
+5. Stage0 merge conflicts no longer require manual resolution.
 
 ## Exploratory Directions
 

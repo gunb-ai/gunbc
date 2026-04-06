@@ -105,7 +105,7 @@ import v2.compiler.infer_emit_info {
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum
 }
-import v2.compiler.ownership { analyze_ownership, build_movable_set }
+import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
@@ -380,12 +380,25 @@ fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_s
 // Ownership index -- fan-out=1 bindings that can be moved instead of cloned
 // =========================================================================
 
-fn build_ownership_index(modules: List<TypedModule>) -> Map<String, Map<String, Bool>> {
-  modules |> fold(init: empty_map(), f: (acc, m) =>
-    m.items |> filter(item => item.body != None) |> fold(init: acc, f: (inner_acc, item) =>
-      let proof = analyze_ownership(func_name: item.name, params: item.params, body: item.body.value)
-      map_insert(inner_acc, item.name, build_movable_set(proof: proof))
-    )
+type OwnershipBuildResult {
+  ownership_index: Map<String, Map<String, Bool>>
+  fold_eligible_index: Map<String, Map<String, Bool>>
+}
+
+fn build_fold_eligible_set(proof: OwnershipProof) -> Map<String, Bool> {
+  proof.fold_acc_unwrap |> fold(init: empty_map(), f: (acc, p) =>
+    if p.eligible { map_insert(acc, p.acc_type_name, true) } else { acc }
+  )
+}
+
+fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
+  let items = modules |> flat_map(m => m.items |> filter(item => item.body != None))
+  items |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map() }, f: (acc, item) =>
+    let proof = analyze_ownership(func_name: item.name, params: item.params, body: item.body.value)
+    OwnershipBuildResult {
+      ownership_index: map_insert(acc.ownership_index, item.name, build_movable_set(proof: proof)),
+      fold_eligible_index: map_insert(acc.fold_eligible_index, item.name, build_fold_eligible_set(proof: proof))
+    }
   )
 }
 
@@ -395,17 +408,19 @@ fn build_ownership_index(modules: List<TypedModule>) -> Map<String, Map<String, 
 
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let base_info = build_emit_graph_info(modules: typed.modules)
-  let ownership_idx = build_ownership_index(modules: typed.modules)
+  let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     shared_types: shared,
-    ownership_index: ownership_idx,
+    ownership_index: ownership.ownership_index,
     movable: empty_map(),
     variant_to_enum: base_info.variant_to_enum,
-    owned_bindings: empty_map()
+    owned_bindings: empty_map(),
+    fold_eligible_index: ownership.fold_eligible_index,
+    fold_eligible: empty_map()
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -736,6 +751,10 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
         None => empty_map()
       }
     }
+    let fn_fold_eligible = match map_get(emit_info.fold_eligible_index, item.name) {
+      Some { value: m } => m
+      None => empty_map()
+    }
     let fn_emit_info = EmitGraphInfo {
       type_summaries: emit_info.type_summaries,
       recursive_type_set: emit_info.recursive_type_set,
@@ -744,7 +763,9 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       ownership_index: emit_info.ownership_index,
       movable: fn_movable,
       variant_to_enum: emit_info.variant_to_enum,
-      owned_bindings: empty_map()
+      owned_bindings: empty_map(),
+      fold_eligible_index: emit_info.fold_eligible_index,
+      fold_eligible: fn_fold_eligible
     }
     if item.uses |> count > 0 {
       emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
@@ -2521,84 +2542,6 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
   }
 }
 
-// Walk through ExprLet chains and ExprBlock wrappers to find the terminal expression.
-// The parser wraps multi-statement lambda bodies in ExprBlock, so we must look
-// through both ExprBlock (last child) and ExprLet (body child) to reach the
-// terminal expression that determines whether the fold constructs its accumulator.
-fn fold_terminal_expr(body: Node) -> Node {
-  match body.expr_data {
-    ExprLet => match let_body(texpr: body) {
-      Some { value: inner } => fold_terminal_expr(body: inner)
-      None => body
-    }
-    ExprBlock => match body.children |> last {
-      Some { value: last_child } => fold_terminal_expr(body: last_child)
-      None => body
-    }
-    _ => body
-  }
-}
-
-// Check if a fold lambda's body terminal expression constructs a struct of the
-// accumulator type. When true, the fold body is safe for Rc::try_unwrap
-// optimization: field accesses on the accumulator are moves into the new struct,
-// not whole-accumulator references that would produce type mismatches.
-fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String) -> Bool {
-  match lambda_node.expr_data {
-    ExprLambda { semantics: _ } =>
-      let body = lambda_body(texpr: lambda_node)
-      let terminal = fold_terminal_expr(body: body)
-      match terminal.expr_data {
-        ExprRecordLit { parent_enum: _ } => terminal.name == acc_type_name
-        _ => false
-      }
-    _ => false
-  }
-}
-
-// Collect direct acc.field moves in a fold body. A "direct" move is
-// ExprFieldAccess where the base is ExprVar matching the accumulator name.
-// Accesses that appear as the first argument of an rt_ref_map_function are
-// borrows (emitted with &), not moves, and are excluded.
-fn collect_acc_field_moves(node: Node, acc_name: String) -> List<String> {
-  match node.expr_data {
-    ExprFieldAccess { summary: _ } =>
-      let base = field_access_base(texpr: node)
-      let is_direct = match base.expr_data {
-        ExprVar { binding_kind: _ } => expr_var_name(texpr: base) == acc_name
-        _ => false
-      }
-      if is_direct {
-        [field_access_field(texpr: node)]
-      } else {
-        node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name))
-      }
-    ExprCall { call_semantics: _ } =>
-      if map_contains_key(rt_ref_map_functions(), expr_call_func(texpr: node)) {
-        // First arg receives & prefix at emission (borrow), skip its subtree
-        node.children |> skip(1) |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name))
-      } else {
-        node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name))
-      }
-    _ =>
-      node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name))
-  }
-}
-
-// Check that no accumulator field is moved more than once in the fold body.
-// The Rc::try_unwrap optimization makes acc.field a Rust move (not clone).
-// If the same field is moved twice, Rust rejects it as use-after-move.
-fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String) -> Bool {
-  match lambda_node.expr_data {
-    ExprLambda { semantics: _ } =>
-      let body = lambda_body(texpr: lambda_node)
-      let moves = collect_acc_field_moves(node: body, acc_name: acc_name)
-      let deduped = moves |> fold(init: empty_map(), f: (seen, field) => map_insert(seen, field, true))
-      map_keys(deduped) |> count == moves |> count
-    _ => true
-  }
-}
-
 fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types)
@@ -2631,16 +2574,8 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
           }
       }
   }
-  // Fold accumulators are linearly threaded — owned at each step, not shared.
-  // When the accumulator is an Rc-wrapped struct, emit Rc::try_unwrap at
-  // iteration start so field accesses move instead of clone. This keeps Rc
-  // refcounts at 1, avoiding O(N) deep copies
-  // in Rc::make_mut (the root cause of O(N²) fold behavior).
-  // Types stay Rc-wrapped (shared_types unchanged) — only field access on the
-  // owned accumulator binding skips .clone() via owned_bindings.
-  // Safety: only applied when the fold body's terminal expression constructs a
-  // new struct of the accumulator type (ExprRecordLit check). This guarantees
-  // field accesses are moves into the new struct, not whole-accumulator refs.
+  // Fold accumulator unwrap: structural eligibility proven by ownership.dag,
+  // Rc guard checked here (Rust-specific rendering concern).
   let acc_type_name = acc_type_node.name
   let fold_lambda_node = match args |> skip(1) |> first {
     Some { value: a } => arg_value(n: a)
@@ -2653,15 +2588,9 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
     }
     _ => ""
   }
-  let cond_required = acc_type_node.return_cardinality == Required
-  let cond_rc = emit_map_has(m: shared_types, key: acc_type_name)
-  let cond_struct = match lookup_emit_type_summary(emit_info: emit_info, name: acc_type_name) {
-    Some { value: summary } => match summary.repr { StructRepr => true  _ => false }
-    None => false
-  }
-  let cond_body = fold_body_constructs_acc_struct(lambda_node: fold_lambda_node, acc_type_name: acc_type_name)
-  let cond_safe = fold_body_safe_field_moves(lambda_node: fold_lambda_node, acc_name: acc_param_name)
-  let acc_unwrap = cond_required && cond_rc && cond_struct && cond_body && cond_safe
+  // Structural eligibility proven upstream (ownership.dag). Rc guard stays here — it's a Rust rendering concern.
+  let structural_eligible = emit_map_has(m: emit_info.fold_eligible, key: acc_type_name)
+  let acc_unwrap = structural_eligible && emit_map_has(m: shared_types, key: acc_type_name)
   let fold_emit_info = if acc_unwrap {
     match fold_lambda_node.expr_data {
       ExprLambda { semantics: _ } =>
@@ -2676,7 +2605,9 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               ownership_index: emit_info.ownership_index,
               movable: emit_info.movable,
               variant_to_enum: emit_info.variant_to_enum,
-              owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true)
+              owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
+              fold_eligible_index: emit_info.fold_eligible_index,
+              fold_eligible: emit_info.fold_eligible
             }
           None => emit_info
         }
@@ -2872,6 +2803,26 @@ fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<St
   if needs_rc { concat("Rc::new(", raw, ")") } else { raw }
 }
 
+// Peephole: fuse skip(n) followed by first into .get(n) for O(1) indexed access.
+fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match receiver.expr_data {
+    ExprMethodCall { method_semantics: _ } =>
+      if expr_method_name(texpr: receiver) == "skip" {
+        let skip_recv = method_receiver(texpr: receiver)
+        let skip_args = method_arg_nodes(texpr: receiver)
+        let recv_str = emit_typed_expr(texpr: skip_recv, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+        let arg_str = emit_typed_first_arg(args: skip_args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+        concat(recv_str, ".get(", arg_str, " as usize).cloned()")
+      } else {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+        concat(recv_str, ".first().cloned()")
+      }
+    _ =>
+      let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      concat(recv_str, ".first().cloned()")
+  }
+}
+
 fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let function_name = method_name
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
@@ -2927,6 +2878,8 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
         let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
         let all_arg_strs = concat([recv_str], arg_strs)
         emit_nested_rt_concat(remaining: all_arg_strs, acc: "", shared_types: shared_types)
+      } else if method_name == "first" {
+        emit_rust_first_method_call(receiver: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else {
         // Template-driven methods: lookup in language extdep data.
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -3704,9 +3657,27 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   }
 }
 
+// Check if an expression tree contains a reference to a variable name.
+fn expr_references_var(node: Node, var_name: String) -> Bool {
+  match node.expr_data {
+    ExprVar { binding_kind: _ } => expr_var_name(texpr: node) == var_name
+    _ => node.children |> any(c => expr_references_var(node: c, var_name: var_name))
+  }
+}
+
 fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let ordered_args = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
   let si = scope.type_env.source_index
+  let arg_values = args |> map(a => arg_value(n: a))
+  // Mark TCO params as movable when they appear in at most one arg
+  // expression. This avoids .clone() on Rc containers, preventing
+  // O(n) deep copies inside Rc::make_mut (e.g. token list in TCO loops).
+  let tco_movable = params |> fold(acc: emit_info.movable, f: (m, p) =>
+    let pname = param_node_name_at(n: p, source_index: si)
+    let ref_count = arg_values |> fold(acc: 0, f: (n, av) =>
+      if expr_references_var(node: av, var_name: pname) { n + 1 } else { n })
+    if ref_count <= 1 { map_insert(m, pname, true) } else { m })
+  let tco_emit_info = with(emit_info, { movable: tco_movable })
+  let ordered_args = arg_values |> map(av => emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: tco_emit_info, fuel: 1024))
   let param_names = params |> map(p => emit_ident(name: param_node_name_at(n: p, source_index: si), target: Rust))
   let all_lines = tco_reassign_core(
     ordered_args: ordered_args, param_names: param_names,
@@ -4013,52 +3984,56 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
 }
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  // Data defs emit as constructor functions. Use shared_types for type
-  // rendering so returned types match the sharing model (e.g., Rc<Node>).
   let ty_str = render_rust_type(n: type_node, shared_types: shared_types)
   let fn_name = to_snake(name: name)
   let needs_rc = map_contains_key(shared_types, type_node.name)
   if is_simple_type_node(n: type_node) {
+    // Copy types (Int, Bool, Float) — inline, no caching
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
-  } else if has_nested_records_node(n: type_node) && !data_value_has_cross_refs(value: value) {
-    let json_str = emit_data_value_json(value: value, source_index: scope.type_env.source_index)
+  } else {
+    // Non-Copy data defs get thread_local caching.
+    // Avoids O(n) reconstruction on every call (maps, records, JSON deser).
+    let body = emit_data_def_body(type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
     concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
-      "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
-      "        .expect(\"valid data definition\")\n",
+      "    thread_local! {\n",
+      "        static CACHED: ", ty_str, " = {\n",
+      body, "\n",
+      "        };\n",
+      "    }\n",
+      "    CACHED.with(|c| c.clone())\n",
       "}")
+  }
+}
+
+fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
+  if has_nested_records_node(n: type_node) && !data_value_has_cross_refs(value: value) {
+    let json_str = emit_data_value_json(value: value, source_index: scope.type_env.source_index)
+    concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
+      "                .expect(\"valid data definition\")")
   } else {
     let is_map = node_is_keyed_collection(n: type_node)
     if is_map {
-    match value.expr_data {
-      ExprRecordLit { parent_enum: _ } =>
-        let inserts = value.children |> map(f =>
-          let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-          concat("    __m.insert(\"", field_init_node_name(n: f), "\".to_string(), ", val_str, ");")
-
-        )
-        let inserts_str = inserts |> join(separator: "\n")
-        concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
-          "    let mut __m = HashMap::new();\n",
-          inserts_str, "\n",
-          "    Rc::new(__m)\n",
-          "}")
-      _ =>
-        let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-        concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
-          "    ", val_str, "\n",
-          "}")
-    }
+      match value.expr_data {
+        ExprRecordLit { parent_enum: _ } =>
+          let inserts = value.children |> map(f =>
+            let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+            concat("            __m.insert(\"", field_init_node_name(n: f), "\".to_string(), ", val_str, ");")
+          )
+          let inserts_str = inserts |> join(separator: "\n")
+          concat("            let mut __m = HashMap::new();\n",
+            inserts_str, "\n",
+            "            Rc::new(__m)")
+        _ =>
+          let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          concat("            ", val_str)
+      }
     } else {
       let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-      // Record and list literals are already Rc-wrapped by their emitters.
-      // Only add Rc::new() for other expressions to avoid double-wrapping.
       let is_already_wrapped = match value.expr_data { ExprRecordLit { parent_enum: _ } => true  ExprListLit => true  _ => false }
       let wrap_start = if needs_rc && !is_already_wrapped { "Rc::new(" } else { "" }
       let wrap_end = if needs_rc && !is_already_wrapped { ")" } else { "" }
-      concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
-        "    ", wrap_start, val_str, wrap_end, "\n",
-        "}")
+      concat("            ", wrap_start, val_str, wrap_end)
     }
   }
 }

@@ -456,7 +456,7 @@ if is_product.clone() {
                 let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional.clone() {
                     {
-                        let __tco_0 = with_required_cardinality(n.clone());
+                        let __tco_0 = with_required_cardinality(n);
 n = __tco_0;
 continue;
 }
@@ -466,7 +466,7 @@ continue;
 } else {
                 let is_map = node_is_keyed_collection(n.clone());
 if is_map.clone() {
-                    match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+                    match n.children.clone().get(1 as usize).cloned() {
     Some(val_child) => { {
                         let __tco_0 = val_child.clone();
 n = __tco_0;
@@ -571,7 +571,7 @@ let ch = match Rc::new({ let mut __result = Vec::new(); for p in Rc::new(digit_c
 };
 {
                 let __tco_0 = rest.clone();
-let __tco_1 = v2_rt::concat(Rc::new(vec![ch.clone()]), acc.clone());
+let __tco_1 = v2_rt::concat(Rc::new(vec![ch.clone()]), acc);
 value = __tco_0;
 acc = __tco_1;
 continue;
@@ -1100,7 +1100,7 @@ if is_map {
     Some(kn) => build_type_rendering(kn.clone(), shared_types.clone(), recursive_types.clone()),
     None => leaf_type_rendering("_".to_string()),
 };
-let v = match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+let v = match n.children.clone().get(1 as usize).cloned() {
     Some(vn) => build_type_rendering(vn.clone(), shared_types.clone(), recursive_types.clone()),
     None => leaf_type_rendering("_".to_string()),
 };
@@ -1239,7 +1239,7 @@ if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
 },
     None => leaf_type_rendering("_".to_string()),
 };
-let second_child = match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+let second_child = match n.children.clone().get(1 as usize).cloned() {
     Some(c) => if (c.inferred.clone() != None) {
                     build_type_rendering(rt_type(c.clone()), shared_types.clone(), recursive_types.clone())
 } else {
@@ -1468,7 +1468,7 @@ if tr.is_tuple.clone() {
 return match target.clone() {
     RenderTarget::Go => if ((parts.clone().len() as i64) == 2) {
                         match parts.clone().first().cloned() {
-    Some(first_part) => match Rc::new(parts.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(first_part) => match parts.clone().get(1 as usize).cloned() {
     Some(second_part) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("struct{ First ".to_string(), first_part.clone()), "; Second ".to_string()), second_part.clone()), " }".to_string()),
     None => v2_rt::concat(v2_rt::concat("struct{ ".to_string(), parts.clone().join(&"; ".to_string())), " }".to_string()),
 },
@@ -1949,14 +1949,14 @@ match (*frame.expr.clone().expr_data.clone()).clone() {
     scope: frame.scope.clone(),
     depth: frame.depth.clone(),
 });
-let __tco_1 = fn_name.clone();
-let __tco_2 = emit_self_call_reassign.clone();
-let __tco_3 = emit_non_self_call.clone();
-let __tco_4 = emit_if.clone();
-let __tco_5 = emit_match.clone();
-let __tco_6 = emit_let.clone();
-let __tco_7 = emit_block.clone();
-let __tco_8 = emit_default_return.clone();
+let __tco_1 = fn_name;
+let __tco_2 = emit_self_call_reassign;
+let __tco_3 = emit_non_self_call;
+let __tco_4 = emit_if;
+let __tco_5 = emit_match;
+let __tco_6 = emit_let;
+let __tco_7 = emit_block;
+let __tco_8 = emit_default_return;
 frame = __tco_0;
 fn_name = __tco_1;
 emit_self_call_reassign = __tco_2;

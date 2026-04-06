@@ -243,17 +243,22 @@ pub struct AlgebraFieldTemplate {
 }
 
 pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
-    let mut __m = HashMap::new();
-    __m.insert("Int".to_string(), AlgebraProfile::OrderedRingProfile);
-    __m.insert("Float".to_string(), AlgebraProfile::ApproximateFieldProfile);
-    __m.insert("Bool".to_string(), AlgebraProfile::BooleanAlgebraProfile);
-    __m.insert("String".to_string(), AlgebraProfile::FreeMonoidScalarProfile);
-    __m.insert("List".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
-    __m.insert("Set".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
-    __m.insert("NonEmptyList".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
-    __m.insert("NonEmptySet".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
-    __m.insert("Map".to_string(), AlgebraProfile::PartialFunctionProfile);
-    Rc::new(__m)
+    thread_local! {
+        static CACHED: Rc<HashMap<String, AlgebraProfile>> = {
+            let mut __m = HashMap::new();
+            __m.insert("Int".to_string(), AlgebraProfile::OrderedRingProfile);
+            __m.insert("Float".to_string(), AlgebraProfile::ApproximateFieldProfile);
+            __m.insert("Bool".to_string(), AlgebraProfile::BooleanAlgebraProfile);
+            __m.insert("String".to_string(), AlgebraProfile::FreeMonoidScalarProfile);
+            __m.insert("List".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
+            __m.insert("Set".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
+            __m.insert("NonEmptyList".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
+            __m.insert("NonEmptySet".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
+            __m.insert("Map".to_string(), AlgebraProfile::PartialFunctionProfile);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn ordered_ring_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {

@@ -86,6 +86,21 @@ pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> { a.extend(b); a }
 
 pub fn list_push<T>(mut list: Vec<T>, item: T) -> Vec<T> { list.push(item); list }
 
+pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
+    let mut v = (*list).clone();
+    v.push(item);
+    v
+}
+
+pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
+    let start = start.max(0) as usize;
+    let end = end.max(0) as usize;
+    chars[start..end.min(chars.len())]
+        .iter()
+        .filter_map(|&cp| char::from_u32(cp as u32))
+        .collect()
+}
+
 pub fn parse_int(s: String) -> Option<i64> { s.parse::<i64>().ok() }
 
 pub fn map_contains_key<V>(m: &HashMap<String, V>, key: String) -> bool {

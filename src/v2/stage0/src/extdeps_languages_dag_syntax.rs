@@ -52,80 +52,239 @@ use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, 
 use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 
 pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
-    serde_json::from_value(serde_json::json!([{"keyword": "type", "has_type_params": true, "has_params": false, "has_return_type": false, "return_required": false, "has_uses": false, "body_kind": "TypeBody"}, {"keyword": "fn", "has_type_params": true, "has_params": true, "has_return_type": true, "return_required": true, "has_uses": false, "body_kind": "ExprBody"}, {"keyword": "func", "has_type_params": false, "has_params": true, "has_return_type": true, "return_required": false, "has_uses": true, "body_kind": "BlockBody"}, {"keyword": "service", "has_type_params": false, "has_params": false, "has_return_type": false, "return_required": false, "has_uses": false, "body_kind": "ServiceBody"}, {"keyword": "resource", "has_type_params": false, "has_params": false, "has_return_type": false, "return_required": false, "has_uses": false, "body_kind": "ResourceBody"}, {"keyword": "data", "has_type_params": false, "has_params": false, "has_return_type": false, "return_required": false, "has_uses": false, "body_kind": "ValueBody"}, {"keyword": "pattern", "has_type_params": false, "has_params": true, "has_return_type": true, "return_required": false, "has_uses": true, "body_kind": "BlockBody"}, {"keyword": "interface", "has_type_params": false, "has_params": true, "has_return_type": true, "return_required": false, "has_uses": false, "body_kind": "BlockBody"}]))
-        .expect("valid data definition")
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<ItemForm>>> = {
+            Rc::new(vec![Rc::new(ItemForm {
+    keyword: "type".to_string(),
+    has_type_params: true,
+    has_params: false,
+    has_return_type: false,
+    return_required: false,
+    has_uses: false,
+    body_kind: BodyKind::TypeBody,
+}), Rc::new(ItemForm {
+    keyword: "fn".to_string(),
+    has_type_params: true,
+    has_params: true,
+    has_return_type: true,
+    return_required: true,
+    has_uses: false,
+    body_kind: BodyKind::ExprBody,
+}), Rc::new(ItemForm {
+    keyword: "func".to_string(),
+    has_type_params: false,
+    has_params: true,
+    has_return_type: true,
+    return_required: false,
+    has_uses: true,
+    body_kind: BodyKind::BlockBody,
+}), Rc::new(ItemForm {
+    keyword: "service".to_string(),
+    has_type_params: false,
+    has_params: false,
+    has_return_type: false,
+    return_required: false,
+    has_uses: false,
+    body_kind: BodyKind::ServiceBody,
+}), Rc::new(ItemForm {
+    keyword: "resource".to_string(),
+    has_type_params: false,
+    has_params: false,
+    has_return_type: false,
+    return_required: false,
+    has_uses: false,
+    body_kind: BodyKind::ResourceBody,
+}), Rc::new(ItemForm {
+    keyword: "data".to_string(),
+    has_type_params: false,
+    has_params: false,
+    has_return_type: false,
+    return_required: false,
+    has_uses: false,
+    body_kind: BodyKind::ValueBody,
+}), Rc::new(ItemForm {
+    keyword: "pattern".to_string(),
+    has_type_params: false,
+    has_params: true,
+    has_return_type: true,
+    return_required: false,
+    has_uses: true,
+    body_kind: BodyKind::BlockBody,
+}), Rc::new(ItemForm {
+    keyword: "interface".to_string(),
+    has_type_params: false,
+    has_params: true,
+    has_return_type: true,
+    return_required: false,
+    has_uses: false,
+    body_kind: BodyKind::BlockBody,
+})])
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dag_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
-    let mut __m = HashMap::new();
-    __m.insert("true".to_string(), Rc::new(LiteralValue::LitBool {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, Rc<LiteralValue>>> = {
+            let mut __m = HashMap::new();
+            __m.insert("true".to_string(), Rc::new(LiteralValue::LitBool {
     value: true,
 }));
-    __m.insert("false".to_string(), Rc::new(LiteralValue::LitBool {
+            __m.insert("false".to_string(), Rc::new(LiteralValue::LitBool {
     value: false,
 }));
-    __m.insert("none".to_string(), Rc::new(LiteralValue::LitNull));
-    __m.insert("null".to_string(), Rc::new(LiteralValue::LitNull));
-    Rc::new(__m)
+            __m.insert("none".to_string(), Rc::new(LiteralValue::LitNull));
+            __m.insert("null".to_string(), Rc::new(LiteralValue::LitNull));
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
-    let mut __m = HashMap::new();
-    __m.insert("module".to_string(), true);
-    __m.insert("import".to_string(), true);
-    __m.insert("type".to_string(), true);
-    __m.insert("fn".to_string(), true);
-    __m.insert("func".to_string(), true);
-    __m.insert("service".to_string(), true);
-    __m.insert("resource".to_string(), true);
-    __m.insert("data".to_string(), true);
-    __m.insert("interface".to_string(), true);
-    __m.insert("pipeline".to_string(), true);
-    __m.insert("profile".to_string(), true);
-    __m.insert("pattern".to_string(), true);
-    __m.insert("let".to_string(), true);
-    __m.insert("return".to_string(), true);
-    __m.insert("match".to_string(), true);
-    __m.insert("if".to_string(), true);
-    __m.insert("else".to_string(), true);
-    __m.insert("for".to_string(), true);
-    __m.insert("in".to_string(), true);
-    __m.insert("where".to_string(), true);
-    __m.insert("with".to_string(), true);
-    __m.insert("true".to_string(), true);
-    __m.insert("false".to_string(), true);
-    __m.insert("none".to_string(), true);
-    __m.insert("null".to_string(), true);
-    __m.insert("acquire".to_string(), true);
-    __m.insert("release".to_string(), true);
-    __m.insert("capability".to_string(), true);
-    __m.insert("operation".to_string(), true);
-    __m.insert("input".to_string(), true);
-    __m.insert("output".to_string(), true);
-    __m.insert("idempotent".to_string(), true);
-    __m.insert("readonly".to_string(), true);
-    __m.insert("hermetic".to_string(), true);
-    Rc::new(__m)
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("module".to_string(), true);
+            __m.insert("import".to_string(), true);
+            __m.insert("type".to_string(), true);
+            __m.insert("fn".to_string(), true);
+            __m.insert("func".to_string(), true);
+            __m.insert("service".to_string(), true);
+            __m.insert("resource".to_string(), true);
+            __m.insert("data".to_string(), true);
+            __m.insert("interface".to_string(), true);
+            __m.insert("pipeline".to_string(), true);
+            __m.insert("profile".to_string(), true);
+            __m.insert("pattern".to_string(), true);
+            __m.insert("let".to_string(), true);
+            __m.insert("return".to_string(), true);
+            __m.insert("match".to_string(), true);
+            __m.insert("if".to_string(), true);
+            __m.insert("else".to_string(), true);
+            __m.insert("for".to_string(), true);
+            __m.insert("in".to_string(), true);
+            __m.insert("where".to_string(), true);
+            __m.insert("with".to_string(), true);
+            __m.insert("true".to_string(), true);
+            __m.insert("false".to_string(), true);
+            __m.insert("none".to_string(), true);
+            __m.insert("null".to_string(), true);
+            __m.insert("acquire".to_string(), true);
+            __m.insert("release".to_string(), true);
+            __m.insert("capability".to_string(), true);
+            __m.insert("operation".to_string(), true);
+            __m.insert("input".to_string(), true);
+            __m.insert("output".to_string(), true);
+            __m.insert("idempotent".to_string(), true);
+            __m.insert("readonly".to_string(), true);
+            __m.insert("hermetic".to_string(), true);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
-    serde_json::from_value(serde_json::json!([{"symbol": "??", "left_bp": 3, "right_bp": 4, "binop": "NullCoalesce"}, {"symbol": "||", "left_bp": 5, "right_bp": 6, "binop": "Or"}, {"symbol": "&&", "left_bp": 7, "right_bp": 8, "binop": "And"}, {"symbol": "==", "left_bp": 9, "right_bp": 10, "binop": "Eq"}, {"symbol": "!=", "left_bp": 9, "right_bp": 10, "binop": "Ne"}, {"symbol": "<", "left_bp": 11, "right_bp": 12, "binop": "Lt"}, {"symbol": ">", "left_bp": 11, "right_bp": 12, "binop": "Gt"}, {"symbol": "<=", "left_bp": 11, "right_bp": 12, "binop": "Le"}, {"symbol": ">=", "left_bp": 11, "right_bp": 12, "binop": "Ge"}, {"symbol": "+", "left_bp": 13, "right_bp": 14, "binop": "Add"}, {"symbol": "-", "left_bp": 13, "right_bp": 14, "binop": "Sub"}, {"symbol": "*", "left_bp": 15, "right_bp": 16, "binop": "Mul"}, {"symbol": "/", "left_bp": 15, "right_bp": 16, "binop": "Div"}, {"symbol": "%", "left_bp": 15, "right_bp": 16, "binop": "Mod"}, {"symbol": "|>", "left_bp": 17, "right_bp": 18, "binop": null}, {"symbol": ".", "left_bp": 19, "right_bp": 20, "binop": null}]))
-        .expect("valid data definition")
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {
+            Rc::new(vec![Rc::new(OperatorSpec {
+    symbol: "??".to_string(),
+    left_bp: 3,
+    right_bp: 4,
+    binop: Some(BinOp::NullCoalesce),
+}), Rc::new(OperatorSpec {
+    symbol: "||".to_string(),
+    left_bp: 5,
+    right_bp: 6,
+    binop: Some(BinOp::Or),
+}), Rc::new(OperatorSpec {
+    symbol: "&&".to_string(),
+    left_bp: 7,
+    right_bp: 8,
+    binop: Some(BinOp::And),
+}), Rc::new(OperatorSpec {
+    symbol: "==".to_string(),
+    left_bp: 9,
+    right_bp: 10,
+    binop: Some(BinOp::Eq),
+}), Rc::new(OperatorSpec {
+    symbol: "!=".to_string(),
+    left_bp: 9,
+    right_bp: 10,
+    binop: Some(BinOp::Ne),
+}), Rc::new(OperatorSpec {
+    symbol: "<".to_string(),
+    left_bp: 11,
+    right_bp: 12,
+    binop: Some(BinOp::Lt),
+}), Rc::new(OperatorSpec {
+    symbol: ">".to_string(),
+    left_bp: 11,
+    right_bp: 12,
+    binop: Some(BinOp::Gt),
+}), Rc::new(OperatorSpec {
+    symbol: "<=".to_string(),
+    left_bp: 11,
+    right_bp: 12,
+    binop: Some(BinOp::Le),
+}), Rc::new(OperatorSpec {
+    symbol: ">=".to_string(),
+    left_bp: 11,
+    right_bp: 12,
+    binop: Some(BinOp::Ge),
+}), Rc::new(OperatorSpec {
+    symbol: "+".to_string(),
+    left_bp: 13,
+    right_bp: 14,
+    binop: Some(BinOp::Add),
+}), Rc::new(OperatorSpec {
+    symbol: "-".to_string(),
+    left_bp: 13,
+    right_bp: 14,
+    binop: Some(BinOp::Sub),
+}), Rc::new(OperatorSpec {
+    symbol: "*".to_string(),
+    left_bp: 15,
+    right_bp: 16,
+    binop: Some(BinOp::Mul),
+}), Rc::new(OperatorSpec {
+    symbol: "/".to_string(),
+    left_bp: 15,
+    right_bp: 16,
+    binop: Some(BinOp::Div),
+}), Rc::new(OperatorSpec {
+    symbol: "%".to_string(),
+    left_bp: 15,
+    right_bp: 16,
+    binop: Some(BinOp::Mod),
+}), Rc::new(OperatorSpec {
+    symbol: "|>".to_string(),
+    left_bp: 17,
+    right_bp: 18,
+    binop: None,
+}), Rc::new(OperatorSpec {
+    symbol: ".".to_string(),
+    left_bp: 19,
+    right_bp: 20,
+    binop: None,
+})])
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
-    // Bootstrap patch: thread_local cache — dag_syntax_spec() is called per-token
-    // in the expression parser hot loop. Without caching, each call reconstructs
-    // the spec (including JSON deserialization of operators), causing O(n*k)
-    // overhead where n=tokens and k=JSON parse cost. This makes self-compilation
-    // take hours instead of seconds.
     thread_local! {
-        static CACHED: Rc<SyntaxSpec> = Rc::new(SyntaxSpec {
-            item_forms: dag_item_forms(),
-            operators: dag_operators(),
-            keyword_literals: dag_keyword_literals(),
-            keyword_set: dag_keyword_set(),
-        });
+        static CACHED: Rc<SyntaxSpec> = {
+            Rc::new(SyntaxSpec {
+    item_forms: dag_item_forms(),
+    operators: dag_operators(),
+    keyword_literals: dag_keyword_literals(),
+    keyword_set: dag_keyword_set(),
+})
+        };
     }
-    CACHED.with(|s| s.clone())
+    CACHED.with(|c| c.clone())
 }
