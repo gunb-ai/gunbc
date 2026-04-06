@@ -305,7 +305,7 @@ if has_catch_all {
                     Rc::new(vec![])
 } else {
                     {
-                        let covered_set = arms.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, arm: Rc<Node>| match (*arm_pattern(arm.clone())).clone() {
+                        let covered_set = arms.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, arm: Rc<Node>| match (*arm_pattern(arm.clone())).clone() {
     MatchPattern::VariantPattern { name: n, .. } => v2_rt::rc_map_insert(acc.clone(), n.clone(), true),
     MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
     LiteralValue::LitBool { value: b, .. } => if b.clone() {

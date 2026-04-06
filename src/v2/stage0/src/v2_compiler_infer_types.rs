@@ -1057,9 +1057,9 @@ let n4 = collect_field_template_names(boolean_algebra_collection_templates(), n3
 let n5 = collect_field_template_names(boolean_algebra_templates(), n4);
 let n6 = collect_field_template_names(approximate_field_templates(), n5);
 let all_template_names = collect_field_template_names(ordered_ring_templates(), n6);
-let concrete_types = Rc::new(v2_rt::map_keys(&kernel_algebra_profile())).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let concrete_types = Rc::new(v2_rt::map_keys(&kernel_algebra_profile())).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let concrete_types = v2_rt::rc_map_insert(v2_rt::rc_map_insert(concrete_types.clone(), "Char".to_string(), true), "Ordering".to_string(), true);
-Rc::new(v2_rt::map_keys(&all_template_names)).iter().cloned().fold(type_params.clone(), |acc: _, name: String| match v2_rt::map_get(&concrete_types, name.clone()) {
+Rc::new(v2_rt::map_keys(&all_template_names)).iter().cloned().fold(type_params.clone(), |acc: Rc<HashMap<String, bool>>, name: String| match v2_rt::map_get(&concrete_types, name.clone()) {
     Some(_) => acc.clone(),
     None => v2_rt::rc_map_insert(acc.clone(), name.clone(), true),
 })

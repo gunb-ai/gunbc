@@ -612,7 +612,7 @@ if ((norm_errors.len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
 }
-let source_indices = newline_indices.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), index.file.clone(), index.clone()));
+let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), index.file.clone(), index.clone()));
 let typed = reconcile(norm.graph.clone(), source_indices);
 let typed_diags = typed.diagnostics.clone();
 let func_entries = extract_func_entries(typed.clone());

@@ -400,7 +400,7 @@ if has_unnamed {
             match lookup_func_sig_in_scope(scope, func) {
     None => args.clone(),
     Some(sig) => {
-                let arg_map = args.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, arg: Rc<Node>| {
+                let arg_map = args.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
                     let n = arg_name(arg.clone());
 if (n.clone() != None) {
                         v2_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
@@ -408,7 +408,7 @@ if (n.clone() != None) {
                         acc.clone()
 }
 });
-let param_name_set = sig.params.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, param: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name(param.clone()), true));
+let param_name_set = sig.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name(param.clone()), true));
 let ordered = Rc::new({ let mut __result = Vec::new(); for param in sig.params.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&arg_map, param_node_name(param.clone())) {
     Some(arg) => Rc::new(vec![arg.clone()]),
     None => Rc::new(vec![]),

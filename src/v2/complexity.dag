@@ -1284,13 +1284,17 @@ fn self_calls_have_strict_parser_progress(func_name: String, body: Node, params:
   }
 }
 
+// Build an adjacency map seeded with empty neighbor lists for each name.
+// Typed return ensures [] resolves to List<String>, not List<Unit>.
+fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
+  names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, [])
+  )
+}
+
 fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
-  let initial_forward = names |> fold(init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, [])
-  )
-  let initial_reverse = names |> fold(init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, [])
-  )
+  let initial_forward = seed_adjacency_map(names: names)
+  let initial_reverse = seed_adjacency_map(names: names)
   let graph_acc = edges |> fold(init: CallGraphAcc { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
     let forward_neighbors = match map_get(acc.forward, edge.caller) {
       Some { value: ns } => ns
@@ -3112,12 +3116,8 @@ fn build_call_graph(func_entries: List<FuncEntry>) -> CallGraph {
   let edges = func_entries |> flat_map(entry =>
     collect_local_call_edges_in_expr(caller: entry.name, body: entry.body, local_func_set: local_func_set)
   )
-  let initial_forward = names |> fold(init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, [])
-  )
-  let initial_reverse = names |> fold(init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, [])
-  )
+  let initial_forward = seed_adjacency_map(names: names)
+  let initial_reverse = seed_adjacency_map(names: names)
   let graph_acc = edges |> fold(init: CallGraphAcc { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
     let forward_neighbors = match map_get(acc.forward, edge.caller) {
       Some { value: ns } => ns

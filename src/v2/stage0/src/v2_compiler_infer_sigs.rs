@@ -227,7 +227,7 @@ let ready_accum = ready.clone().iter().cloned().fold(Rc::new(SigsAccum {
 },
     None => acc.clone(),
 });
-let ready_set = ready.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
+let ready_set = ready.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
 let next_remaining = Rc::new({ let mut __result = Vec::new(); for fn_name in remaining.clone().iter().cloned() { if (emit_map_has(ready_set.clone(), fn_name.clone()) == false) { __result.push(fn_name); } } __result });
 {
             let __tco_0 = next_remaining.clone();
@@ -254,7 +254,7 @@ continue;
 pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, items: Rc<Vec<Rc<Node>>>, module_name: String) -> Rc<ResolveFuncSigsResult> {
     {
         let local_func_names = Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) { __result.push(item); } } __result }).iter().cloned() { __result.push(item.name.clone()); } __result });
-let local_func_set = local_func_names.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
+let local_func_set = local_func_names.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
 let call_edges = collect_func_call_edges(items.clone(), local_func_set.clone());
 let parent_resolved = Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, dsig: Rc<DeclaredFuncSig>| if emit_map_has(local_func_set.clone(), dsig.name.clone()) {
             acc.clone()
