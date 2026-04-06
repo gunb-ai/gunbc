@@ -638,9 +638,10 @@ No test >2s without justification. Self-compile time tracked per-PR.
 
 ---
 
-# CM: Compiler Concept Modeling (Lane 4)
+# CM: Compiler Concept Modeling (cross-cutting retrospective)
 
-**Full analysis and heuristic inventory:** [`src/v2/CM.md`](src/v2/CM.md)
+**Full analysis and heuristic inventory:** [`src/v2/CM.md`](src/v2/CM.md),
+[`src/v2/CM-inventory.md`](src/v2/CM-inventory.md)
 
 **Root cause:** The compiler doesn't model what it does. Every stage
 re-derives structural facts that earlier stages already knew. This is
@@ -648,10 +649,17 @@ the cause — M2 boundary gaps, CG emit heuristics, and L1 type-name
 comparisons are symptoms. Fixing symptoms relocates them; modeling the
 concepts dissolves them.
 
+**CM is not a parallel lane.** It is a retrospective discipline: after
+each feature lands (complexity work, emit changes, etc.), check whether
+new heuristics were added that should dissolve with better modeling.
+Modeling gaps reveal themselves through the work, not in advance.
+
 **Principle:** Model actual facts, let properties emerge. Improper
 modeling spawns downstream questions. Model the underlying concept and
 the questions dissolve. Same pattern as fold/descend/repeat dissolving
-ad-hoc iteration logic.
+ad-hoc iteration logic. Consume existing authorities, never duplicate
+them — the fix is always "surface existing structure," not "add a
+new interpretation layer."
 
 Emergent properties — recursion, termination, complexity classes — are
 NOT modeled directly. They fall out of composing structural facts about
@@ -662,8 +670,8 @@ are CM gaps: each name-matching classifier is a missing concept in std/.
 
 **Relationship to other lanes:** M2, CG, and CX all generate work items
 that are actually CM problems. When a PR "moves a heuristic upstream,"
-that's CM work wearing an M2/CG hat. CM is the lane that asks: what
-should the model be so the heuristic never existed?
+that's CM work wearing an M2/CG hat. CM asks: what should the model
+be so the heuristic never existed?
 
 ## MM-1: Item identity
 
