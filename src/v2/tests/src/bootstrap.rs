@@ -31,11 +31,13 @@ fn prepare_source_tree(workspace_dir: &std::path::Path) {
     // Copy language extdeps
     let lang_dirs = ["rust", "python", "go"];
     for lang in &lang_dirs {
-        let src = ws.join(format!("dsl/extdeps/languages/{}/emit.dag", lang));
-        if src.exists() {
-            let dst_dir = workspace_dir.join(format!("dsl/extdeps/languages/{}", lang));
-            std::fs::create_dir_all(&dst_dir).unwrap();
-            std::fs::copy(&src, dst_dir.join("emit.dag")).unwrap();
+        let dst_dir = workspace_dir.join(format!("dsl/extdeps/languages/{}", lang));
+        std::fs::create_dir_all(&dst_dir).unwrap();
+        for file in &["emit.dag", "types.dag"] {
+            let src = ws.join(format!("dsl/extdeps/languages/{}/{}", lang, file));
+            if src.exists() {
+                std::fs::copy(&src, dst_dir.join(file)).unwrap();
+            }
         }
     }
     {
@@ -58,6 +60,8 @@ fn prepare_source_tree(workspace_dir: &std::path::Path) {
         "syntax",
         "termination",
         "coercion",
+        "computation",
+        "iteration",
     ];
     for name in &std_files {
         let src = ws.join(format!("dsl/std/{}.dag", name));
