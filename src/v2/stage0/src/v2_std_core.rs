@@ -1101,6 +1101,11 @@ pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
             let mut __m = HashMap::new();
             __m.insert("children".to_string(), NodeFieldRole::ChildrenListField);
             __m.insert("params".to_string(), NodeFieldRole::ChildrenListField);
+            __m.insert("body".to_string(), NodeFieldRole::SubValueField);
+            __m.insert("transport".to_string(), NodeFieldRole::SubValueField);
+            __m.insert("type_annotation".to_string(), NodeFieldRole::SubValueField);
+            __m.insert("properties".to_string(), NodeFieldRole::SubValueField);
+            __m.insert("uses".to_string(), NodeFieldRole::SubValueField);
             Rc::new(__m)
         };
     }

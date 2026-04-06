@@ -834,7 +834,12 @@ type NodeFieldRole
 
 data node_field_roles: Map<String, NodeFieldRole> = {
   "children": ChildrenListField,
-  "params": ChildrenListField
+  "params": ChildrenListField,
+  "body": SubValueField,
+  "transport": SubValueField,
+  "type_annotation": SubValueField,
+  "properties": SubValueField,
+  "uses": SubValueField
 }
 
 fn is_children_list_field(field_name: String) -> Bool {
