@@ -40,12 +40,10 @@ and the compiler lowers it all to the above.
 | FoldBodyCall             | (already fold) | (inherited)           |
 | SameArgumentCall         | repeat         | Forever               |
 
-**Proposed direction**: no pattern is rejected.
-`SameArgumentCall → repeat(Forever)` is the bounded truth principle:
-in a Bit/Word64 system, "always" = 2^63-1 iterations. True is a Bit,
-not infinity. This row requires an explicit update to INVARIANTS.md
-(which currently says unchanged-argument self-calls are compilation
-errors) before it becomes active in the analyzer.
+No pattern is rejected. `SameArgumentCall → repeat(Forever)` is the
+bounded truth principle: in a Bit/Word64 system, "always" = 2^63-1
+iterations. True is a Bit, not infinity. INVARIANTS.md is aligned:
+the lowering table is exhaustive and every call pattern has a bound.
 
 ### Cost = product of bounds
 

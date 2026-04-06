@@ -8,13 +8,11 @@
 // algebra.dag says "Int inhabits OrderedRing, therefore add/mul/compare exist."
 // computation.dag says "self(child) inhabits Descend, therefore it terminates."
 //
-// DESIGN PRINCIPLE (proposed direction — requires INVARIANTS.md update):
+// DESIGN PRINCIPLE:
 // No pattern is rejected. Every computation has a finite bound. The
 // compiler always succeeds in lowering; the question is not "does this
-// terminate?" but "what is its bound?" Currently INVARIANTS.md says
-// unchanged-argument self-calls are compilation errors; that invariant
-// must be explicitly updated before SameArgumentCall → repeat(Forever)
-// becomes active in the analyzer.
+// terminate?" but "what is its bound?" INVARIANTS.md is aligned: the
+// lowering table is exhaustive and every call pattern has a bound.
 //
 // BOUNDED TRUTH:
 //
@@ -189,7 +187,7 @@ type CallPattern
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
-  evidence: DescentEvidence   // Strict for all except FoldBodyCall (NonIncreasing)
+  evidence: DescentEvidence   // Strict for descent/shrink calls; NonIncreasing for fold body and same-argument
 }
 
 type IterationPrimitive
@@ -232,7 +230,19 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
     SameArgumentCall =>
       LoweringTarget { primitive: Repeat,
         bound: Forever,
-        evidence: Strict }
+        evidence: NonIncreasing }
+  }
+}
+
+// Extract the parameter name from a SizeBound, or none for bounds without
+// a named parameter (ExplicitCount, Forever).
+fn size_bound_param(bound: SizeBound) -> String? {
+  match bound {
+    TreeSize { param: p }       => Some { value: p }
+    CollectionSize { param: p } => Some { value: p }
+    ArithmeticParam { param: p } => Some { value: p }
+    ExplicitCount { n: _ }      => none
+    Forever                     => none
   }
 }
 

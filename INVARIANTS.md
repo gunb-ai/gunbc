@@ -410,7 +410,7 @@ The primitives are closed under composition. QED.
 ### Recursive syntax is sugar
 
 Developers write recursive functions for readability. The compiler
-lowers them to bounded primitives or rejects them:
+lowers every call pattern to a bounded primitive:
 
 | Call pattern in recursive function | Lowers to | Why it's bounded |
 |---|---|---|
@@ -418,26 +418,28 @@ lowers them to bounded primitives or rejects them:
 | Self-call inside `fold` body | Already bounded by fold | Fold bounds the iteration |
 | Self-call with `n - 1` | `repeat(n, ...)` | Bounded by n |
 | Mutual recursion (SCC) on children | `descend` over SCC | Bounded by \|SCC\| |
-| Self-call with unchanged argument | **Compilation error** | No bounded lowering exists |
+| Self-call with unchanged argument | `repeat(Forever, ...)` | Bounded by 2^63 - 1 |
 
-The last row is the key: a function that calls itself without structural
-descent cannot be expressed as a bounded primitive. This is a hard
-compilation error — not a warning, not a violation in a report. The
-program does not compile.
+No call pattern is rejected. The last row uses the bounded truth
+principle: in a Bit/Word64 system, "forever" is a finite bound
+(2^63 - 1 iterations). `repeat(Forever)` is not an approximation of
+infinity — it is the correct answer for the largest representable
+iteration count. See `std/computation.dag` (CallPattern →
+LoweringTarget) and `std/iteration.dag` for the full model.
 
 ### Fail-closed compilation
 
 Decidability is enforced at two levels:
 
 1. **Structural (construction):** The language has no unbounded iteration
-   primitive. `spin(n: n)` cannot lower to any primitive because no
-   primitive accepts unchanged arguments.
+   primitive. Every call pattern maps to exactly one bounded primitive
+   via the exhaustive lowering table in `std/computation.dag`.
 
-2. **Fail-closed (compilation):** If the compiler encounters a recursive
-   call pattern it cannot lower to a bounded primitive, compilation
-   fails with a hard error. This is a safety net — it catches gaps in
-   the structural prevention. In a correct implementation, this error
-   is unreachable.
+2. **Fail-closed (compilation):** If the compiler encounters a call
+   pattern it cannot classify (a gap in the classifier, not in the
+   model), compilation fails with a hard error. This is a safety net —
+   it catches analyzer incompleteness. In a correct implementation,
+   this error is unreachable because the lowering table is exhaustive.
 
 The complexity analyzer does not enforce decidability — it derives cost
 formulas from the bounded structure that the language guarantees. If the
