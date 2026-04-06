@@ -1,0 +1,171 @@
+// Coercion engine: data-driven type coercion from .dag algebra declarations.
+//
+// STATUS: transitional / test-only.
+// This module eliminates the hand-maintained v2_coercion.rs stage0 mirror
+// but is NOT yet the live compiler coercion authority. The emit path still
+// has its own inline coercion logic. Full M5-style end-to-end coercion
+// authority is future work.
+//
+// Replaces the hand-maintained v2_coercion.rs with a generated module.
+// Reads per-language coercion data from extdeps/languages/*/types.dag
+// and provides lookup functions for the test harness.
+//
+// Authority chain:
+//   std/coercion.dag               -> shared schema (TypeCheckpoint, InhabitantDecl, CallableRepr)
+//   extdeps/languages/*/types.dag  -> per-language data
+//   THIS FILE                      -> lookup functions + dispatch
+//
+// Consumers:
+//   compiler_tests.rs -- coercion registry tests
+
+module v2.compiler.coercion
+
+import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
+import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr }
+import extdeps.languages.rust.types {
+  rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
+  rust_optional_template
+}
+import extdeps.languages.python.types {
+  python_type_checkpoints, python_algebra_inhabitants, python_callable,
+  python_optional_template
+}
+import extdeps.languages.go.types {
+  go_type_checkpoints, go_algebra_inhabitants, go_callable,
+  go_optional_template
+}
+
+// =========================================================================
+// Per-target dispatch
+// =========================================================================
+
+fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
+  match target {
+    Rust => rust_type_checkpoints
+    Python => python_type_checkpoints
+    Go => go_type_checkpoints
+    Dag => []
+  }
+}
+
+fn target_inhabitants(target: RenderTarget) -> List<InhabitantDecl> {
+  match target {
+    Rust => rust_algebra_inhabitants
+    Python => python_algebra_inhabitants
+    Go => go_algebra_inhabitants
+    Dag => []
+  }
+}
+
+fn target_callable(target: RenderTarget) -> CallableRepr {
+  match target {
+    Rust => rust_callable
+    Python => python_callable
+    Go => go_callable
+    Dag => CallableRepr {
+      template: "fn(\{params\}) -> \{return\}",
+      param_separator: ", ",
+      return_separator: " -> ",
+      import_path: none
+    }
+  }
+}
+
+fn target_optional_template(target: RenderTarget) -> String {
+  match target {
+    Rust => rust_optional_template
+    Python => python_optional_template
+    Go => go_optional_template
+    Dag => "\{0\}?"
+  }
+}
+
+// =========================================================================
+// Level 1: Checkpoint lookup (primitive scalar coercion)
+// =========================================================================
+
+fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> TypeCheckpoint? {
+  target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
+}
+
+// Transitional: fail-open (returns dag_name on miss). M5-full should
+// fail-closed once all surface types have checkpoint declarations.
+fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
+  match lookup_checkpoint(target: target, dag_name: dag_name) {
+    Some { value: cp } => cp.target_type
+    None => dag_name
+  }
+}
+
+fn is_copy(target: RenderTarget, dag_name: String) -> Bool? {
+  match lookup_checkpoint(target: target, dag_name: dag_name) {
+    Some { value: cp } => cp.is_copy
+    None => none
+  }
+}
+
+// =========================================================================
+// Level 2: Algebra inhabitant lookup (container coercion)
+// =========================================================================
+
+fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
+  target_inhabitants(target: target) |> filter(inh => inh.algebra == algebra) |> first
+}
+
+// Surface name -> algebra name mapping.
+// The .dag language uses List, Set, Map as surface names.
+// The coercion engine resolves through algebra identities.
+// TODO: these are hardcoded string tables, not derived from a canonical
+// container declaration. A stronger model would carry algebra identity
+// structurally from one authority (e.g. inhabitant/arity data).
+data container_to_algebra: Map<String, String> = {
+  "List": "FreeMonoid",
+  "list": "FreeMonoid",
+  "NonEmptyList": "FreeMonoid",
+  "non_empty_list": "FreeMonoid",
+  "FreeMonoid": "FreeMonoid",
+  "free_monoid": "FreeMonoid",
+  "Set": "BooleanAlgebra",
+  "set": "BooleanAlgebra",
+  "NonEmptySet": "BooleanAlgebra",
+  "non_empty_set": "BooleanAlgebra",
+  "BooleanAlgebra": "BooleanAlgebra",
+  "boolean_algebra": "BooleanAlgebra",
+  "Map": "PartialFunction",
+  "map": "PartialFunction",
+  "PartialFunction": "PartialFunction",
+  "partial_function": "PartialFunction"
+}
+
+fn dag_container_to_algebra(name: String) -> String? {
+  lookup(container_to_algebra, key: name)
+}
+
+fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
+  match dag_container_to_algebra(name: container_name) {
+    Some { value: algebra } => match lookup_inhabitant(target: target, algebra: algebra) {
+      Some { value: inh } => Some { value: inh.template }
+      None => none
+    }
+    None => none
+  }
+}
+
+// =========================================================================
+// Template application utilities
+// =========================================================================
+
+fn apply_inhabitant_template1(template: String, inner: String) -> String {
+  replace(template, "\{0\}", inner)
+}
+
+fn apply_inhabitant_template2(template: String, first: String, second: String) -> String {
+  replace(replace(template, "\{0\}", first), "\{1\}", second)
+}
+
+// =========================================================================
+// Container identity constants (hardcoded; should be derived from algebra arity)
+// =========================================================================
+
+data coercion_keyed_container_names: List<String> = ["Map", "PartialFunction"]
+data coercion_element_container_names: List<String> = ["List", "Set", "NonEmptyList", "NonEmptySet", "FreeMonoid"]

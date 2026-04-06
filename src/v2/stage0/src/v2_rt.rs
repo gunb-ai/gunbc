@@ -93,9 +93,10 @@ pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
 }
 
 pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
-    let start = start.max(0) as usize;
-    let end = end.max(0) as usize;
-    chars[start..end.min(chars.len())]
+    let len = chars.len();
+    let start = (start.max(0) as usize).min(len);
+    let end = (end.max(0) as usize).min(len).max(start);
+    chars[start..end]
         .iter()
         .filter_map(|&cp| char::from_u32(cp as u32))
         .collect()
@@ -109,6 +110,57 @@ pub fn map_contains_key<V>(m: &HashMap<String, V>, key: String) -> bool {
 
 pub fn map_has<V>(m: &HashMap<String, V>, key: String) -> bool {
     m.contains_key(&key)
+}
+
+pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
+    let mut v = (*list).clone(); v.reverse(); Rc::new(v)
+}
+
+pub fn replace(s: String, from: String, to: String) -> String {
+    s.replace(&from, &to)
+}
+
+// -- Rc-wrapped container operations (FF-8) ---------------------------------
+// These mirror the bare Vec/HashMap functions above but operate on Rc-wrapped
+// containers for O(1) clone cost. Generated code using Rc container templates
+// will call these. Read-only functions (map_get, map_keys, map_values, lookup,
+// map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
+
+pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
+    let mut v = list;
+    Rc::make_mut(&mut v).push(item);
+    v
+}
+
+pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
+    let mut result = a;
+    Rc::make_mut(&mut result).extend(b.iter().cloned());
+    result
+}
+
+pub fn rc_map_insert<V: Clone>(map: Rc<HashMap<String, V>>, key: String, value: V) -> Rc<HashMap<String, V>> {
+    let mut m = map;
+    Rc::make_mut(&mut m).insert(key, value);
+    m
+}
+
+pub fn rc_map_merge<V: Clone>(base: Rc<HashMap<String, V>>, overlay: Rc<HashMap<String, V>>) -> Rc<HashMap<String, V>> {
+    let mut result = base;
+    let inner = Rc::make_mut(&mut result);
+    for (k, v) in overlay.iter() {
+        inner.insert(k.clone(), v.clone());
+    }
+    result
+}
+
+pub fn rc_index_by<V: Clone, F: Fn(&V) -> String>(list: Rc<Vec<V>>, key_fn: F) -> Rc<HashMap<String, V>> {
+    Rc::new(list.iter().map(|v| (key_fn(v), v.clone())).collect())
+}
+
+pub fn rc_empty_map<V>() -> Rc<HashMap<String, V>> { Rc::new(HashMap::new()) }
+
+impl<T: Clone> V2Concat for Rc<Vec<T>> {
+    fn v2_concat(self, other: Rc<Vec<T>>) -> Rc<Vec<T>> { rc_list_concat(self, other) }
 }
 
 pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {
@@ -212,57 +264,4 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
     let content = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
-}
-
-// -- Rc-wrapped container operations (FF-8) ---------------------------------
-// These mirror the bare Vec/HashMap functions above but operate on Rc-wrapped
-// containers for O(1) clone cost. Generated code using Rc container templates
-// will call these. Read-only functions (map_get, map_keys, map_values, lookup,
-// map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
-
-pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
-    let mut v = list;
-    Rc::make_mut(&mut v).push(item);
-    v
-}
-
-pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
-    let mut result = a;
-    Rc::make_mut(&mut result).extend(b.iter().cloned());
-    result
-}
-
-pub fn rc_map_insert<V: Clone>(map: Rc<HashMap<String, V>>, key: String, value: V) -> Rc<HashMap<String, V>> {
-    let mut m = map;
-    Rc::make_mut(&mut m).insert(key, value);
-    m
-}
-
-pub fn rc_map_merge<V: Clone>(base: Rc<HashMap<String, V>>, overlay: Rc<HashMap<String, V>>) -> Rc<HashMap<String, V>> {
-    let mut result = base;
-    let inner = Rc::make_mut(&mut result);
-    for (k, v) in overlay.iter() {
-        inner.insert(k.clone(), v.clone());
-    }
-    result
-}
-
-pub fn rc_index_by<V: Clone, F: Fn(&V) -> String>(list: Rc<Vec<V>>, key_fn: F) -> Rc<HashMap<String, V>> {
-    Rc::new(list.iter().map(|v| (key_fn(v), v.clone())).collect())
-}
-
-pub fn rc_empty_map<V>() -> Rc<HashMap<String, V>> { Rc::new(HashMap::new()) }
-
-pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
-    let mut v: Vec<T> = list.iter().cloned().collect();
-    v.reverse();
-    Rc::new(v)
-}
-
-pub fn replace(s: String, from: String, to: String) -> String {
-    s.replace(&from, &to)
-}
-
-impl<T: Clone> V2Concat for Rc<Vec<T>> {
-    fn v2_concat(self, other: Rc<Vec<T>>) -> Rc<Vec<T>> { rc_list_concat(self, other) }
 }

@@ -21,11 +21,6 @@
 
 module extdeps.languages.rust.types
 
-import std.languages {
-  TypeMapping, NamingConvention, NamingCase,
-  TypeDefinitionSyntax, LiteralSyntax
-}
-
 import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr
 }

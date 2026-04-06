@@ -18,11 +18,6 @@
 
 module extdeps.languages.go.types
 
-import std.languages {
-  TypeMapping, NamingConvention, NamingCase,
-  TypeDefinitionSyntax
-}
-
 import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr
 }
@@ -142,6 +137,7 @@ data go_callable: CallableRepr = CallableRepr {
 // =========================================================================
 
 data pointer_template: String = "*\{0\}"
+data go_optional_template: String = "*\{0\}"
 data address_of_template: String = "&\{value\}"
 data nil_literal: String = "nil"
 data visibility_by_case: Bool = true
