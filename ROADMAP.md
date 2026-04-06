@@ -314,13 +314,19 @@ Make emission fully data-driven. Adding a backend = adding data.
 ### Coercion infrastructure (reference)
 
 `build_type_rendering` reads coercion data from `.dag` declarations:
-- `TypeCheckpoint` (primitives) from language `types.dag`
-- `InhabitantDecl` (algebra containers) from language `types.dag`
-- `CallableRepr` (callable syntax)
+- [x] `TypeCheckpoint` (primitives) from language `types.dag` — live via `coerce_primitive_type`
+- [x] `InhabitantDecl` (algebra containers) from language `types.dag` — live via `coerce_container_template`
+- [x] `CallableRepr` (callable syntax) — live via `target_callable` in `render_type_base`
 
 Shared schema in `std/coercion.dag`; per-language instances in
 `extdeps/languages/{rust,python,go}/types.dag`. Design doc:
 [docs/coercion-design.md](docs/coercion-design.md).
+
+Remaining parallel authorities (coercion data exists but legacy path still used):
+- [ ] Copy/value semantics: `is_value_type` (per-language list) vs `TypeCheckpoint.is_copy`
+  (3 sites in 05_emit_rust.dag: needs_reference_node, is_primitive_numeric_node, is_simple_type_node)
+- [ ] Dead code: `try_target_primitive_type`, `rust_type_map`/`go_type_map`/`python_type_map`,
+  per-language `container_templates` — no remaining callers in emit pipeline
 
 ### Acceptance
 
