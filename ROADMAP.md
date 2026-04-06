@@ -615,8 +615,10 @@ lanes — any lane can introduce a regression.
 - **PERF-1**: ~~Un-ignore `performance_ratchet` in CI.~~ DONE (PR #326).
   30s budget, ~4.8s actual. CI gate catches O(n²) regressions.
 - **PERF-2**: `bootstrap_stage0_to_stage1` enabled in CI (PR #326).
-  Gates emitted-Rust correctness (0 cargo check errors). Convergence
-  proof (pass-1 = pass-2) remains in `bootstrap_fixed_point` (`#[ignore]`,
+  When emission succeeds, gates emitted-Rust correctness (0 cargo check
+  errors). Returns early without validation when complexity violations
+  block emission — not yet an unconditional gate. Convergence proof
+  (pass-1 = pass-2) remains in `bootstrap_fixed_point` (`#[ignore]`,
   not yet a CI gate — expensive: two full builds + two compiles).
 - **PERF-3**: Track self-compile memory. The CX OOM root cause was
   repeated complexity classification on large compiles, not raw budget.
