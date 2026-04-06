@@ -65,8 +65,9 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, HigherOrderMethodSpec, rust_higher_order_methods};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_value_type, is_string_like, target_primitive_type, try_target_primitive_type};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_value_type, is_string_like, target_primitive_type};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, rt_type, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
@@ -78,7 +79,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope,
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 pub use crate::v2_compiler_ownership::{OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, is_zero_arg_callable_ref, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, TransportKind, classify_transport, extract_modifier_names};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, TransportKind, classify_transport, extract_modifier_names};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
 pub fn render_rust_type(n: Rc<Node>, shared_types: Rc<HashMap<String, bool>>) -> String {
@@ -772,10 +773,7 @@ let ty = if (((rt_child.connective.clone() == Connective::Conj) && (rt_child.nam
             match v2_rt::map_get(&env.bindings.clone(), rt_child.name.clone()) {
     Some(binding) => if ((binding.resolved.clone().params.clone().len() as i64) > 0) {
                 {
-                    let base = match try_target_primitive_type(RenderTarget::Rust, rt_child.name.clone()) {
-    Some(m) => m.clone(),
-    None => rt_child.name.clone(),
-};
+                    let base = coerce_primitive_type(RenderTarget::Rust, rt_child.name.clone());
 let param_names = Rc::new({ let mut __result = Vec::new(); for p in binding.resolved.clone().params.clone().iter().cloned() { __result.push(generic_param_name_at(p.clone(), env.source_index.clone())); } __result });
 let with_params = v2_rt::concat(v2_rt::concat(v2_rt::concat(base, "<".to_string()), param_names.join(&", ".to_string())), ">".to_string());
 if emit_map_has(shared_types.clone(), rt_child.name.clone()) {
@@ -1667,26 +1665,21 @@ if is_data {
                         v2_rt::concat(to_snake(name.clone()), "()".to_string())
 } else {
                         {
-                            let is_zero_arg = is_zero_arg_callable_ref(binding_kind.clone(), resolved_type.clone());
-let is_function_value = match binding_kind.clone().as_deref().cloned() {
+                            let is_function_value = match binding_kind.clone().as_deref().cloned() {
     Some(VarBindingKind::FunctionValueBinding) => true,
     _ => false,
 };
 let ident = emit_ident(name.clone(), RenderTarget::Rust);
 let is_movable = emit_map_has(emit_info.movable.clone(), name.clone());
-let ident_str = if is_zero_arg {
-                                v2_rt::concat(ident, "()".to_string())
+let ident_str = if is_function_value {
+                                ident
 } else {
-                                if is_function_value {
+                                if is_movable {
                                     ident
 } else {
-                                    if is_movable {
-                                        ident
-} else {
-                                        match resolved_type.clone() {
+                                    match resolved_type.clone() {
     Some(_) => apply_type_template1(sharing.clone_value.clone(), ident),
     _ => ident,
-}
 }
 }
 };
@@ -1696,23 +1689,16 @@ ident_str
 },
     None => {
                     let ident = emit_ident(name.clone(), RenderTarget::Rust);
-let is_zero_arg = is_zero_arg_callable_ref(binding_kind.clone(), resolved_type.clone());
-if is_zero_arg {
-                        v2_rt::concat(ident, "()".to_string())
-} else {
-                        {
-                            let is_movable = emit_map_has(emit_info.movable.clone(), name.clone());
+let is_movable = emit_map_has(emit_info.movable.clone(), name.clone());
 let ident_str = if is_movable {
-                                ident
+                        ident
 } else {
-                                match resolved_type.clone() {
+                        match resolved_type.clone() {
     Some(_) => apply_type_template1(sharing.clone_value.clone(), ident),
     _ => ident,
 }
 };
 ident_str
-}
-}
 },
 },
 };
@@ -1751,31 +1737,10 @@ if emit_map_has(shared_types, enum_name.clone()) {
 if is_data {
                                 v2_rt::concat(to_snake(n.clone()), "()".to_string())
 } else {
-                                {
-                                    let is_zero_arg = is_zero_arg_callable_ref(binding_kind.clone(), texpr.inferred.clone());
-if is_zero_arg {
-                                        v2_rt::concat(emit_ident(n.clone(), RenderTarget::Rust), "()".to_string())
-} else {
-                                        emit_ident(n.clone(), RenderTarget::Rust)
-}
-}
-}
-},
-    None => {
-                            let is_func_binding = match binding_kind.clone().as_deref().cloned() {
-    Some(VarBindingKind::FunctionValueBinding) => true,
-    _ => false,
-};
-let is_known_func = match v2_rt::map_get(&scope.func_env.clone().signatures.clone(), n.clone()) {
-    Some(_) => true,
-    None => false,
-};
-if (is_func_binding || is_known_func) {
-                                v2_rt::concat(emit_ident(n.clone(), RenderTarget::Rust), "()".to_string())
-} else {
                                 emit_ident(n.clone(), RenderTarget::Rust)
 }
 },
+    None => emit_ident(n.clone(), RenderTarget::Rust),
 },
 }
 }
@@ -4591,9 +4556,13 @@ if is_optional {
                     "String".to_string()
 } else {
                     if ((n.children.clone().len() as i64) == 0) {
-                        match try_target_primitive_type(RenderTarget::Rust, n.name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => "String".to_string(),
+                        {
+                            let mapped = coerce_primitive_type(RenderTarget::Rust, n.name.clone());
+if (mapped.clone().as_str() != n.name.clone().as_str()) {
+                                mapped.clone()
+} else {
+                                "String".to_string()
+}
 }
 } else {
                         "String".to_string()

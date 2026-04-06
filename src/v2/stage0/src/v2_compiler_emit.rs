@@ -49,16 +49,17 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, Connective, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
-use crate::v2_std_core::VarBindingKind::{FunctionValueBinding};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::BinOp::{NullCoalesce};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{CardOptional};
+use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
 pub use crate::v2_compiler_infer_types::{rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection};
-pub use crate::std_types::{is_container_type};
+pub use crate::std_types::{is_container_type, container_to_algebra_name};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name};
@@ -840,7 +841,10 @@ pub fn emit_primitive_type(name: String, target: RenderTarget) -> String {
 }
 
 pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
-    match target_container_template(target.clone(), kind.clone()) {
+    if (kind.clone().as_str() == "optional".to_string().as_str()) {
+        apply_type_template1(target_optional_template(target.clone()), inner)
+} else {
+        match coerce_container_template(target.clone(), kind.clone()) {
     Some(template) => apply_type_template1(template.clone(), inner),
     None => match target.clone() {
     RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(kind.clone(), "[".to_string()), inner), "]".to_string()),
@@ -848,9 +852,10 @@ pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> Stri
 },
 }
 }
+}
 
 pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> String {
-    match target_container_template(target, "map".to_string()) {
+    match coerce_container_template(target, "map".to_string()) {
     Some(template) => apply_type_template2(template.clone(), key_type, val_type),
     None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Map<".to_string(), key_type), ", ".to_string()), val_type), ">".to_string()),
 }
@@ -979,7 +984,7 @@ if ((n.children.clone().len() as i64) == 0) {
             {
                 let bare_is_map = (is_container_type(n.name.clone()) && (to_snake(n.name.clone()).as_str() == "map".to_string().as_str()));
 let bare_is_collection = (is_container_type(n.name.clone()) && !bare_is_map.clone());
-let has_container_template = match target_container_template(RenderTarget::Rust, to_snake(n.name.clone())) {
+let has_container_template = match container_to_algebra_name(to_snake(n.name.clone())) {
     Some(_) => true,
     None => false,
 };
@@ -1254,7 +1259,7 @@ return Rc::new(TypeRendering {
 if (n.name.clone().as_str() != "".to_string().as_str()) {
             {
                 let snake = to_snake(n.name.clone());
-let has_template = match target_container_template(RenderTarget::Rust, snake.clone()) {
+let has_template = match container_to_algebra_name(snake.clone()) {
     Some(_) => true,
     None => false,
 };
@@ -1415,8 +1420,9 @@ pub fn render_type_base(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
     {
         if (tr.type_name.clone().as_str() == "Callable".to_string().as_str()) {
             {
-                let param_strs = Rc::new({ let mut __result = Vec::new(); for p in tr.params.clone().iter().cloned() { __result.push(render_type(p.clone(), target.clone())); } __result });
-let param_str = param_strs.join(&", ".to_string());
+                let repr = target_callable(target.clone());
+let param_strs = Rc::new({ let mut __result = Vec::new(); for p in tr.params.clone().iter().cloned() { __result.push(render_type(p.clone(), target.clone())); } __result });
+let param_str = param_strs.join(&repr.param_separator.clone());
 let ret_str = match tr.return_type.clone() {
     Some(rt) => render_type(rt.clone(), target.clone()),
     None => match target.clone() {
@@ -1425,15 +1431,15 @@ let ret_str = match tr.return_type.clone() {
     _ => "()".to_string(),
 },
 };
+let callable_str = v2_rt::replace(v2_rt::replace(repr.template.clone(), "{params}".to_string(), param_str.clone()), "{return}".to_string(), ret_str.clone());
 return match target.clone() {
+    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("Rc<dyn ".to_string(), v2_rt::replace(callable_str, "fn(".to_string(), "Fn(".to_string())), ">".to_string()),
     RenderTarget::Go => if (ret_str.clone().as_str() == "".to_string().as_str()) {
-                    v2_rt::concat(v2_rt::concat("func(".to_string(), param_str), ")".to_string())
+                    v2_rt::concat(v2_rt::concat("func(".to_string(), param_str.clone()), ")".to_string())
 } else {
-                    v2_rt::concat(v2_rt::concat(v2_rt::concat("func(".to_string(), param_str), ") ".to_string()), ret_str.clone())
+                    callable_str
 },
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Callable[[".to_string(), param_str), "], ".to_string()), ret_str.clone()), "]".to_string()),
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc<dyn Fn(".to_string(), param_str), ") -> ".to_string()), ret_str.clone()), ">".to_string()),
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat("Fn(".to_string(), param_str), ") -> ".to_string()), ret_str.clone()),
+    _ => callable_str,
 }
 }
 }
@@ -1502,10 +1508,7 @@ return emit_container(tr.type_name.clone(), inner_str.clone(), target.clone())
 }
 if ((tr.generic_args.clone().len() as i64) > 0) {
             {
-                let base = match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
-    Some(m) => m.clone(),
-    None => tr.type_name.clone(),
-};
+                let base = coerce_primitive_type(target.clone(), tr.type_name.clone());
 let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in tr.generic_args.clone().iter().cloned() { __result.push(render_type(a.clone(), target.clone())); } __result });
 let args_joined = arg_strs.join(&", ".to_string());
 return match target.clone() {
@@ -1532,10 +1535,7 @@ match target.clone() {
 }
 }
 }
-match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
-    Some(m) => m.clone(),
-    None => tr.type_name.clone(),
-}
+coerce_primitive_type(target.clone(), tr.type_name.clone())
 }
 }
 
@@ -2134,16 +2134,6 @@ pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) ->
     RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), l_str.clone()), " if ".to_string()), l_str.clone()), " is not None else ".to_string()), r_str), ")".to_string()),
     RenderTarget::Go => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func() interface{} { if ".to_string(), l_str.clone()), " != nil { return ".to_string()), l_str.clone()), " }; return ".to_string()), r_str), " }()".to_string()),
     RenderTarget::Dag => v2_rt::concat(v2_rt::concat(l_str.clone(), " ?? ".to_string()), r_str),
-}
-}
-
-pub fn is_zero_arg_callable_ref(binding_kind: Option<Rc<VarBindingKind>>, resolved_type: Option<Rc<InferredNode>>) -> bool {
-    match binding_kind.as_deref().cloned() {
-    Some(VarBindingKind::FunctionValueBinding) => match resolved_type.as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => ((rt.name.clone().as_str() == "Callable".to_string().as_str()) && ((rt.params.clone().len() as i64) == 0)),
-    _ => false,
-},
-    _ => false,
 }
 }
 

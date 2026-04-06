@@ -1,14 +1,8 @@
-// Coercion engine: data-driven type coercion from .dag algebra declarations.
+// Type realization: data-driven type coercion from .dag algebra declarations.
 //
-// STATUS: transitional / test-only.
-// This module eliminates the hand-maintained v2_coercion.rs stage0 mirror
-// but is NOT yet the live compiler coercion authority. The emit path still
-// has its own inline coercion logic. Full M5-style end-to-end coercion
-// authority is future work.
-//
-// Replaces the hand-maintained v2_coercion.rs with a generated module.
-// Reads per-language coercion data from extdeps/languages/*/types.dag
-// and provides lookup functions for the test harness.
+// Live authority for the type rendering pipeline. 05_emit.dag reads
+// TypeCheckpoint (primitive coercion), InhabitantDecl (container coercion),
+// and CallableRepr (callable syntax) via the lookup functions below.
 //
 // Authority chain:
 //   std/coercion.dag               -> shared schema (TypeCheckpoint, InhabitantDecl, CallableRepr)
@@ -16,7 +10,9 @@
 //   THIS FILE                      -> lookup functions + dispatch
 //
 // Consumers:
-//   compiler_tests.rs -- coercion registry tests
+//   05_emit.dag          -- coerce_primitive_type, coerce_container_template, target_callable, target_optional_template
+//   05_emit_rust.dag     -- coerce_primitive_type
+//   compiler_tests.rs    -- coercion registry tests
 
 module v2.compiler.coercion
 
