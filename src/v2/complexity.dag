@@ -58,7 +58,9 @@ import v2.std.core {
   is_child_accessor_in_model,
   lambda_param_names, lambda_body,
   is_children_list_field, is_sub_value_field,
-  is_tree_size_preserving, is_tree_size_reducing
+  is_tree_size_preserving, is_tree_size_reducing,
+  ListMethodSizeEffect, ListShrinkEffect, ElementProjection, CollectionIdentity,
+  list_method_size_effect
 }
 
 // =========================================================================
@@ -311,20 +313,6 @@ type DescentCheckAcc {
 type EvidenceBlockAcc {
   evidence: DescentEvidence?
   vars: Map<String, Bool>
-}
-
-// Structural classification of list methods relevant to descent proofs.
-// Replaces raw method-name string dispatch with a closed enum.
-type ListMethodKind
-  = SkipMethod     // skip(N): drops first N elements, List shrinks by N
-  | FirstMethod    // first: projects head element (descent from list to element)
-  | LastMethod     // last: projects tail element (descent from list to element)
-
-fn classify_list_method(name: String) -> ListMethodKind? {
-  if name == "skip" { Some { value: SkipMethod } }
-  else if name == "first" { Some { value: FirstMethod } }
-  else if name == "last" { Some { value: LastMethod } }
-  else { none }
 }
 
 // CX-C: Check if a method has algebra iteration semantics (fold, map, etc.)
@@ -1897,8 +1885,8 @@ fn is_children_of_param(expr: Node, param_name: String, vars: Map<String, Bool>)
     ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name(texpr: expr))
     ExprMethodCall { method_semantics: _ } =>
       // Handle `param.children |> skip(N)` — projection from children list.
-      match classify_list_method(name: expr_call_func(texpr: expr)) {
-        Some { value: SkipMethod } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+      match list_method_size_effect(method_name: expr_call_func(texpr: expr)) {
+        Some { value: ListShrinkEffect { by: _ } } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
         _ => false
       }
     // CX-J: Handle `skip(param.children, N)` — function-call form of skip.
@@ -1941,13 +1929,10 @@ fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool
       }
     ExprMethodCall { method_semantics: _ } =>
       let mname = expr_call_func(texpr: expr)
-      match classify_list_method(name: mname) {
-        Some { value: SkipMethod } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
-        _ =>
-          // CX-L: enumerate, filter, reverse preserve structural children identity.
-          // enumerate wraps in pairs (element at .second), filter/reverse reorder.
-          (mname == "enumerate" || mname == "filter" || mname == "reverse")
-          && is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+      match list_method_size_effect(method_name: mname) {
+        Some { value: ListShrinkEffect { by: _ } } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        Some { value: CollectionIdentity } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        _ => false
       }
     // CX-J: Handle `skip(descent_var.children, N)` — function-call form of skip.
     ExprCall { call_semantics: _ } =>
@@ -1981,9 +1966,8 @@ fn is_child_descent_expr(expr: Node, param_name: String, vars: Map<String, Bool>
   else {
     match expr.expr_data {
       ExprMethodCall { method_semantics: _ } =>
-        match classify_list_method(name: expr_call_func(texpr: expr)) {
-          Some { value: FirstMethod } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
-          Some { value: LastMethod } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
+        match list_method_size_effect(method_name: expr_call_func(texpr: expr)) {
+          Some { value: ElementProjection } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
           _ => false
         }
       _ => false
@@ -2037,11 +2021,11 @@ fn extractor_inner_arg(expr: Node) -> Node {
 fn is_list_shrink_expr(expr: Node, param_name: String) -> Bool {
   match expr.expr_data {
     ExprMethodCall { method_semantics: _ } =>
-      let is_skip = match classify_list_method(name: expr_call_func(texpr: expr)) {
-        Some { value: SkipMethod } => true
+      let is_shrink = match list_method_size_effect(method_name: expr_call_func(texpr: expr)) {
+        Some { value: ListShrinkEffect { by: _ } } => true
         _ => false
       }
-      is_skip
+      is_shrink
       && match method_receiver(texpr: expr).expr_data {
         ExprVar { binding_kind: _ } => expr_var_name(texpr: method_receiver(texpr: expr)) == param_name
         _ => false
@@ -2113,13 +2097,15 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
             bname == param_name || set_has(m: vars, key: bname)
           _ => false
         }
-      // CX-M: first/last extract an element from a collection; skip/filter/reverse
-      // preserve collection identity. If the receiver is descent, the result is descent.
+      // CX-M: element projection, list shrink, and collection identity methods
+      // preserve or extract descent. If the receiver is descent, the result is descent.
       ExprMethodCall { method_semantics: _ } =>
         let mname = expr_call_func(texpr: expr)
         let receiver = method_receiver(texpr: expr)
-        (mname == "first" || mname == "last" || mname == "skip" || mname == "filter" || mname == "reverse")
-        && expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+        match list_method_size_effect(method_name: mname) {
+          Some { value: _ } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          None => false
+        }
       _ => false
     }
   }

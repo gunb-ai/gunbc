@@ -69,6 +69,7 @@ use OperationModifier::*;
 use CompilerDiagnostic::*;
 use NodeFieldRole::*;
 use FunctionSizeEffect::*;
+use ListMethodSizeEffect::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Token {
@@ -1149,6 +1150,47 @@ pub fn is_tree_size_reducing(func_name: String) -> bool {
     Some(FunctionSizeEffect::TreeSizeReducing) => true,
     _ => false,
 }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum ListMethodSizeEffect {
+    ListShrinkEffect {
+        by: i64,
+    },
+    ElementProjection,
+    CollectionIdentity,
+}
+impl ListMethodSizeEffect {
+    pub fn by(&self) -> i64 {
+        match self {
+            ListMethodSizeEffect::ListShrinkEffect { by: __val, .. } => __val.clone(),
+            ListMethodSizeEffect::ElementProjection => panic!("no by on unit variant"),
+            ListMethodSizeEffect::CollectionIdentity => panic!("no by on unit variant"),
+        }
+    }
+}
+
+pub fn list_method_size_effects() -> Rc<HashMap<String, Rc<ListMethodSizeEffect>>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, Rc<ListMethodSizeEffect>>> = {
+            let mut __m = HashMap::new();
+            __m.insert("skip".to_string(), Rc::new(ListMethodSizeEffect::ListShrinkEffect {
+    by: 1,
+}));
+            __m.insert("first".to_string(), Rc::new(ListMethodSizeEffect::ElementProjection));
+            __m.insert("last".to_string(), Rc::new(ListMethodSizeEffect::ElementProjection));
+            __m.insert("enumerate".to_string(), Rc::new(ListMethodSizeEffect::CollectionIdentity));
+            __m.insert("filter".to_string(), Rc::new(ListMethodSizeEffect::CollectionIdentity));
+            __m.insert("reverse".to_string(), Rc::new(ListMethodSizeEffect::CollectionIdentity));
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn list_method_size_effect(method_name: String) -> Option<Rc<ListMethodSizeEffect>> {
+    v2_rt::lookup(&list_method_size_effects(), method_name)
 }
 
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
