@@ -548,7 +548,7 @@ pub fn emit_go_expr_field_access(expr: Rc<Node>, registry: Rc<HashMap<String, Rc
     {
         let prefix = make_indent(depth);
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { summary: summary, .. } => {
+    ExprData::ExprFieldAccess { summary, .. } => {
             let f = expr.name.clone();
 let b = field_access_base(expr.clone());
 if is_typed_service_call_receiver(expr.clone()) {
@@ -582,7 +582,7 @@ pub fn emit_go_expr_method_call(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<
     {
         let prefix = make_indent(depth);
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => {
+    ExprData::ExprMethodCall { method_semantics, .. } => {
             let r = method_receiver(expr.clone());
 let a = method_arg_nodes(expr.clone());
 let m = expr_method_name_at(expr.clone(), scope.type_env.clone().source_index.clone());
@@ -869,7 +869,7 @@ let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.iter().clo
 let args_str = arg_strs.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(var_name, ".".to_string()), go_export_ident(method)), "(".to_string()), args_str), ")".to_string())
 },
-    MethodSemantics::AlgebraMethodSemantics { method_def: method_def, .. } => {
+    MethodSemantics::AlgebraMethodSemantics { method_def, .. } => {
             let mn = method_def.name.clone();
 emit_go_algebra_method_call(mn, receiver.clone(), args, registry.clone(), scope.clone())
 },

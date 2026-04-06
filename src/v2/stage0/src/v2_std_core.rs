@@ -221,7 +221,7 @@ pub fn rt_node(n: Rc<Node>) -> Rc<NodeType> {
     message: m.clone(),
     span: s.clone(),
 }),
-    InferredNode::TypeVariable { id: id, .. } => Rc::new(NodeType::InferVariable {
+    InferredNode::TypeVariable { id, .. } => Rc::new(NodeType::InferVariable {
     id: id.clone(),
 }),
 }

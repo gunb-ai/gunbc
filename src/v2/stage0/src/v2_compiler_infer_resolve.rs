@@ -877,13 +877,13 @@ Rc::new(MatchArmResolveResult {
 
 pub fn resolve_string_part(part: Rc<StringPart>, env: Rc<TypeEnv>, module_name: String) -> Rc<StringPartResolveResult> {
     match (*part).clone() {
-    StringPart::Text { value: value, .. } => Rc::new(StringPartResolveResult {
+    StringPart::Text { value, .. } => Rc::new(StringPartResolveResult {
     part: Rc::new(StringPart::Text {
     value: value.clone(),
 }),
     diagnostics: Rc::new(vec![]),
 }),
-    StringPart::Interpolation { expr: expr, .. } => {
+    StringPart::Interpolation { expr, .. } => {
         let expr_result = resolve_expr_types(expr.clone(), env, module_name);
 let resolved_expr = expr_result.expr.clone();
 let expr_diags = expr_result.diagnostics.clone();
@@ -932,7 +932,7 @@ pub fn resolve_expr_types(texpr: Rc<Node>, env: Rc<TypeEnv>, module_name: String
     expr: texpr.clone(),
     diagnostics: Rc::new(vec![]),
 }),
-    ExprData::ExprError { kind: kind, message: message, .. } => Rc::new(ExprResolveResult {
+    ExprData::ExprError { kind, message, .. } => Rc::new(ExprResolveResult {
     expr: make_expr_error_node(kind.clone(), message.clone(), texpr.span.clone()),
     diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: message.clone(),
@@ -1226,7 +1226,7 @@ Rc::new(ExprResolveResult {
     diagnostics: all_diags,
 })
 },
-    ExprData::ExprBinOp { op: op, .. } => {
+    ExprData::ExprBinOp { op, .. } => {
             let ch = texpr.children.clone();
 let lr = match ch.clone().first().cloned() {
     Some(l) => resolve_expr_types(l.clone(), env.clone(), module_name.clone()),
@@ -1249,7 +1249,7 @@ Rc::new(ExprResolveResult {
     diagnostics: v2_rt::concat(lr.diagnostics.clone(), rr.diagnostics.clone()),
 })
 },
-    ExprData::ExprUnaryOp { op: op, .. } => {
+    ExprData::ExprUnaryOp { op, .. } => {
             let r = match texpr.children.clone().first().cloned() {
     Some(o) => resolve_expr_types(o.clone(), env.clone(), module_name.clone()),
     None => Rc::new(ExprResolveResult {
