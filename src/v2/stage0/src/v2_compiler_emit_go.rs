@@ -69,7 +69,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, TransportKind, classify_transport};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, TransportKind, classify_transport};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
@@ -83,11 +83,11 @@ pub fn emit_go_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<St
     Some(stmt) => { let line = emit_go_typed_expr(stmt.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
 {
-            let __tco_0 = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = v2_rt::rc_list_push(text.clone(), line.clone());
+            let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = v2_rt::rc_list_push(text, line.clone());
 let __tco_2 = next_scope.clone();
-let __tco_3 = registry.clone();
-let __tco_4 = depth.clone();
+let __tco_3 = registry;
+let __tco_4 = depth;
 remaining = __tco_0;
 text = __tco_1;
 scope = __tco_2;
@@ -116,10 +116,10 @@ match rest.clone().first().cloned() {
 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
 {
             let __tco_0 = rest.clone();
-let __tco_1 = v2_rt::rc_list_push(text.clone(), line.clone());
+let __tco_1 = v2_rt::rc_list_push(text, line.clone());
 let __tco_2 = next_scope.clone();
-let __tco_3 = registry.clone();
-let __tco_4 = depth.clone();
+let __tco_3 = registry;
+let __tco_4 = depth;
 remaining = __tco_0;
 text = __tco_1;
 scope = __tco_2;
@@ -1250,31 +1250,11 @@ v2_rt::concat(v2_rt::concat(struct_def, "\n\n".to_string()), methods_str)
 pub fn emit_go_service_struct(name: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
     {
         let fs = compute_service_fields(fallback_transport, op_children);
-let rest_field = if fs.has_rest.clone() {
-            "\tBaseURL string".to_string()
-} else {
-            "".to_string()
-};
-let auth_field = if fs.has_auth.clone() {
-            "\n\tAuthToken string".to_string()
-} else {
-            "".to_string()
-};
-let shell_field = if fs.has_shell.clone() {
-            "\tWorkingDir string".to_string()
-} else {
-            "".to_string()
-};
-let file_field = if fs.has_file.clone() {
-            "\tBasePath string".to_string()
-} else {
-            "".to_string()
-};
-let fields = v2_rt::concat(v2_rt::concat(v2_rt::concat(rest_field, auth_field), shell_field), file_field);
-if (fields.clone().as_str() == "".to_string().as_str()) {
+let decls = service_field_decls(fs, language_spec(RenderTarget::Go).service_fields.clone());
+if ((decls.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat("type ".to_string(), name), " struct{}".to_string())
 } else {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("type ".to_string(), name), " struct {\n".to_string()), fields.clone()), "\n}".to_string())
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("type ".to_string(), name), " struct {\n".to_string()), decls.clone().join(&"\n".to_string())), "\n}".to_string())
 }
 }
 }

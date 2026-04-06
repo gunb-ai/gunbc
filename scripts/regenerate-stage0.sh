@@ -62,31 +62,11 @@ $STAGE0_CMD compile \
 #   main.rs: FF-9 import resolution, CLI entrypoint
 #   v2_rt.rs: runtime shims (Rc::make_mut, string ops, etc.)
 #   compiler_tests.rs: test harness
-#   extdeps_languages_dag_syntax.rs: thread_local cache for dag_syntax_spec
-#     and dag_keyword_set (called per-token in parser/tokenizer hot loops;
-#     without cache each call reconstructs full data structures. Remove
-#     when emitter supports data-def memoization.)
-#   v2_compiler_infer_method.rs: thread_local cache for builtin_function_registry
-#     (called per-expression during type inference; without cache each call
-#     reconstructs 27-entry HashMap with O(n^2) Rc clone overhead.)
-#   std_types.rs: thread_local cache for kernel_type_set and container_type_set
-#     (called per-node in infer/resolve/emit; without cache each call
-#     reconstructs 8 and 5 HashMap entries respectively.)
-#   v2_compiler_tokenize.rs: thread_local cache for single_punct
-#     (called per-token in scan_token; without cache reconstructs 11 entries.)
-#   extdeps_languages_rust_emit.rs: thread_local cache for rt_functions,
-#     rt_ref_map_functions, rt_bridge_function_names, rust_type_map,
-#     rust_keywords, rust_container_templates (called per-expression/type
-#     in emit; rt_ref_map_functions also eliminates JSON deser + O(n^2) fold.)
+#   v2_coercion.rs: lazy_static coercion registries (no .dag counterpart yet)
 cp "$STAGE0_DIR/src/v2_rt.rs" "$OUTPUT_DIR/src/v2_rt.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/compiler_tests.rs" "$OUTPUT_DIR/src/compiler_tests.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/main.rs" "$OUTPUT_DIR/src/main.rs" 2>/dev/null || true
-cp "$STAGE0_DIR/src/extdeps_languages_dag_syntax.rs" "$OUTPUT_DIR/src/extdeps_languages_dag_syntax.rs" 2>/dev/null || true
 cp "$STAGE0_DIR/src/v2_coercion.rs" "$OUTPUT_DIR/src/v2_coercion.rs" 2>/dev/null || true
-cp "$STAGE0_DIR/src/v2_compiler_infer_method.rs" "$OUTPUT_DIR/src/v2_compiler_infer_method.rs" 2>/dev/null || true
-cp "$STAGE0_DIR/src/std_types.rs" "$OUTPUT_DIR/src/std_types.rs" 2>/dev/null || true
-cp "$STAGE0_DIR/src/v2_compiler_tokenize.rs" "$OUTPUT_DIR/src/v2_compiler_tokenize.rs" 2>/dev/null || true
-cp "$STAGE0_DIR/src/extdeps_languages_rust_emit.rs" "$OUTPUT_DIR/src/extdeps_languages_rust_emit.rs" 2>/dev/null || true
 
 # --output-dir mode: leave output in place, caller handles it
 if [ -n "$OUTPUT_ONLY" ]; then

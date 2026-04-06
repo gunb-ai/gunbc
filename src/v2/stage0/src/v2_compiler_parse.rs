@@ -623,7 +623,7 @@ pub struct DescResult {
 }
 
 pub fn peek(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> Option<Rc<Token>> {
-    Rc::new(tokens.iter().cloned().skip(state.pos.clone() as usize).collect::<Vec<_>>()).first().cloned()
+    tokens.get(state.pos.clone() as usize).cloned()
 }
 
 pub fn peek_shape(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> Option<TokenShape> {
@@ -1483,7 +1483,7 @@ pub fn skip_newlines(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState) -> 
         if peek_is_newline(tokens.clone(), state.clone()) {
             let adv = advance(tokens.clone(), state.clone());
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = adv.state.clone();
 tokens = __tco_0;
 state = __tco_1;
@@ -1734,10 +1734,10 @@ if has_err(r.err.clone()) {
                 return r.clone()
 }
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::concat(v2_rt::concat(acc.clone(), ".".to_string()), r.name.clone());
-let __tco_3 = span.clone();
+let __tco_2 = v2_rt::concat(v2_rt::concat(acc, ".".to_string()), r.name.clone());
+let __tco_3 = span;
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -1846,9 +1846,9 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), r.import.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, r.import.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -1887,9 +1887,9 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), r.item.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, r.item.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -2003,9 +2003,9 @@ let s = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 s.clone()
 });
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), name_node.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, name_node.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -2934,7 +2934,7 @@ if e.consumed.clone() {
             {
                 let __tco_0 = tokens.clone();
 let __tco_1 = skip_newlines(tokens.clone(), e.state.clone());
-let __tco_2 = acc.clone();
+let __tco_2 = acc;
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -3360,9 +3360,9 @@ if has_err(r2.err.clone()) {
 })
 }
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = r2.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), r2.variant.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, r2.variant.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -3562,9 +3562,9 @@ if peek_is_rparen(tokens.clone(), s.clone()) {
 });
 } else {
                 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = s.clone();
-let __tco_2 = acc.clone();
+let __tco_2 = acc;
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -3676,7 +3676,7 @@ let next_params = v2_rt::rc_list_push(params.clone(), param.clone());
 let e = eat(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
                 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = e.state.clone();
 let __tco_2 = next_params.clone();
 tokens = __tco_0;
@@ -3719,9 +3719,9 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(args.clone(), r.type_expr.clone());
+let __tco_2 = v2_rt::rc_list_push(args, r.type_expr.clone());
 tokens = __tco_0;
 state = __tco_1;
 args = __tco_2;
@@ -3808,9 +3808,9 @@ let s3 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                     s2.clone()
 });
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = s3.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), r.field.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, r.field.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -4492,9 +4492,9 @@ let s = r.state.clone();
 let e = eat(tokens.clone(), s.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
             {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = e.state.clone();
-let __tco_2 = acc.clone();
+let __tco_2 = acc;
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -4650,7 +4650,7 @@ if e.consumed.clone() {
             {
                 let __tco_0 = tokens.clone();
 let __tco_1 = skip_newlines(tokens.clone(), e.state.clone());
-let __tco_2 = acc.clone();
+let __tco_2 = acc;
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -4904,11 +4904,11 @@ if has_err(r3.err.clone()) {
 })
 }
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = r3.state.clone();
 let __tco_2 = Some(r2.config.clone());
-let __tco_3 = transport.clone();
-let __tco_4 = operations.clone();
+let __tco_3 = transport;
+let __tco_4 = operations;
 tokens = __tco_0;
 state = __tco_1;
 config = __tco_2;
@@ -4930,11 +4930,11 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                        let __tco_0 = tokens.clone();
+                        let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = config.clone();
+let __tco_2 = config;
 let __tco_3 = r.transport.clone();
-let __tco_4 = operations.clone();
+let __tco_4 = operations;
 tokens = __tco_0;
 state = __tco_1;
 config = __tco_2;
@@ -4965,11 +4965,11 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = config.clone();
-let __tco_3 = transport.clone();
-let __tco_4 = v2_rt::rc_list_push(operations.clone(), r.operation.clone());
+let __tco_2 = config;
+let __tco_3 = transport;
+let __tco_4 = v2_rt::rc_list_push(operations, r.operation.clone());
 tokens = __tco_0;
 state = __tco_1;
 config = __tco_2;
@@ -5069,12 +5069,12 @@ let s3 = if e.consumed.clone() {
 };
 match fname.clone().as_str() {
     "endpoint" => { {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s3.clone();
 let __tco_2 = Some(r3.expr.clone());
-let __tco_3 = auth.clone();
-let __tco_4 = rate_limit.clone();
-let __tco_5 = retry.clone();
+let __tco_3 = auth;
+let __tco_4 = rate_limit;
+let __tco_5 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
@@ -5084,12 +5084,12 @@ retry = __tco_5;
 continue;
 } },
     "auth" => { {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s3.clone();
-let __tco_2 = endpoint.clone();
+let __tco_2 = endpoint;
 let __tco_3 = Some(r3.expr.clone());
-let __tco_4 = rate_limit.clone();
-let __tco_5 = retry.clone();
+let __tco_4 = rate_limit;
+let __tco_5 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
@@ -5099,12 +5099,12 @@ retry = __tco_5;
 continue;
 } },
     "rate_limit" => { {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s3.clone();
-let __tco_2 = endpoint.clone();
-let __tco_3 = auth.clone();
+let __tco_2 = endpoint;
+let __tco_3 = auth;
 let __tco_4 = Some(r3.expr.clone());
-let __tco_5 = retry.clone();
+let __tco_5 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
@@ -5114,11 +5114,11 @@ retry = __tco_5;
 continue;
 } },
     "retry" => { {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s3.clone();
-let __tco_2 = endpoint.clone();
-let __tco_3 = auth.clone();
-let __tco_4 = rate_limit.clone();
+let __tco_2 = endpoint;
+let __tco_3 = auth;
+let __tco_4 = rate_limit;
 let __tco_5 = Some(r3.expr.clone());
 tokens = __tco_0;
 state = __tco_1;
@@ -5129,12 +5129,12 @@ retry = __tco_5;
 continue;
 } },
     _ => { {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s3.clone();
-let __tco_2 = endpoint.clone();
-let __tco_3 = auth.clone();
-let __tco_4 = rate_limit.clone();
-let __tco_5 = retry.clone();
+let __tco_2 = endpoint;
+let __tco_3 = auth;
+let __tco_4 = rate_limit;
+let __tco_5 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
@@ -5338,7 +5338,7 @@ let s2 = if e.consumed.clone() {
 };
 match fname.clone() {
     transport_url_key => { {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s2.clone();
 let __tco_2 = Some(r3.expr.clone());
 tokens = __tco_0;
@@ -5347,9 +5347,9 @@ base_url = __tco_2;
 continue;
 } },
     _ => { {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = base_url.clone();
+let __tco_2 = base_url;
 tokens = __tco_0;
 state = __tco_1;
 base_url = __tco_2;
@@ -5425,7 +5425,7 @@ let s2 = if e.consumed.clone() {
                 r5.state.clone()
 };
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s2.clone();
 let __tco_2 = r4.exprs.clone();
 tokens = __tco_0;
@@ -5448,9 +5448,9 @@ let s2 = if e.consumed.clone() {
                 r3.state.clone()
 };
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = argv.clone();
+let __tco_2 = argv;
 tokens = __tco_0;
 state = __tco_1;
 argv = __tco_2;
@@ -5518,7 +5518,7 @@ let s2 = if e.consumed.clone() {
 };
 if ((fname.clone().as_str() == "path".to_string().as_str()) || (fname.clone().as_str() == transport_path_key().as_str())) {
                 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = s2.clone();
 let __tco_2 = Some(r3.expr.clone());
 tokens = __tco_0;
@@ -5528,9 +5528,9 @@ continue;
 }
 } else {
                 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = base_path.clone();
+let __tco_2 = base_path;
 tokens = __tco_0;
 state = __tco_1;
 base_path = __tco_2;
@@ -5765,15 +5765,15 @@ if has_err(r3.err.clone()) {
 })
 }
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = r3.state.clone();
 let __tco_2 = r2.fields.clone();
-let __tco_3 = outputs.clone();
-let __tco_4 = modifier_props.clone();
-let __tco_5 = transport.clone();
-let __tco_6 = exit_props.clone();
-let __tco_7 = response_props.clone();
-let __tco_8 = mock_props.clone();
+let __tco_3 = outputs;
+let __tco_4 = modifier_props;
+let __tco_5 = transport;
+let __tco_6 = exit_props;
+let __tco_7 = response_props;
+let __tco_8 = mock_props;
 tokens = __tco_0;
 state = __tco_1;
 inputs = __tco_2;
@@ -5831,15 +5831,15 @@ if has_err(r3.err.clone()) {
 })
 }
 {
-                        let __tco_0 = tokens.clone();
+                        let __tco_0 = tokens;
 let __tco_1 = r3.state.clone();
-let __tco_2 = inputs.clone();
+let __tco_2 = inputs;
 let __tco_3 = r2.fields.clone();
-let __tco_4 = modifier_props.clone();
-let __tco_5 = transport.clone();
-let __tco_6 = exit_props.clone();
-let __tco_7 = response_props.clone();
-let __tco_8 = mock_props.clone();
+let __tco_4 = modifier_props;
+let __tco_5 = transport;
+let __tco_6 = exit_props;
+let __tco_7 = response_props;
+let __tco_8 = mock_props;
 tokens = __tco_0;
 state = __tco_1;
 inputs = __tco_2;
@@ -5856,15 +5856,15 @@ continue;
                         let adv = advance(tokens.clone(), s.clone());
 let prop = modifier_to_prop("idempotent".to_string(), current_span(tokens.clone(), s.clone()));
 {
-                            let __tco_0 = tokens.clone();
+                            let __tco_0 = tokens;
 let __tco_1 = adv.state.clone();
-let __tco_2 = inputs.clone();
-let __tco_3 = outputs.clone();
-let __tco_4 = v2_rt::rc_list_push(modifier_props.clone(), prop.clone());
-let __tco_5 = transport.clone();
-let __tco_6 = exit_props.clone();
-let __tco_7 = response_props.clone();
-let __tco_8 = mock_props.clone();
+let __tco_2 = inputs;
+let __tco_3 = outputs;
+let __tco_4 = v2_rt::rc_list_push(modifier_props, prop.clone());
+let __tco_5 = transport;
+let __tco_6 = exit_props;
+let __tco_7 = response_props;
+let __tco_8 = mock_props;
 tokens = __tco_0;
 state = __tco_1;
 inputs = __tco_2;
@@ -5881,15 +5881,15 @@ continue;
                             let adv = advance(tokens.clone(), s.clone());
 let prop = modifier_to_prop("readonly".to_string(), current_span(tokens.clone(), s.clone()));
 {
-                                let __tco_0 = tokens.clone();
+                                let __tco_0 = tokens;
 let __tco_1 = adv.state.clone();
-let __tco_2 = inputs.clone();
-let __tco_3 = outputs.clone();
-let __tco_4 = v2_rt::rc_list_push(modifier_props.clone(), prop.clone());
-let __tco_5 = transport.clone();
-let __tco_6 = exit_props.clone();
-let __tco_7 = response_props.clone();
-let __tco_8 = mock_props.clone();
+let __tco_2 = inputs;
+let __tco_3 = outputs;
+let __tco_4 = v2_rt::rc_list_push(modifier_props, prop.clone());
+let __tco_5 = transport;
+let __tco_6 = exit_props;
+let __tco_7 = response_props;
+let __tco_8 = mock_props;
 tokens = __tco_0;
 state = __tco_1;
 inputs = __tco_2;
@@ -5906,15 +5906,15 @@ continue;
                                 let adv = advance(tokens.clone(), s.clone());
 let prop = modifier_to_prop("hermetic".to_string(), current_span(tokens.clone(), s.clone()));
 {
-                                    let __tco_0 = tokens.clone();
+                                    let __tco_0 = tokens;
 let __tco_1 = adv.state.clone();
-let __tco_2 = inputs.clone();
-let __tco_3 = outputs.clone();
-let __tco_4 = v2_rt::rc_list_push(modifier_props.clone(), prop.clone());
-let __tco_5 = transport.clone();
-let __tco_6 = exit_props.clone();
-let __tco_7 = response_props.clone();
-let __tco_8 = mock_props.clone();
+let __tco_2 = inputs;
+let __tco_3 = outputs;
+let __tco_4 = v2_rt::rc_list_push(modifier_props, prop.clone());
+let __tco_5 = transport;
+let __tco_6 = exit_props;
+let __tco_7 = response_props;
+let __tco_8 = mock_props;
 tokens = __tco_0;
 state = __tco_1;
 inputs = __tco_2;
@@ -5951,15 +5951,15 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = inputs.clone();
-let __tco_3 = outputs.clone();
-let __tco_4 = modifier_props.clone();
+let __tco_2 = inputs;
+let __tco_3 = outputs;
+let __tco_4 = modifier_props;
 let __tco_5 = Some(r.transport.clone());
-let __tco_6 = exit_props.clone();
-let __tco_7 = response_props.clone();
-let __tco_8 = mock_props.clone();
+let __tco_6 = exit_props;
+let __tco_7 = response_props;
+let __tco_8 = mock_props;
 tokens = __tco_0;
 state = __tco_1;
 inputs = __tco_2;
@@ -6017,15 +6017,15 @@ if has_err(r3.err.clone()) {
 })
 }
 {
-                        let __tco_0 = tokens.clone();
+                        let __tco_0 = tokens;
 let __tco_1 = r3.state.clone();
-let __tco_2 = inputs.clone();
-let __tco_3 = outputs.clone();
-let __tco_4 = modifier_props.clone();
-let __tco_5 = transport.clone();
+let __tco_2 = inputs;
+let __tco_3 = outputs;
+let __tco_4 = modifier_props;
+let __tco_5 = transport;
 let __tco_6 = r2.entries.clone();
-let __tco_7 = response_props.clone();
-let __tco_8 = mock_props.clone();
+let __tco_7 = response_props;
+let __tco_8 = mock_props;
 tokens = __tco_0;
 state = __tco_1;
 inputs = __tco_2;
@@ -6054,15 +6054,15 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                            let __tco_0 = tokens.clone();
+                            let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = inputs.clone();
-let __tco_3 = outputs.clone();
-let __tco_4 = modifier_props.clone();
-let __tco_5 = transport.clone();
-let __tco_6 = exit_props.clone();
+let __tco_2 = inputs;
+let __tco_3 = outputs;
+let __tco_4 = modifier_props;
+let __tco_5 = transport;
+let __tco_6 = exit_props;
 let __tco_7 = r.responses.clone();
-let __tco_8 = mock_props.clone();
+let __tco_8 = mock_props;
 tokens = __tco_0;
 state = __tco_1;
 inputs = __tco_2;
@@ -6091,14 +6091,14 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                                let __tco_0 = tokens.clone();
+                                let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = inputs.clone();
-let __tco_3 = outputs.clone();
-let __tco_4 = modifier_props.clone();
-let __tco_5 = transport.clone();
-let __tco_6 = exit_props.clone();
-let __tco_7 = response_props.clone();
+let __tco_2 = inputs;
+let __tco_3 = outputs;
+let __tco_4 = modifier_props;
+let __tco_5 = transport;
+let __tco_6 = exit_props;
+let __tco_7 = response_props;
 let __tco_8 = r.mocks.clone();
 tokens = __tco_0;
 state = __tco_1;
@@ -6158,13 +6158,13 @@ if has_err(r3.err.clone()) {
 {
                                     let __tco_0 = tokens.clone();
 let __tco_1 = skip_newlines(tokens.clone(), r3.state.clone());
-let __tco_2 = inputs.clone();
-let __tco_3 = outputs.clone();
-let __tco_4 = modifier_props.clone();
-let __tco_5 = transport.clone();
-let __tco_6 = exit_props.clone();
-let __tco_7 = response_props.clone();
-let __tco_8 = mock_props.clone();
+let __tco_2 = inputs;
+let __tco_3 = outputs;
+let __tco_4 = modifier_props;
+let __tco_5 = transport;
+let __tco_6 = exit_props;
+let __tco_7 = response_props;
+let __tco_8 = mock_props;
 tokens = __tco_0;
 state = __tco_1;
 inputs = __tco_2;
@@ -6262,7 +6262,7 @@ let ch = match Rc::new({ let mut __result = Vec::new(); for p in Rc::new(digit_c
 };
 {
                 let __tco_0 = rest.clone();
-let __tco_1 = v2_rt::rc_list_push(acc.clone(), ch.clone());
+let __tco_1 = v2_rt::rc_list_push(acc, ch.clone());
 value = __tco_0;
 acc = __tco_1;
 continue;
@@ -6411,9 +6411,9 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 desc_r.state.clone()
 });
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), entry.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, entry.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -6433,9 +6433,9 @@ pub fn parse_operation_modifiers_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: 
 if (kw.clone().as_str() == "idempotent".to_string().as_str()) {
             let adv = advance(tokens.clone(), state.clone());
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = adv.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), OperationModifier::Idempotent);
+let __tco_2 = v2_rt::rc_list_push(acc, OperationModifier::Idempotent);
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -6445,9 +6445,9 @@ continue;
             if (kw.clone().as_str() == "readonly".to_string().as_str()) {
                 let adv = advance(tokens.clone(), state.clone());
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = adv.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), OperationModifier::Readonly);
+let __tco_2 = v2_rt::rc_list_push(acc, OperationModifier::Readonly);
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -6457,9 +6457,9 @@ continue;
                 if (kw.clone().as_str() == "hermetic".to_string().as_str()) {
                     let adv = advance(tokens.clone(), state.clone());
 {
-                        let __tco_0 = tokens.clone();
+                        let __tco_0 = tokens;
 let __tco_1 = adv.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), OperationModifier::Hermetic);
+let __tco_2 = v2_rt::rc_list_push(acc, OperationModifier::Hermetic);
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -6497,7 +6497,7 @@ let n = match n_opt {
 };
 if ((state.pos.clone() + 1) < (tokens.clone().len() as i64)) {
                 {
-                    let next_tok = Rc::new(tokens.clone().iter().cloned().skip((state.pos.clone() + 1) as usize).collect::<Vec<_>>()).first().cloned();
+                    let next_tok = tokens.clone().get((state.pos.clone() + 1) as usize).cloned();
 match next_tok {
     Some(t) => if (is_ident_shape(t.shape.clone()) && (t.text.clone().as_str() == "xx".to_string().as_str())) {
                         {
@@ -6693,9 +6693,9 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 r3.state.clone()
 });
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), entry.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, entry.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -6824,9 +6824,9 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 desc_r.state.clone()
 });
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), entry.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, entry.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -6998,10 +6998,10 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = properties.clone();
-let __tco_3 = v2_rt::rc_list_push(capabilities.clone(), r.capability.clone());
+let __tco_2 = properties;
+let __tco_3 = v2_rt::rc_list_push(capabilities, r.capability.clone());
 tokens = __tco_0;
 state = __tco_1;
 properties = __tco_2;
@@ -7033,8 +7033,8 @@ if has_err(r3.err.clone()) {
 {
                         let __tco_0 = tokens.clone();
 let __tco_1 = skip_newlines(tokens.clone(), r3.state.clone());
-let __tco_2 = properties.clone();
-let __tco_3 = capabilities.clone();
+let __tco_2 = properties;
+let __tco_3 = capabilities;
 tokens = __tco_0;
 state = __tco_1;
 properties = __tco_2;
@@ -7066,8 +7066,8 @@ if has_err(r3.err.clone()) {
 {
                             let __tco_0 = tokens.clone();
 let __tco_1 = skip_newlines(tokens.clone(), r3.state.clone());
-let __tco_2 = properties.clone();
-let __tco_3 = capabilities.clone();
+let __tco_2 = properties;
+let __tco_3 = capabilities;
 tokens = __tco_0;
 state = __tco_1;
 properties = __tco_2;
@@ -7117,8 +7117,8 @@ let fi = make_field_init_node(fname.clone(), r3.expr.clone(), make_span(0, 0));
 {
                     let __tco_0 = tokens.clone();
 let __tco_1 = skip_newlines(tokens.clone(), r3.state.clone());
-let __tco_2 = v2_rt::rc_list_push(properties.clone(), fi.clone());
-let __tco_3 = capabilities.clone();
+let __tco_2 = v2_rt::rc_list_push(properties, fi.clone());
+let __tco_3 = capabilities;
 tokens = __tco_0;
 state = __tco_1;
 properties = __tco_2;
@@ -7345,10 +7345,10 @@ if has_err(r3.err.clone()) {
 })
 }
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = r3.state.clone();
 let __tco_2 = r2.fields.clone();
-let __tco_3 = outputs.clone();
+let __tco_3 = outputs;
 tokens = __tco_0;
 state = __tco_1;
 inputs = __tco_2;
@@ -7386,9 +7386,9 @@ if has_err(r3.err.clone()) {
 })
 }
 {
-                        let __tco_0 = tokens.clone();
+                        let __tco_0 = tokens;
 let __tco_1 = r3.state.clone();
-let __tco_2 = inputs.clone();
+let __tco_2 = inputs;
 let __tco_3 = r2.fields.clone();
 tokens = __tco_0;
 state = __tco_1;
@@ -7628,9 +7628,9 @@ if peek_is_rparen(tokens.clone(), s2.clone()) {
 });
 } else {
                 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = acc.clone();
+let __tco_2 = acc;
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -7789,9 +7789,9 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), r.expr.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, r.expr.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -7842,7 +7842,7 @@ if (kw_text.clone().as_str() == "let".to_string().as_str()) {
 pub fn peek_is_eq_after_ident(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> bool {
     if ((state.pos.clone() + 1) < (tokens.clone().len() as i64)) {
         {
-            let next_tok = Rc::new(tokens.clone().iter().cloned().skip((state.pos.clone() + 1) as usize).collect::<Vec<_>>()).first().cloned();
+            let next_tok = tokens.clone().get((state.pos.clone() + 1) as usize).cloned();
 match next_tok {
     Some(t) => is_eq_shape(t.shape.clone()),
     None => false,
@@ -7856,8 +7856,8 @@ match next_tok {
 pub fn peek_is_node_decl(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> bool {
     if ((state.pos.clone() + 2) < (tokens.clone().len() as i64)) {
         {
-            let t1 = Rc::new(tokens.clone().iter().cloned().skip((state.pos.clone() + 1) as usize).collect::<Vec<_>>()).first().cloned();
-let t2 = Rc::new(tokens.clone().iter().cloned().skip((state.pos.clone() + 2) as usize).collect::<Vec<_>>()).first().cloned();
+            let t1 = tokens.clone().get((state.pos.clone() + 1) as usize).cloned();
+let t2 = tokens.clone().get((state.pos.clone() + 2) as usize).cloned();
 let name_ok = match t1 {
     Some(t) => (is_ident_shape(t.shape.clone()) || is_name_keyword(t.clone())),
     None => false,
@@ -7876,7 +7876,7 @@ let decl_ok = match t2 {
 pub fn is_constraint_bracket_after_ident(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> bool {
     if ((state.pos.clone() + 1) < (tokens.clone().len() as i64)) {
         {
-            let t1 = Rc::new(tokens.clone().iter().cloned().skip((state.pos.clone() + 1) as usize).collect::<Vec<_>>()).first().cloned();
+            let t1 = tokens.clone().get((state.pos.clone() + 1) as usize).cloned();
 match t1 {
     Some(t) => (is_lbracket_shape(t.shape.clone()) && is_constraint_bracket(tokens.clone(), ParserState {
     pos: (state.pos.clone() + 1),
@@ -8150,10 +8150,10 @@ if has_err(post.err.clone()) {
 } else {
                 if post.changed.clone() {
                     {
-                        let __tco_0 = tokens.clone();
+                        let __tco_0 = tokens;
 let __tco_1 = post.state.clone();
 let __tco_2 = post.expr.clone();
-let __tco_3 = min_bp.clone();
+let __tco_3 = min_bp;
 tokens = __tco_0;
 state = __tco_1;
 lhs = __tco_2;
@@ -8186,10 +8186,10 @@ let new_lhs = make_named_expr_node(r.name.clone(), Rc::new(ExprData::ExprFieldAc
     summary: None,
 }), Rc::new(vec![lhs.clone()]), None, span.clone());
 {
-                                let __tco_0 = tokens.clone();
+                                let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
 let __tco_2 = new_lhs.clone();
-let __tco_3 = min_bp.clone();
+let __tco_3 = min_bp;
 tokens = __tco_0;
 state = __tco_1;
 lhs = __tco_2;
@@ -8208,10 +8208,10 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                                    let __tco_0 = tokens.clone();
+                                    let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
 let __tco_2 = r.expr.clone();
-let __tco_3 = min_bp.clone();
+let __tco_3 = min_bp;
 tokens = __tco_0;
 state = __tco_1;
 lhs = __tco_2;
@@ -8235,10 +8235,10 @@ match binop_opt.clone() {
     op: binop.clone(),
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), None, span.clone());
 {
-                                    let __tco_0 = tokens.clone();
+                                    let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
 let __tco_2 = new_lhs.clone();
-let __tco_3 = min_bp.clone();
+let __tco_3 = min_bp;
 tokens = __tco_0;
 state = __tco_1;
 lhs = __tco_2;
@@ -8579,9 +8579,9 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), r.expr.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, r.expr.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -8800,7 +8800,7 @@ Rc::new(PostfixResult {
 pub fn is_constraint_bracket(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> bool {
     if ((state.pos.clone() + 1) < (tokens.clone().len() as i64)) {
         {
-            let next_tok = Rc::new(tokens.clone().iter().cloned().skip((state.pos.clone() + 1) as usize).collect::<Vec<_>>()).first().cloned();
+            let next_tok = tokens.clone().get((state.pos.clone() + 1) as usize).cloned();
 match next_tok {
     Some(t) => if is_ident_shape(t.shape.clone()) {
                 ((t.text.clone().as_str() == "after".to_string().as_str()) || (t.text.clone().as_str() == "when".to_string().as_str()))
@@ -8885,9 +8885,9 @@ acc = v2_rt::rc_list_push(acc.clone(), fi.clone());
 let ec = eat(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if ec.consumed.clone() {
             {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = ec.state.clone();
-let __tco_2 = acc.clone();
+let __tco_2 = acc;
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -9071,9 +9071,9 @@ if peek_is_rparen(tokens.clone(), s2.clone()) {
 });
 } else {
                 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = acc.clone();
+let __tco_2 = acc;
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -9266,10 +9266,10 @@ if has_err(r.err.clone()) {
 let span = current_span(tokens.clone(), s.clone());
 let new_lhs = make_call_expr(lhs.clone(), r.args.clone(), span.clone());
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
 let __tco_2 = new_lhs.clone();
-let __tco_3 = min_bp.clone();
+let __tco_3 = min_bp;
 tokens = __tco_0;
 state = __tco_1;
 lhs = __tco_2;
@@ -9288,10 +9288,10 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                        let __tco_0 = tokens.clone();
+                        let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
 let __tco_2 = r.expr.clone();
-let __tco_3 = min_bp.clone();
+let __tco_3 = min_bp;
 tokens = __tco_0;
 state = __tco_1;
 lhs = __tco_2;
@@ -9324,10 +9324,10 @@ let new_lhs = make_named_expr_node(r.name.clone(), Rc::new(ExprData::ExprFieldAc
     summary: None,
 }), Rc::new(vec![lhs.clone()]), None, span.clone());
 {
-                                let __tco_0 = tokens.clone();
+                                let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
 let __tco_2 = new_lhs.clone();
-let __tco_3 = min_bp.clone();
+let __tco_3 = min_bp;
 tokens = __tco_0;
 state = __tco_1;
 lhs = __tco_2;
@@ -9346,10 +9346,10 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                                    let __tco_0 = tokens.clone();
+                                    let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
 let __tco_2 = r.expr.clone();
-let __tco_3 = min_bp.clone();
+let __tco_3 = min_bp;
 tokens = __tco_0;
 state = __tco_1;
 lhs = __tco_2;
@@ -9373,10 +9373,10 @@ match binop_opt.clone() {
     op: binop.clone(),
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), None, span.clone());
 {
-                                    let __tco_0 = tokens.clone();
+                                    let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
 let __tco_2 = new_lhs.clone();
-let __tco_3 = min_bp.clone();
+let __tco_3 = min_bp;
 tokens = __tco_0;
 state = __tco_1;
 lhs = __tco_2;
@@ -9433,9 +9433,9 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 r.state.clone()
 });
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), r.arm.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, r.arm.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -9558,9 +9558,9 @@ if has_err(r.err.clone()) {
 })
 }
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), r.expr.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, r.expr.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -9607,7 +9607,7 @@ if (n.clone().as_str() == "_".to_string().as_str()) {
 pub fn peek_is_fat_arrow_at(tokens: Rc<Vec<Rc<Token>>>, state: ParserState, offset: i64) -> bool {
     if ((state.pos.clone() + offset.clone()) < (tokens.clone().len() as i64)) {
         {
-            let tok = Rc::new(tokens.clone().iter().cloned().skip((state.pos.clone() + offset.clone()) as usize).collect::<Vec<_>>()).first().cloned();
+            let tok = tokens.clone().get((state.pos.clone() + offset.clone()) as usize).cloned();
 match tok {
     Some(t) => is_fat_arrow_shape(t.shape.clone()),
     None => false,
@@ -9621,7 +9621,7 @@ match tok {
 pub fn peek_is_expected_at(tokens: Rc<Vec<Rc<Token>>>, state: ParserState, offset: i64, expected: Rc<ExpectedToken>) -> bool {
     if ((state.pos.clone() + offset.clone()) < (tokens.clone().len() as i64)) {
         {
-            let tok = Rc::new(tokens.clone().iter().cloned().skip((state.pos.clone() + offset.clone()) as usize).collect::<Vec<_>>()).first().cloned();
+            let tok = tokens.clone().get((state.pos.clone() + offset.clone()) as usize).cloned();
 match tok {
     Some(t) => token_matches_expected(t.clone(), expected),
     None => false,
@@ -9641,7 +9641,7 @@ pub fn scan_braces_depth(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState,
         if ((idx.clone() >= (tokens.clone().len() as i64)) || (depth.clone() <= 0)) {
             if (depth.clone() == 0) {
                 if (idx.clone() < (tokens.clone().len() as i64)) {
-                    let tok = Rc::new(tokens.clone().iter().cloned().skip(idx.clone() as usize).collect::<Vec<_>>()).first().cloned();
+                    let tok = tokens.clone().get(idx.clone() as usize).cloned();
 match tok.clone() {
     Some(t) => { break is_fat_arrow_shape(t.shape.clone()); },
     None => { break false; },
@@ -9653,14 +9653,14 @@ match tok.clone() {
                 break false;
 }
 } else {
-            let tok = Rc::new(tokens.clone().iter().cloned().skip(idx.clone() as usize).collect::<Vec<_>>()).first().cloned();
+            let tok = tokens.clone().get(idx.clone() as usize).cloned();
 match tok.clone() {
     Some(t) => { if is_lbrace_shape(t.shape.clone()) {
                 {
-                    let __tco_0 = tokens.clone();
-let __tco_1 = state.clone();
-let __tco_2 = (idx.clone() + 1);
-let __tco_3 = (depth.clone() + 1);
+                    let __tco_0 = tokens;
+let __tco_1 = state;
+let __tco_2 = (idx + 1);
+let __tco_3 = (depth + 1);
 tokens = __tco_0;
 state = __tco_1;
 idx = __tco_2;
@@ -9670,10 +9670,10 @@ continue;
 } else {
                 if is_rbrace_shape(t.shape.clone()) {
                     {
-                        let __tco_0 = tokens.clone();
-let __tco_1 = state.clone();
-let __tco_2 = (idx.clone() + 1);
-let __tco_3 = (depth.clone() - 1);
+                        let __tco_0 = tokens;
+let __tco_1 = state;
+let __tco_2 = (idx + 1);
+let __tco_3 = (depth - 1);
 tokens = __tco_0;
 state = __tco_1;
 idx = __tco_2;
@@ -9682,10 +9682,10 @@ continue;
 }
 } else {
                     {
-                        let __tco_0 = tokens.clone();
-let __tco_1 = state.clone();
-let __tco_2 = (idx.clone() + 1);
-let __tco_3 = depth.clone();
+                        let __tco_0 = tokens;
+let __tco_1 = state;
+let __tco_2 = (idx + 1);
+let __tco_3 = depth;
 tokens = __tco_0;
 state = __tco_1;
 idx = __tco_2;
@@ -9940,9 +9940,9 @@ let s3 = skip_newlines(tokens.clone(), if e2.consumed.clone() {
 });
 let fb = make_field_binding_node(field_name.clone(), r2.pattern.clone(), current_span(tokens.clone(), s.clone()));
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = s3.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), fb.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, fb.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -9959,9 +9959,9 @@ let fb = make_field_binding_node(field_name.clone(), Rc::new(MatchPattern::Bind 
     name: field_name.clone(),
 }), current_span(tokens.clone(), s.clone()));
 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), fb.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, fb.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -10254,9 +10254,9 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 r.state.clone()
 });
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), r.field.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, r.field.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -10428,10 +10428,10 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 r.state.clone()
 });
 {
-                let __tco_0 = tokens.clone();
+                let __tco_0 = tokens;
 let __tco_1 = s2.clone();
-let __tco_2 = end_expected.clone();
-let __tco_3 = v2_rt::rc_list_push(acc.clone(), r.expr.clone());
+let __tco_2 = end_expected;
+let __tco_3 = v2_rt::rc_list_push(acc, r.expr.clone());
 tokens = __tco_0;
 state = __tco_1;
 end_expected = __tco_2;
@@ -10588,9 +10588,9 @@ if has_err(name_r.err.clone()) {
 if peek_is_comma(tokens.clone(), s2.clone()) {
                     let adv = advance(tokens.clone(), s2.clone());
 {
-                        let __tco_0 = tokens.clone();
+                        let __tco_0 = tokens;
 let __tco_1 = adv.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc.clone(), name_r.name.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, name_r.name.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -10674,7 +10674,7 @@ let new_acc = v2_rt::rc_list_push(acc.clone(), n.clone());
 let e = eat(tokens.clone(), adv.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
                 {
-                    let __tco_0 = tokens.clone();
+                    let __tco_0 = tokens;
 let __tco_1 = e.state.clone();
 let __tco_2 = new_acc.clone();
 tokens = __tco_0;
@@ -10757,10 +10757,10 @@ let mid_parts = if (v2_rt::string_length(&mid) > 0) {
             new_parts.clone()
 };
 {
-            let __tco_0 = tokens.clone();
+            let __tco_0 = tokens;
 let __tco_1 = adv.state.clone();
 let __tco_2 = mid_parts.clone();
-let __tco_3 = span.clone();
+let __tco_3 = span;
 tokens = __tco_0;
 state = __tco_1;
 parts = __tco_2;
@@ -11013,7 +11013,7 @@ if ((r.stmts.clone().len() as i64) == 1) {
 pub fn peek_is_colon_after_ident(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> bool {
     if ((state.pos.clone() + 1) < (tokens.clone().len() as i64)) {
         {
-            let next_tok = Rc::new(tokens.clone().iter().cloned().skip((state.pos.clone() + 1) as usize).collect::<Vec<_>>()).first().cloned();
+            let next_tok = tokens.clone().get((state.pos.clone() + 1) as usize).cloned();
 match next_tok {
     Some(t) => is_colon_shape(t.shape.clone()),
     None => false,

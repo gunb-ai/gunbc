@@ -38,21 +38,6 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 
 type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 
-// ValueContext: orthogonal facts about how a named value is used,
-// determining its target-language representation. Precomputed in
-// EmitGraphInfo so the emitter reads facts instead of heuristics.
-//
-// The emitter reads ValueContext × LanguageSpec to choose representation:
-//   has_fn_fields × Rust → skip PartialEq/Debug derives
-//
-type ValueContext {
-  has_fn_fields: Bool
-  // True when the type is a fixed-width carrier: not recursive, no fn-typed
-  // fields, and all fields are value types (Int, Bool, Float) or it's a
-  // unit-only enum. The emitter uses this to skip Rc wrapping in Rust.
-  is_constant: Bool
-}
-
 type TypeSummary {
   name: String
   repr: TypeRepr
@@ -60,6 +45,9 @@ type TypeSummary {
   field_type_map: Map<String, String>
   variant_name_set: Map<String, Bool>
   generic_param_names: List<String>
+  // True when any direct child field resolves to a function type (params > 0).
+  // Used by Rust emitter to skip PartialEq/Debug derives (dyn Fn doesn't impl them).
+  has_fn_fields: Bool
 }
 
 // EmitGraphInfo: the reconcile→emit boundary contract.
@@ -85,10 +73,13 @@ type EmitGraphInfo {
   // Used by pattern emission to decide Variant vs Variant { .. }.
   // Keyed by variant name → true if variant has children.
   fielded_variants: Map<String, Bool>
-  // Per-type value context: orthogonal facts about how each named type
-  // is used, keyed by type name. Emitter reads these instead of locally
-  // inspecting resolved children.
-  value_contexts: Map<String, ValueContext>
+  // Per-type sharing decision: maps type names that need shared-pointer
+  // wrapping (Rc in Rust) to true. Computed from type_summaries ×
+  // recursive_type_set. The Rust emitter also adds collection types.
+  // This is the SINGLE authority for sharing decisions — build_type_rendering
+  // reads it, and direct emit sites read it for Rc-aware pattern matching
+  // and construction.
+  shared_types: Map<String, Bool>
   // Per-function ownership index: func_name → movable bindings set.
   // Built from ownership analysis. The emitter looks up the current
   // function's movable set and stores it in `movable` during item dispatch.
@@ -97,10 +88,19 @@ type EmitGraphInfo {
   // dispatching to emit_fn_def/emit_func_def. Bindings in this set have
   // fan-out=1 and can be moved instead of cloned.
   movable: Map<String, Bool>
+  // Precomputed variant → parent enum name map. Built from type_summaries
+  // by derive_variant_to_enum. Replaces heuristic lookups at emit sites.
+  variant_to_enum: Map<String, String>
   // Bindings known to be owned (not behind Rc). Field accesses on these
   // bindings use move semantics instead of .clone(). Set for fold
   // accumulators after Rc::try_unwrap.
   owned_bindings: Map<String, Bool>
+  // Per-function fold accumulator unwrap eligibility: func_name → (acc_type_name → true).
+  // Built from structural proofs in ownership.dag. The emitter combines this
+  // with rc_types to decide Rc::try_unwrap rendering.
+  fold_eligible_index: Map<String, Map<String, Bool>>
+  // Current function's eligible fold accumulator types. Set by emit_typed_item.
+  fold_eligible: Map<String, Bool>
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -139,10 +139,13 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_map(),
     fielded_variants: empty_map(),
-    value_contexts: empty_map(),
+    shared_types: empty_map(),
     ownership_index: empty_map(),
     movable: empty_map(),
-    owned_bindings: empty_map()
+    variant_to_enum: empty_map(),
+    owned_bindings: empty_map(),
+    fold_eligible_index: empty_map(),
+    fold_eligible: empty_map()
   }
 }
 
@@ -205,18 +208,15 @@ fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> Type
 
 // Derive variant_to_enum: a module-local CACHE, not the authority.
 // Authority is type_summaries.variant_name_set (O(1) structural check).
-// This cache is first-write-wins: ambiguous variants get an arbitrary
-// parent that the module-level vtoe correction fixes via structural
-// lookup through variant_belongs_to_enum. The cache is lossy by design —
-// it accelerates the common case (unique variants); the correction pass
-// handles the rest.
+// Ambiguous variants (name shared by multiple enums) get an empty-string
+// sentinel so effective_variant_parent falls through to structural resolution.
 fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {
   map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
     match summary.repr {
       EnumRepr { unit_only: _ } =>
         fold(map_keys(summary.variant_name_set), init: acc, f: (inner, vn) =>
           match map_get(inner, vn) {
-            Some { value: _ } => inner
+            Some { value: _ } => map_insert(inner, vn, "")
             None => map_insert(inner, vn, summary.name)
           }
         )
@@ -392,6 +392,12 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   }
   let gpn = item.params |> map(p => param_node_name(n: p))
   let is_product = item.connective == Conj
+  let has_fn = item.children |> any(child =>
+    match child.inferred {
+      Some { value: Resolved { node: rt } } => rt.name == "Callable"
+      _ => false
+    }
+  )
   if is_product {
     Some { value: TypeSummary {
       name: item.name,
@@ -399,7 +405,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
       field_summaries: build_struct_field_summaries(children: item.children),
       field_type_map: build_field_type_map(children: item.children),
       variant_name_set: empty_map(),
-      generic_param_names: gpn
+      generic_param_names: gpn,
+      has_fn_fields: has_fn
     } }
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
@@ -409,7 +416,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
       field_summaries: build_enum_field_summaries(variants: item.children),
       field_type_map: empty_map(),
       variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, child.name, true)),
-      generic_param_names: gpn
+      generic_param_names: gpn,
+      has_fn_fields: has_fn
     } }
   }
 }
@@ -423,13 +431,20 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
             if variant.children |> count > 0 {
+              let v_has_fn = variant.children |> any(vc =>
+                match vc.inferred {
+                  Some { value: Resolved { node: rt } } => rt.name == "Callable"
+                  _ => false
+                }
+              )
               map_insert(acc, variant.name, TypeSummary {
                 name: variant.name,
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(children: variant.children),
                 field_type_map: build_field_type_map(children: variant.children),
                 variant_name_set: empty_map(),
-                generic_param_names: []
+                generic_param_names: [],
+                has_fn_fields: v_has_fn
               })
             } else { acc }
           )

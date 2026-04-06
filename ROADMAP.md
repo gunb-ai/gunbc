@@ -56,34 +56,70 @@ when it self-compiles (fixed point convergence). **Blocks all other
 lanes from editing stage0 Rust directly.**
 
 Note: "zero manual patches" means zero patches to *generated* files.
-Nine hand-maintained files are still copied during regeneration
-(main.rs, v2_rt.rs, compiler_tests.rs, extdeps_languages_dag_syntax.rs,
-v2_coercion.rs, v2_compiler_infer_method.rs, std_types.rs,
-v2_compiler_tokenize.rs, extdeps_languages_rust_emit.rs).
-The last five are thread-local cache shims for performance;
-eliminating these is tracked as future work under M5-full
-(language plugin extraction).
+Four hand-maintained files are still copied during regeneration
+(main.rs, v2_rt.rs, compiler_tests.rs, v2_coercion.rs).
+Goal is zero — all stage0 content should be 100% generated.
+Remaining files and what blocks elimination:
+
+| File | Role | Blocker |
+|------|------|---------|
+| `main.rs` | CLI entrypoint | Need .dag entrypoint construct |
+| `v2_rt.rs` | Runtime shims (Rc ops, string ops) | Need .dag runtime codegen or inline emit |
+| `compiler_tests.rs` | Test harness | Need .dag test generation |
+| `v2_coercion.rs` | Coercion registries | No .dag counterpart yet |
+
+Previously eliminated (PR #316): v2_compiler_infer_method.rs, std_types.rs,
+extdeps_languages_rust_emit.rs, v2_compiler_tokenize.rs,
+extdeps_languages_dag_syntax.rs — via thread_local! caching in emitter
+and `chars_to_string` runtime function for O(1) tokenizer substring.
 
 ## CI Gates
 
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (271 pass, 0 fail, 36 ignored) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (283 pass, 0 fail, 39 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
-| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | ratchet 316 (all complexity violations) |
-| L1 ratchet | `scripts/l1-ratchet.sh --check` | 30 (target: 0) |
+| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
+| L1 ratchet | `scripts/l1-ratchet.sh --check` | 33 (target: 0) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
 ## Ratchet Counts
 
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
-| Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations (ratchet: 316) |
-| L1 type knowledge | 30 | 0 | Down from 70; name-based workarounds tracked for M4 |
-| Complexity violations | 76 | 0 | Down from 315 → 164 → 76; PR #318 (ratchet: 315, not yet lowered) |
+| Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
+| L1 type knowledge | 33 | 0 | Down from 70; name-based workarounds tracked for M4 |
+| Complexity violations | 164 | 0 | Down from 315; unfinished algebraic grounding |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
+
+## Bootstrap Dependency Chain
+
+```
+.dag source ──(v2-compiler)──▶ stage0 .rs ──(cargo/rustc)──▶ v2-compiler binary
+     ▲                                                              │
+     └──────────────────────────────────────────────────────────────┘
+```
+
+- **Source of truth:** `.dag` files. Stage0 `.rs` is a derived artifact.
+- **Cycle-breaker:** Committed stage0 allows fresh clones to bootstrap.
+- **Fixed-point:** `regen pass N == regen pass N+1`. Two-pass bootstrap
+  required when the emitter changes its own output.
+- **External dependencies:** cargo, rustc (opaque transforms, not modeled).
+- **Hand-maintained files (9):** Copied back during regen, not overwritten.
+  These are source, not derived. See Bootstrap Status for list.
+
+**Merge workflow problem:** Stage0 `.rs` files are derived, but git
+treats them as text and produces line-level merge conflicts. These
+conflicts carry zero information — the only correct resolution is
+regen. Fix: `.gitattributes` marks generated stage0 files as `-merge`
+(no line-level merge), CI freshness gate ensures committed stage0
+matches `.dag` source. Merge workflow becomes: resolve `.dag` conflicts
+→ accept either side of stage0 → regen → commit.
+
+This dependency chain is currently implicit (shell scripts + convention).
+Modeling it as `.dag` types is tracked under BP-1 (Layer 3).
 
 ## Bootstrap Health Rules
 
@@ -97,6 +133,7 @@ Clean-repo workflow:
 Stabilization rules:
 - No manual `src/v2/stage0/` edits once regeneration is green.
 - CI gate: `check-stage0-freshness.sh` (regenerate → diff → empty).
+- Stage0 generated `.rs` files use `-merge` in `.gitattributes` (no line-level merge).
 - CX gate disabled in both stage0 and `compile.dag` — emission not blocked by complexity violations. Re-enable when CX violations reach 0.
 
 ## Reviewer Root Cause Analysis (2026-04-03)
@@ -167,14 +204,20 @@ instead of derived from structural authorities. This produces
 correct-but-suboptimal code and blocks new backends.
 
 **Status:** TypeRendering boundary established (emit_node_type_rc deleted).
-TLC-3 and TLC-4 data models landed in LanguageSpec; Rust emitter consumes
-both. Go/Python still use list_index/list_slice unconditionally (TLC-3 not
-fully dispatched). Annotated-let path introduced but has no consumer yet
-(TLC-4 not end-to-end). TLC-1 and TLC-2 blocked on upstream pipeline work.
+Clone semantics unified in SharingStrategy (CloneTemplates removed).
+TLC-1 partial: `is_zero_arg_callable_ref` is an emitter-side guardrail
+(L1 violation — `rt.name=="Callable"` check); upstream concept modeling
+needed (Tier 2.6). TLC-3 Rust per-collection dispatch done; Go/Python
+still route through `list_index` unconditionally. TLC-4 partial:
+`emit_let_binding_annotated` infrastructure exists but disabled for
+bootstrap convergence (.dag type inference produces `()` for empty
+collection element types). TLC-2 blocked on M5 coercion engine.
+Higher-order method templates (filter/any/all/flat_map) data-driven
+via `HigherOrderMethodSpec`.
 
 One root cause, two symptoms:
 1. Facts that exist upstream are lost before emit — emission compensates
-   with heuristics (411 `rc_types` threading sites, 28 hardcoded
+   with heuristics (411 `shared_types` threading sites, 28 hardcoded
    `.clone()` decisions in the Rust emitter alone)
 2. Target-language facts are missing entirely — expression-level gaps
    (TLC-1..4) force per-backend special cases
@@ -199,50 +242,47 @@ mismatches before removal). `emit_node_type` routes through
 `build_type_rendering` + `render_type`.
 
 - [x] Delete `emit_node_type_rc` / old type rendering path
-- [ ] `emit_primitive_type` fail-closed (no pass-through on miss)
+- [x] `emit_primitive_type` fail-closed (no pass-through on miss)
 
 **Sharing and ownership**
 
-- [ ] `rc_types` derived from ValueContext (`is_constant` → no wrap)
-- [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
-- [ ] `is_constant` computation with consumer
-- [x] Clone semantics in LanguageSpec — `SharingStrategy` templates (`clone_value`, `deref_clone`, `iter_owned`) replace all hardcoded `.clone()` in emit
-- [ ] Explicit parent-enum ownership facts through resolve/infer/emit
-
-**Value context**
-
-`EmitGraphInfo` carries `value_contexts: Map<String, ValueContext>`
-with four kinds: ConstantData (immutable lookup table), RuntimeValue
-(heap-allocated, needs per-language wrapper), SpecificationWitness
-(structural fact, not runtime data), CallableValue (function type).
-Per-language emission reads ValueContext × LanguageSpec. Partially
-landed (`has_fn_fields` precomputed).
-
-- [ ] ValueContext fully consumed by all emission sites
+- [x] Sharing derived from `is_type_constant` + `TypeSummary` (no Rc wrap for fixed-width carriers)
+- [x] `build_rc_types` renamed and reorganized as `build_shared_types` in Rust emitter
+- [x] `ValueContext` deleted — `has_fn_fields` moved to `TypeSummary`, sharing
+  computation lives in `EmitGraphInfo.shared_types` field (still Rust-emitter-local;
+  authority has not moved upstream — deferred to coercion engine)
+- [x] `is_type_constant` in 05_emit_rust.dag consulted by `build_shared_types`
+- [x] Clone semantics in LanguageSpec (28 hardcoded `.clone()` → data-driven)
+- [x] Explicit parent-enum ownership facts through resolve/infer/emit
+- [x] Phase B cleanup: rename `rc_types` parameter → `shared_types` across ~423
+  occurrences in emit pipeline (mechanical, no semantic change)
 
 ### CG-2: Expression-level gap closure (TLC-1..4)
 
 Each gap is a missing LanguageSpec fact. Closing them unblocks new
 backends.
 
-- [ ] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
-  must render as `name()`, not bare `name`. The callable-vs-value
-  distinction must survive from resolution through emit.
-  *Blocked: requires callable identity to flow through pipeline (M2 Lane 1).*
+- [~] **TLC-1: Call syntax / reference distinction.** Zero-arg fn calls
+  render as `name()` via `is_zero_arg_callable_ref` (FunctionValueBinding +
+  Callable node with empty params). Dispatched in emit_var_ref and
+  emit_typed_expr_base. **Partial:** emitter-side guardrail only —
+  `rt.name == "Callable"` is an L1 violation. Upstream concept modeling
+  (Tier 2.6) dissolves this. Imported zero-arg function refs untested.
 - [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `v2_rt::map_keys` returns
   `Vec<K>` but emission expects `Rc<Vec<K>>`.
   *Blocked: requires M5 coercion engine for type/wrap authority.*
-- [ ] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
+- [~] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
-  Rust dispatches on collection type; Go/Python still route through `list_index`
-  unconditionally. *Remaining: Go/Python per-collection dispatch.*
-- [ ] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
+  Rust dispatches on collection type. Go/Python still route through
+  `list_index`/`list_slice` unconditionally — per-collection dispatch pending.
+- [~] **TLC-4: Explicit annotation requirements.** `AnnotationRequirements`
   in LanguageSpec — let binding templates (inferred/annotated), lambda param
-  templates (typed/untyped). Inferred-let and lambda params consume spec;
-  `emit_let_binding_annotated` introduced but no caller yet.
-  *Remaining: annotated-let consumer must land in same change.*
+  templates (typed/untyped). Infrastructure exists (`emit_let_binding_annotated`)
+  but disabled at all three Rust let-binding sites for bootstrap convergence:
+  .dag type inference produces `()` for empty collection element types.
+  Requires M2 inference improvement before re-enabling.
 
 ### CG-3: Parameterization
 
@@ -252,10 +292,12 @@ Make emission fully data-driven. Adding a backend = adding data.
   `Map<String, String>` data. Templates are pure method syntax; Rc wrapping
   composed separately from sharing authority. Covers count/join/split/first/last/
   enumerate/chars/skip/take + higher-order (map/filter/fold/sort_by/any/all/flat_map).
+- [x] Higher-order method templates: `HigherOrderMethodSpec` type in Rust extdeps
+  with `method_name`, `inline_template`, `fn_ref_template`, `wraps_in_sharing`.
+  Shared `emit_rust_higher_order_method` replaces 4 hardcoded emitters
+  (filter/any/all/flat_map). Data-driven dispatch via method name lookup.
 - [~] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend sites are inherent rendering differences.
 - [ ] LanguageSpec completion — all target-language facts data-driven
-  *(method_templates landed as `Map<String, String>?`; structured `MethodTemplate`
-  type with lambda/fn_ref/simple variants is the next step)*
 - [ ] TypeRendering dissolves into coercion engine
 - [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
 
@@ -343,6 +385,13 @@ instead of hardcoding them.
 - Tier 2.5 (algebra bridge fidelity):
   - [x] `CallableOf` variant for higher-order callback shapes
   - [ ] Derive T/K/V type parameter names from algebra declarations
+- Tier 2.6 (functional system modeling):
+  - [ ] Model function application as a concept (apply/call vs function-value-ref)
+  - [ ] Inference encodes "this is a call" in the IR node, not as a type-arity heuristic
+  - [ ] Dissolves `is_zero_arg_callable_ref` and `rt.name == "Callable"` L1 violation
+  - Same pattern as iteration modeling (fold/descend/repeat): ad-hoc emit
+    decisions are symptoms of a missing concept layer. Once the functional
+    system is modeled, arity-based rendering questions disappear.
 - Tier 3 (full structural algebra, requires FF-9):
   - [ ] Compiler reads type declarations + algebra edges at resolve time
   - [ ] Derive kernel/container identity from type declarations
@@ -712,6 +761,76 @@ Missing std/ concepts: `std/discrimination.dag` (pattern matching),
 - **M7**: Dissolve structural bridges. `connective`, `return_cardinality`,
   `MatchPattern`, `InferredNode` wrapper — all become graph structure
   or metadata on Node.
+
+## BP-1: Build Pipeline Model
+
+The full compilation pipeline — `.dag` source → intermediate
+representation (Rust/Python/Go) → executable artifact — is a
+dependency DAG that should be modeled in `.dag`. Each stage has an
+artifact type, a transform tool, and its own dependencies. This is
+the same problem the compiler solves for user code: resolve a
+dependency graph, detect cycles, determine evaluation order.
+
+```
+.dag source ──(v2-compiler)──▶ .rs/.py/.go ──(cargo/python/go)──▶ binary/runtime
+     ▲                              │
+     └──────── bootstrap cycle ─────┘  (Rust only: stage0 self-compile)
+```
+
+### Existing infrastructure
+
+Pieces already modeled:
+
+| Concept | Where | What it captures |
+|---------|-------|-----------------|
+| Intermediate targets | `src/v2/artifact.dag` `RenderTarget` | Rust, Python, Go, Dag |
+| Artifact taxonomy | `src/v2/artifact.dag` `ArtifactKind` | ServiceBinary, Library, Frontend, GeneratedSupport |
+| Per-target scaffold | `src/v2/languages.dag` `ProjectScaffold` | manifest file, source dir, extension |
+| Cargo as tool | `dsl/extdeps/cargo.dag` | packages, targets, profiles, Build/Test/Clippy ops |
+| Workspace graph | `dsl/extdeps/gunbc.dag` | `CrateRole`, `WorkspacePackage`, 13 packages |
+| Build phases | `dsl/tools/build.dag` | multi-stage cargo pipeline with result aggregation |
+| Codegen execution | `dsl/tools/codegen.dag` | stamp-file-gated conditional codegen |
+| Output paths | `dsl/config/codegen_paths.dag` | output dirs, stamp files, path templates |
+| Pipeline runs | `dsl/gunbc/workflow/types.dag` | `PipelineRun`, `PipelineArtifact`, stage outcomes |
+
+What's missing: the **derivation chain** connecting these — which
+artifact is produced from which source by which tool, the bootstrap
+cycle and its fixed-point condition, and the generated-vs-source
+distinction as structural data.
+
+### Work items
+
+- [ ] **BP-1a: Derivation model.** Types for pipeline stages, derivation
+  edges (source artifact → tool → output artifact), and external tool
+  dependencies. Compose existing `RenderTarget`, `ProjectScaffold`,
+  cargo service, and `ArtifactKind` into an explicit derivation DAG.
+  Location: `dsl/std/pipeline.dag` or extend `dsl/extdeps/gunbc.dag`.
+- [ ] **BP-1b: Bootstrap cycle.** Model the self-compile cycle: stage0
+  as bootstrap seed, the fixed-point condition (pass N == pass N+1),
+  and the two-pass rule (required when emitter changes its own output).
+  Hand-maintained files (9) enumerated as source artifacts distinct
+  from generated artifacts.
+- [ ] **BP-1c: `.gitattributes` generation.** Files the pipeline model
+  marks as "generated" get `-merge` in `.gitattributes`. The
+  `.gitattributes` file is a derived artifact from the pipeline model,
+  not hand-maintained config. Analogous to how `dsl/tools/bootstrap.dag`
+  generates `.gitignore` from `dsl/config/gitignore.dag`.
+- [ ] **BP-1d: Merge workflow.** Document and enforce: resolve `.dag`
+  conflicts → accept either side of generated stage0 → regen → commit.
+  CI freshness gate (`check-stage0-freshness.sh`) is the safety net.
+
+### Acceptance
+
+1. The derivation chain from `.dag` source through intermediate
+   representation to executable is explicit `.dag` data, not
+   shell-script convention.
+2. `.gitattributes` is generated from the pipeline model. Generated
+   files have `-merge`; hand-maintained files do not.
+3. Every file in `src/v2/stage0/src/` is classified as either
+   generated or hand-maintained by the model.
+4. The bootstrap cycle, fixed-point condition, and two-pass rule are
+   structural facts in the model.
+5. Stage0 merge conflicts no longer require manual resolution.
 
 ## Exploratory Directions
 

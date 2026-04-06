@@ -4561,10 +4561,10 @@ fn type_rendering_bare_list_not_map() {
     use v2_compiler::v2_std_core::leaf_node;
 
     let list_node = leaf_node("List".to_string());
-    let rc_types = Rc::new(HashMap::from([("List".to_string(), true)]));
+    let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
     let recursive_types = Rc::new(HashMap::new());
 
-    let tr = build_type_rendering(list_node, rc_types, recursive_types);
+    let tr = build_type_rendering(list_node, shared_types, recursive_types);
     let rendered = render_type(tr, RenderTarget::Rust);
 
     assert!(rendered.contains("Vec"), "bare List rendered as {:?}, expected Vec<_>", rendered);
@@ -4577,10 +4577,10 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v2_compiler::v2_std_core::leaf_node;
 
     let map_node = leaf_node("Map".to_string());
-    let rc_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
+    let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
     let recursive_types = Rc::new(HashMap::new());
 
-    let tr = build_type_rendering(map_node, rc_types, recursive_types);
+    let tr = build_type_rendering(map_node, shared_types, recursive_types);
     let rendered = render_type(tr, RenderTarget::Rust);
 
     assert!(rendered.contains("HashMap"), "bare Map rendered as {:?}, expected HashMap<_, _>", rendered);
@@ -4596,10 +4596,10 @@ fn type_rendering_named_conj_with_container_template() {
         connective: Connective::Conj,
         ..(*leaf_node("".to_string())).clone()
     });
-    let rc_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
+    let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
     let recursive_types = Rc::new(HashMap::new());
 
-    let tr = build_type_rendering(free_monoid_conj, rc_types, recursive_types);
+    let tr = build_type_rendering(free_monoid_conj, shared_types, recursive_types);
     let rendered = render_type(tr, RenderTarget::Rust);
 
     assert!(rendered.contains("Vec"), "FreeMonoid Conj rendered as {:?}, expected Vec<_> via container template", rendered);
@@ -4674,11 +4674,9 @@ fn apply_named_template_arg_value_containing_recv_placeholder() {
 
 #[test]
 fn fold_struct_accumulator_linear_ownership() {
-    // Regression: fold accumulators are linearly threaded (owned at each step).
-    // When the fold body constructs a new struct of the accumulator type,
-    // the emitter should emit Rc::try_unwrap at iteration start so field
-    // accesses are moves (not clones), keeping Rc refcounts at 1 and avoiding
-    // O(N) deep copies in Rc::make_mut.
+    // Fold accumulators are linearly threaded (owned at each step).
+    // When the fold body constructs a new struct of the accumulator type with
+    // unique field moves, ownership.dag should prove eligibility for unwrap.
     // Use Map fields (non-Copy) so the accumulator gets Rc-wrapped.
     let source = r#"module fold_linear_acc
 type Accum { table: Map<String, Int>, label: String }
@@ -4690,27 +4688,22 @@ fn summarize(items: List<String>) -> Accum {
 "#;
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/fold_linear_acc.rs");
-    // Rc::try_unwrap should be emitted to convert Rc<Accum> to owned Accum
+    // Behavioral: ownership proof should mark fold accumulator as eligible
+    let proof = result
+        .ownership
+        .iter()
+        .find(|p| p.func_name == "summarize")
+        .expect("ownership proof for 'summarize' missing");
     assert!(
-        content.contains("Rc::try_unwrap(acc)"),
-        "fold should emit Rc::try_unwrap for struct accumulator, got:\n{}",
-        content
-    );
-    // Field access on the unwrapped accumulator should be a move (no .clone())
-    assert!(
-        content.contains("acc.table") && !content.contains("acc.table.clone()"),
-        "field accesses on unwrapped acc should not clone, got:\n{}",
-        content
+        proof.fold_acc_unwrap.iter().any(|p| p.eligible),
+        "fold accumulator should be eligible for unwrap optimization"
     );
 }
 
 #[test]
 fn fold_struct_accumulator_rejects_multi_move() {
-    // Safety check: when a fold body moves the same accumulator field
-    // more than once (to non-ref functions), the emitter must NOT emit
-    // Rc::try_unwrap — doing so would cause use-after-move in Rust.
-    // Instead it must fall back to Rc<Accum>.clone() which is safe.
+    // Safety: when a fold body moves the same accumulator field more than once,
+    // ownership.dag must prove the fold ineligible for unwrap optimization.
     let source = r#"module fold_multi_move
 type Accum { data: Map<String, Bool> }
 fn process(items: List<String>) -> Accum {
@@ -4723,13 +4716,14 @@ fn process(items: List<String>) -> Accum {
 "#;
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/fold_multi_move.rs");
-    // acc.data is passed to map_insert twice (both are moves).
-    // The safety check must detect the duplicate move and suppress
-    // Rc::try_unwrap, falling back to .clone() on the Rc<Accum>.
+    // Behavioral: ownership proof should mark fold as ineligible
+    let proof = result
+        .ownership
+        .iter()
+        .find(|p| p.func_name == "process")
+        .expect("ownership proof for 'process' missing");
     assert!(
-        !content.contains("Rc::try_unwrap"),
-        "fold with multi-move field must NOT emit Rc::try_unwrap, got:\n{}",
-        content
+        !proof.fold_acc_unwrap.iter().any(|p| p.eligible),
+        "fold with multi-move must not be eligible for unwrap optimization"
     );
 }
