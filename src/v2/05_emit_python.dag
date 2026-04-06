@@ -79,7 +79,8 @@ import v2.compiler.infer {
 }
 
 import v2.compiler.infer_emit_info {
-  EmitGraphInfo,
+  EmitGraphInfo, TypeSummary, EnumRepr,
+  lookup_emit_type_summary,
   TypedItemKind, TypedItemStruct, TypedItemEnum, TypedItemTypeAlias,
   TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled,
@@ -363,7 +364,11 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   if (kind == TypedItemStruct) {
     emit_py_dataclass_from_children(name: item_text, children: item.children, env: env)
   } else if (kind == TypedItemEnum) {
-    emit_py_enum_from_children(name: item_text, children: item.children, env: env)
+    let unit_only = match lookup_emit_type_summary(emit_info: emit_info, type_name: item_text) {
+      Some { value: summary } => match summary.repr { EnumRepr { unit_only: u } => u  _ => false }
+      None => false
+    }
+    emit_py_enum_from_children(name: item_text, children: item.children, env: env, unit_only: unit_only)
   } else if (kind == TypedItemTypeAlias) {
     concat(item_text, " = ", emit_node_type(n: rt_type(n: item), target: Python))
   } else if (kind == TypedItemTypeDecl) {
@@ -424,22 +429,24 @@ fn emit_py_dataclass_field_from_child(child: Node, env: TypeEnv) -> String {
   concat("    ", emit_ident(name: authored_name(env: env, node: child), target: Python), ": ", ty, default_str)
 }
 
-fn emit_py_enum_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
-  let has_data = children |> any(child => child.children |> count > 0)
-  if has_data {
-    // Tagged union: emit as a set of dataclasses + a Union type alias
-    let variant_classes = children |> map(child => emit_py_variant_class_from_child(parent_name: name, child: child, env: env))
-    let variant_names = children |> map(child => concat(name, authored_name(env: env, node: child)))
-    let union_str = variant_names |> join(separator: ", ")
-    let classes_str = variant_classes |> join(separator: "\n\n\n")
-    concat(classes_str, "\n\n\n", name, " = Union[", union_str, "]")
-  } else {
-    // Simple enum: all unit variants
-    let variant_lines = children |> map(child =>
-      concat("    ", authored_name(env: env, node: child), " = auto()")
-    )
-    let variants_str = variant_lines |> join(separator: "\n")
-    concat("class ", name, "(Enum):\n", variants_str)
+fn emit_py_enum_from_children(name: String, children: List<Node>, env: TypeEnv, unit_only: Bool) -> String {
+  match unit_only {
+    false => {
+      // Tagged union: emit as a set of dataclasses + a Union type alias
+      let variant_classes = children |> map(child => emit_py_variant_class_from_child(parent_name: name, child: child, env: env))
+      let variant_names = children |> map(child => concat(name, authored_name(env: env, node: child)))
+      let union_str = variant_names |> join(separator: ", ")
+      let classes_str = variant_classes |> join(separator: "\n\n\n")
+      concat(classes_str, "\n\n\n", name, " = Union[", union_str, "]")
+    }
+    true => {
+      // Simple enum: all unit variants
+      let variant_lines = children |> map(child =>
+        concat("    ", authored_name(env: env, node: child), " = auto()")
+      )
+      let variants_str = variant_lines |> join(separator: "\n")
+      concat("class ", name, "(Enum):\n", variants_str)
+    }
   }
 }
 

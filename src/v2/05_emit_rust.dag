@@ -290,19 +290,6 @@ fn emit_rust_init_block_stmts(remaining: List<Node>, text: List<String>,
 // resolve variant names to their parent enums.
 // =========================================================================
 
-// Detect complex enum type_defs: types with at least one variant that has
-// fields (connective != none on the variant child). This identifies enums
-// like ExprData, MatchPattern where variant construction wrapping is needed.
-// The v1 interpreter handles `!= none` on connective correctly even in
-// nested lambdas. Struct fields and unit enum variants both have
-// connective == none, so this only returns true for complex enums.
-fn has_complex_variants(item: Node) -> Bool {
-  if item.children |> count == 0 { false }
-  else {
-    item.children |> any(c => c.connective != NoConnective)
-  }
-}
-
 // =========================================================================
 // RC2: Rc type wrapping helpers
 //
@@ -321,12 +308,6 @@ fn type_summary_needs_rc(summary: TypeSummary) -> Bool {
     StructRepr => true
     EnumRepr { unit_only: unit_only } => unit_only == false
   }
-}
-
-fn is_simple_disj(item: Node) -> Bool {
-  // Simple enum: all variants are unit variants (no children)
-  let complex = item.children |> filter(v => v.children |> count > 0)
-  complex |> count == 0
 }
 
 // Build the rc_types map: the SINGLE authority for Rc-wrapping decisions.
@@ -737,7 +718,11 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
     emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: emit_info.recursive_type_set, rc_types: rc_types, env: env, emit_info: emit_info)
   } else if (kind == TypedItemEnum) {
     let type_params = emit_type_params(params: item.params, source_index: env.source_index)
-    emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: emit_info.recursive_type_set, rc_types: rc_types, env: env)
+    let unit_only = match lookup_emit_type_summary(emit_info: emit_info, type_name: item_text) {
+      Some { value: summary } => match summary.repr { EnumRepr { unit_only: u } => u  _ => false }
+      None => false
+    }
+    emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: emit_info.recursive_type_set, rc_types: rc_types, env: env, unit_only: unit_only)
   } else if (kind == TypedItemTypeAlias) {
     concat(rust_visibility_prefix(), "type ", item_text, " = ", render_rust_type(n: rt_type(n: item), rc_types: rc_types), ";")
   } else if (kind == TypedItemTypeDecl) {
@@ -870,18 +855,17 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
   concat(rename_attr, "    ", rust_visibility_prefix(), emit_ident(name: authored_name(env: env, node: child), target: Rust), ": ", final_ty, ",")
 }
 
-fn enum_derives(children: List<Node>) -> String {
+fn enum_derives(unit_only: Bool) -> String {
   // rust_enum_derives is the base derive set from extdeps.languages.rust.emit.
   // Simple enums (all-unit variants) get Copy added as a Rust-specific optimization.
-  let complex = children |> filter(v => v.children |> count > 0)
-  match complex |> count == 0 {
+  match unit_only {
     true => rust_enum_derives_copy_text()
     false => rust_enum_derives_text()
   }
 }
 
-fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
-  let derives = enum_derives(children: children)
+fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv, unit_only: Bool) -> String {
+  let derives = enum_derives(unit_only: unit_only)
   let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, rc_types: rc_types, env: env))
   let variants_str = variant_lines |> join(separator: "\n")
   let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), "enum ", name, type_params, " {\n", variants_str, "\n}")

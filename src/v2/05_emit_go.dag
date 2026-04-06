@@ -89,7 +89,8 @@ import v2.compiler.infer {
 }
 
 import v2.compiler.infer_emit_info {
-  EmitGraphInfo,
+  EmitGraphInfo, TypeSummary, EnumRepr,
+  lookup_emit_type_summary,
   TypedItemKind, TypedItemStruct, TypedItemEnum, TypedItemTypeAlias,
   TypedItemTypeDecl, TypedItemFunction, TypedItemTransportFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemUnhandled,
@@ -370,7 +371,11 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   if (kind == TypedItemStruct) {
     emit_go_struct_from_children(name: item_text, children: item.children, env: env)
   } else if (kind == TypedItemEnum) {
-    emit_go_sum_from_children(name: item_text, children: item.children, env: env)
+    let unit_only = match lookup_emit_type_summary(emit_info: emit_info, type_name: item_text) {
+      Some { value: summary } => match summary.repr { EnumRepr { unit_only: u } => u  _ => false }
+      None => false
+    }
+    emit_go_sum_from_children(name: item_text, children: item.children, env: env, unit_only: unit_only)
   } else if (kind == TypedItemTypeAlias) {
     emit_go_type_alias(name: item_text, base: rt_type(n: item))
   } else if (kind == TypedItemTypeDecl) {
@@ -428,28 +433,30 @@ fn emit_go_struct_field_from_child(child: Node, env: TypeEnv) -> String {
 //   - An interface with a marker method
 //   - One struct per variant
 //   - Type switch for pattern matching
-fn emit_go_sum_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
-  let has_data = children |> any(child => child.children |> count > 0)
-  if has_data {
-    // Tagged union: interface + struct per variant
-    let iface = concat("type ", name, " interface {\n\tis", name, "()\n}")
-    let variant_structs = children |> map(child => emit_go_variant_struct(parent_name: name, child: child, env: env))
-    let structs_str = variant_structs |> join(separator: "\n\n")
-    concat(iface, "\n\n", structs_str)
-  } else {
-    // Simple enum: iota constants
-    let type_decl = concat("type ", name, " int")
-    let variant_consts = children |> enumerate |> map(pair =>
-      let child = pair.second
-      let child_text = authored_name(env: env, node: child)
-      if pair.first == 0 {
-        concat("\t", name, child_text, " ", name, " = iota")
-      } else {
-        concat("\t", name, child_text)
-      }
-    )
-    let consts_str = variant_consts |> join(separator: "\n")
-    concat(type_decl, "\n\nconst (\n", consts_str, "\n)")
+fn emit_go_sum_from_children(name: String, children: List<Node>, env: TypeEnv, unit_only: Bool) -> String {
+  match unit_only {
+    false => {
+      // Tagged union: interface + struct per variant
+      let iface = concat("type ", name, " interface {\n\tis", name, "()\n}")
+      let variant_structs = children |> map(child => emit_go_variant_struct(parent_name: name, child: child, env: env))
+      let structs_str = variant_structs |> join(separator: "\n\n")
+      concat(iface, "\n\n", structs_str)
+    }
+    true => {
+      // Simple enum: iota constants
+      let type_decl = concat("type ", name, " int")
+      let variant_consts = children |> enumerate |> map(pair =>
+        let child = pair.second
+        let child_text = authored_name(env: env, node: child)
+        if pair.first == 0 {
+          concat("\t", name, child_text, " ", name, " = iota")
+        } else {
+          concat("\t", name, child_text)
+        }
+      )
+      let consts_str = variant_consts |> join(separator: "\n")
+      concat(type_decl, "\n\nconst (\n", consts_str, "\n)")
+    }
   }
 }
 
