@@ -51,6 +51,12 @@ pub use crate::v2_compiler_emit::{to_string};
 pub use crate::v2_compiler_parse::{ParserResultWitness, parser_progress_flag_var, parser_passthrough_state_expr, parser_result_witness, ParserCallIdentity};
 use crate::v2_compiler_parse::ParserResultWitness::{ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque};
 use crate::v2_compiler_parse::ParserCallIdentity::{ParserCallHelper, ParserCallFunction};
+pub use crate::std_termination::{DescentEvidence, RankingDimension, DescentSource, TerminationProof, ProofEdge, merge_evidence};
+use crate::std_termination::DescentEvidence::{Strict, NonIncreasing, DescentUnknown};
+use crate::std_termination::RankingDimension::{TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality};
+use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, ArithmeticDecrease, ParserAdvance, SetRemoval, FoldIteration};
+pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param};
+use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
 pub use crate::v2_std_core::{Node, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_value, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_call_func, expr_var_name, field_access_base, field_access_field, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprBinOp, ExprUnaryOp, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda};
 use crate::v2_std_core::BinOp::{Sub, Div};
@@ -61,12 +67,8 @@ use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
 use CostShape::*;
-use RecursionPattern::*;
 use ProgressKind::*;
 use ParserResultSource::*;
-use DescentEvidence::*;
-use RankingDimension::*;
-use DescentSource::*;
 use ListMethodKind::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -246,20 +248,6 @@ pub fn lookup_summary(table: Rc<CostInternTable>, func_name: String) -> Option<R
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum RecursionPattern {
-    LinearRecursion {
-        iteration_var: String,
-    },
-    DivideAndConquer {
-        split_factor: i64,
-    },
-    UnresolvableRecursion {
-        reason: String,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallEdge {
     pub caller: String,
     pub callee: String,
@@ -281,7 +269,7 @@ pub struct CallGraphAcc {
 pub struct SccInfo {
     pub members: Rc<Vec<String>>,
     pub member_set: Rc<HashMap<String, bool>>,
-    pub pattern: Rc<RecursionPattern>,
+    pub pattern: Rc<LoweringTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -363,79 +351,6 @@ pub struct ParserProgressAcc {
     pub env: Rc<ParserProgressEnv>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum DescentEvidence {
-    Strict,
-    NonIncreasing,
-    DescentUnknown,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum RankingDimension {
-    TreeSize {
-        param: String,
-    },
-    ListLength {
-        param: String,
-    },
-    ArithmeticValue {
-        param: String,
-    },
-    TokenPosition {
-        param: String,
-    },
-    SetCardinality {
-        param: String,
-    },
-}
-impl RankingDimension {
-    pub fn param(&self) -> String {
-        match self {
-            RankingDimension::TreeSize { param: __val, .. } => __val.clone(),
-            RankingDimension::ListLength { param: __val, .. } => __val.clone(),
-            RankingDimension::ArithmeticValue { param: __val, .. } => __val.clone(),
-            RankingDimension::TokenPosition { param: __val, .. } => __val.clone(),
-            RankingDimension::SetCardinality { param: __val, .. } => __val.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum DescentSource {
-    ChildAccessor {
-        accessor: String,
-    },
-    ListShrink {
-        amount: i64,
-    },
-    ArithmeticDecrease {
-        op: String,
-        by: i64,
-    },
-    ParserAdvance {
-        witness: String,
-    },
-    SetRemoval {
-        element: String,
-    },
-    FoldIteration,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TerminationProof {
-    pub dimensions: Rc<Vec<Rc<RankingDimension>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ProofEdge {
-    pub caller: String,
-    pub callee: String,
-    pub evidence: Rc<Vec<DescentEvidence>>,
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescentCheckAcc {
     pub ok: bool,
@@ -476,21 +391,6 @@ pub fn is_algebra_iteration_method(method_semantics: Option<Rc<MethodSemantics>>
     match method_semantics.as_deref().cloned() {
     Some(MethodSemantics::AlgebraMethodSemantics { .. }) => true,
     _ => false,
-}
-}
-
-pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-    match a {
-    DescentEvidence::Strict => match b {
-    DescentEvidence::Strict => DescentEvidence::Strict,
-    DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-},
-    DescentEvidence::NonIncreasing => match b {
-    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-    _ => DescentEvidence::NonIncreasing,
-},
-    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
 }
 }
 
@@ -1196,7 +1096,7 @@ Rc::new({ let mut __result = Vec::new(); for name in members.clone().iter().clon
 }
 }
 
-pub fn classify_parser_scc_recursion_pattern(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>) -> Option<Rc<RecursionPattern>> {
+pub fn classify_parser_scc_recursion_pattern(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>) -> Option<Rc<LoweringTarget>> {
     {
         let scc_name_set = members.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let edges = collect_parser_edges_for_scc(members.clone(), func_index, scc_name_set);
@@ -1206,9 +1106,9 @@ if ((edges.clone().len() as i64) == 0) {
             {
                 let all_known = { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() != ProgressKind::ProgressUnknown)) { __all = false; break; } } __all };
 if (all_known && (same_progress_subgraph_has_cycle(members.clone(), edges.clone()) == false)) {
-                    Some(Rc::new(RecursionPattern::LinearRecursion {
-    iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
-}))
+                    Some(lower_call_pattern(Rc::new(CallPattern::ParserAdvanceCall {
+    witness: "parser_state".to_string(),
+})))
 } else {
                     None
 }
@@ -2684,13 +2584,35 @@ match list_evidence.clone() {
 })
 }
 
-pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, parser_always_advancing: Rc<HashMap<String, bool>>) -> Rc<RecursionPattern> {
+pub fn proof_to_call_pattern(proof: Rc<TerminationProof>) -> Rc<CallPattern> {
+    match proof.dimensions.clone().first().cloned() {
+    Some(dim) => match (*dim.clone()).clone() {
+    RankingDimension::TreeSize { param: p, .. } => Rc::new(CallPattern::ChildAccessorCall {
+    accessor: p.clone(),
+}),
+    RankingDimension::ListLength { .. } => Rc::new(CallPattern::CollectionShrinkCall {
+    amount: 1,
+}),
+    RankingDimension::ArithmeticValue { .. } => Rc::new(CallPattern::ArithmeticDescentCall {
+    op: "subtract".to_string(),
+    by: 1,
+}),
+    RankingDimension::TokenPosition { param: p, .. } => Rc::new(CallPattern::ParserAdvanceCall {
+    witness: p.clone(),
+}),
+    RankingDimension::SetCardinality { param: p, .. } => Rc::new(CallPattern::WorklistDrainCall {
+    element: p.clone(),
+}),
+},
+    None => Rc::new(CallPattern::SameArgumentCall),
+}
+}
+
+pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, parser_always_advancing: Rc<HashMap<String, bool>>) -> Rc<LoweringTarget> {
     {
         let path_calls = max_path_self_calls(body.clone(), func_name.clone());
 if (path_calls.clone() == 0) {
-            Rc::new(RecursionPattern::LinearRecursion {
-    iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
-})
+            lower_call_pattern(Rc::new(CallPattern::FoldBodyCall))
 } else {
             {
                 let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone());
@@ -2707,7 +2629,7 @@ let branching_proof = if ((path_calls.clone() > 1) && !proof_safe_for_branching.
 } else {
                     None
 };
-let branching_proof_safe = match branching_proof {
+let branching_proof_safe = match branching_proof.clone() {
     Some(bp) => { let mut __all = true; for dim in bp.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
     RankingDimension::TreeSize { .. } => true,
     RankingDimension::ListLength { .. } => true,
@@ -2716,43 +2638,43 @@ let branching_proof_safe = match branching_proof {
     None => false,
 };
 match proof.clone() {
-    Some(_) => if ((path_calls.clone() == 1) || proof_safe_for_branching.clone()) {
-                    Rc::new(RecursionPattern::LinearRecursion {
-    iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
-})
+    Some(p) => if ((path_calls.clone() == 1) || proof_safe_for_branching.clone()) {
+                    lower_call_pattern(proof_to_call_pattern(p.clone()))
 } else {
                     if branching_proof_safe {
-                        Rc::new(RecursionPattern::LinearRecursion {
-    iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
-})
+                        match branching_proof.clone() {
+    Some(bp) => lower_call_pattern(proof_to_call_pattern(bp.clone())),
+    None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
+}
 } else {
-                        Rc::new(RecursionPattern::DivideAndConquer {
-    split_factor: path_calls.clone(),
-})
+                        lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
 }
 },
     None => if (path_calls.clone() > 1) {
-                    if branching_proof_safe {
-                        Rc::new(RecursionPattern::LinearRecursion {
-    iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
-})
+                    match branching_proof.clone() {
+    Some(bp) => if branching_proof_safe {
+                        lower_call_pattern(proof_to_call_pattern(bp.clone()))
 } else {
-                        Rc::new(RecursionPattern::DivideAndConquer {
-    split_factor: path_calls.clone(),
-})
+                        lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+},
+    None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
 }
 } else {
                     {
                         let initial_witnesses = recursive_measure_param_names(body.clone(), params.clone());
 let descending_witness_names = collect_descending_witness_names(body.clone(), initial_witnesses);
-if (self_calls_have_descending_witness(body.clone(), func_name.clone(), params.clone(), descending_witness_names) || self_calls_have_strict_parser_progress(func_name.clone(), body.clone(), params.clone(), parser_always_advancing)) {
-                            Rc::new(RecursionPattern::LinearRecursion {
-    iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
-})
+if self_calls_have_descending_witness(body.clone(), func_name.clone(), params.clone(), descending_witness_names) {
+                            lower_call_pattern(Rc::new(CallPattern::ChildAccessorCall {
+    accessor: "children".to_string(),
+}))
 } else {
-                            Rc::new(RecursionPattern::UnresolvableRecursion {
-    reason: v2_rt::concat("non-descending recursion in ".to_string(), func_name.clone()),
-})
+                            if self_calls_have_strict_parser_progress(func_name.clone(), body.clone(), params.clone(), parser_always_advancing) {
+                                lower_call_pattern(Rc::new(CallPattern::ParserAdvanceCall {
+    witness: "state".to_string(),
+}))
+} else {
+                                lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+}
 }
 }
 },
@@ -2762,47 +2684,47 @@ if (self_calls_have_descending_witness(body.clone(), func_name.clone(), params.c
 }
 }
 
-pub fn bounded_recursive_cost(pattern: Rc<RecursionPattern>, raw_cost: Rc<CostExpr>, func_name: String) -> Rc<CostExpr> {
+pub fn bounded_recursive_cost(target: Rc<LoweringTarget>, raw_cost: Rc<CostExpr>, func_name: String) -> Rc<CostExpr> {
     {
         let per_iter = simplify_cost(replace_computing_ref(raw_cost, func_name.clone(), Rc::new(CostExpr::CostConst {
     value: 0,
 })));
-match (*pattern).clone() {
-    RecursionPattern::LinearRecursion { iteration_var: var, .. } => Rc::new(CostExpr::CostSum {
+match size_bound_param(target.bound.clone()) {
+    Some(p) => {
+            let var = v2_rt::concat("n_".to_string(), p.clone());
+Rc::new(CostExpr::CostSum {
     binder: var.clone(),
     upper: Rc::new(SizeExpr::SizeVar {
     name: var.clone(),
 }),
     body: per_iter,
-}),
-    RecursionPattern::DivideAndConquer { split_factor: k, .. } => Rc::new(CostExpr::CostUnknown {
-    reason: v2_rt::concat("branching recursion (".to_string(), v2_rt::concat((k.clone()).to_string(), v2_rt::concat(" self-calls) in ".to_string(), func_name.clone()))),
-}),
-    RecursionPattern::UnresolvableRecursion { reason: r, .. } => Rc::new(CostExpr::CostUnknown {
-    reason: r.clone(),
+})
+},
+    None => Rc::new(CostExpr::CostUnknown {
+    reason: v2_rt::concat("same-argument recursion in ".to_string(), func_name.clone()),
 }),
 }
 }
 }
 
-pub fn bounded_scc_cost(pattern: Rc<RecursionPattern>, raw_cost: Rc<CostExpr>, members: Rc<Vec<String>>) -> Rc<CostExpr> {
+pub fn bounded_scc_cost(target: Rc<LoweringTarget>, raw_cost: Rc<CostExpr>, members: Rc<Vec<String>>) -> Rc<CostExpr> {
     {
         let per_iter = simplify_cost(replace_computing_refs(raw_cost, members.clone(), Rc::new(CostExpr::CostConst {
     value: 0,
 })));
-match (*pattern).clone() {
-    RecursionPattern::LinearRecursion { iteration_var: var, .. } => Rc::new(CostExpr::CostSum {
+match size_bound_param(target.bound.clone()) {
+    Some(p) => {
+            let var = v2_rt::concat("n_".to_string(), p.clone());
+Rc::new(CostExpr::CostSum {
     binder: var.clone(),
     upper: Rc::new(SizeExpr::SizeVar {
     name: var.clone(),
 }),
     body: per_iter,
-}),
-    RecursionPattern::DivideAndConquer { split_factor: k, .. } => Rc::new(CostExpr::CostUnknown {
-    reason: v2_rt::concat(v2_rt::concat(v2_rt::concat("branching mutual recursion (".to_string(), (k.clone()).to_string()), " self-calls) in ".to_string()), scc_label(members.clone())),
-}),
-    RecursionPattern::UnresolvableRecursion { reason: r, .. } => Rc::new(CostExpr::CostUnknown {
-    reason: r.clone(),
+})
+},
+    None => Rc::new(CostExpr::CostUnknown {
+    reason: v2_rt::concat("same-argument mutual recursion in ".to_string(), scc_label(members.clone())),
 }),
 }
 }
@@ -3479,31 +3401,28 @@ if ((tp_all_known && ((tree_parser_edges.clone().len() as i64) > 0)) && (proof_h
 }
 }
 
-pub fn classify_scc_recursion_pattern(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>) -> Rc<RecursionPattern> {
+pub fn classify_scc_recursion_pattern(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>) -> Rc<LoweringTarget> {
     {
         let scc_name_set = members.clone().iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let proof = construct_scc_termination_proof(members.clone(), func_index.clone(), scc_name_set.clone());
 match proof {
-    Some(_) => Rc::new(RecursionPattern::LinearRecursion {
-    iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
-}),
+    Some(p) => lower_call_pattern(proof_to_call_pattern(p.clone())),
     None => {
             let scc_measure_params = build_scc_measure_params(members.clone(), func_index.clone());
 match classify_parser_scc_recursion_pattern(members.clone(), func_index.clone()) {
-    Some(parser_pattern) => parser_pattern.clone(),
+    Some(parser_target) => parser_target.clone(),
     None => {
                 let all_arithmetic = { let mut __all = true; for name in members.clone().iter().cloned() { if !(match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => ((max_path_target_calls(entry.body.clone(), scc_name_set.clone()) <= 1) && scc_calls_have_arithmetic_descent(entry.body.clone(), scc_name_set.clone(), func_index.clone(), scc_measure_params.clone())),
     None => false,
 }) { __all = false; break; } } __all };
 if all_arithmetic {
-                    Rc::new(RecursionPattern::LinearRecursion {
-    iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
-})
+                    lower_call_pattern(Rc::new(CallPattern::ArithmeticDescentCall {
+    op: "subtract".to_string(),
+    by: 1,
+}))
 } else {
-                    Rc::new(RecursionPattern::UnresolvableRecursion {
-    reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
-})
+                    lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
 }
 },
 }
@@ -4626,9 +4545,9 @@ if (lr.clone().as_str() != "unknown".to_string().as_str()) {
 
 pub fn should_emit_unknown_violation(func_name: String, scc_index: Rc<HashMap<String, Rc<SccInfo>>>) -> bool {
     match v2_rt::map_get(&scc_index, func_name.clone()) {
-    Some(info) => match (*info.pattern.clone()).clone() {
-    RecursionPattern::LinearRecursion { .. } => true,
-    _ => (func_name.clone().as_str() == scc_label(info.members.clone()).as_str()),
+    Some(info) => match size_bound_param(info.pattern.clone().bound.clone()) {
+    Some(_) => true,
+    None => (func_name.clone().as_str() == scc_label(info.members.clone()).as_str()),
 },
     None => true,
 }

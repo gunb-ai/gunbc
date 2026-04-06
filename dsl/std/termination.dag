@@ -46,48 +46,48 @@ import std.algebra { Ordering }
 //   - Stays the same (NonIncreasing): the callee receives the same
 //     value or a value no larger. Examples: passing a parameter
 //     unchanged, passing state through a helper that doesn't advance.
-//   - Is unknown (Unknown): the analyzer cannot determine the
+//   - Is unknown (DescentUnknown): the analyzer cannot determine the
 //     relationship. Fail-closed: treated as potentially non-decreasing.
 //
 // These correspond to Ordering values:
-//   Strict       → Less    (value strictly decreases)
-//   NonIncreasing → Equal  (value stays the same — may decrease but not proven)
-//   Unknown      → Greater (conservatively treated as potentially increasing)
+//   Strict         → Less    (value strictly decreases)
+//   NonIncreasing  → Equal   (value stays the same — may decrease but not proven)
+//   DescentUnknown → Greater (conservatively treated as potentially increasing)
 
 type DescentEvidence
   = Strict           // value provably decreases (Less)
   | NonIncreasing    // value does not increase (Equal or Less)
-  | Unknown          // cannot determine (fail-closed: Greater)
+  | DescentUnknown   // cannot determine (fail-closed: Greater)
 
 // Merge two descent evidences (e.g., from two branches of an if/match).
-// The merge is conservative: if EITHER branch is Unknown, result is Unknown.
+// The merge is conservative: if EITHER branch is DescentUnknown, result is DescentUnknown.
 // If both are Strict, result is Strict. Otherwise NonIncreasing.
 //
 // This forms a bounded lattice:
-//   top    = Strict        (best evidence)
-//   bottom = Unknown       (no evidence)
+//   top    = Strict         (best evidence)
+//   bottom = DescentUnknown (no evidence)
 //   meet(a, b) = min(a, b)  (conservative merge)
 //
-// The lattice ordering is: Unknown < NonIncreasing < Strict
+// The lattice ordering is: DescentUnknown < NonIncreasing < Strict
 // meet(Strict, Strict) = Strict
 // meet(Strict, NonIncreasing) = NonIncreasing
-// meet(Strict, Unknown) = Unknown
+// meet(Strict, DescentUnknown) = DescentUnknown
 // meet(NonIncreasing, NonIncreasing) = NonIncreasing
-// meet(NonIncreasing, Unknown) = Unknown
+// meet(NonIncreasing, DescentUnknown) = DescentUnknown
 
 fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   match a {
     Strict => match b {
       Strict => Strict
       NonIncreasing => NonIncreasing
-      _ => Unknown
+      _ => DescentUnknown
     }
     NonIncreasing => match b {
       Strict => NonIncreasing
       NonIncreasing => NonIncreasing
-      _ => Unknown
+      _ => DescentUnknown
     }
-    _ => Unknown
+    _ => DescentUnknown
   }
 }
 
