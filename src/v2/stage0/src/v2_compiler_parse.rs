@@ -1689,11 +1689,11 @@ pub fn is_conj_with_children(n: Rc<Node>) -> bool {
 }
 
 pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
-    match (*rt_node(ch.clone())).clone() {
+    match (*rt_node(ch)).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
     NodeType::InferError { .. } => error_type(),
     NodeType::InferVariable { .. } => error_type(),
-    NodeType::Untyped => ch.clone(),
+    NodeType::Untyped => error_type(),
 }
 }
 
