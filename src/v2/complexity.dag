@@ -3252,7 +3252,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         None => []
       }
       concat(val_edges, body_edges)
-    // CX-N: Thread descent vars through match arms; skip base-case arms when branching_only.
+    // CX-N: Thread descent vars through match arms; skip non-descending arms when branching_only.
     ExprMatch =>
       let scrut = match_scrutinee(texpr: body)
       let scrut_edges = collect_scc_child_edges(body: scrut, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
@@ -3263,26 +3263,41 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           sname == param_name || set_has(m: descent_vars, key: sname)
         _ => false
       }
-      let arms_edges = match_arm_nodes(texpr: body) |> flat_map(arm_node =>
-        let is_base_case = if branching_only {
-          max_path_target_calls(body: arm_body(n: arm_node), target_set: target_set) == 0
-        } else { false }
-        if is_base_case { [] }
-        else {
-          let arm_vars = if scrut_is_descent || scrut_is_param {
-            match arm_pattern(n: arm_node) {
-              VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
-                bindings |> fold(init: descent_vars, f: (inner, fb) =>
-                  collect_field_binding_names(fb: fb, vars: inner)
-                )
-              Bind { name: binding_name } =>
-                if scrut_is_descent { map_insert(descent_vars, binding_name, true) } else { descent_vars }
-              _ => descent_vars
-            }
-          } else { descent_vars }
-          collect_scc_child_edges(body: arm_body(n: arm_node), caller: caller, param_name: param_name, descent_vars: arm_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
-        }
+      // Collect edges from each arm, threading pattern bindings as descent vars.
+      let all_arm_edge_lists = match_arm_nodes(texpr: body) |> map(arm_node =>
+        let arm_vars = if scrut_is_descent || scrut_is_param {
+          match arm_pattern(n: arm_node) {
+            VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+              bindings |> fold(init: descent_vars, f: (inner, fb) =>
+                collect_field_binding_names(fb: fb, vars: inner)
+              )
+            Bind { name: binding_name } =>
+              if scrut_is_descent { map_insert(descent_vars, binding_name, true) } else { descent_vars }
+            _ => descent_vars
+          }
+        } else { descent_vars }
+        collect_scc_child_edges(body: arm_body(n: arm_node), caller: caller, param_name: param_name, descent_vars: arm_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
       )
+      // CX-N branching filter: when branching_only, exclude arms where ALL
+      // SCC edges are non-strict (ProgressSame/Unknown). This prevents
+      // NonIncreasing-only paths from poisoning the MEET. Arms with at
+      // least one Strict edge are kept. Base cases (no edges) are dropped.
+      // Safety: only filter if at least one arm has a Strict edge.
+      let arms_edges = if branching_only {
+        let has_any_strict = all_arm_edge_lists |> any(edges =>
+          edges |> any(e => e.progress == ProgressStrict)
+        )
+        if has_any_strict {
+          all_arm_edge_lists |> flat_map(edges =>
+            let arm_has_strict = edges |> any(e => e.progress == ProgressStrict)
+            if arm_has_strict || (edges |> count) == 0 { edges } else { [] }
+          )
+        } else {
+          all_arm_edge_lists |> flat_map(edges => edges)
+        }
+      } else {
+        all_arm_edge_lists |> flat_map(edges => edges)
+      }
       concat(scrut_edges, arms_edges)
     // CX-N: Thread descent vars through block statements sequentially.
     ExprBlock =>
@@ -3344,25 +3359,31 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         SccEdgeBlockAcc { edges: concat(acc.edges, stmt_edges), vars: next_vars }
       )
       result.edges
-    // CX-N: Skip base-case branches when branching_only.
+    // CX-N: Skip non-descending branches when branching_only.
     ExprIf =>
       let cond_edges = collect_scc_child_edges(body: if_condition(texpr: body), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
       let then_branch = if_then_branch(texpr: body)
       let else_opt = if_else_branch(texpr: body)
-      let then_path = if branching_only { max_path_target_calls(body: then_branch, target_set: target_set) } else { 1 }
-      let else_path = if branching_only {
-        match else_opt { Some { value: eb } => max_path_target_calls(body: eb, target_set: target_set), None => 0 }
-      } else { 1 }
-      let then_edges = if branching_only && then_path == 0 { [] }
-        else { collect_scc_child_edges(body: then_branch, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only) }
-      let else_edges = if branching_only && else_path == 0 { [] }
-        else {
-          match else_opt {
-            Some { value: eb } => collect_scc_child_edges(body: eb, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
-            None => []
-          }
+      let then_edges = collect_scc_child_edges(body: then_branch, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+      let else_edges = match else_opt {
+        Some { value: eb } => collect_scc_child_edges(body: eb, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+        None => []
+      }
+      // CX-N branching filter: exclude non-strict branches if at least one branch has strict descent.
+      let filtered = if branching_only {
+        let then_has_strict = then_edges |> any(e => e.progress == ProgressStrict)
+        let else_has_strict = else_edges |> any(e => e.progress == ProgressStrict)
+        if then_has_strict || else_has_strict {
+          let kept_then = if then_has_strict || (then_edges |> count) == 0 { then_edges } else { [] }
+          let kept_else = if else_has_strict || (else_edges |> count) == 0 { else_edges } else { [] }
+          concat(kept_then, kept_else)
+        } else {
+          concat(then_edges, else_edges)
         }
-      concat(cond_edges, concat(then_edges, else_edges))
+      } else {
+        concat(then_edges, else_edges)
+      }
+      concat(cond_edges, filtered)
     _ =>
       body.children |> flat_map(child =>
         collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)

@@ -2909,33 +2909,41 @@ let scrut_is_param = match (*scrut.expr_data.clone()).clone() {
 },
     _ => false,
 };
-let arms_edges = Rc::new({ let mut __result = Vec::new(); for arm_node in match_arm_nodes(body.clone()).iter().cloned() { __result.extend((*{
-                let is_base_case = if branching_only.clone() {
-                    (max_path_target_calls(arm_body(arm_node.clone()), target_set.clone()) == 0)
-} else {
-                    false
-};
-if is_base_case.clone() {
-                    Rc::new(vec![])
-} else {
-                    {
-                        let arm_vars = if (scrut_is_descent.clone() || scrut_is_param.clone()) {
-                            match (*arm_pattern(arm_node.clone())).clone() {
+let all_arm_edge_lists = Rc::new({ let mut __result = Vec::new(); for arm_node in match_arm_nodes(body.clone()).iter().cloned() { __result.push({
+                let arm_vars = if (scrut_is_descent.clone() || scrut_is_param.clone()) {
+                    match (*arm_pattern(arm_node.clone())).clone() {
     MatchPattern::VariantPattern { field_bindings: bindings, .. } => bindings.clone().iter().cloned().fold(descent_vars.clone(), |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| collect_field_binding_names(fb.clone(), inner.clone())),
     MatchPattern::Bind { name: binding_name, .. } => if scrut_is_descent.clone() {
-                                v2_rt::rc_map_insert(descent_vars.clone(), binding_name.clone(), true)
+                        v2_rt::rc_map_insert(descent_vars.clone(), binding_name.clone(), true)
 } else {
-                                descent_vars.clone()
+                        descent_vars.clone()
 },
     _ => descent_vars.clone(),
 }
 } else {
-                            descent_vars.clone()
+                    descent_vars.clone()
 };
 collect_scc_child_edges(arm_body(arm_node.clone()), caller.clone(), param_name.clone(), arm_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone())
+}); } __result });
+let arms_edges = if branching_only.clone() {
+                {
+                    let has_any_strict = { let mut __found = false; for edges in all_arm_edge_lists.clone().iter().cloned() { if { let mut __found = false; for e in edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found } { __found = true; break; } } __found };
+if has_any_strict {
+                        Rc::new({ let mut __result = Vec::new(); for edges in all_arm_edge_lists.clone().iter().cloned() { __result.extend((*{
+                            let arm_has_strict = { let mut __found = false; for e in edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found };
+if (arm_has_strict.clone() || ((edges.clone().len() as i64) == 0)) {
+                                edges.clone()
+} else {
+                                Rc::new(vec![])
+}
+}).iter().cloned()); } __result })
+} else {
+                        Rc::new({ let mut __result = Vec::new(); for edges in all_arm_edge_lists.clone().iter().cloned() { __result.extend((*edges.clone()).iter().cloned()); } __result })
 }
 }
-}).iter().cloned()); } __result });
+} else {
+                Rc::new({ let mut __result = Vec::new(); for edges in all_arm_edge_lists.clone().iter().cloned() { __result.extend((*edges.clone()).iter().cloned()); } __result })
+};
 v2_rt::concat(scrut_edges, arms_edges)
 },
     ExprData::ExprBlock => {
@@ -3017,33 +3025,37 @@ result.edges.clone()
             let cond_edges = collect_scc_child_edges(if_condition(body.clone()), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone());
 let then_branch = if_then_branch(body.clone());
 let else_opt = if_else_branch(body.clone());
-let then_path = if branching_only.clone() {
-                max_path_target_calls(then_branch.clone(), target_set.clone())
-} else {
-                1
-};
-let else_path = if branching_only.clone() {
-                match else_opt.clone() {
-    Some(eb) => max_path_target_calls(eb.clone(), target_set.clone()),
-    None => 0,
-}
-} else {
-                1
-};
-let then_edges = if (branching_only.clone() && (then_path == 0)) {
-                Rc::new(vec![])
-} else {
-                collect_scc_child_edges(then_branch.clone(), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone())
-};
-let else_edges = if (branching_only.clone() && (else_path == 0)) {
-                Rc::new(vec![])
-} else {
-                match else_opt.clone() {
+let then_edges = collect_scc_child_edges(then_branch, caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone());
+let else_edges = match else_opt {
     Some(eb) => collect_scc_child_edges(eb.clone(), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone()),
     None => Rc::new(vec![]),
-}
 };
-v2_rt::concat(cond_edges, v2_rt::concat(then_edges, else_edges))
+let filtered = if branching_only.clone() {
+                {
+                    let then_has_strict = { let mut __found = false; for e in then_edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found };
+let else_has_strict = { let mut __found = false; for e in else_edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found };
+if (then_has_strict.clone() || else_has_strict.clone()) {
+                        {
+                            let kept_then = if (then_has_strict.clone() || ((then_edges.clone().len() as i64) == 0)) {
+                                then_edges.clone()
+} else {
+                                Rc::new(vec![])
+};
+let kept_else = if (else_has_strict.clone() || ((else_edges.clone().len() as i64) == 0)) {
+                                else_edges.clone()
+} else {
+                                Rc::new(vec![])
+};
+v2_rt::concat(kept_then, kept_else)
+}
+} else {
+                        v2_rt::concat(then_edges.clone(), else_edges.clone())
+}
+}
+} else {
+                v2_rt::concat(then_edges.clone(), else_edges.clone())
+};
+v2_rt::concat(cond_edges, filtered)
 },
     _ => Rc::new({ let mut __result = Vec::new(); for child in body.children.clone().iter().cloned() { __result.extend((*collect_scc_child_edges(child.clone(), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone())).iter().cloned()); } __result }),
 }
