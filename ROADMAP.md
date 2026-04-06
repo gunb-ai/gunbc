@@ -28,11 +28,13 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 M1 COMPLETE─┤                                       ├→ M4 (structural identity)
 Bootstrap D ┼─ Lane 2: CG (codegen correctness) ───┘       └→ M5 → M6 → M7
   COMPLETE  ├─ Lane 3: CX (164 → 0)
+            ├─ Lane 4: CM (concept modeling) ── dissolves M2/CG/L1 symptoms
             └─ PERF (continuous — parallel to all lanes)
 
 Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
 Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, ownership, languages
 Lane 3 owns: complexity, dsl/std/
+Lane 4 owns: missing models (MM-1/2/3), design → src/v2/CM.md
 PERF owns: performance ratchets, bootstrap convergence tests, timing budgets
 M4 follows Lanes 1+2 (needs structural facts + clean render path)
 ```
@@ -514,49 +516,112 @@ No test >2s without justification. Self-compile time tracked per-PR.
 
 ---
 
-# Layer 3: Deferred
+# CM: Compiler Concept Modeling (Lane 4)
 
-Theory, long-horizon, and items that land after root-cause tracks complete.
+**Full analysis and heuristic inventory:** [`src/v2/CM.md`](src/v2/CM.md)
 
-## CM: Compiler Concept Modeling (primary focus)
-
-**Full analysis:** [`src/v2/CM.md`](src/v2/CM.md) — missing models,
-per-file heuristic inventory, design directions.
-
-**Root cause:** The compiler interrogates structural properties (connective,
-children count, param count, transport presence) to answer semantic questions
-that should be modeled facts. Each ad-hoc question is a symptom of a missing
-concept. Until the compiler models its own domain in `.dag`, these questions
-will keep spawning in every new feature and every refactor.
+**Root cause:** The compiler doesn't model what it does. Every stage
+re-derives structural facts that earlier stages already knew. This is
+the cause — M2 boundary gaps, CG emit heuristics, and L1 type-name
+comparisons are symptoms. Fixing symptoms relocates them; modeling the
+concepts dissolves them.
 
 **Principle:** Improper modeling spawns downstream questions. Model the
-underlying concept and the questions dissolve. Same pattern as
-fold/descend/repeat dissolving ad-hoc iteration logic.
+underlying concept and the questions dissolve.
 
-### Three missing models
+**Relationship to other lanes:** M2, CG, and CX all generate work items
+that are actually CM problems. When a PR "moves a heuristic upstream,"
+that's CM work wearing an M2/CG hat. CM is the lane that asks: what
+should the model be so the heuristic never existed?
 
-Everything reduces to three structural gaps. Each generates a family of
-heuristic if-else forests that get shuffled between stages but never
-eliminated. See `src/v2/CM.md` for full inventory.
+## MM-1: Item identity
 
-| Model | Gap | Symptom count | Key locations |
-|-------|-----|---------------|---------------|
-| **MM-1: Item identity** | Parser produces uniform Node; 4 stages re-classify | ~40 branches, 3 taxonomies | emit_info:75, items:114, infer:2270, infer:2972 |
-| **MM-2: Type structure** | Conj/Disj interpretation re-derived everywhere | 277 connective refs | lookup:209, emit_info:607, emit:1095, every emit backend |
-| **MM-3: Expression semantics** | Method/call identity is a string | ~30 name-match branches | emit_rust:2853, infer:842, infer:1130, complexity (distributed) |
+**Problem:** Parser produces uniform `Node` for types, functions,
+services, resources. Four stages independently re-derive item kind from
+`{connective, body, transport, params, children, uses, type_annotation,
+properties}`, producing three incompatible taxonomies.
 
-### Approach
+**Current counts (2026-04-05):**
+- `classify_typed_item` / `classify_item`: 4 independent forests, ~27 branches total
+- Raw structural interrogation in emit (`.connective ==`, `.body !=`, `.transport ==`): 55 sites
+- `TypedItemUnhandled` / `""` / `false` fail-open fallbacks: 8 sites
 
-Design the target models holistically before implementing. Ratchets
-measure symptoms; models eliminate causes. Prior work moved heuristics
-upstream (ValueContext, ServiceFieldSet, FoldAccUnwrapProof) — right
-direction, but without target models defined, heuristics just relocate.
+**Work items:**
+- [ ] Design: determine irreducible structural facts about items
+- [ ] Design: decide carry-on-item vs single-classification vs direct structural match
+- [ ] Implement: single authority for item facts, fail-closed by construction
+- [ ] Delete: all `classify_*` forests, all fail-open fallbacks, all name-keyed side-tables
 
-### Acceptance
+**Acceptance (all must hold simultaneously):**
+1. Zero `classify_typed_item` / `classify_item` call sites in .dag files
+2. Zero `TypedItemUnhandled` or `""` fallbacks for missing item facts
+3. Zero `Map<String, TypedItemKind>` or `Map<String, FunctionSignature>` side-tables
+4. Every emit backend receives item facts structurally (no re-derivation)
+5. Measured: `grep -cE '\.(connective|body|transport|uses|type_annotation|properties) [!=]=' src/v2/05_emit*.dag` = 0
 
-No ad-hoc structural interrogation in emission. Inference precomputes
-all semantic facts. Compiler concepts modeled in `.dag` declarations
-readable by the compiler itself.
+## MM-2: Type structure
+
+**Problem:** `Conj/Disj/NoConnective` is a primitive, but its
+interpretation (product → struct, sum → enum, leaf → primitive) is
+re-derived at every consumption site.
+
+**Current counts (2026-04-05):**
+- `.connective ==` in emit + lookup + types: 57 sites
+- `TypeSummary.repr` (StructRepr/EnumRepr) exists but only used by some consumers
+- Type rendering dispatch in `05_emit.dag:1095-1191`: 97 lines, 7 branches
+
+**Work items:**
+- [ ] Design: determine whether `TypeSummary.repr` can become the single interpretation authority
+- [ ] Design: determine whether non-emit consumers (lookup, types) should use same or different concept
+- [ ] Implement: single interpretation of connective, consumed everywhere
+- [ ] Delete: all inline `.connective == Conj` / `Disj` checks in emit
+
+**Acceptance:**
+1. Zero `.connective ==` in `05_emit*.dag` files
+2. `05_emit.dag` type rendering dispatch reduced from 97 lines to exhaustive match on a sum type
+3. `04_lookup.dag` field access resolution uses same structural concept (no parallel re-derivation)
+4. Measured: `grep -cE '\.connective ==' src/v2/05_emit*.dag` = 0
+
+## MM-3: Expression semantics
+
+**Problem:** Method identity is a string. Call semantics (nullary
+invocation, method kind, built-in refinement) re-derived from name
+matching at every consumption site.
+
+**Current counts (2026-04-05):**
+- `method_def.name` / `method_name ==` dispatch: 21 sites (emit_rust: 12, infer: 5, complexity: 4)
+- Nullary function detection: 3 sites in emit_rust, 0 in Go/Python (bug)
+- Built-in call type refinement by name: 4 sites in infer
+
+**Work items:**
+- [ ] Design: `AlgebraMethodKind` enum on `MethodSemantics` (fold/map/filter/sort_by/...)
+- [ ] Design: nullary invocation — `NullaryCallBinding` vs ExprVar→ExprCall normalization
+- [ ] Implement: method dispatch via kind enum, not name string
+- [ ] Implement: nullary invocation modeled in IR
+- [ ] Fix: Go/Python emit must handle nullary function references
+
+**Acceptance:**
+1. Zero `method_def.name ==` string comparisons in emit files
+2. Zero `method_name ==` string comparisons in infer for algebra dispatch
+3. Nullary function references emit `()` in all three backends via structural fact, not heuristic
+4. Measured: `grep -cE 'method_def\.name|method_name.*==' src/v2/05_emit*.dag src/v2/04_infer.dag` = 0
+
+## CM ratchet
+
+Unlike L1 (which counts proxies), CM counts the actual heuristic sites.
+These are harder to game because moving a heuristic behind a helper
+doesn't change the count — the helper still contains the interrogation.
+
+| Metric | Current | Target | Command |
+|--------|---------|--------|---------|
+| Structural interrogation in emit | 55 | 0 | `grep -cE '\.(connective\|body\|transport\|uses\|type_annotation\|properties) [!=]=' src/v2/05_emit*.dag` |
+| Method name dispatch | 21 | 0 | `grep -cE 'method_def\.name\|method_name.*==' src/v2/05_emit*.dag src/v2/04_infer.dag src/v2/complexity.dag` |
+| Item classification forests | 4 | 0 | `grep -c 'classify_typed_item\|classify_item' src/v2/*.dag` |
+| Fail-open fallbacks | 8 | 0 | (manual audit — `None =>` that fabricates) |
+
+---
+
+# Layer 3: Deferred
 
 ## P1: Modeling Consolidation
 

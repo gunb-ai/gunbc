@@ -261,6 +261,55 @@ the compiler partially uses:
 
 ---
 
+## Acceptance criteria (uncheateable)
+
+These count actual heuristic sites in .dag source. Moving a heuristic
+behind a helper doesn't change the count — the helper still contains
+the interrogation. You can only reach zero by modeling the concept.
+
+### MM-1 acceptance
+
+```bash
+# Zero classification forests
+grep -c 'classify_typed_item\|classify_item' src/v2/*.dag  # target: 0
+# Zero raw structural interrogation in emit
+grep -cE '\.(connective|body|transport|uses|type_annotation|properties) [!=]=' src/v2/05_emit*.dag  # target: 0
+# Zero fail-open fallbacks
+# (manual audit: no None => TypedItemUnhandled, None => "", None => false for missing facts)
+# Zero name-keyed side-tables
+grep -c 'Map<String, TypedItemKind>\|Map<String, FunctionSignature>\|Map<String, ServiceFieldSet>\|Map<String, ResourceDefinition>' src/v2/*.dag  # target: 0
+```
+
+### MM-2 acceptance
+
+```bash
+# Zero connective interpretation in emit
+grep -cE '\.connective ==' src/v2/05_emit*.dag  # target: 0
+# Type rendering dispatch is exhaustive match, not if-else forest
+# (manual audit: 05_emit.dag type rendering is <20 lines, matches on a sum type)
+```
+
+### MM-3 acceptance
+
+```bash
+# Zero method name dispatch
+grep -cE 'method_def\.name|method_name.*==' src/v2/05_emit*.dag src/v2/04_infer.dag src/v2/complexity.dag  # target: 0
+# Nullary invocation handled structurally in all 3 backends
+# (test: emit a zero-arg function ref in Go/Python/Rust, all produce "()")
+```
+
+### Current baseline (2026-04-05)
+
+| Metric | Count | Target |
+|--------|-------|--------|
+| Structural interrogation in emit | 55 | 0 |
+| `.connective ==` in emit | 24 | 0 |
+| Method name dispatch (emit + infer + complexity) | 21 | 0 |
+| Item classification forests | 4 | 0 |
+| Fail-open fallbacks | 8 | 0 |
+
+---
+
 ## Principles for resolution
 
 1. **Model the concept, don't classify the node.** The question "is this
