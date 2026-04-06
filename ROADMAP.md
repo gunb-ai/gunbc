@@ -604,19 +604,22 @@ lanes — any lane can introduce a regression.
 
 | What | Where | Status |
 |------|-------|--------|
-| Self-compile time ratchet | `bootstrap::performance_ratchet` | `#[ignore]`, 30s budget (~6.5s actual) |
-| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]` |
+| Self-compile time ratchet | `bootstrap::performance_ratchet` | `#[ignore]`, CI gate, 30s budget (~4.8s actual) |
+| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, CI gate, ratchet 0 |
 | Full DSL compile | `pipeline::full_dsl_compiles` | `#[ignore]`, GREEN |
 | Stage0 freshness gate | `scripts/check-stage0-freshness.sh` | CI blocking |
 | Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, ratchet 316 |
 
 ### Work items
 
-- **PERF-1**: Un-ignore `performance_ratchet` in CI. Currently 30s
-  budget with ~6.5s actual. Gate on this to catch O(n^2) regressions
-  early. Requires CI runner has `cargo build --release` capacity.
-- **PERF-2**: Un-ignore `bootstrap_stage0_to_stage1` in CI. This is
-  the full regen + convergence test. Proves pass-1 = pass-2 on every PR.
+- **PERF-1**: ~~Un-ignore `performance_ratchet` in CI.~~ DONE (PR #326).
+  30s budget, ~4.8s actual. CI gate catches O(n²) regressions.
+- **PERF-2**: `bootstrap_stage0_to_stage1` enabled in CI (PR #326).
+  When emission succeeds, gates emitted-Rust correctness (0 cargo check
+  errors). Returns early without validation when complexity violations
+  block emission — not yet an unconditional gate. Convergence proof
+  (pass-1 = pass-2) remains in `bootstrap_fixed_point` (`#[ignore]`,
+  not yet a CI gate — expensive: two full builds + two compiles).
 - **PERF-3**: Track self-compile memory. The CX OOM root cause was
   repeated complexity classification on large compiles, not raw budget.
   Add a memory-usage ratchet or at minimum log peak RSS during

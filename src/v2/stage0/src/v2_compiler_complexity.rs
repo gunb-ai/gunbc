@@ -569,14 +569,14 @@ pub fn parser_state_base_var(expr: Rc<Node>) -> Option<String> {
 
 pub fn parser_result_state_progress(source: Rc<ParserResultSource>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, result_name: String) -> ProgressKind {
     match (*source).clone() {
-    ParserResultSource::ParserResultAdvance { input: input, .. } => strict_progress(input.clone()),
-    ParserResultSource::ParserResultExpect { input: input, .. } => strict_progress(input.clone()),
-    ParserResultSource::ParserResultEat { input: input, .. } => if set_has(consumed_true_set, result_name) {
+    ParserResultSource::ParserResultAdvance { input, .. } => strict_progress(input.clone()),
+    ParserResultSource::ParserResultExpect { input, .. } => strict_progress(input.clone()),
+    ParserResultSource::ParserResultEat { input, .. } => if set_has(consumed_true_set, result_name) {
         strict_progress(input.clone())
 } else {
         input.clone()
 },
-    ParserResultSource::ParserResultCall { input: input, callee: callee, .. } => if (set_has(consumed_true_set, result_name) || set_has(parser_always_advancing, callee.clone())) {
+    ParserResultSource::ParserResultCall { input, callee, .. } => if (set_has(consumed_true_set, result_name) || set_has(parser_always_advancing, callee.clone())) {
         strict_progress(input.clone())
 } else {
         input.clone()
@@ -703,9 +703,9 @@ match (*parser_result_witness(expr.clone())).clone() {
     ParserResultWitness::ParserWitnessEat => Rc::new(ParserResultSource::ParserResultEat {
     input: input_progress.clone(),
 }),
-    ParserResultWitness::ParserWitnessCall { callee: callee, .. } => match (*callee.clone()).clone() {
+    ParserResultWitness::ParserWitnessCall { callee, .. } => match (*callee.clone()).clone() {
     ParserCallIdentity::ParserCallHelper { .. } => Rc::new(ParserResultSource::ParserResultOpaque),
-    ParserCallIdentity::ParserCallFunction { name: name, .. } => match input_progress.clone() {
+    ParserCallIdentity::ParserCallFunction { name, .. } => match input_progress.clone() {
     ProgressKind::ProgressUnknown => Rc::new(ParserResultSource::ParserResultOpaque),
     _ => Rc::new(ParserResultSource::ParserResultCall {
     input: input_progress.clone(),
@@ -1369,7 +1369,7 @@ pub fn expr_descending_witness_source(mut expr: Rc<Node>, mut descending_witness
     loop {
         match (*expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => { break v2_rt::map_get(&descending_witness_names, expr_var_name(expr.clone())); },
-    ExprData::ExprBinOp { op: op, .. } => { match op.clone() {
+    ExprData::ExprBinOp { op, .. } => { match op.clone() {
     BinOp::Sub => { {
             let __tco_0 = binop_left(expr);
 let __tco_1 = descending_witness_names;
@@ -1501,7 +1501,7 @@ let witness_ok = { let mut __found = false; for pair in Rc::new(arg_nodes.clone(
 
 pub fn is_descending_expr(expr: Rc<Node>) -> bool {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprBinOp { op: op, .. } => match op.clone() {
+    ExprData::ExprBinOp { op, .. } => match op.clone() {
     BinOp::Sub => match (*binop_left(expr.clone()).expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => true,
     _ => false,
@@ -3545,7 +3545,7 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
         false
 } else {
         match (*method_semantics.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_def: method_def, .. } => is_size_preserving_method(method_def.name.clone()),
+    MethodSemantics::AlgebraMethodSemantics { method_def, .. } => is_size_preserving_method(method_def.name.clone()),
     _ => false,
 }
 }
@@ -3560,7 +3560,7 @@ pub fn receiver_size_var(mut recv: Rc<Node>) -> Rc<SizeExpr> {
     ExprData::ExprFieldAccess { .. } => { break Rc::new(SizeExpr::SizeLen {
     collection: field_access_field(recv.clone()),
 }); },
-    ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => { let inner_recv = match recv.children.clone().first().cloned() {
+    ExprData::ExprMethodCall { method_semantics, .. } => { let inner_recv = match recv.children.clone().first().cloned() {
     Some(r) => r.clone(),
     None => recv.clone(),
 };
