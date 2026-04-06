@@ -210,42 +210,6 @@ pub fn rust_serde_rename_template() -> String {
     CACHED.with(|c| c.clone())
 }
 
-pub fn rust_clone_expr() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "{0}.clone()".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_deref_clone_expr() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "(*{0}).clone()".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_field_clone_expr() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "{0}.{1}.clone()".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_iterator_clone_suffix() -> String {
-    thread_local! {
-        static CACHED: String = {
-            ".cloned()".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 pub fn rust_source_extension() -> String {
     thread_local! {
         static CACHED: String = {
@@ -362,4 +326,22 @@ pub fn rt_bridge_name(name: String) -> String {
 
 pub fn rt_passes_by_ref(name: String) -> bool {
     v2_rt::map_contains_key(&rt_ref_map_functions(), name)
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HigherOrderMethodSpec {
+    pub method_name: String,
+    pub inline_template: String,
+    pub fn_ref_template: String,
+    pub wraps_in_sharing: bool,
+}
+
+pub fn rust_higher_order_methods() -> Rc<Vec<Rc<HigherOrderMethodSpec>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<HigherOrderMethodSpec>>> = {
+            serde_json::from_value(serde_json::json!([{"method_name": "filter", "inline_template": "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }", "fn_ref_template": "{iter}.filter({arg}).collect::<Vec<_>>()", "wraps_in_sharing": true}, {"method_name": "any", "inline_template": "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }", "fn_ref_template": "{iter}.any({arg})", "wraps_in_sharing": false}, {"method_name": "all", "inline_template": "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }", "fn_ref_template": "{iter}.all({arg})", "wraps_in_sharing": false}, {"method_name": "flat_map", "inline_template": "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }", "fn_ref_template": "{iter}.flat_map({arg}).collect::<Vec<_>>()", "wraps_in_sharing": true}]))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
