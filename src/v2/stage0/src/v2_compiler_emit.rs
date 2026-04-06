@@ -58,7 +58,8 @@ use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
 pub use crate::v2_compiler_infer_types::{rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection};
-pub use crate::std_types::{is_container_type};
+pub use crate::std_types::{is_container_type, container_to_algebra_name};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name};
@@ -840,7 +841,10 @@ pub fn emit_primitive_type(name: String, target: RenderTarget) -> String {
 }
 
 pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
-    match target_container_template(target.clone(), kind.clone()) {
+    if (kind.clone().as_str() == "optional".to_string().as_str()) {
+        apply_type_template1(target_optional_template(target.clone()), inner)
+} else {
+        match coerce_container_template(target.clone(), kind.clone()) {
     Some(template) => apply_type_template1(template.clone(), inner),
     None => match target.clone() {
     RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(kind.clone(), "[".to_string()), inner), "]".to_string()),
@@ -848,9 +852,10 @@ pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> Stri
 },
 }
 }
+}
 
 pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> String {
-    match target_container_template(target, "map".to_string()) {
+    match coerce_container_template(target, "map".to_string()) {
     Some(template) => apply_type_template2(template.clone(), key_type, val_type),
     None => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Map<".to_string(), key_type), ", ".to_string()), val_type), ">".to_string()),
 }
@@ -979,7 +984,7 @@ if ((n.children.clone().len() as i64) == 0) {
             {
                 let bare_is_map = (is_container_type(n.name.clone()) && (to_snake(n.name.clone()).as_str() == "map".to_string().as_str()));
 let bare_is_collection = (is_container_type(n.name.clone()) && !bare_is_map.clone());
-let has_container_template = match target_container_template(RenderTarget::Rust, to_snake(n.name.clone())) {
+let has_container_template = match container_to_algebra_name(to_snake(n.name.clone())) {
     Some(_) => true,
     None => false,
 };
@@ -1254,7 +1259,7 @@ return Rc::new(TypeRendering {
 if (n.name.clone().as_str() != "".to_string().as_str()) {
             {
                 let snake = to_snake(n.name.clone());
-let has_template = match target_container_template(RenderTarget::Rust, snake.clone()) {
+let has_template = match container_to_algebra_name(snake.clone()) {
     Some(_) => true,
     None => false,
 };
@@ -1502,10 +1507,7 @@ return emit_container(tr.type_name.clone(), inner_str.clone(), target.clone())
 }
 if ((tr.generic_args.clone().len() as i64) > 0) {
             {
-                let base = match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
-    Some(m) => m.clone(),
-    None => tr.type_name.clone(),
-};
+                let base = coerce_primitive_type(target.clone(), tr.type_name.clone());
 let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in tr.generic_args.clone().iter().cloned() { __result.push(render_type(a.clone(), target.clone())); } __result });
 let args_joined = arg_strs.join(&", ".to_string());
 return match target.clone() {
@@ -1532,10 +1534,7 @@ match target.clone() {
 }
 }
 }
-match try_target_primitive_type(target.clone(), tr.type_name.clone()) {
-    Some(m) => m.clone(),
-    None => tr.type_name.clone(),
-}
+coerce_primitive_type(target.clone(), tr.type_name.clone())
 }
 }
 

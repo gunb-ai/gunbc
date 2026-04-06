@@ -60,7 +60,8 @@ import v2.std.core {
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding, RecursiveVariantFieldWitness }
 import v2.compiler.infer_types { rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection }
-import std.types { is_container_type }
+import std.types { is_container_type, container_to_algebra_name }
+import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -861,18 +862,22 @@ fn emit_primitive_type(name: String, target: RenderTarget) -> String {
 }
 
 fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
-  match target_container_template(target: target, kind: kind) {
-    Some { value: template } => apply_type_template1(template: template, arg0: inner)
-    None =>
-      match target {
-        Python => concat(kind, "[", inner, "]")
-        _ => concat(kind, "<", inner, ">")
-      }
+  if kind == "optional" {
+    apply_type_template1(template: target_optional_template(target: target), arg0: inner)
+  } else {
+    match coerce_container_template(target: target, container_name: kind) {
+      Some { value: template } => apply_type_template1(template: template, arg0: inner)
+      None =>
+        match target {
+          Python => concat(kind, "[", inner, "]")
+          _ => concat(kind, "<", inner, ">")
+        }
+    }
   }
 }
 
 fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> String {
-  match target_container_template(target: target, kind: "map") {
+  match coerce_container_template(target: target, container_name: "map") {
     Some { value: template } => apply_type_template2(template: template, arg0: key_type, arg1: val_type)
     None => concat("Map<", key_type, ", ", val_type, ">")
   }
@@ -956,7 +961,7 @@ fn build_type_rendering_leaf(n: Node, shared_types: Map<String, Bool>, recursive
     // Bare type (no children)
     let bare_is_map = is_container_type(name: n.name) && to_snake(name: n.name) == "map"
     let bare_is_collection = is_container_type(name: n.name) && !bare_is_map
-    let has_container_template = match target_container_template(target: Rust, name: to_snake(name: n.name)) {
+    let has_container_template = match container_to_algebra_name(name: to_snake(name: n.name)) {
       Some { value: _ } => true
       None => false
     }
@@ -1039,7 +1044,7 @@ fn build_type_rendering_conj(n: Node, shared_types: Map<String, Bool>, recursive
   // Named product — check container template
   if n.name != "" {
     let snake = to_snake(name: n.name)
-    let has_template = match target_container_template(target: Rust, name: snake) {
+    let has_template = match container_to_algebra_name(name: snake) {
       Some { value: _ } => true
       None => false
     }
@@ -1160,7 +1165,7 @@ fn render_type_base(tr: TypeRendering, target: RenderTarget) -> String {
   }
   // Generic args
   if tr.generic_args |> count > 0 {
-    let base = match try_target_primitive_type(target: target, name: tr.type_name) { Some { value: m } => m  None => tr.type_name }
+    let base = coerce_primitive_type(target: target, dag_name: tr.type_name)
     let arg_strs = tr.generic_args |> map(a => render_type(tr: a, target: target))
     let args_joined = arg_strs |> join(separator: ", ")
     return match target {
@@ -1181,8 +1186,8 @@ fn render_type_base(tr: TypeRendering, target: RenderTarget) -> String {
       _ => return "__EMIT_BUG_ANONYMOUS_CONJ__"
     }
   }
-  // Leaf: primitives are mapped; user-defined type names pass through.
-  match try_target_primitive_type(target: target, name: tr.type_name) { Some { value: m } => m  None => tr.type_name }
+  // Leaf: primitives coerced via checkpoint data; user-defined names pass through.
+  coerce_primitive_type(target: target, dag_name: tr.type_name)
 }
 
 // =========================================================================
