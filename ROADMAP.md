@@ -562,6 +562,17 @@ CX-D (model facts in std/)
   models (1) but has no downstream consumer in complexity.dag.
   Dissolves all Theme A and Theme B items. Unblocks producer-patch
   reversals (02_parse.dag, 04_types.dag).
+  **Progress:** `complexity.dag` now reads `AlgebraFieldTemplate` from
+  `AlgebraMethodSemantics` instead of string-dispatching on method names
+  for size-effect classification. **Bridge limitation:**
+  `AlgebraFieldTemplate` is a template/schema system — it describes type
+  shapes (ReceiverSelf, OptionalOf{ReceiverElement}) but not behavioral
+  semantics. Template shapes have collisions that prevent exact
+  classification: skip/take share the same shape, filter/reverse/append
+  share the same shape, map/flat_map/enumerate share the same shape.
+  The endgame is explicit per-method operation contracts modeled in
+  `std/algebra.dag` or `std/termination.dag` as compositional DAG facts
+  — not template-shape heuristics. See CM direction below.
 - **CX-A**: DescentEvidence lattice unification — parser mutual recursion.
   **Blocked-by: CX-D** (needs structural evidence facts).
   Files: `complexity.dag`, `dsl/std/termination.dag`.
@@ -655,7 +666,7 @@ modeling gaps.
 |------|-------------|---------------------|
 | M2 (Lane 1) | `ExprLet` erases expected type → bare_map_node chain → 5+ downstream fallbacks | Propagate expected through ExprLet; normalize ExprVar→ExprCall for nullary |
 | CG (Lane 2) | 39 heuristic sites, all "existing authority not surfaced" | Surface connective through TypeRendering; surface AlgebraFieldTemplate to emit |
-| CX (Lane 3) | 4 analyzer heuristics = 4 missing std/ facts | Model operation size contracts in std/computation.dag |
+| CX (Lane 3) | 4 analyzer heuristics = 4 missing std/ facts; AlgebraFieldTemplate is a template system that must dissolve into compositional operation contracts | Model explicit per-method operation effects in std/ as DAG facts, not template-shape inference |
 | M4 | CM provides endgame rationale: structural fields ARE identity, names are rendering sugar | Surface structural fields; delete Node.name |
 
 **Unowned files (~42 heuristic sites in 04_resolve, 04_access, coercion, 00_core):**
@@ -732,17 +743,30 @@ matching at every consumption site.
 - Built-in call type refinement by name: 4 sites in infer
 
 **Work items:**
-- [ ] Surface existing `method_def` Node and `AlgebraFieldTemplate`
-  structural facts through the pipeline to emit — these ARE method
-  identity; no new dispatch enum
+- [ ] Surface existing `method_def` Node structural facts through the
+  pipeline to emit — `method_def` IS method identity; no new dispatch enum
+- [x] Thread `AlgebraFieldTemplate` through `AlgebraMethodSemantics` to
+  complexity.dag (bridge step — dissolves string dispatch but template
+  shapes are lossy; see next item)
+- [ ] **Dissolve `AlgebraFieldTemplate` templating into compositional
+  operation contracts.** The template system describes type shapes
+  (ReceiverSelf, OptionalOf, etc.) but not behavioral semantics.
+  Template shapes collide: skip/take, filter/reverse/append,
+  map/flat_map/enumerate are indistinguishable by shape alone. The fix:
+  model explicit per-method operation effects as compositional DAG facts
+  in `std/algebra.dag` or `std/termination.dag` (e.g., strict-prefix-drop,
+  element-projection, subset, permutation, wrap, arbitrary-map).
+  These facts survive on the enriched field Node and flow through the
+  pipeline — no re-derivation, no template re-lookup, no shape heuristics.
+  Part of CM effort.
 - [ ] Normalize ExprVar → ExprCall during inference for nullary
   functions — the expression IR is the authority for invocation
   semantics
 - [ ] Fix: Go/Python emit must handle nullary function references
   (ExprCall normalization fixes all backends at once)
 
-**Acceptance:** Emit reads method structural facts from existing
-`method_def` / `AlgebraFieldTemplate` authorities, not name strings.
+**Acceptance:** Emit and complexity read method structural facts from
+the Node authority directly, not name strings or template shapes.
 Nullary invocation is ExprCall in the IR (normalized during inference),
 not a type-name check at render time.
 
@@ -753,17 +777,19 @@ Consumers read existing structural authorities; the wrong question
 can't be asked. See `src/v2/CM.md` for full design rationale.
 
 **One clear end-state:** The existing structural data (Node fields,
-connective, method_def, AlgebraFieldTemplate) flows through stage
-boundaries intact to every consumer that needs it. No new parallel
-classification types. No lossy boundaries that drop distinctions
-consumers need. Reading a field IS reading the authority — that is
-not re-derivation.
+connective, method_def) flows through stage boundaries intact to every
+consumer that needs it. No new parallel classification types. No lossy
+boundaries that drop distinctions consumers need. Reading a field IS
+reading the authority — that is not re-derivation.
+`AlgebraFieldTemplate` is a bridge: it surfaces type shapes but not
+behavioral semantics. The endgame dissolves templates into compositional
+operation contracts on the method Node itself.
 
 | Model | Claim | How to verify |
 |-------|-------|---------------|
 | MM-1 | Existing Node fields flow to emit intact; classification is unnecessary | No `classify_*` forests; emit reads `body`, `transport`, `connective` from the Node at the boundary |
 | MM-2 | Connective / TypeSummary.repr is the authority; re-interpretation is unnecessary | Emit reads connective or repr — no inline `.connective == Conj` checks. TypeSummary.repr is only the single authority if proven non-lossy for ALL consumers, not just emit |
-| MM-3 | method_def / AlgebraFieldTemplate is the authority; name dispatch is unnecessary | Emit reads structural method facts — no `method_name ==` string dispatch |
+| MM-3 | method_def with compositional operation contracts is the authority; name dispatch and template-shape inference are unnecessary | Emit and complexity read structural method facts from the Node — no `method_name ==` string dispatch, no template-shape heuristics |
 
 **Invariant guardrail:** Consume existing authorities, never duplicate.
 Any proposed new fact layer or boundary type must demonstrate that
