@@ -99,7 +99,7 @@ Rc::new(AccessCheckResultNode {
 pub fn keyed_collection_parts(n: Rc<Node>) -> Option<Rc<KeyedCollectionParts>> {
     if (node_is_keyed_collection(n.clone()) && ((n.children.clone().len() as i64) >= 2)) {
         match n.children.clone().first().cloned() {
-    Some(key_node) => match Rc::new(n.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(key_node) => match n.children.clone().get(1 as usize).cloned() {
     Some(value_node) => Some(Rc::new(KeyedCollectionParts {
     key_type: key_node.clone(),
     value_type: value_node.clone(),

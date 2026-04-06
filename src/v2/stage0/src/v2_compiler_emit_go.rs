@@ -83,11 +83,11 @@ pub fn emit_go_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<St
     Some(stmt) => { let line = emit_go_typed_expr(stmt.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
 {
-            let __tco_0 = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = v2_rt::rc_list_push(text.clone(), line.clone());
+            let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = v2_rt::rc_list_push(text, line.clone());
 let __tco_2 = next_scope.clone();
-let __tco_3 = registry.clone();
-let __tco_4 = depth.clone();
+let __tco_3 = registry;
+let __tco_4 = depth;
 remaining = __tco_0;
 text = __tco_1;
 scope = __tco_2;
@@ -116,10 +116,10 @@ match rest.clone().first().cloned() {
 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
 {
             let __tco_0 = rest.clone();
-let __tco_1 = v2_rt::rc_list_push(text.clone(), line.clone());
+let __tco_1 = v2_rt::rc_list_push(text, line.clone());
 let __tco_2 = next_scope.clone();
-let __tco_3 = registry.clone();
-let __tco_4 = depth.clone();
+let __tco_3 = registry;
+let __tco_4 = depth;
 remaining = __tco_0;
 text = __tco_1;
 scope = __tco_2;

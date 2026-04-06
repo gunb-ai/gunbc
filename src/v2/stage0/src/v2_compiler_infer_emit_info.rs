@@ -104,6 +104,8 @@ pub struct EmitGraphInfo {
     pub ownership_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub movable: Rc<HashMap<String, bool>>,
     pub owned_bindings: Rc<HashMap<String, bool>>,
+    pub fold_eligible_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    pub fold_eligible: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -137,6 +139,8 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     movable: v2_rt::rc_empty_map::<bool>(),
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
+    fold_eligible_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
+    fold_eligible: v2_rt::rc_empty_map::<bool>(),
 })
 }
 
@@ -248,7 +252,7 @@ pub fn is_pair_children(children: Rc<Vec<Rc<Node>>>) -> bool {
         false
 } else {
         match children.clone().first().cloned() {
-    Some(c0) => match Rc::new(children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+    Some(c0) => match children.clone().get(1 as usize).cloned() {
     Some(c1) => ((c0.name.clone().as_str() == "first".to_string().as_str()) && (c1.name.clone().as_str() == "second".to_string().as_str())),
     None => false,
 },

@@ -63,7 +63,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: Some(Rc::new(InferredNode::TypeVariable {
-    id: id.clone(),
+    id: id,
 })),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -87,7 +87,7 @@ pub fn list_of_type_variable(id: String) -> Rc<Node> {
     name: "List".to_string(),
     span: make_span(0, 0),
     ident_span: None,
-    children: Rc::new(vec![type_variable_node(id.clone())]),
+    children: Rc::new(vec![type_variable_node(id)]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -109,7 +109,7 @@ pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
     name: "List".to_string(),
     span: make_span(0, 0),
     ident_span: None,
-    children: Rc::new(vec![element.clone()]),
+    children: Rc::new(vec![element]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: None,
@@ -141,6 +141,7 @@ let m = v2_rt::rc_map_insert(m.clone(), "parse_int".to_string(), with_optional_c
 let m = v2_rt::rc_map_insert(m.clone(), "char_at".to_string(), string_type());
 let m = v2_rt::rc_map_insert(m.clone(), "substring".to_string(), string_type());
 let m = v2_rt::rc_map_insert(m.clone(), "from_code_point".to_string(), string_type());
+let m = v2_rt::rc_map_insert(m.clone(), "chars_to_string".to_string(), string_type());
 let m = v2_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type());
 let m = v2_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type());
 let m = v2_rt::rc_map_insert(m.clone(), "map_insert".to_string(), map_of_type_variables());
@@ -161,11 +162,11 @@ m.clone()
 }
 
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
-    v2_rt::map_get(&builtin_function_registry(), name.clone())
+    v2_rt::map_get(&builtin_function_registry(), name)
 }
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
-    match infer_builtin_call_type(name.clone()) {
+    match infer_builtin_call_type(name) {
     Some(v) => v.clone(),
     None => unit_type(),
 }

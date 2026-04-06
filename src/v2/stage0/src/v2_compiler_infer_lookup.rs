@@ -222,7 +222,7 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
 let resolved = resolve_scrutinee_type_node(env, normed);
 let map_type = normalize_access_type_node(resolved);
 if (node_is_keyed_collection(map_type.clone()) && ((map_type.children.clone().len() as i64) >= 2)) {
-            match Rc::new(map_type.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).first().cloned() {
+            match map_type.children.clone().get(1 as usize).cloned() {
     Some(value_type) => Some(value_type.clone()),
     None => None,
 }
