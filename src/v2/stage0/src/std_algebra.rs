@@ -850,7 +850,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: None,
     cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
+    produces_collection: true,
 })),
 }), Rc::new(AlgebraFieldTemplate {
     name: "list_push".to_string(),

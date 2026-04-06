@@ -554,25 +554,36 @@ CX-D (model facts in std/)
 
 - **CX-D**: Model operation facts → heuristics dissolve. **Partial.**
   Three categories of structural facts:
-  (1) **Operation size contracts** — [x] `CollectionSizeEffect`
+  (1) **Operation size contracts** — `CollectionSizeEffect`
       (ShrinkEffect/ProjectionEffect/IdentityEffect) declared per-method
-      on `AlgebraFieldTemplate` in `dsl/std/algebra.dag`. Complexity reads
-      `size_effect` from `AlgebraMethodSemantics`. `ListMethodKind` and
-      `classify_list_method` deleted. `take` is explicitly `none` (not
-      unconditional shrink). **Done (PR #328).**
+      on `AlgebraFieldTemplate`. `CostShape` (cost class) also on template.
+      Complexity reads both from `AlgebraMethodSemantics`. Deleted:
+      `ListMethodKind`, `classify_list_method`, `method_cost_shape_table`,
+      `is_size_preserving_method`. `take` is explicitly `none`.
+      Remaining modeling gap: `CollectionSizeEffect` mixes cardinality,
+      structural-identity, and projection — reviewer wants orthogonal facts.
+      `CostShape.produces_collection` duplicates `return_type` — should
+      derive from template. `size_effect`/`cost_shape` on `MethodSemantics`
+      is a bridge; endgame: facts on the resolved method Node. **(PR #328)**
   (2) **Type structure facts** — field sub-value relationships
       (child access produces a smaller tree). Not started.
   (3) **Coproduct projection facts** — match arms narrow the type,
       producing strictly smaller data. Not started.
   The lowering table in `std/computation.dag` (CallPattern → LoweringTarget)
   already models (1) but has no downstream consumer in complexity.dag.
-  Remaining Theme A items: child-descent hardcodes `"children"`,
-  `is_tree_size_preserving_wrapper` hardcodes callee name.
+  Remaining Theme A items: `is_tree_size_preserving_wrapper` hardcodes
+  callee name. `is_children_list_field` reads from `node_field_roles`
+  data table (already modeled).
 - **CX-A**: DescentEvidence lattice unification — parser mutual recursion.
   **Partial.** Lattice, parser SCC proofs, lexicographic [TreeSize,
-  TokenPosition] all implemented. `proof_has_non_descending_cycle` now
-  builds graph directly from `ProofEdge` — `ProgressSame` bridge removed
-  **(PR #328).**
+  TokenPosition] all implemented — including single-function lexicographic
+  (delegates to SCC proof constructor). `proof_has_non_descending_cycle`
+  builds graph directly from `ProofEdge` (ProgressSame bridge removed)
+  and detects non-descending self-loops. Old classifiers deleted:
+  `self_calls_have_descending_witness`, `self_calls_have_strict_parser_progress`.
+  All recursion classification goes through unified proof constructor.
+  Dead `skip()` ExprCall handlers removed (inference bridge normalizes).
+  **(PR #328)**
   Deferred: `is_valid_proof` stub in termination.dag (blocked on
   bootstrap); `ParserResultDirectState` duplication (refactoring);
   `branching_proof_safe` only accepts TreeSize/ListLength (extend to
@@ -582,9 +593,11 @@ CX-D (model facts in std/)
   **Partial.** `CostShape` type moved to `dsl/std/algebra.dag`, declared
   per-method on `AlgebraFieldTemplate`. `method_cost_shape_table` (19-entry
   `Map<String, CostShape>`) deleted. Complexity reads `cost_shape` from
-  `AlgebraMethodSemantics` **(PR #328).**
+  `AlgebraMethodSemantics`. **(PR #328)**
   Remaining: flatten recursive CostExpr/SizeExpr into flat SizeBound
-  products (Phase 4 — eliminates 18 cost algebra functions).
+  products (Phase 4 — eliminates 18 cost algebra functions). `CostShape`
+  is a bridge classifier — endgame: derive cost from `std/computation.dag`
+  contracts. `produces_collection` should derive from `return_type`.
   See [migration phases](docs/cx-computation-model.md#migration-phases).
 - **CX-C**: Signature-driven fold evidence — self-calls inside
   `children |> fold` callbacks get structural descent proofs.
@@ -749,10 +762,9 @@ invocation, method kind, built-in refinement) re-derived from name
 matching at every consumption site.
 
 **Current counts (2026-04-06):**
-- `method_def.name` / `method_name ==` dispatch: ~17 sites (emit_rust: 12, infer: 5, complexity: 0 — size effect and cost shape now read from AlgebraMethodSemantics)
+- `method_def.name` / `method_name ==` dispatch: ~17 sites (emit_rust: 12, infer: 5, complexity: 0 — all complexity method dispatch reads from AlgebraMethodSemantics)
 - Nullary function detection: 3 sites in emit_rust, 0 in Go/Python (bug)
 - Built-in call type refinement by name: 4 sites in infer
-- `is_size_preserving_method`: 8-way string dispatch in complexity (follow-up: derive from size_effect)
 
 **Work items:**
 - [ ] Surface existing `method_def` Node and `AlgebraFieldTemplate`
