@@ -640,48 +640,46 @@ No test >2s without justification. Self-compile time tracked per-PR.
 
 # CM: Compiler Concept Modeling (cross-cutting retrospective)
 
-**Full analysis and heuristic inventory:** [`src/v2/CM.md`](src/v2/CM.md),
+**Analysis:** [`src/v2/CM.md`](src/v2/CM.md),
 [`src/v2/CM-inventory.md`](src/v2/CM-inventory.md)
+(will fold into MODELING.md when stable)
 
-**Root cause:** The compiler doesn't model what it does. Every stage
-re-derives structural facts that earlier stages already knew. This is
-the cause — M2 boundary gaps, CG emit heuristics, and L1 type-name
-comparisons are symptoms. Fixing symptoms relocates them; modeling the
-concepts dissolves them.
+**Principle:** Surface existing structural authorities to every
+consumer. Never add parallel classification types. Consume existing
+authorities, never duplicate. After each feature, retro for new
+modeling gaps.
 
-**CM is not a parallel lane.** It is a retrospective discipline: after
-each feature lands (complexity work, emit changes, etc.), check whether
-new heuristics were added that should dissolve with better modeling.
-Modeling gaps reveal themselves through the work, not in advance.
+**What CM analysis found for each lane:**
 
-**Principle:** Model actual facts, let properties emerge. Improper
-modeling spawns downstream questions. Model the underlying concept and
-the questions dissolve. Same pattern as fold/descend/repeat dissolving
-ad-hoc iteration logic. Consume existing authorities, never duplicate
-them — the fix is always "surface existing structure," not "add a
-new interpretation layer."
+| Lane | CM diagnosis | Highest-leverage fix |
+|------|-------------|---------------------|
+| M2 (Lane 1) | `ExprLet` erases expected type → bare_map_node chain → 5+ downstream fallbacks | Propagate expected through ExprLet; normalize ExprVar→ExprCall for nullary |
+| CG (Lane 2) | 39 heuristic sites, all "existing authority not surfaced" | Surface connective through TypeRendering; surface AlgebraFieldTemplate to emit |
+| CX (Lane 3) | 4 analyzer heuristics = 4 missing std/ facts | Model operation size contracts in std/computation.dag |
+| M4 | CM provides endgame rationale: structural fields ARE identity, names are rendering sugar | Surface structural fields; delete Node.name |
 
-Emergent properties — recursion, termination, complexity classes — are
-NOT modeled directly. They fall out of composing structural facts about
-data and operations. Iteration (fold/descend/repeat) is explicit because
-it is an intentional primitive. Recursion is emergent because programs
-don't "know" they're recursing. The CX analyzer's heuristics (Theme A)
-are CM gaps: each name-matching classifier is a missing concept in std/.
+**Unowned files (~42 heuristic sites in 04_resolve, 04_access, coercion, 00_core):**
+No lane addresses these. Highest-value: coercion.dag container-to-algebra
+table (should derive from algebra declarations), 04_resolve.dag alias
+resolution (4 fail-open sites).
 
-**Relationship to other lanes:** M2, CG, and CX all generate work items
-that are actually CM problems. When a PR "moves a heuristic upstream,"
-that's CM work wearing an M2/CG hat. CM asks: what should the model
-be so the heuristic never existed?
+**Arity boundaries (cross-cutting):** Container under/over-arity,
+empty services/resources, Optional collapse, Callable/lambda mismatch.
+Enforce arity from algebra profile at normalization. See CM.md §Arity
+boundaries.
+
+**Relationship to other lanes:** M2, CG, and CX all generate work
+items that are actually CM problems. When a PR "moves a heuristic
+upstream," that's CM work wearing an M2/CG hat.
+
+## MM-1/2/3: Detailed analysis in CM.md
+
+Full heuristic inventory, acceptance criteria, and design constraints
+are in [`src/v2/CM.md`](src/v2/CM.md). Summary:
 
 ## MM-1: Item identity
 
-**Problem:** Parser produces uniform `Node` for types, functions,
-services, resources. Four stages independently re-derive item kind from
-`{connective, body, transport, params, children, uses, type_annotation,
-properties}`, producing three incompatible taxonomies.
-
-**Current counts (2026-04-05):**
-- `classify_typed_item` / `classify_item`: 4 independent forests, ~27 branches total
+**Problem:** 4 independent classification forests, ~27 branches total.
 - Raw structural interrogation in emit (`.connective ==`, `.body !=`, `.transport ==`): 55 sites
 - `TypedItemUnhandled` / `""` / `false` fail-open fallbacks: 8 sites
 
