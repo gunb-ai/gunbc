@@ -365,17 +365,19 @@ type AlgebraFieldTemplate {
 // declares its effect here. The complexity analyzer consumes these facts
 // as the single authority for descent evidence — no template-shape inference.
 type CollectionSizeEffect
-  = ShrinkEffect         // output collection strictly smaller than input (skip)
+  = ShrinkEffect         // output collection strictly smaller than input (skip, take, substring)
   | ProjectionEffect     // extracts single element from collection (first, last)
-  | IdentityEffect       // preserves structural children identity (filter, reverse, enumerate)
+  | IdentityEffect       // preserves structural children identity (filter, reverse, sort_by)
 
 data algebra_size_effects: Map<String, CollectionSizeEffect> = {
   "skip": ShrinkEffect,
+  "take": ShrinkEffect,
+  "substring": ShrinkEffect,
   "first": ProjectionEffect,
   "last": ProjectionEffect,
   "filter": IdentityEffect,
   "reverse": IdentityEffect,
-  "enumerate": IdentityEffect
+  "sort_by": IdentityEffect
 }
 
 fn lookup_algebra_size_effect(method_name: String) -> CollectionSizeEffect? {

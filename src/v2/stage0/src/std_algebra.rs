@@ -256,11 +256,13 @@ pub fn algebra_size_effects() -> Rc<HashMap<String, CollectionSizeEffect>> {
         static CACHED: Rc<HashMap<String, CollectionSizeEffect>> = {
             let mut __m = HashMap::new();
             __m.insert("skip".to_string(), CollectionSizeEffect::ShrinkEffect);
+            __m.insert("take".to_string(), CollectionSizeEffect::ShrinkEffect);
+            __m.insert("substring".to_string(), CollectionSizeEffect::ShrinkEffect);
             __m.insert("first".to_string(), CollectionSizeEffect::ProjectionEffect);
             __m.insert("last".to_string(), CollectionSizeEffect::ProjectionEffect);
             __m.insert("filter".to_string(), CollectionSizeEffect::IdentityEffect);
             __m.insert("reverse".to_string(), CollectionSizeEffect::IdentityEffect);
-            __m.insert("enumerate".to_string(), CollectionSizeEffect::IdentityEffect);
+            __m.insert("sort_by".to_string(), CollectionSizeEffect::IdentityEffect);
             Rc::new(__m)
         };
     }
