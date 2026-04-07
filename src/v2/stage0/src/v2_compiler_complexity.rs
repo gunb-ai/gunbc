@@ -3822,6 +3822,7 @@ pub struct TopoBuildAcc {
     pub classes: Rc<HashMap<String, String>>,
     pub fan_in: Rc<HashMap<String, i64>>,
     pub violations: Rc<Vec<String>>,
+    pub processed: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -4332,11 +4333,13 @@ let result = scc_result.processing_order.clone().iter().cloned().fold(Rc::new(To
     classes: v2_rt::rc_empty_map::<String>(),
     fan_in: fan_in,
     violations: Rc::new(vec![]),
+    processed: v2_rt::rc_empty_map::<bool>(),
 }), |acc: Rc<TopoBuildAcc>, func_name: String| match v2_rt::map_get(&func_index, func_name.clone()) {
     Some(_) => {
             let sr = get_or_compute_summary(func_name.clone(), func_index.clone(), full_scc_index.clone(), acc.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 let class_str = classify_complexity(sr.summary.clone().work.clone());
 let new_classes = v2_rt::rc_map_insert(acc.classes.clone(), func_name.clone(), class_str.clone());
+let new_processed = v2_rt::rc_map_insert(acc.processed.clone(), func_name.clone(), true);
 let new_violations = match check_bound_violation(func_name.clone(), full_scc_index.clone()) {
     Some(v) => v2_rt::concat(acc.violations.clone(), Rc::new(vec![v.clone()])),
     None => acc.violations.clone(),
@@ -4359,7 +4362,7 @@ let evicted_table = unique_callees.clone().iter().cloned().fold(sr.table.clone()
     Some(v) => v.clone(),
     None => 0,
 };
-if (remaining.clone() <= 0) {
+if ((remaining.clone() <= 0) && set_has(new_processed.clone(), callee.clone())) {
                     evict_summary(t.clone(), callee.clone())
 } else {
                     t.clone()
@@ -4379,6 +4382,7 @@ Rc::new(TopoBuildAcc {
     classes: new_classes.clone(),
     fan_in: new_fan_in.clone(),
     violations: new_violations.clone(),
+    processed: new_processed.clone(),
 })
 },
     None => acc.clone(),

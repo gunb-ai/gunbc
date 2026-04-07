@@ -4155,6 +4155,10 @@ type TopoBuildAcc {
   classes: Map<String, String>
   fan_in: Map<String, Int>
   violations: List<String>
+  // Functions explicitly processed by the topological fold.
+  // Prevents evicting SCC co-members computed as side effects
+  // before they reach their own fold iteration.
+  processed: Map<String, Bool>
 }
 
 type MatchCostAccum {
@@ -4643,7 +4647,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
     table: empty_intern_table(),
     classes: empty_map(),
     fan_in: fan_in,
-    violations: []
+    violations: [],
+    processed: empty_map()
   }, f: fn(acc, func_name) {
     match map_get(func_index, func_name) {
       Some { value: _ } =>
@@ -4651,6 +4656,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         // Classify immediately — drop the CostExpr tree from the report
         let class_str = classify_complexity(expr: sr.summary.work)
         let new_classes = map_insert(acc.classes, func_name, class_str)
+        let new_processed = map_insert(acc.processed, func_name, true)
         // Fail-closed: check for unresolvable recursion bounds
         let new_violations = match check_bound_violation(func_name: func_name, scc_index: full_scc_index) {
           Some { value: v } => concat(acc.violations, [v])
@@ -4667,10 +4673,14 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
           let current = match map_get(fi, callee) { Some { value: v } => v, None => 0 }
           map_insert(fi, callee, current - 1)
         )
-        // Evict summaries whose fan-in has reached 0 (no future caller needs them)
+        // Evict summaries whose fan-in has reached 0, but ONLY if the
+        // function was explicitly processed by this fold. SCC co-members
+        // may be computed as side effects of get_or_compute_summary —
+        // evicting them before their fold iteration would replace their
+        // real summary with a fabricated placeholder.
         let evicted_table = unique_callees |> fold(init: sr.table, f: (t, callee) =>
           let remaining = match map_get(new_fan_in, callee) { Some { value: v } => v, None => 0 }
-          if remaining <= 0 {
+          if remaining <= 0 && set_has(m: new_processed, key: callee) {
             evict_summary(table: t, func_name: callee)
           } else { t }
         )
@@ -4679,7 +4689,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let final_table = if self_fan_in <= 0 {
           evict_summary(table: evicted_table, func_name: func_name)
         } else { evicted_table }
-        TopoBuildAcc { table: final_table, classes: new_classes, fan_in: new_fan_in, violations: new_violations }
+        TopoBuildAcc { table: final_table, classes: new_classes, fan_in: new_fan_in, violations: new_violations, processed: new_processed }
       None => acc  // not in func_index (shouldn't happen)
     }
   })
