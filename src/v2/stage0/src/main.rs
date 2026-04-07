@@ -252,7 +252,7 @@ let _result = match cli.command {
             render_diagnostics(&result);
             // Complexity violations are non-blocking (analyzer limitations).
             let hard_errors = result.diagnostics.iter().any(|d| {
-                let msg = v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone());
+                let msg = diagnostic_to_message(d.diagnostic.clone());
                 !msg.starts_with("complexity: ")
             });
             if hard_errors {
