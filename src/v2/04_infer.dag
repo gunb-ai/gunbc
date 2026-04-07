@@ -1084,11 +1084,28 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               _ => base_result_type
             }
           }
+          // When the result type is resolved but the receiver was under-resolved
+          // (e.g., map_insert(empty_map(), k, v)), patch the receiver's inferred
+          // type to match the call's result type. For methods returning ReceiverSelf,
+          // the return type IS the receiver type — so the receiver should carry it.
+          let final_receiver = if is_fully_resolved(n: bridge_result_type) && !is_fully_resolved(n: first_arg_type) {
+            Node {
+              name: receiver.name, span: receiver.span, ident_span: receiver.ident_span,
+              children: bridge_result_type.children,
+              connective: receiver.connective, params: receiver.params,
+              inferred: Some { value: Resolved { node: bridge_result_type } },
+              return_cardinality: receiver.return_cardinality, uses: receiver.uses,
+              body: receiver.body, transport: receiver.transport,
+              properties: receiver.properties, type_annotation: receiver.type_annotation,
+              is_self_recursive: receiver.is_self_recursive, has_non_tail_self_call: receiver.has_non_tail_self_call,
+              match_pattern: receiver.match_pattern, expr_data: receiver.expr_data
+            }
+          } else { receiver }
           let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: arg_name(n: ta), value: arg_value(n: ta), span: span))
           InferResult {
             typed: make_named_expr_node(
               name: func_name, expr_data: ExprMethodCall { method_semantics: method_resolution.semantics },
-              children: concat([receiver], remaining_arg_nodes),
+              children: concat([final_receiver], remaining_arg_nodes),
               inferred: Some { value: Resolved { node: bridge_result_type } },
               span: span
             ),

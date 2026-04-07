@@ -957,19 +957,19 @@ infer_parser_always_advancing_members(members, func_index.clone())
 }
 
 pub fn seed_string_map(key: String, value: String) -> Rc<HashMap<String, String>> {
-    v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, key, value)
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), key, value)
 }
 
 pub fn seed_bool_map(key: String) -> Rc<HashMap<String, bool>> {
-    v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, key, true)
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<bool>(), key, true)
 }
 
 pub fn seed_cost_map(key: String, value: Rc<CostExpr>) -> Rc<HashMap<String, Rc<CostExpr>>> {
-    v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, key, value)
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<CostExpr>>(), key, value)
 }
 
 pub fn seed_func_entry_map(key: String, value: Rc<FuncEntry>) -> Rc<HashMap<String, Rc<FuncEntry>>> {
-    v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, key, value)
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<FuncEntry>>(), key, value)
 }
 
 pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {

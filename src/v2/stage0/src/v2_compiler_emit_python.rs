@@ -810,7 +810,7 @@ pub fn py_bridge_method_name(method_name: String) -> String {
 }
 
 pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> {
-    v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, key, value)
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), key, value)
 }
 
 pub fn emit_py_algebra_method_call(method_name: String, receiver: Rc<Node>, args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {

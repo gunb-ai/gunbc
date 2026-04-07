@@ -1142,12 +1142,37 @@ resolve_type_variables_from_template(t.clone(), call_arg_types, first_arg_type.c
     _ => base_result_type.clone(),
 }
 };
+let final_receiver = if (is_fully_resolved(bridge_result_type.clone()) && !is_fully_resolved(first_arg_type.clone())) {
+                                Rc::new(Node {
+    name: receiver.name.clone(),
+    span: receiver.span.clone(),
+    ident_span: receiver.ident_span.clone(),
+    children: bridge_result_type.children.clone(),
+    connective: receiver.connective.clone(),
+    params: receiver.params.clone(),
+    inferred: Some(Rc::new(InferredNode::Resolved {
+    node: bridge_result_type.clone(),
+})),
+    return_cardinality: receiver.return_cardinality.clone(),
+    uses: receiver.uses.clone(),
+    body: receiver.body.clone(),
+    transport: receiver.transport.clone(),
+    properties: receiver.properties.clone(),
+    type_annotation: receiver.type_annotation.clone(),
+    is_self_recursive: receiver.is_self_recursive.clone(),
+    has_non_tail_self_call: receiver.has_non_tail_self_call.clone(),
+    match_pattern: receiver.match_pattern.clone(),
+    expr_data: receiver.expr_data.clone(),
+})
+} else {
+                                receiver.clone()
+};
 let remaining_arg_nodes = Rc::new({ let mut __result = Vec::new(); for ta in remaining.clone().iter().cloned() { __result.push(make_arg_node(arg_name(ta.clone()), arg_value(ta.clone()), span.clone())); } __result });
 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprMethodCall {
     method_semantics: method_resolution.semantics.clone(),
-}), v2_rt::concat(Rc::new(vec![receiver]), remaining_arg_nodes), Some(Rc::new(InferredNode::Resolved {
-    node: bridge_result_type,
+}), v2_rt::concat(Rc::new(vec![final_receiver]), remaining_arg_nodes), Some(Rc::new(InferredNode::Resolved {
+    node: bridge_result_type.clone(),
 })), span.clone()),
     diagnostics: arg_diags,
 })
