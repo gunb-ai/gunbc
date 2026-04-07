@@ -252,6 +252,29 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
     AlgebraTypeVariable { id: var_id } =>
       if map_get(subst, var_id) != none { subst }
       else { map_insert(subst, var_id, concrete) }
+    ReceiverSelf =>
+      // Non-first ReceiverSelf (e.g., map_merge overlay). Extract children
+      // to enrich bare receiver: overlay's key/value fill __key__/__value__.
+      let s1 = match concrete.children |> first {
+        Some { value: k } =>
+          if map_get(subst, "__key__") != none { subst } else { map_insert(subst, "__key__", k) }
+        None => subst
+      }
+      match concrete.children |> skip(1) |> first {
+        Some { value: v } =>
+          if map_get(s1, "__value__") != none { s1 } else { map_insert(s1, "__value__", v) }
+        None => s1
+      }
+    ReceiverKey =>
+      // Bind arg type as receiver key — used to enrich bare ReceiverSelf.
+      if map_get(subst, "__key__") != none { subst }
+      else { map_insert(subst, "__key__", concrete) }
+    ReceiverValue =>
+      if map_get(subst, "__value__") != none { subst }
+      else { map_insert(subst, "__value__", concrete) }
+    ReceiverElement =>
+      if map_get(subst, "__element__") != none { subst }
+      else { map_insert(subst, "__element__", concrete) }
     CallableOf { params: _, return_type: ret_template } =>
       // concrete is the arg's inferred type. For a callable arg, this is
       // already the lambda's return type (extracted by rt_type). Unify
@@ -285,13 +308,21 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
   }
 }
 
+fn is_receiver_self(t: AlgebraTypeTemplate) -> Bool {
+  match t {
+    ReceiverSelf => true
+    _ => false
+  }
+}
+
 fn build_type_substitution(param_templates: List<AlgebraTypeTemplate>, arg_types: List<Node>, receiver: Node, base_subst: Map<String, Node>) -> Map<String, Node> {
-  let non_receiver_templates = param_templates |> filter(t =>
-    match t {
-      ReceiverSelf => false
-      _ => true
-    }
-  )
+  // Skip only the FIRST ReceiverSelf (the receiver). Subsequent ReceiverSelf
+  // entries are real args (e.g., map_merge's overlay is also ReceiverSelf).
+  let first_is_self = match param_templates |> first {
+    Some { value: t } => is_receiver_self(t: t)
+    None => false
+  }
+  let non_receiver_templates = if first_is_self { param_templates |> skip(1) } else { param_templates }
   let pairs = non_receiver_templates |> enumerate |> filter(pair =>
     pair.first < (arg_types |> count)
   )
@@ -311,21 +342,56 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         Some { value: resolved } => resolved
         None => type_variable_node(id: var_id)
       }
-    ReceiverSelf => receiver
+    ReceiverSelf =>
+      // When the receiver is a bare container (no children), try to enrich
+      // it from arg-derived bindings captured during unification.
+      if receiver.children |> count == 0 && is_container_type(name: receiver.name) {
+        let arity = container_expected_arity(name: receiver.name)
+        if arity == Some { value: 2 } {
+          // Keyed container (Map): enrich from __key__ and __value__ bindings.
+          match map_get(subst, "__key__") {
+            Some { value: key } =>
+              let val = match map_get(subst, "__value__") {
+                Some { value: v } => v
+                None => type_variable_node(id: "V")
+              }
+              map_node(key: key, value: val)
+            None => receiver
+          }
+        } else if arity == Some { value: 1 } {
+          // Element container (List): enrich from __element__ binding.
+          match map_get(subst, "__element__") {
+            Some { value: elem } => container_node(kind_name: receiver.name, element: elem)
+            None => receiver
+          }
+        } else { receiver }
+      } else { receiver }
     ReceiverElement =>
       match receiver.children |> first {
         Some { value: child } => child
-        None => type_variable_node(id: "T")
+        None =>
+          match map_get(subst, "__element__") {
+            Some { value: elem } => elem
+            None => type_variable_node(id: "T")
+          }
       }
     ReceiverKey =>
       match receiver.children |> first {
         Some { value: child } => child
-        None => type_variable_node(id: "K")
+        None =>
+          match map_get(subst, "__key__") {
+            Some { value: key } => key
+            None => type_variable_node(id: "K")
+          }
       }
     ReceiverValue =>
       match receiver.children |> skip(1) |> first {
         Some { value: child } => child
-        None => type_variable_node(id: "V")
+        None =>
+          match map_get(subst, "__value__") {
+            Some { value: val } => val
+            None => type_variable_node(id: "V")
+          }
       }
     NamedTemplate { name: n } => nominal_type_ref(name: n)
     ReceiverCollectionOf { element: inner } =>

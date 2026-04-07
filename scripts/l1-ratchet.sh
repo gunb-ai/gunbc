@@ -88,7 +88,8 @@ echo "  CollectionKind:                $collection_kind_count"
 # 2026-04-05: 31→33 (has_fn_fields: arity check→callable predicate, 2 new rt.name=="Callable" sites)
 # 2026-04-06: 33→32 (TLC-1: ExprVar→ExprCall normalization dissolves is_zero_arg_callable_ref)
 # 2026-04-06: 32→36 (Phase C infrastructure: has_type_variable, template_return_has_variables, unify/apply/build match on AlgebraTypeTemplate)
-L1_RATCHET=36
+# 2026-04-06: 36→37 (Phase C bare-container enrichment: is_container_type+arity in apply_type_substitution)
+L1_RATCHET=37
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

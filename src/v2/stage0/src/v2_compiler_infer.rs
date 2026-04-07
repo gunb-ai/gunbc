@@ -1246,12 +1246,12 @@ let base_result_type = match method_resolution.result_type.clone() {
     Some(mt) => mt.clone(),
     None => error_type(),
 };
-let structural_result = if (method_resolution.semantics.clone() == None) {
-                                base_result_type
+let bridge_result_type = if (method_resolution.semantics.clone() == None) {
+                                base_result_type.clone()
 } else {
                                 match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
     MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. } => match at.clone() {
-    Some(t) => if template_return_has_variables(t.clone()) {
+    Some(t) => if (template_return_has_variables(t.clone()) || !is_fully_resolved(base_result_type.clone())) {
                                     {
                                         let call_arg_types = Rc::new({ let mut __result = Vec::new(); for a in remaining.clone().iter().cloned() { __result.push(rt_type(arg_value(a.clone()))); } __result });
 let fold_overrides = if (call_fold_info.clone() != None) {
@@ -1262,17 +1262,12 @@ let fold_overrides = if (call_fold_info.clone() != None) {
 resolve_type_variables_from_template(t.clone(), call_arg_types, first_arg_type.clone(), fold_overrides)
 }
 } else {
-                                    base_result_type
+                                    base_result_type.clone()
 },
-    None => base_result_type,
+    None => base_result_type.clone(),
 },
-    _ => base_result_type,
+    _ => base_result_type.clone(),
 }
-};
-let bridge_result_type = if is_fully_resolved(structural_result.clone()) {
-                                structural_result.clone()
-} else {
-                                refine_collection_result_type(method_resolution.semantics.clone(), remaining.clone(), first_arg_type.clone(), structural_result.clone())
 };
 let remaining_arg_nodes = Rc::new({ let mut __result = Vec::new(); for ta in remaining.clone().iter().cloned() { __result.push(make_arg_node(arg_name(ta.clone()), arg_value(ta.clone()), span.clone())); } __result });
 Rc::new(InferResult {
@@ -1479,12 +1474,12 @@ let base_result_type = match method_resolution.result_type.clone() {
 }
 },
 };
-let mc_structural_result = if (method_resolution.semantics.clone() == None) {
-                base_result_type
+let result_type = if (method_resolution.semantics.clone() == None) {
+                base_result_type.clone()
 } else {
                 match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
     MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. } => match at.clone() {
-    Some(t) => if template_return_has_variables(t.clone()) {
+    Some(t) => if (template_return_has_variables(t.clone()) || !is_fully_resolved(base_result_type.clone())) {
                     {
                         let mc_arg_types = Rc::new({ let mut __result = Vec::new(); for a in typed_mc_args.clone().iter().cloned() { __result.push(rt_type(arg_value(a.clone()))); } __result });
 let mc_fold_overrides = if (fold_info.clone() != None) {
@@ -1495,17 +1490,12 @@ let mc_fold_overrides = if (fold_info.clone() != None) {
 resolve_type_variables_from_template(t.clone(), mc_arg_types, recv_rt.clone(), mc_fold_overrides)
 }
 } else {
-                    base_result_type
+                    base_result_type.clone()
 },
-    None => base_result_type,
+    None => base_result_type.clone(),
 },
-    _ => base_result_type,
+    _ => base_result_type.clone(),
 }
-};
-let result_type = if is_fully_resolved(mc_structural_result.clone()) {
-                mc_structural_result.clone()
-} else {
-                refine_collection_result_type(method_resolution.semantics.clone(), typed_mc_args.clone(), recv_rt.clone(), mc_structural_result.clone())
 };
 let method_semantics = if (method_resolution.semantics.clone() != None) {
                 method_resolution.semantics.clone()

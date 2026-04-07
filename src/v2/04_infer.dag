@@ -1147,12 +1147,12 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Some { value: mt } => mt
             None => error_type
           }
-          let structural_result = if method_resolution.semantics == none { base_result_type } else {
+          let bridge_result_type = if method_resolution.semantics == none { base_result_type } else {
             match method_resolution.semantics.value {
               AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
                 match at {
                   Some { value: t } =>
-                    if template_return_has_variables(template: t) {
+                    if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type) {
                       let call_arg_types = remaining |> map(a => rt_type(n: arg_value(n: a)))
                       let fold_overrides = if call_fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_call_fold_acc_type) } else { empty_override_map() }
                       resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides)
@@ -1161,11 +1161,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 }
               _ => base_result_type
             }
-          }
-          // Fall back to refine_collection_result_type for bare containers
-          // (e.g., map_insert on bare Map — ReceiverSelf can't enrich from args).
-          let bridge_result_type = if is_fully_resolved(n: structural_result) { structural_result } else {
-            refine_collection_result_type(semantics: method_resolution.semantics, typed_args: remaining, receiver_type: first_arg_type, fallback: structural_result)
           }
           let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: arg_name(n: ta), value: arg_value(n: ta), span: span))
           InferResult {
@@ -1368,12 +1363,12 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             }
           } else { recv_rt }
       }
-      let mc_structural_result = if method_resolution.semantics == none { base_result_type } else {
+      let result_type = if method_resolution.semantics == none { base_result_type } else {
         match method_resolution.semantics.value {
           AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
             match at {
               Some { value: t } =>
-                if template_return_has_variables(template: t) {
+                if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type) {
                   let mc_arg_types = typed_mc_args |> map(a => rt_type(n: arg_value(n: a)))
                   let mc_fold_overrides = if fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_fold_acc_type) } else { empty_override_map() }
                   resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides)
@@ -1382,9 +1377,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             }
           _ => base_result_type
         }
-      }
-      let result_type = if is_fully_resolved(n: mc_structural_result) { mc_structural_result } else {
-        refine_collection_result_type(semantics: method_resolution.semantics, typed_args: typed_mc_args, receiver_type: recv_rt, fallback: mc_structural_result)
       }
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Some { value: PlainMethodSemantics } }
       // typed_mc_args are already arg nodes

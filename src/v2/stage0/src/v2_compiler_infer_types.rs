@@ -418,6 +418,39 @@ pub fn unify_template(template: Rc<AlgebraTypeTemplate>, concrete: Rc<Node>, rec
 } else {
             v2_rt::rc_map_insert(subst.clone(), var_id.clone(), concrete.clone())
 },
+    AlgebraTypeTemplate::ReceiverSelf => {
+            let s1 = match concrete.children.clone().first().cloned() {
+    Some(k) => if (v2_rt::map_get(&subst, "__key__".to_string()) != None) {
+                subst.clone()
+} else {
+                v2_rt::rc_map_insert(subst.clone(), "__key__".to_string(), k.clone())
+},
+    None => subst.clone(),
+};
+match concrete.children.clone().get(1 as usize).cloned() {
+    Some(v) => if (v2_rt::map_get(&s1, "__value__".to_string()) != None) {
+                s1.clone()
+} else {
+                v2_rt::rc_map_insert(s1.clone(), "__value__".to_string(), v.clone())
+},
+    None => s1.clone(),
+}
+},
+    AlgebraTypeTemplate::ReceiverKey => if (v2_rt::map_get(&subst, "__key__".to_string()) != None) {
+            subst.clone()
+} else {
+            v2_rt::rc_map_insert(subst.clone(), "__key__".to_string(), concrete.clone())
+},
+    AlgebraTypeTemplate::ReceiverValue => if (v2_rt::map_get(&subst, "__value__".to_string()) != None) {
+            subst.clone()
+} else {
+            v2_rt::rc_map_insert(subst.clone(), "__value__".to_string(), concrete.clone())
+},
+    AlgebraTypeTemplate::ReceiverElement => if (v2_rt::map_get(&subst, "__element__".to_string()) != None) {
+            subst.clone()
+} else {
+            v2_rt::rc_map_insert(subst.clone(), "__element__".to_string(), concrete.clone())
+},
     AlgebraTypeTemplate::CallableOf { return_type: ret_template, .. } => unify_template(ret_template.clone(), concrete.clone(), receiver.clone(), subst.clone()),
     AlgebraTypeTemplate::ReceiverCollectionOf { element: elem_template, .. } => match concrete.children.clone().first().cloned() {
     Some(child) => unify_template(elem_template.clone(), child.clone(), receiver.clone(), subst.clone()),
@@ -446,12 +479,24 @@ match concrete.children.clone().get(1 as usize).cloned() {
     })
 }
 
+pub fn is_receiver_self(t: Rc<AlgebraTypeTemplate>) -> bool {
+    match (*t).clone() {
+    AlgebraTypeTemplate::ReceiverSelf => true,
+    _ => false,
+}
+}
+
 pub fn build_type_substitution(param_templates: Rc<Vec<Rc<AlgebraTypeTemplate>>>, arg_types: Rc<Vec<Rc<Node>>>, receiver: Rc<Node>, base_subst: Rc<HashMap<String, Rc<Node>>>) -> Rc<HashMap<String, Rc<Node>>> {
     {
-        let non_receiver_templates = Rc::new({ let mut __result = Vec::new(); for t in param_templates.iter().cloned() { if match (*t.clone()).clone() {
-    AlgebraTypeTemplate::ReceiverSelf => false,
-    _ => true,
-} { __result.push(t); } } __result });
+        let first_is_self = match param_templates.clone().first().cloned() {
+    Some(t) => is_receiver_self(t.clone()),
+    None => false,
+};
+let non_receiver_templates = if first_is_self {
+            Rc::new(param_templates.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>())
+} else {
+            param_templates.clone()
+};
 let pairs = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(non_receiver_templates.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() < (arg_types.clone().len() as i64)) { __result.push(pair); } } __result });
 pairs.iter().cloned().fold(base_subst.clone(), |subst: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<AlgebraTypeTemplate>)| {
             let arg_type = match Rc::new({ let mut __result = Vec::new(); for ap in Rc::new({ let mut __result = Vec::new(); for ap in Rc::new(arg_types.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (ap.0.clone() == pair.0.clone()) { __result.push(ap); } } __result }).iter().cloned() { __result.push(ap.1.clone()); } __result }).first().cloned() {
@@ -470,18 +515,54 @@ pub fn apply_type_substitution(template: Rc<AlgebraTypeTemplate>, subst: Rc<Hash
     Some(resolved) => resolved.clone(),
     None => type_variable_node(var_id.clone()),
 },
-    AlgebraTypeTemplate::ReceiverSelf => receiver.clone(),
+    AlgebraTypeTemplate::ReceiverSelf => if (((receiver.children.clone().len() as i64) == 0) && is_container_type(receiver.name.clone())) {
+            {
+                let arity = container_expected_arity(receiver.name.clone());
+if (arity.clone() == Some(2)) {
+                    match v2_rt::map_get(&subst, "__key__".to_string()) {
+    Some(key) => {
+                        let val = match v2_rt::map_get(&subst, "__value__".to_string()) {
+    Some(v) => v.clone(),
+    None => type_variable_node("V".to_string()),
+};
+map_node(key.clone(), val)
+},
+    None => receiver.clone(),
+}
+} else {
+                    if (arity.clone() == Some(1)) {
+                        match v2_rt::map_get(&subst, "__element__".to_string()) {
+    Some(elem) => container_node(receiver.name.clone(), elem.clone()),
+    None => receiver.clone(),
+}
+} else {
+                        receiver.clone()
+}
+}
+}
+} else {
+            receiver.clone()
+},
     AlgebraTypeTemplate::ReceiverElement => match receiver.children.clone().first().cloned() {
     Some(child) => child.clone(),
+    None => match v2_rt::map_get(&subst, "__element__".to_string()) {
+    Some(elem) => elem.clone(),
     None => type_variable_node("T".to_string()),
+},
 },
     AlgebraTypeTemplate::ReceiverKey => match receiver.children.clone().first().cloned() {
     Some(child) => child.clone(),
+    None => match v2_rt::map_get(&subst, "__key__".to_string()) {
+    Some(key) => key.clone(),
     None => type_variable_node("K".to_string()),
+},
 },
     AlgebraTypeTemplate::ReceiverValue => match receiver.children.clone().get(1 as usize).cloned() {
     Some(child) => child.clone(),
+    None => match v2_rt::map_get(&subst, "__value__".to_string()) {
+    Some(val) => val,
     None => type_variable_node("V".to_string()),
+},
 },
     AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(n.clone()),
     AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => container_node(receiver.name.clone(), apply_type_substitution(inner.clone(), subst.clone(), receiver.clone())),
