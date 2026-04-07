@@ -22,18 +22,18 @@ import std.syntax {
 }
 
 import extdeps.languages.rust.emit {
-  rust_type_map, rust_keywords, rust_container_templates,
+  rust_keywords, rust_container_templates,
   rust_reserved, rust_reserved_escape_prefix,
   rust_struct_derives, rust_struct_derives_copy,
   rust_enum_derives, rust_enum_derives_copy,
   rust_serde_tag, rust_serde_rename_template,
   rust_source_extension, rust_source_dir, rust_visibility,
-  rust_value_types, rust_string_types,
+  rust_string_types,
   rust_method_templates
 }
 
 import extdeps.languages.python.emit {
-  python_type_map, python_keywords, python_container_templates,
+  python_keywords,
   python_reserved, python_reserved_escape_suffix,
   python_derive_attribute, python_default_value,
   python_source_extension, python_module_init,
@@ -42,7 +42,7 @@ import extdeps.languages.python.emit {
 }
 
 import extdeps.languages.go.emit {
-  go_type_map, go_keywords, go_container_templates,
+  go_keywords,
   go_reserved, go_reserved_escape_suffix,
   go_manifest_file,
   go_method_templates,
@@ -394,44 +394,6 @@ fn target_keyword(target: RenderTarget, key: String) -> String {
     Go => match lookup(go_keywords, key: key) { Some { value: kw } => kw  None => key }
     Python => match lookup(python_keywords, key: key) { Some { value: kw } => kw  None => key }
     Dag => key
-  }
-}
-
-fn target_primitive_type(target: RenderTarget, name: String) -> String {
-  match target {
-    Rust => match lookup(rust_type_map, key: name) { Some { value: mapped } => mapped  None => concat("compile_error!(\"unknown primitive type: ", name, "\")") }
-    Go => match lookup(go_type_map, key: name) { Some { value: mapped } => mapped  None => concat("__EMIT_BUG_UNKNOWN_PRIMITIVE_", name, "__") }
-    Python => match lookup(python_type_map, key: name) { Some { value: mapped } => mapped  None => concat("__EMIT_BUG_UNKNOWN_PRIMITIVE_", name, "__") }
-    Dag => name
-  }
-}
-
-// Attempt primitive type mapping; returns None for user-defined types.
-// Used by render_type_base to distinguish primitives from named types.
-fn try_target_primitive_type(target: RenderTarget, name: String) -> String? {
-  match target {
-    Rust => lookup(rust_type_map, key: name)
-    Go => lookup(go_type_map, key: name)
-    Python => lookup(python_type_map, key: name)
-    Dag => Some { value: name }
-  }
-}
-
-fn target_container_template(target: RenderTarget, kind: String) -> String? {
-  match target {
-    Rust => lookup(rust_container_templates, key: kind)
-    Go => lookup(go_container_templates, key: kind)
-    Python => lookup(python_container_templates, key: kind)
-    Dag => none
-  }
-}
-
-// Value-semantic type check: is this type rendered as Copy in the target?
-// Reads from language extdep data — no hardcoded type names in the compiler.
-fn is_value_type(target: RenderTarget, name: String) -> Bool {
-  match target {
-    Rust => rust_value_types |> any(t => t == name)
-    _ => false
   }
 }
 

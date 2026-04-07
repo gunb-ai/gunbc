@@ -53,9 +53,9 @@ use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge,
 use crate::v2_std_core::LiteralValue::*;
 pub use crate::std_syntax::{ItemForm, OperatorSpec, SyntaxSpec, BodyKind};
 use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
-pub use crate::extdeps_languages_rust_emit::{rust_type_map, rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_value_types, rust_string_types, rust_method_templates};
-pub use crate::extdeps_languages_python_emit::{python_type_map, python_keywords, python_container_templates, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates, python_string_types};
-pub use crate::extdeps_languages_go_emit::{go_type_map, go_keywords, go_container_templates, go_reserved, go_reserved_escape_suffix, go_manifest_file, go_method_templates, go_string_types};
+pub use crate::extdeps_languages_rust_emit::{rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_string_types, rust_method_templates};
+pub use crate::extdeps_languages_python_emit::{python_keywords, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates, python_string_types};
+pub use crate::extdeps_languages_go_emit::{go_keywords, go_reserved, go_reserved_escape_suffix, go_manifest_file, go_method_templates, go_string_types};
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
@@ -424,49 +424,6 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
     None => key.clone(),
 },
     RenderTarget::Dag => key.clone(),
-}
-}
-
-pub fn target_primitive_type(target: RenderTarget, name: String) -> String {
-    match target {
-    RenderTarget::Rust => match v2_rt::lookup(&rust_type_map(), name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => v2_rt::concat(v2_rt::concat("compile_error!(\"unknown primitive type: ".to_string(), name.clone()), "\")".to_string()),
-},
-    RenderTarget::Go => match v2_rt::lookup(&go_type_map(), name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => v2_rt::concat(v2_rt::concat("__EMIT_BUG_UNKNOWN_PRIMITIVE_".to_string(), name.clone()), "__".to_string()),
-},
-    RenderTarget::Python => match v2_rt::lookup(&python_type_map(), name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => v2_rt::concat(v2_rt::concat("__EMIT_BUG_UNKNOWN_PRIMITIVE_".to_string(), name.clone()), "__".to_string()),
-},
-    RenderTarget::Dag => name.clone(),
-}
-}
-
-pub fn try_target_primitive_type(target: RenderTarget, name: String) -> Option<String> {
-    match target {
-    RenderTarget::Rust => v2_rt::lookup(&rust_type_map(), name),
-    RenderTarget::Go => v2_rt::lookup(&go_type_map(), name),
-    RenderTarget::Python => v2_rt::lookup(&python_type_map(), name),
-    RenderTarget::Dag => Some(name),
-}
-}
-
-pub fn target_container_template(target: RenderTarget, kind: String) -> Option<String> {
-    match target {
-    RenderTarget::Rust => v2_rt::lookup(&rust_container_templates(), kind),
-    RenderTarget::Go => v2_rt::lookup(&go_container_templates(), kind),
-    RenderTarget::Python => v2_rt::lookup(&python_container_templates(), kind),
-    RenderTarget::Dag => None,
-}
-}
-
-pub fn is_value_type(target: RenderTarget, name: String) -> bool {
-    match target {
-    RenderTarget::Rust => { let mut __found = false; for t in rust_value_types().iter().cloned() { if (t.clone().as_str() == name.clone().as_str()) { __found = true; break; } } __found },
-    _ => false,
 }
 }
 

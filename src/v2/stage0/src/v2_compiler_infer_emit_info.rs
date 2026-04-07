@@ -105,23 +105,6 @@ pub struct EmitGraphInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TypeRendering {
-    pub type_name: String,
-    pub element: Option<Rc<TypeRendering>>,
-    pub key: Option<Rc<TypeRendering>>,
-    pub value: Option<Rc<TypeRendering>>,
-    pub params: Rc<Vec<Rc<TypeRendering>>>,
-    pub return_type: Option<Rc<TypeRendering>>,
-    pub inner: Option<Rc<TypeRendering>>,
-    pub generic_args: Rc<Vec<Rc<TypeRendering>>>,
-    pub shared: bool,
-    pub boxed: bool,
-    pub is_tuple: bool,
-    pub is_error: bool,
-    pub error_label: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitInfoBuildState {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 }
@@ -138,42 +121,6 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
     fold_eligible_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     fold_eligible: v2_rt::rc_empty_map::<bool>(),
-})
-}
-
-pub fn leaf_type_rendering(name: String) -> Rc<TypeRendering> {
-    Rc::new(TypeRendering {
-    type_name: name,
-    element: None,
-    key: None,
-    value: None,
-    params: Rc::new(vec![]),
-    return_type: None,
-    inner: None,
-    generic_args: Rc::new(vec![]),
-    shared: false,
-    boxed: false,
-    is_tuple: false,
-    is_error: false,
-    error_label: "".to_string(),
-})
-}
-
-pub fn leaf_type_rendering_shared(name: String) -> Rc<TypeRendering> {
-    Rc::new(TypeRendering {
-    type_name: name,
-    element: None,
-    key: None,
-    value: None,
-    params: Rc::new(vec![]),
-    return_type: None,
-    inner: None,
-    generic_args: Rc::new(vec![]),
-    shared: true,
-    boxed: false,
-    is_tuple: false,
-    is_error: false,
-    error_label: "".to_string(),
 })
 }
 

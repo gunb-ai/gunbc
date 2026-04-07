@@ -64,7 +64,7 @@ import v2.std.core {
 
 import v2.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
-  rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates,
+  rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result,
   rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy,
   HigherOrderMethodSpec, rust_higher_order_methods
 }
@@ -73,10 +73,10 @@ import v2.compiler.languages {
   TestConventions,
   test_conventions_for_target, top_level_visibility_for_target,
   sharing_for_target,
-  is_value_type, is_string_like, target_primitive_type
+  is_string_like
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
-import v2.compiler.coercion { coerce_primitive_type }
+import v2.compiler.coercion { coerce_primitive_type, is_copy }
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
@@ -111,7 +111,7 @@ import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_owner
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
   rust_literal_for_pattern,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body,
   module_emit_scope,
@@ -140,7 +140,7 @@ import v2.compiler.emit {
 }
 
 fn render_rust_type(n: Node, shared_types: Map<String, Bool>) -> String {
-  render_type(tr: build_type_rendering(n: n, shared_types: shared_types, recursive_types: empty_map()), target: Rust)
+  render_node_type(n: n, target: Rust, shared_types: shared_types)
 }
 
 fn type_variable_node(id: String) -> Node {
@@ -155,13 +155,16 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 }
 
 // Emit-side type identity checks. These are rendering decisions
-// Emit-side type checks read from language extdep data, not hardcoded names.
-// is_value_type/is_string_like are defined in v2.compiler.languages and
-// read from rust_value_types/rust_string_types in the Rust extdep.
+// Emit-side type checks read from coercion/language extdep data.
+// is_rust_value_type reads TypeCheckpoint.is_copy via coercion.dag.
+// is_rust_string_like reads rust_string_types via languages.dag.
 
 fn is_rust_value_type(n: Node) -> Bool {
   let normed = normalize_access_type_node(n: n)
-  is_value_type(target: Rust, name: normed.name)
+  match is_copy(target: Rust, dag_name: normed.name) {
+    Some { value: v } => v
+    None => false
+  }
 }
 
 fn is_rust_string_like(n: Node) -> Bool {
@@ -1632,11 +1635,8 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_t
     }
 }
 
-
-// Returns true for primitive numeric types where Rust `as` is valid (Node-based).
-fn is_primitive_numeric_node(n: Node) -> Bool {
-  is_rust_value_type(n: n)
-}
+fn is_primitive_numeric_node(n: Node) -> Bool { is_rust_value_type(n: n) }
+fn is_simple_type_node(n: Node) -> Bool { is_rust_value_type(n: n) }
 
 // =========================================================================
 // Node expression emission -- reads inferred directly
@@ -1909,7 +1909,10 @@ fn rust_empty_map_value_type_str(map_type: Node, shared_types: Map<String, Bool>
 // for non-Copy types. lookup/map_get return the correct type directly.
 
 fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> Bool {
-  function_name == "map_keys" || function_name == "map_values" || function_name == "split" || function_name == "enumerate" || function_name == "chars" || function_name == "skip" || function_name == "take" || function_name == "append"
+  // Data-driven: runtime functions via rt_function_registry.wraps_result,
+  // method templates via rust_method_wraps_result map.
+  map_contains_key(rt_wraps_result(), function_name)
+    || map_contains_key(rust_method_wraps_result, function_name)
 }
 
 fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: InferredNode?) -> Bool {
@@ -4012,10 +4015,6 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
       concat("            ", wrap_start, val_str, wrap_end)
     }
   }
-}
-
-fn is_simple_type_node(n: Node) -> Bool {
-  is_rust_value_type(n: n)
 }
 
 // =========================================================================

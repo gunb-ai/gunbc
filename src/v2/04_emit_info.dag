@@ -103,29 +103,6 @@ type EmitGraphInfo {
   fold_eligible: Map<String, Bool>
 }
 
-// TypeRendering: structural descriptor for type rendering.
-// Named edges encode the type's composition; shape is emergent from which
-// edges are populated (no tag enum). The emitter matches on edges ×
-// LanguageSpec — no Node inspection, no name-based dispatch.
-//
-// Stepping stone for coercion-based emission (M5): named edges map directly
-// to algebraic relationships that the coercion engine will formalize.
-type TypeRendering {
-  type_name: String                   // identity: "Int", "list", "Token", "map"
-  element: TypeRendering?             // List<THIS>, Set<THIS>
-  key: TypeRendering?                 // Map<THIS, V>
-  value: TypeRendering?               // Map<K, THIS>
-  params: List<TypeRendering>         // fn(THESE, ...) -> ...
-  return_type: TypeRendering?         // fn(...) -> THIS
-  inner: TypeRendering?               // Optional<THIS>, Refined<THIS>
-  generic_args: List<TypeRendering>   // FreeMonoid<THIS>, PartialFunction<THIS, THIS>
-  shared: Bool                        // needs Rc/pointer/GC wrapper
-  boxed: Bool                         // recursive indirection (Box in Rust)
-  is_tuple: Bool                      // structural tuple (not name-derived)
-  is_error: Bool                      // inference failure — emit must fail-closed
-  error_label: String                 // diagnostic context for the error
-}
-
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
 }
@@ -149,46 +126,6 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   }
 }
 
-fn leaf_type_rendering(name: String) -> TypeRendering {
-  TypeRendering {
-    type_name: name,
-    element: none,
-    key: none,
-    value: none,
-    params: [],
-    return_type: none,
-    inner: none,
-    generic_args: [],
-    shared: false,
-    boxed: false,
-    is_tuple: false,
-    is_error: false,
-    error_label: ""
-  }
-}
-
-fn leaf_type_rendering_shared(name: String) -> TypeRendering {
-  TypeRendering {
-    type_name: name,
-    element: none,
-    key: none,
-    value: none,
-    params: [],
-    return_type: none,
-    inner: none,
-    generic_args: [],
-    shared: true,
-    boxed: false,
-    is_tuple: false,
-    is_error: false,
-    error_label: ""
-  }
-}
-
-// build_type_rendering and helpers are implemented in stage0 Rust
-// (v2_compiler_emit.rs). The .dag source will use these once the
-// stage0 bootstrap reaches fixed point and regeneration can produce
-// this code. Until then, stage0 Rust is the authority.
 
 // =========================================================================
 // Variant and lookup helpers
