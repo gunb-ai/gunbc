@@ -117,6 +117,22 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
     v2_rt::map_get(&container_type_arity(), name)
 }
 
+pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("List".to_string(), true);
+            __m.insert("NonEmptyList".to_string(), true);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn is_ordered_element_collection(name: String) -> bool {
+    v2_rt::map_contains_key(&ordered_element_collections(), name)
+}
+
 pub fn container_to_algebra() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {

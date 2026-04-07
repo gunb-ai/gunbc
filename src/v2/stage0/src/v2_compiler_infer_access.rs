@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_types::{SourceSpan};
+pub use crate::std_types::{SourceSpan, is_ordered_element_collection};
 pub use crate::v2_std_core::{Node, InferredNode, ErrorNode, make_error_node, diagnostic_to_message, with_optional_cardinality, unit_type, string_type, int_type, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError};
@@ -144,7 +144,7 @@ access_result(with_optional_cardinality(parts.value_type.clone()), key_diags, sp
 access_result(unit_type(), malformed_diags, span.clone(), "malformed keyed collection type in index access".to_string())
 }
 } else {
-                if (((normed.name.clone().as_str() == "List".to_string().as_str()) && node_is_element_collection(normed.clone())) && index_is_int) {
+                if ((is_ordered_element_collection(normed.name.clone()) && node_is_element_collection(normed.clone())) && index_is_int) {
                     {
                         let elem = for_each_element_type_node(normed.clone());
 access_result(with_optional_cardinality(elem), Rc::new(vec![]), span.clone(), "list index access".to_string())
