@@ -536,10 +536,16 @@ sugar that the compiler lowers to these bounded forms.
 
 ## Verifiability Invariant
 
-All `.dag` programs are verifiable by construction. Unverifiable programs
-are structurally unrepresentable — every construct carries enough
-structural information for the compiler to derive its verification
-obligations. No `.dag` code can be defined that cannot be proven correct.
+**Design direction.** All `.dag` programs should be verifiable by
+construction. Unverifiable programs should be structurally
+unrepresentable — every construct carries enough structural information
+for the compiler to derive its verification obligations.
+
+**Current implementation:** Coercion data tests are auto-generated from
+TypeCheckpoint/InhabitantDecl declarations (L0). Weather.dag L4 PoC
+proves emitted code runs with structural witnesses. Witness generation,
+algebraic law testing, and constraint oracle evaluation are not yet
+implemented. See `docs/testing-strategy.md` for the full level map.
 
 This is the testing analog of the Decidability Invariant. Decidability
 says: the structure makes unbounded computation impossible. Verifiability

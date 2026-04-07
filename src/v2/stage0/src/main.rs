@@ -44,10 +44,11 @@ enum Commands {
 }
 
 /// Recursively find all .dag files under a directory.
+/// Fail-closed: panics on unreadable directory entries.
 fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
-        .filter_map(|e| e.ok())
+        .map(|e| e.unwrap_or_else(|e| panic!("failed to read dir entry in {:?}: {}", dir, e)))
         .collect();
     entries.sort_by_key(|e| e.file_name());
     for entry in entries {
@@ -91,20 +92,25 @@ fn extract_import_paths(content: &str) -> Vec<String> {
 }
 
 /// Build module index: scan all source roots, map module_path -> file_path.
+/// Fail-closed: panics on missing roots, unreadable files, and duplicate module paths.
 fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::PathBuf> {
     let mut index = HashMap::new();
     for root in source_roots {
         let root_path = std::path::Path::new(root);
         if !root_path.exists() {
-            continue;
+            panic!("source root does not exist: {}", root);
         }
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
         for path in dag_files {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Some(module_path) = extract_module_path(&content) {
-                    index.insert(module_path, path);
+            let content = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+            if let Some(module_path) = extract_module_path(&content) {
+                if let Some(existing) = index.get(&module_path) {
+                    panic!("duplicate module path '{}': declared in both {:?} and {:?}",
+                        module_path, existing, path);
                 }
+                index.insert(module_path, path);
             }
         }
     }
@@ -112,6 +118,8 @@ fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::Pat
 }
 
 /// Resolve imports transitively from entry modules.
+/// Fail-closed: panics on unreadable imported files.
+/// Returns sources sorted by path for deterministic fixed-point convergence.
 fn resolve_transitively_with_seen(
     entry_sources: Vec<(String, String)>,
     index: &HashMap<String, std::path::PathBuf>,
@@ -126,20 +134,24 @@ fn resolve_transitively_with_seen(
                 continue;
             }
             if let Some(file_path) = index.get(&module_path) {
-                if let Ok(file_content) = std::fs::read_to_string(file_path) {
-                    let rel_path = file_path.to_string_lossy().to_string();
-                    let source = Rc::new(v2_compiler::v2_compiler_compile::SourceFile {
-                        path: rel_path.clone(),
-                        content: file_content.clone(),
-                    });
-                    seen.insert(module_path, source);
-                    queue.push((rel_path, file_content));
-                }
+                let file_content = std::fs::read_to_string(file_path)
+                    .unwrap_or_else(|e| panic!("failed to read imported module '{}' at {:?}: {}",
+                        module_path, file_path, e));
+                let rel_path = file_path.to_string_lossy().to_string();
+                let source = Rc::new(v2_compiler::v2_compiler_compile::SourceFile {
+                    path: rel_path.clone(),
+                    content: file_content.clone(),
+                });
+                seen.insert(module_path, source);
+                queue.push((rel_path, file_content));
             }
+            // If not found in index, the compiler's resolve stage will report the error.
         }
     }
 
-    seen.into_values().collect()
+    let mut result: Vec<_> = seen.into_values().collect();
+    result.sort_by(|a, b| a.path.cmp(&b.path));
+    result
 }
 
 fn main() {
@@ -238,6 +250,9 @@ let _result = match cli.command {
             eprintln!("compiled: {} files emitted, {} diagnostics",
                 result.files.len(), result.diagnostics.len());
             render_diagnostics(&result);
+            if !result.diagnostics.is_empty() {
+                std::process::exit(1);
+            }
             if result.files.is_empty() {
                 eprintln!("error: no files emitted");
                 std::process::exit(1);
