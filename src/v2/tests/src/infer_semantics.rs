@@ -6,7 +6,7 @@ use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, container_node, is_fully_resolved, map_node, node_is_keyed_collection, rt_type,
+    bare_map_node, container_node, decl_resolved_type, is_fully_resolved, map_node, node_is_keyed_collection,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::{
@@ -444,7 +444,7 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
     assert_eq!(result.result_type.children.len(), 1, "keys result should have one child");
     // Children are now field-style wrappers — extract type from inferred
     let elem_child = &result.result_type.children[0];
-    let elem_type = rt_type(elem_child.clone());
+    let elem_type = decl_resolved_type(elem_child.clone());
     assert_eq!(
         elem_type.name, "String",
         "keys on Map<String,Int> should return List<String>"
