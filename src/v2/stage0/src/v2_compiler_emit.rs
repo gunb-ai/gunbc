@@ -1760,6 +1760,43 @@ pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) ->
 }
 }
 
+pub fn emit_expr_var_shared(expr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
+    {
+        let n = expr_var_name_at(expr, source_index);
+if (n.clone().as_str() == "none".to_string().as_str()) {
+            emit_keyword("null".to_string(), target)
+} else {
+            if ((n.clone().as_str() == "true".to_string().as_str()) || (n.clone().as_str() == "false".to_string().as_str())) {
+                emit_keyword(n.clone(), target)
+} else {
+                emit_ident(n.clone(), target)
+}
+}
+}
+}
+
+pub fn emit_expr_field_access_shared(expr: Rc<Node>, target: RenderTarget, emit_field: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    if is_typed_service_call_receiver(expr.clone()) {
+        match extract_typed_service_name(expr.clone()) {
+    Some(svc_name) => service_var_name(svc_name.clone()),
+    None => emit_field(expr.clone()),
+}
+} else {
+        emit_field(expr.clone())
+}
+}
+
+pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
+    Rc::new({ let mut __result = Vec::new(); for child in expr.children.clone().iter().cloned() { __result.push(match (*child.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: text, .. } = value.as_ref() else { unreachable!() }; Rc::new(StringPart::Text {
+    value: text.clone(),
+}) },
+    _ => Rc::new(StringPart::Interpolation {
+    expr: arg_value(child.clone()),
+}),
+}); } __result })
+}
+
 pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>, wrap_result: impl Fn(String) -> String + Clone, recurse: impl Fn(Rc<Node>) -> String + Clone, emit_var: impl Fn(Rc<Node>) -> String + Clone, emit_field_access: impl Fn(Rc<Node>) -> String + Clone, emit_call: impl Fn(Rc<Node>) -> String + Clone, emit_method_call: impl Fn(Rc<Node>) -> String + Clone, emit_match: impl Fn(Rc<Node>) -> String + Clone, emit_if: impl Fn(Rc<Node>) -> String + Clone, emit_let: impl Fn(Rc<Node>) -> String + Clone, emit_record_lit: impl Fn(Rc<Node>) -> String + Clone, emit_string_interp: impl Fn(Rc<Node>) -> String + Clone, emit_block: impl Fn(Rc<Node>) -> String + Clone, emit_cast: impl Fn(Rc<Node>) -> String + Clone, emit_for_each: impl Fn(Rc<Node>) -> String + Clone, emit_index: impl Fn(Rc<Node>) -> String + Clone, emit_slice: impl Fn(Rc<Node>) -> String + Clone, emit_bin_op: impl Fn(Rc<Node>) -> String + Clone) -> String {
     match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprLiteral { value: v, .. } => wrap_result(emit_literal(v.clone(), target.clone())),

@@ -982,6 +982,9 @@ fn expr_var_name_at(texpr: Node, source_index: NewlineIndex?) -> String { author
 fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
 fn field_access_field(texpr: Node) -> String { texpr.name }
 fn field_access_field_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
+fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
+  match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
+}
 
 // -- ExprCall (D3: func dissolved into Node.name) --
 fn expr_call_func(texpr: Node) -> String { texpr.name }
@@ -992,6 +995,9 @@ fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, 
 fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 fn expr_method_name(texpr: Node) -> String { texpr.name }
 fn expr_method_name_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
+fn expr_method_call_semantics(texpr: Node) -> MethodSemantics? {
+  match texpr.expr_data { ExprMethodCall { method_semantics: ms } => ms  _ => none }
+}
 
 // -- ExprLambda (D3: params dissolved into child Nodes after body) --
 fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }

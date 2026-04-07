@@ -44,7 +44,7 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
-  field_access_base, method_receiver,
+  field_access_base, method_receiver, expr_field_access_summary, expr_method_call_semantics,
   record_lit_type_name,
   lambda_body, cast_expr, cast_target, return_value,
   foreach_variable, foreach_collection, foreach_body, method_arg_nodes,
@@ -107,7 +107,8 @@ import v2.compiler.emit {
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
-  seed_bindings
+  seed_bindings,
+  emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts
 }
 
 // =========================================================================
@@ -574,157 +575,59 @@ fn emit_py_field_access(base: Node, field: String, summary: FieldSummary?, regis
 }
 
 fn emit_py_expr_var(expr: Node, source_index: NewlineIndex?) -> String {
-  match expr.expr_data {
-    ExprVar { binding_kind: _ } =>
-      let n = expr_var_name_at(texpr: expr, source_index: source_index)
-      if n == "none" { emit_keyword(key: "null", target: Python) }
-      else if n == "true" || n == "false" { emit_keyword(key: n, target: Python) }
-      else {
-        emit_ident(name: n, target: Python)
-      }
-    _ => emit_error_expr(message: "emit_py_expr_var expected ExprVar", target: Python)
-  }
+  emit_expr_var_shared(expr: expr, target: Python, source_index: source_index)
 }
 
 fn emit_py_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprFieldAccess { summary: summary } =>
-      let f = expr.name
-      let b = field_access_base(texpr: expr)
-      if is_typed_service_call_receiver(receiver: expr) {
-        match extract_typed_service_name(receiver: expr) {
-          Some { value: svc_name } => service_var_name(service_name: svc_name)
-          None => emit_py_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope, depth: depth)
-        }
-      } else {
-        emit_py_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope, depth: depth)
-      }
-    _ => emit_error_expr(message: "emit_py_expr_field_access expected ExprFieldAccess", target: Python)
-  }
+  emit_expr_field_access_shared(expr: expr, target: Python, emit_field: e => emit_py_field_access(base: field_access_base(texpr: e), field: e.name, summary: expr_field_access_summary(texpr: e), registry: registry, scope: scope, depth: depth))
 }
 
 fn emit_py_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprCall { call_semantics: _ } =>
-      let f = expr_call_func_at(texpr: expr, source_index: scope.type_env.source_index)
-      emit_py_typed_call(func: f, args: expr.children, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_call expected ExprCall", target: Python)
-  }
+  emit_py_typed_call(func: expr_call_func_at(texpr: expr, source_index: scope.type_env.source_index), args: expr.children, registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprMethodCall { method_semantics: method_semantics } =>
-      let r = method_receiver(texpr: expr)
-      let a = method_arg_nodes(texpr: expr)
-      let m = expr_method_name_at(texpr: expr, source_index: scope.type_env.source_index)
-      emit_py_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_method_call expected ExprMethodCall", target: Python)
-  }
+  emit_py_typed_method_call(receiver: method_receiver(texpr: expr), method: expr_method_name_at(texpr: expr, source_index: scope.type_env.source_index), args: method_arg_nodes(texpr: expr), method_semantics: expr_method_call_semantics(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprMatch =>
-      let s = match_scrutinee(texpr: expr)
-      let arm_list = match_arm_nodes(texpr: expr)
-      emit_py_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_match expected ExprMatch", target: Python)
-  }
+  emit_py_typed_match(scrutinee: match_scrutinee(texpr: expr), arms: match_arm_nodes(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprIf =>
-      let c = if_condition(texpr: expr)
-      let t = if_then_branch(texpr: expr)
-      let e = if_else_branch(texpr: expr)
-      emit_py_typed_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_if expected ExprIf", target: Python)
-  }
+  emit_py_typed_if(condition: if_condition(texpr: expr), then_branch: if_then_branch(texpr: expr), else_branch: if_else_branch(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprLet =>
-      let n = let_binding_name_at(texpr: expr, source_index: scope.type_env.source_index)
-      let v = let_value(texpr: expr)
-      let bd = let_body(texpr: expr)
-      emit_py_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_let expected ExprLet", target: Python)
-  }
+  emit_py_typed_let(name: let_binding_name_at(texpr: expr, source_index: scope.type_env.source_index), value: let_value(texpr: expr), body: let_body(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprRecordLit { parent_enum: _ } =>
-      let tn = record_lit_type_name(texpr: expr)
-      let fs = expr.children
-      emit_py_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_record_lit expected ExprRecordLit", target: Python)
-  }
+  emit_py_typed_record_lit(type_name: record_lit_type_name(texpr: expr), fields: expr.children, registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprStringInterp =>
-      let ps = expr.children |> map(child => match child.expr_data {
-        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
-        _ => Interpolation { expr: arg_value(n: child) }
-      })
-      emit_py_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_string_interp expected ExprStringInterp", target: Python)
-  }
+  emit_py_typed_string_interp(parts: extract_string_interp_parts(expr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprBlock =>
-      emit_py_typed_block(stmts: expr.children, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_block expected ExprBlock", target: Python)
-  }
+  emit_py_typed_block(stmts: expr.children, registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprCast =>
-      let e = cast_expr(texpr: expr)
-      let t = cast_target(texpr: expr)
-      emit_py_typed_cast(expr: e, target: t, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_cast expected ExprCast", target: Python)
-  }
+  emit_py_typed_cast(expr: cast_expr(texpr: expr), target: cast_target(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprForEach =>
-      let v = foreach_variable(texpr: expr)
-      let c = foreach_collection(texpr: expr)
-      let bd = foreach_body(texpr: expr)
-      emit_py_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_for_each expected ExprForEach", target: Python)
-  }
+  emit_py_typed_for_each(variable: foreach_variable(texpr: expr), collection: foreach_collection(texpr: expr), body: foreach_body(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprIndex =>
-      let b = index_base(texpr: expr)
-      let i = index_expr(texpr: expr)
-      emit_py_typed_index(base: b, index: i, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_index expected ExprIndex", target: Python)
-  }
+  emit_py_typed_index(base: index_base(texpr: expr), index: index_expr(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match expr.expr_data {
-    ExprSlice =>
-      let b = slice_base(texpr: expr)
-      let s = slice_start(texpr: expr)
-      let e = slice_end(texpr: expr)
-      emit_py_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth)
-    _ => emit_error_expr(message: "emit_py_expr_slice expected ExprSlice", target: Python)
-  }
+  emit_py_typed_slice(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int) -> String {

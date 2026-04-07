@@ -1665,6 +1665,44 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
 
 
 // =========================================================================
+// Shared expression handler helpers (CG-3: 3→1 homomorphism)
+//
+// These replace duplicated per-backend wrapper functions. Since
+// emit_shared_expr already dispatches on ExprData, wrapper functions
+// that re-match are redundant. Backends inline child extraction into
+// closures; these helpers share non-trivial logic.
+// =========================================================================
+
+// Shared ExprVar emission — target-parameterized, no backend-specific logic.
+fn emit_expr_var_shared(expr: Node, target: RenderTarget, source_index: NewlineIndex?) -> String {
+  let n = expr_var_name_at(texpr: expr, source_index: source_index)
+  if n == "none" { emit_keyword(key: "null", target: target) }
+  else if n == "true" || n == "false" { emit_keyword(key: n, target: target) }
+  else { emit_ident(name: n, target: target) }
+}
+
+// Shared ExprFieldAccess service-receiver check. Delegates to emit_field
+// for the backend-specific field access rendering.
+fn emit_expr_field_access_shared(expr: Node, target: RenderTarget, emit_field: fn(Node) -> String) -> String {
+  if is_typed_service_call_receiver(receiver: expr) {
+    match extract_typed_service_name(receiver: expr) {
+      Some { value: svc_name } => service_var_name(service_name: svc_name)
+      None => emit_field(expr)
+    }
+  } else {
+    emit_field(expr)
+  }
+}
+
+// Extract StringPart list from ExprStringInterp children.
+fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
+  expr.children |> map(child => match child.expr_data {
+    ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+    _ => Interpolation { expr: arg_value(n: child) }
+  })
+}
+
+// =========================================================================
 // emit_shared_expr — full shared ExprData dispatcher (P4.2 step 5)
 //
 // The shared layer owns the whole-tree `ExprData` match. Backends provide:
