@@ -1128,10 +1128,7 @@ fn emit_go_service_def(
 ) -> String {
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let transport = service_fallback_transport(item: item)
-  // BUG: Go filters op_children by having params, but Rust/Python use
-  // item.children unfiltered. This inconsistency should be aligned —
-  // either all backends filter or none do.
-  let op_children = item.children |> filter(c => c.params |> count > 0)
+  let op_children = item.children
   let struct_def = emit_go_service_struct(name: safe_name, fallback_transport: transport, op_children: op_children)
   let methods = op_children |> map(op_node =>
     emit_go_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, env: env)
