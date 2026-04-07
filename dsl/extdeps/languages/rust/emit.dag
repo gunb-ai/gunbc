@@ -191,6 +191,8 @@ fn rt_ref_map_functions() -> Map<String, Bool> {
     |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
 }
 
+// Derived: runtime functions whose result needs Rc wrapping.
+// Single authority: RuntimeFunction.wraps_result field on the registry.
 fn rt_wraps_result() -> Map<String, Bool> {
   rt_function_registry
     |> filter(f => f.wraps_result)

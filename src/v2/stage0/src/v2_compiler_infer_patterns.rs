@@ -151,12 +151,13 @@ some_node
 }
 
 pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
-    if (n.name.clone().as_str() == "Dynamic".to_string().as_str()) {
-        Rc::new(PatternSubject::PatternDynamic {
-    span: n.span.clone(),
-})
+    {
+        let is_error = if (n.inferred.clone() != None) {
+            is_compiler_error(n.inferred.clone().clone().unwrap())
 } else {
-        if (n.name.clone().as_str() == "Error".to_string().as_str()) {
+            false
+};
+if is_error {
             Rc::new(PatternSubject::PatternLookupBlocked)
 } else {
             Rc::new(PatternSubject::PatternResolved {

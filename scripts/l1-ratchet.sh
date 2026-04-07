@@ -89,7 +89,12 @@ echo "  CollectionKind:                $collection_kind_count"
 # 2026-04-06: 33→32 (TLC-1: ExprVar→ExprCall normalization dissolves is_zero_arg_callable_ref)
 # 2026-04-06: 32→36 (Phase C infrastructure: has_type_variable, template_return_has_variables, unify/apply/build match on AlgebraTypeTemplate)
 # 2026-04-06: 36→37 (Phase C bare-container enrichment: is_container_type+arity in apply_type_substitution)
-L1_RATCHET=37
+# 2026-04-06: 37→36 (M4: Arrow connective dissolves n.name=="Callable" in render_node_type)
+# 2026-04-06: 36→34 (M4: dissolve remaining 3 Callable name checks — emit_info, resolve)
+# 2026-04-06: 34→31 (M4: dissolve 3 Tuple name checks — structural is_pair + tuple_type_name constant)
+# 2026-04-06: 31→28 (M4: dissolve Dynamic/Error sentinel name checks — structural CompilerError check)
+# 2026-04-06: 28→27 (M4: dissolve List positional-access check — ordered_element_collections data fact)
+L1_RATCHET=27
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

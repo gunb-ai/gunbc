@@ -92,9 +92,11 @@ type TokenShape
 // module_items(), is_import_node(), import_is_all(), import_specific_names().
 
 // Connective -- the logical primitive for type structure.
-// Conj = conjunction: all children hold simultaneously (record fields).
-// Disj = disjunction: exactly one child holds (sum variants).
-type Connective = Conj | Disj | NoConnective
+// Conj = conjunction (product): all children hold simultaneously (record fields).
+// Disj = disjunction (coproduct): exactly one child holds (sum variants).
+// Arrow = exponential (function type). params carry input types,
+//         inferred carries return type.
+type Connective = Conj | Disj | NoConnective | Arrow
 
 type Cardinality = Required | CardOptional
 

@@ -608,7 +608,7 @@ pub fn callable_node(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> 
     span: make_span(0, 0),
     ident_span: None,
     children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
+    connective: Connective::Arrow,
     params: func_params,
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: ret,

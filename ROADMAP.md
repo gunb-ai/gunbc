@@ -28,15 +28,18 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 M1 COMPLETE─┤                                       ├→ M4 (structural identity)
 Bootstrap D ┼─ Lane 2: CG (codegen correctness) ───┘       └→ M5 → M6 → M7
   COMPLETE  ├─ Lane 3: CX (164 → 0)
+            ├─ Lane 4: LS (language spec modeling) ─→ CG-3 parameterized emission
             └─ PERF (continuous — parallel to all lanes)
             CM: cross-cutting design lens (informs all lanes) → src/v2/CM.md
 
 Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
 Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, ownership, languages
 Lane 3 owns: complexity, dsl/std/
+Lane 4 owns: dsl/extdeps/languages/{rust,go,python}/ — spec-sourced data
 CM informs how Lanes 1-3 approach work; does not own files separately
 PERF owns: performance ratchets, bootstrap convergence tests, timing budgets
 M4 follows Lanes 1+2 (needs structural facts + clean render path)
+LS follows CG-3 (needs parameterized emission to consume spec data)
 ```
 
 ---
@@ -50,7 +53,7 @@ M4 follows Lanes 1+2 (needs structural facts + clean render path)
 | **A** | GREEN | 0 diagnostics | PR #264 |
 | **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_stage0_to_stage1` still `#[ignore]` |
 | **C** | GREEN | regen binary self-compiles | PR #308. 1 perf-only bootstrap patch: `dag_syntax_spec` cache |
-| **D** | GREEN | `regenerate-stage0.sh && git diff --exit-code` | PR #308. Freshness gate blocking in CI. `emit_node_type_rc` deleted; single authority via `build_type_rendering` + `render_type` |
+| **D** | GREEN | `regenerate-stage0.sh && git diff --exit-code` | PR #308. Freshness gate blocking in CI. `render_node_type` fuses Node → String directly (TypeRendering dissolved PR #331) |
 
 **Bootstrap D** = regenerated code replaces committed stage0 with zero
 manual patches, AND the regenerated binary produces identical output
@@ -84,10 +87,10 @@ Previously eliminated:
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (283 pass, 0 fail, 39 ignored) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (294 pass, 0 fail, 41 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
-| L1 ratchet | `scripts/l1-ratchet.sh --check` | 33 (target: 0) |
+| L1 ratchet | `scripts/l1-ratchet.sh --check` | 37 (target: 0) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
 ## Ratchet Counts
@@ -95,7 +98,7 @@ Previously eliminated:
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
-| L1 type knowledge | 33 | 0 | Down from 70; name-based workarounds tracked for M4 |
+| L1 type knowledge | 37 | 0 | Down from 70; name-based workarounds tracked for M4 |
 | Complexity violations | 164 | 0 | Down from 315; unfinished algebraic grounding |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
@@ -189,7 +192,7 @@ Symptoms:
 
 Open items:
 - [x] Incomplete parameterized types rejected at normalization — `container_expected_arity` returns `Int?` (fail-closed: unknown names → None, no false positives on operations sharing container names)
-- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators. Empty list `[]` diagnostic blocked on expected-type propagation through list element inference (160 false positives from `[]` in record literal fields like `param_types: []`)
+- [~] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed. Expected threading covers: let body, list elements, lambda body, return, tail-return, if branches, match arms, record literal fields (struct field types), function arguments (parameter types). Fold-init path now receives outer expected when available. Remaining gap: fold-init in non-tail let value position has `None` expected — circular dependency (need value type to give expected, but value inference produces the type). Requires bidirectional inference with unification. Self-compile diagnostic count: 0
 - [x] Thread `expected` to formal params at matching positions — over-arity args no longer receive synthetic expected types; non-callable expected boundary overload remains open
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
@@ -209,16 +212,16 @@ clone, expression semantics) are scattered across emitter heuristics
 instead of derived from structural authorities. This produces
 correct-but-suboptimal code and blocks new backends.
 
-**Status:** TypeRendering boundary established (emit_node_type_rc deleted).
+**Status:** TypeRendering type dissolved (PR #331). `render_node_type`
+fuses Node → String in one pass, consuming coercion data directly.
 Clone semantics unified in SharingStrategy (CloneTemplates removed).
-TLC-1 partial: `is_zero_arg_callable_ref` is an emitter-side guardrail
-(L1 violation — `rt.name=="Callable"` check); upstream concept modeling
-needed (Tier 2.6). TLC-3 done: all three backends dispatch per
-collection type via `IndexingSemantics` templates (pre-existing;
-prior description was stale). TLC-4 partial:
+TLC-1 complete: ExprVar → ExprCall normalization at inference time
+(PR #329). TLC-3 done: all three backends dispatch per collection type
+via `IndexingSemantics` templates. TLC-4 partial:
 `emit_let_binding_annotated` infrastructure exists but disabled for
 bootstrap convergence (.dag type inference produces `()` for empty
-collection element types). TLC-2 blocked on M5 coercion engine.
+collection element types). TLC-2 partial: `wraps_result` on
+`RuntimeFunction` registry but consumers still read parallel maps.
 Higher-order method templates (filter/any/all/flat_map) data-driven
 via `HigherOrderMethodSpec`.
 
@@ -243,13 +246,15 @@ and heuristic fallbacks.
 
 **Type rendering**
 
-`build_type_rendering` + `render_type` is the sole type rendering
-authority. `emit_node_type_rc` deleted (2757 nodes validated at 0
-mismatches before removal). `emit_node_type` routes through
-`build_type_rendering` + `render_type`.
+`render_node_type` fuses Node → String in one pass (PR #331).
+`TypeRendering` type dissolved from `04_emit_info.dag`. `emit_node_type`
+delegates to `render_node_type`. Coercion data consumed directly:
+`coerce_primitive_type`, `coerce_container_template`, `target_callable`.
 
 - [x] Delete `emit_node_type_rc` / old type rendering path
-- [x] `emit_primitive_type` fail-closed (no pass-through on miss)
+- [x] `emit_primitive_type` deleted (subsumed by `coerce_primitive_type`)
+- [x] `TypeRendering` type + `build_type_rendering` + `render_type` dissolved
+- [x] `render_node_type` fused function (Node → String, one pass)
 
 **Sharing and ownership**
 
@@ -273,11 +278,12 @@ backends.
   ExprVar → ExprCall for zero-arg function references (PR #329). All three
   backends emit `name()` via existing ExprCall handling. `is_zero_arg_callable_ref`
   dissolved (L1 33→32). Imported zero-arg function refs untested.
-- [ ] **TLC-2: Runtime bridge signature derivation.** Runtime helper
+- [~] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
-  type/coercion authority as emission. `v2_rt::map_keys` returns
-  `Vec<K>` but emission expects `Rc<Vec<K>>`.
-  *Blocked: requires M5 coercion engine for type/wrap authority.*
+  type/coercion authority as emission. `wraps_result` field added to
+  `RuntimeFunction` registry (PR #331); `rt_wraps_result()` derives
+  from registry. Remaining: `rust_method_wraps_result` is a parallel
+  map for method templates — should unify into single spec authority.
 - [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
   All three backends dispatch per collection type via shared
@@ -303,16 +309,16 @@ Make emission fully data-driven. Adding a backend = adding data.
   Shared `emit_rust_higher_order_method` replaces 4 hardcoded emitters
   (filter/any/all/flat_map). Data-driven dispatch via method name lookup.
 - [~] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend sites are inherent rendering differences.
-- [ ] LanguageSpec completion — all target-language facts data-driven
-- [ ] TypeRendering dissolves into coercion engine
+- [ ] LanguageSpec completion — all target-language facts data-driven (see LS lane below)
+- [x] TypeRendering dissolved — `render_node_type` consumes coercion data directly (PR #331)
 - [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
 
 ### Coercion infrastructure (reference)
 
-`build_type_rendering` reads coercion data from `.dag` declarations:
+`render_node_type` reads coercion data from `.dag` declarations:
 - [x] `TypeCheckpoint` (primitives) from language `types.dag` — live via `coerce_primitive_type`
 - [x] `InhabitantDecl` (algebra containers) from language `types.dag` — live via `coerce_container_template`
-- [x] `CallableRepr` (callable syntax) — live via `target_callable` in `render_type_base`
+- [x] `CallableRepr` (callable syntax) — live via `target_callable`
 
 Shared schema in `std/coercion.dag`; per-language instances in
 `extdeps/languages/{rust,python,go}/types.dag`. Design doc:
@@ -320,9 +326,10 @@ Shared schema in `std/coercion.dag`; per-language instances in
 
 Remaining parallel authorities:
 - [x] Copy/value semantics: `is_rust_value_type` reads `TypeCheckpoint.is_copy`
-  (dissolved `rust_value_types` list; `is_primitive_numeric_node`/`is_simple_type_node`
-  remain as thin wrappers over `is_rust_value_type` — names are narrower than
-  the new semantics but behavior is correct)
+  (dissolved `rust_value_types` list). `is_simple_type_node` wraps `is_rust_value_type`
+  (Copy check for data-def caching). `is_primitive_numeric_node` resolves to Rust
+  target type and checks against `integer_types`/`float_types`/`"bool"` — narrower
+  than Copy (excludes Unit; PR #333)
 - [x] Dead code: deleted `try_target_primitive_type`, `target_primitive_type`,
   `target_container_template`, `is_value_type`, `emit_primitive_type` + unused imports
 - [~] Runtime bridge wrapping: `wraps_result` field on `RuntimeFunction` registry
@@ -385,13 +392,93 @@ passes to fix what construction should have prevented.
 
 ---
 
+## LS: Language Spec Modeling (follows CG-3)
+
+**Thesis:** Every target language has a spec. The spec constrains what
+the emitter can produce. Model the spec as .dag data declarations in
+`dsl/extdeps/languages/{rust,go,python}/`. The emitter reads the spec —
+it never decides. The spec IS the invariant.
+
+This is what .dag is made for: decidable, structural, authoritative
+facts. A language spec is exactly that — finite rules about what
+syntax is valid and what semantics it carries. Modeling it in .dag
+means the compiler can prove it follows the spec by construction.
+
+**Pattern:** For each language decision the emitter currently makes
+via inline logic, find the relevant section of the language spec,
+model it as data, reference the spec section in a comment, and have
+the emitter consume the data.
+
+### LS-1: Type cast rules
+
+Emitter currently uses `is_primitive_numeric_node` (target-only check).
+The Rust spec defines `as` validity as a relation `(source, target)`.
+
+Ref: Rust Reference §8.2.4 "Type cast expressions"
+https://doc.rust-lang.org/reference/expressions/operator-expr.html#type-cast-expressions
+
+Spec table (value-level casts only):
+- Integer/Float → Integer/Float (numeric cast)
+- bool/char → Integer (primitive to integer cast)
+- u8 → char (u8 to char cast)
+- Enumeration → Integer (enum cast)
+- NOT valid: bool→float, integer→bool, integer→char (except u8)
+
+Model: `CastCategory` enum + `CastRule` relation + `can_as_cast(from, to)`
+lookup in `extdeps/languages/rust/types.dag`. Emitter calls lookup
+instead of classifying inline.
+
+Go equivalent: type conversion rules (all numeric conversions valid,
+`int64(x)` syntax). Python: constructor calls (`int(x)`, `float(x)`).
+
+### LS-2: Operator semantics
+
+Which operators are valid for which types, and what syntax they produce.
+Currently scattered across emitter logic.
+
+### LS-3: Expression syntax
+
+Statement vs expression distinction, block syntax, match exhaustiveness
+requirements, semicolon rules. Each language has different rules.
+
+### LS-4: Ownership and borrowing (Rust)
+
+Move/copy/borrow rules. Currently heuristic in the Rust emitter.
+The Rust Reference defines these structurally.
+
+### LS-5: Visibility and module system
+
+`pub`, `pub(crate)`, Go capitalization, Python `__all__`. Currently
+hardcoded per-backend.
+
+### Acceptance
+
+Every emitter decision traces to a spec-referenced data declaration
+in `dsl/extdeps/languages/`. Adding a new target language = modeling
+its spec as .dag data. Regression tests auto-generated from the spec
+data (each rule → one test).
+
+---
+
 ## M4: Structural Identity (L1 = 0) — follows Lanes 1+2
 
 **Root cause:** The compiler uses `Node.name` (a string) as semantic
-authority. ~256 constructions, ~30 name-based comparisons. Deletion
-requires declaration-driven identity and structural algebra.
-Blocked on M2 (structural facts in resolve/infer files) and E-track
-(clean render path in emit files).
+authority. 27 type constructors + 10 name comparisons = L1 37.
+Deletion requires declaration-driven identity and structural algebra.
+CG render path cleaned (TypeRendering dissolved, PR #331). M2
+expected threading in good shape (remaining gap: bidirectional inference).
+
+**L1 name comparisons breakdown (10):**
+- 4× Callable: `has_fn_fields` (2), resolve `n_is_special` (1), `render_node_type` (1)
+- 3× Tuple: `render_node_type` (3)
+- 2× Dynamic/Error: `pattern_subject` (2), counted as 1 line in resolve
+- 1× List: `index_access` (positional indexing check)
+
+**Structural properties needed to dissolve:**
+- Callable: needs structural discriminator (only type using `params` for type parameters + `inferred` for return type). Tier 2.6 design: model callable as concept
+- Tuple: needs either a dedicated connective or a flag. Currently indistinguishable from 2-field struct Conj without name
+- Dynamic/Error: need structural markers for "unresolved/error type"
+- List positional indexing: needs "supports positional access" algebra fact
 
 ### Lane 1: Declaration-driven algebra
 
@@ -406,7 +493,7 @@ instead of hardcoding them.
 - Tier 2.6 (functional system modeling):
   - [ ] Model function application as a concept (apply/call vs function-value-ref)
   - [ ] Inference encodes "this is a call" in the IR node, not as a type-arity heuristic
-  - [ ] Dissolves `is_zero_arg_callable_ref` and `rt.name == "Callable"` L1 violation
+  - [ ] Dissolves `rt.name == "Callable"` L1 violations (4 sites: has_fn_fields ×2, resolve, render_node_type)
   - Same pattern as iteration modeling (fold/descend/repeat): ad-hoc emit
     decisions are symptoms of a missing concept layer. Once the functional
     system is modeled, arity-based rendering questions disappear.
@@ -414,7 +501,7 @@ instead of hardcoding them.
   - [ ] Compiler reads type declarations + algebra edges at resolve time
   - [ ] Derive kernel/container identity from type declarations
   - [ ] CollectionKind bridge dissolves when method algebras land
-  - [ ] 21 type constructor sites → 0
+  - [ ] 27 type constructor sites → 0
 
 ### Lane 2: Node.name deletion (D6)
 

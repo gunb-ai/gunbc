@@ -77,6 +77,7 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.coercion { coerce_primitive_type, is_copy }
+import extdeps.languages.rust.types { integer_types, float_types }
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
@@ -1635,7 +1636,20 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_t
     }
 }
 
-fn is_primitive_numeric_node(n: Node) -> Bool { is_rust_value_type(n: n) }
+// is_primitive_numeric_node: checks whether target type is a valid `as` target.
+// Rust `as` casts: numeric→numeric, bool→integer, u8→char. The TARGET must
+// be an integer or float type. bool is only valid as a SOURCE (bool→integer),
+// not as a target (integer→bool is invalid). Unit is Copy but not castable.
+// Ref: https://doc.rust-lang.org/reference/expressions/operator-expr.html
+fn is_primitive_numeric_node(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  let rust_type = coerce_primitive_type(target: Rust, dag_name: normed.name)
+  if rust_type == normed.name { false }
+  else {
+    integer_types |> any(t => t == rust_type)
+    || float_types |> any(t => t == rust_type)
+  }
+}
 fn is_simple_type_node(n: Node) -> Bool { is_rust_value_type(n: n) }
 
 // =========================================================================
@@ -1909,8 +1923,9 @@ fn rust_empty_map_value_type_str(map_type: Node, shared_types: Map<String, Bool>
 // for non-Copy types. lookup/map_get return the correct type directly.
 
 fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> Bool {
-  // Data-driven: runtime functions via rt_function_registry.wraps_result,
-  // method templates via rust_method_wraps_result map.
+  // Two authorities: rt_wraps_result() derived from RuntimeFunction.wraps_result,
+  // rust_method_wraps_result for method templates. Each authority derives from
+  // its own structural source.
   map_contains_key(rt_wraps_result(), function_name)
     || map_contains_key(rust_method_wraps_result, function_name)
 }

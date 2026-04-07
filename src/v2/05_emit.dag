@@ -53,7 +53,7 @@ import v2.std.core {
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
   tuple_type_name,
-  Connective, Conj, Disj, NoConnective,
+  Connective, Conj, Disj, NoConnective, Arrow,
 
   CardOptional
 }
@@ -910,8 +910,9 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     return err_str
   }
 
-  // Callable: fn(A, B) -> R
-  if n.name == "Callable" {
+  // Callable: Arrow connective (set at parse time and during inference).
+  let is_arrow = n.connective == Arrow
+  if is_arrow {
     let repr = target_callable(target: target)
     let param_strs = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types))
     let param_str = param_strs |> join(separator: repr.param_separator)
@@ -968,8 +969,10 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
       }
       return refined_str
     }
-    // Tuple
-    if n.name == "Tuple" {
+    // Positional product (tuple): Conj with children named "first"/"second".
+    // Structural check — no name == "Tuple" needed.
+    let is_pair = n.children |> count == 2 && (match n.children |> first { Some { value: c0 } => c0.name == "first"  None => false }) && (match n.children |> skip(1) |> first { Some { value: c1 } => c1.name == "second"  None => false })
+    if is_pair {
       let first_child = match n.children |> first {
         Some { value: c } => if c.inferred != none { render_node_type(n: rt_type(n: c), target: target, shared_types: shared_types) } else { render_node_type(n: c, target: target, shared_types: shared_types) }
         None => "_"
@@ -1024,7 +1027,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
         None => "_"
       }
       emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
-    } else if n.name == "Tuple" {
+    } else if n.name == tuple_type_name {
       render_tuple_parts(parts: [], target: target)
     } else {
       coerce_primitive_type(target: target, dag_name: n.name)
@@ -1068,7 +1071,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   }
   // Multi-child leaf: Tuple or generic type
   let child_strs = n.children |> map(c => render_node_type(n: c, target: target, shared_types: shared_types))
-  if n.name == "Tuple" {
+  if n.name == tuple_type_name {
     let multi_tuple_str = render_tuple_parts(parts: child_strs, target: target)
     return multi_tuple_str
   }

@@ -931,6 +931,36 @@ fn rt_functions_map_consistent_with_registry() {
 }
 
 #[test]
+fn rt_wraps_result_derived_from_registry() {
+    // rt_wraps_result() is derived from RuntimeFunction.wraps_result via fold.
+    // Verify exact parity: every registry entry with wraps_result: true appears,
+    // and no extra entries exist.
+    use v2_compiler::extdeps_languages_rust_emit::{rt_function_registry, rt_wraps_result};
+
+    let registry = rt_function_registry();
+    let wraps_map = rt_wraps_result();
+
+    let registry_wraps: Vec<String> = registry.iter()
+        .filter(|f| f.wraps_result)
+        .map(|f| f.name.clone())
+        .collect();
+
+    assert!(!registry_wraps.is_empty(), "registry should have wraps_result entries");
+
+    // Every registry wraps_result: true must appear in derived map
+    for name in &registry_wraps {
+        assert!(wraps_map.contains_key(name),
+            "RuntimeFunction '{}' has wraps_result: true but missing from rt_wraps_result()", name);
+    }
+
+    // No extra entries in derived map
+    for (name, _) in wraps_map.iter() {
+        assert!(registry_wraps.contains(name),
+            "rt_wraps_result() contains '{}' but no matching registry entry with wraps_result: true", name);
+    }
+}
+
+#[test]
 fn is_copy_checkpoint_parity() {
     // Derive all assertions from rust_type_checkpoints — single authority.
     // Every checkpoint must return Some(is_copy), never None.

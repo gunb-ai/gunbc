@@ -91,6 +91,17 @@ fn container_expected_arity(name: String) -> Int? {
   map_get(container_type_arity, name)
 }
 
+// Ordered element collections: support positional access (list[0]).
+// FreeMonoid-based collections preserve insertion order.
+// Set-based collections are unordered — no positional access.
+data ordered_element_collections: Map<String, Bool> = {
+  "List": true, "NonEmptyList": true
+}
+
+fn is_ordered_element_collection(name: String) -> Bool {
+  map_contains_key(ordered_element_collections, name)
+}
+
 // Container → algebra mapping: mirrors the type alias declarations below.
 // Co-located with the declarations it describes (List = FreeMonoid, etc.).
 // Includes surface names, snake_case variants, and algebra self-mappings
