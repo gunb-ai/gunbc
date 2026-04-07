@@ -197,10 +197,67 @@ Open items:
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
+### BRIDGE fabrication progress (83 → 21)
+
+BRIDGE count reduced from 83 to 21 (17 real + 4 emitter template strings).
+Phases: contradictory predicate fix (83→29), Phase C structural
+resolution + typed seed helpers (29→21).
+
+Remaining 17 real BRIDGEs: all standalone `empty_map()` with `expected: None`
+in match/if None branches. Need ExpectedContext (see below).
+
+### Compositional type parameter resolution (COMPLETE)
+
+Phases A-D landed (PRs #325, #332, #334):
+- [x] Phase A: TypeVariable preservation (`algebra_child_or_placeholder`)
+- [x] Phase B: TypeVariable rendering in emit (now fail-closed: `compile_error!`)
+- [x] Phase C: Structural return type resolution via template unification
+  (`resolve_type_variables_from_template` replaces `refine_collection_result_type`)
+- [x] Phase D: Deleted compensation infrastructure
+  (`refine_collection_result_type`, `substitute_algebra_result`,
+  `bridge_placeholder_type_names` — ~280 lines removed)
+- [x] `AlgebraTypeVariable` variant replaces `is_algebra_placeholder_name`
+- [x] Templates enriched with `CallableOf` contracts (self-describing)
+- [x] Bare-container ReceiverSelf enrichment from arg-derived bindings
+
+**Result:** 0 method-name dispatches for type resolution (was 6).
+Emit is fail-closed: TypeVariable → `compile_error!`.
+
+### Remaining BRIDGE fabrications (17 real)
+
+All 17 are standalone `empty_map()` with `expected: None` — no
+`map_insert` provides value type context. Concentrated in:
+- complexity.dag (8): cost maps, param name maps in match/if branches
+- emit_rust.dag (5): ownership/fold-eligibility index lookups
+- emit_go/python (1 each): template binding seeds
+- infer.dag (1): fold_override_map seed
+- infer_method.dag (1): builtin registry seed
+
+**Design direction — ExpectedContext sum type:**
+
+Replace `expected: Node?` with `expected: ExpectedContext?` to
+distinguish different expectation sources:
+```
+type ExpectedContext
+  = ResultExpected { type_node: Node }
+  | AccumulatorExpected { acc_type: Node }
+  | ElementExpected { element: Node }
+  | FieldExpected { field_name: String, type_node: Node }
+```
+This enables:
+- `None => empty_map()` branches to inherit expected type from the
+  `Some` branch (both arms of a match should produce the same type)
+- Fold init to inherit accumulator type from the fold return type
+- If/else branches to share expected type across arms
+
+This is a broader bidirectional inference improvement, not solvable
+by algebra template changes alone.
+
 ### Acceptance
 
 No fabricated type args, no generic/wrong fallback return types, no
-error-typed children reaching emit. Fallback count promoted to CI.
+error-typed children reaching emit. BRIDGE fabrication count at 17
+(target: 0 via ExpectedContext).
 Ownership and clone correctness tracked under CG lane.
 
 ---
