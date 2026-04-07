@@ -231,7 +231,7 @@ fn rust_spec() -> LanguageSpec {
       lambda_param_typed: "{0}: {1}",
       lambda_param_untyped: "{0}"
     },
-    method_templates: rust_method_templates,
+    method_templates: rust_method_templates(),
     service_fields: ServiceFieldTemplates {
       rest_decl: "    pub base_url: String,\n",
       auth_decl: "    pub auth_token: String,\n",

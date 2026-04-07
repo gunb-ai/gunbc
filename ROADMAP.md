@@ -269,14 +269,14 @@ correct-but-suboptimal code and blocks new backends.
 fuses Node → String in one pass, consuming coercion data directly.
 Clone semantics unified in SharingStrategy (CloneTemplates removed).
 TLC-1 complete: ExprVar → ExprCall normalization at inference time
-(PR #329). TLC-3 done: all three backends dispatch per collection type
-via `IndexingSemantics` templates. TLC-4 partial:
-`emit_let_binding_annotated` infrastructure exists but disabled for
-bootstrap convergence (.dag type inference produces `()` for empty
-collection element types). TLC-2 partial: `wraps_result` on
-`RuntimeFunction` registry but consumers still read parallel maps.
-Higher-order method templates (filter/any/all/flat_map) data-driven
-via `HigherOrderMethodSpec`.
+(PR #329). TLC-2 complete: `SimpleMethodSpec` co-locates template +
+wrapping flag, both maps derive from single authority. TLC-3 done: all
+three backends dispatch per collection type via `IndexingSemantics`
+templates. TLC-4 partial: `emit_let_binding_annotated` infrastructure
+exists but disabled for bootstrap convergence (.dag type inference
+produces `()` for empty collection element types). Higher-order method
+templates (filter/any/all/flat_map) data-driven via
+`HigherOrderMethodSpec`.
 
 One root cause, two symptoms:
 1. Facts that exist upstream are lost before emit — emission compensates
@@ -331,12 +331,14 @@ backends.
   ExprVar → ExprCall for zero-arg function references (PR #329). All three
   backends emit `name()` via existing ExprCall handling. `is_zero_arg_callable_ref`
   dissolved (L1 33→32). Imported zero-arg function refs untested.
-- [~] **TLC-2: Runtime bridge signature derivation.** Runtime helper
+- [x] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `wraps_result` field added to
   `RuntimeFunction` registry (PR #331); `rt_wraps_result()` derives
-  from registry. Remaining: `rust_method_wraps_result` is a parallel
-  map for method templates — should unify into single spec authority.
+  from registry. `SimpleMethodSpec` type co-locates template + wrapping
+  flag for method templates (same pattern as `HigherOrderMethodSpec`).
+  Both `rust_method_templates()` and `rust_method_wraps_result()` now
+  derive from `rust_simple_method_specs` — single authority, no parallel maps.
 - [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
   All three backends dispatch per collection type via shared
@@ -361,7 +363,7 @@ Make emission fully data-driven. Adding a backend = adding data.
   with `method_name`, `inline_template`, `fn_ref_template`, `wraps_in_sharing`.
   Shared `emit_rust_higher_order_method` replaces 4 hardcoded emitters
   (filter/any/all/flat_map). Data-driven dispatch via method name lookup.
-- [~] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend sites are inherent rendering differences.
+- [x] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend rendering is inherent language differences (HTTP clients, shell runners, file I/O) — addressed by the 3→1 homomorphism.
 - [ ] LanguageSpec completion — all target-language facts data-driven (see LS lane below)
 - [x] TypeRendering dissolved — `render_node_type` consumes coercion data directly (PR #331)
 - [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
@@ -385,10 +387,10 @@ Remaining parallel authorities:
   than Copy (excludes Unit; PR #333)
 - [x] Dead code: deleted `try_target_primitive_type`, `target_primitive_type`,
   `target_container_template`, `is_value_type`, `emit_primitive_type` + unused imports
-- [~] Runtime bridge wrapping: `wraps_result` field on `RuntimeFunction` registry
-  (map_keys, map_values, append data-driven; method templates split/enumerate/chars/skip/take
-  use `rust_method_wraps_result` data map — consumer still reads parallel maps
-  instead of a single spec type)
+- [x] Runtime bridge wrapping: `wraps_result` field on `RuntimeFunction` registry
+  (map_keys, map_values, append) and `SimpleMethodSpec.wraps_result` for method
+  templates (split/enumerate/chars/skip/take). Both derived maps come from their
+  respective single authorities — no parallel maps.
 
 ### Acceptance
 
