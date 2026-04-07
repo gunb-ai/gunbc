@@ -1026,7 +1026,7 @@ fn sum_tree(t: Tree) -> Int {
 //   O(2^n)   — decidability prevents unbounded branching
 //   O(n!)    — not constructible from bounded iteration
 
-use v2_compiler::v2_compiler_complexity::{classify_complexity, Certainty, CostExpr, SizeExpr};
+use v2_compiler::v2_compiler_complexity::{classify_complexity, CostExpr, SizeExpr};
 
 /// Helper: get the complexity class string for a function in a compile result.
 /// The report stores pre-classified strings ("O(1)", "O(n)", etc.).
@@ -1783,10 +1783,10 @@ fn diag_parser_scc_edges() {
         func_entries.iter().cloned().map(|e| (e.name.clone(), e)).collect();
     let func_index_rc = Rc::new(func_index);
 
-    let scc_index = build_scc_index(func_entries, func_index_rc.clone());
+    let scc_result = build_scc_index(func_entries, func_index_rc.clone());
 
     // Find the large parser SCC (the one containing parse_type_expr)
-    let scc_info = scc_index.get("parse_type_expr")
+    let scc_info = scc_result.index.get("parse_type_expr")
         .expect("parse_type_expr must be in SCC index");
 
     eprintln!("\n=== Parser SCC: {} members ===", scc_info.members.len());
@@ -1870,8 +1870,8 @@ fn diag_parse_node_decl_env() {
 
     // Build scc_name_set for the parser SCC containing parse_node_decl
     use v2_compiler::v2_compiler_complexity::build_scc_index;
-    let scc_index = build_scc_index(func_entries.clone(), func_index_rc.clone());
-    let scc_info = scc_index.get("parse_node_decl")
+    let scc_result = build_scc_index(func_entries.clone(), func_index_rc.clone());
+    let scc_info = scc_result.index.get("parse_node_decl")
         .expect("parse_node_decl must be in SCC index");
     let scc_name_set: Rc<HashMap<String, bool>> = Rc::new(
         scc_info.members.iter().cloned().map(|n| (n, true)).collect()

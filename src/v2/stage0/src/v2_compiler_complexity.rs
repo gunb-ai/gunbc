@@ -165,6 +165,19 @@ pub fn lookup_summary(table: Rc<CostInternTable>, func_name: String) -> Option<R
     v2_rt::map_get(&table.summaries.clone(), func_name)
 }
 
+pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostInternTable> {
+    cache_summary(table, func_name, Rc::new(ComplexitySummary {
+    work: Rc::new(CostExpr::CostConst {
+    value: 0,
+}),
+    span: Rc::new(CostExpr::CostConst {
+    value: 0,
+}),
+    output_size: v2_rt::rc_empty_map::<Rc<CostExpr>>(),
+    certainty: Certainty::Proven,
+}))
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallEdge {
     pub caller: String,
@@ -182,6 +195,14 @@ pub struct SccInfo {
 pub struct SccBuildAcc {
     pub assigned: Rc<HashMap<String, bool>>,
     pub index: Rc<HashMap<String, Rc<SccInfo>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SccResult {
+    pub index: Rc<HashMap<String, Rc<SccInfo>>>,
+    pub topo_order: Rc<Vec<String>>,
+    pub processing_order: Rc<Vec<String>>,
+    pub call_graph: Rc<CallGraph>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -980,7 +1001,7 @@ let own = if (f.as_str() == func_name.clone().as_str()) {
 let arg_calls = body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| {
                 let val = arg_value(child.clone());
 match (*val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => acc.clone(),
+    ExprData::ExprLambda { .. } => (acc.clone() + max_path_self_calls_with_cont(lambda_body(val.clone()), func_name.clone(), 0)),
     _ => (acc.clone() + max_path_self_calls_with_cont(val.clone(), func_name.clone(), 0)),
 }
 });
@@ -1027,7 +1048,7 @@ let body_calls = match let_body(body.clone()) {
 let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(0, |acc: i64, arg_node: Rc<Node>| {
                 let val = arg_value(arg_node.clone());
 match (*val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => acc.clone(),
+    ExprData::ExprLambda { .. } => (acc.clone() + max_path_self_calls_with_cont(lambda_body(val.clone()), func_name.clone(), 0)),
     _ => (acc.clone() + max_path_self_calls_with_cont(val.clone(), func_name.clone(), 0)),
 }
 });
@@ -1121,7 +1142,7 @@ let body_calls = match let_body(body.clone()) {
 let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(0, |acc: i64, arg_node: Rc<Node>| {
                 let val = arg_value(arg_node.clone());
 match (*val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => acc.clone(),
+    ExprData::ExprLambda { .. } => (acc.clone() + max_path_target_calls_with_cont(lambda_body(val.clone()), target_set.clone(), 0)),
     _ => (acc.clone() + max_path_target_calls_with_cont(val.clone(), target_set.clone(), 0)),
 }
 });
@@ -3184,7 +3205,7 @@ if all_arithmetic {
 }
 }
 
-pub fn build_scc_index(func_entries: Rc<Vec<Rc<FuncEntry>>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>) -> Rc<HashMap<String, Rc<SccInfo>>> {
+pub fn build_scc_index(func_entries: Rc<Vec<Rc<FuncEntry>>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>) -> Rc<SccResult> {
     {
         let names = Rc::new({ let mut __result = Vec::new(); for entry in func_entries.clone().iter().cloned() { __result.push(entry.name.clone()); } __result });
 let graph = build_call_graph(func_entries.clone());
@@ -3192,7 +3213,8 @@ let finish = names.clone().iter().cloned().fold(Rc::new(DfsFinishAcc {
     visited: v2_rt::rc_empty_map::<bool>(),
     order: Rc::new(vec![]),
 }), |acc: Rc<DfsFinishAcc>, name: String| dfs_finish_order(name.clone(), graph.forward.clone(), acc.clone()));
-let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(Rc::new(SccBuildAcc {
+let topo_order = v2_rt::reverse(finish.order.clone());
+let result = topo_order.clone().iter().cloned().fold(Rc::new(SccBuildAcc {
     assigned: v2_rt::rc_empty_map::<bool>(),
     index: v2_rt::rc_empty_map::<Rc<SccInfo>>(),
 }), |acc: Rc<SccBuildAcc>, name: String| if set_has(acc.assigned.clone(), name.clone()) {
@@ -3227,7 +3249,12 @@ Rc::new(SccBuildAcc {
 }
 }
 });
-result.index.clone()
+Rc::new(SccResult {
+    index: result.index.clone(),
+    topo_order: topo_order.clone(),
+    processing_order: finish.order.clone(),
+    call_graph: graph.clone(),
+})
 }
 }
 
@@ -3774,6 +3801,13 @@ pub struct SummaryResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TopoBuildAcc {
+    pub table: Rc<CostInternTable>,
+    pub classes: Rc<HashMap<String, String>>,
+    pub fan_in: Rc<HashMap<String, i64>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MatchCostAccum {
     pub result: Rc<SummaryResult>,
     pub branch_costs: Rc<Vec<Rc<CostExpr>>>,
@@ -4244,9 +4278,9 @@ Rc::new(SummaryResult {
 pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>, recursion_ctx: RecursionContext) -> Rc<ComplexityReport> {
     {
         let func_index = func_entries.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FuncEntry>>(), |acc: Rc<HashMap<String, Rc<FuncEntry>>>, entry: Rc<FuncEntry>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), entry.clone()));
-let scc_index = build_scc_index(func_entries.clone(), func_index.clone());
+let scc_result = build_scc_index(func_entries.clone(), func_index.clone());
 let parser_always_advancing = infer_all_parser_always_advancing(func_index.clone());
-let full_scc_index = func_entries.clone().iter().cloned().fold(scc_index.clone(), |acc: Rc<HashMap<String, Rc<SccInfo>>>, entry: Rc<FuncEntry>| match v2_rt::map_get(&acc, entry.name.clone()) {
+let full_scc_index = func_entries.clone().iter().cloned().fold(scc_result.index.clone(), |acc: Rc<HashMap<String, Rc<SccInfo>>>, entry: Rc<FuncEntry>| match v2_rt::map_get(&acc, entry.name.clone()) {
     Some(_) => acc.clone(),
     None => if (max_path_self_calls(entry.body.clone(), entry.name.clone()) > 0) {
             {
@@ -4262,31 +4296,63 @@ v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), info.clone())
             acc.clone()
 },
 });
-let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
-    summary: Rc::new(ComplexitySummary {
-    work: Rc::new(CostExpr::CostConst {
-    value: 0,
-}),
-    span: Rc::new(CostExpr::CostConst {
-    value: 0,
-}),
-    output_size: v2_rt::rc_empty_map::<Rc<CostExpr>>(),
-    certainty: Certainty::Proven,
-}),
-    table: empty_intern_table(),
-}), |acc: Rc<SummaryResult>, entry: Rc<FuncEntry>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
-            let sr = get_or_compute_summary(entry.name.clone(), func_index.clone(), full_scc_index.clone(), acc.table, parser_always_advancing.clone(), recursion_ctx.clone());
-Rc::new(SummaryResult {
-    summary: sr.summary.clone(),
-    table: sr.table.clone(),
+let fan_in = func_entries.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64>(), |acc: Rc<HashMap<String, i64>>, entry: Rc<FuncEntry>| {
+            let callees = match v2_rt::map_get(&scc_result.call_graph.clone().forward.clone(), entry.name.clone()) {
+    Some(cs) => cs.clone(),
+    None => Rc::new(vec![]),
+};
+let unique_set = callees.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |s: Rc<HashMap<String, bool>>, c: String| v2_rt::rc_map_insert(s.clone(), c.clone(), true));
+Rc::new(v2_rt::map_keys(&unique_set)).iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, i64>>, callee: String| {
+                let current = match v2_rt::map_get(&inner, callee.clone()) {
+    Some(v) => v.clone(),
+    None => 0,
+};
+v2_rt::rc_map_insert(inner.clone(), callee.clone(), (current.clone() + 1))
 })
-} });
-let classes = Rc::new(v2_rt::map_keys(&result.table.clone().summaries.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, name: String| match v2_rt::map_get(&result.table.clone().summaries.clone(), name.clone()) {
-    Some(summary) => v2_rt::rc_map_insert(acc.clone(), name.clone(), classify_complexity(summary.work.clone())),
+});
+let result = scc_result.processing_order.clone().iter().cloned().fold(Rc::new(TopoBuildAcc {
+    table: empty_intern_table(),
+    classes: v2_rt::rc_empty_map::<String>(),
+    fan_in: fan_in,
+}), |acc: Rc<TopoBuildAcc>, func_name: String| match v2_rt::map_get(&func_index, func_name.clone()) {
+    Some(_) => {
+            let sr = get_or_compute_summary(func_name.clone(), func_index.clone(), full_scc_index.clone(), acc.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
+let class_str = classify_complexity(sr.summary.clone().work.clone());
+let new_classes = v2_rt::rc_map_insert(acc.classes.clone(), func_name.clone(), class_str.clone());
+let callees = match v2_rt::map_get(&scc_result.call_graph.clone().forward.clone(), func_name.clone()) {
+    Some(cs) => cs.clone(),
+    None => Rc::new(vec![]),
+};
+let unique_set = callees.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |s: Rc<HashMap<String, bool>>, c: String| v2_rt::rc_map_insert(s.clone(), c.clone(), true));
+let unique_callees = Rc::new(v2_rt::map_keys(&unique_set));
+let new_fan_in = unique_callees.clone().iter().cloned().fold(acc.fan_in.clone(), |fi: Rc<HashMap<String, i64>>, callee: String| {
+                let current = match v2_rt::map_get(&fi, callee.clone()) {
+    Some(v) => v.clone(),
+    None => 0,
+};
+v2_rt::rc_map_insert(fi.clone(), callee.clone(), (current.clone() - 1))
+});
+let evicted_table = unique_callees.clone().iter().cloned().fold(sr.table.clone(), |t: Rc<CostInternTable>, callee: String| {
+                let remaining = match v2_rt::map_get(&new_fan_in, callee.clone()) {
+    Some(v) => v.clone(),
+    None => 0,
+};
+if (remaining.clone() <= 0) {
+                    evict_summary(t.clone(), callee.clone())
+} else {
+                    t.clone()
+}
+});
+Rc::new(TopoBuildAcc {
+    table: evicted_table.clone(),
+    classes: new_classes.clone(),
+    fan_in: new_fan_in.clone(),
+})
+},
     None => acc.clone(),
 });
 Rc::new(ComplexityReport {
-    function_classes: classes,
+    function_classes: result.classes.clone(),
     intern_table: empty_intern_table(),
 })
 }

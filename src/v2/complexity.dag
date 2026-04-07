@@ -198,6 +198,19 @@ fn lookup_summary(table: CostInternTable, func_name: String) -> ComplexitySummar
   map_get(table.summaries, func_name)
 }
 
+// Evict a summary from the intern table, dropping its CostExpr trees.
+// Replaces the full CostExpr tree with a trivial constant so the Rc
+// nodes of the original tree are freed. Safe only when no future caller
+// will read this summary (fan-in has reached 0).
+fn evict_summary(table: CostInternTable, func_name: String) -> CostInternTable {
+  cache_summary(table: table, func_name: func_name, summary: ComplexitySummary {
+    work: CostConst { value: 0 },
+    span: CostConst { value: 0 },
+    output_size: empty_map(),
+    certainty: Proven
+  })
+}
+
 // =========================================================================
 // D3: DAG composition rules
 //
@@ -224,6 +237,16 @@ type SccInfo {
 type SccBuildAcc {
   assigned: Map<String, Bool>
   index: Map<String, SccInfo>
+}
+
+type SccResult {
+  index: Map<String, SccInfo>
+  // Reverse-topological order (callers first) — used by Kosaraju's SCC pass.
+  topo_order: List<String>
+  // Processing order (callees first) — callees are processed before callers
+  // so their summaries are cached when callers need them.
+  processing_order: List<String>
+  call_graph: CallGraph
 }
 
 type ParserStateParam {
@@ -1315,7 +1338,9 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
       let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>
         let val = arg_value(n: child)
         match val.expr_data {
-          ExprLambda => acc
+          // Recurse into lambda bodies — a self-call inside a fold/map callback
+          // still makes the function recursive (e.g. dfs_finish_order).
+          ExprLambda => acc + max_path_self_calls_with_cont(body: lambda_body(texpr: val), func_name: func_name, continue_calls: 0)
           _ => acc + max_path_self_calls_with_cont(body: val, func_name: func_name, continue_calls: 0)
         }
       )
@@ -1375,8 +1400,8 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
       let arg_calls = method_arg_nodes(texpr: body) |> fold(init: 0, f: (acc, arg_node) =>
         let val = arg_value(n: arg_node)
         match val.expr_data {
-          // Lambda bodies are iteration-bounded (callback to fold/map/filter)
-          ExprLambda => acc
+          // Recurse into lambda bodies for self-call detection.
+          ExprLambda => acc + max_path_self_calls_with_cont(body: lambda_body(texpr: val), func_name: func_name, continue_calls: 0)
           _ => acc + max_path_self_calls_with_cont(body: val, func_name: func_name, continue_calls: 0)
         }
       )
@@ -1465,7 +1490,7 @@ fn max_path_target_calls_with_cont(body: Node, target_set: Map<String, Bool>, co
       let arg_calls = method_arg_nodes(texpr: body) |> fold(init: 0, f: (acc, arg_node) =>
         let val = arg_value(n: arg_node)
         match val.expr_data {
-          ExprLambda => acc
+          ExprLambda => acc + max_path_target_calls_with_cont(body: lambda_body(texpr: val), target_set: target_set, continue_calls: 0)
           _ => acc + max_path_target_calls_with_cont(body: val, target_set: target_set, continue_calls: 0)
         }
       )
@@ -3551,13 +3576,14 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
   }
 }
 
-fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEntry>) -> Map<String, SccInfo> {
+fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEntry>) -> SccResult {
   let names = func_entries |> map(entry => entry.name)
   let graph = build_call_graph(func_entries: func_entries)
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
   )
-  let result = finish.order |> reverse |> fold(init: SccBuildAcc { assigned: empty_map(), index: empty_map() }, f: fn(acc, name) {
+  let topo_order = finish.order |> reverse
+  let result = topo_order |> fold(init: SccBuildAcc { assigned: empty_map(), index: empty_map() }, f: fn(acc, name) {
     if set_has(m: acc.assigned, key: name) {
       acc
     } else {
@@ -3584,7 +3610,7 @@ fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEn
       }
     }
   })
-  result.index
+  SccResult { index: result.index, topo_order: topo_order, processing_order: finish.order, call_graph: graph }
 }
 
 // Compose two sequential costs. Eagerly eliminates identity (0 + x = x).
@@ -4094,6 +4120,15 @@ type SummaryResult {
   table: CostInternTable
 }
 
+// Accumulator for topological-order processing with transit eviction.
+// Threads the intern table, classified results, and fan-in counters
+// through the fold over topological order.
+type TopoBuildAcc {
+  table: CostInternTable
+  classes: Map<String, String>
+  fan_in: Map<String, Int>
+}
+
 type MatchCostAccum {
   result: SummaryResult
   branch_costs: List<CostExpr>
@@ -4532,13 +4567,13 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let func_index = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
     map_insert(acc, entry.name, entry)
   )
-  let scc_index = build_scc_index(func_entries: func_entries, func_index: func_index)
+  let scc_result = build_scc_index(func_entries: func_entries, func_index: func_index)
   let parser_always_advancing = infer_all_parser_always_advancing(func_index: func_index)
   // Pre-compute recursion patterns for ALL recursive functions.
-  // SCC patterns are already in scc_index. For single-function recursion,
+  // SCC patterns are already in scc_result.index. For single-function recursion,
   // add synthetic SccInfo entries so get_or_compute_summary finds them
   // without re-walking function bodies during the cost phase.
-  let full_scc_index = func_entries |> fold(init: scc_index, f: (acc, entry) =>
+  let full_scc_index = func_entries |> fold(init: scc_result.index, f: (acc, entry) =>
     match map_get(acc, entry.name) {
       Some { value: _ } => acc  // already in SCC index
       None =>
@@ -4558,29 +4593,59 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         } else { acc }
     }
   )
-  // Compute summaries for all functions
-  let result = func_entries |> fold(init: SummaryResult {
-    summary: ComplexitySummary {
-      work: CostConst { value: 0 },
-      span: CostConst { value: 0 },
-      output_size: empty_map(),
-      certainty: Proven
-    },
-    table: empty_intern_table()
-  }, f: fn(acc, entry) {
-    let sr = get_or_compute_summary(func_name: entry.name, func_index: func_index, scc_index: full_scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
-    SummaryResult { summary: sr.summary, table: sr.table }
-  })
-  // Classify eagerly and drop CostExpr trees. The report stores only
-  // the classified string ("O(1)", "O(n)", etc.), not the full tree.
-  let classes = map_keys(result.table.summaries) |> fold(init: empty_map(), f: (acc, name) =>
-    match map_get(result.table.summaries, name) {
-      Some { value: summary } => map_insert(acc, name, classify_complexity(expr: summary.work))
-      None => acc
+  // Compute fan-in: for each callee, how many unique callers reference it?
+  // Used to know when a summary can be evicted (all callers processed).
+  let fan_in = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
+    let callees = match map_get(scc_result.call_graph.forward, entry.name) {
+      Some { value: cs } => cs
+      None => []
     }
+    let unique_set = callees |> fold(init: empty_map(), f: (s, c) => map_insert(s, c, true))
+    map_keys(unique_set) |> fold(init: acc, f: (inner, callee) =>
+      let current = match map_get(inner, callee) { Some { value: v } => v, None => 0 }
+      map_insert(inner, callee, current + 1)
+    )
   )
+  // Process in topological order (callees before callers). After each
+  // function is analyzed, classify it eagerly (storing the string) and
+  // decrement fan-in for its callees. When a callee's fan-in reaches 0,
+  // evict its CostExpr tree — the working set is bounded by the maximum
+  // frontier width of the call graph, not the total function count.
+  let result = scc_result.processing_order |> fold(init: TopoBuildAcc {
+    table: empty_intern_table(),
+    classes: empty_map(),
+    fan_in: fan_in
+  }, f: fn(acc, func_name) {
+    match map_get(func_index, func_name) {
+      Some { value: _ } =>
+        let sr = get_or_compute_summary(func_name: func_name, func_index: func_index, scc_index: full_scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
+        // Classify immediately — drop the CostExpr tree from the report
+        let class_str = classify_complexity(expr: sr.summary.work)
+        let new_classes = map_insert(acc.classes, func_name, class_str)
+        // Decrement fan-in for each unique callee of this function
+        let callees = match map_get(scc_result.call_graph.forward, func_name) {
+          Some { value: cs } => cs
+          None => []
+        }
+        let unique_set = callees |> fold(init: empty_map(), f: (s, c) => map_insert(s, c, true))
+        let unique_callees = map_keys(unique_set)
+        let new_fan_in = unique_callees |> fold(init: acc.fan_in, f: (fi, callee) =>
+          let current = match map_get(fi, callee) { Some { value: v } => v, None => 0 }
+          map_insert(fi, callee, current - 1)
+        )
+        // Evict summaries whose fan-in has reached 0 (no future caller needs them)
+        let evicted_table = unique_callees |> fold(init: sr.table, f: (t, callee) =>
+          let remaining = match map_get(new_fan_in, callee) { Some { value: v } => v, None => 0 }
+          if remaining <= 0 {
+            evict_summary(table: t, func_name: callee)
+          } else { t }
+        )
+        TopoBuildAcc { table: evicted_table, classes: new_classes, fan_in: new_fan_in }
+      None => acc  // not in func_index (shouldn't happen)
+    }
+  })
   ComplexityReport {
-    function_classes: classes,
+    function_classes: result.classes,
     intern_table: empty_intern_table()
   }
 }
