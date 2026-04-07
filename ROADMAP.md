@@ -189,7 +189,7 @@ Symptoms:
 
 Open items:
 - [x] Incomplete parameterized types rejected at normalization — `container_expected_arity` returns `Int?` (fail-closed: unknown names → None, no false positives on operations sharing container names)
-- [ ] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed; fold-init path (`None` expected) still falls back to `bare_map_node()` pending expected-threading through fold accumulators. Empty list `[]` diagnostic blocked on expected-type propagation through list element inference (160 false positives from `[]` in record literal fields like `param_types: []`)
+- [~] `bare_map_node`/`bare_list_node` eliminated or gated before emit — normalization catches authored bare containers; `empty_map()` with non-keyed expected now diagnosed. Expected threading covers: let body, list elements, lambda body, return, tail-return, if branches, match arms, record literal fields (struct field types), function arguments (parameter types). Fold-init path now receives outer expected when available. Remaining gap: fold-init in non-tail let value position has `None` expected — circular dependency (need value type to give expected, but value inference produces the type). Requires bidirectional inference with unification. Self-compile diagnostic count: 0
 - [x] Thread `expected` to formal params at matching positions — over-arity args no longer receive synthetic expected types; non-callable expected boundary overload remains open
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
@@ -392,10 +392,22 @@ passes to fix what construction should have prevented.
 ## M4: Structural Identity (L1 = 0) — follows Lanes 1+2
 
 **Root cause:** The compiler uses `Node.name` (a string) as semantic
-authority. ~256 constructions, ~30 name-based comparisons. Deletion
-requires declaration-driven identity and structural algebra.
-Blocked on M2 (structural facts in resolve/infer files) and E-track
-(clean render path in emit files).
+authority. 27 type constructors + 10 name comparisons = L1 37.
+Deletion requires declaration-driven identity and structural algebra.
+CG render path cleaned (TypeRendering dissolved, PR #331). M2
+expected threading in good shape (remaining gap: bidirectional inference).
+
+**L1 name comparisons breakdown (10):**
+- 4× Callable: `has_fn_fields` (2), resolve `n_is_special` (1), `render_node_type` (1)
+- 3× Tuple: `render_node_type` (3)
+- 2× Dynamic/Error: `pattern_subject` (2), counted as 1 line in resolve
+- 1× List: `index_access` (positional indexing check)
+
+**Structural properties needed to dissolve:**
+- Callable: needs structural discriminator (only type using `params` for type parameters + `inferred` for return type). Tier 2.6 design: model callable as concept
+- Tuple: needs either a dedicated connective or a flag. Currently indistinguishable from 2-field struct Conj without name
+- Dynamic/Error: need structural markers for "unresolved/error type"
+- List positional indexing: needs "supports positional access" algebra fact
 
 ### Lane 1: Declaration-driven algebra
 
@@ -410,7 +422,7 @@ instead of hardcoding them.
 - Tier 2.6 (functional system modeling):
   - [ ] Model function application as a concept (apply/call vs function-value-ref)
   - [ ] Inference encodes "this is a call" in the IR node, not as a type-arity heuristic
-  - [ ] Dissolves `is_zero_arg_callable_ref` and `rt.name == "Callable"` L1 violation
+  - [ ] Dissolves `rt.name == "Callable"` L1 violations (4 sites: has_fn_fields ×2, resolve, render_node_type)
   - Same pattern as iteration modeling (fold/descend/repeat): ad-hoc emit
     decisions are symptoms of a missing concept layer. Once the functional
     system is modeled, arity-based rendering questions disappear.
@@ -418,7 +430,7 @@ instead of hardcoding them.
   - [ ] Compiler reads type declarations + algebra edges at resolve time
   - [ ] Derive kernel/container identity from type declarations
   - [ ] CollectionKind bridge dissolves when method algebras land
-  - [ ] 21 type constructor sites → 0
+  - [ ] 27 type constructor sites → 0
 
 ### Lane 2: Node.name deletion (D6)
 
