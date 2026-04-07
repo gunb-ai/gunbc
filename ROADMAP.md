@@ -87,7 +87,7 @@ Previously eliminated:
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (294 pass, 0 fail, 41 ignored) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (316 pass, 0 fail, 44 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | 37 (target: 0) |
@@ -116,7 +116,7 @@ Previously eliminated:
 - **Fixed-point:** `regen pass N == regen pass N+1`. Two-pass bootstrap
   required when the emitter changes its own output.
 - **External dependencies:** cargo, rustc (opaque transforms, not modeled).
-- **Hand-maintained files (9):** Copied back during regen, not overwritten.
+- **Hand-maintained files (2):** Copied back during regen, not overwritten.
   These are source, not derived. See Bootstrap Status for list.
 
 **Merge workflow problem:** Stage0 `.rs` files are derived, but git
@@ -366,15 +366,49 @@ Make emission fully data-driven. Adding a backend = adding data.
 - [x] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend rendering is inherent language differences (HTTP clients, shell runners, file I/O) — addressed by the 3→1 homomorphism.
 - [ ] LanguageSpec completion — all target-language facts data-driven (see LS lane below)
 - [x] TypeRendering dissolved — `render_node_type` consumes coercion data directly (PR #331)
-- [~] 3 backends → 1 parameterized homomorphism. Phase 1-3 landed:
+- [~] 3 backends → 1 parameterized homomorphism (PR #338).
+  **Phase 1-3 complete** (-206 .dag lines, -481 stage0 lines):
   shared expr wrappers (`emit_expr_var_shared`, `emit_expr_field_access_shared`,
   `extract_string_interp_parts`), shared typed handlers (`emit_typed_cast_shared`,
-  `emit_typed_index_shared`, `emit_typed_slice_shared`), ExprData accessors,
-  dead code deletion. -206 .dag lines, -481 stage0 lines. Remaining phases
-  (TCO, method dispatch, item dispatch) blocked on Go/Python depth/indent
-  asymmetry: Go renders at `depth: 0` + prefix, Python threads `depth` through.
-  Unblocking requires aligning indentation strategies or adding `DepthMode`
-  to shared layer.
+  `emit_typed_index_shared`, `emit_typed_slice_shared`), ExprData accessors
+  (`expr_field_access_summary`, `expr_method_call_semantics`), dead code
+  deletion (`emit_*_typed_bin_op/cast/index/slice`).
+  **Phases 4-6 deferred** — blocked on depth/indent asymmetry (see below).
+  **Review feedback** (recorded, not yet addressed):
+  (a) Unify `SimpleMethodSpec` + `HigherOrderMethodSpec` into shared
+  `MethodTemplateSpec` to reduce schema drift across method families.
+  (b) Method names could be a structural enum (M4 direction) rather than
+  strings for clearer algebraic dispatch across language extdeps.
+
+### Depth/indent asymmetry (cross-cutting blocker)
+
+Go renders sub-expressions at `depth: 0` and manually prepends
+`make_indent(level: depth)` at the wrapper level. Python threads
+`depth` through all recursive calls. This fundamental difference
+pervades every handler and prevents clean parameterization of:
+- TCO handlers (~10 functions per backend, ~130 lines potential)
+- Method call dispatch (~4 functions per backend, ~80 lines potential)
+- Block statement emitters (scope-threading + depth)
+- `emit_typed_let`, `emit_typed_for_each`
+
+**Resolution options:**
+1. **Align Go to Python's strategy.** Go's `wrap_result` callback in
+   `emit_shared_expr` already handles indentation for simple expressions.
+   If Go switched to `depth: depth` recursion and removed per-wrapper
+   `prefix` wrapping, the two backends would become structurally
+   identical. Risk: changes Go's emitted output formatting (whitespace
+   only, not semantics).
+2. **Add `DepthMode` to shared layer.** Shared handlers take a depth
+   resolver: `sub_depth: fn(Int) -> Int` where Go passes `d => 0` and
+   Python passes `d => d`. More complex but preserves current behavior.
+3. **Accept current state.** -206 lines is the practical limit without
+   resolving this asymmetry. The remaining ~210 lines of savings may
+   not justify the design cost.
+
+**LanguageSpec extensions needed** (once depth is resolved):
+- `async_call_prefix: String` — Python: `"await "`, Go/Rust: `""`
+- `TcoSyntax` — loop_open, loop_close, break_keyword, continue_str,
+  stmt_terminator (data-driven TCO formatting)
 
 ### Coercion infrastructure (reference)
 
@@ -1091,7 +1125,7 @@ distinction as structural data.
 - [ ] **BP-1b: Bootstrap cycle.** Model the self-compile cycle: stage0
   as bootstrap seed, the fixed-point condition (pass N == pass N+1),
   and the two-pass rule (required when emitter changes its own output).
-  Hand-maintained files (9) enumerated as source artifacts distinct
+  Hand-maintained files (2) enumerated as source artifacts distinct
   from generated artifacts.
 - [ ] **BP-1c: `.gitattributes` generation.** Files the pipeline model
   marks as "generated" get `-merge` in `.gitattributes`. The
