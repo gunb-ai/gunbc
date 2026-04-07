@@ -248,27 +248,13 @@ pub enum CollectionSizeEffect {
     IdentityEffect,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 
 pub enum CostShape {
     ShapeConstant,
-    ShapeLinearScan {
-        produces_collection: bool,
-    },
-    ShapeIterateBody {
-        produces_collection: bool,
-    },
+    ShapeLinearScan,
+    ShapeIterateBody,
     ShapeSortBody,
-}
-impl CostShape {
-    pub fn produces_collection(&self) -> bool {
-        match self {
-            CostShape::ShapeConstant => panic!("no produces_collection on unit variant"),
-            CostShape::ShapeLinearScan { produces_collection: __val, .. } => __val.clone(),
-            CostShape::ShapeIterateBody { produces_collection: __val, .. } => __val.clone(),
-            CostShape::ShapeSortBody => panic!("no produces_collection on unit variant"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -277,7 +263,7 @@ pub struct AlgebraFieldTemplate {
     pub param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
     pub return_type: Rc<AlgebraTypeTemplate>,
     pub size_effect: Option<CollectionSizeEffect>,
-    pub cost_shape: Option<Rc<CostShape>>,
+    pub cost_shape: Option<CostShape>,
 }
 
 pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
@@ -463,9 +449,7 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: Some(CollectionSizeEffect::IdentityEffect),
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "map".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::CallableOf {
@@ -480,9 +464,7 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
 }),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "flat_map".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::CallableOf {
@@ -499,9 +481,7 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
 }),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "fold".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
@@ -518,9 +498,7 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     id: "FoldAccumulator".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "any".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -528,9 +506,7 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     name: "Bool".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "all".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -538,9 +514,7 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     name: "Bool".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "count".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -548,9 +522,7 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     name: "Int".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 }), Rc::new(AlgebraFieldTemplate {
     name: "length".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -558,9 +530,7 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     name: "Int".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 })])
 }
 
@@ -594,9 +564,7 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 }), Rc::new(AlgebraFieldTemplate {
     name: "split".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -604,9 +572,7 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     element: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 }), Rc::new(AlgebraFieldTemplate {
     name: "join".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ListOf {
@@ -711,17 +677,13 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "filter".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: Some(CollectionSizeEffect::IdentityEffect),
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "flat_map".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::CallableOf {
@@ -738,9 +700,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "fold".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
@@ -757,9 +717,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     id: "FoldAccumulator".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "any".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -767,9 +725,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     name: "Bool".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "all".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -777,9 +733,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     name: "Bool".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "count".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -787,9 +741,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     name: "Int".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 }), Rc::new(AlgebraFieldTemplate {
     name: "first".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -797,9 +749,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     inner: Rc::new(AlgebraTypeTemplate::ReceiverElement),
 }),
     size_effect: Some(CollectionSizeEffect::ProjectionEffect),
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 }), Rc::new(AlgebraFieldTemplate {
     name: "last".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -807,9 +757,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     inner: Rc::new(AlgebraTypeTemplate::ReceiverElement),
 }),
     size_effect: Some(CollectionSizeEffect::ProjectionEffect),
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 }), Rc::new(AlgebraFieldTemplate {
     name: "skip".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::NamedTemplate {
@@ -817,9 +765,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 })]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: Some(CollectionSizeEffect::ShrinkEffect),
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "take".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::NamedTemplate {
@@ -827,21 +773,19 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 })]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "sort_by".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: Some(CollectionSizeEffect::IdentityEffect),
-    cost_shape: Some(Rc::new(CostShape::ShapeSortBody)),
+    cost_shape: Some(CostShape::ShapeSortBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "append".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeConstant)),
+    cost_shape: Some(CostShape::ShapeConstant),
 }), Rc::new(AlgebraFieldTemplate {
     name: "contains".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
@@ -862,17 +806,13 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }),
 }),
     size_effect: Some(CollectionSizeEffect::IdentityEffect),
-    cost_shape: Some(Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "reverse".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: Some(CollectionSizeEffect::IdentityEffect),
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 }), Rc::new(AlgebraFieldTemplate {
     name: "join".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::NamedTemplate {
@@ -882,17 +822,13 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     name: "String".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 }), Rc::new(AlgebraFieldTemplate {
     name: "concat".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 }), Rc::new(AlgebraFieldTemplate {
     name: "list_push".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
@@ -906,9 +842,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     name: "Int".to_string(),
 }),
     size_effect: None,
-    cost_shape: Some(Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-})),
+    cost_shape: Some(CostShape::ShapeLinearScan),
 })])
 }
 

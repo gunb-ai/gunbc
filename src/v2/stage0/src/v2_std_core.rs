@@ -276,8 +276,9 @@ pub enum MethodSemantics {
         method_def: Rc<Node>,
         fold_accumulator_type: Option<Rc<Node>>,
         size_effect: Option<CollectionSizeEffect>,
-        cost_shape: Option<Rc<CostShape>>,
+        cost_shape: Option<CostShape>,
         algebra_template: Option<Rc<AlgebraFieldTemplate>>,
+        produces_collection: bool,
     },
     ServiceMethodSemantics {
         service_name: String,
@@ -1101,6 +1102,9 @@ pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
             let mut __m = HashMap::new();
             __m.insert("children".to_string(), NodeFieldRole::ChildrenListField);
             __m.insert("params".to_string(), NodeFieldRole::ChildrenListField);
+            __m.insert("body".to_string(), NodeFieldRole::SubValueField);
+            __m.insert("expr_data".to_string(), NodeFieldRole::SubValueField);
+            __m.insert("match_pattern".to_string(), NodeFieldRole::SubValueField);
             Rc::new(__m)
         };
     }
