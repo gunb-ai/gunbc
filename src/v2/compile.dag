@@ -135,7 +135,7 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
 // The violation count ratchets down as the analyzer improves.
 fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
   complexity.violations |> map(v =>
-    make_error_node(diagnostic: InternalError { message: concat("complexity: ", v.func_name, ": ", v.reason), span: v.span }, module_name: v.func_name)
+    make_error_node(diagnostic: ComplexityUnknown { func_name: v.func_name, reason: v.reason, span: v.span }, module_name: v.func_name)
   )
 }
 

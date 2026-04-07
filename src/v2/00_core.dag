@@ -311,6 +311,7 @@ type CompilerDiagnostic
   | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
   | ParseError         { message: String, span: SourceSpan }
   | InternalError      { message: String, span: SourceSpan }
+  | ComplexityUnknown  { func_name: String, reason: String, span: SourceSpan }
   | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
 
@@ -338,6 +339,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     MissingAnnotation  { fn_name: _, what: _, span: s }        => s
     ParseError         { message: _, span: s }                 => s
     InternalError      { message: _, span: s }                 => s
+    ComplexityUnknown  { func_name: _, reason: _, span: s }    => s
     OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
   }
@@ -358,6 +360,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     MissingAnnotation  { fn_name: f, what: w, span: _ }           => concat("function '", f, "' requires ", w, " annotation")
     ParseError         { message: m, span: _ }                    => m
     InternalError      { message: m, span: _ }                    => m
+    ComplexityUnknown  { func_name: f, reason: r, span: _ }      => concat("complexity: ", f, ": ", r)
     OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
   }

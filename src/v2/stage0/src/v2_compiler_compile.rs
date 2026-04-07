@@ -131,8 +131,9 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 }
 
 pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({ let mut __result = Vec::new(); for v in complexity.violations.clone().iter().cloned() { __result.push(make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v2_rt::concat(v2_rt::concat(v2_rt::concat("complexity: ".to_string(), v.func_name.clone()), ": ".to_string()), v.reason.clone()),
+    Rc::new({ let mut __result = Vec::new(); for v in complexity.violations.clone().iter().cloned() { __result.push(make_error_node(Rc::new(CompilerDiagnostic::ComplexityUnknown {
+    func_name: v.func_name.clone(),
+    reason: v.reason.clone(),
     span: v.span.clone(),
 }), v.func_name.clone())); } __result })
 }

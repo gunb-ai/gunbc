@@ -697,12 +697,13 @@ then deleted. `Node.name` field deleted.
 
 ## CX: Complexity Analyzer (Lane 3)
 
-**Status:** Down from 315 → 164 (main) → 76 after PR #318 → 313 after PR #336.
+**Status:** Down from 315 → 164 (main) → 76 after PR #318 → 526 honest (PR #336).
 Phase 1-2 complete (RecursionPattern deleted, all classifiers return LoweringTarget).
 CX-N: var threading, type-directed dimension selection, algebra-to-dimension bridge.
-0 violations — CostUnknown deleted, all costs concrete (PR #336).
-Complexity analysis re-enabled in compile pipeline.
-PR #336: soundness fixes, graph extraction, is_valid_proof, CostUnknown deletion.
+526 honest violations — CostUnknown restored for unresolved descent patterns.
+Complexity analysis re-enabled in compile pipeline (non-blocking gate).
+PR #336: soundness fixes, graph extraction, is_valid_proof, honest CostUnknown.
+See `docs/cx-violation-triage.md` for the 3-fix reduction path.
 
 **Root cause:** The analyzer maintains parallel heuristic classifiers
 instead of consuming the structural facts already modeled in std/.
@@ -881,10 +882,11 @@ CX-D (model facts in std/)
   un-ignore 14 complexity tests (10 `complexity_*`, 3 `soundness_*`,
   1 `structural_classify_*`; all `#[ignore]` with "CX track" comment).
   **Blocked-by: CX-A, CX-B, CX-C** (0 violations required).
+  **Current: 526 violations (non-blocking gate). See CX-NEXT.**
 
 ### Acceptance
 
-0 violations without suppression. CX gate re-enabled. Node is the only
+0 violations without suppression. CX gate blocking. Node is the only
 recursive type consumed by complexity analysis. All descent evidence
 reads structural facts — no heuristic name-matching in the analyzer.
 
@@ -916,9 +918,10 @@ lanes — any lane can introduce a regression.
   block emission — not yet an unconditional gate. Convergence proof
   (pass-1 = pass-2) remains in `bootstrap_fixed_point` (`#[ignore]`,
   not yet a CI gate — expensive: two full builds + two compiles).
-- **PERF-3**: Self-compile complexity analysis. CX-E resolved (0 violations,
-  CostUnknown deleted). OOM remains on full self-compile (~1600 functions):
-  complexity analysis disabled in compile.dag for memory. Root causes (PR #336):
+- **PERF-3**: Self-compile complexity analysis. 526 honest violations
+  (CostUnknown restored). OOM resolved by lambda recursion detection fix
+  (PR #336). Complexity analysis re-enabled in compile.dag (non-blocking).
+  Original OOM root causes (PR #336):
   (1) CostExpr tree blowup — mitigated by eager simplification in cost_seq/cost_par
   (2) Redundant body walks — mitigated by pre-computing all recursion patterns
       in build_complexity_report before the cost phase

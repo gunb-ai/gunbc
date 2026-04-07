@@ -2879,27 +2879,23 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // ArithmeticValue descent (param - N) is only safe for single-call paths;
     // with multiple calls (e.g., fib(n-1) + fib(n-2)) it's O(2^n).
     let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
-    // Branching safety: check the PRIMARY (first) dimension only.
-    // If the first dimension is TreeSize/ListLength, children are disjoint
-    // subtrees — branching is O(n) regardless of secondary dimensions.
-    // The proof constructor already validates that the non-descending subgraph
-    // (edges where lexicographic descent fails) is acyclic, so ALL call paths
-    // must eventually descend on the primary dimension.
-    // The FIRST dimension must be structural (TreeSize/ListLength) for
-    // branching safety. A structural first dimension bounds the total
-    // number of recursive entries by tree/list structure — each subtree
-    // is visited at most once. Secondary dimensions are validated by
-    // proof construction (they must have descent evidence).
+    // Branching safety: ALL dimensions must be structural (TreeSize/ListLength).
+    // A mixed proof like [TreeSize(t), ArithmeticParam(k)] is unsafe for
+    // branching: a branch can revisit the same structural node while only
+    // the secondary dimension decreases, leading to exponential blowup.
+    // Only purely structural proofs guarantee O(n) for branching recursion,
+    // because disjoint subtrees bound the total number of recursive entries.
     let proof_safe_for_branching = match proof {
       Some { value: p } =>
-        match p.dimensions |> first {
-          Some { value: dim } =>
+        if p.dimensions |> count == 0 { false }
+        else {
+          p.dimensions |> all(dim =>
             match dim {
               TreeSize { param: _ } => true
               ListLength { param: _ } => true
               _ => false
             }
-          None => false
+          )
         }
       None => false
     }
@@ -2969,9 +2965,8 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
 // raw_cost already has 0 in place of recursive calls — no replacement needed.
 // Wrap per-iteration cost in a bounded summation from the lowering table.
 // Named bounds (TreeSize, CollectionSize, ArithmeticParam) produce O(n)-class
-// costs. Constant bounds (Forever, ExplicitCount) produce O(1) — the iteration
-// count is a fixed machine constant, not dependent on input size. The algebra
-// handles both uniformly: SizeConst(1) normalizes away in classify_complexity.
+// costs. Unresolved bounds (Forever, ExplicitCount without named param) produce
+// CostUnknown — honest "analyzer couldn't determine descent" marker.
 fn bounded_recursive_cost(target: LoweringTarget, per_iter: CostExpr, func_name: String) -> CostExpr {
   let p = size_bound_param(bound: target.bound)
   match p {
@@ -3927,14 +3922,14 @@ type ComplexityViolation {
 type ComplexityReport {
   function_classes: Map<String, String>
   violations: List<ComplexityViolation>
-  intern_table: CostInternTable
+  // intern_table removed: transit-only data used during topological fold.
+  // Exposing it in the public report leaked evicted/fabricated summaries.
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_classes: empty_map(),
-    violations: [],
-    intern_table: empty_intern_table()
+    violations: []
   }
 }
 
@@ -4754,14 +4749,31 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
           } else { table }
           // Walk the function body
           let result = cost_of_expr(texpr: entry.body, func_index: func_index, scc_index: scc_index, table: table_prepped, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
-          // For recursive functions, wrap per-iteration cost in bounded summation
+          // For recursive functions, wrap per-iteration cost in bounded summation.
+          // Use bounded_scc_cost for multi-member SCCs to avoid asymmetric costing:
+          // per-function bounding with zero placeholders makes the first-processed
+          // member see zero for co-members while later members see full costs.
+          let scc_members = match map_get(scc_index, func_name) {
+            Some { value: info } => info.members
+            None => []
+          }
+          let is_scc = scc_members |> count > 1
           let bounded = match target {
             Some { value: t } =>
-              ComplexitySummary {
-                work: bounded_recursive_cost(target: t, per_iter: result.summary.work, func_name: func_name),
-                span: bounded_recursive_cost(target: t, per_iter: result.summary.span, func_name: func_name),
-                output_size: result.summary.output_size,
-                certainty: Conservative
+              if is_scc {
+                ComplexitySummary {
+                  work: bounded_scc_cost(target: t, per_iter: result.summary.work, members: scc_members),
+                  span: bounded_scc_cost(target: t, per_iter: result.summary.span, members: scc_members),
+                  output_size: result.summary.output_size,
+                  certainty: Conservative
+                }
+              } else {
+                ComplexitySummary {
+                  work: bounded_recursive_cost(target: t, per_iter: result.summary.work, func_name: func_name),
+                  span: bounded_recursive_cost(target: t, per_iter: result.summary.span, func_name: func_name),
+                  output_size: result.summary.output_size,
+                  certainty: Conservative
+                }
               }
             None => result.summary
           }
@@ -4906,9 +4918,10 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
       None => acc  // not in func_index (shouldn't happen)
     }
   })
+  // intern_table is transit-only — not exposed in the report.
+  // Evicted entries contain fabricated placeholders that would mislead consumers.
   ComplexityReport {
     function_classes: result.classes,
-    violations: result.violations,
-    intern_table: result.table
+    violations: result.violations
   }
 }

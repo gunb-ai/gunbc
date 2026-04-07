@@ -12,6 +12,7 @@ use v2_compiler::v2_compiler_artifact;
 use v2_compiler::v2_std_core::{
     diagnostic_to_message, diagnostic_to_span,
     byte_to_line_col, source_line_at, NewlineIndex,
+    CompilerDiagnostic,
 };
 
 #[derive(Parser)]
@@ -252,8 +253,7 @@ let _result = match cli.command {
             render_diagnostics(&result);
             // Complexity violations are non-blocking (analyzer limitations).
             let hard_errors = result.diagnostics.iter().any(|d| {
-                let msg = diagnostic_to_message(d.diagnostic.clone());
-                !msg.starts_with("complexity: ")
+                !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })
             });
             if hard_errors {
                 std::process::exit(1);

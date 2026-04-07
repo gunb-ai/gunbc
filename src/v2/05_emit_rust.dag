@@ -4332,6 +4332,7 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
       "use ", crate_name, "::", core_mod, "::", "{",
       "\n    diagnostic_to_message, diagnostic_to_span,\n",
       "    byte_to_line_col, source_line_at, NewlineIndex,\n",
+      "    CompilerDiagnostic,\n",
       "}", ";\n")
   } else {
     base
@@ -4586,8 +4587,7 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "            render_diagnostics(&result);\n",
     "            // Complexity violations are non-blocking (analyzer limitations).\n",
     "            let hard_errors = result.diagnostics.iter().any(|d| {\n",
-    "                let msg = diagnostic_to_message(d.diagnostic.clone());\n",
-    "                !msg.starts_with(\"complexity: \")\n",
+    "                !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n",
     "            });\n",
     "            if hard_errors {\n",
     "                std::process::exit(1);\n",

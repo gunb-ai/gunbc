@@ -2456,13 +2456,14 @@ if (path_calls.clone() == 0) {
             {
                 let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone(), parser_always_advancing);
 let proof_safe_for_branching = match proof.clone() {
-    Some(p) => match p.dimensions.clone().first().cloned() {
-    Some(dim) => match (*dim.clone()).clone() {
+    Some(p) => if ((p.dimensions.clone().len() as i64) == 0) {
+                    false
+} else {
+                    { let mut __all = true; for dim in p.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
     RankingDimension::TreeSize { .. } => true,
     RankingDimension::ListLength { .. } => true,
     _ => false,
-},
-    None => false,
+}) { __all = false; break; } } __all }
 },
     None => false,
 };
@@ -3609,14 +3610,12 @@ pub struct ComplexityViolation {
 pub struct ComplexityReport {
     pub function_classes: Rc<HashMap<String, String>>,
     pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
-    pub intern_table: Rc<CostInternTable>,
 }
 
 pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport {
     function_classes: v2_rt::rc_empty_map::<String>(),
     violations: Rc::new(vec![]),
-    intern_table: empty_intern_table(),
 })
 }
 
@@ -4564,13 +4563,27 @@ let table_prepped = if is_recursive {
             table.clone()
 };
 let result = cost_of_expr(entry.body.clone(), func_index.clone(), scc_index.clone(), table_prepped, parser_always_advancing, recursion_ctx);
+let scc_members = match v2_rt::map_get(&scc_index, func_name.clone()) {
+    Some(info) => info.members.clone(),
+    None => Rc::new(vec![]),
+};
+let is_scc = ((scc_members.clone().len() as i64) > 1);
 let bounded = match target.clone() {
-    Some(t) => Rc::new(ComplexitySummary {
+    Some(t) => if is_scc {
+            Rc::new(ComplexitySummary {
+    work: bounded_scc_cost(t.clone(), result.summary.clone().work.clone(), scc_members.clone()),
+    span: bounded_scc_cost(t.clone(), result.summary.clone().span.clone(), scc_members.clone()),
+    output_size: result.summary.clone().output_size.clone(),
+    certainty: Certainty::Conservative,
+})
+} else {
+            Rc::new(ComplexitySummary {
     work: bounded_recursive_cost(t.clone(), result.summary.clone().work.clone(), func_name.clone()),
     span: bounded_recursive_cost(t.clone(), result.summary.clone().span.clone(), func_name.clone()),
     output_size: result.summary.clone().output_size.clone(),
     certainty: Certainty::Conservative,
-}),
+})
+},
     None => result.summary.clone(),
 };
 let simplified = Rc::new(ComplexitySummary {
@@ -4707,7 +4720,6 @@ Rc::new(TopoBuildAcc {
 Rc::new(ComplexityReport {
     function_classes: result.classes.clone(),
     violations: result.violations.clone(),
-    intern_table: result.table.clone(),
 })
 }
 }
