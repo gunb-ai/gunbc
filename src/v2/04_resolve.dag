@@ -387,8 +387,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     if is_map {
       // Map: recurse on both key and value children (extract type from field-style encoding)
       let type_name = n.name
-      let key_child_node = match n.children |> first { Some { value: k } => k  None => n }
-      let val_child_node = match skip(n.children, 1) |> first { Some { value: v } => v  None => n }
+      let key_child_node = match n.children |> first { Some { value: k } => k  None => unit_type }
+      let val_child_node = match skip(n.children, 1) |> first { Some { value: v } => v  None => unit_type }
       let key_type = child_type_node(ch: key_child_node)
       let val_type = child_type_node(ch: val_child_node)
       let key_result = resolve_node_bounded(n: key_type, env: env, module_name: module_name, depth: depth + 1)

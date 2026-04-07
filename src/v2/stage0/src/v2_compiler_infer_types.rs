@@ -570,7 +570,7 @@ pub fn apply_type_substitution(template: Rc<AlgebraTypeTemplate>, subst: Rc<Hash
 if (inner.inferred.clone() != None) {
                     is_type_variable(inner.inferred.clone().clone().unwrap())
 } else {
-                    true
+                    ((inner.name.clone().as_str() == "".to_string().as_str()) || !is_kernel_type(inner.name.clone()))
 }
 }) { __all = false; break; } } __all });
 if is_bare {

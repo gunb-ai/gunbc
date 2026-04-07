@@ -602,11 +602,11 @@ if is_map {
                                 let type_name = n.name.clone();
 let key_child_node = match n.children.clone().first().cloned() {
     Some(k) => k.clone(),
-    None => n.clone(),
+    None => unit_type(),
 };
 let val_child_node = match n.children.clone().get(1 as usize).cloned() {
     Some(v) => v.clone(),
-    None => n.clone(),
+    None => unit_type(),
 };
 let key_type = child_type_node(key_child_node.clone());
 let val_type = child_type_node(val_child_node.clone());

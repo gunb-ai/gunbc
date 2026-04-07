@@ -349,7 +349,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       // it from arg-derived bindings captured during unification.
       let is_bare = is_container_type(name: receiver.name) && (receiver.children |> all(ch =>
         let inner = child_type_node(ch: ch)
-        if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { true }
+        if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { inner.name == "" || !is_kernel_type(name: inner.name) }
       ))
       if is_bare {
         let arity = container_expected_arity(name: receiver.name)
