@@ -1263,7 +1263,7 @@ if (set_has(target_set.clone(), callee.clone()) == false) {
     Some(callee_entry) => {
                 let callee_measure_params = match v2_rt::map_get(&scc_measure_params, callee.clone()) {
     Some(params) => params.clone(),
-    None => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
+    None => v2_rt::rc_empty_map::<String>(),
 };
 { let mut __found = false; for pair in Rc::new(call_node.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if {
                     let arg_expr = arg_value(pair.1.clone());
@@ -1349,7 +1349,7 @@ match (*body.expr_data.clone()).clone() {
                 let then_names = recursive_measure_param_names(if_then_branch(body.clone()), params.clone());
 let else_names = match if_else_branch(body.clone()) {
     Some(eb) => recursive_measure_param_names(eb.clone(), params.clone()),
-    None => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
+    None => v2_rt::rc_empty_map::<String>(),
 };
 v2_rt::rc_map_merge(v2_rt::rc_map_merge(condition_param_names(if_condition(body.clone()), param_set), then_names), else_names)
 },

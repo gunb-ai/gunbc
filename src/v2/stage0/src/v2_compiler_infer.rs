@@ -187,6 +187,10 @@ pub struct ArmInferResult {
     pub body_type: Rc<Node>,
 }
 
+pub fn seed_arm_results() -> Rc<Vec<Rc<ArmInferResult>>> {
+    Rc::new(vec![])
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PatternScopeResult {
     pub scope: Rc<InferScope>,
@@ -1391,8 +1395,16 @@ let scrut_typed = scrut_result.typed.clone();
 let scrut_diags = scrut_result.diagnostics.clone();
 let scrut_rt = rt_type(scrut_typed.clone());
 let scrut_subject = pattern_subject_from_node_type(rt_node(scrut_typed.clone()));
-let arm_infer_results = Rc::new({ let mut __result = Vec::new(); for arm_node in arm_nodes.iter().cloned() { __result.push({
-                let arm_pat = arm_pattern(arm_node.clone());
+let arm_infer_results = arm_nodes.iter().cloned().fold(seed_arm_results(), |acc_results: Rc<Vec<Rc<ArmInferResult>>>, arm_node: Rc<Node>| {
+                let arm_expected = if (expected.clone() != None) {
+                    expected.clone()
+} else {
+                    match Rc::new({ let mut __result = Vec::new(); for ar in acc_results.clone().iter().cloned() { if is_fully_resolved(ar.body_type.clone()) { __result.push(ar); } } __result }).first().cloned() {
+    Some(resolved_ar) => Some(resolved_ar.body_type.clone()),
+    None => None,
+}
+};
+let arm_pat = arm_pattern(arm_node.clone());
 let arm_g = arm_guard(arm_node.clone());
 let arm_b = arm_body(arm_node.clone());
 let typed_pattern = annotate_pattern_parent_enums(arm_pat.clone(), scrut_subject.clone(), scope.clone());
@@ -1404,7 +1416,7 @@ let guard_result = if (arm_g.clone() != None) {
 } else {
                     None
 };
-let body_result = infer_expr(arm_b.clone(), arm_scope.clone(), expected.clone());
+let body_result = infer_expr(arm_b.clone(), arm_scope.clone(), arm_expected.clone());
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
 let guard_unwrapped = match guard_result.clone() {
@@ -1419,7 +1431,7 @@ let guard_diags = if (guard_result.clone() != None) {
 } else {
                     Rc::new(vec![])
 };
-Rc::new(ArmInferResult {
+v2_rt::rc_list_push(acc_results.clone(), Rc::new(ArmInferResult {
     typed_arm: make_arm_node(typed_pattern.clone(), if (guard_result.clone() != None) {
                     Some(guard_unwrapped.typed.clone())
 } else {
@@ -1427,8 +1439,8 @@ Rc::new(ArmInferResult {
 }, body_typed.clone(), span.clone()),
     diagnostics: v2_rt::concat(pattern_diags.clone(), v2_rt::concat(guard_diags.clone(), body_diags.clone())),
     body_type: rt_type(body_typed.clone()),
-})
-}); } __result });
+}))
+});
 let typed_arms = Rc::new({ let mut __result = Vec::new(); for ar in arm_infer_results.clone().iter().cloned() { __result.push(ar.typed_arm.clone()); } __result });
 let arm_diags = Rc::new({ let mut __result = Vec::new(); for ar in arm_infer_results.clone().iter().cloned() { __result.extend((*ar.diagnostics.clone()).iter().cloned()); } __result });
 let result_type = match arm_infer_results.clone().first().cloned() {
@@ -1466,7 +1478,19 @@ let then_typed = then_result.typed.clone();
 let then_diags = then_result.diagnostics.clone();
 match else_expr {
     Some(else_branch) => {
-                let else_result = infer_expr(else_branch.clone(), scope.clone(), expected.clone());
+                let else_expected = if (expected.clone() != None) {
+                    expected.clone()
+} else {
+                    {
+                        let then_rt = rt_type(then_typed.clone());
+if is_fully_resolved(then_rt.clone()) {
+                            Some(then_rt.clone())
+} else {
+                            None
+}
+}
+};
+let else_result = infer_expr(else_branch.clone(), scope.clone(), else_expected);
 let else_typed = else_result.typed.clone();
 let else_diags = else_result.diagnostics.clone();
 let then_rt = rt_type(then_typed.clone());

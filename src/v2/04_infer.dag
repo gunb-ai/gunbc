@@ -236,6 +236,11 @@ type ArmInferResult {
   body_type: Node
 }
 
+// Typed empty list for fold accumulator in match arm inference.
+fn seed_arm_results() -> List<ArmInferResult> {
+  []
+}
+
 type PatternScopeResult {
   scope: InferScope
   diagnostics: List<ErrorNode>
@@ -1319,7 +1324,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let scrut_diags = scrut_result.diagnostics
       let scrut_rt = rt_type(n: scrut_typed)
       let scrut_subject = pattern_subject_from_node_type(n: rt_node(n: scrut_typed))
-      let arm_infer_results = arm_nodes |> map(arm_node =>
+      // Infer match arms sequentially. After the first arm produces a resolved
+      // type, use it as expected for subsequent arms. This lets None => empty_map()
+      // adopt the type from the Some arm without full re-inference.
+      let arm_infer_results = arm_nodes |> fold(init: seed_arm_results(), f: (acc_results, arm_node) =>
+        let arm_expected = if expected != none { expected } else {
+          match acc_results |> filter(ar => is_fully_resolved(n: ar.body_type)) |> first {
+            Some { value: resolved_ar } => Some { value: resolved_ar.body_type }
+            None => none
+          }
+        }
         let arm_pat = arm_pattern(n: arm_node)
         let arm_g = arm_guard(n: arm_node)
         let arm_b = arm_body(n: arm_node)
@@ -1332,7 +1346,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         } else {
           none
         }
-        let body_result = infer_expr(texpr: arm_b, scope: arm_scope, expected: expected)
+        let body_result = infer_expr(texpr: arm_b, scope: arm_scope, expected: arm_expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
         let guard_unwrapped = match guard_result {
@@ -1340,7 +1354,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => InferResult { typed: arm_b, diagnostics: [] }
         }
         let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
-        ArmInferResult {
+        list_push(acc_results, ArmInferResult {
           typed_arm: make_arm_node(
             pattern: typed_pattern,
             guard: if guard_result != none { Some { value: guard_unwrapped.typed } } else { none },
@@ -1349,7 +1363,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           ),
           diagnostics: concat(pattern_diags, concat(guard_diags, body_diags))
           body_type: rt_type(n: body_typed)
-        }
+        })
       )
       let typed_arms = arm_infer_results |> map(ar => ar.typed_arm)
       let arm_diags = flat_map(arm_infer_results, ar => ar.diagnostics)
@@ -1398,7 +1412,14 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let then_diags = then_result.diagnostics
       match else_expr {
         Some { value: else_branch } =>
-          let else_result = infer_expr(texpr: else_branch, scope: scope, expected: expected)
+          // When expected is none (let-value position), use the then branch's
+          // type as expected for the else branch. This lets else => empty_map()
+          // adopt the type from the then branch.
+          let else_expected = if expected != none { expected } else {
+            let then_rt = rt_type(n: then_typed)
+            if is_fully_resolved(n: then_rt) { Some { value: then_rt } } else { none }
+          }
+          let else_result = infer_expr(texpr: else_branch, scope: scope, expected: else_expected)
           let else_typed = else_result.typed
           let else_diags = else_result.diagnostics
           let then_rt = rt_type(n: then_typed)

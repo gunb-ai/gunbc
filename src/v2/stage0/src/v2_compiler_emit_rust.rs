@@ -646,12 +646,12 @@ if is_type_def_item(item.clone()) {
 } else {
                                 match v2_rt::map_get(&emit_info.ownership_index.clone(), item.name.clone()) {
     Some(m) => m.clone(),
-    None => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
+    None => v2_rt::rc_empty_map::<bool>(),
 }
 };
 let fn_fold_eligible = match v2_rt::map_get(&emit_info.fold_eligible_index.clone(), item.name.clone()) {
     Some(m) => m.clone(),
-    None => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
+    None => v2_rt::rc_empty_map::<bool>(),
 };
 let fn_emit_info = Rc::new(EmitGraphInfo {
     type_summaries: emit_info.type_summaries.clone(),
