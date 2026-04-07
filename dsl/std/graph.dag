@@ -15,8 +15,11 @@ import std.termination {
 // Bidirectional adjacency representation: forward (caller→callee) and
 // reverse (callee→caller) edges, keyed by node name.
 // M4 note: String keys are a textual identity proxy. Post-M4, vertices
-// should be structural Node references, not names. Pre-existing pattern
-// (moved from complexity.dag, not introduced here).
+// M4 debt: String keys are textual identity proxies. Post-M4, vertices
+// should be structural Node references so SCC/cycle facts derive from
+// structure, not name equality. Currently safe because function names
+// are module-qualified from the typed IR (no collisions within a
+// compilation unit). Blocked on Map<K,V> supporting non-String keys.
 type CallGraph {
   forward: Map<String, List<String>>
   reverse: Map<String, List<String>>

@@ -2200,6 +2200,33 @@ fn cx_bound_metadata_field_is_not_descent_witness() {
 }
 
 // =========================================================================
+// CX: Fail-closed violation ratchet
+//
+// Functions with unresolvable recursion bounds produce complexity violations.
+// These are analyzer limitations, not program errors — the violations list
+// in ComplexityReport surfaces uncertainty instead of fabricating bounds.
+// =========================================================================
+
+#[test]
+fn cx_unresolvable_bound_produces_violation() {
+    // SameArgumentCall → Forever → violation (no named size parameter)
+    let source = "module cx_viol\n\nfn count_up(n: Int) -> Int {\n  if n > 100 { n }\n  else { count_up(n: n + 1) }\n}\n";
+    let result = compile_dag(source);
+    let violations: Vec<_> = result.complexity.violations.iter().cloned().collect();
+    assert_eq!(violations.len(), 1, "expected 1 violation for SameArgumentCall, got {:?}", violations);
+    assert!(violations[0].contains("unresolvable"), "violation should mention unresolvable bound: {}", violations[0]);
+}
+
+#[test]
+fn cx_non_recursive_has_no_violation() {
+    // Non-recursive functions never produce violations
+    let source = "module cx_no_viol\n\nfn add(a: Int, b: Int) -> Int { a + b }\n";
+    let result = compile_dag(source);
+    let violations: Vec<_> = result.complexity.violations.iter().cloned().collect();
+    assert_eq!(violations.len(), 0, "non-recursive function should have no violations, got {:?}", violations);
+}
+
+// =========================================================================
 // DAG compiler error detection tests
 //
 // These test the compiler's unique value: structural errors that only a

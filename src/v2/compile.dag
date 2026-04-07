@@ -129,10 +129,12 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
 // No separate walker needed — the complexity stage IS the gate.
 // =========================================================================
 
-// No violations possible — every function has a concrete cost from the
-// lowering table. This function returns an empty list by construction.
+// Fail-closed: surface any unresolvable complexity bounds as diagnostics.
+// A non-empty violations list means the analyzer found real uncertainty.
 fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
-  []
+  complexity.violations |> map(v =>
+    make_error_node(diagnostic: InternalError { message: concat("complexity: ", v), span: no_span() }, module_name: "")
+  )
 }
 
 // =========================================================================
@@ -815,12 +817,14 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx)
       let complexity_diags = complexity_diagnostics(complexity: complexity)
 
-      let all_infer_diags = concat(typed_diags, complexity_diags)
-      let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      // Type errors block emission. Complexity violations are reported but
+      // non-blocking — they are analyzer limitations, not program errors.
+      // The violations are included in the final diagnostics for visibility.
+      let typecheck_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
       if typecheck_errors |> count > 0 {
         return PipelineResult {
           files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_infer_diags),
+          diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags, complexity_diags),
           complexity: complexity,
           ownership: [],
           artifact_plan: empty_artifact_plan(),
@@ -837,7 +841,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       if ownership_errors |> count > 0 {
         return PipelineResult {
           files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_infer_diags, ownership_diags),
+          diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags, complexity_diags, ownership_diags),
           complexity: complexity,
           ownership: ownership,
           artifact_plan: empty_artifact_plan(),
@@ -863,7 +867,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
       PipelineResult {
         files: final_files,
-        diagnostics: concat(frontend.diagnostics, norm_diags, all_infer_diags, ownership_diags, emit_diags),
+        diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags, complexity_diags, ownership_diags, emit_diags),
         complexity: complexity,
         ownership: ownership,
         artifact_plan: artifact_plan,

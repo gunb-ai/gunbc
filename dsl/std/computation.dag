@@ -241,15 +241,16 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   }
 }
 
-// Extract the parameter name from a SizeBound, or none for bounds without
-// a named parameter (ExplicitCount, Forever).
+// Extract the parameter name from a SizeBound. Returns none for bounds
+// without a named structural parameter — callers must handle the absence
+// explicitly (fail-closed) rather than fabricating a synthetic identifier.
 fn size_bound_param(bound: SizeBound) -> String? {
   match bound {
     TreeSize { param: p }       => Some { value: p }
     CollectionSize { param: p } => Some { value: p }
     ArithmeticParam { param: p } => Some { value: p }
-    ExplicitCount { n: _ }      => Some { value: "count" }
-    Forever                     => Some { value: "forever" }
+    ExplicitCount { n: _ }      => none
+    Forever                     => none
   }
 }
 

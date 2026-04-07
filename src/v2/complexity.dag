@@ -2879,9 +2879,11 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // The proof constructor already validates that the non-descending subgraph
     // (edges where lexicographic descent fails) is acyclic, so ALL call paths
     // must eventually descend on the primary dimension.
-    // Secondary dimensions (e.g., TokenPosition) only matter for non-branching
-    // paths — they can't cause exponential blowup because the primary dimension
-    // bounds the total number of recursive entries.
+    // The FIRST dimension must be structural (TreeSize/ListLength) for
+    // branching safety. A structural first dimension bounds the total
+    // number of recursive entries by tree/list structure — each subtree
+    // is visited at most once. Secondary dimensions are validated by
+    // proof construction (they must have descent evidence).
     let proof_safe_for_branching = match proof {
       Some { value: p } =>
         match p.dimensions |> first {
@@ -2902,16 +2904,20 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     let branching_proof = if path_calls > 1 && !proof_safe_for_branching {
       construct_branching_termination_proof(func_name: func_name, body: body, params: params)
     } else { none }
+    // Validate ALL dimensions of the branching proof are structural.
+    // A lexicographic proof [Structural, NonStructural] would under-approximate
+    // if we only checked the first dimension.
     let branching_proof_safe = match branching_proof {
       Some { value: bp } =>
-        match bp.dimensions |> first {
-          Some { value: dim } =>
+        if bp.dimensions |> count == 0 { false }
+        else {
+          bp.dimensions |> all(dim =>
             match dim {
               TreeSize { param: _ } => true
               ListLength { param: _ } => true
               _ => false
             }
-          None => false
+          )
         }
       None => false
     }
@@ -2957,14 +2963,30 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
 // raw_cost already has 0 in place of recursive calls — no replacement needed.
 fn bounded_recursive_cost(target: LoweringTarget, per_iter: CostExpr) -> CostExpr {
   let p = size_bound_param(bound: target.bound)
-  let var = concat("n_", match p { Some { value: v } => v  None => "bound" })
+  // When bound has no named parameter (Forever, ExplicitCount), use "__unresolved"
+  // as the binder. The violation is recorded by build_complexity_report, not here.
+  let var = concat("n_", match p { Some { value: v } => v  None => "__unresolved" })
   CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
 }
 
 fn bounded_scc_cost(target: LoweringTarget, per_iter: CostExpr) -> CostExpr {
   let p = size_bound_param(bound: target.bound)
-  let var = concat("n_", match p { Some { value: v } => v  None => "bound" })
+  let var = concat("n_", match p { Some { value: v } => v  None => "__unresolved" })
   CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
+}
+
+// Check if a function's recursion bound is unresolvable (Forever or ExplicitCount
+// without a named structural parameter). Returns a violation string or none.
+fn check_bound_violation(func_name: String, scc_index: Map<String, SccInfo>) -> String? {
+  match map_get(scc_index, func_name) {
+    Some { value: info } =>
+      let p = size_bound_param(bound: info.pattern.bound)
+      match p {
+        Some { value: _ } => none
+        None => Some { value: concat(func_name, ": unresolvable recursion bound") }
+      }
+    None => none
+  }
 }
 
 fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
@@ -3863,12 +3885,17 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
 type ComplexityReport {
   function_classes: Map<String, String>
   intern_table: CostInternTable
+  // Fail-closed: functions whose bounds could not be structurally resolved.
+  // Each entry is "func_name: reason". A non-empty list means the analysis
+  // found real uncertainty — callers must not treat the report as sound.
+  violations: List<String>
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_classes: empty_map(),
-    intern_table: empty_intern_table()
+    intern_table: empty_intern_table(),
+    violations: []
   }
 }
 
@@ -4121,12 +4148,13 @@ type SummaryResult {
 }
 
 // Accumulator for topological-order processing with transit eviction.
-// Threads the intern table, classified results, and fan-in counters
-// through the fold over topological order.
+// Threads the intern table, classified results, fan-in counters, and
+// fail-closed violations through the fold over topological order.
 type TopoBuildAcc {
   table: CostInternTable
   classes: Map<String, String>
   fan_in: Map<String, Int>
+  violations: List<String>
 }
 
 type MatchCostAccum {
@@ -4614,7 +4642,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let result = scc_result.processing_order |> fold(init: TopoBuildAcc {
     table: empty_intern_table(),
     classes: empty_map(),
-    fan_in: fan_in
+    fan_in: fan_in,
+    violations: []
   }, f: fn(acc, func_name) {
     match map_get(func_index, func_name) {
       Some { value: _ } =>
@@ -4622,6 +4651,11 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         // Classify immediately — drop the CostExpr tree from the report
         let class_str = classify_complexity(expr: sr.summary.work)
         let new_classes = map_insert(acc.classes, func_name, class_str)
+        // Fail-closed: check for unresolvable recursion bounds
+        let new_violations = match check_bound_violation(func_name: func_name, scc_index: full_scc_index) {
+          Some { value: v } => concat(acc.violations, [v])
+          None => acc.violations
+        }
         // Decrement fan-in for each unique callee of this function
         let callees = match map_get(scc_result.call_graph.forward, func_name) {
           Some { value: cs } => cs
@@ -4640,12 +4674,18 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
             evict_summary(table: t, func_name: callee)
           } else { t }
         )
-        TopoBuildAcc { table: evicted_table, classes: new_classes, fan_in: new_fan_in }
+        // Also evict this function if it has no callers (fan-in was 0 from the start)
+        let self_fan_in = match map_get(new_fan_in, func_name) { Some { value: v } => v, None => 0 }
+        let final_table = if self_fan_in <= 0 {
+          evict_summary(table: evicted_table, func_name: func_name)
+        } else { evicted_table }
+        TopoBuildAcc { table: final_table, classes: new_classes, fan_in: new_fan_in, violations: new_violations }
       None => acc  // not in func_index (shouldn't happen)
     }
   })
   ComplexityReport {
     function_classes: result.classes,
-    intern_table: empty_intern_table()
+    intern_table: result.table,
+    violations: result.violations
   }
 }

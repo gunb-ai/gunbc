@@ -169,8 +169,8 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
     SizeBound::TreeSize { param: p, .. } => Some(p.clone()),
     SizeBound::CollectionSize { param: p, .. } => Some(p.clone()),
     SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
-    SizeBound::ExplicitCount { .. } => Some("count".to_string()),
-    SizeBound::Forever => Some("forever".to_string()),
+    SizeBound::ExplicitCount { .. } => None,
+    SizeBound::Forever => None,
 }
 }
 
