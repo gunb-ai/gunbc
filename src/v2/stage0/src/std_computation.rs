@@ -46,6 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
+use crate::std_iteration::*;
 pub use crate::std_termination::{DescentEvidence, RankingDimension};
 use crate::std_termination::DescentEvidence::*;
 use crate::std_termination::RankingDimension::*;
