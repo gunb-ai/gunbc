@@ -33,7 +33,7 @@ import std.computation {
   CallPattern,
   ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall,
   ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall,
-  LoweringTarget, lower_call_pattern, size_bound_param, constant_bound_value,
+  LoweringTarget, lower_call_pattern, size_bound_param,
   IterationDimension, TreeDescent, CollectionFold, ArithmeticRepeat,
   type_iteration_dimension
 }
@@ -111,6 +111,7 @@ type CostExpr
   | CostSum { binder: String, upper: SizeExpr, body: CostExpr }
   | CostLog { base: Int, argument: SizeExpr }
   | CostExtern { name: String }
+  | CostUnknown { reason: String }
 
 // =========================================================================
 // Certainty of a proof
@@ -2970,30 +2971,39 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
 // costs. Constant bounds (Forever, ExplicitCount) produce O(1) — the iteration
 // count is a fixed machine constant, not dependent on input size. The algebra
 // handles both uniformly: SizeConst(1) normalizes away in classify_complexity.
-fn bounded_recursive_cost(target: LoweringTarget, per_iter: CostExpr) -> CostExpr {
+fn bounded_recursive_cost(target: LoweringTarget, per_iter: CostExpr, func_name: String) -> CostExpr {
   let p = size_bound_param(bound: target.bound)
   match p {
     Some { value: v } =>
       let var = concat("n_", v)
       CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
     None =>
-      // Constant bound (Forever/ExplicitCount): fixed iteration count.
-      // Preserves the actual literal for ExplicitCount; Forever → 1.
-      // CostSum over SizeConst normalizes to body cost in classify_complexity.
-      let k = constant_bound_value(bound: target.bound)
-      CostSum { binder: "__k", upper: SizeConst { value: k }, body: simplify_cost(expr: per_iter) }
+      // No named structural parameter (Forever or ExplicitCount).
+      // Honest CostUnknown — the analyzer couldn't determine descent.
+      CostUnknown { reason: concat("same-argument recursion in ", func_name) }
   }
 }
 
-fn bounded_scc_cost(target: LoweringTarget, per_iter: CostExpr) -> CostExpr {
+fn bounded_scc_cost(target: LoweringTarget, per_iter: CostExpr, members: List<String>) -> CostExpr {
   let p = size_bound_param(bound: target.bound)
   match p {
     Some { value: v } =>
       let var = concat("n_", v)
       CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
     None =>
-      let k = constant_bound_value(bound: target.bound)
-      CostSum { binder: "__k", upper: SizeConst { value: k }, body: simplify_cost(expr: per_iter) }
+      CostUnknown { reason: concat("same-argument mutual recursion in ", match members |> first { Some { value: n } => n, None => "scc" }) }
+  }
+}
+
+// Check if a CostExpr contains any CostUnknown nodes.
+fn is_unknown_cost(expr: CostExpr) -> Bool {
+  match expr {
+    CostUnknown { reason: _ } => true
+    CostAdd { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
+    CostMul { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
+    CostMax { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
+    CostSum { binder: _, upper: _, body: bd } => is_unknown_cost(expr: bd)
+    _ => false
   }
 }
 
@@ -3890,14 +3900,21 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
 // D4: Complexity reporting
 // =========================================================================
 
+type ComplexityViolation {
+  func_name: String
+  reason: String
+}
+
 type ComplexityReport {
   function_classes: Map<String, String>
+  violations: List<ComplexityViolation>
   intern_table: CostInternTable
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_classes: empty_map(),
+    violations: [],
     intern_table: empty_intern_table()
   }
 }
@@ -3965,6 +3982,7 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
       }
     CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
     CostExtern { name: _ } => expr
+    CostUnknown { reason: _ } => expr
   }
 }
 
@@ -4066,6 +4084,7 @@ fn normalize_asymptotic(expr: CostExpr) -> CostExpr {
       }
     CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
     CostExtern { name: _ } => expr
+    CostUnknown { reason: _ } => expr
   }
 }
 
@@ -4074,6 +4093,7 @@ fn format_cost_class(expr: CostExpr) -> String {
   match expr {
     CostConst { value: _ } => "O(1)"
     CostExtern { name: n } => concat("O(extern(", n, "))")
+    CostUnknown { reason: _ } => "O(?)"
     CostSum { binder: _, upper: u, body: bd } =>
       match bd {
         CostConst { value: _ } => concat("O(", format_size(size: u), ")")
@@ -4113,6 +4133,7 @@ fn format_cost_inner(expr: CostExpr) -> String {
       concat("max(", format_cost_inner(expr: l), ", ", format_cost_inner(expr: r), ")")
     CostLog { base: _, argument: a } => concat("log ", format_size(size: a))
     CostExtern { name: n } => concat("extern(", n, ")")
+    CostUnknown { reason: _ } => "?"
   }
 }
 
@@ -4212,6 +4233,7 @@ fn substitute_cost(expr: CostExpr, legend: Map<String, String>) -> CostExpr {
     CostLog { base: b, argument: a } =>
       CostLog { base: b, argument: substitute_size(size: a, legend: legend) }
     CostExtern { name: _ } => expr
+    CostUnknown { reason: _ } => expr
   }
 }
 
@@ -4313,6 +4335,7 @@ type SummaryResult {
 type TopoBuildAcc {
   table: CostInternTable
   classes: Map<String, String>
+  violations: List<ComplexityViolation>
   fan_in: Map<String, Int>
   // Functions explicitly processed by the topological fold.
   // Prevents evicting SCC co-members computed as side effects
@@ -4716,8 +4739,8 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
           let bounded = match target {
             Some { value: t } =>
               ComplexitySummary {
-                work: bounded_recursive_cost(target: t, per_iter: result.summary.work),
-                span: bounded_recursive_cost(target: t, per_iter: result.summary.span),
+                work: bounded_recursive_cost(target: t, per_iter: result.summary.work, func_name: func_name),
+                span: bounded_recursive_cost(target: t, per_iter: result.summary.span, func_name: func_name),
                 output_size: result.summary.output_size,
                 certainty: Conservative
               }
@@ -4811,6 +4834,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let result = scc_result.processing_order |> fold(init: TopoBuildAcc {
     table: empty_intern_table(),
     classes: empty_map(),
+    violations: [],
     fan_in: fan_in,
     processed: empty_map()
   }, f: fn(acc, func_name) {
@@ -4821,6 +4845,13 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let class_str = classify_complexity(expr: sr.summary.work)
         let new_classes = map_insert(acc.classes, func_name, class_str)
         let new_processed = map_insert(acc.processed, func_name, true)
+        // Detect violations: any function whose cost contains CostUnknown
+        let new_violations = if is_unknown_cost(expr: sr.summary.work) {
+          concat(acc.violations, [ComplexityViolation {
+            func_name: func_name,
+            reason: class_str
+          }])
+        } else { acc.violations }
         // Decrement fan-in for each unique callee of this function
         let callees = match map_get(scc_result.call_graph.forward, func_name) {
           Some { value: cs } => cs
@@ -4848,12 +4879,13 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let final_table = if self_fan_in <= 0 {
           evict_summary(table: evicted_table, func_name: func_name)
         } else { evicted_table }
-        TopoBuildAcc { table: final_table, classes: new_classes, fan_in: new_fan_in, processed: new_processed }
+        TopoBuildAcc { table: final_table, classes: new_classes, violations: new_violations, fan_in: new_fan_in, processed: new_processed }
       None => acc  // not in func_index (shouldn't happen)
     }
   })
   ComplexityReport {
     function_classes: result.classes,
+    violations: result.violations,
     intern_table: result.table
   }
 }

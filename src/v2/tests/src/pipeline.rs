@@ -34,13 +34,16 @@ fn full_dsl_compiles() {
     let dsl_result =
         v2_compiler::v2_compiler_compile::compile_sources(Rc::new(dsl_sources.clone()), RenderTarget::Rust);
 
-    let dsl_diag_count = dsl_result.diagnostics.len() as usize;
-    if dsl_diag_count > 0 {
-        let msgs = diagnostic_messages(&dsl_result);
+    // Complexity violations are non-blocking. Only fail on hard errors.
+    let hard_diags: Vec<_> = diagnostic_messages(&dsl_result)
+        .into_iter()
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    if !hard_diags.is_empty() {
         panic!(
-            "dsl/ compilation produced {} diagnostics (expected 0):\n{}",
-            dsl_diag_count,
-            msgs.iter()
+            "dsl/ compilation produced {} hard diagnostics (expected 0):\n{}",
+            hard_diags.len(),
+            hard_diags.iter()
                 .enumerate()
                 .map(|(i, m)| format!("  [{}] {}", i, m))
                 .collect::<Vec<_>>()
@@ -2208,14 +2211,15 @@ fn cx_bound_metadata_field_is_not_descent_witness() {
 // =========================================================================
 
 #[test]
-fn cx_forever_bound_classifies_as_constant() {
-    // SameArgumentCall → Forever → SizeConst(1) → O(1)
+fn cx_forever_bound_produces_violation() {
+    // SameArgumentCall → Forever → CostUnknown → violation (honest "I don't know")
     let source = "module cx_forever\n\nfn count_up(n: Int) -> Int {\n  if n > 100 { n }\n  else { count_up(n: n + 1) }\n}\n";
     let result = compile_dag(source);
-    assert_no_diagnostics(&result);
     let class = result.complexity.function_classes.get("count_up")
         .expect("count_up should have a complexity class");
-    assert_eq!(class.as_str(), "O(1)", "Forever-bounded recursion should be O(1), got {}", class);
+    assert_eq!(class.as_str(), "O(?)", "Forever-bounded recursion should be O(?), got {}", class);
+    assert_eq!(result.complexity.violations.len() as usize, 1,
+        "expected 1 violation for SameArgumentCall, got {}", result.complexity.violations.len());
 }
 
 // =========================================================================
