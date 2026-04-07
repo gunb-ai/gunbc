@@ -197,16 +197,14 @@ Open items:
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
-### BRIDGE fabrication progress (83 → 14)
+### BRIDGE fabrication progress (83 → 0)
 
-BRIDGE count reduced from 83 to 14 (10 real + 4 emitter template strings).
+BRIDGE count reduced from 83 to 0 real (4 emitter template strings remain).
 Phases: contradictory predicate fix (83→29), Phase C structural resolution
-(29→28), typed seed helpers (28→21), match/if arm expected propagation (21→14).
-
-Remaining 10 real BRIDGEs: 9 inside seed helper functions
-(`map_insert(empty_map(), k, v)` where return type doesn't propagate to
-the `empty_map()` arg) + 1 TCO if-branch. Need emitter-side type
-propagation or broader expected-context threading.
+(29→28), typed seed helpers (28→21), match/if arm expected propagation
+(21→16), receiver patching (16→6), final typed helpers + if/else
+bidirectional (6→0). Post-inference unification replaced all heuristic
+patches (PR #334 review fixes).
 
 ### Compositional type parameter resolution (COMPLETE)
 
@@ -225,41 +223,28 @@ Phases A-D landed (PRs #325, #332, #334):
 **Result:** 0 method-name dispatches for type resolution (was 6).
 Emit is fail-closed: TypeVariable → `compile_error!`.
 
-### Remaining BRIDGE fabrications (17 real)
+### Remaining BRIDGE fabrications (0 real)
 
-All 17 are standalone `empty_map()` with `expected: None` — no
-`map_insert` provides value type context. Concentrated in:
-- complexity.dag (8): cost maps, param name maps in match/if branches
-- emit_rust.dag (5): ownership/fold-eligibility index lookups
-- emit_go/python (1 each): template binding seeds
-- infer.dag (1): fold_override_map seed
-- infer_method.dag (1): builtin registry seed
+All real BRIDGEs eliminated. The 4 remaining occurrences in stage0 are
+emitter template strings (BRIDGE message formats for code the compiler
+itself compiles — not type resolution failures in the compiler).
 
-**Design direction — ExpectedContext sum type:**
+Approach: typed seed helpers provide `Map<K,V>` context at call sites,
+post-inference unification resolves match/if arms order-independently,
+ReceiverSelf witness gates receiver patching structurally.
+
+**Design direction — ExpectedContext sum type (deferred):**
 
 Replace `expected: Node?` with `expected: ExpectedContext?` to
-distinguish different expectation sources:
-```
-type ExpectedContext
-  = ResultExpected { type_node: Node }
-  | AccumulatorExpected { acc_type: Node }
-  | ElementExpected { element: Node }
-  | FieldExpected { field_name: String, type_node: Node }
-```
-This enables:
-- `None => empty_map()` branches to inherit expected type from the
-  `Some` branch (both arms of a match should produce the same type)
-- Fold init to inherit accumulator type from the fold return type
-- If/else branches to share expected type across arms
-
-This is a broader bidirectional inference improvement, not solvable
-by algebra template changes alone.
+distinguish different expectation sources. Not needed for current
+BRIDGE count (already 0), but would improve inference for edge cases
+where expected type is available but not threaded (e.g., nested
+`empty_map()` in complex expressions).
 
 ### Acceptance
 
 No fabricated type args, no generic/wrong fallback return types, no
-error-typed children reaching emit. BRIDGE fabrication count at 17
-(target: 0 via ExpectedContext).
+error-typed children reaching emit. BRIDGE fabrication count: 0 real.
 Ownership and clone correctness tracked under CG lane.
 
 ---
