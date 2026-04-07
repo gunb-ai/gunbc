@@ -3984,23 +3984,71 @@ fn format_size(size: SizeExpr) -> String {
   }
 }
 
-// Collapse all positive constants to 1 so re-simplification absorbs them.
+// Asymptotic normalization: single recursive pass that normalizes constants
+// AND absorbs dominated terms. After this pass:
+// - All positive constants → 1, non-positive → 0
+// - O(1 + n) → O(n): constant + non-constant → non-constant dominates
+// - O(max(1, n)) → O(n): constant max with non-constant → non-constant
+// - O(1 * n) → O(n): constant factor → absorbed
+// - O(Sum(0)) → O(0): zero-cost loop → zero
+// The result IS the complexity class — format_cost_class reads it directly.
 fn normalize_asymptotic(expr: CostExpr) -> CostExpr {
-  simplify_cost(expr: normalize_constants(expr: expr))
-}
-
-fn normalize_constants(expr: CostExpr) -> CostExpr {
   match expr {
     CostConst { value: v } =>
       if v <= 0 { CostConst { value: 0 } } else { CostConst { value: 1 } }
     CostAdd { left: l, right: r } =>
-      CostAdd { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
-    CostMul { left: l, right: r } =>
-      CostMul { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
+      let nl = normalize_asymptotic(expr: l)
+      let nr = normalize_asymptotic(expr: r)
+      // O(k + x) = O(x) when x is non-constant
+      match nl {
+        CostConst { value: 0 } => nr
+        CostConst { value: _ } => match nr {
+          CostConst { value: 0 } => nl
+          CostConst { value: _ } => CostConst { value: 1 }
+          _ => nr
+        }
+        _ => match nr {
+          CostConst { value: 0 } => nl
+          CostConst { value: _ } => nl
+          _ => CostAdd { left: nl, right: nr }
+        }
+      }
     CostMax { left: l, right: r } =>
-      CostMax { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
+      let nl = normalize_asymptotic(expr: l)
+      let nr = normalize_asymptotic(expr: r)
+      // O(max(k, x)) = O(x) when x is non-constant
+      match nl {
+        CostConst { value: 0 } => nr
+        CostConst { value: _ } => match nr {
+          CostConst { value: 0 } => nl
+          CostConst { value: _ } => CostConst { value: 1 }
+          _ => nr
+        }
+        _ => match nr {
+          CostConst { value: 0 } => nl
+          CostConst { value: _ } => nl
+          _ => CostMax { left: nl, right: nr }
+        }
+      }
+    CostMul { left: l, right: r } =>
+      let nl = normalize_asymptotic(expr: l)
+      let nr = normalize_asymptotic(expr: r)
+      // O(k * x) = O(x): constant factors absorb
+      match nl {
+        CostConst { value: 0 } => CostConst { value: 0 }
+        CostConst { value: _ } => nr
+        _ => match nr {
+          CostConst { value: 0 } => CostConst { value: 0 }
+          CostConst { value: _ } => nl
+          _ => CostMul { left: nl, right: nr }
+        }
+      }
     CostSum { binder: b, upper: u, body: bd } =>
-      CostSum { binder: b, upper: u, body: normalize_constants(expr: bd) }
+      let nbd = normalize_asymptotic(expr: bd)
+      match nbd {
+        CostConst { value: 0 } => CostConst { value: 0 }
+        _ => CostSum { binder: b, upper: u, body: nbd }
+      }
     CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
     CostExtern { name: _ } => expr
   }

@@ -3656,10 +3656,6 @@ pub fn format_size(size: Rc<SizeExpr>) -> String {
 }
 
 pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
-    simplify_cost(normalize_constants(expr))
-}
-
-pub fn normalize_constants(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
     CostExpr::CostConst { value: v, .. } => if (v.clone() <= 0) {
@@ -3671,23 +3667,83 @@ pub fn normalize_constants(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     value: 1,
 })
 },
-    CostExpr::CostAdd { left: l, right: r, .. } => Rc::new(CostExpr::CostAdd {
-    left: normalize_constants(l.clone()),
-    right: normalize_constants(r.clone()),
+    CostExpr::CostAdd { left: l, right: r, .. } => {
+            let nl = normalize_asymptotic(l.clone());
+let nr = normalize_asymptotic(r.clone());
+match (*nl.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => nr.clone(),
+    CostExpr::CostConst { .. } => match (*nr.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => nl.clone(),
+    CostExpr::CostConst { .. } => Rc::new(CostExpr::CostConst {
+    value: 1,
 }),
-    CostExpr::CostMul { left: l, right: r, .. } => Rc::new(CostExpr::CostMul {
-    left: normalize_constants(l.clone()),
-    right: normalize_constants(r.clone()),
+    _ => nr.clone(),
+},
+    _ => match (*nr.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => nl.clone(),
+    CostExpr::CostConst { .. } => nl.clone(),
+    _ => Rc::new(CostExpr::CostAdd {
+    left: nl.clone(),
+    right: nr.clone(),
 }),
-    CostExpr::CostMax { left: l, right: r, .. } => Rc::new(CostExpr::CostMax {
-    left: normalize_constants(l.clone()),
-    right: normalize_constants(r.clone()),
+},
+}
+},
+    CostExpr::CostMax { left: l, right: r, .. } => {
+            let nl = normalize_asymptotic(l.clone());
+let nr = normalize_asymptotic(r.clone());
+match (*nl.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => nr.clone(),
+    CostExpr::CostConst { .. } => match (*nr.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => nl.clone(),
+    CostExpr::CostConst { .. } => Rc::new(CostExpr::CostConst {
+    value: 1,
 }),
-    CostExpr::CostSum { binder: b, upper: u, body: bd, .. } => Rc::new(CostExpr::CostSum {
+    _ => nr.clone(),
+},
+    _ => match (*nr.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => nl.clone(),
+    CostExpr::CostConst { .. } => nl.clone(),
+    _ => Rc::new(CostExpr::CostMax {
+    left: nl.clone(),
+    right: nr.clone(),
+}),
+},
+}
+},
+    CostExpr::CostMul { left: l, right: r, .. } => {
+            let nl = normalize_asymptotic(l.clone());
+let nr = normalize_asymptotic(r.clone());
+match (*nl.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => Rc::new(CostExpr::CostConst {
+    value: 0,
+}),
+    CostExpr::CostConst { .. } => nr.clone(),
+    _ => match (*nr.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => Rc::new(CostExpr::CostConst {
+    value: 0,
+}),
+    CostExpr::CostConst { .. } => nl.clone(),
+    _ => Rc::new(CostExpr::CostMul {
+    left: nl.clone(),
+    right: nr.clone(),
+}),
+},
+}
+},
+    CostExpr::CostSum { binder: b, upper: u, body: bd, .. } => {
+            let nbd = normalize_asymptotic(bd.clone());
+match (*nbd.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => Rc::new(CostExpr::CostConst {
+    value: 0,
+}),
+    _ => Rc::new(CostExpr::CostSum {
     binder: b.clone(),
     upper: u.clone(),
-    body: normalize_constants(bd.clone()),
+    body: nbd.clone(),
 }),
+}
+},
     CostExpr::CostLog { base: b, argument: a, .. } => Rc::new(CostExpr::CostLog {
     base: b.clone(),
     argument: a.clone(),

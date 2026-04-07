@@ -380,7 +380,7 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn max_path_self_calls_block(",
         "fn build_scc_measure_params(",
         "fn normalize_asymptotic(",
-        "fn normalize_constants(",
+        // normalize_constants merged into normalize_asymptotic (single-pass)
         "fn format_cost_class(",
         "fn format_cost_inner(",
         "fn parenthesize_additive_cost(",
@@ -400,7 +400,7 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn max_path_self_calls_block(",
         "pub fn build_scc_measure_params(",
         "pub fn normalize_asymptotic(",
-        "pub fn normalize_constants(",
+        // normalize_constants merged into normalize_asymptotic (single-pass)
         "pub fn format_cost_class(",
         "pub fn format_cost_inner(",
         "pub fn parenthesize_additive_cost(",
