@@ -1019,11 +1019,58 @@ should derive from std/ concepts. Sizes are structural facts, not
 symbolic expressions. CostLog should emerge from iteration structure.
 See triage doc for details.
 
+**Deferred CX design improvements:**
+- ComplexityReport stores rendered class strings; should keep typed
+  CostExpr as authority and derive display at reporting boundary (M5/M9).
+- ExplicitCount/Forever should be first-class iteration witnesses, not
+  ad-hoc helpers (is_constant_bound, constant_bound_value).
+- SCC edge collector (CX-P) checks all arg values — sound for
+  single-Node-param functions but theoretically unsound for multi-Node-param
+  functions. Proper fix: thread callee measure params through edge collection.
+- Optional unwrap tracing: serialize SCC includes json_optional_node(Node?)
+  — analyzer can't trace descent through Optional unwrap patterns.
+- Condition-dependent termination: emit_cli_param_type_node recurses with
+  with_required_cardinality (preserving, bounded by 1 via condition change).
+  Analyzer can't express "condition becomes false after transformation."
+
 **Open review feedback (PR #336):**
 #8-9 (DFS worklist), #10 (CostExtern contracts), #11 (element name
-heuristic), #13-14 (proof validation), #15 (SCC placeholder),
-#16-18 (ExplicitCount, stage gate, fallback). All documented at code
-sites and in the triage doc.
+heuristic). All documented at code sites and in the triage doc.
+#13-14 (proof validation) and #20-21 (violation reason/span) resolved.
+
+---
+
+## RE: Real-Program Rust Emission (Lane 4)
+
+**Goal:** Compile real .dag programs to fully executable Rust. Target:
+workflows in `../ctrl/` (Python scripts managing colima, cargo, etc.)
+reimplemented in .dag and compiled to Rust binaries.
+
+**Status:** Emission produces compilable Rust for the compiler's own
+modules (self-compile). Real programs require:
+
+**RE-1: Service/transport emission**
+- REST calls, file I/O, process spawning — currently emit stubs
+- Need: runtime bridge implementations for each service type
+- Blocked on: E0 structural emission (feedback_e0_structural_emission)
+
+**RE-2: Workflow execution model**
+- Sequential steps with error propagation
+- CLI argument parsing (already emitted via clap)
+- Environment variable access, config file reading
+
+**RE-3: Missing language features for real programs**
+- String interpolation in emitted Rust
+- Error handling / Result propagation
+- Async service calls (tokio runtime)
+
+**RE-4: End-to-end validation**
+- Pick one ctrl/ workflow, implement in .dag, compile to Rust, run
+- Measure: does the compiled binary do what the Python script does?
+- Gate: no hand-maintained Rust outside stage0
+
+**Depends on:** CG (codegen correctness) for reliable emission.
+Parallel to CX (complexity doesn't block emission).
 
 ---
 
