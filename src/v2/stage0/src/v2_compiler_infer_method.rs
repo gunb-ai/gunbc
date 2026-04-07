@@ -86,11 +86,11 @@ pub fn list_of_type_variable(id: String) -> Rc<Node> {
     Rc::new(Node {
     name: "List".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![Rc::new(Node {
     name: "T".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -128,11 +128,11 @@ pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: "List".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![Rc::new(Node {
     name: "T".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),

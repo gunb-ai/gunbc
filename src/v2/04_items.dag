@@ -90,7 +90,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Node> 
         if has_structure {
           let is_product = rt.connective == Conj
           if is_product {
-            if rt.name == "" {
+            if rt.ident_span == none {
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
                 let child_type = child_type_node(ch: child)

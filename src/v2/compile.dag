@@ -20,7 +20,7 @@ import v2.std.core {
   resource_use_name, resource_use_resource,
   param_node_name, param_node_type_expr, param_node_default_value, param_node_span,
   field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span,
-  module_imports, module_items, is_import_node, import_is_all, import_specific_names,
+  module_imports, module_items, import_is_all, import_specific_names,
   FieldAccessStyle, FieldValueShape, FieldSummary,
   InferredNode, Resolved, CompilerError, TypeVariable,
   VarBindingKind, CallSemantics, LambdaSemantics,

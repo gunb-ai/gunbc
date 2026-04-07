@@ -41,9 +41,9 @@ fn map_of_type_variables() -> Node {
 
 fn list_of_type_variable(id: String) -> Node {
   Node {
-    name: "List", span: make_span(start: 0, end: 0), ident_span: none,
+    name: "List", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) },
     children: [
-      Node { name: "T", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_variable_node(id: id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      Node { name: "T", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_variable_node(id: id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ], connective: NoConnective, params: [],
     inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -53,9 +53,9 @@ fn list_of_type_variable(id: String) -> Node {
 
 fn list_of_element(element: Node) -> Node {
   Node {
-    name: "List", span: make_span(start: 0, end: 0), ident_span: none,
+    name: "List", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) },
     children: [
-      Node { name: "T", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      Node { name: "T", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ], connective: NoConnective, params: [],
     inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],

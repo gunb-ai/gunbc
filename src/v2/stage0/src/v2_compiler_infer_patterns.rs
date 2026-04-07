@@ -109,7 +109,7 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
 let value_field = Rc::new(Node {
     name: "value".to_string(),
     span: scrut.span.clone(),
-    ident_span: None,
+    ident_span: Some(scrut.span.clone()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -130,7 +130,7 @@ let value_field = Rc::new(Node {
 let some_node = Rc::new(Node {
     name: "Some".to_string(),
     span: scrut.span.clone(),
-    ident_span: None,
+    ident_span: Some(scrut.span.clone()),
     children: Rc::new(vec![value_field]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),

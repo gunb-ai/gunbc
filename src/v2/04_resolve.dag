@@ -39,7 +39,8 @@ import v2.std.core {
   leaf_node, with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
-  unit_type, string_type
+  unit_type, string_type,
+  default_ident_span
 }
 import v2.compiler.infer_types {
   rt_type, child_type_node, node_is_keyed_collection
@@ -214,7 +215,7 @@ type AliasKind = AliasParameterized | AliasLeaf | AliasPassthrough
 fn classify_alias(target: Node) -> AliasKind {
   let nc = target.connective == NoConnective
   if target.children |> count > 0 && nc { AliasParameterized }
-  else if target.children |> count == 0 && nc && target.name != "" { AliasLeaf }
+  else if target.children |> count == 0 && nc && target.ident_span != none { AliasLeaf }
   else { AliasPassthrough }
 }
 
@@ -244,7 +245,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
   if has_structure {
     let is_product = n.connective == Conj
     if is_product {
-      if n.name == "Refined" {
+      if n.type_annotation != none {
         // Refined: recurse on first child (base type)
         match n.children |> first {
           Some { value: base } =>
@@ -663,7 +664,7 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
     let resolved_children = map(child_results, cr => cr.expr)
     let child_diags = flat_map(child_results, cr => cr.diagnostics)
     TransportResolveResult {
-      transport: make_transport_node(name: transport.name, properties: resolved_props, children: resolved_children, span: transport.span),
+      transport: make_transport_node(properties: resolved_props, children: resolved_children, span: transport.span),
       diagnostics: concat(prop_diags, child_diags)
     }
   }
@@ -692,7 +693,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = texpr.children |> map(arg_node =>
         let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-        make_arg_node(name: if arg_node.name == "" { none } else { Some { value: arg_node.name } }, value: vr.expr, span: arg_node.span)
+        make_arg_node(name: if arg_node.ident_span == none { none } else { Some { value: arg_node.name } }, value: vr.expr, span: arg_node.span)
       )
       let all_diags = texpr.children |> flat_map(arg_node =>
         let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
@@ -711,7 +712,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         } else {
           let val = match child.children |> first { Some { value: v } => v  None => child }
           let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-          make_arg_node(name: if child.name == "" { none } else { Some { value: child.name } }, value: vr.expr, span: child.span)
+          make_arg_node(name: if child.ident_span == none { none } else { Some { value: child.name } }, value: vr.expr, span: child.span)
         }
       )
       let all_diags = texpr.children |> enumerate |> flat_map(pair =>
@@ -908,7 +909,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
     TypeEnv {
       bindings: map_insert(e.bindings, tp_name, TypeBinding {
         name: tp_name,
-        resolved: Node { name: tp_name, span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        resolved: Node { name: tp_name, span: no_span(), ident_span: default_ident_span(name: tp_name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       }),
       recursive_types: e.recursive_types,
       recursive_type_set: e.recursive_type_set,

@@ -2036,7 +2036,7 @@ match form {
     item: Rc::new(Node {
     name: "<unknown>".to_string(),
     span: current_span(tokens.clone(), s.clone()),
-    ident_span: None,
+    ident_span: Some(current_span(tokens.clone(), s.clone())),
     children: Rc::new(vec![]),
     params: Rc::new(vec![]),
     inferred: None,
@@ -2880,9 +2880,28 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
+let predicate_node = Rc::new(Node {
+    name: "".to_string(),
+    span: start_span.clone(),
+    ident_span: None,
+    children: r.predicates.clone(),
+    connective: Connective::Conj,
+    params: Rc::new(vec![]),
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+});
 let refined = Rc::new(Node {
-    name: "Refined".to_string(),
-    span: start_span,
+    name: "".to_string(),
+    span: start_span.clone(),
     ident_span: None,
     children: Rc::new(vec![base_te.clone()]),
     connective: Connective::Conj,
@@ -2892,8 +2911,8 @@ let refined = Rc::new(Node {
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: r.predicates.clone(),
-    type_annotation: None,
+    properties: Rc::new(vec![]),
+    type_annotation: Some(predicate_node),
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
@@ -3517,7 +3536,7 @@ if has_err(ret.err.clone()) {
 let te = Rc::new(Node {
     name: "Callable".to_string(),
     span: start_span.clone(),
-    ident_span: None,
+    ident_span: Some(start_span.clone()),
     children: Rc::new(vec![]),
     connective: Connective::Arrow,
     params: params_result.params.clone(),
@@ -6305,7 +6324,7 @@ if is_keyed_container {
     None => n.name.clone(),
 }
 } else {
-            if (n.name.clone().as_str() == "Refined".to_string().as_str()) {
+            if (n.type_annotation.clone() != None) {
                 match n.children.clone().first().cloned() {
     Some(ch) => node_to_name_str(ch.clone()),
     None => n.name.clone(),
@@ -6317,7 +6336,7 @@ if is_keyed_container {
     None => n.name.clone(),
 }
 } else {
-                    if (n.name.clone().as_str() == "".to_string().as_str()) {
+                    if (n.ident_span.clone() == None) {
                         {
                             let is_conj = (n.connective.clone() == Connective::Conj);
 let is_disj = (n.connective.clone() == Connective::Disj);
