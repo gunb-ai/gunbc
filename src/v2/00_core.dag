@@ -832,17 +832,15 @@ type NodeFieldRole
   | SubValueField        // proper sub-value (tree_size(result) < tree_size(self))
   | MetadataField        // non-recursive data (name, span, etc.)
 
+// Only fields with clear structural descent witnesses are SubValueField.
+// transport, type_annotation, properties, uses, inferred are NOT included —
+// they lack declared descent witnesses. Promote via std/termination.dag.
 data node_field_roles: Map<String, NodeFieldRole> = {
   "children": ChildrenListField,
   "params": ChildrenListField,
   "body": SubValueField,
-  "transport": SubValueField,
-  "type_annotation": SubValueField,
-  "properties": SubValueField,
-  "uses": SubValueField,
   "expr_data": SubValueField,
-  "match_pattern": SubValueField,
-  "inferred": SubValueField
+  "match_pattern": SubValueField
 }
 
 fn is_children_list_field(field_name: String) -> Bool {

@@ -282,8 +282,6 @@ pub struct EvidenceBlockAcc {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccEdgeBlockAcc {
     pub edges: Rc<Vec<Rc<ParserProgressEdge>>>,
-    pub guard_edges: Rc<Vec<Rc<ParserProgressEdge>>>,
-    pub cont_edges: Rc<Vec<Rc<ParserProgressEdge>>>,
     pub vars: Rc<HashMap<String, bool>>,
 }
 
@@ -2911,69 +2909,41 @@ let scrut_is_param = match (*scrut.expr_data.clone()).clone() {
 },
     _ => false,
 };
-let all_arm_edge_lists = Rc::new({ let mut __result = Vec::new(); for arm_node in match_arm_nodes(body.clone()).iter().cloned() { __result.push({
-                let arm_vars = if (scrut_is_descent.clone() || scrut_is_param.clone()) {
-                    match (*arm_pattern(arm_node.clone())).clone() {
+let arms_edges = Rc::new({ let mut __result = Vec::new(); for arm_node in match_arm_nodes(body.clone()).iter().cloned() { __result.extend((*{
+                let is_base_case = if branching_only.clone() {
+                    (max_path_target_calls(arm_body(arm_node.clone()), target_set.clone()) == 0)
+} else {
+                    false
+};
+if is_base_case.clone() {
+                    Rc::new(vec![])
+} else {
+                    {
+                        let arm_vars = if (scrut_is_descent.clone() || scrut_is_param.clone()) {
+                            match (*arm_pattern(arm_node.clone())).clone() {
     MatchPattern::VariantPattern { field_bindings: bindings, .. } => bindings.clone().iter().cloned().fold(descent_vars.clone(), |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| collect_field_binding_names(fb.clone(), inner.clone())),
     MatchPattern::Bind { name: binding_name, .. } => if scrut_is_descent.clone() {
-                        v2_rt::rc_map_insert(descent_vars.clone(), binding_name.clone(), true)
+                                v2_rt::rc_map_insert(descent_vars.clone(), binding_name.clone(), true)
 } else {
-                        descent_vars.clone()
+                                descent_vars.clone()
 },
     _ => descent_vars.clone(),
 }
 } else {
-                    descent_vars.clone()
+                            descent_vars.clone()
 };
 collect_scc_child_edges(arm_body(arm_node.clone()), caller.clone(), param_name.clone(), arm_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone())
-}); } __result });
-let arms_edges = if branching_only.clone() {
-                {
-                    let has_any_strict = { let mut __found = false; for edges in all_arm_edge_lists.clone().iter().cloned() { if { let mut __found = false; for e in edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found } { __found = true; break; } } __found };
-if has_any_strict {
-                        Rc::new({ let mut __result = Vec::new(); for edges in all_arm_edge_lists.clone().iter().cloned() { __result.extend((*{
-                            let arm_has_strict = { let mut __found = false; for e in edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found };
-if (arm_has_strict.clone() || ((edges.clone().len() as i64) == 0)) {
-                                edges.clone()
-} else {
-                                Rc::new(vec![])
-}
-}).iter().cloned()); } __result })
-} else {
-                        Rc::new({ let mut __result = Vec::new(); for edges in all_arm_edge_lists.clone().iter().cloned() { __result.extend((*edges.clone()).iter().cloned()); } __result })
 }
 }
-} else {
-                Rc::new({ let mut __result = Vec::new(); for edges in all_arm_edge_lists.clone().iter().cloned() { __result.extend((*edges.clone()).iter().cloned()); } __result })
-};
+}).iter().cloned()); } __result });
 v2_rt::concat(scrut_edges, arms_edges)
 },
     ExprData::ExprBlock => {
             let result = body.children.clone().iter().cloned().fold(Rc::new(SccEdgeBlockAcc {
     edges: Rc::new(vec![]),
-    guard_edges: Rc::new(vec![]),
-    cont_edges: Rc::new(vec![]),
     vars: descent_vars.clone(),
 }), |acc: Rc<SccEdgeBlockAcc>, stmt: Rc<Node>| {
                 let stmt_edges = collect_scc_child_edges(stmt.clone(), caller.clone(), param_name.clone(), acc.vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone());
-let is_guard = if branching_only.clone() {
-                    match (*stmt.expr_data.clone()).clone() {
-    ExprData::ExprIf => (if_else_branch(stmt.clone()) == None),
-    _ => false,
-}
-} else {
-                    false
-};
-let next_guard = if is_guard.clone() {
-                    v2_rt::concat(acc.guard_edges.clone(), stmt_edges.clone())
-} else {
-                    acc.guard_edges.clone()
-};
-let next_cont = if is_guard.clone() {
-                    acc.cont_edges.clone()
-} else {
-                    v2_rt::concat(acc.cont_edges.clone(), stmt_edges.clone())
-};
 let next_vars = match (*stmt.expr_data.clone()).clone() {
     ExprData::ExprLet => {
                     let val = let_value(stmt.clone());
@@ -3038,60 +3008,42 @@ if ((((((is_direct.clone() || is_var.clone()) || is_option.clone()) || is_match_
 };
 Rc::new(SccEdgeBlockAcc {
     edges: v2_rt::concat(acc.edges.clone(), stmt_edges.clone()),
-    guard_edges: next_guard.clone(),
-    cont_edges: next_cont.clone(),
     vars: next_vars.clone(),
 })
 });
-if branching_only.clone() {
-                {
-                    let cont_has_strict = { let mut __found = false; for e in result.cont_edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found };
-let guard_all_non_strict = (((result.guard_edges.clone().len() as i64) > 0) && !{ let mut __found = false; for e in result.guard_edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found });
-if (cont_has_strict && guard_all_non_strict) {
-                        result.cont_edges.clone()
-} else {
-                        result.edges.clone()
-}
-}
-} else {
-                result.edges.clone()
-}
+result.edges.clone()
 },
     ExprData::ExprIf => {
             let cond_edges = collect_scc_child_edges(if_condition(body.clone()), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone());
 let then_branch = if_then_branch(body.clone());
 let else_opt = if_else_branch(body.clone());
-let then_edges = collect_scc_child_edges(then_branch, caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone());
-let else_edges = match else_opt {
+let then_path = if branching_only.clone() {
+                max_path_target_calls(then_branch.clone(), target_set.clone())
+} else {
+                1
+};
+let else_path = if branching_only.clone() {
+                match else_opt.clone() {
+    Some(eb) => max_path_target_calls(eb.clone(), target_set.clone()),
+    None => 0,
+}
+} else {
+                1
+};
+let then_edges = if (branching_only.clone() && (then_path == 0)) {
+                Rc::new(vec![])
+} else {
+                collect_scc_child_edges(then_branch.clone(), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone())
+};
+let else_edges = if (branching_only.clone() && (else_path == 0)) {
+                Rc::new(vec![])
+} else {
+                match else_opt.clone() {
     Some(eb) => collect_scc_child_edges(eb.clone(), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone()),
     None => Rc::new(vec![]),
-};
-let filtered = if branching_only.clone() {
-                {
-                    let then_has_strict = { let mut __found = false; for e in then_edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found };
-let else_has_strict = { let mut __found = false; for e in else_edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found };
-if (then_has_strict.clone() || else_has_strict.clone()) {
-                        {
-                            let kept_then = if (then_has_strict.clone() || ((then_edges.clone().len() as i64) == 0)) {
-                                then_edges.clone()
-} else {
-                                Rc::new(vec![])
-};
-let kept_else = if (else_has_strict.clone() || ((else_edges.clone().len() as i64) == 0)) {
-                                else_edges.clone()
-} else {
-                                Rc::new(vec![])
-};
-v2_rt::concat(kept_then, kept_else)
 }
-} else {
-                        v2_rt::concat(then_edges.clone(), else_edges.clone())
-}
-}
-} else {
-                v2_rt::concat(then_edges.clone(), else_edges.clone())
 };
-v2_rt::concat(cond_edges, filtered)
+v2_rt::concat(cond_edges, v2_rt::concat(then_edges, else_edges))
 },
     _ => Rc::new({ let mut __result = Vec::new(); for child in body.children.clone().iter().cloned() { __result.extend((*collect_scc_child_edges(child.clone(), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone())).iter().cloned()); } __result }),
 }
@@ -3544,29 +3496,6 @@ if ((bl_all_known && ((bl_edges.clone().len() as i64) > 0)) && (proof_has_non_de
 }
 }
 
-pub fn merge_edge_evidence_branching(acc_map: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>) -> Rc<HashMap<String, DescentEvidence>> {
-    {
-        let existing = v2_rt::map_get(&acc_map, pe.callee.clone());
-let new_ev = progress_to_evidence(pe.progress.clone());
-let merged_ev = match existing {
-    Some(prev) => match prev.clone() {
-    DescentEvidence::Strict => match new_ev {
-    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-    _ => DescentEvidence::Strict,
-},
-    DescentEvidence::NonIncreasing => match new_ev {
-    DescentEvidence::Strict => DescentEvidence::Strict,
-    DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-},
-    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-},
-    None => new_ev,
-};
-v2_rt::rc_map_insert(acc_map.clone(), pe.callee.clone(), merged_ev)
-}
-}
-
 pub fn collect_scc_proof_edges_for_dim_branching(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_name_set: Rc<HashMap<String, bool>>, check_child: bool, check_list: bool) -> Rc<Vec<Rc<ProofEdge>>> {
     Rc::new({ let mut __result = Vec::new(); for name in members.iter().cloned() { __result.extend((*match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
@@ -3574,7 +3503,7 @@ pub fn collect_scc_proof_edges_for_dim_branching(members: Rc<Vec<String>>, func_
             let pname = param_node_name(p.clone());
 let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v2_rt::rc_empty_map::<bool>(), check_child.clone(), check_list.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), check_child.clone(), check_list.clone(), true);
-let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence_branching(bm.clone(), pe.clone()));
+let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
 pick_best_param_edges(best.clone(), param_map.clone())
 });
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v2_rt::map_keys(&best_map)).iter().cloned() { __result.push({
