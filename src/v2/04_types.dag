@@ -352,7 +352,10 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
     ReceiverSelf =>
       // When the receiver is a bare container (children are TypeVariables), try to enrich
       // it from arg-derived bindings captured during unification.
-      let is_bare = is_container_type(name: receiver.name) && (receiver.children |> all(ch => if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { true }))
+      let is_bare = is_container_type(name: receiver.name) && (receiver.children |> all(ch =>
+        let inner = child_type_node(ch: ch)
+        if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { true }
+      ))
       if is_bare {
         let arity = container_expected_arity(name: receiver.name)
         if arity == Some { value: 2 } {

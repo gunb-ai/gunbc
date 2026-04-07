@@ -71,7 +71,7 @@ pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy};
 pub use crate::extdeps_languages_rust_types::{integer_types, float_types};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
-pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, rt_type, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
+pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, rt_type, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem, DataItem};
@@ -1898,8 +1898,8 @@ pub fn rust_runtime_bridge_name(function_name: String) -> String {
 
 pub fn rust_empty_map_value_type_str(map_type: Rc<Node>, shared_types: Rc<HashMap<String, bool>>) -> String {
     match map_type.children.clone().get(1 as usize).cloned() {
-    Some(value_type) => {
-        let rendered = render_rust_type(value_type.clone(), shared_types);
+    Some(value_child) => {
+        let rendered = render_rust_type(child_type_node(value_child.clone()), shared_types);
 if (rendered.clone().as_str() == "".to_string().as_str()) {
             "".to_string()
 } else {
@@ -2448,8 +2448,9 @@ pub fn collection_element_type(receiver_type: Option<Rc<InferredNode>>, shared_t
         let __rt_is_container = node_is_element_collection(rt.clone());
 if __rt_is_container {
             match rt.children.clone().first().cloned() {
-    Some(elem_node) => {
-                let elem_is_error = if (elem_node.inferred.clone() != None) {
+    Some(elem_child) => {
+                let elem_node = child_type_node(elem_child.clone());
+let elem_is_error = if (elem_node.inferred.clone() != None) {
                     is_compiler_error(elem_node.inferred.clone().clone().unwrap())
 } else {
                     false

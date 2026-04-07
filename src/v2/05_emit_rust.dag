@@ -2427,8 +2427,8 @@ fn collection_element_type(receiver_type: InferredNode?, shared_types: Map<Strin
           Some { value: elem_child } =>
             let elem_node = child_type_node(ch: elem_child)
             // If element type is CompilerError, fall back to _ for Rust inference
-            let elem_is_error = if elem_child.inferred != none { is_compiler_error(inferred: elem_child.inferred.value) } else { false }
-            let elem_is_type_var = if elem_child.inferred != none { is_type_variable(inferred: elem_child.inferred.value) } else { false }
+            let elem_is_error = if elem_node.inferred != none { is_compiler_error(inferred: elem_node.inferred.value) } else { false }
+            let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
             if elem_is_error || elem_is_type_var { "_" } else { render_rust_type(n: elem_node, shared_types: shared_types) }
           None => "_"
         }

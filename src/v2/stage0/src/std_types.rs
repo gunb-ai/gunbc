@@ -117,6 +117,31 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
     v2_rt::map_get(&container_type_arity(), name)
 }
 
+pub fn container_type_param_names() -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, Rc<Vec<String>>>> = {
+            let mut __m = HashMap::new();
+            __m.insert("List".to_string(), Rc::new(vec!["T".to_string()]));
+            __m.insert("Set".to_string(), Rc::new(vec!["T".to_string()]));
+            __m.insert("NonEmptyList".to_string(), Rc::new(vec!["T".to_string()]));
+            __m.insert("NonEmptySet".to_string(), Rc::new(vec!["T".to_string()]));
+            __m.insert("Map".to_string(), Rc::new(vec!["K".to_string(), "V".to_string()]));
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn container_param_name(kind_name: String, index: i64) -> String {
+    match v2_rt::map_get(&container_type_param_names(), kind_name) {
+    Some(names) => match Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(names.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() == index.clone()) { __result.push(pair); } } __result }).iter().cloned() { __result.push(pair.1.clone()); } __result }).first().cloned() {
+    Some(name) => name.clone(),
+    None => "T".to_string(),
+},
+    None => "T".to_string(),
+}
+}
+
 pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
