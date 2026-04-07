@@ -48,20 +48,40 @@ data rust_container_templates: Map<String, String> = {
 // Named-placeholder templates for simple algebra method calls.
 // Templates use {recv} (receiver) and {arg} (first argument).
 // Applied via apply_named_template in shared emit.
-data rust_method_templates: Map<String, String> = {
-  "count": "(\{recv\}.len() as i64)",
-  "join": "\{recv\}.join(&\{arg\})",
-  "split": "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",
-  "last": "\{recv\}.last().cloned()",
-  "first": "\{recv\}.first().cloned()",
-  "enumerate": "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",
-  "chars": "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",
-  "skip": "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",
-  "take": "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()"
+//
+// Single authority: SimpleMethodSpec carries both the template and
+// wraps_result flag. Derived maps feed LanguageSpec (template only)
+// and Rust emitter (wrapping). Same pattern as HigherOrderMethodSpec.
+
+type SimpleMethodSpec {
+  method_name: String
+  template: String
+  wraps_result: Bool
 }
 
-data rust_method_wraps_result: Map<String, Bool> = {
-  "split": true, "enumerate": true, "chars": true, "skip": true, "take": true
+data rust_simple_method_specs: List<SimpleMethodSpec> = [
+  { method_name: "count",     template: "(\{recv\}.len() as i64)",                                                                    wraps_result: false },
+  { method_name: "join",      template: "\{recv\}.join(&\{arg\})",                                                                    wraps_result: false },
+  { method_name: "split",     template: "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",                         wraps_result: true },
+  { method_name: "last",      template: "\{recv\}.last().cloned()",                                                                    wraps_result: false },
+  { method_name: "first",     template: "\{recv\}.first().cloned()",                                                                   wraps_result: false },
+  { method_name: "enumerate", template: "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",         wraps_result: true },
+  { method_name: "chars",     template: "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",                                      wraps_result: true },
+  { method_name: "skip",      template: "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",                         wraps_result: true },
+  { method_name: "take",      template: "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()",                         wraps_result: true }
+]
+
+// Derived: template map for LanguageSpec consumption (backend-neutral).
+fn rust_method_templates() -> Map<String, String> {
+  rust_simple_method_specs
+    |> fold(init: empty_map(), f: (acc, spec) => map_insert(acc, spec.method_name, spec.template))
+}
+
+// Derived: wraps_result map for Rust Rc-wrapping decisions.
+fn rust_method_wraps_result() -> Map<String, Bool> {
+  rust_simple_method_specs
+    |> filter(s => s.wraps_result)
+    |> fold(init: empty_map(), f: (acc, spec) => map_insert(acc, spec.method_name, true))
 }
 
 // -- Reserved words ------------------------------------------------------

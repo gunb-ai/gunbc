@@ -966,6 +966,57 @@ fn rt_wraps_result_derived_from_registry() {
 }
 
 #[test]
+fn method_wraps_result_derived_from_specs() {
+    // rust_method_wraps_result() is derived from SimpleMethodSpec.wraps_result via fold.
+    // Verify exact parity: every spec entry with wraps_result: true appears,
+    // and no extra entries exist.
+    use v2_compiler::extdeps_languages_rust_emit::{rust_simple_method_specs, rust_method_wraps_result};
+
+    let specs = rust_simple_method_specs();
+    let wraps_map = rust_method_wraps_result();
+
+    let spec_wraps: Vec<String> = specs.iter()
+        .filter(|s| s.wraps_result)
+        .map(|s| s.method_name.clone())
+        .collect();
+
+    assert!(!spec_wraps.is_empty(), "specs should have wraps_result entries");
+
+    // Every spec wraps_result: true must appear in derived map
+    for name in &spec_wraps {
+        assert!(wraps_map.contains_key(name),
+            "SimpleMethodSpec '{}' has wraps_result: true but missing from rust_method_wraps_result()", name);
+    }
+
+    // No extra entries in derived map
+    for (name, _) in wraps_map.iter() {
+        assert!(spec_wraps.contains(name),
+            "rust_method_wraps_result() contains '{}' but no matching spec entry with wraps_result: true", name);
+    }
+}
+
+#[test]
+fn method_templates_derived_from_specs() {
+    // rust_method_templates() is derived from SimpleMethodSpec list.
+    // Verify exact parity: every spec entry appears in template map.
+    use v2_compiler::extdeps_languages_rust_emit::{rust_simple_method_specs, rust_method_templates};
+
+    let specs = rust_simple_method_specs();
+    let templates = rust_method_templates();
+
+    assert_eq!(specs.len(), templates.len(),
+        "spec count ({}) != template map count ({})", specs.len(), templates.len());
+
+    for spec in specs.iter() {
+        match templates.get(&spec.method_name) {
+            Some(tmpl) => assert_eq!(*tmpl, spec.template,
+                "template mismatch for '{}': spec='{}', map='{}'", spec.method_name, spec.template, tmpl),
+            None => panic!("SimpleMethodSpec '{}' missing from rust_method_templates()", spec.method_name),
+        }
+    }
+}
+
+#[test]
 fn is_copy_checkpoint_parity() {
     // Derive all assertions from rust_type_checkpoints — single authority.
     // Every checkpoint must return Some(is_copy), never None.

@@ -66,7 +66,7 @@ use crate::v2_std_core::UnaryOpKind::{Not, Neg};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport};
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self, map_node, bare_map_node, callable_inferred, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self, map_node, bare_map_node, callable_inferred, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, child_type_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type, list_of_element};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, RecursiveVariantFieldWitness, put_recursive_variant_field_witness, merge_recursive_variant_fields};
@@ -1659,7 +1659,7 @@ let elements = texpr.children.clone();
 let elem_expected = match expected.clone() {
     Some(exp) => if node_is_element_collection(exp.clone()) {
                 match exp.children.clone().first().cloned() {
-    Some(elem) => Some(elem.clone()),
+    Some(elem) => Some(child_type_node(elem.clone())),
     None => None,
 }
 } else {
@@ -1679,7 +1679,7 @@ let elem_type_node = if ((elem_results.clone().len() as i64) > 0) {
                 match expected.clone() {
     Some(exp) => if node_is_element_collection(exp.clone()) {
                     match exp.children.clone().first().cloned() {
-    Some(elem) => elem.clone(),
+    Some(elem) => child_type_node(elem.clone()),
     None => unit_type(),
 }
 } else {

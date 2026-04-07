@@ -57,7 +57,7 @@ use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
-pub use crate::v2_compiler_infer_types::{rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection};
+pub use crate::v2_compiler_infer_types::{rt_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -67,7 +67,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
@@ -456,7 +456,7 @@ continue;
 if is_map.clone() {
                     match n.children.clone().get(1 as usize).cloned() {
     Some(val_child) => { {
-                        let __tco_0 = val_child.clone();
+                        let __tco_0 = child_type_node(val_child.clone());
 n = __tco_0;
 continue;
 } },
@@ -466,7 +466,7 @@ continue;
                     if ((n.children.clone().len() as i64) == 1) {
                         match n.children.clone().first().cloned() {
     Some(el) => { {
-                            let __tco_0 = el.clone();
+                            let __tco_0 = child_type_node(el.clone());
 n = __tco_0;
 continue;
 } },
@@ -1016,11 +1016,7 @@ let conj_named_str = if shared.clone() {
 return conj_named_str
 }
 }
-let parts = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(if (child.inferred.clone() != None) {
-                        render_node_type(rt_type(child.clone()), target.clone(), shared_types.clone())
-} else {
-                        "__EMIT_BUG_ANONYMOUS_FIELD__".to_string()
-}); } __result });
+let parts = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(render_node_type(rt_type(child.clone()), target.clone(), shared_types.clone())); } __result });
 let anon_str = render_tuple_parts(parts, target.clone());
 return anon_str
 }
@@ -1069,11 +1065,11 @@ let is_map = node_is_keyed_collection(n.clone());
 if is_map {
                 {
                     let k = match n.children.clone().first().cloned() {
-    Some(kn) => render_node_type(kn.clone(), target.clone(), shared_types.clone()),
+    Some(kn) => render_node_type(child_type_node(kn.clone()), target.clone(), shared_types.clone()),
     None => "_".to_string(),
 };
 let v = match n.children.clone().get(1 as usize).cloned() {
-    Some(vn) => render_node_type(vn.clone(), target.clone(), shared_types.clone()),
+    Some(vn) => render_node_type(child_type_node(vn.clone()), target.clone(), shared_types.clone()),
     None => "_".to_string(),
 };
 let base = emit_map_type(k, v, target.clone());
@@ -1088,7 +1084,7 @@ return map_str
 if ((n.children.clone().len() as i64) == 1) {
                 {
                     let child_str = match n.children.clone().first().cloned() {
-    Some(child) => render_node_type(child.clone(), target.clone(), shared_types.clone()),
+    Some(child) => render_node_type(child_type_node(child.clone()), target.clone(), shared_types.clone()),
     None => "_".to_string(),
 };
 let is_container = node_is_collection(n.clone());
@@ -1111,7 +1107,7 @@ let single_str = if shared.clone() {
 return single_str
 }
 }
-let child_strs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(render_node_type(c.clone(), target.clone(), shared_types.clone())); } __result });
+let child_strs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(render_node_type(child_type_node(c.clone()), target.clone(), shared_types.clone())); } __result });
 if (n.name.clone().as_str() == tuple_type_name().as_str()) {
                 {
                     let multi_tuple_str = render_tuple_parts(child_strs.clone(), target.clone());
@@ -1757,6 +1753,91 @@ pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) ->
     RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), l_str.clone()), " if ".to_string()), l_str.clone()), " is not None else ".to_string()), r_str), ")".to_string()),
     RenderTarget::Go => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func() interface{} { if ".to_string(), l_str.clone()), " != nil { return ".to_string()), l_str.clone()), " }; return ".to_string()), r_str), " }()".to_string()),
     RenderTarget::Dag => v2_rt::concat(v2_rt::concat(l_str.clone(), " ?? ".to_string()), r_str),
+}
+}
+
+pub fn emit_expr_var_shared(expr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
+    {
+        let n = expr_var_name_at(expr, source_index);
+if (n.clone().as_str() == "none".to_string().as_str()) {
+            emit_keyword("null".to_string(), target)
+} else {
+            if ((n.clone().as_str() == "true".to_string().as_str()) || (n.clone().as_str() == "false".to_string().as_str())) {
+                emit_keyword(n.clone(), target)
+} else {
+                emit_ident(n.clone(), target)
+}
+}
+}
+}
+
+pub fn emit_expr_field_access_shared(expr: Rc<Node>, target: RenderTarget, emit_field: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    if is_typed_service_call_receiver(expr.clone()) {
+        match extract_typed_service_name(expr.clone()) {
+    Some(svc_name) => service_var_name(svc_name.clone()),
+    None => emit_field(expr.clone()),
+}
+} else {
+        emit_field(expr.clone())
+}
+}
+
+pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
+    Rc::new({ let mut __result = Vec::new(); for child in expr.children.clone().iter().cloned() { __result.push(match (*child.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: text, .. } = value.as_ref() else { unreachable!() }; Rc::new(StringPart::Text {
+    value: text.clone(),
+}) },
+    _ => Rc::new(StringPart::Interpolation {
+    expr: arg_value(child.clone()),
+}),
+}); } __result })
+}
+
+pub fn emit_typed_cast_shared(expr: Rc<Node>, cast_target_node: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let expr_str = recurse(expr);
+let ty_str = emit_node_type(cast_target_node, target);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(ty_str, "(".to_string()), expr_str), ")".to_string())
+}
+}
+
+pub fn emit_typed_index_shared(base: Rc<Node>, index: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+let base_str = recurse(base.clone());
+let index_str = recurse(index);
+let base_node = normalize_access_type_node(rt_type(base.clone()));
+let is_map = node_is_keyed_collection(base_node.clone());
+if is_string_like(target.clone(), base_node.name.clone()) {
+            apply_type_template2(spec.indexing.clone().string_index.clone(), base_str, index_str)
+} else {
+            if is_map {
+                apply_type_template2(spec.indexing.clone().map_index.clone(), base_str, index_str)
+} else {
+                apply_type_template2(spec.indexing.clone().list_index.clone(), base_str, index_str)
+}
+}
+}
+}
+
+pub fn emit_typed_slice_shared(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+let base_str = recurse(base.clone());
+let start_str = recurse(start);
+let end_str = recurse(end);
+let base_node = normalize_access_type_node(rt_type(base.clone()));
+if is_string_like(target.clone(), base_node.name.clone()) {
+            match spec.indexing.clone().string_slice.clone() {
+    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
+    None => emit_error_expr("unsupported string slice for target".to_string(), target.clone()),
+}
+} else {
+            match spec.indexing.clone().list_slice.clone() {
+    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
+    None => emit_error_expr("unsupported slice for target".to_string(), target.clone()),
+}
+}
 }
 }
 

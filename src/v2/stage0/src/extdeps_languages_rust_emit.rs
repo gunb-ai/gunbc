@@ -101,38 +101,29 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
     CACHED.with(|c| c.clone())
 }
 
-pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SimpleMethodSpec {
+    pub method_name: String,
+    pub template: String,
+    pub wraps_result: bool,
+}
+
+pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("count".to_string(), "({recv}.len() as i64)".to_string());
-            __m.insert("join".to_string(), "{recv}.join(&{arg})".to_string());
-            __m.insert("split".to_string(), "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()".to_string());
-            __m.insert("last".to_string(), "{recv}.last().cloned()".to_string());
-            __m.insert("first".to_string(), "{recv}.first().cloned()".to_string());
-            __m.insert("enumerate".to_string(), "{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()".to_string());
-            __m.insert("chars".to_string(), "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()".to_string());
-            __m.insert("skip".to_string(), "{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()".to_string());
-            __m.insert("take".to_string(), "{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()".to_string());
-            Rc::new(__m)
+        static CACHED: Rc<Vec<Rc<SimpleMethodSpec>>> = {
+            serde_json::from_value(serde_json::json!([{"method_name": "count", "template": "({recv}.len() as i64)", "wraps_result": false}, {"method_name": "join", "template": "{recv}.join(&{arg})", "wraps_result": false}, {"method_name": "split", "template": "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "last", "template": "{recv}.last().cloned()", "wraps_result": false}, {"method_name": "first", "template": "{recv}.first().cloned()", "wraps_result": false}, {"method_name": "enumerate", "template": "{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "chars", "template": "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "skip", "template": "{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "take", "template": "{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()", "wraps_result": true}]))
+                .expect("valid data definition")
         };
     }
     CACHED.with(|c| c.clone())
 }
 
+pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
+    rust_simple_method_specs().iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| v2_rt::rc_map_insert(acc.clone(), spec.method_name.clone(), spec.template.clone()))
+}
+
 pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
-            let mut __m = HashMap::new();
-            __m.insert("split".to_string(), true);
-            __m.insert("enumerate".to_string(), true);
-            __m.insert("chars".to_string(), true);
-            __m.insert("skip".to_string(), true);
-            __m.insert("take".to_string(), true);
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c| c.clone())
+    Rc::new({ let mut __result = Vec::new(); for s in rust_simple_method_specs().iter().cloned() { if s.wraps_result.clone() { __result.push(s); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| v2_rt::rc_map_insert(acc.clone(), spec.method_name.clone(), true))
 }
 
 pub fn rust_reserved() -> Rc<Vec<String>> {

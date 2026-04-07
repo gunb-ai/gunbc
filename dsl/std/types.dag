@@ -91,6 +91,24 @@ fn container_expected_arity(name: String) -> Int? {
   map_get(container_type_arity, name)
 }
 
+// Container type parameter names: canonical names for each positional type parameter.
+// Element collections have ["T"], keyed collections have ["K", "V"].
+data container_type_param_names: Map<String, List<String>> = {
+  "List": ["T"], "Set": ["T"], "NonEmptyList": ["T"], "NonEmptySet": ["T"],
+  "Map": ["K", "V"]
+}
+
+fn container_param_name(kind_name: String, index: Int) -> String? {
+  match map_get(container_type_param_names, kind_name) {
+    Some { value: names } =>
+      match names |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first {
+        Some { value: name } => Some { value: name }
+        None => none
+      }
+    None => none
+  }
+}
+
 // Ordered element collections: support positional access (list[0]).
 // FreeMonoid-based collections preserve insertion order.
 // Set-based collections are unordered — no positional access.

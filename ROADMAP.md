@@ -60,10 +60,8 @@ manual patches, AND the regenerated binary produces identical output
 when it self-compiles (fixed point convergence). **Blocks all other
 lanes from editing stage0 Rust directly.**
 
-All stage0 content is 100% generated — zero hand-maintained files (PR #337).
-- main.rs — CLI entrypoint with FF-9 import resolution, diagnostic rendering
-- compiler_tests.rs — modeled in `compiler_tests_rust.dag`, emitted via
-  `emit_compiler_tests_module()` when self-compiling
+Note: "zero manual patches" means zero patches to *generated* files.
+All stage0 content is 100% generated — zero hand-maintained files.
 
 Previously eliminated:
 - PR #316: v2_compiler_infer_method.rs, std_types.rs,
@@ -75,13 +73,20 @@ Previously eliminated:
 - v2_rt.rs — runtime templates already modeled in `runtime_rust.dag`;
   `rust_runtime_source()` produces the complete file. Emitter includes it
   via `emit_v2_rt_module()`.
+- main.rs — CLI entrypoint with FF-9 import resolution and diagnostic
+  rendering, modeled as emitter string templates in `05_emit_rust.dag`.
+  `emit_compile_match_arm()` emits the full Compile subcommand with
+  `--source-root` transitive import resolution.
+- compiler_tests.rs — test harness modeled in `compiler_tests_rust.dag`;
+  `compiler_tests_source()` produces the complete file. Emitter includes
+  it via `emit_compiler_tests_module()` when self-compiling.
 
 ## CI Gates
 
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (294 pass, 0 fail, 41 ignored) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (316 pass, 0 fail, 44 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (0 self-compile diagnostics) |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | 37 (target: 0) |
@@ -110,8 +115,8 @@ Previously eliminated:
 - **Fixed-point:** `regen pass N == regen pass N+1`. Two-pass bootstrap
   required when the emitter changes its own output.
 - **External dependencies:** cargo, rustc (opaque transforms, not modeled).
-- **Hand-maintained files (9):** Copied back during regen, not overwritten.
-  These are source, not derived. See Bootstrap Status for list.
+- **Hand-maintained files (0):** All stage0 content is generated.
+  See Bootstrap Status for elimination history.
 
 **Merge workflow problem:** Stage0 `.rs` files are derived, but git
 treats them as text and produces line-level merge conflicts. These
@@ -244,6 +249,79 @@ BRIDGE count (already 0), but would improve inference for edge cases
 where expected type is available but not threaded (e.g., nested
 `empty_map()` in complex expressions).
 
+### Unified container child encoding (PR #339, in progress)
+
+**Root cause:** Container type nodes (List, Map, Set) encode their type
+parameters as bare children (child IS the type, `inferred: none`), while
+struct fields use field-style encoding (child has a name and `inferred:
+Resolved(type)`). This dual encoding forces every consumer to handle both
+cases, producing `child_inferred_or_name` and scattered `inferred == none`
+guards.
+
+**Authority:** The resolve phase is the normalization point. Parser creates
+type expressions with bare children (pre-resolve). Resolve converts to
+field-style children with named type parameters (T, K, V) from
+`container_type_param_names` in `std/types.dag`. Post-resolve consumers
+extract via `child_type_node` (bridge handles both encodings during
+transition).
+
+**Completed (PR #339) — bridge work, not endpoint:**
+- [x] `container_type_param_names` data table in `std/types.dag`
+- [x] `container_node`, `map_node`, `bare_map_node` produce field-style children
+- [x] `child_type_node` bridge helper (handles both bare and field-style)
+- [x] `container_param_name` returns `String?` (fail-closed, no fabricated default)
+- [~] Consumer updates: major readers updated to `child_type_node` — lookup,
+  items, patterns, emit_info, emit, emit_rust, access, infer, resolve.
+  Remaining readers still use raw `rt_type` in emit/emit_go/emit_python
+  sites and algebra template paths. These work post-resolve (Resolved
+  wrappers guarantee correct extraction) but bypass the bridge.
+- [x] All 314 tests pass, 0 self-compile diagnostics, L1 ratchet unchanged
+- [ ] Endgame: all post-resolve readers use `child_type_node`, hardcoded
+  "T"/"K"/"V" replaced by data table reads, wrapper construction via
+  single helper (not inline Node literals)
+
+**Completed (bootstrap convergence):**
+- [x] `substitute_type_slots` recurses into `inferred` on field-style
+  children — generic type instantiation works through wrappers
+- [x] `has_nested_records_node` extracts via `child_type_node` — data
+  declarations with `List<SomeStruct>` correctly use JSON emission
+- [x] Bootstrap convergence: two-pass fixed point verified
+- [x] `child_inferred_or_name` dissolved — 7 call sites → `rt_type(n: ch)`,
+  function deleted
+- [x] `__EMIT_BUG_ANONYMOUS_FIELD__` removed — dead code
+
+**Modeling gaps exposed by edge-case analysis (next PR):**
+
+Three reviewer-flagged edge cases share a common root: the `inferred`
+field carries implicit invariants that should be structural facts.
+
+1. **`inferred` has multiple semantic roles with different error contracts.**
+   On expressions: can be CompilerError/TypeVariable/Untyped (all meaningful).
+   On struct field children: should always be Resolved.
+   On container wrapper children: should always be Resolved.
+   These roles use the same `InferredNode?` type, so `rt_type` treats them
+   all with the same Unit fallback — correct for emission, wrong for type
+   reasoning where errors should propagate or be impossible by construction.
+
+2. **`rt_type` is one function for multiple operations.**
+   "Extract for emission" (Unit fallback OK) vs "extract for type reasoning"
+   (error = bug, not fallback) vs "extract parameter binding" (always
+   Resolved by construction). A typed model would have separate accessors
+   with different error semantics.
+
+3. **Pre-resolve vs post-resolve is a convention, not a structural fact.**
+   "Post-resolve children use field-style encoding" is enforced by
+   producer convention. `child_type_node` exists as a bridge because
+   the structure doesn't distinguish resolved from unresolved nodes.
+   If resolve's output were structurally marked, consumers wouldn't need
+   the bridge — the wrong question would be unaskable.
+
+**Direction:** These are instances of the same CM pattern — implicit
+pipeline-stage invariants that should be structural facts on the Node.
+Candidate modeling: `inferred` role (expression/field/parameter)
+distinguishable from Node structure, or resolve-boundary marking that
+makes pre/post-resolve structurally distinct.
+
 ### Acceptance
 
 No fabricated type args, no generic/wrong fallback return types, no
@@ -263,14 +341,14 @@ correct-but-suboptimal code and blocks new backends.
 fuses Node → String in one pass, consuming coercion data directly.
 Clone semantics unified in SharingStrategy (CloneTemplates removed).
 TLC-1 complete: ExprVar → ExprCall normalization at inference time
-(PR #329). TLC-3 done: all three backends dispatch per collection type
-via `IndexingSemantics` templates. TLC-4 partial:
-`emit_let_binding_annotated` infrastructure exists but disabled for
-bootstrap convergence (.dag type inference produces `()` for empty
-collection element types). TLC-2 partial: `wraps_result` on
-`RuntimeFunction` registry but consumers still read parallel maps.
-Higher-order method templates (filter/any/all/flat_map) data-driven
-via `HigherOrderMethodSpec`.
+(PR #329). TLC-2 complete: `SimpleMethodSpec` co-locates template +
+wrapping flag, both maps derive from single authority. TLC-3 done: all
+three backends dispatch per collection type via `IndexingSemantics`
+templates. TLC-4 partial: `emit_let_binding_annotated` infrastructure
+exists but disabled for bootstrap convergence (.dag type inference
+produces `()` for empty collection element types). Higher-order method
+templates (filter/any/all/flat_map) data-driven via
+`HigherOrderMethodSpec`.
 
 One root cause, two symptoms:
 1. Facts that exist upstream are lost before emit — emission compensates
@@ -325,10 +403,14 @@ backends.
   ExprVar → ExprCall for zero-arg function references (PR #329). All three
   backends emit `name()` via existing ExprCall handling. `is_zero_arg_callable_ref`
   dissolved (L1 33→32). Imported zero-arg function refs untested.
-- [x] **TLC-2: Runtime bridge signature derivation.** `SimpleMethodSpec`
-  co-locates template + wrapping flag (PR #338). Both `rust_method_templates()`
-  and `rust_method_wraps_result()` derive from `rust_simple_method_specs` —
-  single authority, dual maps eliminated.
+- [x] **TLC-2: Runtime bridge signature derivation.** Runtime helper
+  return types and wrapping conventions must derive from the same
+  type/coercion authority as emission. `wraps_result` field added to
+  `RuntimeFunction` registry (PR #331); `rt_wraps_result()` derives
+  from registry. `SimpleMethodSpec` type co-locates template + wrapping
+  flag for method templates (same pattern as `HigherOrderMethodSpec`).
+  Both `rust_method_templates()` and `rust_method_wraps_result()` now
+  derive from `rust_simple_method_specs` — single authority, no parallel maps.
 - [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
   All three backends dispatch per collection type via shared
@@ -353,10 +435,52 @@ Make emission fully data-driven. Adding a backend = adding data.
   with `method_name`, `inline_template`, `fn_ref_template`, `wraps_in_sharing`.
   Shared `emit_rust_higher_order_method` replaces 4 hardcoded emitters
   (filter/any/all/flat_map). Data-driven dispatch via method name lookup.
-- [x] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend rendering is inherent language differences — addressed by the 3→1 homomorphism (PR #338).
+- [x] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend rendering is inherent language differences (HTTP clients, shell runners, file I/O) — addressed by the 3→1 homomorphism.
 - [ ] LanguageSpec completion — all target-language facts data-driven (see LS lane below)
 - [x] TypeRendering dissolved — `render_node_type` consumes coercion data directly (PR #331)
-- [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
+- [~] 3 backends → 1 parameterized homomorphism (PR #338).
+  **Phase 1-3 complete** (-206 .dag lines, -481 stage0 lines):
+  shared expr wrappers (`emit_expr_var_shared`, `emit_expr_field_access_shared`,
+  `extract_string_interp_parts`), shared typed handlers (`emit_typed_cast_shared`,
+  `emit_typed_index_shared`, `emit_typed_slice_shared`), ExprData accessors
+  (`expr_field_access_summary`, `expr_method_call_semantics`), dead code
+  deletion (`emit_*_typed_bin_op/cast/index/slice`).
+  **Phases 4-6 deferred** — blocked on depth/indent asymmetry (see below).
+  **Review feedback** (recorded, not yet addressed):
+  (a) Unify `SimpleMethodSpec` + `HigherOrderMethodSpec` into shared
+  `MethodTemplateSpec` to reduce schema drift across method families.
+  (b) Method names could be a structural enum (M4 direction) rather than
+  strings for clearer algebraic dispatch across language extdeps.
+
+### Depth/indent asymmetry (cross-cutting blocker)
+
+Go renders sub-expressions at `depth: 0` and manually prepends
+`make_indent(level: depth)` at the wrapper level. Python threads
+`depth` through all recursive calls. This fundamental difference
+pervades every handler and prevents clean parameterization of:
+- TCO handlers (~10 functions per backend, ~130 lines potential)
+- Method call dispatch (~4 functions per backend, ~80 lines potential)
+- Block statement emitters (scope-threading + depth)
+- `emit_typed_let`, `emit_typed_for_each`
+
+**Resolution options:**
+1. **Align Go to Python's strategy.** Go's `wrap_result` callback in
+   `emit_shared_expr` already handles indentation for simple expressions.
+   If Go switched to `depth: depth` recursion and removed per-wrapper
+   `prefix` wrapping, the two backends would become structurally
+   identical. Risk: changes Go's emitted output formatting (whitespace
+   only, not semantics).
+2. **Add `DepthMode` to shared layer.** Shared handlers take a depth
+   resolver: `sub_depth: fn(Int) -> Int` where Go passes `d => 0` and
+   Python passes `d => d`. More complex but preserves current behavior.
+3. **Accept current state.** -206 lines is the practical limit without
+   resolving this asymmetry. The remaining ~210 lines of savings may
+   not justify the design cost.
+
+**LanguageSpec extensions needed** (once depth is resolved):
+- `async_call_prefix: String` — Python: `"await "`, Go/Rust: `""`
+- `TcoSyntax` — loop_open, loop_close, break_keyword, continue_str,
+  stmt_terminator (data-driven TCO formatting)
 
 ### Coercion infrastructure (reference)
 
@@ -377,10 +501,10 @@ Remaining parallel authorities:
   than Copy (excludes Unit; PR #333)
 - [x] Dead code: deleted `try_target_primitive_type`, `target_primitive_type`,
   `target_container_template`, `is_value_type`, `emit_primitive_type` + unused imports
-- [~] Runtime bridge wrapping: `wraps_result` field on `RuntimeFunction` registry
-  (map_keys, map_values, append data-driven; method templates split/enumerate/chars/skip/take
-  use `rust_method_wraps_result` data map — consumer still reads parallel maps
-  instead of a single spec type)
+- [x] Runtime bridge wrapping: `wraps_result` field on `RuntimeFunction` registry
+  (map_keys, map_values, append) and `SimpleMethodSpec.wraps_result` for method
+  templates (split/enumerate/chars/skip/take). Both derived maps come from their
+  respective single authorities — no parallel maps.
 
 ### Acceptance
 
@@ -1136,7 +1260,7 @@ distinction as structural data.
 - [ ] **BP-1b: Bootstrap cycle.** Model the self-compile cycle: stage0
   as bootstrap seed, the fixed-point condition (pass N == pass N+1),
   and the two-pass rule (required when emitter changes its own output).
-  Hand-maintained files (9) enumerated as source artifacts distinct
+  Hand-maintained files (2) enumerated as source artifacts distinct
   from generated artifacts.
 - [ ] **BP-1c: `.gitattributes` generation.** Files the pipeline model
   marks as "generated" get `-merge` in `.gitattributes`. The
@@ -1160,6 +1284,27 @@ distinction as structural data.
    structural facts in the model.
 5. Stage0 merge conflicts no longer require manual resolution.
 
+## Bootstrap Design Debt
+
+Acknowledged design debts from the stage0 elimination work (PR #337).
+These are pre-existing patterns that became more visible when main.rs
+and compiler_tests.rs moved from hand-maintained to emitter-generated.
+
+| Item | What | Root cause | Fix direction |
+|------|------|-----------|---------------|
+| **FF-9a** | `has_pipeline` uses `module.name == "v2.compiler.compile"` string check to decide crate naming, main.rs shape, and compiler_tests emission | No explicit artifact/entrypoint fact in the type system | Model `Artifact` / `Entrypoint` as structural facts; `has_pipeline` dissolves when artifact identity is structural |
+| **FF-9b** | `extract_module_path` / `extract_import_paths` are line-based text scanners duplicating parser knowledge | Bootstrap bridge — the CLI needs to discover modules before the full parser runs | Replace with AST-backed import traversal; CLI loading becomes a thin model-driven pass |
+| **FF-9c** | `--source-root` conflates entry roots and dependency pools; only first root scanned for entries | No explicit entry-root vs dependency-root distinction | Either split into `--entry-root` + `--source-root`, or add explicit entry module list |
+| **FF-9d** | `ct_self_compile_sources` and `gist_sources` maintain separate curated file lists (`dsl_deps`) | Duplicate source-closure authority alongside FF-9 import resolution | These closures should use the same import resolution as the production binary |
+| **VER-1** | `std/verification.dag` types exist but are not yet the live authority; `CoercionAssertion` / `CoercionTestEntry` in coercion.dag are the active producer/consumer | Coercion tests are domain-specific; shared vocabulary not yet needed by a second consumer | Wire `TestCase` from std/verification.dag as the shared abstraction when a second structural test domain (algebra laws, tokenizer contracts) is added |
+
+FF-9a through FF-9d are all facets of the same root cause: the
+bootstrap pipeline's source-discovery layer was hand-maintained and
+is now emitter-generated, but it's still a text-scanning bridge rather
+than a model-driven pass. The endgame is FF-9 complete: the compiler's
+own import resolution is the single authority for source discovery
+everywhere — CLI, tests, and CI.
+
 ## Exploratory Directions
 
 - **Bounded iteration**: three primitives — fold (structural descent
@@ -1171,6 +1316,16 @@ distinction as structural data.
 - **Cost algebra extensions**: Pow, Sqrt, Exp; amortized analysis via
   potential functions; space as peer dimension. See
   `docs/cost-algebra.md`.
+- **Style emission**: Emission formatting (indentation, braces,
+  statement terminators) should be data-driven from two authorities:
+  (1) Language spec — significant whitespace (Python), block delimiters,
+  statement terminators. These are correctness requirements.
+  (2) Style spec — indent unit, brace placement, readability conventions.
+  These are readability requirements (correctness during bootstrap,
+  optional post-bootstrap via external formatters like gofmt/rustfmt).
+  `BlockSyntax` on `LanguageSpec` is the first step. Future work:
+  TCO syntax templates, async call prefix, identifier escaping
+  conventions, post-emission formatting pass.
 - **Post-Rust path**: .dag → native code (LLVM/Cranelift) directly,
   no Rust intermediate. Optional — Rust/Go as intermediates may
   suffice indefinitely.

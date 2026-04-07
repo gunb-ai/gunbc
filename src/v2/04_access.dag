@@ -18,7 +18,7 @@ import v2.std.core {
   unit_type, string_type, int_type
 }
 import v2.compiler.infer_types {
-  normalize_access_type_node,
+  rt_type, normalize_access_type_node,
   node_type_equals, node_is_keyed_collection,
   node_is_element_collection, for_each_element_type_node
 }
@@ -66,9 +66,9 @@ fn access_result(inferred: Node, diagnostics: List<ErrorNode>, span: SourceSpan,
 fn keyed_collection_parts(n: Node) -> KeyedCollectionParts? {
   if node_is_keyed_collection(n: n) && n.children |> count >= 2 {
     match n.children |> first {
-      Some { value: key_node } =>
+      Some { value: key_child } =>
         match n.children |> skip(1) |> first {
-          Some { value: value_node } => Some { value: KeyedCollectionParts { key_type: key_node, value_type: value_node } }
+          Some { value: value_child } => Some { value: KeyedCollectionParts { key_type: rt_type(n: key_child), value_type: rt_type(n: value_child) } }
           None => none
         }
       None => none

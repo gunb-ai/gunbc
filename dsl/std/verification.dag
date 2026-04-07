@@ -1,0 +1,47 @@
+// std/verification.dag -- Verifiable claims about program behavior.
+//
+// A test is a named conjunction of verifiable claims. A claim is a
+// proposition that a program state satisfies a predicate. This is the
+// logical structure of verification — no testing philosophy, no
+// fixtures, no mocking opinions.
+//
+// RELATIONSHIP TO std/termination.dag:
+//   termination.dag proves well-founded descent via ranking functions.
+//   This file proves specification compliance via test evidence.
+//   Both are proof structures — the former for termination, the latter
+//   for behavioral correctness.
+//
+// RELATIONSHIP TO std/logic.dag:
+//   A TestClaim is a proposition (true or false). AssertKind encodes
+//   the predicate form. A TestCase is a conjunction (all claims must hold).
+//
+// Consumers:
+//   v2/coercion.dag         -- structural coercion tests from data declarations
+//   v2/05_emit.dag          -- test extraction and rendering (future)
+
+module std.verification
+
+// The predicate form of an assertion.
+// Each variant corresponds to a standard verification predicate
+// that every test framework supports.
+type AssertKind
+  = AssertEqual    // actual == expected
+  | AssertTrue     // condition holds
+  | AssertSome     // value is present (not None/nil/null)
+  | AssertNone     // value is absent
+
+// A single verifiable claim about program behavior.
+// The label describes what is being verified — it becomes the
+// failure message when the claim does not hold.
+type TestClaim {
+  kind: AssertKind
+  label: String
+}
+
+// A named test case — a conjunction of claims.
+// All claims must hold for the test to pass.
+type TestCase {
+  name: String
+  claims: List<TestClaim>
+  ignored: Bool
+}

@@ -18,7 +18,7 @@ import v2.std.core {
   Connective, Conj, Disj, NoConnective
 }
 import v2.compiler.infer_types {
-  child_inferred_or_name, rt_type
+  child_type_node
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding
@@ -93,7 +93,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Node> 
             if rt.name == "" {
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
-                let child_type = child_inferred_or_name(ch: child)
+                let child_type = child_type_node(ch: child)
                 make_field_node(name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span)
               )
             } else {
