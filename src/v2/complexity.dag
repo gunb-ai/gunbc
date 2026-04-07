@@ -4121,8 +4121,103 @@ fn parenthesize_additive_cost(expr: CostExpr) -> String {
   }
 }
 
+// Short variable names for legend: n, m, p, q, r, s, t, u, v, w
+fn short_var_name(index: Int) -> String {
+  if index == 0 { "n" }
+  else if index == 1 { "m" }
+  else if index == 2 { "p" }
+  else if index == 3 { "q" }
+  else if index == 4 { "r" }
+  else if index == 5 { "s" }
+  else if index == 6 { "t" }
+  else if index == 7 { "u" }
+  else if index == 8 { "v" }
+  else if index == 9 { "w" }
+  else { concat("x", to_string(index)) }
+}
+
+// Build legend map: long name → short name, and legend string.
+type Legend {
+  substitution: Map<String, String>
+  suffix: String
+}
+
+fn build_legend(size_names: List<String>) -> Legend {
+  let unique = deduplicate(items: size_names)
+  if unique |> count == 0 {
+    Legend { substitution: empty_map(), suffix: "" }
+  } else if unique |> count == 1 {
+    // Single variable: use "n" without a "where" clause (self-evident)
+    match unique |> first {
+      Some { value: name } =>
+        Legend {
+          substitution: map_insert(empty_map(), name, "n"),
+          suffix: ""
+        }
+      None => Legend { substitution: empty_map(), suffix: "" }
+    }
+  } else {
+    let indexed = unique |> fold(init: Legend { substitution: empty_map(), suffix: "" }, f: fn(acc, name) {
+      let idx = map_keys(acc.substitution) |> count
+      let short = short_var_name(index: idx)
+      Legend {
+        substitution: map_insert(acc.substitution, name, short),
+        suffix: if acc.suffix == "" {
+          concat(" where ", short, " = ", name)
+        } else {
+          concat(acc.suffix, ", ", short, " = ", name)
+        }
+      }
+    })
+    indexed
+  }
+}
+
+// Substitute size names in a SizeExpr using the legend map.
+fn substitute_size(size: SizeExpr, legend: Map<String, String>) -> SizeExpr {
+  match size {
+    SizeLen { collection: c } =>
+      match map_get(legend, c) {
+        Some { value: short } => SizeVar { name: short }
+        None => size
+      }
+    SizeVar { name: n } =>
+      match map_get(legend, n) {
+        Some { value: short } => SizeVar { name: short }
+        None => size
+      }
+    SizeAdd { left: l, right: r } =>
+      SizeAdd { left: substitute_size(size: l, legend: legend), right: substitute_size(size: r, legend: legend) }
+    SizeMax { left: l, right: r } =>
+      SizeMax { left: substitute_size(size: l, legend: legend), right: substitute_size(size: r, legend: legend) }
+    SizeConst { value: _ } => size
+  }
+}
+
+// Substitute size names in a CostExpr using the legend map.
+fn substitute_cost(expr: CostExpr, legend: Map<String, String>) -> CostExpr {
+  match expr {
+    CostConst { value: _ } => expr
+    CostAdd { left: l, right: r } =>
+      CostAdd { left: substitute_cost(expr: l, legend: legend), right: substitute_cost(expr: r, legend: legend) }
+    CostMul { left: l, right: r } =>
+      CostMul { left: substitute_cost(expr: l, legend: legend), right: substitute_cost(expr: r, legend: legend) }
+    CostMax { left: l, right: r } =>
+      CostMax { left: substitute_cost(expr: l, legend: legend), right: substitute_cost(expr: r, legend: legend) }
+    CostSum { binder: b, upper: u, body: bd } =>
+      CostSum { binder: b, upper: substitute_size(size: u, legend: legend), body: substitute_cost(expr: bd, legend: legend) }
+    CostLog { base: b, argument: a } =>
+      CostLog { base: b, argument: substitute_size(size: a, legend: legend) }
+    CostExtern { name: _ } => expr
+  }
+}
+
 fn classify_complexity(expr: CostExpr) -> String {
-  format_cost_class(expr: normalize_asymptotic(expr: simplify_cost(expr: expr)))
+  let normalized = normalize_asymptotic(expr: simplify_cost(expr: expr))
+  let size_names = collect_size_vars(expr: normalized)
+  let legend = build_legend(size_names: size_names)
+  let substituted = substitute_cost(expr: normalized, legend: legend.substitution)
+  concat(format_cost_class(expr: substituted), legend.suffix)
 }
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
@@ -4130,6 +4225,8 @@ fn collect_size_vars_from_size(size: SizeExpr) -> List<String> {
   match size {
     SizeLen { collection: c } =>
       if c == "__expr" { [] } else { [c] }
+    SizeVar { name: n } =>
+      if n == "__k" { [] } else { [n] }
     SizeAdd { left: l, right: r } =>
       concat(collect_size_vars_from_size(size: l), collect_size_vars_from_size(size: r))
     SizeMax { left: l, right: r } =>

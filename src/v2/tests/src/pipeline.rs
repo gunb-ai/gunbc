@@ -2238,8 +2238,8 @@ fn cx_constant_absorption_in_linear_function() {
     assert_no_diagnostics(&result);
     let class = result.complexity.function_classes.get("sum_items")
         .expect("sum_items should have a complexity class");
-    assert_eq!(class.as_str(), "O(|items|)",
-        "constant + linear should normalize to O(|items|), got {}", class);
+    assert_eq!(class.as_str(), "O(n)",
+        "constant + linear should normalize to O(n), got {}", class);
 }
 
 #[test]
@@ -2262,8 +2262,8 @@ fn cx_idempotent_addition_two_folds() {
     assert_no_diagnostics(&result);
     let class = result.complexity.function_classes.get("sum_and_count")
         .expect("sum_and_count should have a complexity class");
-    assert_eq!(class.as_str(), "O(|items|)",
-        "two folds over same collection should be O(|items|), got {}", class);
+    assert_eq!(class.as_str(), "O(n)",
+        "two folds over same collection should be O(n), got {}", class);
 }
 
 #[test]
@@ -2274,8 +2274,22 @@ fn cx_idempotent_max_in_match() {
     assert_no_diagnostics(&result);
     let class = result.complexity.function_classes.get("process")
         .expect("process should have a complexity class");
-    assert_eq!(class.as_str(), "O(|items|)",
-        "max of equal folds should be O(|items|), got {}", class);
+    assert_eq!(class.as_str(), "O(n)",
+        "max of equal folds should be O(n), got {}", class);
+}
+
+#[test]
+fn cx_multi_variable_legend() {
+    // Function iterating over two different collections: O(n + m) where n = items, m = names
+    let source = "module cx_legend\n\nfn process_both(items: List<Int>, names: List<String>) -> Int {\n  let s = items |> fold(init: 0, f: (acc, x) => acc + x)\n  let c = names |> fold(init: 0, f: (acc, n) => acc + 1)\n  s + c\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let class = result.complexity.function_classes.get("process_both")
+        .expect("process_both should have a complexity class");
+    assert!(class.contains("where"),
+        "multi-variable should have 'where' legend, got {}", class);
+    assert!(class.starts_with("O(n + m)") || class.starts_with("O(m + n)"),
+        "multi-variable should be O(n + m), got {}", class);
 }
 
 // =========================================================================

@@ -3813,8 +3813,166 @@ pub fn parenthesize_additive_cost(expr: Rc<CostExpr>) -> String {
 }
 }
 
+pub fn short_var_name(index: i64) -> String {
+    if (index.clone() == 0) {
+        "n".to_string()
+} else {
+        if (index.clone() == 1) {
+            "m".to_string()
+} else {
+            if (index.clone() == 2) {
+                "p".to_string()
+} else {
+                if (index.clone() == 3) {
+                    "q".to_string()
+} else {
+                    if (index.clone() == 4) {
+                        "r".to_string()
+} else {
+                        if (index.clone() == 5) {
+                            "s".to_string()
+} else {
+                            if (index.clone() == 6) {
+                                "t".to_string()
+} else {
+                                if (index.clone() == 7) {
+                                    "u".to_string()
+} else {
+                                    if (index.clone() == 8) {
+                                        "v".to_string()
+} else {
+                                        if (index.clone() == 9) {
+                                            "w".to_string()
+} else {
+                                            v2_rt::concat("x".to_string(), (index.clone()).to_string())
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Legend {
+    pub substitution: Rc<HashMap<String, String>>,
+    pub suffix: String,
+}
+
+pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
+    {
+        let unique = deduplicate(size_names);
+if ((unique.clone().len() as i64) == 0) {
+            Rc::new(Legend {
+    substitution: v2_rt::rc_empty_map::<String>(),
+    suffix: "".to_string(),
+})
+} else {
+            if ((unique.clone().len() as i64) == 1) {
+                match unique.clone().first().cloned() {
+    Some(name) => Rc::new(Legend {
+    substitution: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), name.clone(), "n".to_string()),
+    suffix: "".to_string(),
+}),
+    None => Rc::new(Legend {
+    substitution: v2_rt::rc_empty_map::<String>(),
+    suffix: "".to_string(),
+}),
+}
+} else {
+                {
+                    let indexed = unique.clone().iter().cloned().fold(Rc::new(Legend {
+    substitution: v2_rt::rc_empty_map::<String>(),
+    suffix: "".to_string(),
+}), |acc: Rc<Legend>, name: String| {
+                        let idx = (Rc::new(v2_rt::map_keys(&acc.substitution.clone())).len() as i64);
+let short = short_var_name(idx.clone());
+Rc::new(Legend {
+    substitution: v2_rt::rc_map_insert(acc.substitution.clone(), name.clone(), short.clone()),
+    suffix: if (acc.suffix.clone().as_str() == "".to_string().as_str()) {
+                            v2_rt::concat(v2_rt::concat(v2_rt::concat(" where ".to_string(), short.clone()), " = ".to_string()), name.clone())
+} else {
+                            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(acc.suffix.clone(), ", ".to_string()), short.clone()), " = ".to_string()), name.clone())
+},
+})
+});
+indexed
+}
+}
+}
+}
+}
+
+pub fn substitute_size(size: Rc<SizeExpr>, legend: Rc<HashMap<String, String>>) -> Rc<SizeExpr> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*size.clone()).clone() {
+    SizeExpr::SizeLen { collection: c, .. } => match v2_rt::map_get(&legend, c.clone()) {
+    Some(short) => Rc::new(SizeExpr::SizeVar {
+    name: short.clone(),
+}),
+    None => size.clone(),
+},
+    SizeExpr::SizeVar { name: n, .. } => match v2_rt::map_get(&legend, n.clone()) {
+    Some(short) => Rc::new(SizeExpr::SizeVar {
+    name: short.clone(),
+}),
+    None => size.clone(),
+},
+    SizeExpr::SizeAdd { left: l, right: r, .. } => Rc::new(SizeExpr::SizeAdd {
+    left: substitute_size(l.clone(), legend.clone()),
+    right: substitute_size(r.clone(), legend.clone()),
+}),
+    SizeExpr::SizeMax { left: l, right: r, .. } => Rc::new(SizeExpr::SizeMax {
+    left: substitute_size(l.clone(), legend.clone()),
+    right: substitute_size(r.clone(), legend.clone()),
+}),
+    SizeExpr::SizeConst { .. } => size.clone(),
+}
+    })
+}
+
+pub fn substitute_cost(expr: Rc<CostExpr>, legend: Rc<HashMap<String, String>>) -> Rc<CostExpr> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*expr.clone()).clone() {
+    CostExpr::CostConst { .. } => expr.clone(),
+    CostExpr::CostAdd { left: l, right: r, .. } => Rc::new(CostExpr::CostAdd {
+    left: substitute_cost(l.clone(), legend.clone()),
+    right: substitute_cost(r.clone(), legend.clone()),
+}),
+    CostExpr::CostMul { left: l, right: r, .. } => Rc::new(CostExpr::CostMul {
+    left: substitute_cost(l.clone(), legend.clone()),
+    right: substitute_cost(r.clone(), legend.clone()),
+}),
+    CostExpr::CostMax { left: l, right: r, .. } => Rc::new(CostExpr::CostMax {
+    left: substitute_cost(l.clone(), legend.clone()),
+    right: substitute_cost(r.clone(), legend.clone()),
+}),
+    CostExpr::CostSum { binder: b, upper: u, body: bd, .. } => Rc::new(CostExpr::CostSum {
+    binder: b.clone(),
+    upper: substitute_size(u.clone(), legend.clone()),
+    body: substitute_cost(bd.clone(), legend.clone()),
+}),
+    CostExpr::CostLog { base: b, argument: a, .. } => Rc::new(CostExpr::CostLog {
+    base: b.clone(),
+    argument: substitute_size(a.clone(), legend.clone()),
+}),
+    CostExpr::CostExtern { .. } => expr.clone(),
+}
+    })
+}
+
 pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
-    format_cost_class(normalize_asymptotic(simplify_cost(expr)))
+    {
+        let normalized = normalize_asymptotic(simplify_cost(expr));
+let size_names = collect_size_vars(normalized.clone());
+let legend = build_legend(size_names);
+let substituted = substitute_cost(normalized.clone(), legend.substitution.clone());
+v2_rt::concat(format_cost_class(substituted), legend.suffix.clone())
+}
 }
 
 pub fn collect_size_vars_from_size(size: Rc<SizeExpr>) -> Rc<Vec<String>> {
@@ -3824,6 +3982,11 @@ pub fn collect_size_vars_from_size(size: Rc<SizeExpr>) -> Rc<Vec<String>> {
             Rc::new(vec![])
 } else {
             Rc::new(vec![c.clone()])
+},
+    SizeExpr::SizeVar { name: n, .. } => if (n.clone().as_str() == "__k".to_string().as_str()) {
+            Rc::new(vec![])
+} else {
+            Rc::new(vec![n.clone()])
 },
     SizeExpr::SizeAdd { left: l, right: r, .. } => v2_rt::concat(collect_size_vars_from_size(l.clone()), collect_size_vars_from_size(r.clone())),
     SizeExpr::SizeMax { left: l, right: r, .. } => v2_rt::concat(collect_size_vars_from_size(l.clone()), collect_size_vars_from_size(r.clone())),
