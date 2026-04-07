@@ -2221,8 +2221,12 @@ fn cx_forever_bound_classifies_as_constant() {
 // =========================================================================
 // CX: Asymptotic normalization regression tests
 //
-// Verify that the cost algebra produces clean asymptotic classes.
-// Constants absorb into non-constant terms: O(1 + n) = O(n).
+// Verify that the cost algebra models the math correctly:
+// - Constant absorption: O(1 + n) = O(n)
+// - Idempotent addition: O(n + n) = O(n)
+// - Idempotent max: O(max(n, n)) = O(n)
+// - Constant factor: O(k * n) = O(n)
+// - Constant-bound loop: Sum(i=1..k, f) = O(f)
 // =========================================================================
 
 #[test]
@@ -2248,6 +2252,30 @@ fn cx_pure_constant_function_is_o1() {
         .expect("add_three should have a complexity class");
     assert_eq!(class.as_str(), "O(1)",
         "pure constant operations should be O(1), got {}", class);
+}
+
+#[test]
+fn cx_idempotent_addition_two_folds() {
+    // Two folds over the same collection: O(|items| + |items|) = O(|items|)
+    let source = "module cx_idem\n\nfn sum_and_count(items: List<Int>) -> Int {\n  let s = items |> fold(init: 0, f: (acc, x) => acc + x)\n  let c = items |> fold(init: 0, f: (acc, x) => acc + 1)\n  s + c\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let class = result.complexity.function_classes.get("sum_and_count")
+        .expect("sum_and_count should have a complexity class");
+    assert_eq!(class.as_str(), "O(|items|)",
+        "two folds over same collection should be O(|items|), got {}", class);
+}
+
+#[test]
+fn cx_idempotent_max_in_match() {
+    // Match with equal-cost branches: O(max(|items|, |items|)) = O(|items|)
+    let source = "module cx_max\n\nfn process(items: List<Int>, flag: Bool) -> Int {\n  if flag {\n    items |> fold(init: 0, f: (acc, x) => acc + x)\n  } else {\n    items |> fold(init: 0, f: (acc, x) => acc + 1)\n  }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let class = result.complexity.function_classes.get("process")
+        .expect("process should have a complexity class");
+    assert_eq!(class.as_str(), "O(|items|)",
+        "max of equal folds should be O(|items|), got {}", class);
 }
 
 // =========================================================================

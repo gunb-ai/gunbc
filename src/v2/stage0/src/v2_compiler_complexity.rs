@@ -3670,7 +3670,10 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     CostExpr::CostAdd { left: l, right: r, .. } => {
             let nl = normalize_asymptotic(l.clone());
 let nr = normalize_asymptotic(r.clone());
-match (*nl.clone()).clone() {
+if (nl.clone() == nr.clone()) {
+                nl.clone()
+} else {
+                match (*nl.clone()).clone() {
     CostExpr::CostConst { value: 0, .. } => nr.clone(),
     CostExpr::CostConst { .. } => match (*nr.clone()).clone() {
     CostExpr::CostConst { value: 0, .. } => nl.clone(),
@@ -3688,11 +3691,15 @@ match (*nl.clone()).clone() {
 }),
 },
 }
+}
 },
     CostExpr::CostMax { left: l, right: r, .. } => {
             let nl = normalize_asymptotic(l.clone());
 let nr = normalize_asymptotic(r.clone());
-match (*nl.clone()).clone() {
+if (nl.clone() == nr.clone()) {
+                nl.clone()
+} else {
+                match (*nl.clone()).clone() {
     CostExpr::CostConst { value: 0, .. } => nr.clone(),
     CostExpr::CostConst { .. } => match (*nr.clone()).clone() {
     CostExpr::CostConst { value: 0, .. } => nl.clone(),
@@ -3709,6 +3716,7 @@ match (*nl.clone()).clone() {
     right: nr.clone(),
 }),
 },
+}
 }
 },
     CostExpr::CostMul { left: l, right: r, .. } => {
@@ -3737,11 +3745,14 @@ match (*nbd.clone()).clone() {
     CostExpr::CostConst { value: 0, .. } => Rc::new(CostExpr::CostConst {
     value: 0,
 }),
+    _ => match (*u.clone()).clone() {
+    SizeExpr::SizeConst { .. } => nbd.clone(),
     _ => Rc::new(CostExpr::CostSum {
     binder: b.clone(),
     upper: u.clone(),
     body: nbd.clone(),
 }),
+},
 }
 },
     CostExpr::CostLog { base: b, argument: a, .. } => Rc::new(CostExpr::CostLog {

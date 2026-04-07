@@ -3990,6 +3990,8 @@ fn format_size(size: SizeExpr) -> String {
 // - O(1 + n) → O(n): constant + non-constant → non-constant dominates
 // - O(max(1, n)) → O(n): constant max with non-constant → non-constant
 // - O(1 * n) → O(n): constant factor → absorbed
+// - O(f + f) → O(f): idempotent addition (same asymptotic class)
+// - O(max(f, f)) → O(f): idempotent max
 // - O(Sum(0)) → O(0): zero-cost loop → zero
 // The result IS the complexity class — format_cost_class reads it directly.
 fn normalize_asymptotic(expr: CostExpr) -> CostExpr {
@@ -3999,8 +4001,10 @@ fn normalize_asymptotic(expr: CostExpr) -> CostExpr {
     CostAdd { left: l, right: r } =>
       let nl = normalize_asymptotic(expr: l)
       let nr = normalize_asymptotic(expr: r)
+      // O(f + f) = O(f): idempotent
+      if nl == nr { nl }
       // O(k + x) = O(x) when x is non-constant
-      match nl {
+      else { match nl {
         CostConst { value: 0 } => nr
         CostConst { value: _ } => match nr {
           CostConst { value: 0 } => nl
@@ -4012,12 +4016,14 @@ fn normalize_asymptotic(expr: CostExpr) -> CostExpr {
           CostConst { value: _ } => nl
           _ => CostAdd { left: nl, right: nr }
         }
-      }
+      } }
     CostMax { left: l, right: r } =>
       let nl = normalize_asymptotic(expr: l)
       let nr = normalize_asymptotic(expr: r)
+      // O(max(f, f)) = O(f): idempotent
+      if nl == nr { nl }
       // O(max(k, x)) = O(x) when x is non-constant
-      match nl {
+      else { match nl {
         CostConst { value: 0 } => nr
         CostConst { value: _ } => match nr {
           CostConst { value: 0 } => nl
@@ -4029,7 +4035,7 @@ fn normalize_asymptotic(expr: CostExpr) -> CostExpr {
           CostConst { value: _ } => nl
           _ => CostMax { left: nl, right: nr }
         }
-      }
+      } }
     CostMul { left: l, right: r } =>
       let nl = normalize_asymptotic(expr: l)
       let nr = normalize_asymptotic(expr: r)
@@ -4047,7 +4053,13 @@ fn normalize_asymptotic(expr: CostExpr) -> CostExpr {
       let nbd = normalize_asymptotic(expr: bd)
       match nbd {
         CostConst { value: 0 } => CostConst { value: 0 }
-        _ => CostSum { binder: b, upper: u, body: nbd }
+        _ =>
+          // Sum over a constant upper bound = constant iterations = O(body).
+          // SizeConst means the loop count doesn't depend on input.
+          match u {
+            SizeConst { value: _ } => nbd
+            _ => CostSum { binder: b, upper: u, body: nbd }
+          }
       }
     CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
     CostExtern { name: _ } => expr
