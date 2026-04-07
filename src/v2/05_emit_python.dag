@@ -106,7 +106,8 @@ import v2.compiler.emit {
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
-  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport
+  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
+  seed_bindings
 }
 
 // =========================================================================
@@ -819,10 +820,6 @@ fn emit_py_typed_slice(base: Node, start: Node, end: Node, registry: Map<String,
 fn py_bridge_method_name(method_name: String) -> String {
   // Python reserved word `with` requires override; all others use method name directly.
   if method_name == "with" { "with_update" } else { method_name }
-}
-
-fn seed_bindings(key: String, value: String) -> Map<String, String> {
-  map_insert(empty_map(), key, value)
 }
 
 fn emit_py_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {

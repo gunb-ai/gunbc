@@ -404,6 +404,12 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
   }
 }
 
+// Check if a template's return type is structurally ReceiverSelf.
+// Used as a witness: only methods returning ReceiverSelf justify receiver patching.
+fn template_return_is_receiver_self(template: AlgebraFieldTemplate) -> Bool {
+  is_receiver_self(t: template.return_type)
+}
+
 // Check if a template's return type contains any AlgebraTypeVariable nodes.
 fn template_return_has_variables(template: AlgebraFieldTemplate) -> Bool {
   has_type_variable(t: template.return_type)

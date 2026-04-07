@@ -137,18 +137,13 @@ import v2.compiler.emit {
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
-  extract_modifier_names
+  extract_modifier_names,
+  seed_bindings
 }
 
 fn render_rust_type(n: Node, shared_types: Map<String, Bool>) -> String {
   render_node_type(n: n, target: Rust, shared_types: shared_types)
 }
-
-// Typed empty maps for emit — eliminates BRIDGE fabrications.
-fn seed_bindings(key: String, value: String) -> Map<String, String> {
-  map_insert(empty_map(), key, value)
-}
-
 
 fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }

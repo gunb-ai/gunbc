@@ -116,7 +116,8 @@ import v2.compiler.emit {
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls,
-  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport
+  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
+  seed_bindings
 }
 // =========================================================================
 // Go language facts -- from std.languages spec (go_language, go_literals)
@@ -843,10 +844,6 @@ fn go_bridge_method_name(method_name: String) -> String {
   let parts = method_name |> split(delimiter: "_")
   let pascal_parts = parts |> map(p => capitalize_first(s: p))
   pascal_parts |> join(separator: "")
-}
-
-fn seed_bindings(key: String, value: String) -> Map<String, String> {
-  map_insert(empty_map(), key, value)
 }
 
 fn emit_go_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {

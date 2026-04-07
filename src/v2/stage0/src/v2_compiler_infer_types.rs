@@ -577,6 +577,10 @@ callable_node(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.ite
     })
 }
 
+pub fn template_return_is_receiver_self(template: Rc<AlgebraFieldTemplate>) -> bool {
+    is_receiver_self(template.return_type.clone())
+}
+
 pub fn template_return_has_variables(template: Rc<AlgebraFieldTemplate>) -> bool {
     has_type_variable(template.return_type.clone())
 }
