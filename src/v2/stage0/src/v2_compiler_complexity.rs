@@ -2900,15 +2900,7 @@ v2_rt::concat(val_edges, body_edges)
 },
     ExprData::ExprMatch => {
             let scrut = match_scrutinee(body.clone());
-let scrut_edges = collect_scc_child_edges(scrut.clone(), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone());
-let scrut_is_descent = expr_contains_descent(scrut.clone(), param_name.clone(), descent_vars.clone(), check_child.clone(), check_list.clone());
-let scrut_is_param = match (*scrut.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                let sname = expr_var_name(scrut.clone());
-((sname.clone().as_str() == param_name.clone().as_str()) || set_has(descent_vars.clone(), sname.clone()))
-},
-    _ => false,
-};
+let scrut_edges = collect_scc_child_edges(scrut, caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone());
 let arms_edges = Rc::new({ let mut __result = Vec::new(); for arm_node in match_arm_nodes(body.clone()).iter().cloned() { __result.extend((*{
                 let is_base_case = if branching_only.clone() {
                     (max_path_target_calls(arm_body(arm_node.clone()), target_set.clone()) == 0)
@@ -2918,22 +2910,7 @@ let arms_edges = Rc::new({ let mut __result = Vec::new(); for arm_node in match_
 if is_base_case.clone() {
                     Rc::new(vec![])
 } else {
-                    {
-                        let arm_vars = if (scrut_is_descent.clone() || scrut_is_param.clone()) {
-                            match (*arm_pattern(arm_node.clone())).clone() {
-    MatchPattern::VariantPattern { field_bindings: bindings, .. } => bindings.clone().iter().cloned().fold(descent_vars.clone(), |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| collect_field_binding_names(fb.clone(), inner.clone())),
-    MatchPattern::Bind { name: binding_name, .. } => if scrut_is_descent.clone() {
-                                v2_rt::rc_map_insert(descent_vars.clone(), binding_name.clone(), true)
-} else {
-                                descent_vars.clone()
-},
-    _ => descent_vars.clone(),
-}
-} else {
-                            descent_vars.clone()
-};
-collect_scc_child_edges(arm_body(arm_node.clone()), caller.clone(), param_name.clone(), arm_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone())
-}
+                    collect_scc_child_edges(arm_body(arm_node.clone()), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone())
 }
 }).iter().cloned()); } __result });
 v2_rt::concat(scrut_edges, arms_edges)

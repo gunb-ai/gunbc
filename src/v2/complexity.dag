@@ -3252,38 +3252,22 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         None => []
       }
       concat(val_edges, body_edges)
-    // CX-N: Thread descent vars through match arms; skip non-descending arms when branching_only.
+    // CX-N: Walk match arms; skip base-case arms (0 SCC calls) when branching_only.
+    // Pattern-binding promotion is NOT done here — it would unsoundly promote
+    // all variant bindings as descent vars without verifying they are recursive
+    // child positions. The pre-computed descent_vars (from collect_descent_vars)
+    // already contains bindings from the function body; that is the single
+    // authority for descent variable discovery.
     ExprMatch =>
       let scrut = match_scrutinee(texpr: body)
       let scrut_edges = collect_scc_child_edges(body: scrut, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
-      let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: descent_vars, check_child: check_child, check_list: check_list)
-      let scrut_is_param = match scrut.expr_data {
-        ExprVar { binding_kind: _ } =>
-          let sname = expr_var_name(texpr: scrut)
-          sname == param_name || set_has(m: descent_vars, key: sname)
-        _ => false
-      }
-      // Collect edges from each arm, threading pattern bindings as descent vars.
-      // When branching_only, skip arms with 0 SCC-peer calls (true base cases).
-      // Arms with >=1 SCC call always participate in the conservative MEET.
       let arms_edges = match_arm_nodes(texpr: body) |> flat_map(arm_node =>
         let is_base_case = if branching_only {
           max_path_target_calls(body: arm_body(n: arm_node), target_set: target_set) == 0
         } else { false }
         if is_base_case { [] }
         else {
-          let arm_vars = if scrut_is_descent || scrut_is_param {
-            match arm_pattern(n: arm_node) {
-              VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
-                bindings |> fold(init: descent_vars, f: (inner, fb) =>
-                  collect_field_binding_names(fb: fb, vars: inner)
-                )
-              Bind { name: binding_name } =>
-                if scrut_is_descent { map_insert(descent_vars, binding_name, true) } else { descent_vars }
-              _ => descent_vars
-            }
-          } else { descent_vars }
-          collect_scc_child_edges(body: arm_body(n: arm_node), caller: caller, param_name: param_name, descent_vars: arm_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+          collect_scc_child_edges(body: arm_body(n: arm_node), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
         }
       )
       concat(scrut_edges, arms_edges)

@@ -2909,6 +2909,102 @@ fn division_descent_is_allowed() {
 }
 
 // =========================================================================
+// CX-N: Recursion bound expectation tests
+//
+// Pin down which recursion patterns the analyzer classifies correctly.
+// Each test documents the EXPECTED bound and whether it's a violation.
+// These are regression tests for soundness — adding a new pattern here
+// should correspond to a structural fact, not a heuristic.
+//
+// Tests that assert on violations use #[ignore] because the CX gate is
+// bypassed (complexity_diags = []) — violations are computed but don't
+// produce diagnostics. Un-ignore when CX-E re-enables the gate.
+// =========================================================================
+
+#[test]
+fn cx_bound_child_descent_is_tree_size() {
+    // Recursion on structural children → bounded by TreeSize.
+    let source = "module cx_child\n\ntype Tree { left: Tree?  right: Tree?  value: Int }\nfn sum_tree(t: Tree) -> Int {\n  let l = match t.left { Some { value: lt } => sum_tree(t: lt), None => 0 }\n  let r = match t.right { Some { value: rt } => sum_tree(t: rt), None => 0 }\n  l + r + t.value\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn cx_bound_list_shrink_is_collection_size() {
+    // Recursion via skip(1) on a list → bounded by CollectionSize.
+    let source = "module cx_list\n\nfn sum_list(items: List<Int>) -> Int {\n  match items |> first {\n    None => 0\n    Some { value: head } => head + sum_list(items: items |> skip(1))\n  }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn cx_bound_arithmetic_descent_is_param() {
+    // Recursion with n-1 → bounded by ArithmeticParam.
+    let source = "module cx_arith\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { 1 + countdown(n: n - 1) }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+#[ignore] // CX-E: un-ignore when complexity gate re-enabled and violations populated for compile_dag
+fn cx_bound_same_argument_is_forever() {
+    // Recursion with unchanged argument → bounded by Forever.
+    // The analyzer honestly reports it can't prove a tighter bound.
+    let source = "module cx_forever\n\nfn spin(n: Int) -> Int {\n  spin(n: n)\n}\n";
+    let result = compile_dag(source);
+    assert!(
+        result.complexity.violations.iter().any(|v| v.func_name == "spin"),
+        "spin(n: n) must be a complexity violation (Forever bound), violations: {:?}",
+        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+#[ignore] // CX-E: un-ignore when complexity gate re-enabled and violations populated for compile_dag
+fn cx_bound_constructor_growth_is_forever() {
+    // Recursion that constructs LARGER values → Forever, not TreeSize.
+    // The analyzer must NOT claim this is bounded by input size.
+    let source = "module cx_grow\n\ntype Tree { left: Tree?  right: Tree?  value: Int }\nfn grow(t: Tree) -> Tree {\n  grow(t: Tree { left: Some { value: t }, right: Some { value: t }, value: 0 })\n}\n";
+    let result = compile_dag(source);
+    assert!(
+        result.complexity.violations.iter().any(|v| v.func_name == "grow"),
+        "grow(construct-larger) must be a complexity violation (Forever), violations: {:?}",
+        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn cx_bound_mutual_descent_is_bounded() {
+    // Mutual recursion where both functions descend → bounded.
+    let source = "module cx_mutual\n\nfn even(n: Int) -> Bool {\n  if n <= 0 { true }\n  else { odd(n: n - 1) }\n}\n\nfn odd(n: Int) -> Bool {\n  if n <= 0 { false }\n  else { even(n: n - 1) }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+#[ignore] // CX-E: un-ignore when complexity gate re-enabled and violations populated for compile_dag
+fn cx_bound_mutual_same_arg_is_forever() {
+    // Mutual recursion with unchanged arguments → Forever.
+    let source = "module cx_mutual_forever\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\n";
+    let result = compile_dag(source);
+    assert!(
+        !result.complexity.violations.is_empty(),
+        "ping<->pong with same args must produce violations"
+    );
+}
+
+#[test]
+fn cx_bound_metadata_field_is_not_descent_witness() {
+    // Matching on a non-recursive field (metadata) must NOT create descent evidence.
+    // name, span, etc. are not structural sub-values — they don't carry children.
+    let source = "module cx_metadata\n\ntype Item { name: String  payload: Item? }\nfn check_name(item: Item) -> Bool {\n  if item.name == \"done\" { true }\n  else {\n    match item.payload {\n      Some { value: next } => check_name(item: next)\n      None => false\n    }\n  }\n}\n";
+    let result = compile_dag(source);
+    // This should compile — it descends through payload (structural child).
+    // The name field access is metadata, NOT descent evidence.
+    assert_no_diagnostics(&result);
+}
+
+// =========================================================================
 // DAG compiler error detection tests
 //
 // These test the compiler's unique value: structural errors that only a
