@@ -330,6 +330,10 @@ fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffec
 // ReceiverElement is always last. The structural fact lives in std/algebra.dag;
 // direct template lookup is deferred until the emitter supports cross-module
 // type imports (AlgebraTypeTemplate variants inline into the caller module).
+// REVIEW #11: Positional heuristic (last param). Correct for all current
+// algebra methods but relies on convention, not structural dispatch.
+// Fix: cross-module template lookup (ROADMAP CG-2/CG-3). When available,
+// replace with: template.callable_of.param_types |> find_index(ReceiverElement).
 fn iteration_element_name(method_semantics: MethodSemantics?, lambda: Node) -> String? {
   lambda_param_names(texpr: lambda) |> last
 }
@@ -4571,6 +4575,12 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
         None =>
           // External function — outside our proof boundary. Cost is opaque
           // until declared (like C++ std specifying O(n log n) for sort).
+          // REVIEW #10: CostExtern succeeds silently. Future: stdlib cost
+          // contract system where builtins declare their complexity (e.g.,
+          // map_get → O(1), sort → O(n log n)). Until then, CostExtern
+          // is the honest "we can't measure this" marker. Not a violation
+          // because external functions are by definition outside our proof
+          // boundary — the uncertainty is at the boundary, not fabricated.
           let external_summary = ComplexitySummary {
             work: CostExtern { name: func_name },
             span: CostExtern { name: func_name },
