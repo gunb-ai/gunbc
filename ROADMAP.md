@@ -28,15 +28,18 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 M1 COMPLETE─┤                                       ├→ M4 (structural identity)
 Bootstrap D ┼─ Lane 2: CG (codegen correctness) ───┘       └→ M5 → M6 → M7
   COMPLETE  ├─ Lane 3: CX (164 → 0)
+            ├─ Lane 4: LS (language spec modeling) ─→ CG-3 parameterized emission
             └─ PERF (continuous — parallel to all lanes)
             CM: cross-cutting design lens (informs all lanes) → src/v2/CM.md
 
 Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
 Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, ownership, languages
 Lane 3 owns: complexity, dsl/std/
+Lane 4 owns: dsl/extdeps/languages/{rust,go,python}/ — spec-sourced data
 CM informs how Lanes 1-3 approach work; does not own files separately
 PERF owns: performance ratchets, bootstrap convergence tests, timing budgets
 M4 follows Lanes 1+2 (needs structural facts + clean render path)
+LS follows CG-3 (needs parameterized emission to consume spec data)
 ```
 
 ---
@@ -306,7 +309,7 @@ Make emission fully data-driven. Adding a backend = adding data.
   Shared `emit_rust_higher_order_method` replaces 4 hardcoded emitters
   (filter/any/all/flat_map). Data-driven dispatch via method name lookup.
 - [~] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend sites are inherent rendering differences.
-- [ ] LanguageSpec completion — all target-language facts data-driven
+- [ ] LanguageSpec completion — all target-language facts data-driven (see LS lane below)
 - [x] TypeRendering dissolved — `render_node_type` consumes coercion data directly (PR #331)
 - [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
 
@@ -386,6 +389,74 @@ coverage of the same finite algebra.
 
 No escape hatches in type rendering. No fabricated names. No post-hoc
 passes to fix what construction should have prevented.
+
+---
+
+## LS: Language Spec Modeling (follows CG-3)
+
+**Thesis:** Every target language has a spec. The spec constrains what
+the emitter can produce. Model the spec as .dag data declarations in
+`dsl/extdeps/languages/{rust,go,python}/`. The emitter reads the spec —
+it never decides. The spec IS the invariant.
+
+This is what .dag is made for: decidable, structural, authoritative
+facts. A language spec is exactly that — finite rules about what
+syntax is valid and what semantics it carries. Modeling it in .dag
+means the compiler can prove it follows the spec by construction.
+
+**Pattern:** For each language decision the emitter currently makes
+via inline logic, find the relevant section of the language spec,
+model it as data, reference the spec section in a comment, and have
+the emitter consume the data.
+
+### LS-1: Type cast rules
+
+Emitter currently uses `is_primitive_numeric_node` (target-only check).
+The Rust spec defines `as` validity as a relation `(source, target)`.
+
+Ref: Rust Reference §8.2.4 "Type cast expressions"
+https://doc.rust-lang.org/reference/expressions/operator-expr.html#type-cast-expressions
+
+Spec table (value-level casts only):
+- Integer/Float → Integer/Float (numeric cast)
+- bool/char → Integer (primitive to integer cast)
+- u8 → char (u8 to char cast)
+- Enumeration → Integer (enum cast)
+- NOT valid: bool→float, integer→bool, integer→char (except u8)
+
+Model: `CastCategory` enum + `CastRule` relation + `can_as_cast(from, to)`
+lookup in `extdeps/languages/rust/types.dag`. Emitter calls lookup
+instead of classifying inline.
+
+Go equivalent: type conversion rules (all numeric conversions valid,
+`int64(x)` syntax). Python: constructor calls (`int(x)`, `float(x)`).
+
+### LS-2: Operator semantics
+
+Which operators are valid for which types, and what syntax they produce.
+Currently scattered across emitter logic.
+
+### LS-3: Expression syntax
+
+Statement vs expression distinction, block syntax, match exhaustiveness
+requirements, semicolon rules. Each language has different rules.
+
+### LS-4: Ownership and borrowing (Rust)
+
+Move/copy/borrow rules. Currently heuristic in the Rust emitter.
+The Rust Reference defines these structurally.
+
+### LS-5: Visibility and module system
+
+`pub`, `pub(crate)`, Go capitalization, Python `__all__`. Currently
+hardcoded per-backend.
+
+### Acceptance
+
+Every emitter decision traces to a spec-referenced data declaration
+in `dsl/extdeps/languages/`. Adding a new target language = modeling
+its spec as .dag data. Regression tests auto-generated from the spec
+data (each rule → one test).
 
 ---
 
