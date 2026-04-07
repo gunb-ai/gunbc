@@ -110,6 +110,7 @@ type CostExpr
   | CostMax { left: CostExpr, right: CostExpr }
   | CostSum { binder: String, upper: SizeExpr, body: CostExpr }
   | CostLog { base: Int, argument: SizeExpr }
+  | CostExtern { name: String }
 
 // =========================================================================
 // Certainty of a proof
@@ -3907,6 +3908,7 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
         _ => CostSum { binder: b, upper: u, body: sbd }
       }
     CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
+    CostExtern { name: _ } => expr
   }
 }
 
@@ -3947,6 +3949,7 @@ fn normalize_constants(expr: CostExpr) -> CostExpr {
     CostSum { binder: b, upper: u, body: bd } =>
       CostSum { binder: b, upper: u, body: normalize_constants(expr: bd) }
     CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
+    CostExtern { name: _ } => expr
   }
 }
 
@@ -3954,6 +3957,7 @@ fn normalize_constants(expr: CostExpr) -> CostExpr {
 fn format_cost_class(expr: CostExpr) -> String {
   match expr {
     CostConst { value: _ } => "O(1)"
+    CostExtern { name: n } => concat("O(extern(", n, "))")
     CostSum { binder: _, upper: u, body: bd } =>
       match bd {
         CostConst { value: _ } => concat("O(", format_size(size: u), ")")
@@ -3992,6 +3996,7 @@ fn format_cost_inner(expr: CostExpr) -> String {
     CostMax { left: l, right: r } =>
       concat("max(", format_cost_inner(expr: l), ", ", format_cost_inner(expr: r), ")")
     CostLog { base: _, argument: a } => concat("log ", format_size(size: a))
+    CostExtern { name: n } => concat("extern(", n, ")")
   }
 }
 
@@ -4502,10 +4507,11 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
           let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
           SummaryResult { summary: simplified, table: final_table }
         None =>
-          // Unknown function — concrete zero cost (external, not modeled)
+          // External function — outside our proof boundary. Cost is opaque
+          // until declared (like C++ std specifying O(n log n) for sort).
           let external_summary = ComplexitySummary {
-            work: CostConst { value: 0 },
-            span: CostConst { value: 0 },
+            work: CostExtern { name: func_name },
+            span: CostExtern { name: func_name },
             output_size: empty_map(),
             certainty: Conservative
           }

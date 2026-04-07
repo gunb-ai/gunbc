@@ -124,6 +124,9 @@ pub enum CostExpr {
         base: i64,
         argument: Rc<SizeExpr>,
     },
+    CostExtern {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3591,6 +3594,7 @@ match (*sbd.clone()).clone() {
     base: b.clone(),
     argument: a.clone(),
 }),
+    CostExpr::CostExtern { .. } => expr.clone(),
 }
     })
 }
@@ -3613,7 +3617,7 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
 
 pub fn normalize_constants(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*expr).clone() {
+        match (*expr.clone()).clone() {
     CostExpr::CostConst { value: v, .. } => if (v.clone() <= 0) {
             Rc::new(CostExpr::CostConst {
     value: 0,
@@ -3644,6 +3648,7 @@ pub fn normalize_constants(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     base: b.clone(),
     argument: a.clone(),
 }),
+    CostExpr::CostExtern { .. } => expr.clone(),
 }
     })
 }
@@ -3651,6 +3656,7 @@ pub fn normalize_constants(expr: Rc<CostExpr>) -> Rc<CostExpr> {
 pub fn format_cost_class(expr: Rc<CostExpr>) -> String {
     match (*expr).clone() {
     CostExpr::CostConst { .. } => "O(1)".to_string(),
+    CostExpr::CostExtern { name: n, .. } => v2_rt::concat(v2_rt::concat("O(extern(".to_string(), n.clone()), "))".to_string()),
     CostExpr::CostSum { upper: u, body: bd, .. } => match (*bd.clone()).clone() {
     CostExpr::CostConst { .. } => v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(u.clone())), ")".to_string()),
     _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(u.clone())), " * ".to_string()), format_cost_inner(bd.clone())), ")".to_string()),
@@ -3684,6 +3690,7 @@ v2_rt::concat(v2_rt::concat(left_str, " * ".to_string()), right_str)
 },
     CostExpr::CostMax { left: l, right: r, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("max(".to_string(), format_cost_inner(l.clone())), ", ".to_string()), format_cost_inner(r.clone())), ")".to_string()),
     CostExpr::CostLog { argument: a, .. } => v2_rt::concat("log ".to_string(), format_size(a.clone())),
+    CostExpr::CostExtern { name: n, .. } => v2_rt::concat(v2_rt::concat("extern(".to_string(), n.clone()), ")".to_string()),
 }
     })
 }
@@ -4216,11 +4223,11 @@ Rc::new(SummaryResult {
 },
     None => {
         let external_summary = Rc::new(ComplexitySummary {
-    work: Rc::new(CostExpr::CostConst {
-    value: 0,
+    work: Rc::new(CostExpr::CostExtern {
+    name: func_name.clone(),
 }),
-    span: Rc::new(CostExpr::CostConst {
-    value: 0,
+    span: Rc::new(CostExpr::CostExtern {
+    name: func_name.clone(),
 }),
     output_size: v2_rt::rc_empty_map::<Rc<CostExpr>>(),
     certainty: Certainty::Conservative,
