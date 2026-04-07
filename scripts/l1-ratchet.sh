@@ -91,7 +91,8 @@ echo "  CollectionKind:                $collection_kind_count"
 # 2026-04-06: 36→37 (Phase C bare-container enrichment: is_container_type+arity in apply_type_substitution)
 # 2026-04-06: 37→36 (M4: Arrow connective dissolves n.name=="Callable" in render_node_type)
 # 2026-04-06: 36→34 (M4: dissolve remaining 3 Callable name checks — emit_info, resolve)
-L1_RATCHET=34
+# 2026-04-06: 34→31 (M4: dissolve 3 Tuple name checks — structural is_pair + tuple_type_name constant)
+L1_RATCHET=31
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

@@ -956,7 +956,14 @@ if is_conj {
 return refined_str
 }
 }
-if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
+let is_pair = ((((n.children.clone().len() as i64) == 2) && match n.children.clone().first().cloned() {
+    Some(c0) => (c0.name.clone().as_str() == "first".to_string().as_str()),
+    None => false,
+}) && match n.children.clone().get(1 as usize).cloned() {
+    Some(c1) => (c1.name.clone().as_str() == "second".to_string().as_str()),
+    None => false,
+});
+if is_pair {
                         {
                             let first_child = match n.children.clone().first().cloned() {
     Some(c) => if (c.inferred.clone() != None) {
@@ -1042,7 +1049,7 @@ let base = if bare_is_map.clone() {
 emit_container(to_snake(n.name.clone()), inner, target.clone())
 }
 } else {
-                                if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
+                                if (n.name.clone().as_str() == tuple_type_name().as_str()) {
                                     render_tuple_parts(Rc::new(vec![]), target.clone())
 } else {
                                     coerce_primitive_type(target.clone(), n.name.clone())
@@ -1105,7 +1112,7 @@ return single_str
 }
 }
 let child_strs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(render_node_type(c.clone(), target.clone(), shared_types.clone())); } __result });
-if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
+if (n.name.clone().as_str() == tuple_type_name().as_str()) {
                 {
                     let multi_tuple_str = render_tuple_parts(child_strs.clone(), target.clone());
 return multi_tuple_str
