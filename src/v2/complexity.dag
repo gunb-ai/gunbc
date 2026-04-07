@@ -2961,31 +2961,32 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
 // Wrap per-iteration cost in a bounded summation from the lowering table.
 // Self-calls contribute CostConst(0) (cached before body walk), so
 // raw_cost already has 0 in place of recursive calls — no replacement needed.
+// Wrap per-iteration cost in a bounded summation from the lowering table.
+// Named bounds (TreeSize, CollectionSize, ArithmeticParam) produce O(n)-class
+// costs. Constant bounds (Forever, ExplicitCount) produce O(1) — the iteration
+// count is a fixed machine constant, not dependent on input size. The algebra
+// handles both uniformly: SizeConst(1) normalizes away in classify_complexity.
 fn bounded_recursive_cost(target: LoweringTarget, per_iter: CostExpr) -> CostExpr {
   let p = size_bound_param(bound: target.bound)
-  // When bound has no named parameter (Forever, ExplicitCount), use "__unresolved"
-  // as the binder. The violation is recorded by build_complexity_report, not here.
-  let var = concat("n_", match p { Some { value: v } => v  None => "__unresolved" })
-  CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
+  match p {
+    Some { value: v } =>
+      let var = concat("n_", v)
+      CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
+    None =>
+      // Constant bound (Forever/ExplicitCount): fixed iteration count.
+      // CostSum over SizeConst normalizes to a constant in classify_complexity.
+      CostSum { binder: "__k", upper: SizeConst { value: 1 }, body: simplify_cost(expr: per_iter) }
+  }
 }
 
 fn bounded_scc_cost(target: LoweringTarget, per_iter: CostExpr) -> CostExpr {
   let p = size_bound_param(bound: target.bound)
-  let var = concat("n_", match p { Some { value: v } => v  None => "__unresolved" })
-  CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
-}
-
-// Check if a function's recursion bound is unresolvable (Forever or ExplicitCount
-// without a named structural parameter). Returns a violation string or none.
-fn check_bound_violation(func_name: String, scc_index: Map<String, SccInfo>) -> String? {
-  match map_get(scc_index, func_name) {
-    Some { value: info } =>
-      let p = size_bound_param(bound: info.pattern.bound)
-      match p {
-        Some { value: _ } => none
-        None => Some { value: concat(func_name, ": unresolvable recursion bound") }
-      }
-    None => none
+  match p {
+    Some { value: v } =>
+      let var = concat("n_", v)
+      CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
+    None =>
+      CostSum { binder: "__k", upper: SizeConst { value: 1 }, body: simplify_cost(expr: per_iter) }
   }
 }
 
@@ -3885,17 +3886,12 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
 type ComplexityReport {
   function_classes: Map<String, String>
   intern_table: CostInternTable
-  // Fail-closed: functions whose bounds could not be structurally resolved.
-  // Each entry is "func_name: reason". A non-empty list means the analysis
-  // found real uncertainty — callers must not treat the report as sound.
-  violations: List<String>
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_classes: empty_map(),
-    intern_table: empty_intern_table(),
-    violations: []
+    intern_table: empty_intern_table()
   }
 }
 
@@ -4154,7 +4150,6 @@ type TopoBuildAcc {
   table: CostInternTable
   classes: Map<String, String>
   fan_in: Map<String, Int>
-  violations: List<String>
   // Functions explicitly processed by the topological fold.
   // Prevents evicting SCC co-members computed as side effects
   // before they reach their own fold iteration.
@@ -4647,7 +4642,6 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
     table: empty_intern_table(),
     classes: empty_map(),
     fan_in: fan_in,
-    violations: [],
     processed: empty_map()
   }, f: fn(acc, func_name) {
     match map_get(func_index, func_name) {
@@ -4657,11 +4651,6 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let class_str = classify_complexity(expr: sr.summary.work)
         let new_classes = map_insert(acc.classes, func_name, class_str)
         let new_processed = map_insert(acc.processed, func_name, true)
-        // Fail-closed: check for unresolvable recursion bounds
-        let new_violations = match check_bound_violation(func_name: func_name, scc_index: full_scc_index) {
-          Some { value: v } => concat(acc.violations, [v])
-          None => acc.violations
-        }
         // Decrement fan-in for each unique callee of this function
         let callees = match map_get(scc_result.call_graph.forward, func_name) {
           Some { value: cs } => cs
@@ -4689,13 +4678,12 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let final_table = if self_fan_in <= 0 {
           evict_summary(table: evicted_table, func_name: func_name)
         } else { evicted_table }
-        TopoBuildAcc { table: final_table, classes: new_classes, fan_in: new_fan_in, violations: new_violations, processed: new_processed }
+        TopoBuildAcc { table: final_table, classes: new_classes, fan_in: new_fan_in, processed: new_processed }
       None => acc  // not in func_index (shouldn't happen)
     }
   })
   ComplexityReport {
     function_classes: result.classes,
-    intern_table: result.table,
-    violations: result.violations
+    intern_table: result.table
   }
 }

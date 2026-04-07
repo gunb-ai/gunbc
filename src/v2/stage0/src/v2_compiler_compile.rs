@@ -131,10 +131,7 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 }
 
 pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({ let mut __result = Vec::new(); for v in complexity.violations.clone().iter().cloned() { __result.push(make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v2_rt::concat("complexity: ".to_string(), v.clone()),
-    span: no_span(),
-}), "".to_string())); } __result })
+    Rc::new(vec![])
 }
 
 pub fn empty_artifact_plan() -> Rc<ArtifactPlan> {

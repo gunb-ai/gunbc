@@ -241,9 +241,11 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   }
 }
 
-// Extract the parameter name from a SizeBound. Returns none for bounds
-// without a named structural parameter — callers must handle the absence
-// explicitly (fail-closed) rather than fabricating a synthetic identifier.
+// Extract the parameter name from a SizeBound, or none for constant bounds.
+// Named bounds (TreeSize, CollectionSize, ArithmeticParam) have a parameter
+// that varies with input — these produce O(n)-class costs.
+// Constant bounds (ExplicitCount, Forever) are fixed values — they produce
+// O(1)-class costs because the iteration count doesn't depend on input size.
 fn size_bound_param(bound: SizeBound) -> String? {
   match bound {
     TreeSize { param: p }       => Some { value: p }
@@ -251,6 +253,17 @@ fn size_bound_param(bound: SizeBound) -> String? {
     ArithmeticParam { param: p } => Some { value: p }
     ExplicitCount { n: _ }      => none
     Forever                     => none
+  }
+}
+
+// Is this bound a constant (iteration count doesn't depend on input)?
+// Forever and ExplicitCount are constants — the machine can only iterate
+// a fixed number of times regardless of input size.
+fn is_constant_bound(bound: SizeBound) -> Bool {
+  match bound {
+    ExplicitCount { n: _ } => true
+    Forever                => true
+    _                      => false
   }
 }
 

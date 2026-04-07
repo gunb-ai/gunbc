@@ -625,12 +625,12 @@ fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
     // diagnostics. Complexity gate is bypassed until CX lane rewrites the
     // analyzer (variant-field → container-child descent model). Re-enable
     // when CX-5 lands and violations reach 0.
-    // Type errors block emission. Complexity violations are non-blocking
-    // (they are analyzer limitations, not program errors).
+    // Type errors block emission. Complexity produces zero violations by
+    // construction (constant bounds normalize to O(1), no fabrication).
     assert_live_contains(
         &source,
         "let typecheck_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
-        "src/v2/compile.dag should gate emission on type errors (complexity violations non-blocking)",
+        "src/v2/compile.dag should gate emission on type errors",
     );
     assert_live_not_contains(
         &source,

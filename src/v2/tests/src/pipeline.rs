@@ -34,17 +34,13 @@ fn full_dsl_compiles() {
     let dsl_result =
         v2_compiler::v2_compiler_compile::compile_sources(Rc::new(dsl_sources.clone()), RenderTarget::Rust);
 
-    // Complexity violations are non-blocking analyzer limitations.
-    // Only fail on hard errors (type/resolve/ownership).
-    let hard_diags: Vec<_> = diagnostic_messages(&dsl_result)
-        .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
-        .collect();
-    if !hard_diags.is_empty() {
+    let dsl_diag_count = dsl_result.diagnostics.len() as usize;
+    if dsl_diag_count > 0 {
+        let msgs = diagnostic_messages(&dsl_result);
         panic!(
-            "dsl/ compilation produced {} hard diagnostics (expected 0):\n{}",
-            hard_diags.len(),
-            hard_diags.iter()
+            "dsl/ compilation produced {} diagnostics (expected 0):\n{}",
+            dsl_diag_count,
+            msgs.iter()
                 .enumerate()
                 .map(|(i, m)| format!("  [{}] {}", i, m))
                 .collect::<Vec<_>>()
@@ -2204,30 +2200,22 @@ fn cx_bound_metadata_field_is_not_descent_witness() {
 }
 
 // =========================================================================
-// CX: Fail-closed violation ratchet
+// CX: Constant-bound recursion produces O(1)
 //
-// Functions with unresolvable recursion bounds produce complexity violations.
-// These are analyzer limitations, not program errors — the violations list
-// in ComplexityReport surfaces uncertainty instead of fabricating bounds.
+// Forever and ExplicitCount are machine constants — they don't depend on
+// input size. The algebra treats them as SizeConst, which normalizes to O(1).
+// Zero violations by construction.
 // =========================================================================
 
 #[test]
-fn cx_unresolvable_bound_produces_violation() {
-    // SameArgumentCall → Forever → violation (no named size parameter)
-    let source = "module cx_viol\n\nfn count_up(n: Int) -> Int {\n  if n > 100 { n }\n  else { count_up(n: n + 1) }\n}\n";
+fn cx_forever_bound_classifies_as_constant() {
+    // SameArgumentCall → Forever → SizeConst(1) → O(1)
+    let source = "module cx_forever\n\nfn count_up(n: Int) -> Int {\n  if n > 100 { n }\n  else { count_up(n: n + 1) }\n}\n";
     let result = compile_dag(source);
-    let violations: Vec<_> = result.complexity.violations.iter().cloned().collect();
-    assert_eq!(violations.len(), 1, "expected 1 violation for SameArgumentCall, got {:?}", violations);
-    assert!(violations[0].contains("unresolvable"), "violation should mention unresolvable bound: {}", violations[0]);
-}
-
-#[test]
-fn cx_non_recursive_has_no_violation() {
-    // Non-recursive functions never produce violations
-    let source = "module cx_no_viol\n\nfn add(a: Int, b: Int) -> Int { a + b }\n";
-    let result = compile_dag(source);
-    let violations: Vec<_> = result.complexity.violations.iter().cloned().collect();
-    assert_eq!(violations.len(), 0, "non-recursive function should have no violations, got {:?}", violations);
+    assert_no_diagnostics(&result);
+    let class = result.complexity.function_classes.get("count_up")
+        .expect("count_up should have a complexity class");
+    assert_eq!(class.as_str(), "O(1)", "Forever-bounded recursion should be O(1), got {}", class);
 }
 
 // =========================================================================

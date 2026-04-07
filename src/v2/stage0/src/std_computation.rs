@@ -174,6 +174,14 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
 }
 }
 
+pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
+    match (*bound).clone() {
+    SizeBound::ExplicitCount { .. } => true,
+    SizeBound::Forever => true,
+    _ => false,
+}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 
 pub enum IterationDimension {

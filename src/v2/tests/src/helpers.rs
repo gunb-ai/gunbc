@@ -241,12 +241,7 @@ pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
 }
 
 pub fn assert_no_diagnostics(result: &PipelineResult) {
-    // Complexity violations are non-blocking analyzer limitations,
-    // not program errors. Exclude them from the hard error check.
-    let msgs: Vec<_> = diagnostic_messages(result)
-        .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
-        .collect();
+    let msgs = diagnostic_messages(result);
     assert!(
         msgs.is_empty(),
         "expected 0 diagnostics, got {}: {:?}",

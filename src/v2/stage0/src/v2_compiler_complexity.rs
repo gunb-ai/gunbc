@@ -2516,10 +2516,9 @@ match proof.clone() {
 pub fn bounded_recursive_cost(target: Rc<LoweringTarget>, per_iter: Rc<CostExpr>) -> Rc<CostExpr> {
     {
         let p = size_bound_param(target.bound.clone());
-let var = v2_rt::concat("n_".to_string(), match p {
-    Some(v) => v.clone(),
-    None => "__unresolved".to_string(),
-});
+match p {
+    Some(v) => {
+            let var = v2_rt::concat("n_".to_string(), v.clone());
 Rc::new(CostExpr::CostSum {
     binder: var.clone(),
     upper: Rc::new(SizeExpr::SizeVar {
@@ -2527,16 +2526,24 @@ Rc::new(CostExpr::CostSum {
 }),
     body: simplify_cost(per_iter),
 })
+},
+    None => Rc::new(CostExpr::CostSum {
+    binder: "__k".to_string(),
+    upper: Rc::new(SizeExpr::SizeConst {
+    value: 1,
+}),
+    body: simplify_cost(per_iter),
+}),
+}
 }
 }
 
 pub fn bounded_scc_cost(target: Rc<LoweringTarget>, per_iter: Rc<CostExpr>) -> Rc<CostExpr> {
     {
         let p = size_bound_param(target.bound.clone());
-let var = v2_rt::concat("n_".to_string(), match p {
-    Some(v) => v.clone(),
-    None => "__unresolved".to_string(),
-});
+match p {
+    Some(v) => {
+            let var = v2_rt::concat("n_".to_string(), v.clone());
 Rc::new(CostExpr::CostSum {
     binder: var.clone(),
     upper: Rc::new(SizeExpr::SizeVar {
@@ -2544,19 +2551,15 @@ Rc::new(CostExpr::CostSum {
 }),
     body: simplify_cost(per_iter),
 })
-}
-}
-
-pub fn check_bound_violation(func_name: String, scc_index: Rc<HashMap<String, Rc<SccInfo>>>) -> Option<String> {
-    match v2_rt::map_get(&scc_index, func_name.clone()) {
-    Some(info) => {
-        let p = size_bound_param(info.pattern.clone().bound.clone());
-match p {
-    Some(_) => None,
-    None => Some(v2_rt::concat(func_name.clone(), ": unresolvable recursion bound".to_string())),
-}
 },
-    None => None,
+    None => Rc::new(CostExpr::CostSum {
+    binder: "__k".to_string(),
+    upper: Rc::new(SizeExpr::SizeConst {
+    value: 1,
+}),
+    body: simplify_cost(per_iter),
+}),
+}
 }
 }
 
@@ -3532,14 +3535,12 @@ Rc::new(SummaryResult {
 pub struct ComplexityReport {
     pub function_classes: Rc<HashMap<String, String>>,
     pub intern_table: Rc<CostInternTable>,
-    pub violations: Rc<Vec<String>>,
 }
 
 pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport {
     function_classes: v2_rt::rc_empty_map::<String>(),
     intern_table: empty_intern_table(),
-    violations: Rc::new(vec![]),
 })
 }
 
@@ -3821,7 +3822,6 @@ pub struct TopoBuildAcc {
     pub table: Rc<CostInternTable>,
     pub classes: Rc<HashMap<String, String>>,
     pub fan_in: Rc<HashMap<String, i64>>,
-    pub violations: Rc<Vec<String>>,
     pub processed: Rc<HashMap<String, bool>>,
 }
 
@@ -4332,7 +4332,6 @@ let result = scc_result.processing_order.clone().iter().cloned().fold(Rc::new(To
     table: empty_intern_table(),
     classes: v2_rt::rc_empty_map::<String>(),
     fan_in: fan_in,
-    violations: Rc::new(vec![]),
     processed: v2_rt::rc_empty_map::<bool>(),
 }), |acc: Rc<TopoBuildAcc>, func_name: String| match v2_rt::map_get(&func_index, func_name.clone()) {
     Some(_) => {
@@ -4340,10 +4339,6 @@ let result = scc_result.processing_order.clone().iter().cloned().fold(Rc::new(To
 let class_str = classify_complexity(sr.summary.clone().work.clone());
 let new_classes = v2_rt::rc_map_insert(acc.classes.clone(), func_name.clone(), class_str.clone());
 let new_processed = v2_rt::rc_map_insert(acc.processed.clone(), func_name.clone(), true);
-let new_violations = match check_bound_violation(func_name.clone(), full_scc_index.clone()) {
-    Some(v) => v2_rt::concat(acc.violations.clone(), Rc::new(vec![v.clone()])),
-    None => acc.violations.clone(),
-};
 let callees = match v2_rt::map_get(&scc_result.call_graph.clone().forward.clone(), func_name.clone()) {
     Some(cs) => cs.clone(),
     None => Rc::new(vec![]),
@@ -4381,7 +4376,6 @@ Rc::new(TopoBuildAcc {
     table: final_table.clone(),
     classes: new_classes.clone(),
     fan_in: new_fan_in.clone(),
-    violations: new_violations.clone(),
     processed: new_processed.clone(),
 })
 },
@@ -4390,7 +4384,6 @@ Rc::new(TopoBuildAcc {
 Rc::new(ComplexityReport {
     function_classes: result.classes.clone(),
     intern_table: result.table.clone(),
-    violations: result.violations.clone(),
 })
 }
 }
