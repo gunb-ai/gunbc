@@ -197,14 +197,16 @@ Open items:
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
-### BRIDGE fabrication progress (83 → 21)
+### BRIDGE fabrication progress (83 → 14)
 
-BRIDGE count reduced from 83 to 21 (17 real + 4 emitter template strings).
-Phases: contradictory predicate fix (83→29), Phase C structural
-resolution + typed seed helpers (29→21).
+BRIDGE count reduced from 83 to 14 (10 real + 4 emitter template strings).
+Phases: contradictory predicate fix (83→29), Phase C structural resolution
+(29→28), typed seed helpers (28→21), match/if arm expected propagation (21→14).
 
-Remaining 17 real BRIDGEs: all standalone `empty_map()` with `expected: None`
-in match/if None branches. Need ExpectedContext (see below).
+Remaining 10 real BRIDGEs: 9 inside seed helper functions
+(`map_insert(empty_map(), k, v)` where return type doesn't propagate to
+the `empty_map()` arg) + 1 TCO if-branch. Need emitter-side type
+propagation or broader expected-context threading.
 
 ### Compositional type parameter resolution (COMPLETE)
 
