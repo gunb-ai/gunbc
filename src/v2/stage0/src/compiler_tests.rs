@@ -74,12 +74,7 @@ mod compiler_tests {
     }
 
     /// Build the self-compile source closure: dsl/ dependencies + all src/v2/*.dag.
-    /// src/v2/ files are discovered from disk. The dsl/ dependencies are the
-    /// language specs and std/types needed by the v2 compiler.
     fn self_compile_sources() -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {
-        // DSL files required by the v2 compiler. These are read from disk
-        // but the set is curated: the stage0 reconciler OOMs on the full
-        // dsl/ tree, and some dsl/ files use syntax stage0 can't parse.
         let dsl_deps = &[
             "dsl/extdeps/languages/go/emit.dag",
             "dsl/extdeps/languages/python/emit.dag",
@@ -88,6 +83,7 @@ mod compiler_tests {
             "dsl/std/algebra.dag",
             "dsl/std/syntax.dag",
             "dsl/std/types.dag",
+            "dsl/std/verification.dag",
         ];
         let root = workspace_root();
         let mut sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = dsl_deps
@@ -103,15 +99,12 @@ mod compiler_tests {
             })
             .collect();
 
-        // All src/v2/*.dag files discovered from disk
         let v2_files = discover_dag_files("src/v2");
         sources.extend(source_files_from(&v2_files));
         sources
     }
 
-    /// Build the gist pipeline source closure: the gist tool's transitive import closure.
-    /// These are read from disk but the list is curated because the stage0
-    /// compiler cannot parse all dsl/ files.
+    /// Build the gist pipeline source closure.
     fn gist_sources() -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {
         let gist_deps = &[
             "dsl/extdeps/cloud/cloud.dag",
@@ -165,7 +158,6 @@ mod compiler_tests {
     #[test]
     fn tokenize_fn_keyword() {
         let tokens = tokenize("fn".to_string(), "test.dag".to_string());
-        // Should have at least KwFn and Eof
         assert!(
             tokens.len() >= 2,
             "expected at least 2 tokens, got {}",
@@ -184,7 +176,6 @@ mod compiler_tests {
             "module test\ntype Foo { x: Int }".to_string(),
             "test.dag".to_string(),
         );
-        // Non-trivial input should produce multiple tokens
         assert!(
             tokens.len() > 5,
             "non-trivial input should produce multiple tokens, got {}",
@@ -199,34 +190,25 @@ mod compiler_tests {
             "test.dag".to_string(),
         );
         let result = crate::v2_compiler_parse::parse(tokens);
-        // ParseResult should have a module
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
         );
     }
 
-    /// Self-parse test: the compiled v2 compiler tokenizes and parses its own
-    /// tokenizer source (01_tokenize.dag). This is the self-hosting seed — if
-    /// the generated compiler can parse its own source, it can bootstrap.
     #[test]
     fn self_parse_tokenize_dag() {
-        // The generated parser uses recursive descent which requires extra stack
-        // for non-trivial inputs (same as v1 evaluator's with_parser_stack).
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
-                // Tokenize the v2 compiler's own tokenizer source
                 let source = read_dag("src/v2/01_tokenize.dag");
                 let tokens = tokenize(source, "src/v2/01_tokenize.dag".to_string());
 
-                // Token list should be non-empty
                 assert!(
                     !tokens.is_empty(),
                     "tokenizing 01_tokenize.dag should produce tokens"
                 );
 
-                // Should end with Eof
                 let last = tokens.last().expect("should have tokens");
                 assert!(
                     matches!(last.shape, crate::v2_std_core::TokenShape::ShEof),
@@ -234,16 +216,13 @@ mod compiler_tests {
                     last.shape
                 );
 
-                // Parse the tokens
                 let result = crate::v2_compiler_parse::parse(tokens);
 
-                // Parse should succeed with a module
                 assert!(
                     result.module.is_some(),
                     "parsing 01_tokenize.dag should produce a module"
                 );
 
-                // Module name should be "v2.compiler.tokenize"
                 let module = result.module.as_ref().unwrap();
                 assert_eq!(
                     module.name, "v2.compiler.tokenize",
@@ -256,13 +235,8 @@ mod compiler_tests {
         result.expect("self-parse test panicked");
     }
 
-    /// Phase 2 pipeline test: feed a self-contained single-module .dag source
-    /// through the full compile pipeline (tokenize -> parse -> resolve ->
-    /// typecheck -> emit) and verify the result has output files with no errors.
     #[test]
     fn pipeline_trivial_module() {
-        // The full pipeline uses recursive descent in resolve/typecheck/emit,
-        // so give it the same 16MB stack as self-parse.
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
@@ -272,13 +246,11 @@ mod compiler_tests {
                 });
                 let result = crate::v2_compiler_compile::compile_sources(std::rc::Rc::new(vec![source]), crate::v2_compiler_artifact::RenderTarget::Rust);
 
-                // Should produce at least one output file
                 assert!(
                     !result.files.is_empty(),
                     "compile_sources should produce output files, got none"
                 );
 
-                // Should have zero error diagnostics
                 let errors: Vec<_> = result.diagnostics.iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .collect();
@@ -288,7 +260,6 @@ mod compiler_tests {
                     errors
                 );
 
-                // At least one file should have non-empty content
                 let has_content = result.files.iter().any(|f| !f.content.is_empty());
                 assert!(
                     has_content,
@@ -300,15 +271,11 @@ mod compiler_tests {
         result.expect("pipeline_trivial_module test panicked");
     }
 
-    /// Incremental self-parse: tokenize and parse each of the v2 .dag
-    /// source files individually. Proves the compiled compiler can process
-    /// its own complete source at the tokenize+parse level.
     #[test]
     fn self_parse_all_modules() {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                // Discover all v2 .dag source files from disk
                 let v2_files = discover_dag_files("src/v2");
                 assert!(
                     !v2_files.is_empty(),
@@ -346,10 +313,6 @@ mod compiler_tests {
         result.expect("self-parse-all test panicked");
     }
 
-    /// Bootstrap self-compile: runs the full pipeline using compile_sources
-    /// which skips the typecheck error gate. The v2 typechecker has false positives
-    /// on recursive types and incomplete inference. The emitter produces structurally
-    /// correct code; Rust's type checker is the final arbiter.
     #[test]
     fn self_compile_all_modules() {
         let result = std::thread::Builder::new()
@@ -379,19 +342,12 @@ mod compiler_tests {
                     eprintln!("  error[{}]: {:?}", i, e.diagnostic);
                 }
 
-                // Bootstrap ratchet: track error count but don't assert zero.
-                // The v2 typechecker's incomplete inference produces false positives.
-                // Reading from disk may expose new imports not in the dsl/ dep list,
-                // which causes unresolved import errors that gate file emission.
-
-                // Source count floor
                 assert!(
                     source_count >= 13,
                     "self-compile should process at least 13 sources, got {}",
                     source_count
                 );
 
-                // When files are emitted, they must have content
                 if !result.files.is_empty() {
                     assert!(
                         result.files.iter().all(|f| !f.content.is_empty()),
@@ -399,7 +355,6 @@ mod compiler_tests {
                     );
                 }
 
-                // Diagnostic error ratchet (tracked, not yet tight)
                 const SELF_COMPILE_ERROR_RATCHET: usize = 2700;
                 assert!(
                     error_count <= SELF_COMPILE_ERROR_RATCHET,
@@ -413,8 +368,6 @@ mod compiler_tests {
         result.expect("self-compile-all test panicked");
     }
 
-    /// Bootstrap self-compile cargo check: runs the full pipeline, writes
-    /// emitted files to a temp dir, and runs `cargo check` on them.
     #[test]
     #[ignore]
     fn self_compile_cargo_check() {
@@ -433,7 +386,6 @@ mod compiler_tests {
                     return;
                 }
 
-                // Write emitted files to a temp directory
                 let tmp_dir = std::env::temp_dir().join("v2-self-compile-check");
                 let _ = std::fs::remove_dir_all(&tmp_dir);
                 std::fs::create_dir_all(tmp_dir.join("src"))
@@ -448,7 +400,6 @@ mod compiler_tests {
                         .expect(&format!("failed to write {}", file.path));
                 }
 
-                // Write a minimal Cargo.toml if not emitted
                 let cargo_toml = tmp_dir.join("Cargo.toml");
                 if !cargo_toml.exists() {
                     std::fs::write(&cargo_toml,
@@ -459,7 +410,6 @@ mod compiler_tests {
                 eprintln!("self-compile-cargo-check: wrote {} files to {}",
                     result.files.len(), tmp_dir.display());
 
-                // Run cargo check
                 let output = std::process::Command::new("cargo")
                     .arg("check")
                     .current_dir(&tmp_dir)
@@ -484,10 +434,6 @@ mod compiler_tests {
         result.expect("self-compile-cargo-check test panicked");
     }
 
-    /// Gist resolve: feed gist.dag's transitive source closure through
-    /// tokenize -> parse -> resolve via the v2 compiler's own pipeline.
-    /// Proves the compiled v2 compiler can process real-world DSL modules
-    /// (services, resources, patterns) beyond its own source.
     #[test]
     fn gist_resolve_all_modules() {
         let result = std::thread::Builder::new()
@@ -496,10 +442,6 @@ mod compiler_tests {
                 let sources = std::rc::Rc::new(gist_sources());
                 let result = crate::v2_compiler_compile::resolve_sources(sources);
 
-                // Count error-severity diagnostics from tokenize + parse + resolve.
-                // The gist dependency chain exercises DSL constructs (services,
-                // resources, patterns, func) that the v2 compiler's own source
-                // does not cover.
                 let errors: Vec<_> = result
                     .diagnostics
                     .iter()
@@ -524,9 +466,6 @@ mod compiler_tests {
         result.expect("gist-resolve-all test panicked");
     }
 
-    /// Gist full pipeline: tokenize -> parse -> resolve -> typecheck -> emit.
-    /// Proves the compiled v2 compiler can process the gist dependency chain
-    /// through all pipeline stages without OOM.
     #[test]
     fn gist_compile_all_modules() {
         let result = std::thread::Builder::new()
@@ -570,12 +509,6 @@ mod compiler_tests {
 
     #[test]
     fn type_size_regression_check() {
-        // Prevent silent type size regressions in generated v2 types.
-        // Update limits only when the size increase is justified.
-        // Ratchet history:
-        //   2026-03-28: Node 176, ExprData 800 (R2 boxing)
-        //   2026-03-30: Node 184 (post-Lane-A definition-edge dispatch)
-        //   2026-03-30: Node 192 (cherry-pick source-root bootstrap closure)
         let node_size = std::mem::size_of::<crate::v2_std_core::Node>();
         let expr_size = std::mem::size_of::<crate::v2_std_core::ExprData>();
         eprintln!("  Node: {} bytes", node_size);
@@ -593,7 +526,7 @@ mod compiler_tests {
     }
 
     // =========================================================================
-    // Coercion registry tests
+    // Coercion registry tests (auto-generated from data declarations)
     // =========================================================================
 
     #[test]
@@ -602,178 +535,113 @@ mod compiler_tests {
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Int".into()), "i64");
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Float".into()), "f64");
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Bool".into()), "bool");
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "String".into()), "String");
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Unit".into()), "()");
+        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "String".into()), "String");
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Bytes".into()), "Vec<u8>");
+        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Secret".into()), "String");
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Json".into()), "serde_json::Value");
-        // Unknown type falls through unchanged (transitional)
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "FooBar".into()), "FooBar");
     }
+
 
     #[test]
     fn coercion_python_checkpoint_resolves_primitives() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(coerce_primitive_type(RenderTarget::Python, "Int".into()), "int");
-        assert_eq!(coerce_primitive_type(RenderTarget::Python, "String".into()), "str");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Float".into()), "float");
         assert_eq!(coerce_primitive_type(RenderTarget::Python, "Bool".into()), "bool");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Unit".into()), "None");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "String".into()), "str");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Bytes".into()), "bytes");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Secret".into()), "str");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Json".into()), "dict");
     }
+
 
     #[test]
     fn coercion_go_checkpoint_resolves_primitives() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(coerce_primitive_type(RenderTarget::Go, "Int".into()), "int64");
-        assert_eq!(coerce_primitive_type(RenderTarget::Go, "String".into()), "string");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Float".into()), "float64");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Bool".into()), "bool");
         assert_eq!(coerce_primitive_type(RenderTarget::Go, "Unit".into()), "struct{}");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "String".into()), "string");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Bytes".into()), "[]byte");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Secret".into()), "string");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Json".into()), "interface{}");
     }
 
-    #[test]
-    fn coercion_inhabitant_resolves_containers() {
-        use crate::v2_compiler_coercion::*;
-        // FreeMonoid → Vec<{0}>
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "List".into()),
-            Some("Vec<{0}>".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()),
-            Some("Vec<{0}>".to_string())
-        );
-        // PartialFunction → HashMap<{0}, {1}>
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "Map".into()),
-            Some("HashMap<{0}, {1}>".to_string())
-        );
-        // BooleanAlgebra → BTreeSet<{0}>
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "Set".into()),
-            Some("std::collections::BTreeSet<{0}>".to_string())
-        );
-        // Unknown container → None
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "FooBar".into()), None);
-    }
 
     #[test]
-    fn coercion_cross_language_inhabitant_templates() {
+    fn coercion_rust_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "BooleanAlgebra".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()), Some("Vec<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "List".into()), Some("Vec<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "Map".into()), Some("HashMap<{0}, {1}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "NonEmptyList".into()), Some("Vec<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "NonEmptySet".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "PartialFunction".into()), Some("HashMap<{0}, {1}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "Set".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
+    }
+
+
+    #[test]
+    fn coercion_python_inhabitant_resolves_containers() {
+        use crate::v2_compiler_coercion::*;
+        assert_eq!(coerce_container_template(RenderTarget::Python, "BooleanAlgebra".into()), Some("set[{0}]".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Python, "FreeMonoid".into()), Some("list[{0}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "List".into()), Some("list[{0}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "Map".into()), Some("dict[{0}, {1}]".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Python, "NonEmptyList".into()), Some("list[{0}]".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Python, "NonEmptySet".into()), Some("set[{0}]".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Python, "PartialFunction".into()), Some("dict[{0}, {1}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "Set".into()), Some("set[{0}]".to_string()));
+    }
 
+
+    #[test]
+    fn coercion_go_inhabitant_resolves_containers() {
+        use crate::v2_compiler_coercion::*;
+        assert_eq!(coerce_container_template(RenderTarget::Go, "BooleanAlgebra".into()), Some("map[{0}]struct{}".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Go, "FreeMonoid".into()), Some("[]{0}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "List".into()), Some("[]{0}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "Map".into()), Some("map[{0}]{1}".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Go, "NonEmptyList".into()), Some("[]{0}".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Go, "NonEmptySet".into()), Some("map[{0}]struct{}".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Go, "PartialFunction".into()), Some("map[{0}]{1}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "Set".into()), Some("map[{0}]struct{}".to_string()));
     }
+
 
     #[test]
     fn coercion_is_copy_from_checkpoint() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(is_copy(RenderTarget::Rust, "Int".into()), Some(true));
+        assert_eq!(is_copy(RenderTarget::Rust, "Float".into()), Some(true));
         assert_eq!(is_copy(RenderTarget::Rust, "Bool".into()), Some(true));
+        assert_eq!(is_copy(RenderTarget::Rust, "Unit".into()), Some(true));
         assert_eq!(is_copy(RenderTarget::Rust, "String".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Unknown".into()), None);
-
-        assert_eq!(is_copy(RenderTarget::Python, "Int".into()), None);
+        assert_eq!(is_copy(RenderTarget::Rust, "Bytes".into()), Some(false));
+        assert_eq!(is_copy(RenderTarget::Rust, "Secret".into()), Some(false));
+        assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));
     }
+
 
     #[test]
     fn coercion_template_application() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(apply_inhabitant_template1("Vec<{0}>".into(), "i64".into()), "Vec<i64>");
+        assert_eq!(apply_inhabitant_template1("std::collections::BTreeSet<{0}>".into(), "i64".into()), "std::collections::BTreeSet<i64>");
         assert_eq!(apply_inhabitant_template2("HashMap<{0}, {1}>".into(), "String".into(), "i64".into()), "HashMap<String, i64>");
+        assert_eq!(apply_inhabitant_template1("list[{0}]".into(), "int".into()), "list[int]");
+        assert_eq!(apply_inhabitant_template1("set[{0}]".into(), "int".into()), "set[int]");
+        assert_eq!(apply_inhabitant_template2("dict[{0}, {1}]".into(), "str".into(), "int".into()), "dict[str, int]");
         assert_eq!(apply_inhabitant_template1("[]{0}".into(), "int64".into()), "[]int64");
+        assert_eq!(apply_inhabitant_template1("map[{0}]struct{}".into(), "int64".into()), "map[int64]struct{}");
         assert_eq!(apply_inhabitant_template2("map[{0}]{1}".into(), "string".into(), "int64".into()), "map[string]int64");
     }
 
-    /// Profile the gist pipeline by stage: tokenize, parse, resolve.
-    /// Reports per-file and per-stage wall-clock times.
-    #[test]
-    #[ignore]
-    fn profile_gist_pipeline() {
-        let result = std::thread::Builder::new()
-            .stack_size(64 * 1024 * 1024)
-            .spawn(|| {
-                use std::collections::HashMap;
-                use std::time::Instant;
-
-                let sources = gist_sources();
-
-                eprintln!(
-                    "\n=== GIST PIPELINE PROFILE ({} sources) ===\n",
-                    sources.len()
-                );
-
-                // Stage 1: Tokenize each source individually
-                let t_stage = Instant::now();
-                let mut token_lists = Vec::new();
-                for source in &sources {
-                    let t = Instant::now();
-                    let tokens = crate::v2_compiler_tokenize::tokenize(
-                        source.content.clone(),
-                        source.path.clone(),
-                    );
-                    let elapsed = t.elapsed();
-                    eprintln!(
-                        "  tokenize {:>40}: {:>8.2?}  ({:>5} tokens, {:>5} chars)",
-                        source.path,
-                        elapsed,
-                        tokens.len(),
-                        source.content.len()
-                    );
-                    token_lists.push(tokens);
-                }
-                let tokenize_total = t_stage.elapsed();
-                eprintln!("  TOKENIZE TOTAL: {:?}\n", tokenize_total);
-
-                // Stage 2: Parse each token stream
-                let t_stage = Instant::now();
-                let mut modules = Vec::new();
-                for (i, tokens) in token_lists.iter().enumerate() {
-                    let t = Instant::now();
-                    let result = crate::v2_compiler_parse::parse(tokens.clone());
-                    let elapsed = t.elapsed();
-                    let ok = result.module.is_some();
-                    eprintln!(
-                        "  parse   {:>40}: {:>8.2?}  (ok={})",
-                        sources[i].path, elapsed, ok
-                    );
-                    if let Some(m) = result.module.clone() {
-                        modules.push(m);
-                    }
-                }
-                let parse_total = t_stage.elapsed();
-                eprintln!("  PARSE TOTAL:    {:?}\n", parse_total);
-
-                // Stage 3: Resolve module graph
-                let t_stage = Instant::now();
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
-                let resolve_total = t_stage.elapsed();
-                let errors: Vec<_> = graph
-                    .diagnostics
-                    .iter()
-                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
-                    .collect();
-                eprintln!(
-                    "  RESOLVE TOTAL:  {:?}  ({} errors)\n",
-                    resolve_total,
-                    errors.len()
-                );
-
-                eprintln!("=== SUMMARY ===");
-                eprintln!("  Tokenize: {:?}", tokenize_total);
-                eprintln!("  Parse:    {:?}", parse_total);
-                eprintln!("  Resolve:  {:?}", resolve_total);
-                eprintln!(
-                    "  Total:    {:?}",
-                    tokenize_total + parse_total + resolve_total
-                );
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect("profile test panicked");
-    }
-
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
-    /// Returns 0 on non-macOS platforms.
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]
         {
@@ -822,7 +690,6 @@ mod compiler_tests {
         }
     }
 
-    /// Format a byte count as a human-readable string (KB / MB / GB).
     fn format_bytes(bytes: u64) -> String {
         if bytes >= 1_073_741_824 {
             format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
@@ -835,8 +702,89 @@ mod compiler_tests {
         }
     }
 
-    /// Profile the self-compile pipeline by stage with RSS checkpoints.
-    /// Reports per-file and per-stage wall-clock times plus memory usage.
+    #[test]
+    #[ignore]
+    fn profile_gist_pipeline() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                use std::collections::HashMap;
+                use std::time::Instant;
+
+                let sources = gist_sources();
+
+                eprintln!(
+                    "\n=== GIST PIPELINE PROFILE ({} sources) ===\n",
+                    sources.len()
+                );
+
+                let t_stage = Instant::now();
+                let mut token_lists = Vec::new();
+                for source in &sources {
+                    let t = Instant::now();
+                    let tokens = crate::v2_compiler_tokenize::tokenize(
+                        source.content.clone(),
+                        source.path.clone(),
+                    );
+                    let elapsed = t.elapsed();
+                    eprintln!(
+                        "  tokenize {:>40}: {:>8.2?}  ({:>5} tokens, {:>5} chars)",
+                        source.path,
+                        elapsed,
+                        tokens.len(),
+                        source.content.len()
+                    );
+                    token_lists.push(tokens);
+                }
+                let tokenize_total = t_stage.elapsed();
+                eprintln!("  TOKENIZE TOTAL: {:?}\n", tokenize_total);
+
+                let t_stage = Instant::now();
+                let mut modules = Vec::new();
+                for (i, tokens) in token_lists.iter().enumerate() {
+                    let t = Instant::now();
+                    let result = crate::v2_compiler_parse::parse(tokens.clone());
+                    let elapsed = t.elapsed();
+                    let ok = result.module.is_some();
+                    eprintln!(
+                        "  parse   {:>40}: {:>8.2?}  (ok={})",
+                        sources[i].path, elapsed, ok
+                    );
+                    if let Some(m) = result.module.clone() {
+                        modules.push(m);
+                    }
+                }
+                let parse_total = t_stage.elapsed();
+                eprintln!("  PARSE TOTAL:    {:?}\n", parse_total);
+
+                let t_stage = Instant::now();
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
+                let resolve_total = t_stage.elapsed();
+                let errors: Vec<_> = graph
+                    .diagnostics
+                    .iter()
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                    .collect();
+                eprintln!(
+                    "  RESOLVE TOTAL:  {:?}  ({} errors)\n",
+                    resolve_total,
+                    errors.len()
+                );
+
+                eprintln!("=== SUMMARY ===");
+                eprintln!("  Tokenize: {:?}", tokenize_total);
+                eprintln!("  Parse:    {:?}", parse_total);
+                eprintln!("  Resolve:  {:?}", resolve_total);
+                eprintln!(
+                    "  Total:    {:?}",
+                    tokenize_total + parse_total + resolve_total
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("profile test panicked");
+    }
+
     #[test]
     #[ignore]
     fn profile_self_compile() {
@@ -856,7 +804,6 @@ mod compiler_tests {
                 );
                 eprintln!("  RSS at start: {}\n", format_bytes(rss_start));
 
-                // Phase 1: Tokenize each source individually
                 let t_stage = Instant::now();
                 let mut token_lists = Vec::new();
                 let phase1_diags = 0usize;
@@ -885,7 +832,6 @@ mod compiler_tests {
                     phase1_diags
                 );
 
-                // Phase 2: Parse each token stream
                 let t_stage = Instant::now();
                 let mut modules = Vec::new();
                 let mut phase2_diags = 0usize;
@@ -914,7 +860,6 @@ mod compiler_tests {
                     phase2_diags
                 );
 
-                // Phase 3: Resolve module graph
                 let t_stage = Instant::now();
                 let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
                 let resolve_total = t_stage.elapsed();
@@ -931,7 +876,6 @@ mod compiler_tests {
                     phase3_diags
                 );
 
-                // Phase 4: Reconcile (typecheck)
                 let t_stage = Instant::now();
                 let source_indices = sources.iter().fold(
                     HashMap::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>::new(),
@@ -961,7 +905,6 @@ mod compiler_tests {
                     phase4_diags
                 );
 
-                // Phase 5: Emit (Rust target)
                 let t_stage = Instant::now();
                 let emit_result = crate::v2_compiler_emit_rust::emit_rust(typed);
                 let emit_total = t_stage.elapsed();
@@ -980,7 +923,6 @@ mod compiler_tests {
                     phase5_diags
                 );
 
-                // Summary
                 let total =
                     tokenize_total + parse_total + resolve_total + reconcile_total + emit_total;
                 let total_diags =
@@ -1012,9 +954,6 @@ mod compiler_tests {
         result.expect("profile_self_compile test panicked");
     }
 
-    /// Per-module reconcile profile: runs tokenize+parse+resolve then
-    /// typecheck_module for each module individually with RSS+timing.
-    /// Isolates which module causes OOM/timeout in the reconcile phase.
     #[test]
     #[ignore]
     fn profile_reconcile_per_module() {
@@ -1031,7 +970,6 @@ mod compiler_tests {
                     sources.len()
                 );
 
-                // Phases 1-3: tokenize + parse + resolve (known safe, ~28MB)
                 let t0 = Instant::now();
                 let mut modules = Vec::new();
                 for source in &sources {
@@ -1056,7 +994,6 @@ mod compiler_tests {
                 );
                 eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
-                // Phase 4: typecheck each module individually
                 let mut mi_raw = HashMap::<
                     String,
                     std::rc::Rc<crate::v2_compiler_infer_items::TypedModule>,
@@ -1081,12 +1018,10 @@ mod compiler_tests {
                         crate::v2_std_core::module_items(resolved.module.clone()).len();
                     let rss_before = get_rss_bytes();
 
-                    // Print BEFORE typecheck so we know which module crashed on SIGKILL
                     eprint!("  {:>35} ({:>3} items) ... ", name, item_count);
 
                     let module_index = std::rc::Rc::new(mi_raw.clone());
 
-                    // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
                     let t_unres = Instant::now();
                     let _unres = crate::v2_compiler_infer::build_type_env_unresolved(
                         resolved.clone(),
@@ -1112,7 +1047,6 @@ mod compiler_tests {
                         );
                     }
 
-                    // Sub-step 1: build_type_env (includes topo_resolve_types)
                     let t_env = Instant::now();
                     let env_result = crate::v2_compiler_infer::build_type_env(
                         resolved.clone(),
@@ -1148,7 +1082,6 @@ mod compiler_tests {
                         panic!("ABORT: '{}' build_type_env took {:?}", name, env_elapsed);
                     }
 
-                    // Sub-step 2: full typecheck_module
                     let t_full = Instant::now();
                     let tc_result = crate::v2_compiler_infer::typecheck_module(
                         resolved.clone(),
@@ -1172,7 +1105,6 @@ mod compiler_tests {
                         diag_count
                     );
 
-                    // Guardrails: abort before OOM kills the system
                     if delta > 512 * 1024 * 1024 {
                         panic!(
                             "ABORT: '{}' grew RSS by {} (>512MB)",

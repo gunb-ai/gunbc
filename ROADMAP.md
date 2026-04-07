@@ -61,15 +61,7 @@ when it self-compiles (fixed point convergence). **Blocks all other
 lanes from editing stage0 Rust directly.**
 
 Note: "zero manual patches" means zero patches to *generated* files.
-Two hand-maintained files are still copied during regeneration
-(main.rs, compiler_tests.rs).
-Goal is zero — all stage0 content should be 100% generated.
-Remaining files and what blocks elimination:
-
-| File | Role | Blocker |
-|------|------|---------|
-| `main.rs` | CLI entrypoint (clap, import resolution, diagnostic rendering) | Need compiler entrypoint generation — entrypoints are deducible interfaces (like HTTP servers); content is fixed, can be templated like v2_rt.rs |
-| `compiler_tests.rs` | Test harness | Need .dag test generation |
+All stage0 content is 100% generated — zero hand-maintained files.
 
 Previously eliminated:
 - PR #316: v2_compiler_infer_method.rs, std_types.rs,
@@ -81,6 +73,13 @@ Previously eliminated:
 - v2_rt.rs — runtime templates already modeled in `runtime_rust.dag`;
   `rust_runtime_source()` produces the complete file. Emitter includes it
   via `emit_v2_rt_module()`.
+- main.rs — CLI entrypoint with FF-9 import resolution and diagnostic
+  rendering, modeled as emitter string templates in `05_emit_rust.dag`.
+  `emit_compile_match_arm()` emits the full Compile subcommand with
+  `--source-root` transitive import resolution.
+- compiler_tests.rs — test harness modeled in `compiler_tests_rust.dag`;
+  `compiler_tests_source()` produces the complete file. Emitter includes
+  it via `emit_compiler_tests_module()` when self-compiling.
 
 ## CI Gates
 
@@ -116,8 +115,8 @@ Previously eliminated:
 - **Fixed-point:** `regen pass N == regen pass N+1`. Two-pass bootstrap
   required when the emitter changes its own output.
 - **External dependencies:** cargo, rustc (opaque transforms, not modeled).
-- **Hand-maintained files (2):** Copied back during regen, not overwritten.
-  These are source, not derived. See Bootstrap Status for list.
+- **Hand-maintained files (0):** All stage0 content is generated.
+  See Bootstrap Status for elimination history.
 
 **Merge workflow problem:** Stage0 `.rs` files are derived, but git
 treats them as text and produces line-level merge conflicts. These
@@ -1221,6 +1220,27 @@ distinction as structural data.
 4. The bootstrap cycle, fixed-point condition, and two-pass rule are
    structural facts in the model.
 5. Stage0 merge conflicts no longer require manual resolution.
+
+## Bootstrap Design Debt
+
+Acknowledged design debts from the stage0 elimination work (PR #337).
+These are pre-existing patterns that became more visible when main.rs
+and compiler_tests.rs moved from hand-maintained to emitter-generated.
+
+| Item | What | Root cause | Fix direction |
+|------|------|-----------|---------------|
+| **FF-9a** | `has_pipeline` uses `module.name == "v2.compiler.compile"` string check to decide crate naming, main.rs shape, and compiler_tests emission | No explicit artifact/entrypoint fact in the type system | Model `Artifact` / `Entrypoint` as structural facts; `has_pipeline` dissolves when artifact identity is structural |
+| **FF-9b** | `extract_module_path` / `extract_import_paths` are line-based text scanners duplicating parser knowledge | Bootstrap bridge — the CLI needs to discover modules before the full parser runs | Replace with AST-backed import traversal; CLI loading becomes a thin model-driven pass |
+| **FF-9c** | `--source-root` conflates entry roots and dependency pools; only first root scanned for entries | No explicit entry-root vs dependency-root distinction | Either split into `--entry-root` + `--source-root`, or add explicit entry module list |
+| **FF-9d** | `ct_self_compile_sources` and `gist_sources` maintain separate curated file lists (`dsl_deps`) | Duplicate source-closure authority alongside FF-9 import resolution | These closures should use the same import resolution as the production binary |
+| **VER-1** | `std/verification.dag` types exist but are not yet the live authority; `CoercionAssertion` / `CoercionTestEntry` in coercion.dag are the active producer/consumer | Coercion tests are domain-specific; shared vocabulary not yet needed by a second consumer | Wire `TestCase` from std/verification.dag as the shared abstraction when a second structural test domain (algebra laws, tokenizer contracts) is added |
+
+FF-9a through FF-9d are all facets of the same root cause: the
+bootstrap pipeline's source-discovery layer was hand-maintained and
+is now emitter-generated, but it's still a text-scanning bridge rather
+than a model-driven pass. The endgame is FF-9 complete: the compiler's
+own import resolution is the single authority for source discovery
+everywhere — CLI, tests, and CI.
 
 ## Exploratory Directions
 

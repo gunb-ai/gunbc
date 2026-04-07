@@ -594,3 +594,261 @@ fn performance_ratchet() {
     // Cleanup
     let _ = std::fs::remove_dir_all(&out_dir);
 }
+
+// ── L4: Structural semantic correctness ─────────────────────────────────
+//
+// Compiles weather.dag to Rust, writes emitted files to a temp crate,
+// adds structural test file with witness-based assertions, runs cargo test.
+// This is the first test that actually RUNS emitted code (not just checks
+// it compiles).
+
+#[test]
+#[ignore] // Expensive: compiles .dag, builds emitted crate, runs cargo test
+fn bootstrap_l4_structural() {
+    let result = std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(|| {
+            // 1. Compile weather.dag
+            let ws = crate::helpers::workspace_root();
+            let weather_src = std::fs::read_to_string(
+                ws.join("dsl/examples/weather/weather.dag"),
+            )
+            .expect("weather.dag should exist");
+
+            let result = crate::helpers::compile_dag_named(
+                "dsl/examples/weather/weather.dag",
+                &weather_src,
+                v2_compiler::v2_compiler_artifact::RenderTarget::Rust,
+            );
+
+            let diag_count = result.diagnostics.len();
+            eprintln!(
+                "weather.dag compiled: {} files emitted, {} diagnostics",
+                result.files.len(),
+                diag_count
+            );
+
+            assert!(
+                !result.files.is_empty(),
+                "weather.dag should produce emitted files"
+            );
+
+            // 2. Write emitted files to temp dir
+            let tmp = std::env::temp_dir().join("v2-l4-structural");
+            let _ = std::fs::remove_dir_all(&tmp);
+
+            for file in result.files.iter() {
+                let dest = tmp.join(&file.path);
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent).expect("create dir");
+                }
+                std::fs::write(&dest, &*file.content)
+                    .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
+            }
+
+            // List emitted files for debugging
+            eprintln!("\nemitted files:");
+            for file in result.files.iter() {
+                eprintln!("  {} ({} bytes)", file.path, file.content.len());
+            }
+
+            // Print the module file so we can see the actual emitted types/functions
+            for file in result.files.iter() {
+                if file.path.contains("examples_weather") {
+                    eprintln!("\n=== {} ===", file.path);
+                    for (i, line) in file.content.lines().enumerate() {
+                        eprintln!("  {:>3}| {}", i + 1, line);
+                    }
+                }
+            }
+
+            // 3. Write structural test file
+            let test_dir = tmp.join("tests");
+            std::fs::create_dir_all(&test_dir).expect("create tests dir");
+
+            let test_content = generate_weather_structural_tests();
+            std::fs::write(test_dir.join("structural_tests.rs"), &test_content)
+                .expect("write structural tests");
+
+            // 4. Run cargo test on the emitted crate
+            eprintln!("\n=== Running cargo test on emitted crate ===");
+            let test_output = std::process::Command::new("cargo")
+                .arg("test")
+                .arg("--")
+                .arg("--nocapture")
+                .current_dir(&tmp)
+                .output()
+                .expect("failed to run cargo test");
+
+            let stderr = String::from_utf8_lossy(&test_output.stderr);
+            let stdout = String::from_utf8_lossy(&test_output.stdout);
+            eprintln!("cargo test stderr:\n{}", stderr);
+            eprintln!("cargo test stdout:\n{}", stdout);
+
+            assert!(
+                test_output.status.success(),
+                "L4 structural tests FAILED — emitted code does not run correctly:\n{}",
+                stderr
+            );
+
+            eprintln!("=== L4 structural tests PASSED ===");
+
+            // Cleanup
+            let _ = std::fs::remove_dir_all(&tmp);
+        })
+        .expect("failed to spawn thread")
+        .join();
+    result.expect("bootstrap_l4_structural panicked");
+}
+
+/// Generate structural test content for weather.dag's emitted Rust crate.
+///
+/// Tests are organized by witness layer:
+/// - Layer 1: canonical witnesses (type inhabitation + function calls)
+/// - Layer 2: variant witnesses (coproduct exhaustiveness)
+/// - Layer 3: algebra-derived witnesses (non-trivial values + boundary cases)
+fn generate_weather_structural_tests() -> String {
+    r#"use v2_compiled::examples_weather::*;
+use v2_compiled::examples_weather::Condition::*;
+use std::rc::Rc;
+
+// ── Layer 1: Type witnesses — every type is constructible ───────────
+
+#[test]
+fn witness_temperature() {
+    let _w = Temperature { celsius: 0.0 };
+}
+
+#[test]
+fn witness_condition_sunny() {
+    let _w = Rc::new(Sunny);
+}
+
+#[test]
+fn witness_forecast() {
+    let _w = Rc::new(Forecast {
+        location: String::new(),
+        high: Temperature { celsius: 0.0 },
+        low: Temperature { celsius: 0.0 },
+        condition: Rc::new(Sunny),
+    });
+}
+
+// ── Layer 1: Function calls — every function runs without panic ─────
+
+#[test]
+fn call_to_fahrenheit() {
+    let _result = to_fahrenheit(Temperature { celsius: 0.0 });
+}
+
+#[test]
+fn call_is_freezing() {
+    let _result = is_freezing(Temperature { celsius: 0.0 });
+}
+
+#[test]
+fn call_describe_condition() {
+    let _result = describe_condition(Rc::new(Sunny));
+}
+
+#[test]
+fn call_daily_summary() {
+    let forecast = Rc::new(Forecast {
+        location: String::new(),
+        high: Temperature { celsius: 0.0 },
+        low: Temperature { celsius: 0.0 },
+        condition: Rc::new(Sunny),
+    });
+    let _result = daily_summary(forecast);
+}
+
+#[test]
+fn call_freezing_locations_empty() {
+    let _result = freezing_locations(Rc::new(vec![]));
+}
+
+// ── Layer 2: Variant coverage — coproduct exhaustiveness ────────────
+
+#[test]
+fn describe_condition_all_variants() {
+    let _ = describe_condition(Rc::new(Sunny));
+    let _ = describe_condition(Rc::new(Cloudy));
+    let _ = describe_condition(Rc::new(Rainy { mm_per_hour: 0.0 }));
+    let _ = describe_condition(Rc::new(Snowy { cm_per_hour: 0.0 }));
+}
+
+// ── Layer 3: Non-trivial witnesses + structural oracles ─────────────
+
+#[test]
+fn to_fahrenheit_known_value() {
+    let result = to_fahrenheit(Temperature { celsius: 100.0 });
+    assert!((result - 212.0).abs() < 0.001, "100C should be 212F, got {}", result);
+}
+
+#[test]
+fn is_freezing_boundary() {
+    assert!(is_freezing(Temperature { celsius: 0.0 }));
+    assert!(!is_freezing(Temperature { celsius: 0.1 }));
+}
+
+#[test]
+fn freezing_locations_filters_correctly() {
+    let forecasts = Rc::new(vec![
+        Rc::new(Forecast {
+            location: "cold".to_string(),
+            high: Temperature { celsius: 5.0 },
+            low: Temperature { celsius: -2.0 },
+            condition: Rc::new(Sunny),
+        }),
+        Rc::new(Forecast {
+            location: "warm".to_string(),
+            high: Temperature { celsius: 25.0 },
+            low: Temperature { celsius: 15.0 },
+            condition: Rc::new(Sunny),
+        }),
+    ]);
+    let result = freezing_locations(forecasts);
+    assert_eq!(result.len(), 1, "only one location has freezing low");
+    assert_eq!(result[0].as_str(), "cold");
+}
+
+#[test]
+fn describe_condition_rainy_branches() {
+    let light = describe_condition(Rc::new(Rainy { mm_per_hour: 5.0 }));
+    let heavy = describe_condition(Rc::new(Rainy { mm_per_hour: 15.0 }));
+    assert_ne!(light, heavy, "light and heavy rain should have different descriptions");
+}
+
+// ── Serde roundtrip — serialization correctness ─────────────────────
+
+#[test]
+fn roundtrip_temperature() {
+    let w = Temperature { celsius: 42.5 };
+    let json = serde_json::to_string(&w).expect("serialize");
+    let back: Temperature = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(w, back, "Temperature roundtrip failed");
+}
+
+#[test]
+fn roundtrip_condition_sunny() {
+    let w = Sunny;
+    let json = serde_json::to_string(&w).expect("serialize");
+    let back: Condition = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(w, back, "Condition::Sunny roundtrip failed");
+}
+
+#[test]
+fn roundtrip_forecast() {
+    let w = Forecast {
+        location: "test".to_string(),
+        high: Temperature { celsius: 30.0 },
+        low: Temperature { celsius: 10.0 },
+        condition: Rc::new(Sunny),
+    };
+    let json = serde_json::to_string(&w).expect("serialize");
+    let back: Forecast = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(w, back, "Forecast roundtrip failed");
+}
+"#
+    .to_string()
+}
