@@ -56,7 +56,7 @@ use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::MatchPattern::{Wildcard};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::ExprErrorKind::{SemanticExprError};
-use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
+use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 pub use crate::v2_compiler_infer_types::{rt_type, node_is_keyed_collection};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for};
 use AliasKind::*;

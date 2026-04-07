@@ -51,7 +51,7 @@ use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::BinOp::{NullCoalesce};
-use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
+use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{CardOptional};
 use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
@@ -888,7 +888,8 @@ let err_str = match target.clone() {
 return err_str
 }
 }
-if (n.name.clone().as_str() == "Callable".to_string().as_str()) {
+let is_arrow = (n.connective.clone() == Connective::Arrow);
+if is_arrow {
                 {
                     let repr = target_callable(target.clone());
 let param_strs = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(render_node_type(param_node_type_expr(p.clone()), target.clone(), shared_types.clone())); } __result });

@@ -439,7 +439,7 @@ fn resolve_type_variables_from_template(template: AlgebraFieldTemplate, arg_type
 }
 
 fn callable_node(func_params: List<Node>, ret: Node) -> Node {
-  Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: Arrow, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn callable_inferred(n: Node) -> Node {

@@ -17,7 +17,7 @@ import v2.std.core {
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
   with_required_cardinality,
-  Connective, Conj, NoConnective,
+  Connective, Conj, NoConnective, Arrow,
   CardOptional,
   param_node_name
 }
@@ -324,14 +324,14 @@ fn build_field_type_map(children: List<Node>) -> Map<String, String> {
 }
 
 fn build_type_summary(item: Node) -> TypeSummary? {
-  if item.connective == NoConnective || item.transport != none {
+  if item.connective == NoConnective || item.connective == Arrow || item.transport != none {
     return none
   }
   let gpn = item.params |> map(p => param_node_name(n: p))
   let is_product = item.connective == Conj
   let has_fn = item.children |> any(child =>
     match child.inferred {
-      Some { value: Resolved { node: rt } } => rt.name == "Callable"
+      Some { value: Resolved { node: rt } } => rt.connective == Arrow || rt.name == "Callable"
       _ => false
     }
   )
@@ -370,7 +370,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
             if variant.children |> count > 0 {
               let v_has_fn = variant.children |> any(vc =>
                 match vc.inferred {
-                  Some { value: Resolved { node: rt } } => rt.name == "Callable"
+                  Some { value: Resolved { node: rt } } => rt.connective == Arrow || rt.name == "Callable"
                   _ => false
                 }
               )

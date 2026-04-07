@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name, resource_use_resource, param_node_name, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, is_import_node, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern, arg_name, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field, expr_call_func, lambda_param_names, record_lit_type_name, foreach_variable, expr_method_name};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, OwnershipViolation};
-use crate::v2_std_core::Connective::{NoConnective};
+use crate::v2_std_core::Connective::{NoConnective, Arrow};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::Cardinality::*;
@@ -209,6 +209,7 @@ pub fn connective_name(value: Connective) -> String {
     Connective::Conj => "Conj".to_string(),
     Connective::Disj => "Disj".to_string(),
     Connective::NoConnective => "NoConnective".to_string(),
+    Connective::Arrow => "Arrow".to_string(),
 }
 }
 
@@ -457,6 +458,7 @@ pub fn serialize_node(node: Rc<Node>) -> String {
     Connective::Conj => json_quote(connective_name(Connective::Conj)),
     Connective::Disj => json_quote(connective_name(Connective::Disj)),
     Connective::NoConnective => "null".to_string(),
+    Connective::Arrow => json_quote(connective_name(Connective::Arrow)),
 }), ", \"params\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for param in node.params.clone().iter().cloned() { __result.push(serialize_param(param.clone())); } __result }))), ", \"inferred\": ".to_string()), json_optional_inferred_node(node.inferred.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node(node.body.clone())), ", \"transport\": ".to_string()), json_optional_node(node.transport.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node(node.type_annotation.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone())), "}".to_string())
     })
 }

@@ -50,7 +50,7 @@ pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueSha
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, TupleFirst, TupleSecond};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
-use crate::v2_std_core::Connective::{Conj, NoConnective};
+use crate::v2_std_core::Connective::{Conj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{CardOptional};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, rt_type, emit_map_has, child_inferred_or_name, node_type_equals};
 use TypeRepr::*;
@@ -297,13 +297,13 @@ if (((resolved_name.clone().as_str() != "".to_string().as_str()) && !ft_is_type_
 
 pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
     {
-        if ((item.connective.clone() == Connective::NoConnective) || (item.transport.clone() != None)) {
+        if (((item.connective.clone() == Connective::NoConnective) || (item.connective.clone() == Connective::Arrow)) || (item.transport.clone() != None)) {
             return None
 }
 let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result });
 let is_product = (item.connective.clone() == Connective::Conj);
 let has_fn = { let mut __found = false; for child in item.children.clone().iter().cloned() { if match child.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => (rt.name.clone().as_str() == "Callable".to_string().as_str()),
+    Some(InferredNode::Resolved { node: rt, .. }) => ((rt.connective.clone() == Connective::Arrow) || (rt.name.clone().as_str() == "Callable".to_string().as_str())),
     _ => false,
 } { __found = true; break; } } __found };
 if is_product {
@@ -342,7 +342,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.type_summaries.clone(), |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
             {
                 let v_has_fn = { let mut __found = false; for vc in variant.children.clone().iter().cloned() { if match vc.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => (rt.name.clone().as_str() == "Callable".to_string().as_str()),
+    Some(InferredNode::Resolved { node: rt, .. }) => ((rt.connective.clone() == Connective::Arrow) || (rt.name.clone().as_str() == "Callable".to_string().as_str())),
     _ => false,
 } { __found = true; break; } } __found };
 v2_rt::rc_map_insert(acc.clone(), variant.name.clone(), Rc::new(TypeSummary {

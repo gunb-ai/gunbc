@@ -133,6 +133,7 @@ pub enum Connective {
     Conj,
     Disj,
     NoConnective,
+    Arrow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

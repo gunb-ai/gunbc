@@ -37,7 +37,7 @@ import v2.std.core {
   is_local_transport,
   is_kernel_type, is_container_type,
   leaf_node, with_optional_cardinality, with_required_cardinality,
-  Connective, Conj, Disj, NoConnective,
+  Connective, Conj, Disj, NoConnective, Arrow,
   CardOptional, no_span,
   unit_type, string_type
 }
