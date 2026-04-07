@@ -280,9 +280,10 @@ transition).
   `list_of_element`, `apply_type_substitution`, `resolve_node_bounded`
 - [x] `rt_type` dissolved — 105 call sites migrated to two boundary-contract
   accessors: `decl_resolved_type` (54 Strict sites) and `emit_guarded_type`
-  (48 Guarded sites). `rt_type` deleted.
-- [x] `std/boundary.dag` added — `BoundaryContract` type (Strict/Tolerant/
-  Guarded) as general vocabulary for producer/consumer cross-talk patterns
+  (48 Guarded sites). `rt_type` deleted. Non-Resolved branches return
+  `error_type` (CompilerError propagates), not `unit_type` (no fabrication).
+- [x] `container_param_name` `None` branches return `"__MISSING_PARAM__"`
+  error marker (not fabricated `"T"`/`"K"`/`"V"` — visibly wrong if reached)
 - [x] `child_type_node` updated to use `decl_resolved_type`
 - [x] `is_fully_resolved`, `algebra_child_or_placeholder`, `for_each_element_type_node`,
   `apply_type_substitution` migrated from `rt_type` to `child_type_node`/`decl_resolved_type`
@@ -298,35 +299,18 @@ transition).
   function deleted
 - [x] `__EMIT_BUG_ANONYMOUS_FIELD__` removed — dead code
 
-**PR #340 review feedback (deferred — 2 items):**
-
-1. **Fabrication fallback in `container_param_name` callers.** The `None`
-   branches in `map_node`, `list_of_type_variable`, etc. fabricate `"T"`/
-   `"K"`/`"V"` strings. For known container names (List, Map), this is
-   dead code — `container_param_name` always returns `Some`. But the
-   fallback violates "no fallbacks that fabricate." Fix: eliminate the
-   `None` branches by surfacing resolved parameter nodes from the
-   declaration as the single authority (M9), or by asserting the lookup
-   succeeds for known containers.
-
-2. **Boundary-contract split is naming, not structural authority.** The
-   `decl_resolved_type`/`emit_guarded_type` split documents the consumer
-   contract but doesn't change the underlying structure — both still read
-   from the same `inferred: InferredNode?` field. The endgame is structural:
-   declaration children should carry their type through a channel that
-   can ONLY be Resolved, so the wrong question is unaskable. This is the
-   `inferred` cross-talk pattern (see below).
-
 **Cross-talk analysis (PR #340 investigation):**
 
 Eight Node fields serve multiple semantic roles, forcing consumers to
-disambiguate. `inferred` is the first to get boundary-contract accessors.
-General vocabulary in `std/boundary.dag`.
+disambiguate by checking other fields. This is the same shape as the
+`inferred` problem — two producers writing to the same channel with
+different guarantees — but `inferred` is the only one causing active
+information loss.
 
 | Field | Roles | Cross-talk? | Status |
 |-------|-------|-------------|--------|
-| `inferred` | declaration type vs expression type | YES (different error contracts) | Accessors split (PR #340). Structural fix: future |
-| `name` | identifier, type name, field name, method name (~7 roles) | YES (same guarantee, different semantics) | M4 dissolution target |
+| `inferred` | declaration type vs expression type | YES (different error contracts) | Bridge accessors (PR #340). Structural fix: next |
+| `name` | identifier, type name, field name, method name (~7 roles) | YES (same guarantee, different semantics) | M4 dissolution target (PR #341) |
 | `children` | struct fields, container params, if/match/call layouts (~12) | YES (layout-dependent) | ChildRole metadata table exists |
 | `params` | function parameters vs type parameters | YES | Connective disambiguates |
 | `return_cardinality` | field cardinality vs function return cardinality | YES | accessor naming exists |
@@ -334,24 +318,61 @@ General vocabulary in `std/boundary.dag`.
 | `body` | function body vs none-for-external | No (same contract) | — |
 | `match_pattern` | match arm pattern vs field binding pattern | YES | — |
 
-**Next steps — tightening the boundary contracts:**
+### Structural boundary types (next — dissolves bridge accessors)
 
-1. **Eliminate fabrication fallbacks.** `container_param_name` `None`
-   branches and `decl_resolved_type`/`emit_guarded_type` non-Resolved
-   branches both fabricate `unit_type`. For Strict-contract sites, the
-   non-Resolved branch should emit a diagnostic, not fabricate.
+**Root cause:** `decl_resolved_type`/`emit_guarded_type` are bridge
+accessors that read from the same `inferred: InferredNode?` field and
+handle error branches that shouldn't exist for their respective roles.
+The accessors document the contract but don't enforce it structurally.
+The fix is coproduct boundary types consumed directly by downstream code.
 
-2. **Structural authority for `inferred` roles.** The two producers
-   (resolve for declarations, infer for expressions) write to the same
-   `inferred` field with different guarantees. The endgame: declaration
-   children use a channel that is Resolved by construction. This is
-   the `inferred` cross-talk pattern — same shape as the other 7 fields
-   but `inferred` is the only one causing information loss (Unit fallback
-   masks compiler bugs).
+**Design:** Two producers write to `inferred` with different guarantees:
+- **Resolve** (declarations): always `Resolved` — error is a compiler bug
+- **Infer** (expressions): any variant — error is a user code problem
 
-3. **Generalize `std/boundary.dag`.** Apply the Strict/Tolerant/Guarded
-   vocabulary to other cross-talk fields as they are dissolved (M4 for
-   `name`, MM-2 for type structure, etc.).
+These are static, compile-time producers. The fix is not "track who set
+it" but "make the producers produce structurally distinct things so the
+wrong question is unaskable."
+
+**Approach — coproduct boundary carriers:**
+
+Model the resolve→infer→emit boundary as real coproduct types that
+consumers pattern-match directly. No bridge accessors, no error branches
+on impossible states.
+
+- [ ] **BND-1: Declaration-child boundary type.** A declaration child
+  (struct field, container param) carries its type as a coproduct that
+  can only be `Resolved`. Consumers extract via pattern match — no error
+  branches needed because the type can't represent errors. The
+  `decl_resolved_type` accessor dissolves (no bridge needed when the
+  structure IS the authority).
+
+- [ ] **BND-2: Emit-ready boundary type.** Emit receives a coproduct
+  like `Ready { node: Node } | BoundaryError { diagnostic: String }`.
+  Consumers pattern-match: `Ready` → render, `BoundaryError` → emit
+  `compile_error!()`. The `emit_guarded_type` accessor dissolves.
+  `error_type` fallback dissolves — errors are structural, not sentinel
+  nodes.
+
+- [ ] **BND-3: `std/boundary.dag` re-lands WITH consumers.** The
+  boundary vocabulary lands alongside BND-1/BND-2 as the authority
+  consumed by the coproduct types. Not speculative vocabulary — lands
+  end-to-end with a real downstream consumer.
+
+- [ ] **BND-4: `container_param_name` `None` branches dissolve.** T/K/V
+  parameter names derive from the declaration's own type parameters
+  (Tier 2.5: algebra declarations). `container_param_name` string-keyed
+  lookup dissolves — the declaration IS the authority for its parameter
+  names. `__MISSING_PARAM__` markers dissolve.
+
+**Dependency:** BND-1 and BND-2 can land independently. BND-3 lands
+with whichever is first. BND-4 requires Tier 2.5 (algebra-derived
+type parameter names) — independent of BND-1/BND-2.
+
+**Acceptance:** `decl_resolved_type` and `emit_guarded_type` deleted.
+Consumers pattern-match on coproduct boundary types directly. No bridge
+accessors, no error branches on impossible states, no `__MISSING_PARAM__`
+markers.
 
 ### Acceptance
 
