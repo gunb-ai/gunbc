@@ -57,7 +57,7 @@ use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
-pub use crate::v2_compiler_infer_types::{rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
+pub use crate::v2_compiler_infer_types::{rt_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -456,7 +456,7 @@ continue;
 if is_map.clone() {
                     match n.children.clone().get(1 as usize).cloned() {
     Some(val_child) => { {
-                        let __tco_0 = val_child.clone();
+                        let __tco_0 = child_type_node(val_child.clone());
 n = __tco_0;
 continue;
 } },
@@ -466,7 +466,7 @@ continue;
                     if ((n.children.clone().len() as i64) == 1) {
                         match n.children.clone().first().cloned() {
     Some(el) => { {
-                            let __tco_0 = el.clone();
+                            let __tco_0 = child_type_node(el.clone());
 n = __tco_0;
 continue;
 } },
@@ -1016,11 +1016,7 @@ let conj_named_str = if shared.clone() {
 return conj_named_str
 }
 }
-let parts = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(if (child.inferred.clone() != None) {
-                        render_node_type(rt_type(child.clone()), target.clone(), shared_types.clone())
-} else {
-                        "__EMIT_BUG_ANONYMOUS_FIELD__".to_string()
-}); } __result });
+let parts = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(render_node_type(rt_type(child.clone()), target.clone(), shared_types.clone())); } __result });
 let anon_str = render_tuple_parts(parts, target.clone());
 return anon_str
 }
@@ -1069,11 +1065,11 @@ let is_map = node_is_keyed_collection(n.clone());
 if is_map {
                 {
                     let k = match n.children.clone().first().cloned() {
-    Some(kn) => render_node_type(kn.clone(), target.clone(), shared_types.clone()),
+    Some(kn) => render_node_type(child_type_node(kn.clone()), target.clone(), shared_types.clone()),
     None => "_".to_string(),
 };
 let v = match n.children.clone().get(1 as usize).cloned() {
-    Some(vn) => render_node_type(vn.clone(), target.clone(), shared_types.clone()),
+    Some(vn) => render_node_type(child_type_node(vn.clone()), target.clone(), shared_types.clone()),
     None => "_".to_string(),
 };
 let base = emit_map_type(k, v, target.clone());
@@ -1088,7 +1084,7 @@ return map_str
 if ((n.children.clone().len() as i64) == 1) {
                 {
                     let child_str = match n.children.clone().first().cloned() {
-    Some(child) => render_node_type(child.clone(), target.clone(), shared_types.clone()),
+    Some(child) => render_node_type(child_type_node(child.clone()), target.clone(), shared_types.clone()),
     None => "_".to_string(),
 };
 let is_container = node_is_collection(n.clone());
@@ -1111,7 +1107,7 @@ let single_str = if shared.clone() {
 return single_str
 }
 }
-let child_strs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(render_node_type(c.clone(), target.clone(), shared_types.clone())); } __result });
+let child_strs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(render_node_type(child_type_node(c.clone()), target.clone(), shared_types.clone())); } __result });
 if (n.name.clone().as_str() == tuple_type_name().as_str()) {
                 {
                     let multi_tuple_str = render_tuple_parts(child_strs.clone(), target.clone());

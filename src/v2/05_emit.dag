@@ -59,7 +59,7 @@ import v2.std.core {
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding, RecursiveVariantFieldWitness }
-import v2.compiler.infer_types { rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
+import v2.compiler.infer_types { rt_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
 import std.types { is_container_type, container_to_algebra_name }
 import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
@@ -432,12 +432,12 @@ fn has_nested_records_node(n: Node) -> Bool {
     let is_map = node_is_keyed_collection(n: n)
     if is_map {
       match skip(n.children, 1) |> first {
-        Some { value: val_child } => has_nested_records_node(n: val_child)
+        Some { value: val_child } => has_nested_records_node(n: child_type_node(ch: val_child))
         None => false
       }
     } else if n.children |> count == 1 {
       match n.children |> first {
-        Some { value: el } => has_nested_records_node(n: el)
+        Some { value: el } => has_nested_records_node(n: child_type_node(ch: el))
         None => false
       }
     } else {
@@ -1003,9 +1003,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     }
     // Anonymous product
     let parts = n.children |> map(child =>
-      if child.inferred != none {
-        render_node_type(n: rt_type(n: child), target: target, shared_types: shared_types)
-      } else { "__EMIT_BUG_ANONYMOUS_FIELD__" }
+      render_node_type(n: rt_type(n: child), target: target, shared_types: shared_types)
     )
     let anon_str = render_tuple_parts(parts: parts, target: target)
     return anon_str
@@ -1036,15 +1034,16 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     return bare_str
   }
 
-  // Leaf with children
+  // Leaf with children: extract type from field-style wrappers (inferred set)
+  // or use child directly (bare encoding from parser)
   let is_map = node_is_keyed_collection(n: n)
   if is_map {
     let k = match n.children |> first {
-      Some { value: kn } => render_node_type(n: kn, target: target, shared_types: shared_types)
+      Some { value: kn } => render_node_type(n: child_type_node(ch: kn), target: target, shared_types: shared_types)
       None => "_"
     }
     let v = match n.children |> skip(1) |> first {
-      Some { value: vn } => render_node_type(n: vn, target: target, shared_types: shared_types)
+      Some { value: vn } => render_node_type(n: child_type_node(ch: vn), target: target, shared_types: shared_types)
       None => "_"
     }
     let base = emit_map_type(key_type: k, val_type: v, target: target)
@@ -1053,7 +1052,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   }
   if n.children |> count == 1 {
     let child_str = match n.children |> first {
-      Some { value: child } => render_node_type(n: child, target: target, shared_types: shared_types)
+      Some { value: child } => render_node_type(n: child_type_node(ch: child), target: target, shared_types: shared_types)
       None => "_"
     }
     let is_container = node_is_collection(n: n)
@@ -1070,7 +1069,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     return single_str
   }
   // Multi-child leaf: Tuple or generic type
-  let child_strs = n.children |> map(c => render_node_type(n: c, target: target, shared_types: shared_types))
+  let child_strs = n.children |> map(c => render_node_type(n: child_type_node(ch: c), target: target, shared_types: shared_types))
   if n.name == tuple_type_name {
     let multi_tuple_str = render_tuple_parts(parts: child_strs, target: target)
     return multi_tuple_str

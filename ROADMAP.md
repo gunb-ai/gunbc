@@ -250,6 +250,79 @@ BRIDGE count (already 0), but would improve inference for edge cases
 where expected type is available but not threaded (e.g., nested
 `empty_map()` in complex expressions).
 
+### Unified container child encoding (PR #339, in progress)
+
+**Root cause:** Container type nodes (List, Map, Set) encode their type
+parameters as bare children (child IS the type, `inferred: none`), while
+struct fields use field-style encoding (child has a name and `inferred:
+Resolved(type)`). This dual encoding forces every consumer to handle both
+cases, producing `child_inferred_or_name` and scattered `inferred == none`
+guards.
+
+**Authority:** The resolve phase is the normalization point. Parser creates
+type expressions with bare children (pre-resolve). Resolve converts to
+field-style children with named type parameters (T, K, V) from
+`container_type_param_names` in `std/types.dag`. Post-resolve consumers
+extract via `child_type_node` (bridge handles both encodings during
+transition).
+
+**Completed (PR #339) — bridge work, not endpoint:**
+- [x] `container_type_param_names` data table in `std/types.dag`
+- [x] `container_node`, `map_node`, `bare_map_node` produce field-style children
+- [x] `child_type_node` bridge helper (handles both bare and field-style)
+- [x] `container_param_name` returns `String?` (fail-closed, no fabricated default)
+- [~] Consumer updates: major readers updated to `child_type_node` — lookup,
+  items, patterns, emit_info, emit, emit_rust, access, infer, resolve.
+  Remaining readers still use raw `rt_type` in emit/emit_go/emit_python
+  sites and algebra template paths. These work post-resolve (Resolved
+  wrappers guarantee correct extraction) but bypass the bridge.
+- [x] All 314 tests pass, 0 self-compile diagnostics, L1 ratchet unchanged
+- [ ] Endgame: all post-resolve readers use `child_type_node`, hardcoded
+  "T"/"K"/"V" replaced by data table reads, wrapper construction via
+  single helper (not inline Node literals)
+
+**Completed (bootstrap convergence):**
+- [x] `substitute_type_slots` recurses into `inferred` on field-style
+  children — generic type instantiation works through wrappers
+- [x] `has_nested_records_node` extracts via `child_type_node` — data
+  declarations with `List<SomeStruct>` correctly use JSON emission
+- [x] Bootstrap convergence: two-pass fixed point verified
+- [x] `child_inferred_or_name` dissolved — 7 call sites → `rt_type(n: ch)`,
+  function deleted
+- [x] `__EMIT_BUG_ANONYMOUS_FIELD__` removed — dead code
+
+**Modeling gaps exposed by edge-case analysis (next PR):**
+
+Three reviewer-flagged edge cases share a common root: the `inferred`
+field carries implicit invariants that should be structural facts.
+
+1. **`inferred` has multiple semantic roles with different error contracts.**
+   On expressions: can be CompilerError/TypeVariable/Untyped (all meaningful).
+   On struct field children: should always be Resolved.
+   On container wrapper children: should always be Resolved.
+   These roles use the same `InferredNode?` type, so `rt_type` treats them
+   all with the same Unit fallback — correct for emission, wrong for type
+   reasoning where errors should propagate or be impossible by construction.
+
+2. **`rt_type` is one function for multiple operations.**
+   "Extract for emission" (Unit fallback OK) vs "extract for type reasoning"
+   (error = bug, not fallback) vs "extract parameter binding" (always
+   Resolved by construction). A typed model would have separate accessors
+   with different error semantics.
+
+3. **Pre-resolve vs post-resolve is a convention, not a structural fact.**
+   "Post-resolve children use field-style encoding" is enforced by
+   producer convention. `child_type_node` exists as a bridge because
+   the structure doesn't distinguish resolved from unresolved nodes.
+   If resolve's output were structurally marked, consumers wouldn't need
+   the bridge — the wrong question would be unaskable.
+
+**Direction:** These are instances of the same CM pattern — implicit
+pipeline-stage invariants that should be structural facts on the Node.
+Candidate modeling: `inferred` role (expression/field/parameter)
+distinguishable from Node structure, or resolve-boundary marking that
+makes pre/post-resolve structurally distinct.
+
 ### Acceptance
 
 No fabricated type args, no generic/wrong fallback return types, no
