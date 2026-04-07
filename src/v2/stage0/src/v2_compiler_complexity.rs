@@ -964,6 +964,22 @@ infer_parser_always_advancing_members(members, func_index.clone())
 }
 }
 
+pub fn seed_string_map(key: String, value: String) -> Rc<HashMap<String, String>> {
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), key, value)
+}
+
+pub fn seed_bool_map(key: String) -> Rc<HashMap<String, bool>> {
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<bool>(), key, true)
+}
+
+pub fn seed_cost_map(key: String, value: Rc<CostExpr>) -> Rc<HashMap<String, Rc<CostExpr>>> {
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<CostExpr>>(), key, value)
+}
+
+pub fn seed_func_entry_map(key: String, value: Rc<FuncEntry>) -> Rc<HashMap<String, Rc<FuncEntry>>> {
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<FuncEntry>>(), key, value)
+}
+
 pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     names.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])))
 }
@@ -1255,7 +1271,7 @@ if (set_has(target_set.clone(), callee.clone()) == false) {
     Some(callee_entry) => {
                 let callee_measure_params = match v2_rt::map_get(&scc_measure_params, callee.clone()) {
     Some(params) => params.clone(),
-    None => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
+    None => v2_rt::rc_empty_map::<String>(),
 };
 { let mut __found = false; for pair in Rc::new(call_node.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if {
                     let arg_expr = arg_value(pair.1.clone());
@@ -1323,7 +1339,7 @@ pub fn condition_param_names(expr: Rc<Node>, param_set: Rc<HashMap<String, Strin
     ExprData::ExprVar { .. } => {
             let name = expr_var_name(expr.clone());
 match v2_rt::map_get(&param_set, name.clone()) {
-    Some(_) => v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, name.clone(), name.clone()),
+    Some(_) => seed_string_map(name.clone(), name.clone()),
     None => v2_rt::rc_empty_map::<String>(),
 }
 },
@@ -1341,7 +1357,7 @@ match (*body.expr_data.clone()).clone() {
                 let then_names = recursive_measure_param_names(if_then_branch(body.clone()), params.clone());
 let else_names = match if_else_branch(body.clone()) {
     Some(eb) => recursive_measure_param_names(eb.clone(), params.clone()),
-    None => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
+    None => v2_rt::rc_empty_map::<String>(),
 };
 v2_rt::rc_map_merge(v2_rt::rc_map_merge(condition_param_names(if_condition(body.clone()), param_set), then_names), else_names)
 },
@@ -2426,7 +2442,7 @@ let single_dim_proof = match structural_proof.clone() {
     Some(_) => structural_proof.clone(),
     None => match parser_state_param(params.clone()) {
     Some(state_param) => {
-            let self_set = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), true);
+            let self_set = seed_bool_map(func_name.clone());
 let edges = collect_parser_progress_edges(func_name.clone(), body.clone(), state_param.clone(), self_set.clone(), empty_parser_progress_env(), parser_always_advancing, v2_rt::rc_empty_map::<bool>());
 if (((edges.clone().len() as i64) > 0) && { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() == ProgressKind::ProgressStrict)) { __all = false; break; } } __all }) {
                 Some(Rc::new(TerminationProof {
@@ -2444,14 +2460,14 @@ if (((edges.clone().len() as i64) > 0) && { let mut __all = true; for edge in ed
 match single_dim_proof.clone() {
     Some(_) => single_dim_proof.clone(),
     None => {
-            let self_set = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), true);
+            let self_set = seed_bool_map(func_name.clone());
 let func_entry = Rc::new(FuncEntry {
     name: func_name.clone(),
     body: body.clone(),
     params: params.clone(),
     span: body.span.clone(),
 });
-let func_index = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, func_name.clone(), func_entry);
+let func_index = seed_func_entry_map(func_name.clone(), func_entry);
 construct_scc_termination_proof(Rc::new(vec![func_name.clone()]), func_index, self_set.clone())
 },
 }
@@ -3455,7 +3471,7 @@ Rc::new(CostExpr::CostAdd {
 
 pub fn collection_output(binder: String, size: Rc<SizeExpr>) -> Rc<HashMap<String, Rc<CostExpr>>> {
     {
-        let result = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "result".to_string(), cost_loop(binder, size, Rc::new(CostExpr::CostConst {
+        let result = seed_cost_map("result".to_string(), cost_loop(binder, size, Rc::new(CostExpr::CostConst {
     value: 1,
 })));
 result
@@ -3463,10 +3479,7 @@ result
 }
 
 pub fn scalar_output() -> Rc<HashMap<String, Rc<CostExpr>>> {
-    {
-        let result = Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */;
-result
-}
+    v2_rt::rc_empty_map::<Rc<CostExpr>>()
 }
 
 pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
@@ -3571,7 +3584,7 @@ let os = if (produces_collection == false) {
             body_result.summary.clone().output_size.clone()
 } else {
             {
-                let r = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
+                let r = seed_cost_map("result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
     value: 1,
 })));
 r
@@ -3614,7 +3627,7 @@ let sort_work = Rc::new(CostExpr::CostMul {
     left: cost_loop(binder.clone(), size.clone(), per_comparison),
     right: log_factor,
 });
-let sort_os = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
+let sort_os = seed_cost_map("result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
     value: 1,
 })));
 Rc::new(SummaryResult {
@@ -3632,17 +3645,11 @@ Rc::new(SummaryResult {
     value: 1,
 }));
 let scan_os = if produces_collection {
-            {
-                let r = v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
+            seed_cost_map("result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
     value: 1,
-})));
-r
-}
+})))
 } else {
-            {
-                let r = Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */;
-r
-}
+            v2_rt::rc_empty_map::<Rc<CostExpr>>()
 };
 Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {

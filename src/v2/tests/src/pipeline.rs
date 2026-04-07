@@ -4861,3 +4861,290 @@ fn int_and_float_are_valid_as_cast_targets() {
     assert!(is_primitive_numeric_node(int_node), "Int should be a valid as-cast target");
     assert!(is_primitive_numeric_node(float_node), "Float should be a valid as-cast target");
 }
+
+// ── ExprLet expected-type propagation regression tests ────────────────
+//
+// The ExprLet body now receives the outer `expected` type (M2 commit
+// d5e58ea56). These tests verify that expected context flows correctly
+// through let bodies without mistyping lambda parameters.
+
+#[test]
+fn let_body_fold_init_empty_map_receives_expected() {
+    // Regression: fold(init: empty_map()) inside a let body should receive
+    // the function return type as expected context, allowing empty_map()
+    // to adopt the fully parameterized Map type.
+    let source = r#"module test_let_fold
+fn build_index(items: List<String>) -> Map<String, Bool> {
+  let separator = "_"
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, concat(item, separator), true)
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_let_fold.rs");
+    assert!(
+        !content.contains("compile_error"),
+        "let-wrapped fold(init: empty_map()) must not produce compile errors"
+    );
+    assert!(
+        !content.contains("BRIDGE"),
+        "fold init should not produce BRIDGE fabrication: {content}"
+    );
+    assert!(
+        content.contains("HashMap<String, bool>"),
+        "architecture ratchet: fold should produce typed HashMap<String, bool>: {content}"
+    );
+}
+
+#[test]
+fn fold_init_empty_map_without_let_no_bridge() {
+    // fold(init: empty_map()) directly in function body (no let wrapper)
+    // should produce turbofish, not BRIDGE fabrication.
+    let source = r#"module test_fold_no_expected
+fn build(items: List<String>) -> Map<String, Bool> {
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, item, true)
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_fold_no_expected.rs");
+    assert!(
+        !content.contains("BRIDGE"),
+        "fold init should not produce BRIDGE: {content}"
+    );
+    assert!(
+        content.contains("HashMap<String, bool>"),
+        "architecture ratchet: fold should produce typed HashMap<String, bool>: {content}"
+    );
+}
+
+#[test]
+fn fold_init_empty_map_with_struct_value_no_bridge() {
+    // fold(init: empty_map()) building Map<String, StructType> should
+    // produce turbofish, not BRIDGE. Tests cross-type fold accumulator.
+    let source = r#"module test_fold_struct
+type Entry { label: String, count: Int }
+fn index_items(items: List<Entry>) -> Map<String, Entry> {
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, item.label, item)
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_fold_struct.rs");
+    eprintln!("fold_struct output:\n{}", content);
+    assert!(
+        !content.contains("BRIDGE"),
+        "fold with struct value type should not produce BRIDGE: {content}"
+    );
+    assert!(
+        content.contains("HashMap<String, Rc<Entry>>"),
+        "architecture ratchet: fold should produce typed HashMap<String, Rc<Entry>>: {content}"
+    );
+}
+
+#[test]
+fn let_body_callable_expected_types_lambda_params() {
+    // When the let body contains a lambda under a callable expected type
+    // (e.g., from a function signature), the lambda params should be typed
+    // from the callable's param types, not from the raw expected.
+    let source = r#"module test_let_callable
+fn apply_transform(items: List<Int>) -> List<Int> {
+  let threshold = 10
+  items |> filter(x => x > threshold)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_let_callable.rs");
+    assert!(
+        !content.contains("compile_error"),
+        "lambda under callable expected in let body must compile cleanly"
+    );
+}
+
+#[test]
+fn let_body_non_callable_expected_does_not_mistype_lambda() {
+    // When expected is a non-callable type (e.g., Map<String, Bool>),
+    // lambdas inside method calls in the let body should NOT get their
+    // params typed from the outer expected — they should get typed from
+    // the collection element type via the method inference path.
+    let source = r#"module test_let_noncallable
+fn summarize(items: List<Int>) -> Map<String, Bool> {
+  let doubled = items |> map(x => x * 2)
+  let positive = doubled |> filter(x => x > 0)
+  positive |> fold(init: empty_map(), f: (acc, x) =>
+    map_insert(acc, x |> to_string, true)
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_let_noncallable.rs");
+    assert!(
+        !content.contains("compile_error"),
+        "non-callable expected must not mistype lambda params in let body"
+    );
+}
+
+#[test]
+fn nested_let_in_match_propagates_expected() {
+    // Expected type should flow through nested let inside match arms.
+    let source = r#"module test_nested_let_match
+fn classify(items: List<Int>) -> Map<String, Int> {
+  match items |> first {
+    Some { value: head } =>
+      let label = if head > 0 { "positive" } else { "negative" }
+      items |> fold(init: empty_map(), f: (acc, x) =>
+        map_insert(acc, label, x)
+      )
+    None => empty_map()
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn nested_let_in_if_propagates_expected() {
+    // Expected type should flow through let inside if branches.
+    let source = r#"module test_nested_let_if
+fn process(items: List<Int>, flag: Bool) -> List<Int> {
+  if flag {
+    let offset = 1
+    items |> map(x => x + offset)
+  } else {
+    let scale = 2
+    items |> map(x => x * scale)
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn let_in_record_field_propagates_expected() {
+    // Expected type from struct field should flow through let bodies
+    // when constructing record literals.
+    let source = r#"module test_let_record
+type Summary { counts: Map<String, Int>, total: Int }
+fn build_summary(items: List<String>) -> Summary {
+  let n = items |> count
+  Summary {
+    counts: items |> fold(init: empty_map(), f: (acc, item) =>
+      map_insert(acc, item, 1)
+    ),
+    total: n
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+// ── Multi-module BRIDGE fabrication investigation ─────────────────────
+//
+// Single-module fold(init: empty_map()) produces turbofish (no BRIDGE).
+// Self-compile (multi-module) produces 58 BRIDGE fabrications. These
+// tests isolate which multi-module patterns trigger the gap.
+
+#[test]
+fn multi_module_fold_cross_type_bridge_check() {
+    // Type defined in module A, fold accumulator building Map<String, A.Type>
+    // in module B. This mirrors the self-compile pattern where TypeBinding
+    // is defined in 04_env.dag but fold accumulators are in 04_infer.dag.
+    let files = &[
+        ("types.dag", r#"module mylib.types
+type Entry { label: String, count: Int }
+"#),
+        ("funcs.dag", r#"module mylib.funcs
+import mylib.types { Entry }
+fn build_index(items: List<Entry>) -> Map<String, Entry> {
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, item.label, item)
+  )
+}
+"#),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/mylib_funcs.rs");
+    eprintln!("multi_module fold output:\n{}", content);
+    assert!(
+        !content.contains("compile_error"),
+        "cross-module fold must not produce compile errors"
+    );
+    assert!(
+        !content.contains("BRIDGE"),
+        "cross-module fold must not produce BRIDGE fabrication: {content}"
+    );
+    assert!(
+        content.contains("HashMap<String, Rc<Entry>>"),
+        "architecture ratchet: cross-module fold should produce typed HashMap<String, Rc<Entry>>: {content}"
+    );
+}
+
+#[test]
+fn multi_module_fold_map_string_bool_bridge_check() {
+    // Simplest cross-module fold: Map<String, Bool> accumulator.
+    // Mirrors self-compile: fold(init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+    let files = &[
+        ("types.dag", r#"module mylib.types
+type Item { name: String }
+"#),
+        ("funcs.dag", r#"module mylib.funcs
+import mylib.types { Item }
+fn name_set(items: List<Item>) -> Map<String, Bool> {
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, item.name, true)
+  )
+}
+"#),
+    ];
+    let result = compile_multi(files);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/mylib_funcs.rs");
+    eprintln!("multi_module Map<String,Bool> fold:\n{}", content);
+    assert!(
+        !content.contains("BRIDGE"),
+        "cross-module Map<String, Bool> fold must not produce BRIDGE: {content}"
+    );
+    assert!(
+        content.contains("HashMap<String, bool>"),
+        "architecture ratchet: cross-module fold should produce typed HashMap<String, bool>: {content}"
+    );
+}
+
+#[test]
+fn fold_in_let_value_no_bridge() {
+    // Fixed: fold in let VALUE position (expected: none) now resolves
+    // accumulator type via map_insert refinement on bare containers.
+    // Root cause was node_is_keyed_collection requiring children.count==2,
+    // which is always false for bare Map (children.count==0).
+    let source = r#"module test_let_value
+fn process(items: List<String>) -> Map<String, Bool> {
+  let index = items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, item, true)
+  )
+  index
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_let_value.rs");
+    assert!(
+        !content.contains("BRIDGE"),
+        "fold in let value must not produce BRIDGE: {content}"
+    );
+    assert!(
+        content.contains("HashMap<String, bool>"),
+        "architecture ratchet: fold in let value should produce typed HashMap<String, bool>: {content}"
+    );
+}

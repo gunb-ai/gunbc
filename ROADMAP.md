@@ -197,10 +197,63 @@ Open items:
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
 
+### BRIDGE fabrication progress (83 → 0)
+
+BRIDGE count reduced from 83 to 0 real (4 emitter template strings remain).
+Phases: contradictory predicate fix (83→29), Phase C structural resolution
+(29→28), typed seed helpers (28→21), match/if arm expected propagation
+(21→16), receiver patching (16→6), final typed helpers + if/else
+bidirectional (6→0). Post-inference unification replaced all heuristic
+patches (PR #334 review fixes).
+
+### Compositional type parameter resolution (major cleanup landed)
+
+Phases A-D landed (PRs #325, #332, #334). Compensation infrastructure
+deleted, method-name dispatch eliminated. Remaining work: import scoping
+(FF-9 / declaration-driven loading), ExpectedContext modeling for edge
+cases, Tier 2.5/3 algebra fidelity.
+
+- [x] Phase A: TypeVariable preservation (`algebra_child_or_placeholder`)
+- [x] Phase B: TypeVariable rendering in emit (fail-closed: `compile_error!`)
+- [x] Phase C: Structural return type resolution via template unification
+  (`resolve_type_variables_from_template` replaces `refine_collection_result_type`)
+- [x] Phase D: Deleted compensation infrastructure
+  (`refine_collection_result_type`, `substitute_algebra_result`,
+  `bridge_placeholder_type_names` — ~280 lines removed)
+- [x] `AlgebraTypeVariable` variant replaces `is_algebra_placeholder_name`
+- [x] Templates enriched with `CallableOf` contracts (self-describing)
+- [x] Bare-container ReceiverSelf enrichment from arg-derived bindings
+- [x] Post-inference unification for match/if arms (order-independent)
+- [x] ReceiverSelf structural witness for receiver type patching
+- [x] Narrow T/K/V placeholder filtering restored for std.types imports
+
+**Result:** 0 method-name dispatches for type resolution (was 6).
+Emit is fail-closed: TypeVariable → `compile_error!`.
+Seed helpers and post-inference unification are tactical cleanup —
+the final compositional model requires ExpectedContext + FF-9.
+
+### Remaining BRIDGE fabrications (0 real)
+
+All real BRIDGEs eliminated. The 4 remaining occurrences in stage0 are
+emitter template strings (BRIDGE message formats for code the compiler
+itself compiles — not type resolution failures in the compiler).
+
+Approach: typed seed helpers provide `Map<K,V>` context at call sites,
+post-inference unification resolves match/if arms order-independently,
+ReceiverSelf witness gates receiver patching structurally.
+
+**Design direction — ExpectedContext sum type (deferred):**
+
+Replace `expected: Node?` with `expected: ExpectedContext?` to
+distinguish different expectation sources. Not needed for current
+BRIDGE count (already 0), but would improve inference for edge cases
+where expected type is available but not threaded (e.g., nested
+`empty_map()` in complex expressions).
+
 ### Acceptance
 
 No fabricated type args, no generic/wrong fallback return types, no
-error-typed children reaching emit. Fallback count promoted to CI.
+error-typed children reaching emit. BRIDGE fabrication count: 0 real.
 Ownership and clone correctness tracked under CG lane.
 
 ---

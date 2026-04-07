@@ -1271,6 +1271,25 @@ fn infer_all_parser_always_advancing(func_index: Map<String, FuncEntry>) -> Map<
   infer_parser_always_advancing_members(members: members, func_index: func_index)
 }
 
+// Typed empty map helpers — eliminates BRIDGE fabrications for standalone
+// empty_map() calls where the emitter can't infer the value type.
+fn seed_string_map(key: String, value: String) -> Map<String, String> {
+  map_insert(empty_map(), key, value)
+}
+
+
+fn seed_bool_map(key: String) -> Map<String, Bool> {
+  map_insert(empty_map(), key, true)
+}
+
+fn seed_cost_map(key: String, value: CostExpr) -> Map<String, CostExpr> {
+  map_insert(empty_map(), key, value)
+}
+
+fn seed_func_entry_map(key: String, value: FuncEntry) -> Map<String, FuncEntry> {
+  map_insert(empty_map(), key, value)
+}
+
 // Build an adjacency map seeded with empty neighbor lists for each name.
 // Typed return ensures [] resolves to List<String>, not List<Unit>.
 fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
@@ -1681,7 +1700,7 @@ fn condition_param_names(expr: Node, param_set: Map<String, String>) -> Map<Stri
     ExprVar { binding_kind: _ } =>
       let name = expr_var_name(texpr: expr)
       match map_get(param_set, name) {
-        Some { value: _ } => map_insert(empty_map(), name, name)
+        Some { value: _ } => seed_string_map(key: name, value: name)
         None => empty_map()
       }
     _ =>
@@ -2846,7 +2865,7 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
     None =>
       match parser_state_param(params: params) {
         Some { value: state_param } =>
-          let self_set = map_insert(empty_map(), func_name, true)
+          let self_set = seed_bool_map(key: func_name)
           let edges = collect_parser_progress_edges(
             caller: func_name,
             body: body,
@@ -2868,9 +2887,9 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
   match single_dim_proof {
     Some { value: _ } => single_dim_proof
     None =>
-      let self_set = map_insert(empty_map(), func_name, true)
+      let self_set = seed_bool_map(key: func_name)
       let func_entry = FuncEntry { name: func_name, body: body, params: params, span: body.span }
-      let func_index = map_insert(empty_map(), func_name, func_entry)
+      let func_index = seed_func_entry_map(key: func_name, value: func_entry)
       construct_scc_termination_proof(members: [func_name], func_index: func_index, scc_name_set: self_set)
   }
 }
@@ -3758,13 +3777,12 @@ fn cost_conditional(condition: CostExpr, branches: List<CostExpr>) -> CostExpr {
 // Output size for collection-producing operations: a single "result" entry
 // with cost proportional to the collection size.
 fn collection_output(binder: String, size: SizeExpr) -> Map<String, CostExpr> {
-  let result = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+  let result = seed_cost_map(key: "result", value: cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
   result
 }
 
 fn scalar_output() -> Map<String, CostExpr> {
-  let result = empty_map()
-  result
+  empty_map()
 }
 
 
@@ -3884,7 +3902,7 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
         // fold: use body's output_size; any/all: scalar
         body_result.summary.output_size
       } else {
-        let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+        let r = seed_cost_map(key: "result", value: cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
         r
       }
       SummaryResult {
@@ -3921,7 +3939,7 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
         left: cost_loop(binder: binder, iterations: size, body: per_comparison),
         right: log_factor
       }
-      let sort_os = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+      let sort_os = seed_cost_map(key: "result", value: cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
       SummaryResult {
         summary: ComplexitySummary {
           work: cost_seq(a: recv_r.summary.work, b: sort_work),
@@ -3934,11 +3952,9 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
     ShapeLinearScan =>
       let loop_work = cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 })
       let scan_os = if produces_collection {
-        let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
-        r
+        seed_cost_map(key: "result", value: cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
       } else {
-        let r = empty_map()
-        r
+        empty_map()
       }
       SummaryResult {
         summary: ComplexitySummary {

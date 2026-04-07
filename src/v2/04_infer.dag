@@ -77,11 +77,10 @@ import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
   child_inferred_or_name,
   nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved,
-  resolve_type_variables_from_template, template_return_has_variables,
+  resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
   map_node, bare_map_node,
   callable_inferred,
   normalize_access_type_node,
-  bridge_placeholder_type_names, is_bridge_placeholder,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps,
   method_receiver_element_node,
@@ -789,13 +788,11 @@ fn seed_override_map() -> Map<String, Node> {
 }
 
 fn fold_override_map(key: String, value: Node) -> Map<String, Node> {
-  let seed = seed_override_map()
-  fold(map_keys(seed), init: empty_map(), f: (acc, k) => acc) |> map_insert(key, value)
+  map_insert(seed_override_map(), key, value)
 }
 
 fn empty_override_map() -> Map<String, Node> {
-  let seed = seed_override_map()
-  fold(map_keys(seed), init: empty_map(), f: (acc, k) => acc)
+  seed_override_map()
 }
 
 // refine_collection_result_type was deleted — callers removed by M2 Phase C (PR #332).
@@ -1080,11 +1077,40 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               _ => base_result_type
             }
           }
+          // Structural witness: does this method's template return ReceiverSelf?
+          // Only methods that structurally return the receiver type (map_insert,
+          // map_merge, etc.) justify patching the receiver from the result.
+          let returns_receiver_self = if method_resolution.semantics == none { false } else {
+            match method_resolution.semantics.value {
+              AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
+                match at {
+                  Some { value: t } => template_return_is_receiver_self(template: t)
+                  None => false
+                }
+              _ => false
+            }
+          }
+          // When the method returns ReceiverSelf and the result is resolved but
+          // the receiver was under-resolved (e.g., map_insert(empty_map(), k, v)),
+          // patch the receiver to carry the resolved type.
+          let final_receiver = if returns_receiver_self && is_fully_resolved(n: bridge_result_type) && !is_fully_resolved(n: first_arg_type) {
+            Node {
+              name: receiver.name, span: receiver.span, ident_span: receiver.ident_span,
+              children: bridge_result_type.children,
+              connective: receiver.connective, params: receiver.params,
+              inferred: Some { value: Resolved { node: bridge_result_type } },
+              return_cardinality: receiver.return_cardinality, uses: receiver.uses,
+              body: receiver.body, transport: receiver.transport,
+              properties: receiver.properties, type_annotation: receiver.type_annotation,
+              is_self_recursive: receiver.is_self_recursive, has_non_tail_self_call: receiver.has_non_tail_self_call,
+              match_pattern: receiver.match_pattern, expr_data: receiver.expr_data
+            }
+          } else { receiver }
           let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: arg_name(n: ta), value: arg_value(n: ta), span: span))
           InferResult {
             typed: make_named_expr_node(
               name: func_name, expr_data: ExprMethodCall { method_semantics: method_resolution.semantics },
-              children: concat([receiver], remaining_arg_nodes),
+              children: concat([final_receiver], remaining_arg_nodes),
               inferred: Some { value: Resolved { node: bridge_result_type } },
               span: span
             ),
@@ -1320,6 +1346,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let scrut_diags = scrut_result.diagnostics
       let scrut_rt = rt_type(n: scrut_typed)
       let scrut_subject = pattern_subject_from_node_type(n: rt_node(n: scrut_typed))
+      // Infer all match arms independently with only the caller's expected type.
+      // Post-inference: compute a unified type across all arms, then patch any
+      // under-resolved arms. This is order-independent — arm ordering does not
+      // affect type resolution.
       let arm_infer_results = arm_nodes |> map(arm_node =>
         let arm_pat = arm_pattern(n: arm_node)
         let arm_g = arm_guard(n: arm_node)
@@ -1348,16 +1378,66 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             body: body_typed,
             span: span
           ),
-          diagnostics: concat(pattern_diags, concat(guard_diags, body_diags))
+          diagnostics: concat(pattern_diags, concat(guard_diags, body_diags)),
           body_type: rt_type(n: body_typed)
         }
       )
-      let typed_arms = arm_infer_results |> map(ar => ar.typed_arm)
-      let arm_diags = flat_map(arm_infer_results, ar => ar.diagnostics)
-      let result_type = match first(arm_infer_results) {
-        Some { value: ar } => ar.body_type
+      // Compute unified type across all arms via prefer_specific_type.
+      let arm_body_types = arm_infer_results |> map(ar => ar.body_type)
+      let unified_arm_type = match arm_body_types |> first {
+        Some { value: first_type } =>
+          arm_body_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
+            prefer_specific_type(left: acc, right: t)
+          )
         None => scrut_rt
       }
+      // Re-infer under-resolved arms with the unified type as expected.
+      // This lets empty_map() in None arms adopt the type from resolved arms.
+      let arm_infer_results = if is_fully_resolved(n: unified_arm_type) {
+        arm_nodes |> enumerate |> map(pair =>
+          let idx = pair.first
+          let arm_node = pair.second
+          let original_list = arm_infer_results |> enumerate |> filter(ap => ap.first == idx) |> map(ap => ap.second)
+          let original = match original_list |> first {
+            Some { value: ar } => ar
+            None => ArmInferResult { typed_arm: arm_node, diagnostics: [], body_type: scrut_rt }
+          }
+          if !is_fully_resolved(n: original.body_type) {
+            // Re-infer this arm with the unified type as expected.
+            let arm_pat = arm_pattern(n: arm_node)
+            let arm_g = arm_guard(n: arm_node)
+            let arm_b = arm_body(n: arm_node)
+            let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: scrut_subject, scope: scope)
+            let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject)
+            let arm_scope = pattern_result.scope
+            let pattern_diags = pattern_result.diagnostics
+            let guard_result = if arm_g != none {
+              Some { value: infer_expr(texpr: arm_g.value, scope: arm_scope, expected: none) }
+            } else { none }
+            let body_result = infer_expr(texpr: arm_b, scope: arm_scope, expected: Some { value: unified_arm_type })
+            let body_typed = body_result.typed
+            let body_diags = body_result.diagnostics
+            let guard_unwrapped = match guard_result {
+              Some { value: gr } => gr
+              None => InferResult { typed: arm_b, diagnostics: [] }
+            }
+            let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
+            ArmInferResult {
+              typed_arm: make_arm_node(
+                pattern: typed_pattern,
+                guard: if guard_result != none { Some { value: guard_unwrapped.typed } } else { none },
+                body: body_typed,
+                span: span
+              ),
+              diagnostics: concat(pattern_diags, concat(guard_diags, body_diags)),
+              body_type: rt_type(n: body_typed)
+            }
+          } else { original }
+        )
+      } else { arm_infer_results }
+      let typed_arms = arm_infer_results |> map(ar => ar.typed_arm)
+      let arm_diags = flat_map(arm_infer_results, ar => ar.diagnostics)
+      let result_type = unified_arm_type
       let empty_arms_diags = if count(arm_infer_results) == 0 {
         [inference_error(
           message: "match expression has no arms",
@@ -1399,11 +1479,27 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let then_diags = then_result.diagnostics
       match else_expr {
         Some { value: else_branch } =>
+          // Both branches infer with only the caller's expected type.
+          // If one branch is under-resolved after initial inference,
+          // re-infer it with the resolved branch's type as expected.
+          // This is order-independent — either branch can provide context.
           let else_result = infer_expr(texpr: else_branch, scope: scope, expected: expected)
+          let then_rt = rt_type(n: then_result.typed)
+          let else_rt = rt_type(n: else_result.typed)
+          // Re-infer under-resolved branch with the resolved branch's type.
+          let then_result = if !is_fully_resolved(n: then_rt) && is_fully_resolved(n: else_rt) {
+            infer_expr(texpr: then_expr, scope: scope, expected: Some { value: else_rt })
+          } else { then_result }
+          let else_result = if !is_fully_resolved(n: else_rt) && is_fully_resolved(n: then_rt) {
+            infer_expr(texpr: else_branch, scope: scope, expected: Some { value: then_rt })
+          } else { else_result }
+          let then_typed = then_result.typed
+          let then_diags = then_result.diagnostics
           let else_typed = else_result.typed
           let else_diags = else_result.diagnostics
           let then_rt = rt_type(n: then_typed)
           let else_rt = rt_type(n: else_typed)
+          let unified = prefer_specific_type(left: then_rt, right: else_rt)
           let branch_diags = if node_type_compatible(
             left: then_rt,
             right: else_rt
@@ -1421,8 +1517,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               module_name: scope.module_name
             )]
           }
-          let resolved_type = prefer_specific_type(left: then_rt, right: else_rt)
-          let if_texpr = make_expr_node(expr_data: ExprIf, children: [cond_typed, then_typed, else_typed], inferred: Some { value: Resolved { node: resolved_type } }, span: span)
+          let if_texpr = make_expr_node(expr_data: ExprIf, children: [cond_typed, then_typed, else_typed], inferred: Some { value: Resolved { node: unified } }, span: span)
           InferResult {
             typed: if_texpr,
             diagnostics: concat(cond_diags, then_diags, else_diags, branch_diags)
@@ -2123,15 +2218,20 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 //   3. Local type definitions from the module's items
 // =========================================================================
 
-// Collect type bindings from parent environments, filtering out bridge
-// placeholder names. Typed return ensures fold(init: empty_map()) resolves
-// to Map<String, TypeBinding>.
-fn collect_filtered_bindings(envs: List<TypeEnv>, placeholder_names: Map<String, Bool>) -> Map<String, TypeBinding> {
+// Names from the algebra type system that should not leak as ambient
+// type bindings when importing from std.types. These are template
+// metavariables, not user-facing type definitions.
+fn is_type_variable_name(name: String) -> Bool {
+  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+}
+
+// Merge type bindings from parent environments, filtering out algebra
+// type variable names that should not be visible to importing modules.
+fn collect_parent_bindings_filtered(envs: List<TypeEnv>) -> Map<String, TypeBinding> {
   fold(envs, init: empty_map(), f: (acc, env) =>
-    fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-      if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
-        bacc
-      } else {
+    fold(map_keys(env.bindings), init: acc, f: (bacc, name) =>
+      if is_type_variable_name(name: name) { bacc }
+      else {
         match map_get(env.bindings, name) {
           Some { value: binding } => map_insert(bacc, name, binding)
           None => bacc
@@ -2142,7 +2242,6 @@ fn collect_filtered_bindings(envs: List<TypeEnv>, placeholder_names: Map<String,
 }
 
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> BuildTypeEnvResult {
-  let placeholder_names = bridge_placeholder_type_names()
   // Seed the kernel with primitive types so they resolve even when
   // std.types is not in the compilation set (e.g., in isolated tests).
   let zero_span = make_span(start: 0, end: 0)
@@ -2194,26 +2293,23 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   }
   let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
-  // Bridge placeholder slots remain available inside std.types declarations,
-  // but importing modules must not see them as ambient user-facing types.
-  let std_import_bindings = collect_filtered_bindings(envs: std_types_parent_env, placeholder_names: placeholder_names)
+  // Filter algebra type variable names from std.types imports so they
+  // do not leak as ambient user-facing type bindings.
+  let std_import_bindings = collect_parent_bindings_filtered(envs: std_types_parent_env)
   let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Some { value: typed_parent } =>
         if imp.module_path == "std.types" {
-          fold(typed_parent.type_env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-            if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
-              bacc
-            } else {
+          fold(map_keys(typed_parent.type_env.bindings), init: acc, f: (bacc, name) =>
+            if is_type_variable_name(name: name) { bacc }
+            else {
               match map_get(typed_parent.type_env.bindings, name) {
                 Some { value: binding } => map_insert(bacc, name, binding)
                 None => bacc
               }
             }
           )
-        } else {
-          map_merge(acc, typed_parent.type_env.bindings)
-        }
+        } else { map_merge(acc, typed_parent.type_env.bindings) }
       None => acc
     }
   )
@@ -2331,7 +2427,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 // Used by the per-module profile test to isolate whether OOM is in
 // merge+cycles vs type resolution.
 fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> BuildTypeEnvResult {
-  let placeholder_names = bridge_placeholder_type_names()
   let zero_span = make_span(start: 0, end: 0)
   let source_index = map_get(source_indices, module.module.span.file)
   let kernel_bindings = fold(
@@ -2356,25 +2451,21 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   }
   let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
-  // Mirror the same std.types-only placeholder filtering in the unresolved path.
-  let std_import_bindings = collect_filtered_bindings(envs: std_types_parent_env, placeholder_names: placeholder_names)
+  let std_import_bindings = collect_parent_bindings_filtered(envs: std_types_parent_env)
   let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Some { value: typed_parent } =>
         if imp.module_path == "std.types" {
-          fold(typed_parent.type_env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-            if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
-              bacc
-            } else {
+          fold(map_keys(typed_parent.type_env.bindings), init: acc, f: (bacc, name) =>
+            if is_type_variable_name(name: name) { bacc }
+            else {
               match map_get(typed_parent.type_env.bindings, name) {
                 Some { value: binding } => map_insert(bacc, name, binding)
                 None => bacc
               }
             }
           )
-        } else {
-          map_merge(acc, typed_parent.type_env.bindings)
-        }
+        } else { map_merge(acc, typed_parent.type_env.bindings) }
       None => acc
     }
   )

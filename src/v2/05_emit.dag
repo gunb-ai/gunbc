@@ -1762,3 +1762,9 @@ fn emit_default_bin_op(texpr: Node, target: RenderTarget, recurse: fn(Node) -> S
     _ => wrap_result(emit_error_expr(message: "emit_default_bin_op expected ExprBinOp", target: target))
   }
 }
+
+// Shared typed seed for template binding maps. Used by all backend emitters
+// to create initial Map<String, String> bindings without BRIDGE fabrication.
+fn seed_bindings(key: String, value: String) -> Map<String, String> {
+  map_insert(empty_map(), key, value)
+}

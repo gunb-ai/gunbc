@@ -189,7 +189,7 @@ Rc::new(ImportResolveResult {
     Some(target_mod) => {
             let exported_set = match v2_rt::map_get(&export_sets, import.name.clone()) {
     Some(set) => set.clone(),
-    None => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
+    None => v2_rt::rc_empty_map::<bool>(),
 };
 let name_diags = if import_is_all(import.clone()) {
                 Rc::new(vec![])

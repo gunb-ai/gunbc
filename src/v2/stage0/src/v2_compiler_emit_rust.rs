@@ -80,7 +80,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope,
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 pub use crate::v2_compiler_ownership::{OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, TransportKind, classify_transport, extract_modifier_names};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, TransportKind, classify_transport, extract_modifier_names, seed_bindings};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
 pub fn render_rust_type(n: Rc<Node>, shared_types: Rc<HashMap<String, bool>>) -> String {
@@ -642,16 +642,16 @@ if is_type_def_item(item.clone()) {
                     if is_function_item(item.clone()) {
                         {
                             let fn_movable = if is_tco_eligible(item_text.clone(), item.body.clone().clone().unwrap(), registry.clone()) {
-                                Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */
+                                v2_rt::rc_empty_map::<bool>()
 } else {
                                 match v2_rt::map_get(&emit_info.ownership_index.clone(), item.name.clone()) {
     Some(m) => m.clone(),
-    None => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
+    None => v2_rt::rc_empty_map::<bool>(),
 }
 };
 let fn_fold_eligible = match v2_rt::map_get(&emit_info.fold_eligible_index.clone(), item.name.clone()) {
     Some(m) => m.clone(),
-    None => Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */,
+    None => v2_rt::rc_empty_map::<bool>(),
 };
 let fn_emit_info = Rc::new(EmitGraphInfo {
     type_summaries: emit_info.type_summaries.clone(),
@@ -2816,7 +2816,7 @@ let p = emit_ident(dag_name, RenderTarget::Rust);
 let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
 let body_str = emit_typed_expr(bd, registry.clone(), lambda_scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 let inner_iter = apply_type_template1(sharing.iter_owned.clone(), v2_rt::concat(v2_rt::concat("(*".to_string(), body_str.clone()), ")".to_string()));
-let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "param".to_string(), p), "body".to_string(), body_str.clone()), "iter".to_string(), iter_str), "inner_iter".to_string(), inner_iter);
+let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(seed_bindings("param".to_string(), p), "body".to_string(), body_str.clone()), "iter".to_string(), iter_str), "inner_iter".to_string(), inner_iter);
 let raw = apply_named_template(ho_spec.inline_template.clone(), bindings);
 if ho_spec.wraps_in_sharing.clone() {
                 v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
@@ -2825,7 +2825,7 @@ if ho_spec.wraps_in_sharing.clone() {
 }
 },
     _ => {
-            let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "iter".to_string(), iter_str), "arg".to_string(), first_arg_str);
+            let bindings = v2_rt::rc_map_insert(seed_bindings("iter".to_string(), iter_str), "arg".to_string(), first_arg_str);
 let raw = apply_named_template(ho_spec.fn_ref_template.clone(), bindings);
 if ho_spec.wraps_in_sharing.clone() {
                 v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
@@ -2835,7 +2835,7 @@ if ho_spec.wraps_in_sharing.clone() {
 },
 },
     None => {
-            let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "iter".to_string(), iter_str), "arg".to_string(), first_arg_str);
+            let bindings = v2_rt::rc_map_insert(seed_bindings("iter".to_string(), iter_str), "arg".to_string(), first_arg_str);
 let raw = apply_named_template(ho_spec.fn_ref_template.clone(), bindings);
 if ho_spec.wraps_in_sharing.clone() {
                 v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
@@ -3006,7 +3006,7 @@ let spec = language_spec(RenderTarget::Rust);
 match spec.method_templates.clone() {
     Some(templates) => match v2_rt::map_get(&templates, method_name.clone()) {
     Some(tmpl) => {
-                                                    let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "recv".to_string(), recv_str), "arg".to_string(), first_arg_str);
+                                                    let bindings = v2_rt::rc_map_insert(seed_bindings("recv".to_string(), recv_str), "arg".to_string(), first_arg_str);
 let raw = apply_named_template(tmpl.clone(), bindings);
 if rust_runtime_bridge_wraps_collection_result_in_rc(method_name.clone()) {
                                                         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())

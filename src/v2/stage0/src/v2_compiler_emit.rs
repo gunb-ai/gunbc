@@ -1815,3 +1815,7 @@ wrap_result(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::conca
     _ => wrap_result(emit_error_expr("emit_default_bin_op expected ExprBinOp".to_string(), target)),
 }
 }
+
+pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> {
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), key, value)
+}

@@ -106,7 +106,8 @@ import v2.compiler.emit {
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
-  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport
+  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
+  seed_bindings
 }
 
 // =========================================================================
@@ -828,7 +829,7 @@ fn emit_py_algebra_method_call(method_name: String, receiver: Node, args: List<N
   match spec.method_templates {
     Some { value: templates } => match map_get(templates, method_name) {
       Some { value: tmpl } =>
-        let bindings = empty_map() |> map_insert("recv", recv_str) |> map_insert("arg", first_arg_str)
+        let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
         apply_named_template(template: tmpl, bindings: bindings)
       None =>
         let function_name = py_bridge_method_name(method_name: method_name)
