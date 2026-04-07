@@ -55,8 +55,9 @@ pub use crate::std_termination::{DescentEvidence, RankingDimension, DescentSourc
 use crate::std_termination::DescentEvidence::{Strict, NonIncreasing, DescentUnknown};
 use crate::std_termination::RankingDimension::{TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality};
 use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, ArithmeticDecrease, ParserAdvance, SetRemoval, FoldIteration};
-pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param};
+pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension, type_iteration_dimension};
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
+use crate::std_computation::IterationDimension::{TreeDescent, CollectionFold, ArithmeticRepeat};
 pub use crate::v2_std_core::{Node, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_value, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_call_func, expr_var_name, field_access_base, field_access_field, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprBinOp, ExprUnaryOp, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda};
 use crate::v2_std_core::BinOp::{Sub, Div};
@@ -2348,13 +2349,46 @@ merge_optional_evidence(acc.clone(), ce.clone())
     })
 }
 
+pub fn try_type_directed_dimension(body: Rc<Node>, func_name: String, param_name: String, dim: IterationDimension) -> Option<Rc<TerminationProof>> {
+    match dim {
+    IterationDimension::TreeDescent => match try_dimension_for_param(body, func_name, param_name.clone(), true, false) {
+    Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
+    dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
+    param: param_name.clone(),
+})]),
+})),
+    _ => None,
+},
+    IterationDimension::CollectionFold => match try_dimension_for_param(body, func_name, param_name.clone(), false, true) {
+    Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
+    dimensions: Rc::new(vec![Rc::new(RankingDimension::ListLength {
+    param: param_name.clone(),
+})]),
+})),
+    _ => None,
+},
+    IterationDimension::ArithmeticRepeat => match try_dimension_for_param(body, func_name, param_name.clone(), false, false) {
+    Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
+    dimensions: Rc::new(vec![Rc::new(RankingDimension::ArithmeticValue {
+    param: param_name.clone(),
+})]),
+})),
+    _ => None,
+},
+}
+}
+
 pub fn construct_termination_proof(func_name: String, body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, parser_always_advancing: Rc<HashMap<String, bool>>) -> Option<Rc<TerminationProof>> {
     {
         let structural_proof = params.clone().iter().cloned().fold(None, |best: _, p: Rc<Node>| match best.clone() {
     Some(_) => best.clone(),
     None => {
             let pname = param_node_name(p.clone());
-let tree_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), true, false);
+let type_name = param_node_type_expr(p.clone()).name.clone();
+match type_iteration_dimension(type_name.clone()) {
+    Some(dim) => try_type_directed_dimension(body.clone(), func_name.clone(), pname.clone(), dim.clone()),
+    None => {
+                let tree_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), true, false);
 match tree_evidence.clone() {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
@@ -2362,7 +2396,7 @@ match tree_evidence.clone() {
 })]),
 })),
     _ => {
-                let list_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, true);
+                    let list_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, true);
 match list_evidence.clone() {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::ListLength {
@@ -2370,7 +2404,7 @@ match list_evidence.clone() {
 })]),
 })),
     _ => {
-                    let arith_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, false);
+                        let arith_evidence = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, false);
 match arith_evidence.clone() {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::ArithmeticValue {
@@ -2378,6 +2412,8 @@ match arith_evidence.clone() {
 })]),
 })),
     _ => None,
+}
+},
 }
 },
 }
@@ -2426,22 +2462,44 @@ pub fn construct_branching_termination_proof(func_name: String, body: Rc<Node>, 
     Some(_) => best.clone(),
     None => {
         let pname = param_node_name(p.clone());
-let tree_evidence = try_branching_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), true, false);
-match tree_evidence.clone() {
+let type_name = param_node_type_expr(p.clone()).name.clone();
+match type_iteration_dimension(type_name.clone()) {
+    Some(IterationDimension::TreeDescent) => match try_branching_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), true, false) {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
     param: pname.clone(),
 })]),
 })),
-    _ => {
-            let list_evidence = try_branching_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, true);
-match list_evidence.clone() {
+    _ => None,
+},
+    Some(IterationDimension::CollectionFold) => match try_branching_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, true) {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::ListLength {
     param: pname.clone(),
 })]),
 })),
     _ => None,
+},
+    Some(IterationDimension::ArithmeticRepeat) => None,
+    None => {
+            let tree_ev = try_branching_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), true, false);
+match tree_ev.clone() {
+    Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
+    dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
+    param: pname.clone(),
+})]),
+})),
+    _ => {
+                let list_ev = try_branching_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), false, true);
+match list_ev.clone() {
+    Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
+    dimensions: Rc::new(vec![Rc::new(RankingDimension::ListLength {
+    param: pname.clone(),
+})]),
+})),
+    _ => None,
+}
+},
 }
 },
 }

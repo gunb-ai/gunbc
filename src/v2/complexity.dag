@@ -33,7 +33,9 @@ import std.computation {
   CallPattern,
   ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall,
   ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall,
-  LoweringTarget, lower_call_pattern, size_bound_param
+  LoweringTarget, lower_call_pattern, size_bound_param,
+  IterationDimension, TreeDescent, CollectionFold, ArithmeticRepeat,
+  type_iteration_dimension
 }
 import v2.std.core {
   Node,
@@ -2775,33 +2777,60 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
   }
 }
 
+// Type-directed dimension selection: translate IterationDimension into the
+// correct check_child/check_list pair and return a TerminationProof on success.
+fn try_type_directed_dimension(body: Node, func_name: String, param_name: String, dim: IterationDimension) -> TerminationProof? {
+  match dim {
+    TreeDescent =>
+      match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: true, check_list: false) {
+        Some { value: Strict } => Some { value: TerminationProof { dimensions: [TreeSize { param: param_name }] } }
+        _ => none
+      }
+    CollectionFold =>
+      match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: false, check_list: true) {
+        Some { value: Strict } => Some { value: TerminationProof { dimensions: [ListLength { param: param_name }] } }
+        _ => none
+      }
+    ArithmeticRepeat =>
+      match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: false, check_list: false) {
+        Some { value: Strict } => Some { value: TerminationProof { dimensions: [ArithmeticValue { param: param_name }] } }
+        _ => none
+      }
+  }
+}
+
 fn construct_termination_proof(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>) -> TerminationProof? {
-  // Try each parameter as a candidate ranking dimension.
-  // Order: TreeSize → ListLength → ArithmeticValue → TokenPosition.
-  // Returns on first success (single-dimension proof).
+  // Type-directed dimension selection: use the parameter's algebra profile
+  // to determine which dimension to try. Falls back to brute-force for
+  // unknown types (backward compat).
   let structural_proof = params |> fold(init: none, f: (best, p) =>
     match best {
       Some { value: _ } => best  // already found a proof
       None =>
         let pname = param_node_name(n: p)
-        // Try TreeSize (child accessor descent)
-        let tree_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
-        match tree_evidence {
-          Some { value: Strict } =>
-            Some { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
-          _ =>
-            // Try ListLength (skip/tail descent)
-            let list_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true)
-            match list_evidence {
+        let type_name = param_node_type_expr(n: p).name
+        match type_iteration_dimension(type_name: type_name) {
+          Some { value: dim } =>
+            // Type-directed: only try the matching dimension
+            try_type_directed_dimension(body: body, func_name: func_name, param_name: pname, dim: dim)
+          None =>
+            // Unknown type: fallback to trying all dimensions
+            let tree_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
+            match tree_evidence {
               Some { value: Strict } =>
-                Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
+                Some { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
               _ =>
-                // Try ArithmeticValue (param - N descent)
-                let arith_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: false)
-                match arith_evidence {
+                let list_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true)
+                match list_evidence {
                   Some { value: Strict } =>
-                    Some { value: TerminationProof { dimensions: [ArithmeticValue { param: pname }] } }
-                  _ => none
+                    Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
+                  _ =>
+                    let arith_evidence = try_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: false)
+                    match arith_evidence {
+                      Some { value: Strict } =>
+                        Some { value: TerminationProof { dimensions: [ArithmeticValue { param: pname }] } }
+                      _ => none
+                    }
                 }
             }
         }
@@ -2844,24 +2873,38 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
 }
 
 fn construct_branching_termination_proof(func_name: String, body: Node, params: List<Node>) -> TerminationProof? {
-  // CX-N: Like construct_termination_proof but uses branching_only evidence
-  // collection, which filters dominated branches. Only tries TreeSize and
-  // ListLength — ArithmeticValue is unsafe for branching (exponential blowup).
+  // CX-N: Like construct_termination_proof but uses branching_only evidence.
+  // Type-directed: use parameter's algebra profile to select dimension.
+  // ArithmeticRepeat is skipped (unsafe for branching — exponential blowup).
   params |> fold(init: none, f: (best, p) =>
     match best {
       Some { value: _ } => best
       None =>
         let pname = param_node_name(n: p)
-        let tree_evidence = try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
-        match tree_evidence {
-          Some { value: Strict } =>
-            Some { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
-          _ =>
-            let list_evidence = try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true)
-            match list_evidence {
-              Some { value: Strict } =>
-                Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
+        let type_name = param_node_type_expr(n: p).name
+        match type_iteration_dimension(type_name: type_name) {
+          Some { value: TreeDescent } =>
+            match try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false) {
+              Some { value: Strict } => Some { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
               _ => none
+            }
+          Some { value: CollectionFold } =>
+            match try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true) {
+              Some { value: Strict } => Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
+              _ => none
+            }
+          Some { value: ArithmeticRepeat } => none  // unsafe for branching
+          None =>
+            // Fallback: try TreeSize then ListLength
+            let tree_ev = try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
+            match tree_ev {
+              Some { value: Strict } => Some { value: TerminationProof { dimensions: [TreeSize { param: pname }] } }
+              _ =>
+                let list_ev = try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true)
+                match list_ev {
+                  Some { value: Strict } => Some { value: TerminationProof { dimensions: [ListLength { param: pname }] } }
+                  _ => none
+                }
             }
         }
     }

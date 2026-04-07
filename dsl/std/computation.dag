@@ -99,6 +99,13 @@ module std.computation
 
 import std.iteration { }
 import std.termination { DescentEvidence, RankingDimension }
+import std.algebra {
+  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
+  BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
+  FreeMonoidScalarProfile, FreeMonoidCollectionProfile,
+  PartialFunctionProfile,
+  kernel_algebra_profile
+}
 
 // =========================================================================
 // Size bounds: what limits a computation
@@ -284,3 +291,51 @@ fn size_bound_param(bound: SizeBound) -> String? {
 // A cost IS a product of bounds from the lowering table — not an
 // arbitrary symbolic expression tree.
 // =========================================================================
+
+// =========================================================================
+// Type-directed iteration dimension: algebra profile → bound kind
+//
+// Every algebraic type has a natural iteration dimension — the structural
+// quantity that bounds recursion through values of that type.
+//
+//   FreeMonoid (List, String) → CollectionFold  (bounded by |collection|)
+//   OrderedRing (Int, Float)  → ArithmeticRepeat (bounded by value magnitude)
+//   BooleanAlgebra (Set)      → CollectionFold  (bounded by |set|)
+//   PartialFunction (Map)     → CollectionFold  (bounded by |keys|)
+//   Node (compiler tree)      → TreeDescent     (bounded by |tree|)
+//
+// The complexity analyzer reads this mapping to determine which dimension
+// to try when proving termination — instead of brute-force trying all
+// dimensions for every parameter.
+// =========================================================================
+
+type IterationDimension
+  = TreeDescent       // child accessor descent → check_child: true
+  | CollectionFold    // collection shrink     → check_list: true
+  | ArithmeticRepeat  // arithmetic descent    → check_child/list: false
+
+fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? {
+  match profile {
+    FreeMonoidCollectionProfile     => Some { value: CollectionFold }
+    FreeMonoidScalarProfile         => Some { value: CollectionFold }
+    BooleanAlgebraCollectionProfile => Some { value: CollectionFold }
+    PartialFunctionProfile          => Some { value: CollectionFold }
+    OrderedRingProfile              => Some { value: ArithmeticRepeat }
+    ApproximateFieldProfile         => Some { value: ArithmeticRepeat }
+    BooleanAlgebraProfile           => none
+  }
+}
+
+// Look up the natural iteration dimension for a type by name.
+// Checks kernel_algebra_profile (algebra.dag) for algebraic types,
+// special-cases "Node" (the compiler's recursive tree type).
+// Returns none for unknown/user-defined types.
+fn type_iteration_dimension(type_name: String) -> IterationDimension? {
+  if type_name == "Node" { Some { value: TreeDescent } }
+  else {
+    match kernel_algebra_profile |> get(type_name) {
+      Some { value: p } => algebra_profile_to_dimension(profile: p)
+      None => none
+    }
+  }
+}
