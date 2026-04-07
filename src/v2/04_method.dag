@@ -9,9 +9,9 @@
 
 module v2.compiler.infer_method
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, container_param_name }
 import v2.std.core {
-  Node, TypeVariable,
+  Node, TypeVariable, Resolved,
   NoConnective,
   Required,
   NoExprData,
@@ -40,10 +40,11 @@ fn map_of_type_variables() -> Node {
 }
 
 fn list_of_type_variable(id: String) -> Node {
+  let param_name = match container_param_name(kind_name: "List", index: 0) { Some { value: n } => n  None => "T" }
   Node {
     name: "List", span: make_span(start: 0, end: 0), ident_span: none,
     children: [
-      Node { name: "T", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_variable_node(id: id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_variable_node(id: id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ], connective: NoConnective, params: [],
     inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -52,10 +53,11 @@ fn list_of_type_variable(id: String) -> Node {
 }
 
 fn list_of_element(element: Node) -> Node {
+  let param_name = match container_param_name(kind_name: "List", index: 0) { Some { value: n } => n  None => "T" }
   Node {
     name: "List", span: make_span(start: 0, end: 0), ident_span: none,
     children: [
-      Node { name: "T", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ], connective: NoConnective, params: [],
     inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],

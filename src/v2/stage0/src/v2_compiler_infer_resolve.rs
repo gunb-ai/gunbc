@@ -619,12 +619,18 @@ let val_diags = val_result.diagnostics.clone();
 let key_param_name = if (key_child_node.inferred.clone() != None) {
                                     key_child_node.name.clone()
 } else {
-                                    "K".to_string()
+                                    match container_param_name(type_name.clone(), 0) {
+    Some(pn) => pn.clone(),
+    None => key_child_node.name.clone(),
+}
 };
 let val_param_name = if (val_child_node.inferred.clone() != None) {
                                     val_child_node.name.clone()
 } else {
-                                    "V".to_string()
+                                    match container_param_name(type_name.clone(), 1) {
+    Some(pn) => pn.clone(),
+    None => val_child_node.name.clone(),
+}
 };
 let resolved_key_child = Rc::new(Node {
     name: key_param_name,

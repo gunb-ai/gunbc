@@ -46,9 +46,9 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_types::{SourceSpan};
+pub use crate::std_types::{SourceSpan, container_param_name};
 pub use crate::v2_std_core::{Node, make_span, with_optional_cardinality, unit_type, bool_type, string_type, int_type, InferredNode, Connective, Cardinality, ExprData};
-use crate::v2_std_core::InferredNode::{TypeVariable};
+use crate::v2_std_core::InferredNode::{TypeVariable, Resolved};
 use crate::v2_std_core::Connective::{NoConnective};
 use crate::v2_std_core::Cardinality::{Required};
 use crate::v2_std_core::ExprData::{NoExprData};
@@ -83,12 +83,17 @@ pub fn map_of_type_variables() -> Rc<Node> {
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    Rc::new(Node {
+    {
+        let param_name = match container_param_name("List".to_string(), 0) {
+    Some(n) => n.clone(),
+    None => "T".to_string(),
+};
+Rc::new(Node {
     name: "List".to_string(),
     span: make_span(0, 0),
     ident_span: None,
     children: Rc::new(vec![Rc::new(Node {
-    name: "T".to_string(),
+    name: param_name,
     span: make_span(0, 0),
     ident_span: None,
     children: Rc::new(vec![]),
@@ -123,14 +128,20 @@ pub fn list_of_type_variable(id: String) -> Rc<Node> {
     expr_data: Rc::new(ExprData::NoExprData),
 })
 }
+}
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
+    {
+        let param_name = match container_param_name("List".to_string(), 0) {
+    Some(n) => n.clone(),
+    None => "T".to_string(),
+};
+Rc::new(Node {
     name: "List".to_string(),
     span: make_span(0, 0),
     ident_span: None,
     children: Rc::new(vec![Rc::new(Node {
-    name: "T".to_string(),
+    name: param_name,
     span: make_span(0, 0),
     ident_span: None,
     children: Rc::new(vec![]),
@@ -164,6 +175,7 @@ pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 })
+}
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {

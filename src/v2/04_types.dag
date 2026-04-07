@@ -110,7 +110,7 @@ fn is_fully_resolved(n: Node) -> Bool {
       None => false
     }
     if under_param { false }
-    else { n.children |> all(ch => if ch.inferred != none { is_fully_resolved(n: rt_type(n: ch)) } else { is_fully_resolved(n: ch) }) }
+    else { n.children |> all(ch => is_fully_resolved(n: child_type_node(ch: ch))) }
   }
 }
 
@@ -129,14 +129,18 @@ fn tuple_node(first: Node, second: Node) -> Node {
 }
 
 fn map_node(key: Node, value: Node) -> Node {
+  let key_name = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "K" }
+  let val_name = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "V" }
   Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: none, children: [
-    Node { name: "K", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: "V", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    Node { name: key_name, span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: val_name, span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn bare_map_node() -> Node {
-  map_node(key: type_variable_node(id: "K"), value: type_variable_node(id: "V"))
+  let key_id = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "K" }
+  let val_id = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "V" }
+  map_node(key: type_variable_node(id: key_id), value: type_variable_node(id: val_id))
 }
 
 // P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
@@ -191,7 +195,7 @@ fn nominal_type_ref(name: String) -> Node {
 
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> Node {
   match base.children |> enumerate |> filter(pair => pair.first == child_index) |> map(pair => pair.second) |> first {
-    Some { value: child } => rt_type(n: child)
+    Some { value: child } => child_type_node(ch: child)
     None => type_variable_node(id: placeholder)
   }
 }
@@ -374,29 +378,29 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       } else { receiver }
     ReceiverElement =>
       match receiver.children |> first {
-        Some { value: child } => rt_type(n: child)
+        Some { value: child } => child_type_node(ch: child)
         None =>
           match map_get(subst, "__element__") {
             Some { value: elem } => elem
-            None => type_variable_node(id: "T")
+            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 0) { Some { value: pn } => pn  None => "T" })
           }
       }
     ReceiverKey =>
       match receiver.children |> first {
-        Some { value: child } => rt_type(n: child)
+        Some { value: child } => child_type_node(ch: child)
         None =>
           match map_get(subst, "__key__") {
             Some { value: key } => key
-            None => type_variable_node(id: "K")
+            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 0) { Some { value: pn } => pn  None => "K" })
           }
       }
     ReceiverValue =>
       match receiver.children |> skip(1) |> first {
-        Some { value: child } => rt_type(n: child)
+        Some { value: child } => child_type_node(ch: child)
         None =>
           match map_get(subst, "__value__") {
             Some { value: val } => val
-            None => type_variable_node(id: "V")
+            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 1) { Some { value: pn } => pn  None => "V" })
           }
       }
     NamedTemplate { name: n } => nominal_type_ref(name: n)
@@ -903,7 +907,7 @@ fn for_each_element_type_node(n: Node) -> Node {
   let is_single_child = normed.connective == NoConnective && normed.children |> count == 1
   let extracted = if is_single_child {
     match normed.children |> first {
-      Some { value: ch } => Some { value: rt_type(n: ch) }
+      Some { value: ch } => Some { value: child_type_node(ch: ch) }
       None => none
     }
   } else { none }
