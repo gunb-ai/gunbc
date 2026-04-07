@@ -392,21 +392,6 @@ match template_match {
 }
 }
 
-pub fn substitute_algebra_result(result_type: Rc<Node>, receiver_type: Rc<Node>, fold_accumulator_type: Option<Rc<Node>>) -> Rc<Node> {
-    if method_name_is_fold(result_type.clone(), fold_accumulator_type.clone()) {
-        match fold_accumulator_type.clone() {
-    Some(fat) => fat.clone(),
-    None => result_type.clone(),
-}
-} else {
-        result_type.clone()
-}
-}
-
-pub fn method_name_is_fold(result_type: Rc<Node>, fold_accumulator_type: Option<Rc<Node>>) -> bool {
-    (fold_accumulator_type != None)
-}
-
 pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, method_name: String, fold_accumulator_type: Option<Rc<Node>>, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Rc<KnownMethodResolution> {
     {
         let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
@@ -414,15 +399,14 @@ match tier0_result {
     Some(mfr) => {
             let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {
     method_def: mfr.field_node.clone(),
-    fold_accumulator_type: fold_accumulator_type.clone(),
+    fold_accumulator_type: fold_accumulator_type,
     size_effect: mfr.size_effect.clone(),
     cost_shape: mfr.cost_shape.clone(),
     algebra_template: mfr.algebra_template.clone(),
 });
-let resolved_type = substitute_algebra_result(mfr.result_type.clone(), receiver_type.clone(), fold_accumulator_type.clone());
 Rc::new(KnownMethodResolution {
     semantics: Some(semantics),
-    result_type: Some(resolved_type),
+    result_type: Some(mfr.result_type.clone()),
 })
 },
     None => match check_service_method_call_node(receiver_type.clone(), method_name.clone(), service_registry) {
