@@ -357,16 +357,28 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
     let source = read_v2_file("src/v2/complexity.dag");
     let stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_complexity.rs");
 
+    // Graph types/functions moved to dsl/std/graph.dag (PR #336 follow-up).
+    // Check they exist in the graph module's stage0 mirror instead.
+    let graph_stage0 = read_v2_file("src/v2/stage0/src/std_graph.rs");
+    for needle in [
+        "pub struct CallGraphAcc",
+        "pub struct DfsFinishAcc",
+        "pub struct SccComponentAcc",
+        "pub fn dfs_finish_order(",
+        "pub fn dfs_collect_component(",
+    ] {
+        assert_live_contains(
+            &graph_stage0,
+            needle,
+            &format!("stage0 std_graph should contain {needle}")
+        );
+    }
+
     for needle in [
         "fn max_path_self_calls(",
         "fn max_path_self_calls_with_cont(",
         "fn max_path_self_calls_block(",
-        "type CallGraphAcc {",
-        "type DfsFinishAcc {",
-        "type SccComponentAcc {",
         "fn build_scc_measure_params(",
-        "fn dfs_finish_order(",
-        "fn dfs_collect_component(",
         "fn normalize_asymptotic(",
         "fn normalize_constants(",
         "fn format_cost_class(",
@@ -387,12 +399,7 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn max_path_self_calls(",
         "pub fn max_path_self_calls_with_cont(",
         "pub fn max_path_self_calls_block(",
-        "pub struct CallGraphAcc",
-        "pub struct DfsFinishAcc",
-        "pub struct SccComponentAcc",
         "pub fn build_scc_measure_params(",
-        "pub fn dfs_finish_order(",
-        "pub fn dfs_collect_component(",
         "pub fn normalize_asymptotic(",
         "pub fn normalize_constants(",
         "pub fn format_cost_class(",

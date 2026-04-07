@@ -68,6 +68,7 @@ pub use crate::v2_compiler_infer_types::{node_is_collection, rt_type};
 pub use crate::std_algebra::{CollectionSizeEffect, CostShape};
 use crate::std_algebra::CollectionSizeEffect::{ShrinkEffect, ProjectionEffect, IdentityEffect};
 use crate::std_algebra::CostShape::{ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody};
+pub use crate::std_graph::{CallGraph, CallGraphAcc, DfsFinishAcc, SccComponentAcc, SccCycleAcc, seed_adjacency_map, build_call_graph_from_proof_edges, dfs_finish_order, dfs_collect_component, graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof};
 use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
@@ -172,18 +173,6 @@ pub struct CallEdge {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CallGraph {
-    pub forward: Rc<HashMap<String, Rc<Vec<String>>>>,
-    pub reverse: Rc<HashMap<String, Rc<Vec<String>>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CallGraphAcc {
-    pub forward: Rc<HashMap<String, Rc<Vec<String>>>>,
-    pub reverse: Rc<HashMap<String, Rc<Vec<String>>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccInfo {
     pub members: Rc<Vec<String>>,
     pub member_set: Rc<HashMap<String, bool>>,
@@ -194,24 +183,6 @@ pub struct SccInfo {
 pub struct SccBuildAcc {
     pub assigned: Rc<HashMap<String, bool>>,
     pub index: Rc<HashMap<String, Rc<SccInfo>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DfsFinishAcc {
-    pub visited: Rc<HashMap<String, bool>>,
-    pub order: Rc<Vec<String>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SccComponentAcc {
-    pub visited: Rc<HashMap<String, bool>>,
-    pub members: Rc<Vec<String>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SccCycleAcc {
-    pub visited: Rc<HashMap<String, bool>>,
-    pub has_cycle: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -333,64 +304,10 @@ pub fn evidence_to_progress(de: DescentEvidence) -> ProgressKind {
 }
 }
 
-pub fn is_lexicographic_descent(mut evidence: Rc<Vec<DescentEvidence>>) -> bool {
-    loop {
-        match evidence.clone().first().cloned() {
-    None => { break false; },
-    Some(e) => { match e.clone() {
-    DescentEvidence::Strict => { break true; },
-    DescentEvidence::NonIncreasing => { {
-            let __tco_0 = Rc::new(evidence.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-evidence = __tco_0;
-continue;
-} },
-    DescentEvidence::DescentUnknown => { break false; },
-} },
-}
-}
-}
-
 pub fn proof_has_non_descending_cycle(members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
-    {
-        let non_descending = Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { if (is_lexicographic_descent(e.evidence.clone()) == false) { __result.push(e); } } __result });
-let has_self_cycle = { let mut __found = false; for e in non_descending.clone().iter().cloned() { if (e.caller.clone().as_str() == e.callee.clone().as_str()) { __found = true; break; } } __found };
-if has_self_cycle {
-            true
-} else {
-            {
-                let nd_graph = build_call_graph_from_proof_edges(members.clone(), non_descending.clone());
-graph_has_multi_node_scc(members.clone(), nd_graph)
-}
-}
-}
-}
-
-pub fn build_call_graph_from_proof_edges(names: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> Rc<CallGraph> {
-    {
-        let initial_forward = seed_adjacency_map(names.clone());
-let initial_reverse = seed_adjacency_map(names.clone());
-let graph_acc = Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { if (e.caller.clone().as_str() != e.callee.clone().as_str()) { __result.push(e); } } __result }).iter().cloned().fold(Rc::new(CallGraphAcc {
-    forward: initial_forward,
-    reverse: initial_reverse,
-}), |acc: Rc<CallGraphAcc>, edge: Rc<ProofEdge>| {
-            let forward_neighbors = match v2_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
-    Some(ns) => v2_rt::concat(ns.clone(), Rc::new(vec![edge.callee.clone()])),
-    None => Rc::new(vec![edge.callee.clone()]),
-};
-let reverse_neighbors = match v2_rt::map_get(&acc.reverse.clone(), edge.callee.clone()) {
-    Some(ns) => v2_rt::concat(ns.clone(), Rc::new(vec![edge.caller.clone()])),
-    None => Rc::new(vec![edge.caller.clone()]),
-};
-Rc::new(CallGraphAcc {
-    forward: v2_rt::rc_map_insert(acc.forward.clone(), edge.caller.clone(), forward_neighbors.clone()),
-    reverse: v2_rt::rc_map_insert(acc.reverse.clone(), edge.callee.clone(), reverse_neighbors.clone()),
-})
-});
-Rc::new(CallGraph {
-    forward: graph_acc.forward.clone(),
-    reverse: graph_acc.reverse.clone(),
-})
-}
+    (is_valid_proof(Rc::new(TerminationProof {
+    dimensions: Rc::new(vec![]),
+}), edges) == false)
 }
 
 pub fn cost_contains_computing_ref(expr: Rc<CostExpr>, func_name: String) -> bool {
@@ -994,10 +911,6 @@ pub fn seed_cost_map(key: String, value: Rc<CostExpr>) -> Rc<HashMap<String, Rc<
 
 pub fn seed_func_entry_map(key: String, value: Rc<FuncEntry>) -> Rc<HashMap<String, Rc<FuncEntry>>> {
     v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<FuncEntry>>(), key, value)
-}
-
-pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    names.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])))
 }
 
 pub fn build_call_graph_from_parser_edges(names: Rc<Vec<String>>, edges: Rc<Vec<Rc<ParserProgressEdge>>>) -> Rc<CallGraph> {
@@ -2733,78 +2646,6 @@ Rc::new(CallGraph {
     forward: graph_acc.forward.clone(),
     reverse: graph_acc.reverse.clone(),
 })
-}
-}
-
-pub fn dfs_finish_order(node: String, adjacency: Rc<HashMap<String, Rc<Vec<String>>>>, acc: Rc<DfsFinishAcc>) -> Rc<DfsFinishAcc> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if set_has(acc.visited.clone(), node.clone()) {
-            acc.clone()
-} else {
-            {
-                let next_visited = v2_rt::rc_map_insert(acc.visited.clone(), node.clone(), true);
-let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
-    Some(ns) => ns.clone(),
-    None => Rc::new(vec![]),
-};
-let explored = neighbors.iter().cloned().fold(Rc::new(DfsFinishAcc {
-    visited: next_visited,
-    order: acc.order.clone(),
-}), |inner: Rc<DfsFinishAcc>, neighbor: String| dfs_finish_order(neighbor.clone(), adjacency.clone(), inner.clone()));
-Rc::new(DfsFinishAcc {
-    visited: explored.visited.clone(),
-    order: v2_rt::rc_list_push(explored.order.clone(), node.clone()),
-})
-}
-}
-    })
-}
-
-pub fn dfs_collect_component(node: String, adjacency: Rc<HashMap<String, Rc<Vec<String>>>>, acc: Rc<SccComponentAcc>) -> Rc<SccComponentAcc> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if set_has(acc.visited.clone(), node.clone()) {
-            acc.clone()
-} else {
-            {
-                let next_visited = v2_rt::rc_map_insert(acc.visited.clone(), node.clone(), true);
-let next_members = v2_rt::rc_list_push(acc.members.clone(), node.clone());
-let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
-    Some(ns) => ns.clone(),
-    None => Rc::new(vec![]),
-};
-neighbors.iter().cloned().fold(Rc::new(SccComponentAcc {
-    visited: next_visited,
-    members: next_members,
-}), |inner: Rc<SccComponentAcc>, neighbor: String| dfs_collect_component(neighbor.clone(), adjacency.clone(), inner.clone()))
-}
-}
-    })
-}
-
-pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {
-    {
-        let finish = names.iter().cloned().fold(Rc::new(DfsFinishAcc {
-    visited: v2_rt::rc_empty_map::<bool>(),
-    order: Rc::new(vec![]),
-}), |acc: Rc<DfsFinishAcc>, name: String| dfs_finish_order(name.clone(), graph.forward.clone(), acc.clone()));
-let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(Rc::new(SccCycleAcc {
-    visited: v2_rt::rc_empty_map::<bool>(),
-    has_cycle: false,
-}), |acc: Rc<SccCycleAcc>, name: String| if (acc.has_cycle.clone() || set_has(acc.visited.clone(), name.clone())) {
-            acc.clone()
-} else {
-            {
-                let component = dfs_collect_component(name.clone(), graph.reverse.clone(), Rc::new(SccComponentAcc {
-    visited: acc.visited.clone(),
-    members: Rc::new(vec![]),
-}));
-Rc::new(SccCycleAcc {
-    visited: component.visited.clone(),
-    has_cycle: ((component.members.clone().len() as i64) > 1),
-})
-}
-});
-result.has_cycle.clone()
 }
 }
 

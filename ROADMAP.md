@@ -89,7 +89,7 @@ Previously eliminated:
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (294 pass, 0 fail, 41 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
-| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
+| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (0 self-compile diagnostics) |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | 37 (target: 0) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
@@ -99,7 +99,7 @@ Previously eliminated:
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
 | L1 type knowledge | 37 | 0 | Down from 70; name-based workarounds tracked for M4 |
-| Complexity violations | 164 | 0 | Down from 315; unfinished algebraic grounding |
+| Complexity violations | 313 | 0 | Down from 325→313 (PR #336); unfinished algebraic grounding |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
@@ -581,10 +581,11 @@ then deleted. `Node.name` field deleted.
 
 ## CX: Complexity Analyzer (Lane 3)
 
-**Status:** Down from 315 → 164 (main) → 76 after PR #318.
+**Status:** Down from 315 → 164 (main) → 76 after PR #318 → 313 after PR #336.
 Phase 1-2 complete (RecursionPattern deleted, all classifiers return LoweringTarget).
 CX-N: var threading, type-directed dimension selection, algebra-to-dimension bridge.
-Ratchet at 325.
+Ratchet at 313. PR #336 fixes: self-loop detection soundness, scope leak,
+branching proof acceptance (lexicographic), field name consistency.
 
 **Root cause:** The analyzer maintains parallel heuristic classifiers
 instead of consuming the structural facts already modeled in std/.
@@ -654,32 +655,34 @@ remaining path is sound. Work accomplished:
 - SCC parameter name unification in emit_pattern (CX-Q/CX-R)
 - Soundness fixes: branching_only, all_safe, any-argument fabrication
 
-### Review feedback (deferred — 15 items from PR #318)
+### Review feedback (15 items from PR #318 — 10 resolved, 5 remaining)
 
-Per Review Queue Discipline, these are recorded but not stacked:
+**Theme A: Heuristic descent recognizers** (6 items)
+- [x] #1-4: Already data-driven via `function_size_effects`, `node_field_roles`,
+  `AlgebraMethodSemantics` tables (fixed in PR #328, stale line numbers)
+- [~] #5: `is_match_option_descent` — documented assumption (PR #336).
+  Full fix deferred to CX-D (coproduct projection metadata in std/)
+- [~] #6: `lambda_param_names |> last` — replaced by `iteration_element_name`
+  (PR #336). Direct template lookup deferred: emitter inlines cross-module
+  AlgebraTypeTemplate variants into caller, breaking compilation.
+  Structural fact confirmed in std/algebra.dag CallableOf declarations.
 
-**Theme A: Heuristic descent recognizers** (read structural facts instead)
-- `complexity.dag:1962` — child-descent hardcodes `"children"` and list-methods
-- `complexity.dag:2056` — `is_tree_size_preserving_wrapper` hardcodes callee name
-- `complexity.dag:2088` — hardcoded `rt_type`, `param_node_type_expr`, `field_binding_pattern` as sub-value extractors
-- `complexity.dag:2170` — treats any `param.field` as descent without structural witness
-- `complexity.dag:2244` — `is_match_option_descent` is shape heuristic for missing Option/Result facts
-- `complexity.dag:2312` — `lambda_param_names |> last` heuristic for missing method-signature facts
+**Theme B: Producer patches** (2 items)
+- [ ] `02_parse.dag:2759` — `node_to_name_str` split. Deferred until P4.1
+  (wrapper transparency in SCC edge classification)
+- [x] `04_types.dag:418` — not a patch; proper cardinality design
 
-**Theme B: Producer patches** (fix analyzer root cause instead)
-- `02_parse.dag:2759` — `node_to_name_str` split to make SCC shape friendlier
-- `04_types.dag:418` — optional-cardinality split to make analyzer see Same edge
+**Theme C: Fabrication / scope issues** (5 items — all fixed in PR #336)
+- [x] `ParserResultDirectState` field renamed `progress` → `input` (consistency)
+- [x] `same_progress_subgraph_has_cycle` now detects 1-node ProgressSame self-loops
+- [x] `val_inner_vars` scope leak fixed — arm-local bindings no longer escape
+- [x] `branching_proof_safe` accepts lexicographic proofs (checks first dimension)
+- [x] Self-loop detection matches `proof_has_non_descending_cycle` pattern
 
-**Theme C: Fabrication / scope issues** (unsound)
-- `complexity.dag:275` — `ParserResultDirectState` duplicates state-progress fact
-- `complexity.dag:1382` — filtering `ProgressSame` self-edges fabricates acyclicity
-- `complexity.dag:2346` — `val_inner_vars` leaks arm-local bindings into outer scope
-- `complexity.dag:3061` — `branching_proof_safe` fallback fabricates LinearRecursion
-- `same_progress_subgraph_has_cycle` drops self-loops for 1-node SCCs
-
-**Theme D: Boundary / testing**
-- `tests/pipeline.rs:2505` — diagnostic tests read workspace source tree (not hermetic)
-- `05_emit_rust.dag:1334` — `emit_variant_pattern` returns empty string on impossible input
+**Theme D: Boundary / testing** (2 items)
+- [ ] `tests/pipeline.rs:2505` — diagnostic tests non-hermetic (larger scope, deferred)
+- [x] `05_emit_rust.dag:1334` — `emit_variant_pattern` checks `fielded_variants`
+  when all bindings are wildcards (PR #336)
 
 ### Dependency chain
 
@@ -735,9 +738,10 @@ CX-D (model facts in std/)
   Dead `skip()` ExprCall handlers removed (inference bridge normalizes).
   **(PR #328)**
   Deferred: `is_valid_proof` stub in termination.dag (blocked on
-  bootstrap); `ParserResultDirectState` duplication (refactoring);
-  `branching_proof_safe` only accepts TreeSize/ListLength (extend to
-  lexicographic).
+  graph utility extraction to `std/graph.dag` — import direction
+  prevents termination.dag from calling SCC detection in complexity.dag).
+  `ParserResultDirectState` field renamed (PR #336).
+  `branching_proof_safe` now accepts lexicographic proofs (PR #336).
 - **CX-B**: CostExpr/SizeExpr dissolution — cost expressions become flat
   products of SizeBounds from `std/computation.dag`'s lowering table.
   **Partial.** `CostShape` type moved to `dsl/std/algebra.dag`, declared

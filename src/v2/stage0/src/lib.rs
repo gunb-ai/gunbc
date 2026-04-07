@@ -12,6 +12,7 @@ pub mod extdeps_languages_rust_types;
 pub mod std_algebra;
 pub mod std_coercion;
 pub mod std_computation;
+pub mod std_graph;
 pub mod std_iteration;
 pub mod std_syntax;
 pub mod std_termination;

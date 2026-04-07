@@ -69,6 +69,12 @@ import std.algebra {
   CollectionSizeEffect, ShrinkEffect, ProjectionEffect, IdentityEffect,
   CostShape, ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody
 }
+import std.graph {
+  CallGraph, CallGraphAcc, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
+  seed_adjacency_map, build_call_graph_from_proof_edges,
+  dfs_finish_order, dfs_collect_component, graph_has_multi_node_scc,
+  is_lexicographic_descent, is_valid_proof
+}
 
 // =========================================================================
 // Size expressions -- symbolic sizes for analysis
@@ -210,16 +216,6 @@ type CallEdge {
   callee: String
 }
 
-type CallGraph {
-  forward: Map<String, List<String>>
-  reverse: Map<String, List<String>>
-}
-
-type CallGraphAcc {
-  forward: Map<String, List<String>>
-  reverse: Map<String, List<String>>
-}
-
 type SccInfo {
   members: List<String>
   member_set: Map<String, Bool>
@@ -229,21 +225,6 @@ type SccInfo {
 type SccBuildAcc {
   assigned: Map<String, Bool>
   index: Map<String, SccInfo>
-}
-
-type DfsFinishAcc {
-  visited: Map<String, Bool>
-  order: List<String>
-}
-
-type SccComponentAcc {
-  visited: Map<String, Bool>
-  members: List<String>
-}
-
-type SccCycleAcc {
-  visited: Map<String, Bool>
-  has_cycle: Bool
 }
 
 type ParserStateParam {
@@ -349,54 +330,11 @@ fn evidence_to_progress(de: DescentEvidence) -> ProgressKind {
   }
 }
 
-// Check if a lexicographic proof edge is descending:
-// first Strict dimension wins; all higher dimensions must be NonIncreasing.
-fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
-  match evidence |> first {
-    None => false  // no dimensions = no proof
-    Some { value: e } =>
-      match e {
-        Strict => true
-        NonIncreasing => is_lexicographic_descent(evidence: evidence |> skip(1))
-        DescentUnknown => false
-      }
-  }
-}
-
-// Check if a set of proof edges forms a valid termination proof:
-// the subgraph of non-descending edges (all dims NonIncreasing) must be acyclic.
-// A non-descending self-loop (caller == callee) IS a cycle — the function calls
-// itself without making progress on any dimension.
+// Thin wrapper: is_valid_proof returns true when proof is valid (no cycles).
+// This function returns true when there IS a cycle (inverted sense for callers).
+// Delegates to std.termination.is_valid_proof as the single authority.
 fn proof_has_non_descending_cycle(members: List<String>, edges: List<ProofEdge>) -> Bool {
-  let non_descending = edges |> filter(e => is_lexicographic_descent(evidence: e.evidence) == false)
-  // Self-loops that are non-descending are immediate cycles.
-  let has_self_cycle = non_descending |> any(e => e.caller == e.callee)
-  if has_self_cycle { true }
-  else {
-    // Cross-edges: check for multi-node cycles via SCC detection.
-    let nd_graph = build_call_graph_from_proof_edges(names: members, edges: non_descending)
-    graph_has_multi_node_scc(names: members, graph: nd_graph)
-  }
-}
-
-fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
-  let initial_forward = seed_adjacency_map(names: names)
-  let initial_reverse = seed_adjacency_map(names: names)
-  let graph_acc = edges |> filter(e => e.caller != e.callee) |> fold(init: CallGraphAcc { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
-    let forward_neighbors = match map_get(acc.forward, edge.caller) {
-      Some { value: ns } => concat(ns, [edge.callee])
-      None => [edge.callee]
-    }
-    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
-      Some { value: ns } => concat(ns, [edge.caller])
-      None => [edge.caller]
-    }
-    CallGraphAcc {
-      forward: map_insert(acc.forward, edge.caller, forward_neighbors),
-      reverse: map_insert(acc.reverse, edge.callee, reverse_neighbors)
-    }
-  )
-  CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
+  is_valid_proof(proof: TerminationProof { dimensions: [] }, edges: edges) == false
 }
 
 // Check if a CostExpr contains a placeholder for a self-recursive call.
@@ -1307,11 +1245,6 @@ fn seed_func_entry_map(key: String, value: FuncEntry) -> Map<String, FuncEntry> 
 
 // Build an adjacency map seeded with empty neighbor lists for each name.
 // Typed return ensures [] resolves to List<String>, not List<Unit>.
-fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
-  names |> fold(init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, [])
-  )
-}
 
 fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
   let initial_forward = seed_adjacency_map(names: names)
@@ -3121,56 +3054,6 @@ fn build_call_graph(func_entries: List<FuncEntry>) -> CallGraph {
     }
   )
   CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
-}
-
-fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: DfsFinishAcc) -> DfsFinishAcc {
-  if set_has(m: acc.visited, key: node) {
-    acc
-  } else {
-    let next_visited = map_insert(acc.visited, node, true)
-    let neighbors = match map_get(adjacency, node) {
-      Some { value: ns } => ns
-      None => []
-    }
-    let explored = neighbors |> fold(init: DfsFinishAcc { visited: next_visited, order: acc.order }, f: (inner, neighbor) =>
-      dfs_finish_order(node: neighbor, adjacency: adjacency, acc: inner)
-    )
-    DfsFinishAcc { visited: explored.visited, order: list_push(explored.order, node) }
-  }
-}
-
-fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc: SccComponentAcc) -> SccComponentAcc {
-  if set_has(m: acc.visited, key: node) {
-    acc
-  } else {
-    let next_visited = map_insert(acc.visited, node, true)
-    let next_members = list_push(acc.members, node)
-    let neighbors = match map_get(adjacency, node) {
-      Some { value: ns } => ns
-      None => []
-    }
-    neighbors |> fold(init: SccComponentAcc { visited: next_visited, members: next_members }, f: (inner, neighbor) =>
-      dfs_collect_component(node: neighbor, adjacency: adjacency, acc: inner)
-    )
-  }
-}
-
-fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
-  let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
-    dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
-  )
-  let result = finish.order |> reverse |> fold(init: SccCycleAcc { visited: empty_map(), has_cycle: false }, f: (acc, name) =>
-    if acc.has_cycle || set_has(m: acc.visited, key: name) {
-      acc
-    } else {
-      let component = dfs_collect_component(node: name, adjacency: graph.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
-      SccCycleAcc {
-        visited: component.visited,
-        has_cycle: (component.members |> count) > 1
-      }
-    }
-  )
-  result.has_cycle
 }
 
 fn scc_label(members: List<String>) -> String {
