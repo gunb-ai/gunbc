@@ -58,7 +58,7 @@ pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTempla
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverCollectionOf, ListOf};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
-pub use crate::v2_compiler_infer_types::{rt_type, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, rt_node, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{child_type_node, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -112,7 +112,7 @@ if has_structure {
                             let is_product = (n.connective.clone() == Connective::Conj);
 if is_product {
                                 match Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if (c.name.clone().as_str() == field_name.clone().as_str()) { __result.push(c); } } __result }).first().cloned() {
-    Some(field_child) => Some(rt_type(field_child.clone())),
+    Some(field_child) => Some(child_type_node(field_child.clone())),
     None => None,
 }
 } else {
@@ -140,7 +140,7 @@ let first_field = if found_in_all {
             None
 };
 match first_field {
-    Some(field_child) => Some(rt_type(field_child.clone())),
+    Some(field_child) => Some(child_type_node(field_child.clone())),
     None => None,
 }
 }

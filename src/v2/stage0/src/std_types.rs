@@ -132,13 +132,13 @@ pub fn container_type_param_names() -> Rc<HashMap<String, Rc<Vec<String>>>> {
     CACHED.with(|c| c.clone())
 }
 
-pub fn container_param_name(kind_name: String, index: i64) -> String {
+pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     match v2_rt::map_get(&container_type_param_names(), kind_name) {
     Some(names) => match Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(names.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() == index.clone()) { __result.push(pair); } } __result }).iter().cloned() { __result.push(pair.1.clone()); } __result }).first().cloned() {
-    Some(name) => name.clone(),
-    None => "T".to_string(),
+    Some(name) => Some(name.clone()),
+    None => None,
 },
-    None => "T".to_string(),
+    None => None,
 }
 }
 

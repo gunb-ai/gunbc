@@ -23,7 +23,7 @@ import v2.std.core {
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,
-  rt_type, emit_map_has, node_type_equals
+  child_type_node, emit_map_has, node_type_equals
 }
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -244,7 +244,7 @@ fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummar
       let style = if is_pair { pair_access_style(field_name: child.name) } else { StoredField }
       map_insert(acc, child.name, FieldSummary {
         access_style: style,
-        value_shape: field_value_shape_from_type_node(type_node: rt_type(n: child))
+        value_shape: field_value_shape_from_type_node(type_node: child_type_node(ch: child))
       })
     }
   )
@@ -270,7 +270,7 @@ fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String) 
 fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node) -> Bool {
   variants |> all(variant =>
     match variant.children |> filter(f => f.name == field_name) |> first {
-      Some { value: field_child } => node_type_equals(left: rt_type(n:field_child), right: expected)
+      Some { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected)
       None => false
     }
   )
@@ -287,7 +287,7 @@ fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary>
   let consistent = shared |> filter(field_name =>
     match find_first_enum_field_node(variants: variants, field_name: field_name) {
       Some { value: first_field } =>
-        enum_field_type_consistent(variants: variants, field_name: field_name, expected: rt_type(n:first_field))
+        enum_field_type_consistent(variants: variants, field_name: field_name, expected: child_type_node(ch:first_field))
       None => false
     }
   )
@@ -296,7 +296,7 @@ fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary>
       Some { value: first_field } =>
         map_insert(acc, field_name, FieldSummary {
           access_style: EnumAccessor,
-          value_shape: field_value_shape_from_type_node(type_node: rt_type(n:first_field))
+          value_shape: field_value_shape_from_type_node(type_node: child_type_node(ch:first_field))
         })
       None => acc
     }

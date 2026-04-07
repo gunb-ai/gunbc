@@ -152,7 +152,10 @@ if under_param {
 
 pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     {
-        let param_name = container_param_name(kind_name.clone(), 0);
+        let param_name = match container_param_name(kind_name.clone(), 0) {
+    Some(n) => n.clone(),
+    None => kind_name.clone(),
+};
 Rc::new(Node {
     name: kind_name.clone(),
     span: make_span(0, 0),

@@ -266,18 +266,20 @@ field-style children with named type parameters (T, K, V) from
 extract via `child_type_node` (bridge handles both encodings during
 transition).
 
-**Completed (PR #339):**
+**Completed (PR #339) — bridge work, not endpoint:**
 - [x] `container_type_param_names` data table in `std/types.dag`
 - [x] `container_node`, `map_node`, `bare_map_node` produce field-style children
 - [x] `child_type_node` bridge helper (handles both bare and field-style)
-- [x] Consumer updates: `algebra_child_or_placeholder`, `unify_template`,
-  `apply_type_substitution`, `for_each_element_type_node`,
-  `method_receiver_element_node`, `node_type_compatible`,
-  `node_type_equals_core`, `prefer_specific_type`, `node_type_shape`,
-  `is_fully_resolved`, `keyed_collection_parts`, `render_node_type`,
-  `rust_empty_map_value_type_str`, `collection_element_type`,
-  `ExprListLit` expected threading in `04_infer.dag`
+- [x] `container_param_name` returns `String?` (fail-closed, no fabricated default)
+- [~] Consumer updates: major readers updated to `child_type_node` — lookup,
+  items, patterns, emit_info, emit, emit_rust, access, infer, resolve.
+  Remaining readers still use raw `rt_type` in emit/emit_go/emit_python
+  sites and algebra template paths. These work post-resolve (Resolved
+  wrappers guarantee correct extraction) but bypass the bridge.
 - [x] All 314 tests pass, 0 self-compile diagnostics, L1 ratchet unchanged
+- [ ] Endgame: all post-resolve readers use `child_type_node`, hardcoded
+  "T"/"K"/"V" replaced by data table reads, wrapper construction via
+  single helper (not inline Node literals)
 
 **Completed (bootstrap convergence):**
 - [x] `substitute_type_slots` recurses into `inferred` on field-style

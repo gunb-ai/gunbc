@@ -52,7 +52,7 @@ use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, TupleFirst
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
 use crate::v2_std_core::Connective::{Conj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{CardOptional};
-pub use crate::v2_compiler_infer_types::{normalize_access_type_node, rt_type, emit_map_has, node_type_equals};
+pub use crate::v2_compiler_infer_types::{normalize_access_type_node, child_type_node, emit_map_has, node_type_equals};
 use TypeRepr::*;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
@@ -227,7 +227,7 @@ children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(),
 };
 v2_rt::rc_map_insert(acc.clone(), child.name.clone(), Rc::new(FieldSummary {
     access_style: style.clone(),
-    value_shape: field_value_shape_from_type_node(rt_type(child.clone())),
+    value_shape: field_value_shape_from_type_node(child_type_node(child.clone())),
 }))
 }
 })
@@ -250,7 +250,7 @@ pub fn enum_field_present_in_all_variants(variants: Rc<Vec<Rc<Node>>>, field_nam
 
 pub fn enum_field_type_consistent(variants: Rc<Vec<Rc<Node>>>, field_name: String, expected: Rc<Node>) -> bool {
     { let mut __all = true; for variant in variants.iter().cloned() { if !(match Rc::new({ let mut __result = Vec::new(); for f in variant.children.clone().iter().cloned() { if (f.name.clone().as_str() == field_name.clone().as_str()) { __result.push(f); } } __result }).first().cloned() {
-    Some(field_child) => node_type_equals(rt_type(field_child.clone()), expected.clone()),
+    Some(field_child) => node_type_equals(child_type_node(field_child.clone()), expected.clone()),
     None => false,
 }) { __all = false; break; } } __all }
 }
@@ -263,13 +263,13 @@ pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<Str
 };
 let shared = Rc::new({ let mut __result = Vec::new(); for field_name in first_field_names.iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone()) { __result.push(field_name); } } __result });
 let consistent = Rc::new({ let mut __result = Vec::new(); for field_name in shared.iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone()) {
-    Some(first_field) => enum_field_type_consistent(variants.clone(), field_name.clone(), rt_type(first_field.clone())),
+    Some(first_field) => enum_field_type_consistent(variants.clone(), field_name.clone(), child_type_node(first_field.clone())),
     None => false,
 } { __result.push(field_name); } } __result });
 consistent.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone()) {
     Some(first_field) => v2_rt::rc_map_insert(acc.clone(), field_name.clone(), Rc::new(FieldSummary {
     access_style: FieldAccessStyle::EnumAccessor,
-    value_shape: field_value_shape_from_type_node(rt_type(first_field.clone())),
+    value_shape: field_value_shape_from_type_node(child_type_node(first_field.clone())),
 })),
     None => acc.clone(),
 })

@@ -98,14 +98,14 @@ data container_type_param_names: Map<String, List<String>> = {
   "Map": ["K", "V"]
 }
 
-fn container_param_name(kind_name: String, index: Int) -> String {
+fn container_param_name(kind_name: String, index: Int) -> String? {
   match map_get(container_type_param_names, kind_name) {
     Some { value: names } =>
       match names |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first {
-        Some { value: name } => name
-        None => "T"
+        Some { value: name } => Some { value: name }
+        None => none
       }
-    None => "T"
+    None => none
   }
 }
 

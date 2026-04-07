@@ -704,7 +704,10 @@ let el_diags = el_result.diagnostics.clone();
 let el_param_name = if (child_node.inferred.clone() != None) {
                                             child_node.name.clone()
 } else {
-                                            container_param_name(type_name.clone(), 0)
+                                            match container_param_name(type_name.clone(), 0) {
+    Some(pn) => pn.clone(),
+    None => child_node.name.clone(),
+}
 };
 let resolved_child = Rc::new(Node {
     name: el_param_name,
