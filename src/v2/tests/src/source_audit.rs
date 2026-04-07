@@ -931,43 +931,32 @@ fn rt_functions_map_consistent_with_registry() {
 }
 
 #[test]
-fn rust_wraps_result_consistent_with_registry() {
-    // Verify rust_wraps_result contains all RuntimeFunction entries where wraps_result == true.
-    let source = read_v2_file("dsl/extdeps/languages/rust/emit.dag");
+fn rt_wraps_result_derived_from_registry() {
+    // rt_wraps_result() is derived from RuntimeFunction.wraps_result via fold.
+    // Verify exact parity: every registry entry with wraps_result: true appears,
+    // and no extra entries exist.
+    use v2_compiler::extdeps_languages_rust_emit::{rt_function_registry, rt_wraps_result};
 
-    // Extract registry entries with wraps_result: true
-    let registry_wraps: Vec<&str> = source
-        .lines()
-        .filter(|l| l.contains("name:") && l.contains("wraps_result: true"))
-        .filter_map(|l| {
-            let start = l.find("name: \"")?;
-            let rest = &l[start + 7..];
-            let end = rest.find('"')?;
-            Some(&rest[..end])
-        })
-        .collect();
+    let registry = rt_function_registry();
+    let wraps_map = rt_wraps_result();
 
-    // Extract rust_wraps_result map entries
-    let wraps_section_start = source.find("data rust_wraps_result:").expect("rust_wraps_result must exist");
-    let wraps_section = &source[wraps_section_start..];
-    let wraps_end = wraps_section.find('}').unwrap_or(wraps_section.len());
-    let wraps_body = &wraps_section[..wraps_end];
-    let wraps_names: Vec<&str> = wraps_body
-        .match_indices("\": true")
-        .filter_map(|(pos, _)| {
-            let before = &wraps_body[..pos];
-            let quote_start = before.rfind('"')?;
-            Some(&wraps_body[quote_start + 1..pos])
-        })
+    let registry_wraps: Vec<String> = registry.iter()
+        .filter(|f| f.wraps_result)
+        .map(|f| f.name.clone())
         .collect();
 
     assert!(!registry_wraps.is_empty(), "registry should have wraps_result entries");
-    assert!(!wraps_names.is_empty(), "rust_wraps_result should have entries");
 
-    // Every registry wraps_result: true must appear in rust_wraps_result
+    // Every registry wraps_result: true must appear in derived map
     for name in &registry_wraps {
-        assert!(wraps_names.contains(name),
-            "RuntimeFunction '{}' has wraps_result: true but missing from rust_wraps_result", name);
+        assert!(wraps_map.contains_key(name),
+            "RuntimeFunction '{}' has wraps_result: true but missing from rt_wraps_result()", name);
+    }
+
+    // No extra entries in derived map
+    for (name, _) in wraps_map.iter() {
+        assert!(registry_wraps.contains(name),
+            "rt_wraps_result() contains '{}' but no matching registry entry with wraps_result: true", name);
     }
 }
 

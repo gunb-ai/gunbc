@@ -64,7 +64,7 @@ use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
-pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rust_wraps_result, rt_bridge_function_names, rust_container_templates, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, HigherOrderMethodSpec, rust_higher_order_methods};
+pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, HigherOrderMethodSpec, rust_higher_order_methods};
 pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_string_like};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy};
@@ -1585,7 +1585,7 @@ let rust_type = coerce_primitive_type(RenderTarget::Rust, normed.name.clone());
 if (rust_type.clone().as_str() == normed.name.clone().as_str()) {
             false
 } else {
-            (({ let mut __found = false; for t in integer_types().iter().cloned() { if (t.clone().as_str() == rust_type.clone().as_str()) { __found = true; break; } } __found } || { let mut __found = false; for t in float_types().iter().cloned() { if (t.clone().as_str() == rust_type.clone().as_str()) { __found = true; break; } } __found }) || (rust_type.clone().as_str() == "bool".to_string().as_str()))
+            ({ let mut __found = false; for t in integer_types().iter().cloned() { if (t.clone().as_str() == rust_type.clone().as_str()) { __found = true; break; } } __found } || { let mut __found = false; for t in float_types().iter().cloned() { if (t.clone().as_str() == rust_type.clone().as_str()) { __found = true; break; } } __found })
 }
 }
 }
@@ -1911,7 +1911,7 @@ if (rendered.clone().as_str() == "".to_string().as_str()) {
 }
 
 pub fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> bool {
-    v2_rt::map_contains_key(&rust_wraps_result(), function_name)
+    (v2_rt::map_contains_key(&rt_wraps_result(), function_name.clone()) || v2_rt::map_contains_key(&rust_method_wraps_result(), function_name.clone()))
 }
 
 pub fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: Option<Rc<InferredNode>>) -> bool {

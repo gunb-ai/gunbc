@@ -4721,3 +4721,47 @@ fn process(items: List<String>) -> Accum {
         "fold with multi-move must not be eligible for unwrap optimization"
     );
 }
+
+// ── M4 regression tests (review feedback 2026-04-06) ──────────────────
+
+#[test]
+fn zero_arg_callable_resolves_and_renders() {
+    // Zero-arg callable fn() -> T must resolve and render with Arrow connective.
+    // Regression: removing n.name=="Callable" from resolve n_is_special could
+    // break zero-arg callables if Arrow connective isn't set.
+    use v2_compiler::v2_compiler_emit::render_node_type;
+    use v2_compiler::v2_compiler_infer_types::callable_node;
+    use v2_compiler::v2_std_core::leaf_node;
+
+    let ret_type = leaf_node("Int".to_string());
+    let callable = callable_node(Rc::new(vec![]), ret_type);
+    let shared_types = Rc::new(HashMap::new());
+
+    let rendered = render_node_type(callable.clone(), RenderTarget::Rust, shared_types);
+    assert!(rendered.contains("Fn"), "zero-arg callable should render as Rc<dyn Fn() -> i64>, got {:?}", rendered);
+    assert!(rendered.contains("i64"), "zero-arg callable return type should be i64, got {:?}", rendered);
+}
+
+#[test]
+fn bool_is_not_valid_as_cast_target() {
+    // Rust does not allow `expr as bool` — only bool→integer is valid.
+    // Regression: including "bool" in is_primitive_numeric_node would
+    // make emit_typed_cast generate invalid `x as bool`.
+    use v2_compiler::v2_compiler_emit_rust::is_primitive_numeric_node;
+    use v2_compiler::v2_std_core::leaf_node;
+
+    let bool_node = leaf_node("Bool".to_string());
+    assert!(!is_primitive_numeric_node(bool_node),
+        "Bool must not be a valid as-cast target — expr as bool is invalid Rust");
+}
+
+#[test]
+fn int_and_float_are_valid_as_cast_targets() {
+    use v2_compiler::v2_compiler_emit_rust::is_primitive_numeric_node;
+    use v2_compiler::v2_std_core::leaf_node;
+
+    let int_node = leaf_node("Int".to_string());
+    let float_node = leaf_node("Float".to_string());
+    assert!(is_primitive_numeric_node(int_node), "Int should be a valid as-cast target");
+    assert!(is_primitive_numeric_node(float_node), "Float should be a valid as-cast target");
+}
