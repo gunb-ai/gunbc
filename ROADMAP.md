@@ -279,22 +279,47 @@ transition).
   `ExprListLit` expected threading in `04_infer.dag`
 - [x] All 314 tests pass, 0 self-compile diagnostics, L1 ratchet unchanged
 
-**Remaining (bootstrap convergence):**
-- [~] `substitute_type_slots` — does not recurse into `inferred` on
-  field-style children; type parameter substitution misses wrapped slots.
-  This is the highest-priority fix for convergence.
-- [ ] Remaining post-resolve consumers that access `n.children |> first`
-  on containers without `child_type_node` — exposed by pass-2 bootstrap
-  (15 type-incompatibility diagnostics, 391 Rust emit errors)
-- [ ] Stage0 regeneration with bootstrap convergence (two-pass fixed point)
-- [ ] Dissolve `child_inferred_or_name` — replace 7 call sites with
-  `rt_type(n: ch)`, delete function (blocked on convergence)
+**Completed (bootstrap convergence):**
+- [x] `substitute_type_slots` recurses into `inferred` on field-style
+  children — generic type instantiation works through wrappers
+- [x] `has_nested_records_node` extracts via `child_type_node` — data
+  declarations with `List<SomeStruct>` correctly use JSON emission
+- [x] Bootstrap convergence: two-pass fixed point verified
+- [x] `child_inferred_or_name` dissolved — 7 call sites → `rt_type(n: ch)`,
+  function deleted
+- [x] `__EMIT_BUG_ANONYMOUS_FIELD__` removed — dead code
 
-**Endgame:** Once all post-resolve consumers use `child_type_node` and
-`substitute_type_slots` handles field-style children, `child_type_node`
-simplifies to `rt_type` (bare encoding no longer exists post-resolve).
-`child_inferred_or_name` dissolves. Container children and struct field
-children use the same encoding — one extraction pattern everywhere.
+**Modeling gaps exposed by edge-case analysis (next PR):**
+
+Three reviewer-flagged edge cases share a common root: the `inferred`
+field carries implicit invariants that should be structural facts.
+
+1. **`inferred` has multiple semantic roles with different error contracts.**
+   On expressions: can be CompilerError/TypeVariable/Untyped (all meaningful).
+   On struct field children: should always be Resolved.
+   On container wrapper children: should always be Resolved.
+   These roles use the same `InferredNode?` type, so `rt_type` treats them
+   all with the same Unit fallback — correct for emission, wrong for type
+   reasoning where errors should propagate or be impossible by construction.
+
+2. **`rt_type` is one function for multiple operations.**
+   "Extract for emission" (Unit fallback OK) vs "extract for type reasoning"
+   (error = bug, not fallback) vs "extract parameter binding" (always
+   Resolved by construction). A typed model would have separate accessors
+   with different error semantics.
+
+3. **Pre-resolve vs post-resolve is a convention, not a structural fact.**
+   "Post-resolve children use field-style encoding" is enforced by
+   producer convention. `child_type_node` exists as a bridge because
+   the structure doesn't distinguish resolved from unresolved nodes.
+   If resolve's output were structurally marked, consumers wouldn't need
+   the bridge — the wrong question would be unaskable.
+
+**Direction:** These are instances of the same CM pattern — implicit
+pipeline-stage invariants that should be structural facts on the Node.
+Candidate modeling: `inferred` role (expression/field/parameter)
+distinguishable from Node structure, or resolve-boundary marking that
+makes pre/post-resolve structurally distinct.
 
 ### Acceptance
 
