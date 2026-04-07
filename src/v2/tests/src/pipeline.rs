@@ -4894,7 +4894,7 @@ fn build_index(items: List<String>) -> Map<String, Bool> {
     );
     assert!(
         content.contains("HashMap<String, bool>"),
-        "fold should produce typed HashMap<String, bool>: {content}"
+        "architecture ratchet: fold should produce typed HashMap<String, bool>: {content}"
     );
 }
 
@@ -4918,7 +4918,7 @@ fn build(items: List<String>) -> Map<String, Bool> {
     );
     assert!(
         content.contains("HashMap<String, bool>"),
-        "fold should produce typed HashMap<String, bool>: {content}"
+        "architecture ratchet: fold should produce typed HashMap<String, bool>: {content}"
     );
 }
 
@@ -4944,7 +4944,7 @@ fn index_items(items: List<Entry>) -> Map<String, Entry> {
     );
     assert!(
         content.contains("HashMap<String, Rc<Entry>>"),
-        "fold should produce typed HashMap<String, Rc<Entry>>: {content}"
+        "architecture ratchet: fold should produce typed HashMap<String, Rc<Entry>>: {content}"
     );
 }
 
@@ -5087,7 +5087,7 @@ fn build_index(items: List<Entry>) -> Map<String, Entry> {
     );
     assert!(
         content.contains("HashMap<String, Rc<Entry>>"),
-        "cross-module fold should produce typed HashMap<String, Rc<Entry>>: {content}"
+        "architecture ratchet: cross-module fold should produce typed HashMap<String, Rc<Entry>>: {content}"
     );
 }
 
@@ -5118,7 +5118,7 @@ fn name_set(items: List<Item>) -> Map<String, Bool> {
     );
     assert!(
         content.contains("HashMap<String, bool>"),
-        "cross-module fold should produce typed HashMap<String, bool>: {content}"
+        "architecture ratchet: cross-module fold should produce typed HashMap<String, bool>: {content}"
     );
 }
 
@@ -5145,6 +5145,6 @@ fn process(items: List<String>) -> Map<String, Bool> {
     );
     assert!(
         content.contains("HashMap<String, bool>"),
-        "fold in let value should produce typed HashMap<String, bool>: {content}"
+        "architecture ratchet: fold in let value should produce typed HashMap<String, bool>: {content}"
     );
 }

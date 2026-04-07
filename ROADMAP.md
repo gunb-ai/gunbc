@@ -206,11 +206,15 @@ Phases: contradictory predicate fix (83→29), Phase C structural resolution
 bidirectional (6→0). Post-inference unification replaced all heuristic
 patches (PR #334 review fixes).
 
-### Compositional type parameter resolution (COMPLETE)
+### Compositional type parameter resolution (major cleanup landed)
 
-Phases A-D landed (PRs #325, #332, #334):
+Phases A-D landed (PRs #325, #332, #334). Compensation infrastructure
+deleted, method-name dispatch eliminated. Remaining work: import scoping
+(FF-9 / declaration-driven loading), ExpectedContext modeling for edge
+cases, Tier 2.5/3 algebra fidelity.
+
 - [x] Phase A: TypeVariable preservation (`algebra_child_or_placeholder`)
-- [x] Phase B: TypeVariable rendering in emit (now fail-closed: `compile_error!`)
+- [x] Phase B: TypeVariable rendering in emit (fail-closed: `compile_error!`)
 - [x] Phase C: Structural return type resolution via template unification
   (`resolve_type_variables_from_template` replaces `refine_collection_result_type`)
 - [x] Phase D: Deleted compensation infrastructure
@@ -219,9 +223,14 @@ Phases A-D landed (PRs #325, #332, #334):
 - [x] `AlgebraTypeVariable` variant replaces `is_algebra_placeholder_name`
 - [x] Templates enriched with `CallableOf` contracts (self-describing)
 - [x] Bare-container ReceiverSelf enrichment from arg-derived bindings
+- [x] Post-inference unification for match/if arms (order-independent)
+- [x] ReceiverSelf structural witness for receiver type patching
+- [x] Narrow T/K/V placeholder filtering restored for std.types imports
 
 **Result:** 0 method-name dispatches for type resolution (was 6).
 Emit is fail-closed: TypeVariable → `compile_error!`.
+Seed helpers and post-inference unification are tactical cleanup —
+the final compositional model requires ExpectedContext + FF-9.
 
 ### Remaining BRIDGE fabrications (0 real)
 
