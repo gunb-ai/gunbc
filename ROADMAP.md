@@ -96,9 +96,9 @@ Previously eliminated:
 
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
-| Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
+| Self-compile diagnostics | 314 | 526 | Honest count — complexity violations surfaced, non-blocking |
 | L1 type knowledge | 37 | 0 | Down from 70; name-based workarounds tracked for M4 |
-| Complexity violations | 0 | 0 | GREEN — CostUnknown deleted, all costs concrete (PR #336) |
+| Complexity violations | 325 | 526 | Honest: 526 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
@@ -993,46 +993,45 @@ Over-retention:
 No test >2s without justification. Self-compile time tracked per-PR.
 Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
-### CX-NEXT: Cost algebra as compositional data modeling
+### CX-NEXT: Reduce 526 violations through structural analyzer improvements
 
-**Status:** Design direction established (PR #336 discussion). Not yet implemented.
+**Status:** 526 honest violations. Each is a function where the analyzer
+falls back to SameArgumentCall → Forever → CostUnknown ("I don't know").
+The count ratchets DOWN as the analyzer structurally improves. Each
+reduction traces to a specific fix, not a fallback.
 
-**Core problem:** `SizeExpr` and `CostExpr` are parallel expression algebras.
-SizeExpr reinvents Add/Max/Log as size-specific variants instead of deriving
-them from existing std/ concepts. This is the same anti-pattern as building
-a mini-language inside the cost analyzer instead of composing facts from the
-data model.
+**Violation categories (estimated from self-compile):**
+- Parser SCCs (~80): recursive parser state machines where TokenPosition
+  descent isn't recognized across mutual recursion boundaries
+- Fold/catamorphism (~40): lambda-based iteration where the element
+  parameter can't be unified with descent evidence
+- Accessor-on-var (~14): field projection descent unrecognized
+  (pattern matching on Option/Result types)
+- General SameArgumentCall (~390+): functions where no descent evidence
+  is found — mix of genuine unknowns and analyzer gaps
 
-**Design direction:**
-- **Sizes are facts, not expressions.** A collection's size is a structural
-  fact (Layer 3 in MODELING.md), not a symbolic expression. The cost algebra
-  should reference sizes by identity, not by re-encoding them in SizeExpr.
-- **CostLog should emerge from iteration structure.** Divide-and-conquer
-  (n → n/2) produces log₂(n) iterations — this should emerge from the
-  recursion pattern, not from a hand-placed CostLog primitive. Remove CostLog
-  from CostExpr; add SizeLog to SizeExpr (or better: derive it from the
-  descent evidence in SizeBound).
-- **SizeBound should carry descent type.** Currently `ArithmeticParam` drops
-  whether descent is subtraction (linear: n iterations) or division
-  (logarithmic: log n iterations). Preserving `ArithmeticDescent { op, by }`
-  in SizeBound lets `bounded_recursive_cost` produce the correct iteration
-  count without adding ad-hoc SizeExpr variants.
-- **ExplicitCount should preserve the literal.** `ExplicitCount { n: 5 }`
-  should produce `SizeConst { value: 5 }`, not `SizeConst { value: 1 }`.
-  The constant IS the bound — collapsing it to 1 loses information. Only
-  asymptotic normalization (formatting) should collapse constants.
+**Structural fixes (each reduces the count):**
+1. Wire TokenPosition evidence through SCC analysis → fixes parser SCCs
+2. Recognize fold lambda element as descent witness → fixes fold/catamorphism
+3. Wire is_child_accessor_in_model for field projection → fixes accessor-on-var
+4. Arithmetic descent for division (n/2) → enables O(log n) classification
+5. Worklist-based DFS (I1/I2) → fixes graph utility functions
+
+**Design direction (cost algebra):**
+- SizeExpr is a parallel expression algebra that should derive from std/
+  concepts. Sizes are structural facts, not symbolic expressions.
+- CostLog should emerge from iteration structure, not be a hand-placed
+  primitive. Blocked on SizeBound carrying descent type (subtract vs divide).
+- The algebra should compose from existing std/ concepts (Layer 3 in
+  MODELING.md), not reinvent them.
 
 **Open review feedback (PR #336, deferred to follow-up):**
-- #8-9: `dfs_finish_order`/`dfs_collect_component` — visited-set-bounded
-  recursion needs worklist primitive (ROADMAP I1/I2)
-- #10: CostExtern — needs stdlib cost contract system
-- #11: `iteration_element_name` — positional heuristic, needs cross-module
-  template lookup (CG-2/CG-3)
-- #13-14: `is_valid_proof` / `proof_has_non_descending_cycle` — proof
-  validation gaps in std/graph.dag
-- #15: SCC zero-placeholder — standard fixed-point technique, but should be
-  documented as such (not silent fabrication)
-- #16: `SizeConst(1)` for ExplicitCount — loses literal bound
+- #8-9: dfs_finish_order/dfs_collect_component — worklist primitive (I1/I2)
+- #10: CostExtern — stdlib cost contract system
+- #11: iteration_element_name — cross-module template lookup (CG-2/CG-3)
+- #13-14: is_valid_proof — proof validation gaps in std/graph.dag
+- #15: SCC zero-placeholder — document as fixed-point technique
+- #16-18: ExplicitCount literal, stage gate, constant_bound_value fallback
 
 ---
 
