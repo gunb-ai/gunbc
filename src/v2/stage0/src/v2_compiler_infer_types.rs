@@ -873,7 +873,11 @@ let same_kind = if (left_is_container.clone() && right_is_container) {
 if (same_kind && left_is_unit_inner) {
             right.clone()
 } else {
-            left.clone()
+            if (is_fully_resolved(right.clone()) && !is_fully_resolved(left.clone())) {
+                right.clone()
+} else {
+                left.clone()
+}
 }
 }
 }

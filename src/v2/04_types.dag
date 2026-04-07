@@ -596,6 +596,7 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     true
   } else { false }
   if same_kind && left_is_unit_inner { right }
+  else if is_fully_resolved(n: right) && !is_fully_resolved(n: left) { right }
   else { left }
 }
 
