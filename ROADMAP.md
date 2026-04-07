@@ -61,15 +61,7 @@ when it self-compiles (fixed point convergence). **Blocks all other
 lanes from editing stage0 Rust directly.**
 
 Note: "zero manual patches" means zero patches to *generated* files.
-Two hand-maintained files are still copied during regeneration
-(main.rs, compiler_tests.rs).
-Goal is zero — all stage0 content should be 100% generated.
-Remaining files and what blocks elimination:
-
-| File | Role | Blocker |
-|------|------|---------|
-| `main.rs` | CLI entrypoint (clap, import resolution, diagnostic rendering) | Need compiler entrypoint generation — entrypoints are deducible interfaces (like HTTP servers); content is fixed, can be templated like v2_rt.rs |
-| `compiler_tests.rs` | Test harness | Need .dag test generation |
+All stage0 content is 100% generated — zero hand-maintained files.
 
 Previously eliminated:
 - PR #316: v2_compiler_infer_method.rs, std_types.rs,
@@ -81,6 +73,13 @@ Previously eliminated:
 - v2_rt.rs — runtime templates already modeled in `runtime_rust.dag`;
   `rust_runtime_source()` produces the complete file. Emitter includes it
   via `emit_v2_rt_module()`.
+- main.rs — CLI entrypoint with FF-9 import resolution and diagnostic
+  rendering, modeled as emitter string templates in `05_emit_rust.dag`.
+  `emit_compile_match_arm()` emits the full Compile subcommand with
+  `--source-root` transitive import resolution.
+- compiler_tests.rs — test harness modeled in `compiler_tests_rust.dag`;
+  `compiler_tests_source()` produces the complete file. Emitter includes
+  it via `emit_compiler_tests_module()` when self-compiling.
 
 ## CI Gates
 
@@ -116,8 +115,8 @@ Previously eliminated:
 - **Fixed-point:** `regen pass N == regen pass N+1`. Two-pass bootstrap
   required when the emitter changes its own output.
 - **External dependencies:** cargo, rustc (opaque transforms, not modeled).
-- **Hand-maintained files (2):** Copied back during regen, not overwritten.
-  These are source, not derived. See Bootstrap Status for list.
+- **Hand-maintained files (0):** All stage0 content is generated.
+  See Bootstrap Status for elimination history.
 
 **Merge workflow problem:** Stage0 `.rs` files are derived, but git
 treats them as text and produces line-level merge conflicts. These
