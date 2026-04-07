@@ -124,9 +124,6 @@ pub enum CostExpr {
         base: i64,
         argument: Rc<SizeExpr>,
     },
-    CostUnknown {
-        reason: String,
-    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -134,7 +131,6 @@ pub enum CostExpr {
 pub enum Certainty {
     Proven,
     Conservative,
-    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -308,63 +304,6 @@ pub fn proof_has_non_descending_cycle(members: Rc<Vec<String>>, edges: Rc<Vec<Rc
     (is_valid_proof(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![]),
 }), edges) == false)
-}
-
-pub fn cost_contains_computing_ref(expr: Rc<CostExpr>, func_name: String) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        {
-            let target = v2_rt::concat("computing: ".to_string(), func_name.clone());
-match (*expr).clone() {
-    CostExpr::CostUnknown { reason: r, .. } => (r.clone().as_str() == target.as_str()),
-    CostExpr::CostAdd { left: l, right: r, .. } => (cost_contains_computing_ref(l.clone(), func_name.clone()) || cost_contains_computing_ref(r.clone(), func_name.clone())),
-    CostExpr::CostMul { left: l, right: r, .. } => (cost_contains_computing_ref(l.clone(), func_name.clone()) || cost_contains_computing_ref(r.clone(), func_name.clone())),
-    CostExpr::CostMax { left: l, right: r, .. } => (cost_contains_computing_ref(l.clone(), func_name.clone()) || cost_contains_computing_ref(r.clone(), func_name.clone())),
-    CostExpr::CostSum { body: b, .. } => cost_contains_computing_ref(b.clone(), func_name.clone()),
-    _ => false,
-}
-}
-    })
-}
-
-pub fn replace_computing_ref(expr: Rc<CostExpr>, func_name: String, replacement: Rc<CostExpr>) -> Rc<CostExpr> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        {
-            let target = v2_rt::concat("computing: ".to_string(), func_name.clone());
-match (*expr.clone()).clone() {
-    CostExpr::CostUnknown { reason: r, .. } => if (r.clone().as_str() == target.as_str()) {
-                replacement.clone()
-} else {
-                expr.clone()
-},
-    CostExpr::CostAdd { left: l, right: r, .. } => Rc::new(CostExpr::CostAdd {
-    left: replace_computing_ref(l.clone(), func_name.clone(), replacement.clone()),
-    right: replace_computing_ref(r.clone(), func_name.clone(), replacement.clone()),
-}),
-    CostExpr::CostMul { left: l, right: r, .. } => Rc::new(CostExpr::CostMul {
-    left: replace_computing_ref(l.clone(), func_name.clone(), replacement.clone()),
-    right: replace_computing_ref(r.clone(), func_name.clone(), replacement.clone()),
-}),
-    CostExpr::CostMax { left: l, right: r, .. } => Rc::new(CostExpr::CostMax {
-    left: replace_computing_ref(l.clone(), func_name.clone(), replacement.clone()),
-    right: replace_computing_ref(r.clone(), func_name.clone(), replacement.clone()),
-}),
-    CostExpr::CostSum { binder: b, upper: u, body: bd, .. } => Rc::new(CostExpr::CostSum {
-    binder: b.clone(),
-    upper: u.clone(),
-    body: replace_computing_ref(bd.clone(), func_name.clone(), replacement.clone()),
-}),
-    _ => expr.clone(),
-}
-}
-    })
-}
-
-pub fn cost_contains_any_computing_ref(expr: Rc<CostExpr>, func_names: Rc<Vec<String>>) -> bool {
-    { let mut __found = false; for name in func_names.iter().cloned() { if cost_contains_computing_ref(expr.clone(), name.clone()) { __found = true; break; } } __found }
-}
-
-pub fn replace_computing_refs(expr: Rc<CostExpr>, func_names: Rc<Vec<String>>, replacement: Rc<CostExpr>) -> Rc<CostExpr> {
-    func_names.iter().cloned().fold(expr.clone(), |acc: Rc<CostExpr>, name: String| replace_computing_ref(acc.clone(), name.clone(), replacement.clone()))
 }
 
 pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
@@ -2549,49 +2488,37 @@ match proof.clone() {
 }
 }
 
-pub fn bounded_recursive_cost(target: Rc<LoweringTarget>, raw_cost: Rc<CostExpr>, func_name: String) -> Rc<CostExpr> {
+pub fn bounded_recursive_cost(target: Rc<LoweringTarget>, per_iter: Rc<CostExpr>) -> Rc<CostExpr> {
     {
-        let per_iter = simplify_cost(replace_computing_ref(raw_cost, func_name.clone(), Rc::new(CostExpr::CostConst {
-    value: 0,
-})));
-match size_bound_param(target.bound.clone()) {
-    Some(p) => {
-            let var = v2_rt::concat("n_".to_string(), p.clone());
+        let p = size_bound_param(target.bound.clone());
+let var = v2_rt::concat("n_".to_string(), match p {
+    Some(v) => v.clone(),
+    None => "bound".to_string(),
+});
 Rc::new(CostExpr::CostSum {
     binder: var.clone(),
     upper: Rc::new(SizeExpr::SizeVar {
     name: var.clone(),
 }),
-    body: per_iter,
+    body: simplify_cost(per_iter),
 })
-},
-    None => Rc::new(CostExpr::CostUnknown {
-    reason: v2_rt::concat("same-argument recursion in ".to_string(), func_name.clone()),
-}),
-}
 }
 }
 
-pub fn bounded_scc_cost(target: Rc<LoweringTarget>, raw_cost: Rc<CostExpr>, members: Rc<Vec<String>>) -> Rc<CostExpr> {
+pub fn bounded_scc_cost(target: Rc<LoweringTarget>, per_iter: Rc<CostExpr>) -> Rc<CostExpr> {
     {
-        let per_iter = simplify_cost(replace_computing_refs(raw_cost, members.clone(), Rc::new(CostExpr::CostConst {
-    value: 0,
-})));
-match size_bound_param(target.bound.clone()) {
-    Some(p) => {
-            let var = v2_rt::concat("n_".to_string(), p.clone());
+        let p = size_bound_param(target.bound.clone());
+let var = v2_rt::concat("n_".to_string(), match p {
+    Some(v) => v.clone(),
+    None => "bound".to_string(),
+});
 Rc::new(CostExpr::CostSum {
     binder: var.clone(),
     upper: Rc::new(SizeExpr::SizeVar {
     name: var.clone(),
 }),
-    body: per_iter,
+    body: simplify_cost(per_iter),
 })
-},
-    None => Rc::new(CostExpr::CostUnknown {
-    reason: v2_rt::concat("same-argument mutual recursion in ".to_string(), scc_label(members.clone())),
-}),
-}
 }
 }
 
@@ -3547,24 +3474,14 @@ Rc::new(SummaryResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ComplexityViolation {
-    pub func_name: String,
-    pub reason: String,
-    pub summary: Option<Rc<ComplexitySummary>>,
-    pub span: Rc<SourceSpan>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexityReport {
     pub function_summaries: Rc<HashMap<String, Rc<ComplexitySummary>>>,
-    pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
     pub intern_table: Rc<CostInternTable>,
 }
 
 pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport {
     function_summaries: v2_rt::rc_empty_map::<Rc<ComplexitySummary>>(),
-    violations: Rc::new(vec![]),
     intern_table: empty_intern_table(),
 })
 }
@@ -3573,7 +3490,6 @@ pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
     CostExpr::CostConst { .. } => expr.clone(),
-    CostExpr::CostUnknown { .. } => expr.clone(),
     CostExpr::CostAdd { left: l, right: r, .. } => {
             let sl = simplify_cost(l.clone());
 let sr = simplify_cost(r.clone());
@@ -3686,7 +3602,7 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
 
 pub fn normalize_constants(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*expr.clone()).clone() {
+        match (*expr).clone() {
     CostExpr::CostConst { value: v, .. } => if (v.clone() <= 0) {
             Rc::new(CostExpr::CostConst {
     value: 0,
@@ -3696,7 +3612,6 @@ pub fn normalize_constants(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     value: 1,
 })
 },
-    CostExpr::CostUnknown { .. } => expr.clone(),
     CostExpr::CostAdd { left: l, right: r, .. } => Rc::new(CostExpr::CostAdd {
     left: normalize_constants(l.clone()),
     right: normalize_constants(r.clone()),
@@ -3725,7 +3640,6 @@ pub fn normalize_constants(expr: Rc<CostExpr>) -> Rc<CostExpr> {
 pub fn format_cost_class(expr: Rc<CostExpr>) -> String {
     match (*expr).clone() {
     CostExpr::CostConst { .. } => "O(1)".to_string(),
-    CostExpr::CostUnknown { .. } => "O(?)".to_string(),
     CostExpr::CostSum { upper: u, body: bd, .. } => match (*bd.clone()).clone() {
     CostExpr::CostConst { .. } => v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(u.clone())), ")".to_string()),
     _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(u.clone())), " * ".to_string()), format_cost_inner(bd.clone())), ")".to_string()),
@@ -3741,7 +3655,6 @@ pub fn format_cost_inner(expr: Rc<CostExpr>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr).clone() {
     CostExpr::CostConst { .. } => "1".to_string(),
-    CostExpr::CostUnknown { .. } => "?".to_string(),
     CostExpr::CostSum { upper: u, body: bd, .. } => match (*bd.clone()).clone() {
     CostExpr::CostConst { .. } => format_size(u.clone()),
     _ => v2_rt::concat(v2_rt::concat(format_size(u.clone()), " * ".to_string()), format_cost_inner(bd.clone())),
@@ -4248,46 +4161,48 @@ pub fn get_or_compute_summary(func_name: String, func_index: Rc<HashMap<String, 
 }),
     None => match v2_rt::map_get(&func_index, func_name.clone()) {
     Some(entry) => {
-        let placeholder = Rc::new(ComplexitySummary {
-    work: Rc::new(CostExpr::CostUnknown {
-    reason: v2_rt::concat("computing: ".to_string(), func_name.clone()),
-}),
-    span: Rc::new(CostExpr::CostUnknown {
-    reason: v2_rt::concat("computing: ".to_string(), func_name.clone()),
-}),
-    output_size: v2_rt::rc_empty_map::<Rc<CostExpr>>(),
-    certainty: Certainty::Unknown,
-});
-let table_with_placeholder = cache_summary(table.clone(), func_name.clone(), placeholder);
-let result = cost_of_expr(entry.body.clone(), func_index.clone(), scc_index.clone(), table_with_placeholder, parser_always_advancing.clone(), recursion_ctx);
-let is_recursive = cost_contains_computing_ref(result.summary.clone().work.clone(), func_name.clone());
-let scc_bounded = match v2_rt::map_get(&scc_index, func_name.clone()) {
-    Some(info) => if cost_contains_any_computing_ref(result.summary.clone().work.clone(), info.members.clone()) {
-            Some(Rc::new(ComplexitySummary {
-    work: bounded_scc_cost(info.pattern.clone(), result.summary.clone().work.clone(), info.members.clone()),
-    span: bounded_scc_cost(info.pattern.clone(), result.summary.clone().span.clone(), info.members.clone()),
-    output_size: result.summary.clone().output_size.clone(),
-    certainty: Certainty::Conservative,
-}))
-} else {
-            None
-},
+        let scc_target = match v2_rt::map_get(&scc_index, func_name.clone()) {
+    Some(info) => Some(info.pattern.clone()),
     None => None,
 };
-let bounded = match scc_bounded {
-    Some(summary) => summary.clone(),
-    None => if is_recursive {
-            {
-                let pattern = classify_recursion_pattern(func_name.clone(), entry.body.clone(), entry.params.clone(), parser_always_advancing.clone());
-Rc::new(ComplexitySummary {
-    work: bounded_recursive_cost(pattern.clone(), result.summary.clone().work.clone(), func_name.clone()),
-    span: bounded_recursive_cost(pattern.clone(), result.summary.clone().span.clone(), func_name.clone()),
+let self_recursive = (max_path_self_calls(entry.body.clone(), func_name.clone()) > 0);
+let single_target = if (self_recursive && (scc_target.clone() == None)) {
+            Some(classify_recursion_pattern(func_name.clone(), entry.body.clone(), entry.params.clone(), parser_always_advancing.clone()))
+} else {
+            None
+};
+let is_recursive = ((scc_target.clone() != None) || (single_target.clone() != None));
+let zero_placeholder = Rc::new(ComplexitySummary {
+    work: Rc::new(CostExpr::CostConst {
+    value: 0,
+}),
+    span: Rc::new(CostExpr::CostConst {
+    value: 0,
+}),
+    output_size: v2_rt::rc_empty_map::<Rc<CostExpr>>(),
+    certainty: Certainty::Conservative,
+});
+let table_prepped = if is_recursive {
+            cache_summary(table.clone(), func_name.clone(), zero_placeholder)
+} else {
+            table.clone()
+};
+let result = cost_of_expr(entry.body.clone(), func_index.clone(), scc_index.clone(), table_prepped, parser_always_advancing.clone(), recursion_ctx);
+let bounded = match scc_target.clone() {
+    Some(target) => Rc::new(ComplexitySummary {
+    work: bounded_scc_cost(target.clone(), result.summary.clone().work.clone()),
+    span: bounded_scc_cost(target.clone(), result.summary.clone().span.clone()),
     output_size: result.summary.clone().output_size.clone(),
     certainty: Certainty::Conservative,
-})
-}
-} else {
-            result.summary.clone()
+}),
+    None => match single_target.clone() {
+    Some(target) => Rc::new(ComplexitySummary {
+    work: bounded_recursive_cost(target.clone(), result.summary.clone().work.clone()),
+    span: bounded_recursive_cost(target.clone(), result.summary.clone().span.clone()),
+    output_size: result.summary.clone().output_size.clone(),
+    certainty: Certainty::Conservative,
+}),
+    None => result.summary.clone(),
 },
 };
 let simplified = Rc::new(ComplexitySummary {
@@ -4303,80 +4218,23 @@ Rc::new(SummaryResult {
 })
 },
     None => {
-        let unknown_summary = Rc::new(ComplexitySummary {
-    work: Rc::new(CostExpr::CostUnknown {
-    reason: v2_rt::concat("function not found: ".to_string(), func_name.clone()),
+        let external_summary = Rc::new(ComplexitySummary {
+    work: Rc::new(CostExpr::CostConst {
+    value: 0,
 }),
-    span: Rc::new(CostExpr::CostUnknown {
-    reason: v2_rt::concat("function not found: ".to_string(), func_name.clone()),
+    span: Rc::new(CostExpr::CostConst {
+    value: 0,
 }),
     output_size: v2_rt::rc_empty_map::<Rc<CostExpr>>(),
-    certainty: Certainty::Unknown,
+    certainty: Certainty::Conservative,
 });
 Rc::new(SummaryResult {
-    summary: unknown_summary,
+    summary: external_summary,
     table: table.clone(),
 })
 },
 },
 }
-}
-
-pub fn first_unknown_reason(expr: Rc<CostExpr>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*expr).clone() {
-    CostExpr::CostUnknown { reason: r, .. } => r.clone(),
-    CostExpr::CostAdd { left: l, right: r, .. } => {
-            let lr = first_unknown_reason(l.clone());
-if (lr.clone().as_str() != "unknown".to_string().as_str()) {
-                lr.clone()
-} else {
-                first_unknown_reason(r.clone())
-}
-},
-    CostExpr::CostMul { left: l, right: r, .. } => {
-            let lr = first_unknown_reason(l.clone());
-if (lr.clone().as_str() != "unknown".to_string().as_str()) {
-                lr.clone()
-} else {
-                first_unknown_reason(r.clone())
-}
-},
-    CostExpr::CostMax { left: l, right: r, .. } => {
-            let lr = first_unknown_reason(l.clone());
-if (lr.clone().as_str() != "unknown".to_string().as_str()) {
-                lr.clone()
-} else {
-                first_unknown_reason(r.clone())
-}
-},
-    CostExpr::CostSum { body: b, .. } => first_unknown_reason(b.clone()),
-    _ => "unknown".to_string(),
-}
-    })
-}
-
-pub fn should_emit_unknown_violation(func_name: String, scc_index: Rc<HashMap<String, Rc<SccInfo>>>) -> bool {
-    match v2_rt::map_get(&scc_index, func_name.clone()) {
-    Some(info) => match size_bound_param(info.pattern.clone().bound.clone()) {
-    Some(_) => true,
-    None => (func_name.clone().as_str() == scc_label(info.members.clone()).as_str()),
-},
-    None => true,
-}
-}
-
-pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*expr).clone() {
-    CostExpr::CostUnknown { .. } => true,
-    CostExpr::CostAdd { left: l, right: r, .. } => (is_unknown_cost(l.clone()) || is_unknown_cost(r.clone())),
-    CostExpr::CostMul { left: l, right: r, .. } => (is_unknown_cost(l.clone()) || is_unknown_cost(r.clone())),
-    CostExpr::CostMax { left: l, right: r, .. } => (is_unknown_cost(l.clone()) || is_unknown_cost(r.clone())),
-    CostExpr::CostSum { body: b, .. } => is_unknown_cost(b.clone()),
-    _ => false,
-}
-    })
 }
 
 pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>, recursion_ctx: RecursionContext) -> Rc<ComplexityReport> {
@@ -4403,34 +4261,8 @@ Rc::new(SummaryResult {
     table: sr.table.clone(),
 })
 } });
-let summaries_map = result.table.clone().summaries.clone();
-let violations = Rc::new({ let mut __result = Vec::new(); for entry in Rc::new({ let mut __result = Vec::new(); for entry in func_entries.clone().iter().cloned() { if match v2_rt::map_get(&summaries_map, entry.name.clone()) {
-    Some(summary) => if is_unknown_cost(summary.work.clone()) {
-            should_emit_unknown_violation(entry.name.clone(), scc_index.clone())
-} else {
-            false
-},
-    None => true,
-} { __result.push(entry); } } __result }).iter().cloned() { __result.push(match v2_rt::map_get(&summaries_map, entry.name.clone()) {
-    Some(summary) => {
-            let reason = first_unknown_reason(summary.work.clone());
-Rc::new(ComplexityViolation {
-    func_name: entry.name.clone(),
-    reason: reason.clone(),
-    summary: Some(summary.clone()),
-    span: entry.span.clone(),
-})
-},
-    None => Rc::new(ComplexityViolation {
-    func_name: entry.name.clone(),
-    reason: "no summary computed".to_string(),
-    summary: None,
-    span: entry.span.clone(),
-}),
-}); } __result });
 Rc::new(ComplexityReport {
-    function_summaries: summaries_map.clone(),
-    violations: violations,
+    function_summaries: result.table.clone().summaries.clone(),
     intern_table: result.table.clone(),
 })
 }

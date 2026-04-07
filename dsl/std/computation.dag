@@ -248,8 +248,8 @@ fn size_bound_param(bound: SizeBound) -> String? {
     TreeSize { param: p }       => Some { value: p }
     CollectionSize { param: p } => Some { value: p }
     ArithmeticParam { param: p } => Some { value: p }
-    ExplicitCount { n: _ }      => none
-    Forever                     => none
+    ExplicitCount { n: _ }      => Some { value: "count" }
+    Forever                     => Some { value: "forever" }
   }
 }
 

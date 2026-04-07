@@ -73,7 +73,7 @@ pub use crate::v2_compiler_emit::{EmitResult, escape_json_string};
 pub use crate::v2_compiler_emit_rust::{emit_rust};
 pub use crate::v2_compiler_emit_python::{emit_python};
 pub use crate::v2_compiler_emit_go::{emit_go};
-pub use crate::v2_compiler_complexity::{ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report};
+pub use crate::v2_compiler_complexity::{ComplexityReport, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report};
 pub use crate::v2_compiler_ownership::{OwnershipProof, OwnershipDecision, analyze_ownership};
 use crate::v2_compiler_ownership::OwnershipDecision::{SharedError};
 pub use crate::v2_compiler_artifact::{ArtifactPlan, Artifact, RenderTarget, default_artifact_plan};
@@ -131,10 +131,7 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 }
 
 pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({ let mut __result = Vec::new(); for v in complexity.violations.clone().iter().cloned() { __result.push(make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("complexity violation: `".to_string(), v.func_name.clone()), "` has unresolvable cost (".to_string()), v.reason.clone()), ")".to_string()),
-    span: v.span.clone(),
-}), "".to_string())); } __result })
+    Rc::new(vec![])
 }
 
 pub fn empty_artifact_plan() -> Rc<ArtifactPlan> {

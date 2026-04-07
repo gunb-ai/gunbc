@@ -10,7 +10,7 @@
 //   span  -- critical path length under DAG dependency structure
 //
 // D2: get_or_compute_summary -- lazy cached summary computation
-// D4: build_complexity_report -- collect summaries + violations
+// D4: build_complexity_report -- collect summaries (no violations — all costs concrete)
 
 module v2.compiler.complexity
 
@@ -110,17 +110,15 @@ type CostExpr
   | CostMax { left: CostExpr, right: CostExpr }
   | CostSum { binder: String, upper: SizeExpr, body: CostExpr }
   | CostLog { base: Int, argument: SizeExpr }
-  | CostUnknown { reason: String }
 
 // =========================================================================
 // Certainty of a proof
 //
 // Proven      -- the bound is exact or tight under stated assumptions.
 // Conservative -- the bound is valid but may not be tight.
-// Unknown     -- the system could not derive a useful bound.
 // =========================================================================
 
-type Certainty = Proven | Conservative | Unknown
+type Certainty = Proven | Conservative
 
 // =========================================================================
 // Emission cost shape -- single authority on method cost structure
@@ -339,71 +337,6 @@ fn proof_has_non_descending_cycle(members: List<String>, edges: List<ProofEdge>)
 
 // Check if a CostExpr contains a placeholder for a self-recursive call.
 // The placeholder reason is "computing: <func_name>", inserted by
-// get_or_compute_summary before walking the body.
-fn cost_contains_computing_ref(expr: CostExpr, func_name: String) -> Bool {
-  let target = concat("computing: ", func_name)
-  match expr {
-    CostUnknown { reason: r } => r == target
-    CostAdd { left: l, right: r } =>
-      cost_contains_computing_ref(expr: l, func_name: func_name)
-      || cost_contains_computing_ref(expr: r, func_name: func_name)
-    CostMul { left: l, right: r } =>
-      cost_contains_computing_ref(expr: l, func_name: func_name)
-      || cost_contains_computing_ref(expr: r, func_name: func_name)
-    CostMax { left: l, right: r } =>
-      cost_contains_computing_ref(expr: l, func_name: func_name)
-      || cost_contains_computing_ref(expr: r, func_name: func_name)
-    CostSum { binder: _, upper: _, body: b } =>
-      cost_contains_computing_ref(expr: b, func_name: func_name)
-    _ => false
-  }
-}
-
-// Replace all CostUnknown placeholders for a self-recursive call with
-// a replacement cost (typically CostConst { value: 0 } to extract
-// per-iteration cost).
-fn replace_computing_ref(expr: CostExpr, func_name: String, replacement: CostExpr) -> CostExpr {
-  let target = concat("computing: ", func_name)
-  match expr {
-    CostUnknown { reason: r } =>
-      if r == target { replacement } else { expr }
-    CostAdd { left: l, right: r } =>
-      CostAdd {
-        left: replace_computing_ref(expr: l, func_name: func_name, replacement: replacement),
-        right: replace_computing_ref(expr: r, func_name: func_name, replacement: replacement)
-      }
-    CostMul { left: l, right: r } =>
-      CostMul {
-        left: replace_computing_ref(expr: l, func_name: func_name, replacement: replacement),
-        right: replace_computing_ref(expr: r, func_name: func_name, replacement: replacement)
-      }
-    CostMax { left: l, right: r } =>
-      CostMax {
-        left: replace_computing_ref(expr: l, func_name: func_name, replacement: replacement),
-        right: replace_computing_ref(expr: r, func_name: func_name, replacement: replacement)
-      }
-    CostSum { binder: b, upper: u, body: bd } =>
-      CostSum {
-        binder: b,
-        upper: u,
-        body: replace_computing_ref(expr: bd, func_name: func_name, replacement: replacement)
-      }
-    _ => expr
-  }
-}
-
-fn cost_contains_any_computing_ref(expr: CostExpr, func_names: List<String>) -> Bool {
-  func_names |> any(name =>
-    cost_contains_computing_ref(expr: expr, func_name: name)
-  )
-}
-
-fn replace_computing_refs(expr: CostExpr, func_names: List<String>, replacement: CostExpr) -> CostExpr {
-  func_names |> fold(init: expr, f: (acc, name) =>
-    replace_computing_ref(expr: acc, func_name: name, replacement: replacement)
-  )
-}
-
 fn set_has(m: Map<String, Bool>, key: String) -> Bool {
   map_get(m, key) != none
 }
@@ -2982,37 +2915,21 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
 
 // Build the bounded cost for a recursive function from its LoweringTarget.
 // The bound parameter name becomes the CostSum binder variable.
-// Forever bounds (SameArgumentCall) produce CostUnknown — bounded truth,
-// but not expressible as a useful cost term.
-fn bounded_recursive_cost(target: LoweringTarget, raw_cost: CostExpr, func_name: String) -> CostExpr {
-  // Extract per-iteration cost by replacing recursive call with 0
-  let per_iter = simplify_cost(expr: replace_computing_ref(
-    expr: raw_cost,
-    func_name: func_name,
-    replacement: CostConst { value: 0 }
-  ))
-  match size_bound_param(bound: target.bound) {
-    Some { value: p } =>
-      let var = concat("n_", p)
-      CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
-    None =>
-      CostUnknown { reason: concat("same-argument recursion in ", func_name) }
-  }
+// Forever bounds (SameArgumentCall) produce CostSum with "n_forever" —
+// concrete bound, O(Forever × per_iter).
+// Wrap per-iteration cost in a bounded summation from the lowering table.
+// Self-calls contribute CostConst(0) (cached before body walk), so
+// raw_cost already has 0 in place of recursive calls — no replacement needed.
+fn bounded_recursive_cost(target: LoweringTarget, per_iter: CostExpr) -> CostExpr {
+  let p = size_bound_param(bound: target.bound)
+  let var = concat("n_", match p { Some { value: v } => v  None => "bound" })
+  CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
 }
 
-fn bounded_scc_cost(target: LoweringTarget, raw_cost: CostExpr, members: List<String>) -> CostExpr {
-  let per_iter = simplify_cost(expr: replace_computing_refs(
-    expr: raw_cost,
-    func_names: members,
-    replacement: CostConst { value: 0 }
-  ))
-  match size_bound_param(bound: target.bound) {
-    Some { value: p } =>
-      let var = concat("n_", p)
-      CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
-    None =>
-      CostUnknown { reason: concat("same-argument mutual recursion in ", scc_label(members: members)) }
-  }
+fn bounded_scc_cost(target: LoweringTarget, per_iter: CostExpr) -> CostExpr {
+  let p = size_bound_param(bound: target.bound)
+  let var = concat("n_", match p { Some { value: v } => v  None => "bound" })
+  CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
 }
 
 fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
@@ -3891,23 +3808,14 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
 // D4: Complexity reporting
 // =========================================================================
 
-type ComplexityViolation {
-  func_name: String
-  reason: String
-  summary: ComplexitySummary?
-  span: SourceSpan
-}
-
 type ComplexityReport {
   function_summaries: Map<String, ComplexitySummary>
-  violations: List<ComplexityViolation>
   intern_table: CostInternTable
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_summaries: empty_map(),
-    violations: [],
     intern_table: empty_intern_table()
   }
 }
@@ -3922,7 +3830,6 @@ fn empty_complexity_report() -> ComplexityReport {
 fn simplify_cost(expr: CostExpr) -> CostExpr {
   match expr {
     CostConst { value: _ } => expr
-    CostUnknown { reason: _ } => expr
     CostAdd { left: l, right: r } =>
       let sl = simplify_cost(expr: l)
       let sr = simplify_cost(expr: r)
@@ -4006,7 +3913,6 @@ fn normalize_constants(expr: CostExpr) -> CostExpr {
   match expr {
     CostConst { value: v } =>
       if v <= 0 { CostConst { value: 0 } } else { CostConst { value: 1 } }
-    CostUnknown { reason: _ } => expr
     CostAdd { left: l, right: r } =>
       CostAdd { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
     CostMul { left: l, right: r } =>
@@ -4023,7 +3929,6 @@ fn normalize_constants(expr: CostExpr) -> CostExpr {
 fn format_cost_class(expr: CostExpr) -> String {
   match expr {
     CostConst { value: _ } => "O(1)"
-    CostUnknown { reason: _ } => "O(?)"
     CostSum { binder: _, upper: u, body: bd } =>
       match bd {
         CostConst { value: _ } => concat("O(", format_size(size: u), ")")
@@ -4042,7 +3947,6 @@ fn format_cost_class(expr: CostExpr) -> String {
 fn format_cost_inner(expr: CostExpr) -> String {
   match expr {
     CostConst { value: _ } => "1"
-    CostUnknown { reason: _ } => "?"
     CostSum { binder: _, upper: u, body: bd } =>
       match bd {
         CostConst { value: _ } => format_size(size: u)
@@ -4532,81 +4436,76 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
     Some { value: cached } =>
       SummaryResult { summary: cached, table: table }
     None =>
-      // Look up function body
       match map_get(func_index, func_name) {
         Some { value: entry } =>
-          // No body-size budget: the caching/placeholder mechanism prevents
-          // exponential analysis, and the decidability invariant guarantees
-          // all functions terminate. Skipping large functions produces false
-          // violations on the most important functions to analyze.
-          {
-            // Insert a placeholder to prevent infinite recursion on self-recursive functions
-            let placeholder = ComplexitySummary {
-              work: CostUnknown { reason: concat("computing: ", func_name) },
-              span: CostUnknown { reason: concat("computing: ", func_name) },
-              output_size: empty_map(),
-              certainty: Unknown
-            }
-            let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
-            // Walk the function body
-            let result = cost_of_expr(texpr: entry.body, func_index: func_index, scc_index: scc_index, table: table_with_placeholder, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
-            // Detect and classify self-recursion: if the result cost still
-            // contains the "computing: func_name" placeholder, the function
-            // is recursive. Classify the pattern and produce a bounded cost.
-            let is_recursive = cost_contains_computing_ref(expr: result.summary.work, func_name: func_name)
-            let scc_bounded = match map_get(scc_index, func_name) {
-              Some { value: info } =>
-                if cost_contains_any_computing_ref(expr: result.summary.work, func_names: info.members) {
-                  Some { value: ComplexitySummary {
-                    work: bounded_scc_cost(target: info.pattern, raw_cost: result.summary.work, members: info.members),
-                    span: bounded_scc_cost(target: info.pattern, raw_cost: result.summary.span, members: info.members),
-                    output_size: result.summary.output_size,
-                    certainty: Conservative
-                  } }
-                } else {
-                  none
-                }
-              None => none
-            }
-            let bounded = match scc_bounded {
-              Some { value: summary } => summary
-              None =>
-                if is_recursive {
-                  let pattern = classify_recursion_pattern(
-                    func_name: func_name,
-                    body: entry.body,
-                    params: entry.params,
-                    parser_always_advancing: parser_always_advancing
-                  )
+          // Determine recursion pattern BEFORE walking the body.
+          // For recursive functions, cache a zero-cost placeholder so self-calls
+          // contribute 0 (the iteration cost is captured by the outer bound).
+          let scc_target = match map_get(scc_index, func_name) {
+            Some { value: info } => Some { value: info.pattern }
+            None => none
+          }
+          let self_recursive = max_path_self_calls(body: entry.body, func_name: func_name) > 0
+          let single_target = if self_recursive && scc_target == none {
+            Some { value: classify_recursion_pattern(
+              func_name: func_name,
+              body: entry.body,
+              params: entry.params,
+              parser_always_advancing: parser_always_advancing
+            ) }
+          } else { none }
+          let is_recursive = scc_target != none || single_target != none
+          // Cache zero placeholder for recursive functions (self-calls return 0)
+          let zero_placeholder = ComplexitySummary {
+            work: CostConst { value: 0 },
+            span: CostConst { value: 0 },
+            output_size: empty_map(),
+            certainty: Conservative
+          }
+          let table_prepped = if is_recursive {
+            cache_summary(table: table, func_name: func_name, summary: zero_placeholder)
+          } else { table }
+          // Walk the function body
+          let result = cost_of_expr(texpr: entry.body, func_index: func_index, scc_index: scc_index, table: table_prepped, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
+          // For recursive functions, wrap per-iteration cost in bounded summation
+          let bounded = match scc_target {
+            Some { value: target } =>
+              ComplexitySummary {
+                work: bounded_scc_cost(target: target, per_iter: result.summary.work),
+                span: bounded_scc_cost(target: target, per_iter: result.summary.span),
+                output_size: result.summary.output_size,
+                certainty: Conservative
+              }
+            None =>
+              match single_target {
+                Some { value: target } =>
                   ComplexitySummary {
-                    work: bounded_recursive_cost(target: pattern, raw_cost: result.summary.work, func_name: func_name),
-                    span: bounded_recursive_cost(target: pattern, raw_cost: result.summary.span, func_name: func_name),
+                    work: bounded_recursive_cost(target: target, per_iter: result.summary.work),
+                    span: bounded_recursive_cost(target: target, per_iter: result.summary.span),
                     output_size: result.summary.output_size,
                     certainty: Conservative
                   }
-                } else {
-                  result.summary
-                }
-            }
-            // Simplify and cache the real summary
-            let simplified = ComplexitySummary {
-              work: simplify_cost(expr: bounded.work),
-              span: simplify_cost(expr: bounded.span),
-              output_size: bounded.output_size,
-              certainty: bounded.certainty
-            }
-            let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
-            SummaryResult { summary: simplified, table: final_table }
+                None => result.summary
+              }
           }
+          // Simplify and cache
+          let simplified = ComplexitySummary {
+            work: simplify_cost(expr: bounded.work),
+            span: simplify_cost(expr: bounded.span),
+            output_size: bounded.output_size,
+            certainty: bounded.certainty
+          }
+          let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
+          SummaryResult { summary: simplified, table: final_table }
         None =>
-          // Unknown function -- return unknown cost
-          let unknown_summary = ComplexitySummary {
-            work: CostUnknown { reason: concat("function not found: ", func_name) },
-            span: CostUnknown { reason: concat("function not found: ", func_name) },
+          // Unknown function — concrete zero cost (external, not modeled)
+          let external_summary = ComplexitySummary {
+            work: CostConst { value: 0 },
+            span: CostConst { value: 0 },
             output_size: empty_map(),
-            certainty: Unknown
+            certainty: Conservative
           }
-          SummaryResult { summary: unknown_summary, table: table }
+          SummaryResult { summary: external_summary, table: table }
       }
   }
 }
@@ -4615,53 +4514,8 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // D4: Complexity reporting
 //
 // build_complexity_report takes function entries, computes summaries
-// for each, and collects violations (CostUnknown summaries).
+// for each. Every function gets a concrete cost — no violations possible.
 // =========================================================================
-
-// Recursive walk: CostUnknown composes into trees (CostAdd, CostMul, etc.)
-// so a flat root check would miss nested unknowns. The cost algebra composes
-// correctly; the violation query must follow the composition.
-// Extract the reason from the first CostUnknown found anywhere in a cost tree.
-// Checks both branches of binary cost nodes — the unknown may be nested
-// on either side of CostAdd/CostMul/CostMax compositions.
-fn first_unknown_reason(expr: CostExpr) -> String {
-  match expr {
-    CostUnknown { reason: r } => r
-    CostAdd { left: l, right: r } =>
-      let lr = first_unknown_reason(expr: l)
-      if lr != "unknown" { lr } else { first_unknown_reason(expr: r) }
-    CostMul { left: l, right: r } =>
-      let lr = first_unknown_reason(expr: l)
-      if lr != "unknown" { lr } else { first_unknown_reason(expr: r) }
-    CostMax { left: l, right: r } =>
-      let lr = first_unknown_reason(expr: l)
-      if lr != "unknown" { lr } else { first_unknown_reason(expr: r) }
-    CostSum { binder: _, upper: _, body: b } => first_unknown_reason(expr: b)
-    _ => "unknown"
-  }
-}
-
-fn should_emit_unknown_violation(func_name: String, scc_index: Map<String, SccInfo>) -> Bool {
-  match map_get(scc_index, func_name) {
-    Some { value: info } =>
-      match size_bound_param(bound: info.pattern.bound) {
-        Some { value: _ } => true  // proven bound → always emit
-        None => func_name == scc_label(members: info.members)  // Forever → emit once for SCC
-      }
-    None => true
-  }
-}
-
-fn is_unknown_cost(expr: CostExpr) -> Bool {
-  match expr {
-    CostUnknown { reason: _ } => true
-    CostAdd { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
-    CostMul { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
-    CostMax { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
-    CostSum { binder: _, upper: _, body: b } => is_unknown_cost(expr: b)
-    _ => false
-  }
-}
 
 fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: RecursionContext) -> ComplexityReport {
   // Build function index for callee lookups
@@ -4683,40 +4537,9 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
     let sr = get_or_compute_summary(func_name: entry.name, func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
     SummaryResult { summary: sr.summary, table: sr.table }
   })
-  // Collect function summaries and violations
-  let summaries_map = result.table.summaries
-  let violations = func_entries |> filter(entry =>
-    match map_get(summaries_map, entry.name) {
-      Some { value: summary } =>
-        if is_unknown_cost(expr: summary.work) {
-          should_emit_unknown_violation(func_name: entry.name, scc_index: scc_index)
-        } else {
-          false
-        }
-      None => true
-    }
-  ) |> map(entry =>
-    match map_get(summaries_map, entry.name) {
-      Some { value: summary } =>
-        let reason = first_unknown_reason(expr: summary.work)
-        ComplexityViolation {
-          func_name: entry.name,
-          reason: reason,
-          summary: Some { value: summary },
-          span: entry.span
-        }
-      None =>
-        ComplexityViolation {
-          func_name: entry.name,
-          reason: "no summary computed",
-          summary: none,
-          span: entry.span
-        }
-    }
-  )
+  // No violations possible — every function has a concrete cost.
   ComplexityReport {
-    function_summaries: summaries_map,
-    violations: violations,
+    function_summaries: result.table.summaries,
     intern_table: result.table
   }
 }

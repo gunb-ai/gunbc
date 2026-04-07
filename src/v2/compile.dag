@@ -41,7 +41,7 @@ import v2.compiler.emit { EmitResult, escape_json_string }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
-import v2.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
+import v2.compiler.complexity { ComplexityReport, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
 import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
@@ -129,16 +129,10 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
 // No separate walker needed — the complexity stage IS the gate.
 // =========================================================================
 
+// No violations possible — every function has a concrete cost from the
+// lowering table. This function returns an empty list by construction.
 fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
-  complexity.violations |> map(v =>
-    make_error_node(
-      diagnostic: InternalError {
-        message: concat("complexity violation: `", v.func_name, "` has unresolvable cost (", v.reason, ")"),
-        span: v.span
-      },
-      module_name: ""
-    )
-  )
+  []
 }
 
 // =========================================================================

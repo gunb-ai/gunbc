@@ -385,7 +385,6 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn format_cost_inner(",
         "fn parenthesize_additive_cost(",
         "fn classify_complexity(",
-        "fn is_unknown_cost(",
         "ExprReturn",
     ] {
         assert_live_contains(
@@ -406,7 +405,6 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn format_cost_inner(",
         "pub fn parenthesize_additive_cost(",
         "pub fn classify_complexity(",
-        "pub fn is_unknown_cost(",
         "ExprData::ExprReturn",
     ] {
         assert_live_contains(
