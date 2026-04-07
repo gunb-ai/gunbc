@@ -162,6 +162,10 @@ let _result = match cli.command {
                 let index = build_module_index(&source_roots);
                 eprintln!("indexed {} modules from {} source roots", index.len(), source_roots.len());
 
+                // Entry modules: all .dag files in the FIRST source root.
+                // Additional roots are dependency pools resolved via imports.
+                // This is intentional: --source-root src/v2 --source-root dsl
+                // means 'compile src/v2, using dsl as a dependency pool.'
                 let first_root = std::path::Path::new(&source_roots[0]);
                 let mut entry_files = Vec::new();
                 if first_root.is_dir() {
