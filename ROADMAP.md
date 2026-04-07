@@ -60,16 +60,10 @@ manual patches, AND the regenerated binary produces identical output
 when it self-compiles (fixed point convergence). **Blocks all other
 lanes from editing stage0 Rust directly.**
 
-Note: "zero manual patches" means zero patches to *generated* files.
-Two hand-maintained files are still copied during regeneration
-(main.rs, compiler_tests.rs).
-Goal is zero — all stage0 content should be 100% generated.
-Remaining files and what blocks elimination:
-
-| File | Role | Blocker |
-|------|------|---------|
-| `main.rs` | CLI entrypoint (clap, import resolution, diagnostic rendering) | Need compiler entrypoint generation — entrypoints are deducible interfaces (like HTTP servers); content is fixed, can be templated like v2_rt.rs |
-| `compiler_tests.rs` | Test harness | Need .dag test generation |
+All stage0 content is 100% generated — zero hand-maintained files (PR #337).
+- main.rs — CLI entrypoint with FF-9 import resolution, diagnostic rendering
+- compiler_tests.rs — modeled in `compiler_tests_rust.dag`, emitted via
+  `emit_compiler_tests_module()` when self-compiling
 
 Previously eliminated:
 - PR #316: v2_compiler_infer_method.rs, std_types.rs,
@@ -331,12 +325,10 @@ backends.
   ExprVar → ExprCall for zero-arg function references (PR #329). All three
   backends emit `name()` via existing ExprCall handling. `is_zero_arg_callable_ref`
   dissolved (L1 33→32). Imported zero-arg function refs untested.
-- [~] **TLC-2: Runtime bridge signature derivation.** Runtime helper
-  return types and wrapping conventions must derive from the same
-  type/coercion authority as emission. `wraps_result` field added to
-  `RuntimeFunction` registry (PR #331); `rt_wraps_result()` derives
-  from registry. Remaining: `rust_method_wraps_result` is a parallel
-  map for method templates — should unify into single spec authority.
+- [x] **TLC-2: Runtime bridge signature derivation.** `SimpleMethodSpec`
+  co-locates template + wrapping flag (PR #338). Both `rust_method_templates()`
+  and `rust_method_wraps_result()` derive from `rust_simple_method_specs` —
+  single authority, dual maps eliminated.
 - [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
   All three backends dispatch per collection type via shared
@@ -361,7 +353,7 @@ Make emission fully data-driven. Adding a backend = adding data.
   with `method_name`, `inline_template`, `fn_ref_template`, `wraps_in_sharing`.
   Shared `emit_rust_higher_order_method` replaces 4 hardcoded emitters
   (filter/any/all/flat_map). Data-driven dispatch via method name lookup.
-- [~] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend sites are inherent rendering differences.
+- [x] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend rendering is inherent language differences — addressed by the 3→1 homomorphism (PR #338).
 - [ ] LanguageSpec completion — all target-language facts data-driven (see LS lane below)
 - [x] TypeRendering dissolved — `render_node_type` consumes coercion data directly (PR #331)
 - [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
