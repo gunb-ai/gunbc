@@ -360,8 +360,9 @@ fn evidence_to_progress(de: DescentEvidence) -> ProgressKind {
 // Thin wrapper: is_valid_proof returns true when proof is valid (no cycles).
 // This function returns true when there IS a cycle (inverted sense for callers).
 // Delegates to std.termination.is_valid_proof as the single authority.
-fn proof_has_non_descending_cycle(members: List<String>, edges: List<ProofEdge>) -> Bool {
-  is_valid_proof(proof: TerminationProof { dimensions: [] }, edges: edges) == false
+// CX-P: accepts the actual proof so is_valid_proof can validate dimensions.
+fn proof_has_non_descending_cycle(proof: TerminationProof, members: List<String>, edges: List<ProofEdge>) -> Bool {
+  is_valid_proof(proof: proof, edges: edges) == false
 }
 
 // Check if a CostExpr contains a placeholder for a self-recursive call.
@@ -3007,6 +3008,18 @@ fn is_unknown_cost(expr: CostExpr) -> Bool {
   }
 }
 
+// Extract the first CostUnknown reason from a CostExpr tree.
+fn extract_unknown_reason(expr: CostExpr) -> String {
+  match expr {
+    CostUnknown { reason: r } => r
+    CostAdd { left: l, right: r } => if is_unknown_cost(expr: l) { extract_unknown_reason(expr: l) } else { extract_unknown_reason(expr: r) }
+    CostMul { left: l, right: r } => if is_unknown_cost(expr: l) { extract_unknown_reason(expr: l) } else { extract_unknown_reason(expr: r) }
+    CostMax { left: l, right: r } => if is_unknown_cost(expr: l) { extract_unknown_reason(expr: l) } else { extract_unknown_reason(expr: r) }
+    CostSum { binder: _, upper: _, body: bd } => extract_unknown_reason(expr: bd)
+    _ => "unknown"
+  }
+}
+
 fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
   let this_edges = match body.expr_data {
     ExprCall { call_semantics: _ } =>
@@ -3527,8 +3540,9 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
       _ => true
     }
   )
-  if tree_all_known && (tree_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: tree_edges) == false {
-    Some { value: TerminationProof { dimensions: [TreeSize { param: "scc" }] } }
+  let tree_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }] }
+  if tree_all_known && (tree_edges |> count) > 0 && proof_has_non_descending_cycle(proof: tree_proof, members: members, edges: tree_edges) == false {
+    Some { value: tree_proof }
   } else {
     let list_edges = collect_scc_proof_edges_for_dim(members: members, func_index: func_index, scc_name_set: scc_name_set, check_child: false, check_list: true)
     let list_all_known = list_edges |> all(e =>
@@ -3537,8 +3551,9 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
         _ => true
       }
     )
-    if list_all_known && (list_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: list_edges) == false {
-      Some { value: TerminationProof { dimensions: [ListLength { param: "scc" }] } }
+    let list_proof = TerminationProof { dimensions: [ListLength { param: "scc" }] }
+    if list_all_known && (list_edges |> count) > 0 && proof_has_non_descending_cycle(proof: list_proof, members: members, edges: list_edges) == false {
+      Some { value: list_proof }
     } else {
       // CX-A: Try TokenPosition (parser state advance)
       let parser_edges = collect_scc_parser_proof_edges(members: members, func_index: func_index, scc_name_set: scc_name_set)
@@ -3548,8 +3563,9 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
           _ => true
         }
       )
-      if parser_all_known && (parser_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: parser_edges) == false {
-        Some { value: TerminationProof { dimensions: [TokenPosition { param: "scc" }] } }
+      let parser_proof = TerminationProof { dimensions: [TokenPosition { param: "scc" }] }
+      if parser_all_known && (parser_edges |> count) > 0 && proof_has_non_descending_cycle(proof: parser_proof, members: members, edges: parser_edges) == false {
+        Some { value: parser_proof }
       } else {
         // Lexicographic: independently find best tree dim and best list dim per edge
         let lex_edges = collect_scc_independent_dim_edges(members: members, func_index: func_index, scc_name_set: scc_name_set)
@@ -3562,8 +3578,9 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
             None => false
           }
         )
-        if lex_all_known && (lex_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: lex_edges) == false {
-          Some { value: TerminationProof { dimensions: [TreeSize { param: "scc" }, ListLength { param: "scc" }] } }
+        let lex_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }, ListLength { param: "scc" }] }
+        if lex_all_known && (lex_edges |> count) > 0 && proof_has_non_descending_cycle(proof: lex_proof, members: members, edges: lex_edges) == false {
+          Some { value: lex_proof }
         } else {
           // CX-A: Lexicographic [TreeSize, TokenPosition]
           let tree_parser_edges = collect_scc_tree_parser_dim_edges(members: members, func_index: func_index, scc_name_set: scc_name_set)
@@ -3573,8 +3590,9 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
               None => false
             }
           )
-          if tp_all_known && (tree_parser_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: tree_parser_edges) == false {
-            Some { value: TerminationProof { dimensions: [TreeSize { param: "scc" }, TokenPosition { param: "scc" }] } }
+          let tp_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }, TokenPosition { param: "scc" }] }
+          if tp_all_known && (tree_parser_edges |> count) > 0 && proof_has_non_descending_cycle(proof: tp_proof, members: members, edges: tree_parser_edges) == false {
+            Some { value: tp_proof }
           } else {
             none
           }
@@ -3903,6 +3921,7 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
 type ComplexityViolation {
   func_name: String
   reason: String
+  span: SourceSpan
 }
 
 type ComplexityReport {
@@ -4839,17 +4858,21 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
     processed: empty_map()
   }, f: fn(acc, func_name) {
     match map_get(func_index, func_name) {
-      Some { value: _ } =>
+      Some { value: entry } =>
         let sr = get_or_compute_summary(func_name: func_name, func_index: func_index, scc_index: full_scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
         // Classify immediately — drop the CostExpr tree from the report
         let class_str = classify_complexity(expr: sr.summary.work)
         let new_classes = map_insert(acc.classes, func_name, class_str)
         let new_processed = map_insert(acc.processed, func_name, true)
-        // Detect violations: any function whose cost contains CostUnknown
+        // Detect violations: any function whose cost contains CostUnknown.
+        // CX-P: reason carries the structural root cause from CostUnknown,
+        // not the asymptotic class string (which is display output).
+        // CX-P: span propagated from FuncEntry for diagnostic source location.
         let new_violations = if is_unknown_cost(expr: sr.summary.work) {
           concat(acc.violations, [ComplexityViolation {
             func_name: func_name,
-            reason: class_str
+            reason: extract_unknown_reason(expr: sr.summary.work),
+            span: entry.span
           }])
         } else { acc.violations }
         // Decrement fan-in for each unique callee of this function

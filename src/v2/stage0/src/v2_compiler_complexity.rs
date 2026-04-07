@@ -327,10 +327,8 @@ pub fn evidence_to_progress(de: DescentEvidence) -> ProgressKind {
 }
 }
 
-pub fn proof_has_non_descending_cycle(members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
-    (is_valid_proof(Rc::new(TerminationProof {
-    dimensions: Rc::new(vec![]),
-}), edges) == false)
+pub fn proof_has_non_descending_cycle(proof: Rc<TerminationProof>, members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
+    (is_valid_proof(proof, edges) == false)
 }
 
 pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
@@ -2574,6 +2572,59 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
     })
 }
 
+pub fn extract_unknown_reason(mut expr: Rc<CostExpr>) -> String {
+    loop {
+        match (*expr.clone()).clone() {
+    CostExpr::CostUnknown { reason: r, .. } => { break r.clone(); },
+    CostExpr::CostAdd { left: l, right: r, .. } => { if is_unknown_cost(l.clone()) {
+            {
+                let __tco_0 = l.clone();
+expr = __tco_0;
+continue;
+}
+} else {
+            {
+                let __tco_0 = r.clone();
+expr = __tco_0;
+continue;
+}
+} },
+    CostExpr::CostMul { left: l, right: r, .. } => { if is_unknown_cost(l.clone()) {
+            {
+                let __tco_0 = l.clone();
+expr = __tco_0;
+continue;
+}
+} else {
+            {
+                let __tco_0 = r.clone();
+expr = __tco_0;
+continue;
+}
+} },
+    CostExpr::CostMax { left: l, right: r, .. } => { if is_unknown_cost(l.clone()) {
+            {
+                let __tco_0 = l.clone();
+expr = __tco_0;
+continue;
+}
+} else {
+            {
+                let __tco_0 = r.clone();
+expr = __tco_0;
+continue;
+}
+} },
+    CostExpr::CostSum { body: bd, .. } => { {
+            let __tco_0 = bd.clone();
+expr = __tco_0;
+continue;
+} },
+    _ => { break "unknown".to_string(); },
+}
+}
+}
+
 pub fn collect_local_call_edges_in_expr(caller: String, body: Rc<Node>, local_func_set: Rc<HashMap<String, bool>>) -> Rc<Vec<Rc<CallEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
@@ -3121,12 +3172,13 @@ let tree_all_known = { let mut __all = true; for e in tree_edges.clone().iter().
     Some(DescentEvidence::DescentUnknown) => false,
     _ => true,
 }) { __all = false; break; } } __all };
-if ((tree_all_known && ((tree_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(members.clone(), tree_edges.clone()) == false)) {
-            Some(Rc::new(TerminationProof {
+let tree_proof = Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
     param: "scc".to_string(),
 })]),
-}))
+});
+if ((tree_all_known && ((tree_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(tree_proof.clone(), members.clone(), tree_edges.clone()) == false)) {
+            Some(tree_proof.clone())
 } else {
             {
                 let list_edges = collect_scc_proof_edges_for_dim(members.clone(), func_index.clone(), scc_name_set.clone(), false, true);
@@ -3134,12 +3186,13 @@ let list_all_known = { let mut __all = true; for e in list_edges.clone().iter().
     Some(DescentEvidence::DescentUnknown) => false,
     _ => true,
 }) { __all = false; break; } } __all };
-if ((list_all_known && ((list_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(members.clone(), list_edges.clone()) == false)) {
-                    Some(Rc::new(TerminationProof {
+let list_proof = Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::ListLength {
     param: "scc".to_string(),
 })]),
-}))
+});
+if ((list_all_known && ((list_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(list_proof.clone(), members.clone(), list_edges.clone()) == false)) {
+                    Some(list_proof.clone())
 } else {
                     {
                         let parser_edges = collect_scc_parser_proof_edges(members.clone(), func_index.clone(), scc_name_set.clone());
@@ -3147,12 +3200,13 @@ let parser_all_known = { let mut __all = true; for e in parser_edges.clone().ite
     Some(DescentEvidence::DescentUnknown) => false,
     _ => true,
 }) { __all = false; break; } } __all };
-if ((parser_all_known && ((parser_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(members.clone(), parser_edges.clone()) == false)) {
-                            Some(Rc::new(TerminationProof {
+let parser_proof = Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::TokenPosition {
     param: "scc".to_string(),
 })]),
-}))
+});
+if ((parser_all_known && ((parser_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(parser_proof.clone(), members.clone(), parser_edges.clone()) == false)) {
+                            Some(parser_proof.clone())
 } else {
                             {
                                 let lex_edges = collect_scc_independent_dim_edges(members.clone(), func_index.clone(), scc_name_set.clone());
@@ -3163,14 +3217,15 @@ let lex_all_known = { let mut __all = true; for e in lex_edges.clone().iter().cl
 },
     None => false,
 }) { __all = false; break; } } __all };
-if ((lex_all_known && ((lex_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(members.clone(), lex_edges.clone()) == false)) {
-                                    Some(Rc::new(TerminationProof {
+let lex_proof = Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
     param: "scc".to_string(),
 }), Rc::new(RankingDimension::ListLength {
     param: "scc".to_string(),
 })]),
-}))
+});
+if ((lex_all_known && ((lex_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(lex_proof.clone(), members.clone(), lex_edges.clone()) == false)) {
+                                    Some(lex_proof.clone())
 } else {
                                     {
                                         let tree_parser_edges = collect_scc_tree_parser_dim_edges(members.clone(), func_index.clone(), scc_name_set.clone());
@@ -3181,14 +3236,15 @@ let tp_all_known = { let mut __all = true; for e in tree_parser_edges.clone().it
 },
     None => false,
 }) { __all = false; break; } } __all };
-if ((tp_all_known && ((tree_parser_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(members.clone(), tree_parser_edges.clone()) == false)) {
-                                            Some(Rc::new(TerminationProof {
+let tp_proof = Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
     param: "scc".to_string(),
 }), Rc::new(RankingDimension::TokenPosition {
     param: "scc".to_string(),
 })]),
-}))
+});
+if ((tp_all_known && ((tree_parser_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(tp_proof.clone(), members.clone(), tree_parser_edges.clone()) == false)) {
+                                            Some(tp_proof.clone())
 } else {
                                             None
 }
@@ -3546,6 +3602,7 @@ Rc::new(SummaryResult {
 pub struct ComplexityViolation {
     pub func_name: String,
     pub reason: String,
+    pub span: Rc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -4590,7 +4647,7 @@ let result = scc_result.processing_order.clone().iter().cloned().fold(Rc::new(To
     fan_in: fan_in,
     processed: v2_rt::rc_empty_map::<bool>(),
 }), |acc: Rc<TopoBuildAcc>, func_name: String| match v2_rt::map_get(&func_index, func_name.clone()) {
-    Some(_) => {
+    Some(entry) => {
             let sr = get_or_compute_summary(func_name.clone(), func_index.clone(), full_scc_index.clone(), acc.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 let class_str = classify_complexity(sr.summary.clone().work.clone());
 let new_classes = v2_rt::rc_map_insert(acc.classes.clone(), func_name.clone(), class_str.clone());
@@ -4598,7 +4655,8 @@ let new_processed = v2_rt::rc_map_insert(acc.processed.clone(), func_name.clone(
 let new_violations = if is_unknown_cost(sr.summary.clone().work.clone()) {
                 v2_rt::concat(acc.violations.clone(), Rc::new(vec![Rc::new(ComplexityViolation {
     func_name: func_name.clone(),
-    reason: class_str.clone(),
+    reason: extract_unknown_reason(sr.summary.clone().work.clone()),
+    span: entry.span.clone(),
 })]))
 } else {
                 acc.violations.clone()

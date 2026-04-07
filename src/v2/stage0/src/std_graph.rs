@@ -206,7 +206,8 @@ continue;
 
 pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
     {
-        let non_descending = Rc::new({ let mut __result = Vec::new(); for e in edges.clone().iter().cloned() { if (is_lexicographic_descent(e.evidence.clone()) == false) { __result.push(e); } } __result });
+        let expected_dims = (proof.dimensions.clone().len() as i64);
+let non_descending = Rc::new({ let mut __result = Vec::new(); for e in edges.clone().iter().cloned() { if (((e.evidence.clone().len() as i64) != expected_dims.clone()) || (is_lexicographic_descent(e.evidence.clone()) == false)) { __result.push(e); } } __result });
 let has_self_cycle = { let mut __found = false; for e in non_descending.clone().iter().cloned() { if (e.caller.clone().as_str() == e.callee.clone().as_str()) { __found = true; break; } } __found };
 if has_self_cycle {
             false

@@ -163,8 +163,13 @@ fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
 // Verify a termination proof: every cycle must have lexicographic descent.
 // Algorithm: the subgraph of non-descending edges must be acyclic.
 // A non-descending self-loop (caller == callee) IS a cycle.
+// CX-P: validates proof.dimensions against edge evidence — mismatched
+// evidence lengths are treated as non-descending (fail-closed).
 fn is_valid_proof(proof: TerminationProof, edges: List<ProofEdge>) -> Bool {
-  let non_descending = edges |> filter(e => is_lexicographic_descent(evidence: e.evidence) == false)
+  let expected_dims = proof.dimensions |> count
+  let non_descending = edges |> filter(e =>
+    (e.evidence |> count != expected_dims) || is_lexicographic_descent(evidence: e.evidence) == false
+  )
   let has_self_cycle = non_descending |> any(e => e.caller == e.callee)
   if has_self_cycle { false }
   else {
