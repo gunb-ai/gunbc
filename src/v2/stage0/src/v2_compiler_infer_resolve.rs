@@ -201,6 +201,12 @@ Rc::new(Node {
 } else {
                         substitute_type_slots(child.clone(), slot_bindings.clone(), decl_name.clone())
 }); } __result });
+let new_inferred = match n.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => Some(Rc::new(InferredNode::Resolved {
+    node: substitute_type_slots(rt.clone(), slot_bindings.clone(), decl_name.clone()),
+})),
+    _ => n.inferred.clone(),
+};
 Rc::new(Node {
     name: n.name.clone(),
     span: n.span.clone(),
@@ -208,7 +214,7 @@ Rc::new(Node {
     children: new_children,
     connective: n.connective.clone(),
     params: n.params.clone(),
-    inferred: n.inferred.clone(),
+    inferred: new_inferred,
     return_cardinality: n.return_cardinality.clone(),
     uses: n.uses.clone(),
     body: n.body.clone(),

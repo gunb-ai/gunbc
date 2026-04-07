@@ -187,10 +187,16 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
         substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: decl_name)
       }
     )
+    // Also substitute inside inferred (field-style wrappers carry types in inferred)
+    let new_inferred = match n.inferred {
+      Some { value: Resolved { node: rt } } =>
+        Some { value: Resolved { node: substitute_type_slots(n: rt, slot_bindings: slot_bindings, decl_name: decl_name) } }
+      _ => n.inferred
+    }
     Node {
       name: n.name, span: n.span, ident_span: n.ident_span, children: new_children,
       connective: n.connective, params: n.params,
-      inferred: n.inferred, return_cardinality: n.return_cardinality,
+      inferred: new_inferred, return_cardinality: n.return_cardinality,
       uses: n.uses, body: n.body, transport: n.transport,
       properties: n.properties, type_annotation: n.type_annotation,
       is_self_recursive: n.is_self_recursive,

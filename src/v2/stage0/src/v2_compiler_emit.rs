@@ -456,7 +456,7 @@ continue;
 if is_map.clone() {
                     match n.children.clone().get(1 as usize).cloned() {
     Some(val_child) => { {
-                        let __tco_0 = val_child.clone();
+                        let __tco_0 = child_type_node(val_child.clone());
 n = __tco_0;
 continue;
 } },
@@ -466,7 +466,7 @@ continue;
                     if ((n.children.clone().len() as i64) == 1) {
                         match n.children.clone().first().cloned() {
     Some(el) => { {
-                            let __tco_0 = el.clone();
+                            let __tco_0 = child_type_node(el.clone());
 n = __tco_0;
 continue;
 } },

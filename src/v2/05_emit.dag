@@ -432,12 +432,12 @@ fn has_nested_records_node(n: Node) -> Bool {
     let is_map = node_is_keyed_collection(n: n)
     if is_map {
       match skip(n.children, 1) |> first {
-        Some { value: val_child } => has_nested_records_node(n: val_child)
+        Some { value: val_child } => has_nested_records_node(n: child_type_node(ch: val_child))
         None => false
       }
     } else if n.children |> count == 1 {
       match n.children |> first {
-        Some { value: el } => has_nested_records_node(n: el)
+        Some { value: el } => has_nested_records_node(n: child_type_node(ch: el))
         None => false
       }
     } else {
