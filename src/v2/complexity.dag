@@ -62,6 +62,9 @@ import v2.std.core {
   is_children_list_field, is_sub_value_field,
   is_tree_size_preserving, is_tree_size_reducing
 }
+import v2.compiler.infer_types {
+  node_is_collection, rt_type
+}
 import std.algebra {
   CollectionSizeEffect, ShrinkEffect, ProjectionEffect, IdentityEffect,
   CostShape, ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody
@@ -125,7 +128,7 @@ type Certainty = Proven | Conservative | Unknown
 //   ShapeLinearScan    -- O(|receiver|) with O(1) per element (count, join)
 //   ShapeIterateBody   -- O(|receiver| * body_cost) (map, filter, fold)
 //   ShapeSortBody      -- O(|receiver| * body_cost), Conservative (sort_by)
-//   produces_collection -- derived from AlgebraFieldTemplate.return_type
+//   produces_collection -- derived at consumer from expression return type
 // =========================================================================
 
 // CostShape type and per-method cost shapes are declared in dsl/std/algebra.dag
@@ -298,7 +301,7 @@ type SccEdgeBlockAcc {
 // rather than string-matching method names.
 fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _, produces_collection: _ } } => true
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } } => true
     _ => false
   }
 }
@@ -308,7 +311,7 @@ fn is_algebra_iteration_method(method_semantics: MethodSemantics?) -> Bool {
 // and algebra methods without a declared size effect.
 fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffect? {
   match method_semantics {
-    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _, produces_collection: _ } } => se
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } } => se
     _ => none
   }
 }
@@ -3182,10 +3185,8 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
 // it passes a descent expression for the caller's param.
 //
 // CX-N: Extends descent_vars through ExprLet/ExprMatch/ExprBlock/ExprIf,
-// mirroring collect_evidence_incremental's var threading. When branching_only
-// is true, arms/branches with 0 SCC-peer calls are skipped from edge
-// collection (same principle as single-function branching proofs).
-fn collect_scc_child_edges(body: Node, caller: String, param_name: String, descent_vars: Map<String, Bool>, target_set: Map<String, Bool>, check_child: Bool, check_list: Bool, branching_only: Bool) -> List<ParserProgressEdge> {
+// mirroring collect_evidence_incremental's var threading.
+fn collect_scc_child_edges(body: Node, caller: String, param_name: String, descent_vars: Map<String, Bool>, target_set: Map<String, Bool>, check_child: Bool, check_list: Bool) -> List<ParserProgressEdge> {
   match body.expr_data {
     ExprLambda { semantics: _ } => []
     ExprCall { call_semantics: _ } =>
@@ -3208,7 +3209,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         [ParserProgressEdge { caller: caller, callee: callee, progress: progress }]
       } else { [] }
       let child_edges = body.children |> flat_map(child =>
-        collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+        collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
       )
       concat(own_edges, child_edges)
     ExprMethodCall { method_semantics: ms } =>
@@ -3218,7 +3219,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
       let is_iter = is_algebra_iteration_method(method_semantics: ms)
       let is_struct = is_structural_children(expr: receiver, param_name: param_name, vars: descent_vars)
       if is_iter && is_struct {
-        let recv_edges = collect_scc_child_edges(body: receiver, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+        let recv_edges = collect_scc_child_edges(body: receiver, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
         let args_edges = method_arg_nodes(texpr: body) |> flat_map(arg_node =>
           let arg_val = arg_value(n: arg_node)
           match arg_val.expr_data {
@@ -3226,22 +3227,22 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
               match lambda_param_names(texpr: arg_val) |> last {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(descent_vars, iter_name, true)
-                  collect_scc_child_edges(body: lambda_body(texpr: arg_val), caller: caller, param_name: param_name, descent_vars: ext_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+                  collect_scc_child_edges(body: lambda_body(texpr: arg_val), caller: caller, param_name: param_name, descent_vars: ext_vars, target_set: target_set, check_child: check_child, check_list: check_list)
                 None => []
               }
-            _ => collect_scc_child_edges(body: arg_val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+            _ => collect_scc_child_edges(body: arg_val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
           }
         )
         concat(recv_edges, args_edges)
       } else {
         body.children |> flat_map(child =>
-          collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+          collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
         )
       }
     // CX-N: Thread descent vars through let-bindings.
     ExprLet =>
       let val = let_value(texpr: body)
-      let val_edges = collect_scc_child_edges(body: val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+      let val_edges = collect_scc_child_edges(body: val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
       let is_direct = (check_child && is_child_descent_expr(expr: val, param_name: param_name, vars: descent_vars))
         || (check_list && is_list_shrink_expr(expr: val, param_name: param_name))
       let is_var = match val.expr_data {
@@ -3291,33 +3292,26 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         map_insert(descent_vars, let_binding_name(texpr: body), true)
       } else { descent_vars }
       let body_edges = match let_body(texpr: body) {
-        Some { value: b } => collect_scc_child_edges(body: b, caller: caller, param_name: param_name, descent_vars: next_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+        Some { value: b } => collect_scc_child_edges(body: b, caller: caller, param_name: param_name, descent_vars: next_vars, target_set: target_set, check_child: check_child, check_list: check_list)
         None => []
       }
       concat(val_edges, body_edges)
-    // CX-N: Walk match arms; skip base-case arms (0 SCC calls) when branching_only.
-    // Pattern-binding promotion is NOT done here — it would unsoundly promote
-    // all variant bindings as descent vars without verifying they are recursive
-    // child positions. The pre-computed descent_vars (from collect_descent_vars)
-    // already contains bindings from the function body; that is the single
-    // authority for descent variable discovery.
+    // Walk match arms. Pattern-binding promotion is NOT done here — it would
+    // unsoundly promote all variant bindings as descent vars without verifying
+    // they are recursive child positions. The pre-computed descent_vars
+    // (from collect_descent_vars) already contains bindings from the function
+    // body; that is the single authority for descent variable discovery.
     ExprMatch =>
       let scrut = match_scrutinee(texpr: body)
-      let scrut_edges = collect_scc_child_edges(body: scrut, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+      let scrut_edges = collect_scc_child_edges(body: scrut, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
       let arms_edges = match_arm_nodes(texpr: body) |> flat_map(arm_node =>
-        let is_base_case = if branching_only {
-          max_path_target_calls(body: arm_body(n: arm_node), target_set: target_set) == 0
-        } else { false }
-        if is_base_case { [] }
-        else {
-          collect_scc_child_edges(body: arm_body(n: arm_node), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
-        }
+        collect_scc_child_edges(body: arm_body(n: arm_node), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
       )
       concat(scrut_edges, arms_edges)
     // CX-N: Thread descent vars through block statements sequentially.
     ExprBlock =>
       let result = body.children |> fold(init: SccEdgeBlockAcc { edges: [], vars: descent_vars }, f: (acc, stmt) =>
-        let stmt_edges = collect_scc_child_edges(body: stmt, caller: caller, param_name: param_name, descent_vars: acc.vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+        let stmt_edges = collect_scc_child_edges(body: stmt, caller: caller, param_name: param_name, descent_vars: acc.vars, target_set: target_set, check_child: check_child, check_list: check_list)
         let next_vars = match stmt.expr_data {
           ExprLet =>
             let val = let_value(texpr: stmt)
@@ -3374,29 +3368,19 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         SccEdgeBlockAcc { edges: concat(acc.edges, stmt_edges), vars: next_vars }
       )
       result.edges
-    // CX-N: Skip base-case branches (0 SCC calls) when branching_only.
-    // Branches with >=1 SCC call always participate in the conservative MEET.
     ExprIf =>
-      let cond_edges = collect_scc_child_edges(body: if_condition(texpr: body), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+      let cond_edges = collect_scc_child_edges(body: if_condition(texpr: body), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
       let then_branch = if_then_branch(texpr: body)
       let else_opt = if_else_branch(texpr: body)
-      let then_path = if branching_only { max_path_target_calls(body: then_branch, target_set: target_set) } else { 1 }
-      let else_path = if branching_only {
-        match else_opt { Some { value: eb } => max_path_target_calls(body: eb, target_set: target_set), None => 0 }
-      } else { 1 }
-      let then_edges = if branching_only && then_path == 0 { [] }
-        else { collect_scc_child_edges(body: then_branch, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only) }
-      let else_edges = if branching_only && else_path == 0 { [] }
-        else {
-          match else_opt {
-            Some { value: eb } => collect_scc_child_edges(body: eb, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
-            None => []
-          }
-        }
+      let then_edges = collect_scc_child_edges(body: then_branch, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+      let else_edges = match else_opt {
+        Some { value: eb } => collect_scc_child_edges(body: eb, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+        None => []
+      }
       concat(cond_edges, concat(then_edges, else_edges))
     _ =>
       body.children |> flat_map(child =>
-        collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+        collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
       )
   }
 }
@@ -3416,7 +3400,7 @@ fn is_scc_container_child_descent(members: List<String>, func_index: Map<String,
         let best_edges = entry.params |> fold(init: [], f: (best, p) =>
           let pname = param_node_name(n: p)
           let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: true)
-          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: true, check_list: true, branching_only: false)
+          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: true, check_list: true)
           // Heuristic: keep the param whose edges have fewest ProgressUnknown.
           // This is a SEARCH heuristic, not a proof obligation — soundness comes
           // from the subsequent same_progress_subgraph_has_cycle check, which
@@ -3477,7 +3461,7 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
         let best_map = entry.params |> fold(init: empty_map(), f: (best, p) =>
           let pname = param_node_name(n: p)
           let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: check_child, check_list: check_list)
-          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: check_child, check_list: check_list, branching_only: false)
+          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: check_child, check_list: check_list)
           let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best, candidate: param_map)
         )
@@ -3539,7 +3523,7 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
         let tree_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
           let pname = param_node_name(n: p)
           let tree_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false)
-          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set, check_child: true, check_list: false, branching_only: false)
+          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set, check_child: true, check_list: false)
           let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best_map, candidate: param_map)
         )
@@ -3547,7 +3531,7 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
         let list_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
           let pname = param_node_name(n: p)
           let list_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: false, check_list: true)
-          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: list_vars, target_set: scc_name_set, check_child: false, check_list: true, branching_only: false)
+          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: list_vars, target_set: scc_name_set, check_child: false, check_list: true)
           let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best_map, candidate: param_map)
         )
@@ -3591,7 +3575,7 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
           let tree_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
             let pname = param_node_name(n: p)
             let tree_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false)
-            let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set, check_child: true, check_list: false, branching_only: false)
+            let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set, check_child: true, check_list: false)
             let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
             pick_best_param_edges(current: best_map, candidate: param_map)
           )
@@ -3672,60 +3656,12 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
           if tp_all_known && (tree_parser_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: tree_parser_edges) == false {
             Some { value: TerminationProof { dimensions: [TreeSize { param: "scc" }, TokenPosition { param: "scc" }] } }
           } else {
-            // CX-N: Branching-aware fallback — skip base-case branches from MEET.
-            // Only safe for TreeSize/ListLength (disjoint subtrees guarantee O(n)).
-            collect_scc_branching_proof(members: members, func_index: func_index, scc_name_set: scc_name_set)
+            none
           }
         }
       }
     }
   }
-}
-
-// CX-N: Branching-aware SCC proof — collect edges with branching_only: true
-// (skips arms/branches with 0 SCC-peer calls). Only tries TreeSize and
-// ListLength — ArithmeticValue with branching yields exponential blowup.
-fn collect_scc_branching_proof(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>) -> TerminationProof? {
-  let bt_edges = collect_scc_proof_edges_for_dim_branching(members: members, func_index: func_index, scc_name_set: scc_name_set, check_child: true, check_list: false)
-  let bt_all_known = bt_edges |> all(e =>
-    match e.evidence |> first { Some { value: DescentUnknown } => false, _ => true }
-  )
-  if bt_all_known && (bt_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: bt_edges) == false {
-    Some { value: TerminationProof { dimensions: [TreeSize { param: "scc" }] } }
-  } else {
-    let bl_edges = collect_scc_proof_edges_for_dim_branching(members: members, func_index: func_index, scc_name_set: scc_name_set, check_child: false, check_list: true)
-    let bl_all_known = bl_edges |> all(e =>
-      match e.evidence |> first { Some { value: DescentUnknown } => false, _ => true }
-    )
-    if bl_all_known && (bl_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: bl_edges) == false {
-      Some { value: TerminationProof { dimensions: [ListLength { param: "scc" }] } }
-    } else {
-      none
-    }
-  }
-}
-
-// CX-N: Branching-aware edge collection with standard conservative MEET.
-// branching_only skips arms/branches with 0 SCC-peer calls (true base cases)
-// but every recursive path still participates in the worst-of MEET.
-fn collect_scc_proof_edges_for_dim_branching(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, check_child: Bool, check_list: Bool) -> List<ProofEdge> {
-  members |> flat_map(name =>
-    match map_get(func_index, name) {
-      Some { value: entry } =>
-        let best_map = entry.params |> fold(init: empty_map(), f: (best, p) =>
-          let pname = param_node_name(n: p)
-          let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: check_child, check_list: check_list)
-          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: check_child, check_list: check_list, branching_only: true)
-          let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
-          pick_best_param_edges(current: best, candidate: param_map)
-        )
-        map_keys(best_map) |> map(callee =>
-          let ev = match map_get(best_map, callee) { Some { value: e } => e   None => DescentUnknown }
-          ProofEdge { caller: name, callee: callee, evidence: [ev] }
-        )
-      None => []
-    }
-  )
 }
 
 fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String, FuncEntry>) -> LoweringTarget {
@@ -3853,7 +3789,7 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _, produces_collection: _ } =>
+      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } =>
         match se {
           Some { value: ShrinkEffect } => true
           Some { value: IdentityEffect } => true
@@ -4415,7 +4351,8 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       // Plain/Service/None fall through to default cost.
       let method_cost_result = if ms == none { none } else {
         match ms.value {
-          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: cs, algebra_template: _, produces_collection: pc } => {
+          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: cs, algebra_template: _ } => {
+            let pc = node_is_collection(n: rt_type(n: texpr))
             match cs {
               Some { value: shape } =>
                 Some { value: cost_of_method_by_shape(shape: shape, produces_collection: pc, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx) }

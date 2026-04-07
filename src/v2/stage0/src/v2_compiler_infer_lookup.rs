@@ -58,7 +58,7 @@ pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTempla
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverCollectionOf, ListOf};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, normalize_access_type_node, node_is_collection, node_is_keyed_collection, method_receiver_element_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -304,7 +304,6 @@ pub struct MethodFieldResult {
     pub size_effect: Option<CollectionSizeEffect>,
     pub cost_shape: Option<CostShape>,
     pub algebra_template: Option<Rc<AlgebraFieldTemplate>>,
-    pub produces_collection: bool,
 }
 
 pub fn lookup_field_in_product(product: Rc<Node>, method_name: String) -> Option<Rc<MethodFieldResult>> {
@@ -320,7 +319,6 @@ match matching.first().cloned() {
     size_effect: None,
     cost_shape: None,
     algebra_template: None,
-    produces_collection: false,
 })),
     _ => Some(Rc::new(MethodFieldResult {
     field_node: field.clone(),
@@ -328,7 +326,6 @@ match matching.first().cloned() {
     size_effect: None,
     cost_shape: None,
     algebra_template: None,
-    produces_collection: false,
 })),
 }
 } else {
@@ -338,7 +335,6 @@ match matching.first().cloned() {
     size_effect: None,
     cost_shape: None,
     algebra_template: None,
-    produces_collection: false,
 }))
 },
     _ => None,
@@ -376,17 +372,13 @@ Rc::new({ let mut __result = Vec::new(); for t in templates.iter().cloned() { if
     None => None,
 };
 match template_match {
-    Some(t) => {
-                                let pc = node_is_collection(mfr.result_type.clone());
-Some(Rc::new(MethodFieldResult {
+    Some(t) => Some(Rc::new(MethodFieldResult {
     field_node: mfr.field_node.clone(),
     result_type: mfr.result_type.clone(),
     size_effect: t.size_effect.clone(),
     cost_shape: t.cost_shape.clone(),
     algebra_template: Some(t.clone()),
-    produces_collection: pc,
-}))
-},
+})),
     None => base_result.clone(),
 }
 },
@@ -412,7 +404,6 @@ match tier0_result {
     size_effect: mfr.size_effect.clone(),
     cost_shape: mfr.cost_shape.clone(),
     algebra_template: mfr.algebra_template.clone(),
-    produces_collection: mfr.produces_collection.clone(),
 });
 Rc::new(KnownMethodResolution {
     semantics: Some(semantics),

@@ -442,7 +442,9 @@ then deleted. `Node.name` field deleted.
 ## CX: Complexity Analyzer (Lane 3)
 
 **Status:** Down from 315 → 164 (main) → 76 after PR #318.
-Ratchet constants not yet lowered (315/316).
+Phase 1-2 complete (RecursionPattern deleted, all classifiers return LoweringTarget).
+CX-N: var threading, type-directed dimension selection, algebra-to-dimension bridge.
+Ratchet at 325.
 
 **Root cause:** The analyzer maintains parallel heuristic classifiers
 instead of consuming the structural facts already modeled in std/.
@@ -570,8 +572,8 @@ CX-D (model facts in std/)
       `is_size_preserving_method`. `take` is explicitly `none`.
       Remaining modeling gap: `CollectionSizeEffect` mixes cardinality,
       structural-identity, and projection — reviewer wants orthogonal facts.
-      `CostShape.produces_collection` duplicates `return_type` — should
-      derive from template. `size_effect`/`cost_shape` on `MethodSemantics`
+      `produces_collection` removed from `AlgebraMethodSemantics` — now
+      derived at consumer from expression return type. `size_effect`/`cost_shape` on `MethodSemantics`
       is a bridge; endgame: facts on the resolved method Node. **(PR #328)**
   (2) **Type structure facts** — field sub-value relationships
       (child access produces a smaller tree). Not started.
@@ -605,7 +607,7 @@ CX-D (model facts in std/)
   Remaining: flatten recursive CostExpr/SizeExpr into flat SizeBound
   products (Phase 4 — eliminates 18 cost algebra functions). `CostShape`
   is a bridge classifier — endgame: derive cost from `std/computation.dag`
-  contracts. `produces_collection` should derive from `return_type`.
+  contracts. `produces_collection` now derived at consumer from return type.
   See [migration phases](docs/cx-computation-model.md#migration-phases).
 - **CX-C**: Signature-driven fold evidence — self-calls inside
   `children |> fold` callbacks get structural descent proofs.
@@ -641,7 +643,7 @@ lanes — any lane can introduce a regression.
 | Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, CI gate, ratchet 0 |
 | Full DSL compile | `pipeline::full_dsl_compiles` | `#[ignore]`, GREEN |
 | Stage0 freshness gate | `scripts/check-stage0-freshness.sh` | CI blocking |
-| Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, ratchet 316 |
+| Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, ratchet 325 |
 
 ### Work items
 
