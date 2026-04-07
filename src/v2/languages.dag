@@ -159,6 +159,24 @@ type ServiceFieldTemplates {
 // and first argument. Higher-order methods (map, filter, fold, etc.) that need
 // lambda/closure structure remain as dedicated emitter functions.
 
+// -- Block syntax: structural formatting facts per target language -----------
+// Two authorities:
+//   Language spec — block delimiters, statement terminators, significant
+//     whitespace. These are correctness requirements (Python).
+//   Style spec — indent unit, readability conventions. These are readability
+//     requirements (correctness during bootstrap; optional post-bootstrap
+//     via gofmt/rustfmt).
+type BlockSyntax {
+  block_open: String            // " {\n" (Go/Rust) or ":\n" (Python)
+  block_close: String           // "}" (Go/Rust) or "" (Python)
+  else_clause: String           // "} else {\n" (Go/Rust) or "else:\n" (Python)
+  match_keyword: String         // "match " (Rust/Python) or "switch " (Go)
+  case_keyword: String          // "" (Rust) or "case " (Go/Python)
+  arm_separator: String         // "," (Rust) or "\n" (Go/Python)
+  stmt_terminator: String       // ";" (Rust) or "" (Go/Python)
+  significant_whitespace: Bool  // true (Python) or false (Go/Rust)
+}
+
 type LanguageSpec {
   target_name: String
   reserved_words: ReservedWords
@@ -171,6 +189,7 @@ type LanguageSpec {
   annotations: AnnotationRequirements
   method_templates: Map<String, String>?
   service_fields: ServiceFieldTemplates
+  block_syntax: BlockSyntax
 }
 
 // =========================================================================
@@ -241,6 +260,13 @@ fn rust_spec() -> LanguageSpec {
       auth_ctor: "        auth_token: String::new(),\n",
       shell_ctor: "        working_dir: None,\n",
       file_ctor: "        base_path: \".\".to_string(),\n"
+    },
+    block_syntax: BlockSyntax {
+      block_open: " \{\n", block_close: "\}",
+      else_clause: "\} else \{\n",
+      match_keyword: "match ", case_keyword: "",
+      arm_separator: ",", stmt_terminator: ";",
+      significant_whitespace: false
     }
   }
 }
@@ -308,6 +334,13 @@ fn python_spec() -> LanguageSpec {
       auth_ctor: "self.auth_token = auth_token",
       shell_ctor: "self.working_dir = working_dir",
       file_ctor: "self.base_path = base_path"
+    },
+    block_syntax: BlockSyntax {
+      block_open: ":\n", block_close: "",
+      else_clause: "else:\n",
+      match_keyword: "match ", case_keyword: "case ",
+      arm_separator: "\n", stmt_terminator: "",
+      significant_whitespace: true
     }
   }
 }
@@ -375,6 +408,13 @@ fn go_spec() -> LanguageSpec {
       auth_ctor: "",
       shell_ctor: "",
       file_ctor: ""
+    },
+    block_syntax: BlockSyntax {
+      block_open: " \{\n", block_close: "\}",
+      else_clause: "\} else \{\n",
+      match_keyword: "switch ", case_keyword: "case ",
+      arm_separator: "\n", stmt_terminator: "",
+      significant_whitespace: false
     }
   }
 }

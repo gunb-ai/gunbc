@@ -1160,6 +1160,16 @@ distinction as structural data.
 - **Cost algebra extensions**: Pow, Sqrt, Exp; amortized analysis via
   potential functions; space as peer dimension. See
   `docs/cost-algebra.md`.
+- **Style emission**: Emission formatting (indentation, braces,
+  statement terminators) should be data-driven from two authorities:
+  (1) Language spec — significant whitespace (Python), block delimiters,
+  statement terminators. These are correctness requirements.
+  (2) Style spec — indent unit, brace placement, readability conventions.
+  These are readability requirements (correctness during bootstrap,
+  optional post-bootstrap via external formatters like gofmt/rustfmt).
+  `BlockSyntax` on `LanguageSpec` is the first step. Future work:
+  TCO syntax templates, async call prefix, identifier escaping
+  conventions, post-emission formatting pass.
 - **Post-Rust path**: .dag → native code (LLVM/Cranelift) directly,
   no Rust intermediate. Optional — Rust/Go as intermediates may
   suffice indefinitely.
