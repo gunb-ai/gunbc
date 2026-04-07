@@ -282,6 +282,8 @@ pub struct EvidenceBlockAcc {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccEdgeBlockAcc {
     pub edges: Rc<Vec<Rc<ParserProgressEdge>>>,
+    pub guard_edges: Rc<Vec<Rc<ParserProgressEdge>>>,
+    pub cont_edges: Rc<Vec<Rc<ParserProgressEdge>>>,
     pub vars: Rc<HashMap<String, bool>>,
 }
 
@@ -2949,9 +2951,29 @@ v2_rt::concat(scrut_edges, arms_edges)
     ExprData::ExprBlock => {
             let result = body.children.clone().iter().cloned().fold(Rc::new(SccEdgeBlockAcc {
     edges: Rc::new(vec![]),
+    guard_edges: Rc::new(vec![]),
+    cont_edges: Rc::new(vec![]),
     vars: descent_vars.clone(),
 }), |acc: Rc<SccEdgeBlockAcc>, stmt: Rc<Node>| {
                 let stmt_edges = collect_scc_child_edges(stmt.clone(), caller.clone(), param_name.clone(), acc.vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone());
+let is_guard = if branching_only.clone() {
+                    match (*stmt.expr_data.clone()).clone() {
+    ExprData::ExprIf => (if_else_branch(stmt.clone()) == None),
+    _ => false,
+}
+} else {
+                    false
+};
+let next_guard = if is_guard.clone() {
+                    v2_rt::concat(acc.guard_edges.clone(), stmt_edges.clone())
+} else {
+                    acc.guard_edges.clone()
+};
+let next_cont = if is_guard.clone() {
+                    acc.cont_edges.clone()
+} else {
+                    v2_rt::concat(acc.cont_edges.clone(), stmt_edges.clone())
+};
 let next_vars = match (*stmt.expr_data.clone()).clone() {
     ExprData::ExprLet => {
                     let val = let_value(stmt.clone());
@@ -3016,10 +3038,24 @@ if ((((((is_direct.clone() || is_var.clone()) || is_option.clone()) || is_match_
 };
 Rc::new(SccEdgeBlockAcc {
     edges: v2_rt::concat(acc.edges.clone(), stmt_edges.clone()),
+    guard_edges: next_guard.clone(),
+    cont_edges: next_cont.clone(),
     vars: next_vars.clone(),
 })
 });
-result.edges.clone()
+if branching_only.clone() {
+                {
+                    let cont_has_strict = { let mut __found = false; for e in result.cont_edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found };
+let guard_all_non_strict = (((result.guard_edges.clone().len() as i64) > 0) && !{ let mut __found = false; for e in result.guard_edges.clone().iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressStrict) { __found = true; break; } } __found });
+if (cont_has_strict && guard_all_non_strict) {
+                        result.cont_edges.clone()
+} else {
+                        result.edges.clone()
+}
+}
+} else {
+                result.edges.clone()
+}
 },
     ExprData::ExprIf => {
             let cond_edges = collect_scc_child_edges(if_condition(body.clone()), caller.clone(), param_name.clone(), descent_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), branching_only.clone());
@@ -3508,6 +3544,29 @@ if ((bl_all_known && ((bl_edges.clone().len() as i64) > 0)) && (proof_has_non_de
 }
 }
 
+pub fn merge_edge_evidence_branching(acc_map: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>) -> Rc<HashMap<String, DescentEvidence>> {
+    {
+        let existing = v2_rt::map_get(&acc_map, pe.callee.clone());
+let new_ev = progress_to_evidence(pe.progress.clone());
+let merged_ev = match existing {
+    Some(prev) => match prev.clone() {
+    DescentEvidence::Strict => match new_ev {
+    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+    _ => DescentEvidence::Strict,
+},
+    DescentEvidence::NonIncreasing => match new_ev {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+},
+    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+},
+    None => new_ev,
+};
+v2_rt::rc_map_insert(acc_map.clone(), pe.callee.clone(), merged_ev)
+}
+}
+
 pub fn collect_scc_proof_edges_for_dim_branching(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_name_set: Rc<HashMap<String, bool>>, check_child: bool, check_list: bool) -> Rc<Vec<Rc<ProofEdge>>> {
     Rc::new({ let mut __result = Vec::new(); for name in members.iter().cloned() { __result.extend((*match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
@@ -3515,7 +3574,7 @@ pub fn collect_scc_proof_edges_for_dim_branching(members: Rc<Vec<String>>, func_
             let pname = param_node_name(p.clone());
 let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v2_rt::rc_empty_map::<bool>(), check_child.clone(), check_list.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), check_child.clone(), check_list.clone(), true);
-let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
+let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence_branching(bm.clone(), pe.clone()));
 pick_best_param_edges(best.clone(), param_map.clone())
 });
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v2_rt::map_keys(&best_map)).iter().cloned() { __result.push({

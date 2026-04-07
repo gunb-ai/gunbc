@@ -286,8 +286,11 @@ type EvidenceBlockAcc {
 
 // Accumulator for SCC edge collection through block statements.
 // Threads descent_vars sequentially so each statement sees bindings from prior statements.
+// guard_edges / cont_edges track early-return guard vs continuation edges for branching filter.
 type SccEdgeBlockAcc {
   edges: List<ParserProgressEdge>
+  guard_edges: List<ParserProgressEdge>
+  cont_edges: List<ParserProgressEdge>
   vars: Map<String, Bool>
 }
 
@@ -3300,9 +3303,21 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
       }
       concat(scrut_edges, arms_edges)
     // CX-N: Thread descent vars through block statements sequentially.
+    // When branching_only, track guard edges (from if-without-else) separately
+    // from continuation edges, so early-return guards with all-non-strict
+    // SCC calls can be excluded when the continuation has Strict descent.
     ExprBlock =>
-      let result = body.children |> fold(init: SccEdgeBlockAcc { edges: [], vars: descent_vars }, f: (acc, stmt) =>
+      let result = body.children |> fold(init: SccEdgeBlockAcc { edges: [], guard_edges: [], cont_edges: [], vars: descent_vars }, f: (acc, stmt) =>
         let stmt_edges = collect_scc_child_edges(body: stmt, caller: caller, param_name: param_name, descent_vars: acc.vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
+        // Classify: is this statement an early-return guard (if-without-else)?
+        let is_guard = if branching_only {
+          match stmt.expr_data {
+            ExprIf => if_else_branch(texpr: stmt) == none
+            _ => false
+          }
+        } else { false }
+        let next_guard = if is_guard { concat(acc.guard_edges, stmt_edges) } else { acc.guard_edges }
+        let next_cont = if is_guard { acc.cont_edges } else { concat(acc.cont_edges, stmt_edges) }
         let next_vars = match stmt.expr_data {
           ExprLet =>
             let val = let_value(texpr: stmt)
@@ -3356,9 +3371,21 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
             } else { acc.vars }
           _ => acc.vars
         }
-        SccEdgeBlockAcc { edges: concat(acc.edges, stmt_edges), vars: next_vars }
+        SccEdgeBlockAcc { edges: concat(acc.edges, stmt_edges), guard_edges: next_guard, cont_edges: next_cont, vars: next_vars }
       )
-      result.edges
+      // CX-N: early-return guard filter. If continuation has Strict edges
+      // and guard edges are all non-strict, exclude guard edges from the MEET.
+      if branching_only {
+        let cont_has_strict = result.cont_edges |> any(e => e.progress == ProgressStrict)
+        let guard_all_non_strict = (result.guard_edges |> count) > 0 && !(result.guard_edges |> any(e => e.progress == ProgressStrict))
+        if cont_has_strict && guard_all_non_strict {
+          result.cont_edges
+        } else {
+          result.edges
+        }
+      } else {
+        result.edges
+      }
     // CX-N: Skip non-descending branches when branching_only.
     ExprIf =>
       let cond_edges = collect_scc_child_edges(body: if_condition(texpr: body), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, branching_only: branching_only)
@@ -3809,6 +3836,26 @@ fn collect_scc_branching_proof(members: List<String>, func_index: Map<String, Fu
   }
 }
 
+// CX-N: Branching-aware MEET for SCC edges. When multiple edges to the same
+// callee exist and at least one is Strict, keep Strict (best-of for known
+// evidence). This replaces worst-of for the branching proof, where
+// NonIncreasing edges from guard paths should not poison Strict edges from
+// recursive paths. DescentUnknown still poisons (fail-closed on truly unknown).
+fn merge_edge_evidence_branching(acc_map: Map<String, DescentEvidence>, pe: ParserProgressEdge) -> Map<String, DescentEvidence> {
+  let existing = map_get(acc_map, pe.callee)
+  let new_ev = progress_to_evidence(pk: pe.progress)
+  let merged_ev = match existing {
+    Some { value: prev } =>
+      match prev {
+        Strict => match new_ev { DescentUnknown => DescentUnknown, _ => Strict }
+        NonIncreasing => match new_ev { Strict => Strict, NonIncreasing => NonIncreasing, DescentUnknown => DescentUnknown }
+        DescentUnknown => DescentUnknown
+      }
+    None => new_ev
+  }
+  map_insert(acc_map, pe.callee, merged_ev)
+}
+
 fn collect_scc_proof_edges_for_dim_branching(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, check_child: Bool, check_list: Bool) -> List<ProofEdge> {
   members |> flat_map(name =>
     match map_get(func_index, name) {
@@ -3817,7 +3864,7 @@ fn collect_scc_proof_edges_for_dim_branching(members: List<String>, func_index: 
           let pname = param_node_name(n: p)
           let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: check_child, check_list: check_list)
           let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: check_child, check_list: check_list, branching_only: true)
-          let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
+          let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence_branching(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best, candidate: param_map)
         )
         map_keys(best_map) |> map(callee =>
