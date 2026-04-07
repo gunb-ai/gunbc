@@ -235,6 +235,9 @@ pub enum AlgebraTypeTemplate {
         params: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
         return_type: Rc<AlgebraTypeTemplate>,
     },
+    AlgebraTypeVariable {
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -449,31 +452,50 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "map".to_string(),
-    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::CallableOf {
+    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "MappedElement".to_string(),
+}),
+})]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
-    element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-    name: "MappedElement".to_string(),
+    element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "MappedElement".to_string(),
 }),
 }),
     size_effect: None,
     cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "flat_map".to_string(),
-    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::CallableOf {
+    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
-    element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-    name: "MappedElement".to_string(),
+    element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "MappedElement".to_string(),
+}),
+}),
+})]),
+    return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+    element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "MappedElement".to_string(),
 }),
 }),
     size_effect: None,
     cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "fold".to_string(),
-    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::NamedTemplate {
-    name: "FoldAccumulator".to_string(),
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "FoldAccumulator".to_string(),
+}), Rc::new(AlgebraTypeTemplate::CallableOf {
+    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "FoldAccumulator".to_string(),
+}), Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "FoldAccumulator".to_string(),
+}),
 })]),
-    return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-    name: "FoldAccumulator".to_string(),
+    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "FoldAccumulator".to_string(),
 }),
     size_effect: None,
     cost_shape: Some(CostShape::ShapeIterateBody),
@@ -643,10 +665,15 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![Rc::new(AlgebraFieldTemplate {
     name: "map".to_string(),
-    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::CallableOf {
+    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "MappedElement".to_string(),
+}),
+})]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
-    element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-    name: "MappedElement".to_string(),
+    element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "MappedElement".to_string(),
 }),
 }),
     size_effect: None,
@@ -659,21 +686,35 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "flat_map".to_string(),
-    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::CallableOf {
+    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
-    element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-    name: "MappedElement".to_string(),
+    element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "MappedElement".to_string(),
+}),
+}),
+})]),
+    return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+    element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "MappedElement".to_string(),
 }),
 }),
     size_effect: None,
     cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "fold".to_string(),
-    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::NamedTemplate {
-    name: "FoldAccumulator".to_string(),
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "FoldAccumulator".to_string(),
+}), Rc::new(AlgebraTypeTemplate::CallableOf {
+    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "FoldAccumulator".to_string(),
+}), Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "FoldAccumulator".to_string(),
+}),
 })]),
-    return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-    name: "FoldAccumulator".to_string(),
+    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+    id: "FoldAccumulator".to_string(),
 }),
     size_effect: None,
     cost_shape: Some(CostShape::ShapeIterateBody),
