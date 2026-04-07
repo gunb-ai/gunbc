@@ -819,31 +819,57 @@ lanes — any lane can introduce a regression.
   than wall-clock time. More deterministic, catches algorithmic
   regressions independent of machine load.
 
-### PERF-6: Redundant work elimination
+### PERF-6: Dependency-modeled computation (no redundancy, no retention)
 
-**Thesis:** Re-derivation is poor dependency modeling. When the compiler
-walks the same function body multiple times for different analyses
-(proof construction, descent vars, cost computation), the redundancy
-is a structural fact about missing shared computation — not an
-optimization target.
+**Thesis:** Re-derivation and over-retention are symptoms of the same
+root cause: the pipeline doesn't model computation dependencies. When
+it doesn't know what depends on what, it re-computes (redundancy) and
+retains everything (over-retention) because it can't prove when a value
+is safe to drop or when a walk is redundant.
 
-**Current redundancy inventory (self-compile, ~1600 functions):**
+**Two manifestations:**
+
+1. **Redundant work** — same function body walked N times by different
+   analyses that could share a single traversal.
+2. **Over-retention** — intermediate values (CostExpr trees, descent var
+   maps) kept in memory after all consumers have read them, because
+   the pipeline has no concept of "transit vs result."
+
+The general principle: if you can't express "this value is no longer
+needed," you can't drop it. Every `Map<String, X>` that accumulates
+full intermediate state and never prunes is an instance.
+
+**Current instances (self-compile, ~1600 functions):**
+
+Redundant work:
 - `classify_recursion_pattern` walks body 2-3× (proof dimensions)
 - `construct_scc_termination_proof` walks body 5-6× per SCC member
 - `collect_descent_vars` walks body 1× per param per dimension
-- `cost_of_expr` walks body 1× (but triggers recursive callee analysis)
 - `max_path_self_calls` walks body 1× (could be cached)
+
+Over-retention:
+- `CostInternTable.summaries` holds full CostExpr trees for ALL 1600
+  functions simultaneously. Each tree is ~1000 Rc nodes. Consumers
+  only need the classified string ("O(n)"), not the tree. But there's
+  no transit/result distinction — everything is retained.
+- Processing order is declaration order, not topological (callee-first).
+  Topological order would allow dropping callee summaries after all
+  callers are processed. The SCC computation already provides this order.
 
 **Mitigation (PR #336):**
 - Pre-compute all recursion patterns before cost phase
 - Eager simplification in cost composition (prevent CostExpr blowup)
 - Single-function patterns stored in scc_index (avoid re-classification)
 
-**Endgame:** Each function body is walked ONCE. All analyses (proof
-construction, descent evidence, cost computation) read from a shared
-`FunctionAnalysis` record produced by that single walk. Redundant
-walks become unrepresentable because the analysis function returns
-all facts together.
+**Endgame:** Two structural changes:
+1. **Single-walk analysis:** Each function body walked ONCE → produces a
+   `FunctionAnalysis` record with all facts (proof, descent vars, cost).
+   Redundant walks become unrepresentable.
+2. **Transit/result distinction:** Intermediate values (CostExpr trees)
+   classified eagerly and dropped. The report stores classifications,
+   not trees. `CostInternTable` becomes a transit cache with pruning,
+   not a permanent accumulator. Functions processed in topological order
+   so callees can be dropped when all callers are done.
 
 ### Acceptance
 
