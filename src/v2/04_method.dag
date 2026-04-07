@@ -40,7 +40,7 @@ fn map_of_type_variables() -> Node {
 }
 
 fn list_of_type_variable(id: String) -> Node {
-  let param_name = match container_param_name(kind_name: "List", index: 0) { Some { value: n } => n  None => "T" }
+  let param_name = match container_param_name(kind_name: "List", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
   Node {
     name: "List", span: make_span(start: 0, end: 0), ident_span: none,
     children: [
@@ -53,7 +53,7 @@ fn list_of_type_variable(id: String) -> Node {
 }
 
 fn list_of_element(element: Node) -> Node {
-  let param_name = match container_param_name(kind_name: "List", index: 0) { Some { value: n } => n  None => "T" }
+  let param_name = match container_param_name(kind_name: "List", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
   Node {
     name: "List", span: make_span(start: 0, end: 0), ident_span: none,
     children: [

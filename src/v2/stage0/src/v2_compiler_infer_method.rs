@@ -86,7 +86,7 @@ pub fn list_of_type_variable(id: String) -> Rc<Node> {
     {
         let param_name = match container_param_name("List".to_string(), 0) {
     Some(n) => n.clone(),
-    None => "T".to_string(),
+    None => "__MISSING_PARAM__".to_string(),
 };
 Rc::new(Node {
     name: "List".to_string(),
@@ -134,7 +134,7 @@ pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
     {
         let param_name = match container_param_name("List".to_string(), 0) {
     Some(n) => n.clone(),
-    None => "T".to_string(),
+    None => "__MISSING_PARAM__".to_string(),
 };
 Rc::new(Node {
     name: "List".to_string(),

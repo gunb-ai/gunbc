@@ -102,18 +102,18 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
 pub fn decl_resolved_type(n: Rc<Node>) -> Rc<Node> {
     match (*rt_node(n)).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
-    NodeType::InferError { .. } => unit_type(),
-    NodeType::InferVariable { .. } => unit_type(),
-    NodeType::Untyped => unit_type(),
+    NodeType::InferError { .. } => error_type(),
+    NodeType::InferVariable { .. } => error_type(),
+    NodeType::Untyped => error_type(),
 }
 }
 
 pub fn emit_guarded_type(n: Rc<Node>) -> Rc<Node> {
     match (*rt_node(n)).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
-    NodeType::InferError { .. } => unit_type(),
-    NodeType::InferVariable { .. } => unit_type(),
-    NodeType::Untyped => unit_type(),
+    NodeType::InferError { .. } => error_type(),
+    NodeType::InferVariable { .. } => error_type(),
+    NodeType::Untyped => error_type(),
 }
 }
 
@@ -269,11 +269,11 @@ pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
     {
         let key_name = match container_param_name("Map".to_string(), 0) {
     Some(n) => n.clone(),
-    None => "K".to_string(),
+    None => "__MISSING_PARAM__".to_string(),
 };
 let val_name = match container_param_name("Map".to_string(), 1) {
     Some(n) => n.clone(),
-    None => "V".to_string(),
+    None => "__MISSING_PARAM__".to_string(),
 };
 Rc::new(Node {
     name: "Map".to_string(),
@@ -341,11 +341,11 @@ pub fn bare_map_node() -> Rc<Node> {
     {
         let key_id = match container_param_name("Map".to_string(), 0) {
     Some(n) => n.clone(),
-    None => "K".to_string(),
+    None => "__MISSING_PARAM__".to_string(),
 };
 let val_id = match container_param_name("Map".to_string(), 1) {
     Some(n) => n.clone(),
-    None => "V".to_string(),
+    None => "__MISSING_PARAM__".to_string(),
 };
 map_node(type_variable_node(key_id), type_variable_node(val_id))
 }
@@ -636,7 +636,7 @@ map_node(key.clone(), val)
     Some(elem) => elem.clone(),
     None => type_variable_node(match container_param_name(receiver.name.clone(), 0) {
     Some(pn) => pn.clone(),
-    None => "T".to_string(),
+    None => "__MISSING_PARAM__".to_string(),
 }),
 },
 },
@@ -646,7 +646,7 @@ map_node(key.clone(), val)
     Some(key) => key.clone(),
     None => type_variable_node(match container_param_name(receiver.name.clone(), 0) {
     Some(pn) => pn.clone(),
-    None => "K".to_string(),
+    None => "__MISSING_PARAM__".to_string(),
 }),
 },
 },
@@ -656,7 +656,7 @@ map_node(key.clone(), val)
     Some(val) => val,
     None => type_variable_node(match container_param_name(receiver.name.clone(), 1) {
     Some(pn) => pn.clone(),
-    None => "V".to_string(),
+    None => "__MISSING_PARAM__".to_string(),
 }),
 },
 },

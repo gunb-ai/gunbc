@@ -69,42 +69,39 @@ fn child_type_node(ch: Node) -> Node {
 // moved to 00_core.dag (C1 — timeless node vocabulary).
 
 // =========================================================================
-// Boundary-contract accessors (std/boundary.dag vocabulary)
+// Boundary-contract accessors
 //
 // Two accessors replace rt_type, each encoding a different consumer contract:
 //   decl_resolved_type — Strict: declaration children are always Resolved
-//     post-resolve. Non-Resolved is unreachable (defensive fallback only).
-//   emit_guarded_type  — Guarded: emit receives nodes from infer. During
-//     bootstrap, some nodes have errors. Fallback is visible via the name.
-//
-// Both return the same values as the former rt_type. The value is the
-// contract separation — callers declare which role they're in, enabling
-// future tightening (Strict → diagnostics, Guarded → compile_error!).
+//     post-resolve. Non-Resolved branches produce error_type (propagates
+//     as CompilerError through pipeline — never fabricates a valid type).
+//   emit_guarded_type  — Guarded: emit receives nodes from infer. Errors
+//     propagate as error_type (rendered as compile_error! by emitters).
 // =========================================================================
 
 // Strict contract: extract the resolved type from a declaration child.
 // Post-resolve, declaration children (struct fields, container params,
 // function annotations) are always Resolved. Non-Resolved branches are
-// unreachable — unit_type is a defensive fallback, not intentional policy.
+// unreachable — error_type propagates visibly rather than fabricating Unit.
 fn decl_resolved_type(n: Node) -> Node {
   match rt_node(n: n) {
     Typed { node: rt } => rt
-    InferError { message: _, span: _ } => unit_type
-    InferVariable { id: _ } => unit_type
-    Untyped => unit_type
+    InferError { message: _, span: _ } => error_type
+    InferVariable { id: _ } => error_type
+    Untyped => error_type
   }
 }
 
 // Guarded contract: extract the type from an expression or inferred node.
 // The caller is in emit or inference context where the node may have errors
 // due to upstream inference failures or bootstrap complexity violations.
-// Fallback to unit_type is a visible bootstrap bridge, not silent policy.
+// Errors propagate as error_type — emitters render as compile_error!().
 fn emit_guarded_type(n: Node) -> Node {
   match rt_node(n: n) {
     Typed { node: rt } => rt
-    InferError { message: _, span: _ } => unit_type
-    InferVariable { id: _ } => unit_type
-    Untyped => unit_type
+    InferError { message: _, span: _ } => error_type
+    InferVariable { id: _ } => error_type
+    Untyped => error_type
   }
 }
 
@@ -157,8 +154,8 @@ fn tuple_node(first: Node, second: Node) -> Node {
 }
 
 fn map_node(key: Node, value: Node) -> Node {
-  let key_name = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "K" }
-  let val_name = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "V" }
+  let key_name = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+  let val_name = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "__MISSING_PARAM__" }
   Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: none, children: [
     Node { name: key_name, span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
     Node { name: val_name, span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -166,8 +163,8 @@ fn map_node(key: Node, value: Node) -> Node {
 }
 
 fn bare_map_node() -> Node {
-  let key_id = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "K" }
-  let val_id = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "V" }
+  let key_id = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+  let val_id = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "__MISSING_PARAM__" }
   map_node(key: type_variable_node(id: key_id), value: type_variable_node(id: val_id))
 }
 
@@ -410,7 +407,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         None =>
           match map_get(subst, "__element__") {
             Some { value: elem } => elem
-            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 0) { Some { value: pn } => pn  None => "T" })
+            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 0) { Some { value: pn } => pn  None => "__MISSING_PARAM__" })
           }
       }
     ReceiverKey =>
@@ -419,7 +416,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         None =>
           match map_get(subst, "__key__") {
             Some { value: key } => key
-            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 0) { Some { value: pn } => pn  None => "K" })
+            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 0) { Some { value: pn } => pn  None => "__MISSING_PARAM__" })
           }
       }
     ReceiverValue =>
@@ -428,7 +425,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         None =>
           match map_get(subst, "__value__") {
             Some { value: val } => val
-            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 1) { Some { value: pn } => pn  None => "V" })
+            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 1) { Some { value: pn } => pn  None => "__MISSING_PARAM__" })
           }
       }
     NamedTemplate { name: n } => nominal_type_ref(name: n)
