@@ -794,7 +794,7 @@ remaining path is sound. Work accomplished:
 - [x] `ParserResultDirectState` field renamed `progress` → `input` (consistency)
 - [x] `same_progress_subgraph_has_cycle` now detects 1-node ProgressSame self-loops
 - [x] `val_inner_vars` scope leak fixed — arm-local bindings no longer escape
-- [x] `branching_proof_safe` accepts lexicographic proofs (checks first dimension)
+- [x] `proof_safe_for_branching` requires ALL dimensions structural (not just first)
 - [x] Self-loop detection matches `proof_has_non_descending_cycle` pattern
 
 **Theme D: Boundary / testing** (2 items)
