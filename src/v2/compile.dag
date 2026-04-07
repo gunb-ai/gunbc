@@ -817,14 +817,16 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx)
       let complexity_diags = complexity_diagnostics(complexity: complexity)
 
-      // Type errors block emission. Complexity violations are reported but
-      // non-blocking — they are analyzer limitations, not program errors.
-      // The violations are included in the final diagnostics for visibility.
-      let typecheck_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      // Gate: type errors AND complexity errors block emission.
+      // Every stage boundary is a gate (Early Detection invariant).
+      // Complexity currently produces zero diagnostics by construction
+      // (all bounds concrete), but the gate is structurally wired.
+      let all_infer_diags = concat(typed_diags, complexity_diags)
+      let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
       if typecheck_errors |> count > 0 {
         return PipelineResult {
           files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags, complexity_diags),
+          diagnostics: concat(frontend.diagnostics, norm_diags, all_infer_diags),
           complexity: complexity,
           ownership: [],
           artifact_plan: empty_artifact_plan(),
@@ -841,7 +843,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       if ownership_errors |> count > 0 {
         return PipelineResult {
           files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags, complexity_diags, ownership_diags),
+          diagnostics: concat(frontend.diagnostics, norm_diags, all_infer_diags, ownership_diags),
           complexity: complexity,
           ownership: ownership,
           artifact_plan: empty_artifact_plan(),
@@ -867,7 +869,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
       PipelineResult {
         files: final_files,
-        diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags, complexity_diags, ownership_diags, emit_diags),
+        diagnostics: concat(frontend.diagnostics, norm_diags, all_infer_diags, ownership_diags, emit_diags),
         complexity: complexity,
         ownership: ownership,
         artifact_plan: artifact_plan,

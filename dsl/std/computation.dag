@@ -270,11 +270,14 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
 // Get the constant value for a constant bound.
 // ExplicitCount returns the developer-specified literal.
 // Forever returns 1 (machine max — asymptotically constant).
+// Precondition: is_constant_bound(bound) must be true.
+// Non-constant bounds return 0 (identity for SizeConst in CostSum)
+// to fail visibly rather than fabricating a plausible value.
 fn constant_bound_value(bound: SizeBound) -> Int {
   match bound {
     ExplicitCount { n: count } => count
     Forever                    => 1
-    _                          => 1
+    _                          => 0
   }
 }
 

@@ -186,7 +186,7 @@ pub fn constant_bound_value(bound: Rc<SizeBound>) -> i64 {
     match (*bound).clone() {
     SizeBound::ExplicitCount { n: count, .. } => count.clone(),
     SizeBound::Forever => 1,
-    _ => 1,
+    _ => 0,
 }
 }
 

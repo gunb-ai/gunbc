@@ -618,11 +618,12 @@ let func_entries = extract_func_entries(typed.clone());
 let recursion_ctx = build_recursion_context(typed.clone());
 let complexity = build_complexity_report(func_entries, recursion_ctx);
 let complexity_diags = complexity_diagnostics(complexity.clone());
-let typecheck_errors = Rc::new({ let mut __result = Vec::new(); for d in typed_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
+let all_infer_diags = v2_rt::concat(typed_diags, complexity_diags);
+let typecheck_errors = Rc::new({ let mut __result = Vec::new(); for d in all_infer_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
 if ((typecheck_errors.len() as i64) > 0) {
                 return Rc::new(PipelineResult {
     files: Rc::new(vec![]),
-    diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), complexity_diags.clone()),
+    diagnostics: v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), all_infer_diags.clone()),
     complexity: complexity.clone(),
     ownership: Rc::new(vec![]),
     artifact_plan: empty_artifact_plan(),
@@ -635,7 +636,7 @@ let ownership_errors = Rc::new({ let mut __result = Vec::new(); for d in ownersh
 if ((ownership_errors.len() as i64) > 0) {
                 return Rc::new(PipelineResult {
     files: Rc::new(vec![]),
-    diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), complexity_diags.clone()), ownership_diags.clone()),
+    diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), all_infer_diags.clone()), ownership_diags.clone()),
     complexity: complexity.clone(),
     ownership: ownership.clone(),
     artifact_plan: empty_artifact_plan(),
@@ -654,7 +655,7 @@ let final_files = if ((emit_errors.len() as i64) > 0) {
 };
 Rc::new(PipelineResult {
     files: final_files,
-    diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), complexity_diags.clone()), ownership_diags.clone()), emit_diags.clone()),
+    diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), all_infer_diags.clone()), ownership_diags.clone()), emit_diags.clone()),
     complexity: complexity.clone(),
     ownership: ownership.clone(),
     artifact_plan: artifact_plan.clone(),
