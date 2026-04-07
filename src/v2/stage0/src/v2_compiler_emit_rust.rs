@@ -64,11 +64,10 @@ use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
-pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, HigherOrderMethodSpec, rust_higher_order_methods};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_string_like};
+pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, HigherOrderMethodSpec, rust_higher_order_methods};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_value_type, is_string_like, target_primitive_type};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
-pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy};
-pub use crate::extdeps_languages_rust_types::{integer_types, float_types};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, rt_type, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
@@ -80,11 +79,15 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope,
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 pub use crate::v2_compiler_ownership::{OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, TransportKind, classify_transport, extract_modifier_names};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, build_type_rendering, render_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, TransportKind, classify_transport, extract_modifier_names};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
 pub fn render_rust_type(n: Rc<Node>, shared_types: Rc<HashMap<String, bool>>) -> String {
-    render_node_type(n, RenderTarget::Rust, shared_types)
+    render_type(build_type_rendering(n, shared_types, v2_rt::rc_empty_map::<bool>()), RenderTarget::Rust)
+}
+
+pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> {
+    v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, key, value)
 }
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
@@ -121,10 +124,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 pub fn is_rust_value_type(n: Rc<Node>) -> bool {
     {
         let normed = normalize_access_type_node(n);
-match is_copy(RenderTarget::Rust, normed.name.clone()) {
-    Some(v) => v.clone(),
-    None => false,
-}
+is_value_type(RenderTarget::Rust, normed.name.clone())
 }
 }
 
@@ -1579,18 +1579,6 @@ if (n.name.clone().as_str() == "__EmitTypeCacheMiss".to_string().as_str()) {
 }
 
 pub fn is_primitive_numeric_node(n: Rc<Node>) -> bool {
-    {
-        let normed = normalize_access_type_node(n);
-let rust_type = coerce_primitive_type(RenderTarget::Rust, normed.name.clone());
-if (rust_type.clone().as_str() == normed.name.clone().as_str()) {
-            false
-} else {
-            ({ let mut __found = false; for t in integer_types().iter().cloned() { if (t.clone().as_str() == rust_type.clone().as_str()) { __found = true; break; } } __found } || { let mut __found = false; for t in float_types().iter().cloned() { if (t.clone().as_str() == rust_type.clone().as_str()) { __found = true; break; } } __found })
-}
-}
-}
-
-pub fn is_simple_type_node(n: Rc<Node>) -> bool {
     is_rust_value_type(n)
 }
 
@@ -1911,7 +1899,7 @@ if (rendered.clone().as_str() == "".to_string().as_str()) {
 }
 
 pub fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> bool {
-    (v2_rt::map_contains_key(&rt_wraps_result(), function_name.clone()) || v2_rt::map_contains_key(&rust_method_wraps_result(), function_name.clone()))
+    ((((((((function_name.clone().as_str() == "map_keys".to_string().as_str()) || (function_name.clone().as_str() == "map_values".to_string().as_str())) || (function_name.clone().as_str() == "split".to_string().as_str())) || (function_name.clone().as_str() == "enumerate".to_string().as_str())) || (function_name.clone().as_str() == "chars".to_string().as_str())) || (function_name.clone().as_str() == "skip".to_string().as_str())) || (function_name.clone().as_str() == "take".to_string().as_str())) || (function_name.clone().as_str() == "append".to_string().as_str()))
 }
 
 pub fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: Option<Rc<InferredNode>>) -> bool {
@@ -2816,7 +2804,7 @@ let p = emit_ident(dag_name, RenderTarget::Rust);
 let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
 let body_str = emit_typed_expr(bd, registry.clone(), lambda_scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 let inner_iter = apply_type_template1(sharing.iter_owned.clone(), v2_rt::concat(v2_rt::concat("(*".to_string(), body_str.clone()), ")".to_string()));
-let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "param".to_string(), p), "body".to_string(), body_str.clone()), "iter".to_string(), iter_str), "inner_iter".to_string(), inner_iter);
+let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(seed_bindings("param".to_string(), p), "body".to_string(), body_str.clone()), "iter".to_string(), iter_str), "inner_iter".to_string(), inner_iter);
 let raw = apply_named_template(ho_spec.inline_template.clone(), bindings);
 if ho_spec.wraps_in_sharing.clone() {
                 v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
@@ -2825,7 +2813,7 @@ if ho_spec.wraps_in_sharing.clone() {
 }
 },
     _ => {
-            let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "iter".to_string(), iter_str), "arg".to_string(), first_arg_str);
+            let bindings = v2_rt::rc_map_insert(seed_bindings("iter".to_string(), iter_str), "arg".to_string(), first_arg_str);
 let raw = apply_named_template(ho_spec.fn_ref_template.clone(), bindings);
 if ho_spec.wraps_in_sharing.clone() {
                 v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
@@ -2835,7 +2823,7 @@ if ho_spec.wraps_in_sharing.clone() {
 },
 },
     None => {
-            let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "iter".to_string(), iter_str), "arg".to_string(), first_arg_str);
+            let bindings = v2_rt::rc_map_insert(seed_bindings("iter".to_string(), iter_str), "arg".to_string(), first_arg_str);
 let raw = apply_named_template(ho_spec.fn_ref_template.clone(), bindings);
 if ho_spec.wraps_in_sharing.clone() {
                 v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
@@ -3006,7 +2994,7 @@ let spec = language_spec(RenderTarget::Rust);
 match spec.method_templates.clone() {
     Some(templates) => match v2_rt::map_get(&templates, method_name.clone()) {
     Some(tmpl) => {
-                                                    let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "recv".to_string(), recv_str), "arg".to_string(), first_arg_str);
+                                                    let bindings = v2_rt::rc_map_insert(seed_bindings("recv".to_string(), recv_str), "arg".to_string(), first_arg_str);
 let raw = apply_named_template(tmpl.clone(), bindings);
 if rust_runtime_bridge_wraps_collection_result_in_rc(method_name.clone()) {
                                                         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
@@ -4264,6 +4252,10 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("            ".to_string(), wrap_start
 }
 }
 }
+}
+
+pub fn is_simple_type_node(n: Rc<Node>) -> bool {
+    is_rust_value_type(n)
 }
 
 pub fn emit_test_file(module_name: String, projections: Rc<Vec<Rc<TestProjection>>>) -> Rc<TextFile> {

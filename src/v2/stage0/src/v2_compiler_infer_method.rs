@@ -126,10 +126,13 @@ pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
 })
 }
 
+pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
+    v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, key, value)
+}
+
 pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
     {
-        let m = Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */;
-let m = v2_rt::rc_map_insert(m.clone(), "count".to_string(), int_type());
+        let m = seed_node_map("count".to_string(), int_type());
 let m = v2_rt::rc_map_insert(m.clone(), "string_length".to_string(), int_type());
 let m = v2_rt::rc_map_insert(m.clone(), "code_point".to_string(), int_type());
 let m = v2_rt::rc_map_insert(m.clone(), "to_int".to_string(), int_type());

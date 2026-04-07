@@ -67,11 +67,14 @@ fn list_of_element(element: Node) -> Node {
 // compiler loads and resolves, this registry is deleted. See review
 // feedback on BuiltinReturnKind — the proper model is definition nodes,
 // not a return-type proxy enum.
+fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
+  map_insert(empty_map(), key, value)
+}
+
 fn builtin_function_registry() -> Map<String, Node> {
-  let m = empty_map()
   // Int-returning functions (count is also an algebra method on collections;
   // registered here as bridge so count(x) function syntax works alongside x |> count)
-  let m = map_insert(m, "count", int_type)
+  let m = seed_node_map(key: "count", value: int_type)
   let m = map_insert(m, "string_length", int_type)
   let m = map_insert(m, "code_point", int_type)
   let m = map_insert(m, "to_int", int_type)

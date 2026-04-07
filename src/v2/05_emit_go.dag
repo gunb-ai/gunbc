@@ -845,6 +845,10 @@ fn go_bridge_method_name(method_name: String) -> String {
   pascal_parts |> join(separator: "")
 }
 
+fn seed_bindings(key: String, value: String) -> Map<String, String> {
+  map_insert(empty_map(), key, value)
+}
+
 fn emit_go_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0, fuel: 1024)
   let first_arg_str = emit_go_typed_first_arg(args: args, registry: registry, scope: scope)
@@ -852,7 +856,7 @@ fn emit_go_algebra_method_call(method_name: String, receiver: Node, args: List<N
   match spec.method_templates {
     Some { value: templates } => match map_get(templates, method_name) {
       Some { value: tmpl } =>
-        let bindings = empty_map() |> map_insert("recv", recv_str) |> map_insert("arg", first_arg_str)
+        let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
         apply_named_template(template: tmpl, bindings: bindings)
       None =>
         let go_name = go_bridge_method_name(method_name: method_name)

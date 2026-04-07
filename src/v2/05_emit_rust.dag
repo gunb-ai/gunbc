@@ -144,6 +144,12 @@ fn render_rust_type(n: Node, shared_types: Map<String, Bool>) -> String {
   render_node_type(n: n, target: Rust, shared_types: shared_types)
 }
 
+// Typed empty maps for emit — eliminates BRIDGE fabrications.
+fn seed_bindings(key: String, value: String) -> Map<String, String> {
+  map_insert(empty_map(), key, value)
+}
+
+
 fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
@@ -2736,16 +2742,16 @@ fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node,
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
           let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           let inner_iter = apply_type_template1(template: sharing.iter_owned, arg0: concat("(*", body_str, ")"))
-          let bindings = empty_map() |> map_insert("param", p) |> map_insert("body", body_str) |> map_insert("iter", iter_str) |> map_insert("inner_iter", inner_iter)
+          let bindings = seed_bindings(key: "param", value: p) |> map_insert("body", body_str) |> map_insert("iter", iter_str) |> map_insert("inner_iter", inner_iter)
           let raw = apply_named_template(template: ho_spec.inline_template, bindings: bindings)
           if ho_spec.wraps_in_sharing { concat("Rc::new(", raw, ")") } else { raw }
         _ =>
-          let bindings = empty_map() |> map_insert("iter", iter_str) |> map_insert("arg", first_arg_str)
+          let bindings = seed_bindings(key: "iter", value: iter_str) |> map_insert("arg", first_arg_str)
           let raw = apply_named_template(template: ho_spec.fn_ref_template, bindings: bindings)
           if ho_spec.wraps_in_sharing { concat("Rc::new(", raw, ")") } else { raw }
       }
     None =>
-      let bindings = empty_map() |> map_insert("iter", iter_str) |> map_insert("arg", first_arg_str)
+      let bindings = seed_bindings(key: "iter", value: iter_str) |> map_insert("arg", first_arg_str)
       let raw = apply_named_template(template: ho_spec.fn_ref_template, bindings: bindings)
       if ho_spec.wraps_in_sharing { concat("Rc::new(", raw, ")") } else { raw }
   }
@@ -2882,7 +2888,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
         match spec.method_templates {
           Some { value: templates } => match map_get(templates, method_name) {
             Some { value: tmpl } =>
-              let bindings = empty_map() |> map_insert("recv", recv_str) |> map_insert("arg", first_arg_str)
+              let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
               let raw = apply_named_template(template: tmpl, bindings: bindings)
               // Rc wrapping comes from sharing authority, not templates
               if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method_name) {
