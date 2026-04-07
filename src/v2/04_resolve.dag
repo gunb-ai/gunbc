@@ -37,7 +37,7 @@ import v2.std.core {
   is_local_transport,
   is_kernel_type, is_container_type,
   leaf_node, with_optional_cardinality, with_required_cardinality,
-  Connective, Conj, Disj, NoConnective, Arrow,
+  Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
   unit_type, string_type
 }
@@ -451,7 +451,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
           let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
-          let n_is_special = n.name == "Callable" || n.name == "Dynamic" || n.name == "Error"
+          let n_is_special = n.name == "Dynamic" || n.name == "Error"
           if is_kernel_type(name: n.name) || n_is_type_var || n_is_error || n_is_callable || n_is_special {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {

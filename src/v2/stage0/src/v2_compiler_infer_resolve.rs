@@ -56,7 +56,7 @@ use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::MatchPattern::{Wildcard};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::ExprErrorKind::{SemanticExprError};
-use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
+use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 pub use crate::v2_compiler_infer_types::{rt_type, node_is_keyed_collection};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for};
 use AliasKind::*;
@@ -712,7 +712,7 @@ let n_is_type_var = if (n.inferred.clone() != None) {
 } else {
                                                 false
 };
-let n_is_special = (((n.name.clone().as_str() == "Callable".to_string().as_str()) || (n.name.clone().as_str() == "Dynamic".to_string().as_str())) || (n.name.clone().as_str() == "Error".to_string().as_str()));
+let n_is_special = ((n.name.clone().as_str() == "Dynamic".to_string().as_str()) || (n.name.clone().as_str() == "Error".to_string().as_str()));
 if ((((is_kernel_type(n.name.clone()) || n_is_type_var) || n_is_error) || n_is_callable) || n_is_special) {
                                                 Rc::new(NodeResolveResult {
     resolved: n.clone(),

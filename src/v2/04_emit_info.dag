@@ -331,7 +331,7 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   let is_product = item.connective == Conj
   let has_fn = item.children |> any(child =>
     match child.inferred {
-      Some { value: Resolved { node: rt } } => rt.connective == Arrow || rt.name == "Callable"
+      Some { value: Resolved { node: rt } } => rt.connective == Arrow
       _ => false
     }
   )
@@ -370,7 +370,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
             if variant.children |> count > 0 {
               let v_has_fn = variant.children |> any(vc =>
                 match vc.inferred {
-                  Some { value: Resolved { node: rt } } => rt.connective == Arrow || rt.name == "Callable"
+                  Some { value: Resolved { node: rt } } => rt.connective == Arrow
                   _ => false
                 }
               )
