@@ -574,9 +574,13 @@ mod compiler_tests {
     #[test]
     fn coercion_rust_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "List".into()), Some("Vec<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "BooleanAlgebra".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()), Some("Vec<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "List".into()), Some("Vec<{0}>".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Rust, "Map".into()), Some("HashMap<{0}, {1}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "NonEmptyList".into()), Some("Vec<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "NonEmptySet".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "PartialFunction".into()), Some("HashMap<{0}, {1}>".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Rust, "Set".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
     }
 
@@ -584,8 +588,13 @@ mod compiler_tests {
     #[test]
     fn coercion_python_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
+        assert_eq!(coerce_container_template(RenderTarget::Python, "BooleanAlgebra".into()), Some("set[{0}]".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Python, "FreeMonoid".into()), Some("list[{0}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "List".into()), Some("list[{0}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "Map".into()), Some("dict[{0}, {1}]".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Python, "NonEmptyList".into()), Some("list[{0}]".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Python, "NonEmptySet".into()), Some("set[{0}]".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Python, "PartialFunction".into()), Some("dict[{0}, {1}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "Set".into()), Some("set[{0}]".to_string()));
     }
 
@@ -593,8 +602,13 @@ mod compiler_tests {
     #[test]
     fn coercion_go_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
+        assert_eq!(coerce_container_template(RenderTarget::Go, "BooleanAlgebra".into()), Some("map[{0}]struct{}".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Go, "FreeMonoid".into()), Some("[]{0}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "List".into()), Some("[]{0}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "Map".into()), Some("map[{0}]{1}".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Go, "NonEmptyList".into()), Some("[]{0}".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Go, "NonEmptySet".into()), Some("map[{0}]struct{}".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Go, "PartialFunction".into()), Some("map[{0}]{1}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "Set".into()), Some("map[{0}]struct{}".to_string()));
     }
 
@@ -617,8 +631,13 @@ mod compiler_tests {
     fn coercion_template_application() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(apply_inhabitant_template1("Vec<{0}>".into(), "i64".into()), "Vec<i64>");
+        assert_eq!(apply_inhabitant_template1("std::collections::BTreeSet<{0}>".into(), "i64".into()), "std::collections::BTreeSet<i64>");
         assert_eq!(apply_inhabitant_template2("HashMap<{0}, {1}>".into(), "String".into(), "i64".into()), "HashMap<String, i64>");
+        assert_eq!(apply_inhabitant_template1("list[{0}]".into(), "int".into()), "list[int]");
+        assert_eq!(apply_inhabitant_template1("set[{0}]".into(), "int".into()), "set[int]");
+        assert_eq!(apply_inhabitant_template2("dict[{0}, {1}]".into(), "str".into(), "int".into()), "dict[str, int]");
         assert_eq!(apply_inhabitant_template1("[]{0}".into(), "int64".into()), "[]int64");
+        assert_eq!(apply_inhabitant_template1("map[{0}]struct{}".into(), "int64".into()), "map[int64]struct{}");
         assert_eq!(apply_inhabitant_template2("map[{0}]{1}".into(), "string".into(), "int64".into()), "map[string]int64");
     }
 
