@@ -3834,13 +3834,13 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
 // =========================================================================
 
 type ComplexityReport {
-  function_summaries: Map<String, ComplexitySummary>
+  function_classes: Map<String, String>
   intern_table: CostInternTable
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
-    function_summaries: empty_map(),
+    function_classes: empty_map(),
     intern_table: empty_intern_table()
   }
 }
@@ -4565,9 +4565,16 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
     let sr = get_or_compute_summary(func_name: entry.name, func_index: func_index, scc_index: full_scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
     SummaryResult { summary: sr.summary, table: sr.table }
   })
-  // No violations possible — every function has a concrete cost.
+  // Classify eagerly and drop CostExpr trees. The report stores only
+  // the classified string ("O(1)", "O(n)", etc.), not the full tree.
+  let classes = map_keys(result.table.summaries) |> fold(init: empty_map(), f: (acc, name) =>
+    match map_get(result.table.summaries, name) {
+      Some { value: summary } => map_insert(acc, name, classify_complexity(expr: summary.work))
+      None => acc
+    }
+  )
   ComplexityReport {
-    function_summaries: result.table.summaries,
-    intern_table: result.table
+    function_classes: classes,
+    intern_table: empty_intern_table()
   }
 }

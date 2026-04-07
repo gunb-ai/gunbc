@@ -808,8 +808,9 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       // Stage 5: Complexity analysis.
       // Every function gets a concrete cost from the lowering table.
       // No violations possible — CostUnknown is deleted from CostExpr.
-      // Disabled for self-compile: OOM on ~1600 functions. Enable per-module
-      // or with a memory budget when PERF-3 lands.
+      // Complexity analysis disabled for self-compile: OOM during analysis
+      // phase (~1600 functions). The intern table + CostExpr trees exceed
+      // memory budget. Fix: topological processing + transit cache (PERF-6).
       let func_entries = extract_func_entries(typed: typed)
       let recursion_ctx = build_recursion_context(typed: typed)
       let complexity = empty_complexity_report()

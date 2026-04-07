@@ -3486,13 +3486,13 @@ Rc::new(SummaryResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexityReport {
-    pub function_summaries: Rc<HashMap<String, Rc<ComplexitySummary>>>,
+    pub function_classes: Rc<HashMap<String, String>>,
     pub intern_table: Rc<CostInternTable>,
 }
 
 pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport {
-    function_summaries: v2_rt::rc_empty_map::<Rc<ComplexitySummary>>(),
+    function_classes: v2_rt::rc_empty_map::<String>(),
     intern_table: empty_intern_table(),
 })
 }
@@ -4274,9 +4274,13 @@ Rc::new(SummaryResult {
     table: sr.table.clone(),
 })
 } });
+let classes = Rc::new(v2_rt::map_keys(&result.table.clone().summaries.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, name: String| match v2_rt::map_get(&result.table.clone().summaries.clone(), name.clone()) {
+    Some(summary) => v2_rt::rc_map_insert(acc.clone(), name.clone(), classify_complexity(summary.work.clone())),
+    None => acc.clone(),
+});
 Rc::new(ComplexityReport {
-    function_summaries: result.table.clone().summaries.clone(),
-    intern_table: result.table.clone(),
+    function_classes: classes,
+    intern_table: empty_intern_table(),
 })
 }
 }

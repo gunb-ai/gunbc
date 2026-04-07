@@ -983,7 +983,7 @@ fn parse_items(state: ParserState) -> ParseResult {
 "#;
     let complexity = compile_dag_with_complexity(source);
     // Parser with advance + .state should produce summaries.
-    assert!(complexity.function_summaries.contains_key("parse_items"));
+    assert!(complexity.function_classes.contains_key("parse_items"));
 }
 
 #[test]
@@ -1002,7 +1002,7 @@ fn sum_tree(t: Tree) -> Int {
 "#;
     let complexity = compile_dag_with_complexity(source);
     // Fold over t.children with self-call passing child should produce summaries.
-    assert!(complexity.function_summaries.contains_key("sum_tree"));
+    assert!(complexity.function_classes.contains_key("sum_tree"));
 }
 
 // ── Complexity class coverage ─────────────────────────────────────────
@@ -1029,58 +1029,22 @@ fn sum_tree(t: Tree) -> Int {
 use v2_compiler::v2_compiler_complexity::{classify_complexity, Certainty, CostExpr, SizeExpr};
 
 /// Helper: get the complexity class string for a function in a compile result.
-/// Uses classify_complexity (the formatting boundary) for display.
+/// The report stores pre-classified strings ("O(1)", "O(n)", etc.).
 fn complexity_class_of(
     result: &v2_compiler::v2_compiler_compile::PipelineResult,
     func: &str,
 ) -> Option<String> {
-    result
-        .complexity
-        .function_summaries
-        .get(func)
-        .map(|s| classify_complexity(s.work.clone()))
+    result.complexity.function_classes.get(func).cloned()
 }
 
-/// Helper: get the structural complexity class (normalized CostExpr) for a function.
-fn structural_class_of(
-    result: &v2_compiler::v2_compiler_compile::PipelineResult,
-    func: &str,
-) -> Option<std::rc::Rc<CostExpr>> {
-    use v2_compiler::v2_compiler_complexity::{normalize_asymptotic, simplify_cost};
-    result
-        .complexity
-        .function_summaries
-        .get(func)
-        .map(|s| normalize_asymptotic(simplify_cost(s.work.clone())))
+/// Helper: check if a function's complexity class contains "log".
+fn class_contains_log(class: &str) -> bool {
+    class.contains("log")
 }
 
-/// Helper: structural check — does a CostExpr tree contain a CostLog node?
-fn cost_contains_log(expr: &CostExpr) -> bool {
-    match expr {
-        CostExpr::CostLog { .. } => true,
-        CostExpr::CostAdd { left, right }
-        | CostExpr::CostMul { left, right }
-        | CostExpr::CostMax { left, right } => cost_contains_log(left) || cost_contains_log(right),
-        CostExpr::CostSum { body, .. } => cost_contains_log(body),
-        _ => false,
-    }
-}
-
-/// Helper: structural check — is this CostExpr a constant (O(1))?
-fn is_constant_class(expr: &CostExpr) -> bool {
-    matches!(expr, CostExpr::CostConst { .. })
-}
-
-/// Helper: get certainty for a function.
-fn certainty_of(
-    result: &v2_compiler::v2_compiler_compile::PipelineResult,
-    func: &str,
-) -> Option<Certainty> {
-    result
-        .complexity
-        .function_summaries
-        .get(func)
-        .map(|s| s.certainty)
+/// Helper: check if a function is O(1).
+fn is_constant_class_str(class: &str) -> bool {
+    class == "O(1)"
 }
 
 /// O(1) — constant time: pure arithmetic and conditionals.
@@ -1103,12 +1067,7 @@ fn triple(x: Int) -> Int { x * 3 }
             func,
             class
         );
-        assert_eq!(
-            certainty_of(&result, func),
-            Some(Certainty::Proven),
-            "{} should be Proven",
-            func
-        );
+        // Certainty not in report (classified strings only). All costs are concrete.
     }
 }
 
@@ -1206,12 +1165,10 @@ fn sort_ascending(items: List<Int>) -> List<Int> {
 "#;
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
-    let cert = certainty_of(&result, "sort_ascending");
-    assert_eq!(
-        cert,
-        Some(Certainty::Proven),
-        "sort_by should produce Proven certainty (CostLog expresses n log n), got {:?}",
-        cert
+    let class = complexity_class_of(&result, "sort_ascending");
+    assert!(
+        class.is_some(),
+        "sort_ascending should have a complexity class"
     );
 }
 
@@ -1253,7 +1210,7 @@ fn complexity_class_max_keeps_log_terms() {
     );
 }
 
-/// Structural classification: O(1) functions produce CostConst.
+/// Structural classification: O(1) functions produce constant class.
 #[test]
 #[ignore] // complexity analysis disabled for memory — re-enable with CX track
 fn structural_classify_constant_is_cost_const() {
@@ -1262,10 +1219,10 @@ fn add(a: Int, b: Int) -> Int { a + b }
 "#;
     let files: Vec<(&str, &str)> = vec![("sconst.dag", source)];
     let result = compile_multi(&files);
-    let class = structural_class_of(&result, "add");
+    let class = complexity_class_of(&result, "add");
     assert!(
-        class.as_ref().is_some_and(|c| is_constant_class(c)),
-        "add should structurally classify as CostConst, got {:?}",
+        class.as_ref().is_some_and(|c| is_constant_class_str(c)),
+        "add should classify as O(1), got {:?}",
         class
     );
 }
@@ -1315,7 +1272,7 @@ fn f4(a: List<Int>, b: List<Int>) -> Int {
 "#;
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
-    let summaries = &result.complexity.function_summaries;
+    let summaries = &result.complexity.function_classes;
     let keys: Vec<_> = summaries.keys().collect();
     for func in &["f1", "f2", "f3", "f4"] {
         let found = summaries.contains_key(*func) || summaries.keys().any(|k| k.ends_with(func));
@@ -1328,7 +1285,7 @@ fn f4(a: List<Int>, b: List<Int>) -> Int {
     // Verify every expected function has a summary in the structural data
     assert!(
         !summaries.is_empty(),
-        "function_summaries should not be empty"
+        "function_classes should not be empty"
     );
 }
 
@@ -1342,7 +1299,7 @@ fn complexity_report_scales_to_large_programs() {
     }
     let result = compile_dag(&source);
     assert_eq!(
-        result.complexity.function_summaries.len(),
+        result.complexity.function_classes.len(),
         401,
         "structural data should contain all 401 function summaries"
     );
