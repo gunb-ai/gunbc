@@ -57,7 +57,7 @@ use crate::v2_std_core::MatchPattern::{Wildcard};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::ExprErrorKind::{SemanticExprError};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
-pub use crate::v2_compiler_infer_types::{rt_type, child_type_node, node_is_keyed_collection};
+pub use crate::v2_compiler_infer_types::{decl_resolved_type, child_type_node, node_is_keyed_collection};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for};
 use AliasKind::*;
 
@@ -326,7 +326,7 @@ Rc::new(NodeResolveResult {
 })
 } else {
                                     {
-                                        let child_rt = rt_type(child.clone());
+                                        let child_rt = decl_resolved_type(child.clone());
 let rt_result = resolve_node_bounded(child_rt.clone(), env.clone(), module_name.clone(), (depth.clone() + 1));
 let rt_resolved = rt_result.resolved.clone();
 let rt_diags = rt_result.diagnostics.clone();
@@ -406,7 +406,7 @@ Rc::new(NodeResolveResult {
 })
 } else {
                                             {
-                                                let field_rt = rt_type(field_child.clone());
+                                                let field_rt = decl_resolved_type(field_child.clone());
 let is_self_ref = ((field_rt.name.clone().as_str() == n.name.clone().as_str()) && ((field_rt.children.clone().len() as i64) > 0));
 let rt_result = if is_self_ref.clone() {
                                                     Rc::new(NodeResolveResult {

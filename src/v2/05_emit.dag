@@ -59,7 +59,7 @@ import v2.std.core {
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding, RecursiveVariantFieldWitness }
-import v2.compiler.infer_types { rt_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
+import v2.compiler.infer_types { decl_resolved_type, emit_guarded_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
 import std.types { is_container_type, container_to_algebra_name }
 import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
@@ -169,7 +169,7 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
             module_name: tm.module.name,
             service_name: item.name,
             operation_name: c.name,
-            inferred: rt_type(n: c),
+            inferred: decl_resolved_type(n: c),
             params: c.params,
             mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: p.name)),
             source_index: tm.type_env.source_index
@@ -334,7 +334,7 @@ fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
       let has_body = (ch |> count) > 1
       if has_body == false {
         let value = let_value(texpr: texpr)
-        extend_scope(scope: scope, name: let_binding_name_at(texpr: texpr, source_index: scope.type_env.source_index), resolved: rt_type(n: value))
+        extend_scope(scope: scope, name: let_binding_name_at(texpr: texpr, source_index: scope.type_env.source_index), resolved: emit_guarded_type(n: value))
       } else {
         scope
       }
@@ -974,11 +974,11 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     let is_pair = n.children |> count == 2 && (match n.children |> first { Some { value: c0 } => c0.name == "first"  None => false }) && (match n.children |> skip(1) |> first { Some { value: c1 } => c1.name == "second"  None => false })
     if is_pair {
       let first_child = match n.children |> first {
-        Some { value: c } => if c.inferred != none { render_node_type(n: rt_type(n: c), target: target, shared_types: shared_types) } else { render_node_type(n: c, target: target, shared_types: shared_types) }
+        Some { value: c } => if c.inferred != none { render_node_type(n: decl_resolved_type(n: c), target: target, shared_types: shared_types) } else { render_node_type(n: c, target: target, shared_types: shared_types) }
         None => "_"
       }
       let second_child = match n.children |> skip(1) |> first {
-        Some { value: c } => if c.inferred != none { render_node_type(n: rt_type(n: c), target: target, shared_types: shared_types) } else { render_node_type(n: c, target: target, shared_types: shared_types) }
+        Some { value: c } => if c.inferred != none { render_node_type(n: decl_resolved_type(n: c), target: target, shared_types: shared_types) } else { render_node_type(n: c, target: target, shared_types: shared_types) }
         None => "_"
       }
       let tuple_str = render_tuple_parts(parts: [first_child, second_child], target: target)
@@ -1003,7 +1003,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     }
     // Anonymous product
     let parts = n.children |> map(child =>
-      render_node_type(n: rt_type(n: child), target: target, shared_types: shared_types)
+      render_node_type(n: decl_resolved_type(n: child), target: target, shared_types: shared_types)
     )
     let anon_str = render_tuple_parts(parts: parts, target: target)
     return anon_str
@@ -1258,11 +1258,11 @@ fn is_bare_leaf_item(item: Node) -> Bool {
 }
 
 fn is_type_alias_item(item: Node) -> Bool {
-  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: rt_type(n: item))
+  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: decl_resolved_type(n: item))
 }
 
 fn is_type_decl_item(item: Node) -> Bool {
-  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: rt_type(n: item)))
+  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: decl_resolved_type(n: item)))
   || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0)
 }
 
@@ -1713,7 +1713,7 @@ fn emit_typed_index_shared(base: Node, index: Node, target: RenderTarget, recurs
   let spec = language_spec(target: target)
   let base_str = recurse(base)
   let index_str = recurse(index)
-  let base_node = normalize_access_type_node(n: rt_type(n: base))
+  let base_node = normalize_access_type_node(n: emit_guarded_type(n: base))
   let is_map = node_is_keyed_collection(n: base_node)
   if is_string_like(target: target, name: base_node.name) {
     apply_type_template2(template: spec.indexing.string_index, arg0: base_str, arg1: index_str)
@@ -1730,7 +1730,7 @@ fn emit_typed_slice_shared(base: Node, start: Node, end: Node, target: RenderTar
   let base_str = recurse(base)
   let start_str = recurse(start)
   let end_str = recurse(end)
-  let base_node = normalize_access_type_node(n: rt_type(n: base))
+  let base_node = normalize_access_type_node(n: emit_guarded_type(n: base))
   if is_string_like(target: target, name: base_node.name) {
     match spec.indexing.string_slice {
       Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
