@@ -712,8 +712,7 @@ let n_is_type_var = if (n.inferred.clone() != None) {
 } else {
                                                 false
 };
-let n_is_special = ((n.name.clone().as_str() == "Dynamic".to_string().as_str()) || (n.name.clone().as_str() == "Error".to_string().as_str()));
-if ((((is_kernel_type(n.name.clone()) || n_is_type_var) || n_is_error) || n_is_callable) || n_is_special) {
+if (((is_kernel_type(n.name.clone()) || n_is_type_var) || n_is_error) || n_is_callable) {
                                                 Rc::new(NodeResolveResult {
     resolved: n.clone(),
     diagnostics: Rc::new(vec![]),

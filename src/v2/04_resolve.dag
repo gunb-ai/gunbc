@@ -451,8 +451,9 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
           let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
-          let n_is_special = n.name == "Dynamic" || n.name == "Error"
-          if is_kernel_type(name: n.name) || n_is_type_var || n_is_error || n_is_callable || n_is_special {
+          // Arrow nodes (callable types) handled by has_structure above.
+          // Dynamic/Error sentinel names dissolved — no .dag source declares them.
+          if is_kernel_type(name: n.name) || n_is_type_var || n_is_error || n_is_callable {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {

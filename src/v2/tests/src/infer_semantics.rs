@@ -138,27 +138,23 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
 }
 
 #[test]
-fn pattern_lookup_reports_dynamic_scrutinee_explicitly() {
+fn pattern_lookup_reports_error_scrutinee_structurally() {
+    // Error types carry CompilerError in inferred — pattern_subject_from_node
+    // detects this structurally and returns PatternLookupBlocked.
+    use v2_compiler::v2_std_core::error_type;
     let subject =
-        v2_compiler_infer_patterns::pattern_subject_from_node(leaf_node("Dynamic".to_string()));
+        v2_compiler_infer_patterns::pattern_subject_from_node(error_type());
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
         "test".to_string(),
     );
 
+    // PatternLookupBlocked produces LookupFailed with 0 diagnostics (silent failure)
     assert!(matches!(
         lookup.status.as_ref(),
         NodeLookupStatus::LookupFailed
     ));
-    assert_eq!(lookup.diagnostics.len(), 1);
-    let diag_msg =
-        v2_compiler::v2_std_core::diagnostic_to_message(lookup.diagnostics[0].diagnostic.clone());
-    assert!(
-        diag_msg.contains("variant") && diag_msg.contains("not found"),
-        "expected targeted VariantNotFound diagnostic, got {:?}",
-        diag_msg
-    );
 }
 
 #[test]
