@@ -366,7 +366,15 @@ Make emission fully data-driven. Adding a backend = adding data.
 - [x] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend rendering is inherent language differences (HTTP clients, shell runners, file I/O) — addressed by the 3→1 homomorphism.
 - [ ] LanguageSpec completion — all target-language facts data-driven (see LS lane below)
 - [x] TypeRendering dissolved — `render_node_type` consumes coercion data directly (PR #331)
-- [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
+- [~] 3 backends → 1 parameterized homomorphism. Phase 1-3 landed:
+  shared expr wrappers (`emit_expr_var_shared`, `emit_expr_field_access_shared`,
+  `extract_string_interp_parts`), shared typed handlers (`emit_typed_cast_shared`,
+  `emit_typed_index_shared`, `emit_typed_slice_shared`), ExprData accessors,
+  dead code deletion. -206 .dag lines, -481 stage0 lines. Remaining phases
+  (TCO, method dispatch, item dispatch) blocked on Go/Python depth/indent
+  asymmetry: Go renders at `depth: 0` + prefix, Python threads `depth` through.
+  Unblocking requires aligning indentation strategies or adding `DepthMode`
+  to shared layer.
 
 ### Coercion infrastructure (reference)
 
