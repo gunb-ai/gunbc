@@ -51,7 +51,7 @@ pub use crate::v2_std_core::{Node, ErrorNode, make_param_node, param_node_name, 
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Cardinality::{Required};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, rt_type};
+pub use crate::v2_compiler_infer_types::{rt_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo};
@@ -118,7 +118,7 @@ if has_structure {
 if is_product {
                         if (rt.name.clone().as_str() == "".to_string().as_str()) {
                             Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
-                                let child_type = child_inferred_or_name(child.clone());
+                                let child_type = rt_type(child.clone());
 make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone())
 }); } __result })
 } else {

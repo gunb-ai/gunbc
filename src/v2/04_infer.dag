@@ -75,7 +75,6 @@ import v2.std.core {
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
-  child_inferred_or_name,
   nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved,
   resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
   map_node, bare_map_node,

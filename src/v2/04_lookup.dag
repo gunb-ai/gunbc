@@ -29,7 +29,7 @@ import std.algebra {
   kernel_algebra_profile, algebra_templates_for_profile
 }
 import v2.compiler.infer_types {
-  child_inferred_or_name,
+  rt_type,
   nominal_type_ref,
   normalize_access_type_node, node_is_keyed_collection,
   method_receiver_element_node,
@@ -106,7 +106,7 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
       if is_product {
         match n.children |> filter(c => c.name == field_name) |> first {
           Some { value: field_child } =>
-            Some { value: child_inferred_or_name(ch: field_child) }
+            Some { value: rt_type(n: field_child) }
           None => none
         }
       } else {
@@ -129,7 +129,7 @@ fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) 
   } else { none }
   match first_field {
     Some { value: field_child } =>
-      Some { value: child_inferred_or_name(ch: field_child) }
+      Some { value: rt_type(n: field_child) }
     None => none
   }
 }

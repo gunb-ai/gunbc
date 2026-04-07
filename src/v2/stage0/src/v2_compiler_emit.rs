@@ -1016,11 +1016,7 @@ let conj_named_str = if shared.clone() {
 return conj_named_str
 }
 }
-let parts = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(if (child.inferred.clone() != None) {
-                        render_node_type(rt_type(child.clone()), target.clone(), shared_types.clone())
-} else {
-                        "__EMIT_BUG_ANONYMOUS_FIELD__".to_string()
-}); } __result });
+let parts = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(render_node_type(rt_type(child.clone()), target.clone(), shared_types.clone())); } __result });
 let anon_str = render_tuple_parts(parts, target.clone());
 return anon_str
 }

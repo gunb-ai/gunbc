@@ -56,11 +56,6 @@ fn type_variable_node(id: String) -> Node {
 // Node constructors
 // =========================================================================
 
-fn child_inferred_or_name(ch: Node) -> Node {
-  if ch.inferred == none { nominal_type_ref(name: ch.name) }
-  else { rt_type(n: ch) }
-}
-
 // Extract the type from a child node. Handles both field-style encoding
 // (inferred set → extract via rt_type) and bare encoding from parser
 // (inferred none → child IS the type). This is the normalization bridge;

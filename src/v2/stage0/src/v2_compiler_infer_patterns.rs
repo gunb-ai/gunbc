@@ -56,7 +56,7 @@ use crate::v2_std_core::Connective::{Disj, NoConnective};
 use crate::v2_std_core::CompilerDiagnostic::{VariantNotFound, FieldNotFound, NonExhaustiveMatch};
 use crate::v2_std_core::MatchPattern::{LitPattern};
 use crate::v2_std_core::LiteralValue::{LitBool};
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, extract_optional_inner_node, emit_map_has};
+pub use crate::v2_compiler_infer_types::{rt_type, extract_optional_inner_node, emit_map_has};
 pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type};
 use NodeLookupStatus::*;
 use PatternSubject::*;
@@ -259,7 +259,7 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, 
 }), module_name)])),
     PatternSubject::PatternResolved { node: variant_node, .. } => match Rc::new({ let mut __result = Vec::new(); for c in variant_node.children.clone().iter().cloned() { if (c.name.clone().as_str() == field_name.clone().as_str()) { __result.push(c); } } __result }).first().cloned() {
     Some(field_child) => {
-        let resolved = child_inferred_or_name(field_child.clone());
+        let resolved = rt_type(field_child.clone());
 node_lookup_resolved(resolved)
 },
     None => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {

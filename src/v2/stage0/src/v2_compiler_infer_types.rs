@@ -91,14 +91,6 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 })
 }
 
-pub fn child_inferred_or_name(ch: Rc<Node>) -> Rc<Node> {
-    if (ch.inferred.clone() == None) {
-        nominal_type_ref(ch.name.clone())
-} else {
-        rt_type(ch.clone())
-}
-}
-
 pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
     if (ch.inferred.clone() != None) {
         rt_type(ch.clone())

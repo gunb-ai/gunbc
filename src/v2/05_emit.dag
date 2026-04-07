@@ -1003,9 +1003,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     }
     // Anonymous product
     let parts = n.children |> map(child =>
-      if child.inferred != none {
-        render_node_type(n: rt_type(n: child), target: target, shared_types: shared_types)
-      } else { "__EMIT_BUG_ANONYMOUS_FIELD__" }
+      render_node_type(n: rt_type(n: child), target: target, shared_types: shared_types)
     )
     let anon_str = render_tuple_parts(parts: parts, target: target)
     return anon_str

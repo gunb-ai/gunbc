@@ -25,7 +25,7 @@ import v2.std.core {
   none_type, error_type
 }
 import v2.compiler.infer_types {
-  child_inferred_or_name,
+  rt_type,
   extract_optional_inner_node,
   emit_map_has
 }
@@ -167,7 +167,7 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
     PatternResolved { node: variant_node } =>
       match variant_node.children |> filter(c => c.name == field_name) |> first {
         Some { value: field_child } =>
-          let resolved = child_inferred_or_name(ch: field_child)
+          let resolved = rt_type(n: field_child)
           node_lookup_resolved(node: resolved)
         None => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: variant_node.name, span: variant_node.span }, module_name: module_name)])
       }
