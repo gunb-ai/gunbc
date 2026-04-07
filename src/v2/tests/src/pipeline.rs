@@ -2219,6 +2219,38 @@ fn cx_forever_bound_classifies_as_constant() {
 }
 
 // =========================================================================
+// CX: Asymptotic normalization regression tests
+//
+// Verify that the cost algebra produces clean asymptotic classes.
+// Constants absorb into non-constant terms: O(1 + n) = O(n).
+// =========================================================================
+
+#[test]
+fn cx_constant_absorption_in_linear_function() {
+    // A function with constant work + a fold over a list should be O(|items|),
+    // not O(1 + |items|) or O(1 + 1 + |items| + 1).
+    let source = "module cx_absorb\n\nfn sum_items(items: List<Int>) -> Int {\n  let start = 0\n  items |> fold(init: start, f: (acc, x) => acc + x)\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let class = result.complexity.function_classes.get("sum_items")
+        .expect("sum_items should have a complexity class");
+    assert_eq!(class.as_str(), "O(|items|)",
+        "constant + linear should normalize to O(|items|), got {}", class);
+}
+
+#[test]
+fn cx_pure_constant_function_is_o1() {
+    // A function with only constant operations should be O(1).
+    let source = "module cx_const\n\nfn add_three(a: Int, b: Int, c: Int) -> Int {\n  a + b + c\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let class = result.complexity.function_classes.get("add_three")
+        .expect("add_three should have a complexity class");
+    assert_eq!(class.as_str(), "O(1)",
+        "pure constant operations should be O(1), got {}", class);
+}
+
+// =========================================================================
 // DAG compiler error detection tests
 //
 // These test the compiler's unique value: structural errors that only a
