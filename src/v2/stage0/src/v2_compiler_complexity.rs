@@ -245,9 +245,21 @@ pub enum ParserResultSource {
         callee: String,
     },
     ParserResultDirectState {
-        progress: ProgressKind,
+        input: ProgressKind,
     },
     ParserResultOpaque,
+}
+impl ParserResultSource {
+    pub fn input(&self) -> ProgressKind {
+        match self {
+            ParserResultSource::ParserResultAdvance { input: __val, .. } => __val.clone(),
+            ParserResultSource::ParserResultExpect { input: __val, .. } => __val.clone(),
+            ParserResultSource::ParserResultEat { input: __val, .. } => __val.clone(),
+            ParserResultSource::ParserResultCall { input: __val, .. } => __val.clone(),
+            ParserResultSource::ParserResultDirectState { input: __val, .. } => __val.clone(),
+            ParserResultSource::ParserResultOpaque => panic!("no input on unit variant"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -299,6 +311,10 @@ pub fn method_size_effect(method_semantics: Option<Rc<MethodSemantics>>) -> Opti
     Some(MethodSemantics::AlgebraMethodSemantics { size_effect: se, .. }) => se.clone(),
     _ => None,
 }
+}
+
+pub fn iteration_element_name(method_semantics: Option<Rc<MethodSemantics>>, lambda: Rc<Node>) -> Option<String> {
+    lambda_param_names(lambda).last().cloned()
 }
 
 pub fn progress_to_evidence(pk: ProgressKind) -> DescentEvidence {
@@ -514,7 +530,7 @@ pub fn parser_result_state_progress(source: Rc<ParserResultSource>, parser_alway
 } else {
         input.clone()
 },
-    ParserResultSource::ParserResultDirectState { progress: p, .. } => p.clone(),
+    ParserResultSource::ParserResultDirectState { input: p, .. } => p.clone(),
     ParserResultSource::ParserResultOpaque => ProgressKind::ProgressUnknown,
 }
 }
@@ -654,7 +670,7 @@ match (*parser_result_witness(expr.clone())).clone() {
 match progress.clone() {
     ProgressKind::ProgressUnknown => Rc::new(ParserResultSource::ParserResultOpaque),
     _ => Rc::new(ParserResultSource::ParserResultDirectState {
-    progress: progress.clone(),
+    input: progress.clone(),
 }),
 }
 },
@@ -1014,9 +1030,17 @@ Rc::new(CallGraph {
 
 pub fn same_progress_subgraph_has_cycle(members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ParserProgressEdge>>>) -> bool {
     {
-        let same_cross_edges = Rc::new({ let mut __result = Vec::new(); for edge in edges.iter().cloned() { if ((edge.progress.clone() == ProgressKind::ProgressSame) && (edge.caller.clone().as_str() != edge.callee.clone().as_str())) { __result.push(edge); } } __result });
+        let same_edges = Rc::new({ let mut __result = Vec::new(); for edge in edges.iter().cloned() { if (edge.progress.clone() == ProgressKind::ProgressSame) { __result.push(edge); } } __result });
+let has_self_cycle = { let mut __found = false; for edge in same_edges.clone().iter().cloned() { if (edge.caller.clone().as_str() == edge.callee.clone().as_str()) { __found = true; break; } } __found };
+if has_self_cycle {
+            true
+} else {
+            {
+                let same_cross_edges = Rc::new({ let mut __result = Vec::new(); for edge in same_edges.clone().iter().cloned() { if (edge.caller.clone().as_str() != edge.callee.clone().as_str()) { __result.push(edge); } } __result });
 let graph = build_call_graph_from_parser_edges(members.clone(), same_cross_edges);
 graph_has_multi_node_scc(members.clone(), graph)
+}
+}
 }
 }
 
@@ -1735,11 +1759,9 @@ let next_vars = if val_is_descent {
 } else {
                 vars.clone()
 };
-let val_inner_vars = collect_descent_vars(val.clone(), param_name.clone(), vars.clone(), check_child.clone(), check_list.clone());
-let combined_vars = v2_rt::rc_map_merge(next_vars, val_inner_vars);
 match let_body(body.clone()) {
-    Some(b) => collect_descent_vars(b.clone(), param_name.clone(), combined_vars, check_child.clone(), check_list.clone()),
-    None => combined_vars,
+    Some(b) => collect_descent_vars(b.clone(), param_name.clone(), next_vars, check_child.clone(), check_list.clone()),
+    None => next_vars,
 }
 },
     ExprData::ExprMatch => {
@@ -1912,7 +1934,7 @@ if (is_iter && is_struct) {
 let args_ok = { let mut __all = true; for arg_node in method_arg_nodes(body.clone()).iter().cloned() { if !({
                         let arg_val = arg_value(arg_node.clone());
 match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match lambda_param_names(arg_val.clone()).last().cloned() {
+    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone()) {
     Some(iter_name) => {
                             let ext_vars = v2_rt::rc_map_insert(vars.clone(), iter_name.clone(), true);
 all_self_calls_descend_inc(lambda_body(arg_val.clone()), func_name.clone(), param_name.clone(), ext_vars.clone(), check_child.clone(), check_list.clone())
@@ -2338,7 +2360,7 @@ if (is_iter && is_struct) {
 let args_ev = method_arg_nodes(body.clone()).iter().cloned().fold(None, |acc: _, arg_node: Rc<Node>| {
                         let arg_val = arg_value(arg_node.clone());
 let ev = match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match lambda_param_names(arg_val.clone()).last().cloned() {
+    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone()) {
     Some(iter_name) => {
                             let ext_vars = v2_rt::rc_map_insert(vars.clone(), iter_name.clone(), true);
 collect_evidence_incremental(lambda_body(arg_val.clone()), func_name.clone(), param_name.clone(), ext_vars.clone(), check_child.clone(), check_list.clone(), branching_only.clone())
@@ -2557,11 +2579,14 @@ if (path_calls.clone() == 0) {
             {
                 let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone(), parser_always_advancing);
 let proof_safe_for_branching = match proof.clone() {
-    Some(p) => { let mut __all = true; for dim in p.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
+    Some(p) => match p.dimensions.clone().first().cloned() {
+    Some(dim) => match (*dim.clone()).clone() {
     RankingDimension::TreeSize { .. } => true,
     RankingDimension::ListLength { .. } => true,
     _ => false,
-}) { __all = false; break; } } __all },
+},
+    None => false,
+},
     None => false,
 };
 let branching_proof = if ((path_calls.clone() > 1) && !proof_safe_for_branching.clone()) {
@@ -2570,11 +2595,14 @@ let branching_proof = if ((path_calls.clone() > 1) && !proof_safe_for_branching.
                     None
 };
 let branching_proof_safe = match branching_proof.clone() {
-    Some(bp) => { let mut __all = true; for dim in bp.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
+    Some(bp) => match bp.dimensions.clone().first().cloned() {
+    Some(dim) => match (*dim.clone()).clone() {
     RankingDimension::TreeSize { .. } => true,
     RankingDimension::ListLength { .. } => true,
     _ => false,
-}) { __all = false; break; } } __all },
+},
+    None => false,
+},
     None => false,
 };
 match proof.clone() {
@@ -2892,7 +2920,7 @@ if (is_iter && is_struct) {
 let args_edges = Rc::new({ let mut __result = Vec::new(); for arg_node in method_arg_nodes(body.clone()).iter().cloned() { __result.extend((*{
                         let arg_val = arg_value(arg_node.clone());
 match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match lambda_param_names(arg_val.clone()).last().cloned() {
+    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone()) {
     Some(iter_name) => {
                             let ext_vars = v2_rt::rc_map_insert(descent_vars.clone(), iter_name.clone(), true);
 collect_scc_child_edges(lambda_body(arg_val.clone()), caller.clone(), param_name.clone(), ext_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone())

@@ -1373,7 +1373,20 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
     )
     if effective_bindings |> count == 0 {
-      concat(qualified, " { .. }")
+      // All bindings are wildcards — check fielded_variants (same as count == 0 branch).
+      let fielded_key2 = match resolved_parent {
+        Some { value: parent } => concat(parent, "::", name)
+        None => name
+      }
+      let is_fielded2 = match map_get(emit_info.fielded_variants, fielded_key2) {
+        Some { value: true } => true
+        _ =>
+          match map_get(emit_info.fielded_variants, qualified) {
+            Some { value: true } => true
+            _ => false
+          }
+      }
+      if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
         let fb_name = field_binding_name(n: fb)
@@ -1549,7 +1562,20 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
     )
     if effective_bindings |> count == 0 {
-      concat(qualified, " { .. }")
+      // All bindings are wildcards — check fielded_variants (same as count == 0 branch).
+      let fielded_key2 = match resolved_parent {
+        Some { value: parent } => concat(parent, "::", name)
+        None => name
+      }
+      let is_fielded2 = match map_get(emit_info.fielded_variants, fielded_key2) {
+        Some { value: true } => true
+        _ =>
+          match map_get(emit_info.fielded_variants, qualified) {
+            Some { value: true } => true
+            _ => false
+          }
+      }
+      if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
         let fb_name = field_binding_name(n: fb)

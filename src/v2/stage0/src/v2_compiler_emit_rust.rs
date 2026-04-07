@@ -1249,7 +1249,24 @@ if is_fielded {
     _ => true,
 } { __result.push(fb); } } __result });
 if ((effective_bindings.clone().len() as i64) == 0) {
-                        v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                        {
+                            let fielded_key2 = match resolved_parent.clone() {
+    Some(parent) => v2_rt::concat(v2_rt::concat(parent.clone(), "::".to_string()), name.clone()),
+    None => name.clone(),
+};
+let is_fielded2 = match v2_rt::map_get(&emit_info.fielded_variants.clone(), fielded_key2) {
+    Some(true) => true,
+    _ => match v2_rt::map_get(&emit_info.fielded_variants.clone(), qualified.clone()) {
+    Some(true) => true,
+    _ => false,
+},
+};
+if is_fielded2 {
+                                v2_rt::concat(qualified.clone(), " { .. }".to_string())
+} else {
+                                qualified.clone()
+}
+}
 } else {
                         {
                             let binding_strs = Rc::new({ let mut __result = Vec::new(); for fb in effective_bindings.clone().iter().cloned() { __result.push({
@@ -1446,7 +1463,24 @@ if is_fielded {
     _ => true,
 } { __result.push(fb); } } __result });
 if ((effective_bindings.clone().len() as i64) == 0) {
-                        v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                        {
+                            let fielded_key2 = match resolved_parent.clone() {
+    Some(parent) => v2_rt::concat(v2_rt::concat(parent.clone(), "::".to_string()), name.clone()),
+    None => name.clone(),
+};
+let is_fielded2 = match v2_rt::map_get(&emit_info.fielded_variants.clone(), fielded_key2) {
+    Some(true) => true,
+    _ => match v2_rt::map_get(&emit_info.fielded_variants.clone(), qualified.clone()) {
+    Some(true) => true,
+    _ => false,
+},
+};
+if is_fielded2 {
+                                v2_rt::concat(qualified.clone(), " { .. }".to_string())
+} else {
+                                qualified.clone()
+}
+}
 } else {
                         {
                             let binding_strs = Rc::new({ let mut __result = Vec::new(); for fb in effective_bindings.clone().iter().cloned() { __result.push({

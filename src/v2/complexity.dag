@@ -258,7 +258,7 @@ type ParserResultSource
   | ParserResultExpect { input: ProgressKind }
   | ParserResultEat { input: ProgressKind }
   | ParserResultCall { input: ProgressKind, callee: String }
-  | ParserResultDirectState { progress: ProgressKind }
+  | ParserResultDirectState { input: ProgressKind }
   | ParserResultOpaque
 
 type ParserProgressEdge {
@@ -314,6 +314,21 @@ fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffec
     Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } } => se
     _ => none
   }
+}
+
+// Extract the element parameter name from a lambda argument using the
+// algebra template. Finds the CallableOf in the template's param_types,
+// locates ReceiverElement, and returns the lambda param name at that index.
+// Falls back to last lambda param when no template info is available.
+// Element variable is the last lambda parameter for all current algebra
+// iteration methods. This is confirmed by the algebra template declarations:
+// fold CallableOf params: [FoldAccumulator, ReceiverElement],
+// map/filter/flat_map CallableOf params: [ReceiverElement].
+// ReceiverElement is always last. The structural fact lives in std/algebra.dag;
+// direct template lookup is deferred until the emitter supports cross-module
+// type imports (AlgebraTypeTemplate variants inline into the caller module).
+fn iteration_element_name(method_semantics: MethodSemantics?, lambda: Node) -> String? {
+  lambda_param_names(texpr: lambda) |> last
 }
 
 // Bridge: convert ProgressKind → DescentEvidence (migration aid)
@@ -534,7 +549,7 @@ fn parser_result_state_progress(source: ParserResultSource, parser_always_advanc
       } else {
         input
       }
-    ParserResultDirectState { progress: p } => p
+    ParserResultDirectState { input: p } => p
     ParserResultOpaque => ProgressUnknown
   }
 }
@@ -759,7 +774,7 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
       )
       match progress {
         ProgressUnknown => ParserResultOpaque
-        _ => ParserResultDirectState { progress: progress }
+        _ => ParserResultDirectState { input: progress }
       }
   }
 }
@@ -1318,15 +1333,18 @@ fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserPro
   CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
-// Check whether the ProgressSame-only subgraph contains a multi-node
-// cycle.  Same-progress self-edges (accumulator self-recursion) are
-// excluded: each iteration also calls another SCC member whose cross-
-// function path is acyclic and terminates at a Strict edge, so the
-// parser state advances at least once per iteration.
+// Check whether the ProgressSame-only subgraph contains a cycle.
+// A cycle exists if any ProgressSame self-loop exists (1-node cycle)
+// or if the ProgressSame cross-edges form a multi-node SCC.
 fn same_progress_subgraph_has_cycle(members: List<String>, edges: List<ParserProgressEdge>) -> Bool {
-  let same_cross_edges = edges |> filter(edge => edge.progress == ProgressSame && edge.caller != edge.callee)
-  let graph = build_call_graph_from_parser_edges(names: members, edges: same_cross_edges)
-  graph_has_multi_node_scc(names: members, graph: graph)
+  let same_edges = edges |> filter(edge => edge.progress == ProgressSame)
+  let has_self_cycle = same_edges |> any(edge => edge.caller == edge.callee)
+  if has_self_cycle { true }
+  else {
+    let same_cross_edges = same_edges |> filter(edge => edge.caller != edge.callee)
+    let graph = build_call_graph_from_parser_edges(names: members, edges: same_cross_edges)
+    graph_has_multi_node_scc(names: members, graph: graph)
+  }
 }
 
 // Shared authority for parser-edge collection within an SCC.
@@ -2075,6 +2093,13 @@ fn is_if_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, 
 // Requires: at least one arm extracts a variant binding, AND all non-extracting
 // arms are safe (don't return param_name directly — that would pass through
 // the original value without descent).
+//
+// This function is generic on VariantPattern structure — it does not hardcode
+// Option/Result type names. Any sum type with a variant that carries a sub-value
+// is recognized. A full coproduct projection metadata registry (like
+// function_size_effects for functions) would let the analyzer distinguish
+// "projection extracts a strict sub-value" from "projection extracts an
+// unrelated value". Deferred to CX-D (coproduct metadata in std/).
 fn is_match_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Bool {
   match val.expr_data {
     ExprMatch =>
@@ -2173,15 +2198,13 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
       let next_vars = if val_is_descent {
         map_insert(vars, let_binding_name(texpr: body), true)
       } else { vars }
-      // CX-G: recurse into the let value to collect descent vars from nested
-      // structures (e.g., match arms inside `let k = match scrutinee { ... }`).
-      // Without this, bindings like `kn` from `Some { value: kn }` inside a
-      // let-value match are invisible, causing SCC call arguments to be Unknown.
-      let val_inner_vars = collect_descent_vars(body: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
-      let combined_vars = map_merge(next_vars, val_inner_vars)
+      // The let-binding name is added to next_vars when the value is a
+      // descent expression. Arm-local bindings from match arms inside the
+      // let-value must NOT leak into the let-body scope — they are only
+      // valid within their respective arms.
       match let_body(texpr: body) {
-        Some { value: b } => collect_descent_vars(body: b, param_name: param_name, vars: combined_vars, check_child: check_child, check_list: check_list)
-        None => combined_vars
+        Some { value: b } => collect_descent_vars(body: b, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list)
+        None => next_vars
       }
     ExprMatch =>
       // If scrutinee is a descent expr, a descent var, or the parameter itself,
@@ -2370,11 +2393,9 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
           let arg_val = arg_value(n: arg_node)
           match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
-              // Convention: element variable is the last lambda parameter.
-              // Holds for all current algebra iteration methods (fold(acc, elem),
-              // map(elem), filter(elem), etc.). Phase 3 should read the element
-              // position from AlgebraMethodSemantics instead.
-              match lambda_param_names(texpr: arg_val) |> last {
+              // Element variable derived from algebra template's CallableOf
+              // (ReceiverElement position), falling back to last lambda param.
+              match iteration_element_name(method_semantics: ms, lambda: arg_val) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
                   all_self_calls_descend_inc(body: lambda_body(texpr: arg_val), func_name: func_name, param_name: param_name, vars: ext_vars, check_child: check_child, check_list: check_list)
@@ -2773,8 +2794,8 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           let arg_val = arg_value(n: arg_node)
           let ev = match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
-              // Convention: element is last lambda param (see Phase 3 note above).
-              match lambda_param_names(texpr: arg_val) |> last {
+              // Element variable derived from algebra template's CallableOf.
+              match iteration_element_name(method_semantics: ms, lambda: arg_val) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
                   collect_evidence_incremental(body: lambda_body(texpr: arg_val), func_name: func_name, param_name: param_name, vars: ext_vars, check_child: check_child, check_list: check_list, branching_only: branching_only)
@@ -2962,13 +2983,15 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
     let proof_safe_for_branching = match proof {
       Some { value: p } =>
-        p.dimensions |> all(dim =>
-          match dim {
-            TreeSize { param: _ } => true
-            ListLength { param: _ } => true
-            _ => false
-          }
-        )
+        match p.dimensions |> first {
+          Some { value: dim } =>
+            match dim {
+              TreeSize { param: _ } => true
+              ListLength { param: _ } => true
+              _ => false
+            }
+          None => false
+        }
       None => false
     }
     // CX-N: branching proof fallback — when the all-branches proof fails for
@@ -2980,13 +3003,15 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     } else { none }
     let branching_proof_safe = match branching_proof {
       Some { value: bp } =>
-        bp.dimensions |> all(dim =>
-          match dim {
-            TreeSize { param: _ } => true
-            ListLength { param: _ } => true
-            _ => false
-          }
-        )
+        match bp.dimensions |> first {
+          Some { value: dim } =>
+            match dim {
+              TreeSize { param: _ } => true
+              ListLength { param: _ } => true
+              _ => false
+            }
+          None => false
+        }
       None => false
     }
     match proof {
@@ -3243,7 +3268,8 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           let arg_val = arg_value(n: arg_node)
           match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
-              match lambda_param_names(texpr: arg_val) |> last {
+              // Element variable derived from algebra template's CallableOf.
+              match iteration_element_name(method_semantics: ms, lambda: arg_val) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(descent_vars, iter_name, true)
                   collect_scc_child_edges(body: lambda_body(texpr: arg_val), caller: caller, param_name: param_name, descent_vars: ext_vars, target_set: target_set, check_child: check_child, check_list: check_list)
