@@ -931,6 +931,47 @@ fn rt_functions_map_consistent_with_registry() {
 }
 
 #[test]
+fn rust_wraps_result_consistent_with_registry() {
+    // Verify rust_wraps_result contains all RuntimeFunction entries where wraps_result == true.
+    let source = read_v2_file("dsl/extdeps/languages/rust/emit.dag");
+
+    // Extract registry entries with wraps_result: true
+    let registry_wraps: Vec<&str> = source
+        .lines()
+        .filter(|l| l.contains("name:") && l.contains("wraps_result: true"))
+        .filter_map(|l| {
+            let start = l.find("name: \"")?;
+            let rest = &l[start + 7..];
+            let end = rest.find('"')?;
+            Some(&rest[..end])
+        })
+        .collect();
+
+    // Extract rust_wraps_result map entries
+    let wraps_section_start = source.find("data rust_wraps_result:").expect("rust_wraps_result must exist");
+    let wraps_section = &source[wraps_section_start..];
+    let wraps_end = wraps_section.find('}').unwrap_or(wraps_section.len());
+    let wraps_body = &wraps_section[..wraps_end];
+    let wraps_names: Vec<&str> = wraps_body
+        .match_indices("\": true")
+        .filter_map(|(pos, _)| {
+            let before = &wraps_body[..pos];
+            let quote_start = before.rfind('"')?;
+            Some(&wraps_body[quote_start + 1..pos])
+        })
+        .collect();
+
+    assert!(!registry_wraps.is_empty(), "registry should have wraps_result entries");
+    assert!(!wraps_names.is_empty(), "rust_wraps_result should have entries");
+
+    // Every registry wraps_result: true must appear in rust_wraps_result
+    for name in &registry_wraps {
+        assert!(wraps_names.contains(name),
+            "RuntimeFunction '{}' has wraps_result: true but missing from rust_wraps_result", name);
+    }
+}
+
+#[test]
 fn is_copy_checkpoint_parity() {
     // Derive all assertions from rust_type_checkpoints — single authority.
     // Every checkpoint must return Some(is_copy), never None.

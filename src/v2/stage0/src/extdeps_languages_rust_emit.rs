@@ -120,21 +120,6 @@ pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     CACHED.with(|c| c.clone())
 }
 
-pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
-            let mut __m = HashMap::new();
-            __m.insert("split".to_string(), true);
-            __m.insert("enumerate".to_string(), true);
-            __m.insert("chars".to_string(), true);
-            __m.insert("skip".to_string(), true);
-            __m.insert("take".to_string(), true);
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 pub fn rust_reserved() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
@@ -305,8 +290,22 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.passes_by_ref.clone() { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
 }
 
-pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
-    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.wraps_result.clone() { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
+pub fn rust_wraps_result() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("map_keys".to_string(), true);
+            __m.insert("map_values".to_string(), true);
+            __m.insert("append".to_string(), true);
+            __m.insert("split".to_string(), true);
+            __m.insert("enumerate".to_string(), true);
+            __m.insert("chars".to_string(), true);
+            __m.insert("skip".to_string(), true);
+            __m.insert("take".to_string(), true);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
 }
 
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {

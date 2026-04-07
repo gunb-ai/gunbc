@@ -64,7 +64,7 @@ import v2.std.core {
 
 import v2.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
-  rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result,
+  rt_functions, rt_ref_map_functions, rust_wraps_result, rt_bridge_function_names, rust_container_templates,
   rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy,
   HigherOrderMethodSpec, rust_higher_order_methods
 }
@@ -1922,10 +1922,8 @@ fn rust_empty_map_value_type_str(map_type: Node, shared_types: Map<String, Bool>
 // for non-Copy types. lookup/map_get return the correct type directly.
 
 fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> Bool {
-  // Data-driven: runtime functions via rt_function_registry.wraps_result,
-  // method templates via rust_method_wraps_result map.
-  map_contains_key(rt_wraps_result(), function_name)
-    || map_contains_key(rust_method_wraps_result, function_name)
+  // Single authority: rust_wraps_result combines runtime functions and method templates.
+  map_contains_key(rust_wraps_result, function_name)
 }
 
 fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: InferredNode?) -> Bool {

@@ -60,9 +60,7 @@ data rust_method_templates: Map<String, String> = {
   "take": "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()"
 }
 
-data rust_method_wraps_result: Map<String, Bool> = {
-  "split": true, "enumerate": true, "chars": true, "skip": true, "take": true
-}
+// rust_method_wraps_result merged into rust_wraps_result (see below)
 
 // -- Reserved words ------------------------------------------------------
 // Ref: Rust Reference, Appendix A: Keywords
@@ -191,10 +189,17 @@ fn rt_ref_map_functions() -> Map<String, Bool> {
     |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
 }
 
-fn rt_wraps_result() -> Map<String, Bool> {
-  rt_function_registry
-    |> filter(f => f.wraps_result)
-    |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
+// -- Unified wrapping authority -------------------------------------------
+// All operations whose result needs Rc wrapping in Rust emission.
+// Combines runtime functions (from RuntimeFunction.wraps_result) and
+// method templates into one lookup. Hand-maintained mirror — content
+// must match RuntimeFunction.wraps_result entries plus method template
+// wrapping needs. When .dag gains computed data, derive from registry.
+data rust_wraps_result: Map<String, Bool> = {
+  // Runtime functions (mirror of RuntimeFunction.wraps_result == true)
+  "map_keys": true, "map_values": true, "append": true,
+  // Method templates that produce new collections
+  "split": true, "enumerate": true, "chars": true, "skip": true, "take": true
 }
 
 data rt_bridge_function_names: Map<String, String> = {
