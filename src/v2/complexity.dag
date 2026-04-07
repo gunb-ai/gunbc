@@ -3990,23 +3990,23 @@ fn scalar_output() -> Map<String, CostExpr> {
 // =========================================================================
 
 // Derive size preservation from algebra facts: a method preserves the receiver
-// size variable if its result is a same-shape collection (ShrinkEffect or
-// IdentityEffect), or if its cost_shape produces a collection.
+// size variable if its declared size_effect is ShrinkEffect or IdentityEffect.
+// These are exact structural witnesses from the algebra template.
 // ProjectionEffect (first/last) does NOT preserve collection size — it
 // projects a single element from the collection.
+// NOTE: produces_collection is NOT used here — "returns a collection" and
+// "preserves receiver size" are different facts (append returns a collection
+// but grows it). Only size_effect carries the size-relation contract.
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _, produces_collection: pc } =>
-        // ShrinkEffect and IdentityEffect return same-shape collections
-        let preserves_shape = match se {
+      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _, produces_collection: _ } =>
+        match se {
           Some { value: ShrinkEffect } => true
           Some { value: IdentityEffect } => true
           _ => false
         }
-        // produces_collection is derived from return_type at resolution time
-        preserves_shape || pc
       _ => false
     }
   }

@@ -31,7 +31,7 @@ import std.algebra {
 import v2.compiler.infer_types {
   child_inferred_or_name,
   nominal_type_ref,
-  normalize_access_type_node, node_is_keyed_collection,
+  normalize_access_type_node, node_is_collection, node_is_keyed_collection,
   method_receiver_element_node,
   rt_type, rt_node,
   emit_map_has,
@@ -309,13 +309,11 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> MethodF
           }
           match template_match {
             Some { value: t } =>
-              // Derive produces_collection from return_type — no duplicate authority.
-              let pc = match t.return_type {
-                ReceiverSelf => true
-                ReceiverCollectionOf { element: _ } => true
-                ListOf { element: _ } => true
-                _ => false
-              }
+              // Derive produces_collection from the RESOLVED result_type Node,
+              // not template syntax. node_is_collection checks structural
+              // properties (container name + children), so scalar ReceiverSelf
+              // methods like concat/empty correctly get false.
+              let pc = node_is_collection(n: mfr.result_type)
               Some { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Some { value: t }, produces_collection: pc } }
             None => base_result
           }

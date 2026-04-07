@@ -3728,13 +3728,10 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
         false
 } else {
         match (*method_semantics.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { size_effect: se, produces_collection: pc, .. } => {
-            let preserves_shape = match se.clone() {
+    MethodSemantics::AlgebraMethodSemantics { size_effect: se, .. } => match se.clone() {
     Some(CollectionSizeEffect::ShrinkEffect) => true,
     Some(CollectionSizeEffect::IdentityEffect) => true,
     _ => false,
-};
-(preserves_shape || pc.clone())
 },
     _ => false,
 }
