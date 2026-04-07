@@ -1283,6 +1283,13 @@ pub fn field_access_field_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineInd
     authored_name_at(source_index, texpr)
 }
 
+pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
+    match (*texpr.expr_data.clone()).clone() {
+    ExprData::ExprFieldAccess { summary: s, .. } => s.clone(),
+    _ => None,
+}
+}
+
 pub fn expr_call_func(texpr: Rc<Node>) -> String {
     texpr.name.clone()
 }
@@ -1305,6 +1312,13 @@ pub fn expr_method_name(texpr: Rc<Node>) -> String {
 
 pub fn expr_method_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     authored_name_at(source_index, texpr)
+}
+
+pub fn expr_method_call_semantics(texpr: Rc<Node>) -> Option<Rc<MethodSemantics>> {
+    match (*texpr.expr_data.clone()).clone() {
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => ms.clone(),
+    _ => None,
+}
 }
 
 pub fn lambda_body(texpr: Rc<Node>) -> Rc<Node> {

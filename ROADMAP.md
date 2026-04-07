@@ -87,7 +87,7 @@ Previously eliminated:
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (294 pass, 0 fail, 41 ignored) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (316 pass, 0 fail, 44 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | 37 (target: 0) |
@@ -116,7 +116,7 @@ Previously eliminated:
 - **Fixed-point:** `regen pass N == regen pass N+1`. Two-pass bootstrap
   required when the emitter changes its own output.
 - **External dependencies:** cargo, rustc (opaque transforms, not modeled).
-- **Hand-maintained files (9):** Copied back during regen, not overwritten.
+- **Hand-maintained files (2):** Copied back during regen, not overwritten.
   These are source, not derived. See Bootstrap Status for list.
 
 **Merge workflow problem:** Stage0 `.rs` files are derived, but git
@@ -269,14 +269,14 @@ correct-but-suboptimal code and blocks new backends.
 fuses Node → String in one pass, consuming coercion data directly.
 Clone semantics unified in SharingStrategy (CloneTemplates removed).
 TLC-1 complete: ExprVar → ExprCall normalization at inference time
-(PR #329). TLC-3 done: all three backends dispatch per collection type
-via `IndexingSemantics` templates. TLC-4 partial:
-`emit_let_binding_annotated` infrastructure exists but disabled for
-bootstrap convergence (.dag type inference produces `()` for empty
-collection element types). TLC-2 partial: `wraps_result` on
-`RuntimeFunction` registry but consumers still read parallel maps.
-Higher-order method templates (filter/any/all/flat_map) data-driven
-via `HigherOrderMethodSpec`.
+(PR #329). TLC-2 complete: `SimpleMethodSpec` co-locates template +
+wrapping flag, both maps derive from single authority. TLC-3 done: all
+three backends dispatch per collection type via `IndexingSemantics`
+templates. TLC-4 partial: `emit_let_binding_annotated` infrastructure
+exists but disabled for bootstrap convergence (.dag type inference
+produces `()` for empty collection element types). Higher-order method
+templates (filter/any/all/flat_map) data-driven via
+`HigherOrderMethodSpec`.
 
 One root cause, two symptoms:
 1. Facts that exist upstream are lost before emit — emission compensates
@@ -331,12 +331,14 @@ backends.
   ExprVar → ExprCall for zero-arg function references (PR #329). All three
   backends emit `name()` via existing ExprCall handling. `is_zero_arg_callable_ref`
   dissolved (L1 33→32). Imported zero-arg function refs untested.
-- [~] **TLC-2: Runtime bridge signature derivation.** Runtime helper
+- [x] **TLC-2: Runtime bridge signature derivation.** Runtime helper
   return types and wrapping conventions must derive from the same
   type/coercion authority as emission. `wraps_result` field added to
   `RuntimeFunction` registry (PR #331); `rt_wraps_result()` derives
-  from registry. Remaining: `rust_method_wraps_result` is a parallel
-  map for method templates — should unify into single spec authority.
+  from registry. `SimpleMethodSpec` type co-locates template + wrapping
+  flag for method templates (same pattern as `HigherOrderMethodSpec`).
+  Both `rust_method_templates()` and `rust_method_wraps_result()` now
+  derive from `rust_simple_method_specs` — single authority, no parallel maps.
 - [x] **TLC-3: Indexing / character access semantics.** `IndexingSemantics`
   in LanguageSpec — per-collection-type templates (list/map/string index/slice).
   All three backends dispatch per collection type via shared
@@ -361,10 +363,52 @@ Make emission fully data-driven. Adding a backend = adding data.
   with `method_name`, `inline_template`, `fn_ref_template`, `wraps_in_sharing`.
   Shared `emit_rust_higher_order_method` replaces 4 hardcoded emitters
   (filter/any/all/flat_map). Data-driven dispatch via method name lookup.
-- [~] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend sites are inherent rendering differences.
+- [x] Transport/config: `TransportKind` enum + `classify_transport()` centralize dispatch; `ServiceFieldSet` + `compute_service_fields()` centralize field queries. Remaining per-backend rendering is inherent language differences (HTTP clients, shell runners, file I/O) — addressed by the 3→1 homomorphism.
 - [ ] LanguageSpec completion — all target-language facts data-driven (see LS lane below)
 - [x] TypeRendering dissolved — `render_node_type` consumes coercion data directly (PR #331)
-- [ ] 3 backends → 1 parameterized homomorphism (~2,500 lines eliminated)
+- [~] 3 backends → 1 parameterized homomorphism (PR #338).
+  **Phase 1-3 complete** (-206 .dag lines, -481 stage0 lines):
+  shared expr wrappers (`emit_expr_var_shared`, `emit_expr_field_access_shared`,
+  `extract_string_interp_parts`), shared typed handlers (`emit_typed_cast_shared`,
+  `emit_typed_index_shared`, `emit_typed_slice_shared`), ExprData accessors
+  (`expr_field_access_summary`, `expr_method_call_semantics`), dead code
+  deletion (`emit_*_typed_bin_op/cast/index/slice`).
+  **Phases 4-6 deferred** — blocked on depth/indent asymmetry (see below).
+  **Review feedback** (recorded, not yet addressed):
+  (a) Unify `SimpleMethodSpec` + `HigherOrderMethodSpec` into shared
+  `MethodTemplateSpec` to reduce schema drift across method families.
+  (b) Method names could be a structural enum (M4 direction) rather than
+  strings for clearer algebraic dispatch across language extdeps.
+
+### Depth/indent asymmetry (cross-cutting blocker)
+
+Go renders sub-expressions at `depth: 0` and manually prepends
+`make_indent(level: depth)` at the wrapper level. Python threads
+`depth` through all recursive calls. This fundamental difference
+pervades every handler and prevents clean parameterization of:
+- TCO handlers (~10 functions per backend, ~130 lines potential)
+- Method call dispatch (~4 functions per backend, ~80 lines potential)
+- Block statement emitters (scope-threading + depth)
+- `emit_typed_let`, `emit_typed_for_each`
+
+**Resolution options:**
+1. **Align Go to Python's strategy.** Go's `wrap_result` callback in
+   `emit_shared_expr` already handles indentation for simple expressions.
+   If Go switched to `depth: depth` recursion and removed per-wrapper
+   `prefix` wrapping, the two backends would become structurally
+   identical. Risk: changes Go's emitted output formatting (whitespace
+   only, not semantics).
+2. **Add `DepthMode` to shared layer.** Shared handlers take a depth
+   resolver: `sub_depth: fn(Int) -> Int` where Go passes `d => 0` and
+   Python passes `d => d`. More complex but preserves current behavior.
+3. **Accept current state.** -206 lines is the practical limit without
+   resolving this asymmetry. The remaining ~210 lines of savings may
+   not justify the design cost.
+
+**LanguageSpec extensions needed** (once depth is resolved):
+- `async_call_prefix: String` — Python: `"await "`, Go/Rust: `""`
+- `TcoSyntax` — loop_open, loop_close, break_keyword, continue_str,
+  stmt_terminator (data-driven TCO formatting)
 
 ### Coercion infrastructure (reference)
 
@@ -385,10 +429,10 @@ Remaining parallel authorities:
   than Copy (excludes Unit; PR #333)
 - [x] Dead code: deleted `try_target_primitive_type`, `target_primitive_type`,
   `target_container_template`, `is_value_type`, `emit_primitive_type` + unused imports
-- [~] Runtime bridge wrapping: `wraps_result` field on `RuntimeFunction` registry
-  (map_keys, map_values, append data-driven; method templates split/enumerate/chars/skip/take
-  use `rust_method_wraps_result` data map — consumer still reads parallel maps
-  instead of a single spec type)
+- [x] Runtime bridge wrapping: `wraps_result` field on `RuntimeFunction` registry
+  (map_keys, map_values, append) and `SimpleMethodSpec.wraps_result` for method
+  templates (split/enumerate/chars/skip/take). Both derived maps come from their
+  respective single authorities — no parallel maps.
 
 ### Acceptance
 
@@ -1081,7 +1125,7 @@ distinction as structural data.
 - [ ] **BP-1b: Bootstrap cycle.** Model the self-compile cycle: stage0
   as bootstrap seed, the fixed-point condition (pass N == pass N+1),
   and the two-pass rule (required when emitter changes its own output).
-  Hand-maintained files (9) enumerated as source artifacts distinct
+  Hand-maintained files (2) enumerated as source artifacts distinct
   from generated artifacts.
 - [ ] **BP-1c: `.gitattributes` generation.** Files the pipeline model
   marks as "generated" get `-merge` in `.gitattributes`. The
@@ -1116,6 +1160,16 @@ distinction as structural data.
 - **Cost algebra extensions**: Pow, Sqrt, Exp; amortized analysis via
   potential functions; space as peer dimension. See
   `docs/cost-algebra.md`.
+- **Style emission**: Emission formatting (indentation, braces,
+  statement terminators) should be data-driven from two authorities:
+  (1) Language spec — significant whitespace (Python), block delimiters,
+  statement terminators. These are correctness requirements.
+  (2) Style spec — indent unit, brace placement, readability conventions.
+  These are readability requirements (correctness during bootstrap,
+  optional post-bootstrap via external formatters like gofmt/rustfmt).
+  `BlockSyntax` on `LanguageSpec` is the first step. Future work:
+  TCO syntax templates, async call prefix, identifier escaping
+  conventions, post-emission formatting pass.
 - **Post-Rust path**: .dag → native code (LLVM/Cranelift) directly,
   no Rust intermediate. Optional — Rust/Go as intermediates may
   suffice indefinitely.

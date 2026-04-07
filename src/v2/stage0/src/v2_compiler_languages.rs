@@ -179,6 +179,18 @@ pub struct ServiceFieldTemplates {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BlockSyntax {
+    pub block_open: String,
+    pub block_close: String,
+    pub else_clause: String,
+    pub match_keyword: String,
+    pub case_keyword: String,
+    pub arm_separator: String,
+    pub stmt_terminator: String,
+    pub significant_whitespace: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,
@@ -191,6 +203,7 @@ pub struct LanguageSpec {
     pub annotations: Rc<AnnotationRequirements>,
     pub method_templates: Option<Rc<HashMap<String, String>>>,
     pub service_fields: Rc<ServiceFieldTemplates>,
+    pub block_syntax: Rc<BlockSyntax>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -258,6 +271,16 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     auth_ctor: "        auth_token: String::new(),\n".to_string(),
     shell_ctor: "        working_dir: None,\n".to_string(),
     file_ctor: "        base_path: \".\".to_string(),\n".to_string(),
+}),
+    block_syntax: Rc::new(BlockSyntax {
+    block_open: " {\n".to_string(),
+    block_close: "}".to_string(),
+    else_clause: "} else {\n".to_string(),
+    match_keyword: "match ".to_string(),
+    case_keyword: "".to_string(),
+    arm_separator: ",".to_string(),
+    stmt_terminator: ";".to_string(),
+    significant_whitespace: false,
 }),
 })
 }
@@ -328,6 +351,16 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     shell_ctor: "self.working_dir = working_dir".to_string(),
     file_ctor: "self.base_path = base_path".to_string(),
 }),
+    block_syntax: Rc::new(BlockSyntax {
+    block_open: ":\n".to_string(),
+    block_close: "".to_string(),
+    else_clause: "else:\n".to_string(),
+    match_keyword: "match ".to_string(),
+    case_keyword: "case ".to_string(),
+    arm_separator: "\n".to_string(),
+    stmt_terminator: "".to_string(),
+    significant_whitespace: true,
+}),
 })
 }
 
@@ -396,6 +429,16 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     auth_ctor: "".to_string(),
     shell_ctor: "".to_string(),
     file_ctor: "".to_string(),
+}),
+    block_syntax: Rc::new(BlockSyntax {
+    block_open: " {\n".to_string(),
+    block_close: "}".to_string(),
+    else_clause: "} else {\n".to_string(),
+    match_keyword: "switch ".to_string(),
+    case_keyword: "case ".to_string(),
+    arm_separator: "\n".to_string(),
+    stmt_terminator: "".to_string(),
+    significant_whitespace: false,
 }),
 })
 }

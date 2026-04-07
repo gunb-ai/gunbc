@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, InferredNode, VarBindingKind, is_import_node, import_is_all, import_specific_names, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, field_binding_name_at, MatchPattern, LiteralValue, field_binding_pattern, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, record_lit_type_name, lambda_body, cast_expr, cast_target, return_value, foreach_variable, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, leaf_node, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, FieldAccessStyle, Cardinality};
+pub use crate::v2_std_core::{Node, InferredNode, VarBindingKind, is_import_node, import_is_all, import_specific_names, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, field_binding_name_at, MatchPattern, LiteralValue, field_binding_pattern, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, expr_field_access_summary, expr_method_call_semantics, record_lit_type_name, lambda_body, cast_expr, cast_target, return_value, foreach_variable, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, leaf_node, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, FieldAccessStyle, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::VarBindingKind::{FunctionValueBinding};
 use crate::v2_std_core::BinOp::{NullCoalesce};
@@ -69,7 +69,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, TransportKind, classify_transport, seed_bindings};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, TransportKind, classify_transport, seed_bindings, emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts, emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared};
 use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
 
 pub fn emit_py_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<String>>, mut scope: Rc<InferScope>, mut registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut depth: i64) -> Rc<BlockEmitState> {
@@ -539,177 +539,59 @@ match summary {
 }
 
 pub fn emit_py_expr_var(expr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-        let n = expr_var_name_at(expr.clone(), source_index);
-if (n.clone().as_str() == "none".to_string().as_str()) {
-            emit_keyword("null".to_string(), RenderTarget::Python)
-} else {
-            if ((n.clone().as_str() == "true".to_string().as_str()) || (n.clone().as_str() == "false".to_string().as_str())) {
-                emit_keyword(n.clone(), RenderTarget::Python)
-} else {
-                emit_ident(n.clone(), RenderTarget::Python)
-}
-}
-},
-    _ => emit_error_expr("emit_py_expr_var expected ExprVar".to_string(), RenderTarget::Python),
-}
+    emit_expr_var_shared(expr, RenderTarget::Python, source_index)
 }
 
 pub fn emit_py_expr_field_access(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { summary, .. } => {
-        let f = expr.name.clone();
-let b = field_access_base(expr.clone());
-if is_typed_service_call_receiver(expr.clone()) {
-            match extract_typed_service_name(expr.clone()) {
-    Some(svc_name) => service_var_name(svc_name.clone()),
-    None => emit_py_field_access(b, f, summary.clone(), registry, scope, depth),
-}
-} else {
-            emit_py_field_access(b, f, summary.clone(), registry, scope, depth)
-}
-},
-    _ => emit_error_expr("emit_py_expr_field_access expected ExprFieldAccess".to_string(), RenderTarget::Python),
-}
+    emit_expr_field_access_shared(expr, RenderTarget::Python, |e| emit_py_field_access(field_access_base(e.clone()), e.name.clone(), expr_field_access_summary(e.clone()), registry.clone(), scope.clone(), depth.clone()))
 }
 
 pub fn emit_py_expr_call(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => {
-        let f = expr_call_func_at(expr.clone(), scope.type_env.clone().source_index.clone());
-emit_py_typed_call(f, expr.children.clone(), registry, scope.clone(), depth)
-},
-    _ => emit_error_expr("emit_py_expr_call expected ExprCall".to_string(), RenderTarget::Python),
-}
+    emit_py_typed_call(expr_call_func_at(expr.clone(), scope.type_env.clone().source_index.clone()), expr.children.clone(), registry, scope.clone(), depth)
 }
 
 pub fn emit_py_expr_method_call(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { method_semantics, .. } => {
-        let r = method_receiver(expr.clone());
-let a = method_arg_nodes(expr.clone());
-let m = expr_method_name_at(expr.clone(), scope.type_env.clone().source_index.clone());
-emit_py_typed_method_call(r, m, a, method_semantics.clone(), registry, scope.clone(), depth)
-},
-    _ => emit_error_expr("emit_py_expr_method_call expected ExprMethodCall".to_string(), RenderTarget::Python),
-}
+    emit_py_typed_method_call(method_receiver(expr.clone()), expr_method_name_at(expr.clone(), scope.type_env.clone().source_index.clone()), method_arg_nodes(expr.clone()), expr_method_call_semantics(expr.clone()), registry, scope.clone(), depth)
 }
 
 pub fn emit_py_expr_match(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMatch => {
-        let s = match_scrutinee(expr.clone());
-let arm_list = match_arm_nodes(expr.clone());
-emit_py_typed_match(s, arm_list, registry, scope, depth)
-},
-    _ => emit_error_expr("emit_py_expr_match expected ExprMatch".to_string(), RenderTarget::Python),
-}
+    emit_py_typed_match(match_scrutinee(expr.clone()), match_arm_nodes(expr.clone()), registry, scope, depth)
 }
 
 pub fn emit_py_expr_if(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprIf => {
-        let c = if_condition(expr.clone());
-let t = if_then_branch(expr.clone());
-let e = if_else_branch(expr.clone());
-emit_py_typed_if(c, t, e, registry, scope, depth)
-},
-    _ => emit_error_expr("emit_py_expr_if expected ExprIf".to_string(), RenderTarget::Python),
-}
+    emit_py_typed_if(if_condition(expr.clone()), if_then_branch(expr.clone()), if_else_branch(expr.clone()), registry, scope, depth)
 }
 
 pub fn emit_py_expr_let(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprLet => {
-        let n = let_binding_name_at(expr.clone(), scope.type_env.clone().source_index.clone());
-let v = let_value(expr.clone());
-let bd = let_body(expr.clone());
-emit_py_typed_let(n, v, bd, registry, scope.clone(), depth)
-},
-    _ => emit_error_expr("emit_py_expr_let expected ExprLet".to_string(), RenderTarget::Python),
-}
+    emit_py_typed_let(let_binding_name_at(expr.clone(), scope.type_env.clone().source_index.clone()), let_value(expr.clone()), let_body(expr.clone()), registry, scope.clone(), depth)
 }
 
 pub fn emit_py_expr_record_lit(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { .. } => {
-        let tn = record_lit_type_name(expr.clone());
-let fs = expr.children.clone();
-emit_py_typed_record_lit(tn, fs, registry, scope, depth)
-},
-    _ => emit_error_expr("emit_py_expr_record_lit expected ExprRecordLit".to_string(), RenderTarget::Python),
-}
+    emit_py_typed_record_lit(record_lit_type_name(expr.clone()), expr.children.clone(), registry, scope, depth)
 }
 
 pub fn emit_py_expr_string_interp(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprStringInterp => {
-        let ps = Rc::new({ let mut __result = Vec::new(); for child in expr.children.clone().iter().cloned() { __result.push(match (*child.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: text, .. } = value.as_ref() else { unreachable!() }; Rc::new(StringPart::Text {
-    value: text.clone(),
-}) },
-    _ => Rc::new(StringPart::Interpolation {
-    expr: arg_value(child.clone()),
-}),
-}); } __result });
-emit_py_typed_string_interp(ps, registry, scope, depth)
-},
-    _ => emit_error_expr("emit_py_expr_string_interp expected ExprStringInterp".to_string(), RenderTarget::Python),
-}
+    emit_py_typed_string_interp(extract_string_interp_parts(expr), registry, scope, depth)
 }
 
 pub fn emit_py_expr_block(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprBlock => emit_py_typed_block(expr.children.clone(), registry, scope, depth),
-    _ => emit_error_expr("emit_py_expr_block expected ExprBlock".to_string(), RenderTarget::Python),
-}
+    emit_py_typed_block(expr.children.clone(), registry, scope, depth)
 }
 
 pub fn emit_py_expr_cast(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprCast => {
-        let e = cast_expr(expr.clone());
-let t = cast_target(expr.clone());
-emit_py_typed_cast(e, t, registry, scope, depth)
-},
-    _ => emit_error_expr("emit_py_expr_cast expected ExprCast".to_string(), RenderTarget::Python),
-}
+    emit_typed_cast_shared(cast_expr(expr.clone()), cast_target(expr.clone()), RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), 1024))
 }
 
 pub fn emit_py_expr_for_each(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprForEach => {
-        let v = foreach_variable(expr.clone());
-let c = foreach_collection(expr.clone());
-let bd = foreach_body(expr.clone());
-emit_py_typed_for_each(v, c, bd, registry, scope, depth)
-},
-    _ => emit_error_expr("emit_py_expr_for_each expected ExprForEach".to_string(), RenderTarget::Python),
-}
+    emit_py_typed_for_each(foreach_variable(expr.clone()), foreach_collection(expr.clone()), foreach_body(expr.clone()), registry, scope, depth)
 }
 
 pub fn emit_py_expr_index(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprIndex => {
-        let b = index_base(expr.clone());
-let i = index_expr(expr.clone());
-emit_py_typed_index(b, i, registry, scope, depth)
-},
-    _ => emit_error_expr("emit_py_expr_index expected ExprIndex".to_string(), RenderTarget::Python),
-}
+    emit_typed_index_shared(index_base(expr.clone()), index_expr(expr.clone()), RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), 1024))
 }
 
 pub fn emit_py_expr_slice(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprSlice => {
-        let b = slice_base(expr.clone());
-let s = slice_start(expr.clone());
-let e = slice_end(expr.clone());
-emit_py_typed_slice(b, s, e, registry, scope, depth)
-},
-    _ => emit_error_expr("emit_py_expr_slice expected ExprSlice".to_string(), RenderTarget::Python),
-}
+    emit_typed_slice_shared(slice_base(expr.clone()), slice_start(expr.clone()), slice_end(expr.clone()), RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), 1024))
 }
 
 pub fn emit_py_typed_expr(texpr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, fuel: i64) -> String {
@@ -758,46 +640,6 @@ let elem_type = for_each_element_type_node(rt_type(collection.clone()));
 let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type);
 let body_str = emit_py_typed_expr(body, registry.clone(), body_scope, (depth.clone() + 1), 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("for ".to_string(), emit_ident(variable.clone(), RenderTarget::Python)), " in ".to_string()), coll_str), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
-}
-}
-
-pub fn emit_py_typed_index(base: Rc<Node>, index: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    {
-        let spec = language_spec(RenderTarget::Python);
-let base_str = emit_py_typed_expr(base.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let index_str = emit_py_typed_expr(index, registry.clone(), scope.clone(), depth.clone(), 1024);
-let base_node = normalize_access_type_node(rt_type(base.clone()));
-let is_map = node_is_keyed_collection(base_node.clone());
-if is_string_like(RenderTarget::Python, base_node.name.clone()) {
-            apply_type_template2(spec.indexing.clone().string_index.clone(), base_str, index_str)
-} else {
-            if is_map {
-                apply_type_template2(spec.indexing.clone().map_index.clone(), base_str, index_str)
-} else {
-                apply_type_template2(spec.indexing.clone().list_index.clone(), base_str, index_str)
-}
-}
-}
-}
-
-pub fn emit_py_typed_slice(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    {
-        let spec = language_spec(RenderTarget::Python);
-let base_str = emit_py_typed_expr(base.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let start_str = emit_py_typed_expr(start, registry.clone(), scope.clone(), depth.clone(), 1024);
-let end_str = emit_py_typed_expr(end, registry.clone(), scope.clone(), depth.clone(), 1024);
-let base_node = normalize_access_type_node(rt_type(base.clone()));
-if is_string_like(RenderTarget::Python, base_node.name.clone()) {
-            match spec.indexing.clone().string_slice.clone() {
-    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
-    None => emit_error_expr("unsupported string slice for target".to_string(), RenderTarget::Python),
-}
-} else {
-            match spec.indexing.clone().list_slice.clone() {
-    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
-    None => emit_error_expr("unsupported slice for target".to_string(), RenderTarget::Python),
-}
-}
 }
 }
 
@@ -999,14 +841,6 @@ pub fn emit_py_typed_block(stmts: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String
     {
         let state = emit_py_block_stmts(stmts, Rc::new(vec![]), scope, registry, depth);
 state.text.clone().join(&"\n".to_string())
-}
-}
-
-pub fn emit_py_typed_cast(expr: Rc<Node>, target: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    {
-        let expr_str = emit_py_typed_expr(expr, registry, scope, depth, 1024);
-let ty_str = emit_node_type(target, RenderTarget::Python);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(ty_str, "(".to_string()), expr_str), ")".to_string())
 }
 }
 

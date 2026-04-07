@@ -1924,11 +1924,10 @@ fn rust_empty_map_value_type_str(map_type: Node, shared_types: Map<String, Bool>
 // for non-Copy types. lookup/map_get return the correct type directly.
 
 fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> Bool {
-  // Two authorities: rt_wraps_result() derived from RuntimeFunction.wraps_result,
-  // rust_method_wraps_result for method templates. Each authority derives from
-  // its own structural source.
+  // Two derived maps, single authority each: RuntimeFunction.wraps_result
+  // for runtime functions, SimpleMethodSpec.wraps_result for method templates.
   map_contains_key(rt_wraps_result(), function_name)
-    || map_contains_key(rust_method_wraps_result, function_name)
+    || map_contains_key(rust_method_wraps_result(), function_name)
 }
 
 fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: InferredNode?) -> Bool {
