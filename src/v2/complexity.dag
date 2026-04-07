@@ -2847,6 +2847,15 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // ArithmeticValue descent (param - N) is only safe for single-call paths;
     // with multiple calls (e.g., fib(n-1) + fib(n-2)) it's O(2^n).
     let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
+    // Branching safety: check the PRIMARY (first) dimension only.
+    // If the first dimension is TreeSize/ListLength, children are disjoint
+    // subtrees — branching is O(n) regardless of secondary dimensions.
+    // The proof constructor already validates that the non-descending subgraph
+    // (edges where lexicographic descent fails) is acyclic, so ALL call paths
+    // must eventually descend on the primary dimension.
+    // Secondary dimensions (e.g., TokenPosition) only matter for non-branching
+    // paths — they can't cause exponential blowup because the primary dimension
+    // bounds the total number of recursive entries.
     let proof_safe_for_branching = match proof {
       Some { value: p } =>
         match p.dimensions |> first {

@@ -14,6 +14,9 @@ import std.termination {
 
 // Bidirectional adjacency representation: forward (caller→callee) and
 // reverse (callee→caller) edges, keyed by node name.
+// M4 note: String keys are a textual identity proxy. Post-M4, vertices
+// should be structural Node references, not names. Pre-existing pattern
+// (moved from complexity.dag, not introduced here).
 type CallGraph {
   forward: Map<String, List<String>>
   reverse: Map<String, List<String>>
