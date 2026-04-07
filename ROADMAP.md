@@ -250,6 +250,52 @@ BRIDGE count (already 0), but would improve inference for edge cases
 where expected type is available but not threaded (e.g., nested
 `empty_map()` in complex expressions).
 
+### Unified container child encoding (PR #339, in progress)
+
+**Root cause:** Container type nodes (List, Map, Set) encode their type
+parameters as bare children (child IS the type, `inferred: none`), while
+struct fields use field-style encoding (child has a name and `inferred:
+Resolved(type)`). This dual encoding forces every consumer to handle both
+cases, producing `child_inferred_or_name` and scattered `inferred == none`
+guards.
+
+**Authority:** The resolve phase is the normalization point. Parser creates
+type expressions with bare children (pre-resolve). Resolve converts to
+field-style children with named type parameters (T, K, V) from
+`container_type_param_names` in `std/types.dag`. Post-resolve consumers
+extract via `child_type_node` (bridge handles both encodings during
+transition).
+
+**Completed (PR #339):**
+- [x] `container_type_param_names` data table in `std/types.dag`
+- [x] `container_node`, `map_node`, `bare_map_node` produce field-style children
+- [x] `child_type_node` bridge helper (handles both bare and field-style)
+- [x] Consumer updates: `algebra_child_or_placeholder`, `unify_template`,
+  `apply_type_substitution`, `for_each_element_type_node`,
+  `method_receiver_element_node`, `node_type_compatible`,
+  `node_type_equals_core`, `prefer_specific_type`, `node_type_shape`,
+  `is_fully_resolved`, `keyed_collection_parts`, `render_node_type`,
+  `rust_empty_map_value_type_str`, `collection_element_type`,
+  `ExprListLit` expected threading in `04_infer.dag`
+- [x] All 314 tests pass, 0 self-compile diagnostics, L1 ratchet unchanged
+
+**Remaining (bootstrap convergence):**
+- [~] `substitute_type_slots` — does not recurse into `inferred` on
+  field-style children; type parameter substitution misses wrapped slots.
+  This is the highest-priority fix for convergence.
+- [ ] Remaining post-resolve consumers that access `n.children |> first`
+  on containers without `child_type_node` — exposed by pass-2 bootstrap
+  (15 type-incompatibility diagnostics, 391 Rust emit errors)
+- [ ] Stage0 regeneration with bootstrap convergence (two-pass fixed point)
+- [ ] Dissolve `child_inferred_or_name` — replace 7 call sites with
+  `rt_type(n: ch)`, delete function (blocked on convergence)
+
+**Endgame:** Once all post-resolve consumers use `child_type_node` and
+`substitute_type_slots` handles field-style children, `child_type_node`
+simplifies to `rt_type` (bare encoding no longer exists post-resolve).
+`child_inferred_or_name` dissolves. Container children and struct field
+children use the same encoding — one extraction pattern everywhere.
+
 ### Acceptance
 
 No fabricated type args, no generic/wrong fallback return types, no
