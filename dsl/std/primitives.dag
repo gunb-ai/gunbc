@@ -22,30 +22,14 @@
 module std.primitives
 
 // =========================================================================
-// Cost algebra types (Track D: D1)
+// Cost algebra types
 //
-// These mirror the ROADMAP reference design. The cost analyzer walks
-// program structure and produces these symbolic terms.
+// Certainty marks how tight a bound is. The working cost algebra
+// (CostExpr/SizeExpr) lives in complexity.dag — skeleton types that
+// were here have been deleted to avoid divergence.
 // =========================================================================
 
 type Certainty = Proven | Amortized | Expected | Conservative
-
-type SizeExpr
-  = Const
-  | Var
-  | Len
-  | SizeAdd
-  | SizeMax
-  | SizeSub
-
-type CostExpr
-  = CostConst
-  | CostAdd
-  | CostMul
-  | CostMax
-  | CostSum
-  | CostLog
-  | CostUnknown
 
 type PrimitiveContract {
   name: String

@@ -49,9 +49,12 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 pub use crate::std_termination::{DescentEvidence, RankingDimension};
 use crate::std_termination::DescentEvidence::*;
 use crate::std_termination::RankingDimension::*;
+pub use crate::std_algebra::{AlgebraProfile, kernel_algebra_profile};
+use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use SizeBound::*;
 use CallPattern::*;
 use IterationPrimitive::*;
+use IterationDimension::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 
@@ -168,5 +171,36 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
     SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
     SizeBound::ExplicitCount { .. } => None,
     SizeBound::Forever => None,
+}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum IterationDimension {
+    TreeDescent,
+    CollectionFold,
+    ArithmeticRepeat,
+}
+
+pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<IterationDimension> {
+    match profile {
+    AlgebraProfile::FreeMonoidCollectionProfile => Some(IterationDimension::CollectionFold),
+    AlgebraProfile::FreeMonoidScalarProfile => Some(IterationDimension::CollectionFold),
+    AlgebraProfile::BooleanAlgebraCollectionProfile => Some(IterationDimension::CollectionFold),
+    AlgebraProfile::PartialFunctionProfile => Some(IterationDimension::CollectionFold),
+    AlgebraProfile::OrderedRingProfile => Some(IterationDimension::ArithmeticRepeat),
+    AlgebraProfile::ApproximateFieldProfile => Some(IterationDimension::ArithmeticRepeat),
+    AlgebraProfile::BooleanAlgebraProfile => None,
+}
+}
+
+pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension> {
+    if (type_name.clone().as_str() == "Node".to_string().as_str()) {
+        Some(IterationDimension::TreeDescent)
+} else {
+        match v2_rt::map_get(&kernel_algebra_profile(), type_name.clone()) {
+    Some(p) => algebra_profile_to_dimension(p.clone()),
+    None => None,
+}
 }
 }

@@ -279,7 +279,6 @@ pub enum MethodSemantics {
         size_effect: Option<CollectionSizeEffect>,
         cost_shape: Option<CostShape>,
         algebra_template: Option<Rc<AlgebraFieldTemplate>>,
-        produces_collection: bool,
     },
     ServiceMethodSemantics {
         service_name: String,

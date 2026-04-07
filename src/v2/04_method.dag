@@ -28,7 +28,7 @@ import v2.compiler.infer_types {
 // Method classification (intrinsic/bridge) and method return type inference
 // were deleted 2026-03-28. Methods resolve structurally through Tier 0
 // lookup_structural_method; return types come from algebra fields +
-// substitute_algebra_result + refine_collection_result_type.
+// AlgebraTypeVariable instantiation (M2 Phase C).
 // =========================================================================
 
 fn type_variable_node(id: String) -> Node {
