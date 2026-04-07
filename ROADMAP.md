@@ -1148,6 +1148,27 @@ distinction as structural data.
    structural facts in the model.
 5. Stage0 merge conflicts no longer require manual resolution.
 
+## Bootstrap Design Debt
+
+Acknowledged design debts from the stage0 elimination work (PR #337).
+These are pre-existing patterns that became more visible when main.rs
+and compiler_tests.rs moved from hand-maintained to emitter-generated.
+
+| Item | What | Root cause | Fix direction |
+|------|------|-----------|---------------|
+| **FF-9a** | `has_pipeline` uses `module.name == "v2.compiler.compile"` string check to decide crate naming, main.rs shape, and compiler_tests emission | No explicit artifact/entrypoint fact in the type system | Model `Artifact` / `Entrypoint` as structural facts; `has_pipeline` dissolves when artifact identity is structural |
+| **FF-9b** | `extract_module_path` / `extract_import_paths` are line-based text scanners duplicating parser knowledge | Bootstrap bridge — the CLI needs to discover modules before the full parser runs | Replace with AST-backed import traversal; CLI loading becomes a thin model-driven pass |
+| **FF-9c** | `--source-root` conflates entry roots and dependency pools; only first root scanned for entries | No explicit entry-root vs dependency-root distinction | Either split into `--entry-root` + `--source-root`, or add explicit entry module list |
+| **FF-9d** | `ct_self_compile_sources` and `gist_sources` maintain separate curated file lists (`dsl_deps`) | Duplicate source-closure authority alongside FF-9 import resolution | These closures should use the same import resolution as the production binary |
+| **VER-1** | `std/verification.dag` types exist but are not yet the live authority; `CoercionAssertion` / `CoercionTestEntry` in coercion.dag are the active producer/consumer | Coercion tests are domain-specific; shared vocabulary not yet needed by a second consumer | Wire `TestCase` from std/verification.dag as the shared abstraction when a second structural test domain (algebra laws, tokenizer contracts) is added |
+
+FF-9a through FF-9d are all facets of the same root cause: the
+bootstrap pipeline's source-discovery layer was hand-maintained and
+is now emitter-generated, but it's still a text-scanning bridge rather
+than a model-driven pass. The endgame is FF-9 complete: the compiler's
+own import resolution is the single authority for source discovery
+everywhere — CLI, tests, and CI.
+
 ## Exploratory Directions
 
 - **Bounded iteration**: three primitives — fold (structural descent
