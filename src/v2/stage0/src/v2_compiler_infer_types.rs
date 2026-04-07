@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan, is_container_type, container_expected_arity};
-pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile, partial_function_templates, free_monoid_collection_templates, free_monoid_scalar_templates, boolean_algebra_collection_templates, boolean_algebra_templates, approximate_field_templates, ordered_ring_templates};
+pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile};
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf, AlgebraTypeVariable};
 pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, rt_node, has_inferred, is_compiler_error, NodeType, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, ExprData};
@@ -608,7 +608,7 @@ pub fn callable_node(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> 
     span: make_span(0, 0),
     ident_span: None,
     children: Rc::new(vec![]),
-    connective: Connective::Arrow,
+    connective: Connective::NoConnective,
     params: func_params,
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: ret,
@@ -1229,63 +1229,6 @@ match extracted {
 
 pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v2_rt::map_get(&m, key) {
-    Some(_) => true,
-    None => false,
-}
-}
-
-pub fn collect_named_templates(template: Rc<AlgebraTypeTemplate>, acc: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, bool>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*template).clone() {
-    AlgebraTypeTemplate::ReceiverSelf => acc,
-    AlgebraTypeTemplate::ReceiverElement => acc,
-    AlgebraTypeTemplate::ReceiverKey => acc,
-    AlgebraTypeTemplate::ReceiverValue => acc,
-    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => v2_rt::rc_map_insert(acc, n.clone(), true),
-    AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => collect_named_templates(inner.clone(), acc),
-    AlgebraTypeTemplate::ListOf { element: inner, .. } => collect_named_templates(inner.clone(), acc),
-    AlgebraTypeTemplate::OptionalOf { inner, .. } => collect_named_templates(inner.clone(), acc),
-    AlgebraTypeTemplate::TupleOf { first: f, second: s, .. } => {
-            let acc2 = collect_named_templates(f.clone(), acc);
-collect_named_templates(s.clone(), acc2)
-},
-    AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => {
-            let acc2 = p.clone().iter().cloned().fold(acc, |a: Rc<HashMap<String, bool>>, tp: Rc<AlgebraTypeTemplate>| collect_named_templates(tp.clone(), a.clone()));
-collect_named_templates(r.clone(), acc2)
-},
-    AlgebraTypeTemplate::AlgebraTypeVariable { .. } => acc,
-}
-    })
-}
-
-pub fn collect_field_template_names(templates: Rc<Vec<Rc<AlgebraFieldTemplate>>>, acc: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, bool>> {
-    templates.iter().cloned().fold(acc.clone(), |a: Rc<HashMap<String, bool>>, t: Rc<AlgebraFieldTemplate>| {
-        let a2 = t.param_types.clone().iter().cloned().fold(a.clone(), |pa: Rc<HashMap<String, bool>>, pt: Rc<AlgebraTypeTemplate>| collect_named_templates(pt.clone(), pa.clone()));
-collect_named_templates(t.return_type.clone(), a2.clone())
-})
-}
-
-pub fn bridge_placeholder_type_names() -> Rc<HashMap<String, bool>> {
-    {
-        let type_params = v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */, "T".to_string(), true), "K".to_string(), true), "V".to_string(), true);
-let n1 = collect_field_template_names(partial_function_templates(), v2_rt::rc_empty_map::<bool>());
-let n2 = collect_field_template_names(free_monoid_collection_templates(), n1);
-let n3 = collect_field_template_names(free_monoid_scalar_templates(), n2);
-let n4 = collect_field_template_names(boolean_algebra_collection_templates(), n3);
-let n5 = collect_field_template_names(boolean_algebra_templates(), n4);
-let n6 = collect_field_template_names(approximate_field_templates(), n5);
-let all_template_names = collect_field_template_names(ordered_ring_templates(), n6);
-let concrete_types = Rc::new(v2_rt::map_keys(&kernel_algebra_profile())).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
-let concrete_types = v2_rt::rc_map_insert(v2_rt::rc_map_insert(concrete_types.clone(), "Char".to_string(), true), "Ordering".to_string(), true);
-Rc::new(v2_rt::map_keys(&all_template_names)).iter().cloned().fold(type_params.clone(), |acc: Rc<HashMap<String, bool>>, name: String| match v2_rt::map_get(&concrete_types, name.clone()) {
-    Some(_) => acc.clone(),
-    None => v2_rt::rc_map_insert(acc.clone(), name.clone(), true),
-})
-}
-}
-
-pub fn is_bridge_placeholder(placeholder_names: Rc<HashMap<String, bool>>, name: String) -> bool {
-    match v2_rt::map_get(&placeholder_names, name) {
     Some(_) => true,
     None => false,
 }

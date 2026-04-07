@@ -66,7 +66,7 @@ use crate::v2_std_core::UnaryOpKind::{Not, Neg};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport};
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, map_node, bare_map_node, callable_inferred, normalize_access_type_node, bridge_placeholder_type_names, is_bridge_placeholder, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, map_node, bare_map_node, callable_inferred, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type, list_of_element};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, RecursiveVariantFieldWitness, put_recursive_variant_field_witness, merge_recursive_variant_fields};
@@ -2278,21 +2278,13 @@ pub fn infer_items(items: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<Vec<Rc
     Rc::new({ let mut __result = Vec::new(); for item in items.iter().cloned() { __result.push(infer_item(item.clone(), scope.clone())); } __result })
 }
 
-pub fn collect_filtered_bindings(envs: Rc<Vec<Rc<TypeEnv>>>, placeholder_names: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    envs.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, env: Rc<TypeEnv>| Rc::new(v2_rt::map_keys(&env.bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
-        bacc.clone()
-} else {
-        match v2_rt::map_get(&env.bindings.clone(), name.clone()) {
-    Some(binding) => v2_rt::rc_map_insert(bacc.clone(), name.clone(), binding.clone()),
-    None => bacc.clone(),
-}
-}))
+pub fn collect_parent_bindings(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    envs.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.bindings.clone()))
 }
 
 pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<String, Rc<TypedModule>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<BuildTypeEnvResult> {
     {
-        let placeholder_names = bridge_placeholder_type_names();
-let zero_span = make_span(0, 0);
+        let zero_span = make_span(0, 0);
 let source_index = v2_rt::map_get(&source_indices, module.module.clone().span.clone().file.clone());
 let kernel_bindings_base = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
     name: name.clone(),
@@ -2422,20 +2414,9 @@ let imported_parent_envs = Rc::new({ let mut __result = Vec::new(); for imp in m
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs);
-let std_import_bindings = collect_filtered_bindings(std_types_parent_env.clone(), placeholder_names.clone());
+let std_import_bindings = collect_parent_bindings(std_types_parent_env.clone());
 let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_import_bindings.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
-    Some(typed_parent) => if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) {
-            Rc::new(v2_rt::map_keys(&typed_parent.type_env.clone().bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
-                bacc.clone()
-} else {
-                match v2_rt::map_get(&typed_parent.type_env.clone().bindings.clone(), name.clone()) {
-    Some(binding) => v2_rt::rc_map_insert(bacc.clone(), name.clone(), binding.clone()),
-    None => bacc.clone(),
-}
-})
-} else {
-            v2_rt::rc_map_merge(acc.clone(), typed_parent.type_env.clone().bindings.clone())
-},
+    Some(typed_parent) => v2_rt::rc_map_merge(acc.clone(), typed_parent.type_env.clone().bindings.clone()),
     None => acc.clone(),
 });
 let import_recursive = parent_envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
@@ -2612,8 +2593,7 @@ Rc::new(BuildTypeEnvResult {
 
 pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<String, Rc<TypedModule>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<BuildTypeEnvResult> {
     {
-        let placeholder_names = bridge_placeholder_type_names();
-let zero_span = make_span(0, 0);
+        let zero_span = make_span(0, 0);
 let source_index = v2_rt::map_get(&source_indices, module.module.clone().span.clone().file.clone());
 let kernel_bindings = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
     name: name.clone(),
@@ -2721,20 +2701,9 @@ let imported_parent_envs = Rc::new({ let mut __result = Vec::new(); for imp in m
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs);
-let std_import_bindings = collect_filtered_bindings(std_types_parent_env.clone(), placeholder_names.clone());
+let std_import_bindings = collect_parent_bindings(std_types_parent_env.clone());
 let import_bindings = module.resolved_imports.clone().iter().cloned().fold(std_import_bindings.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
-    Some(typed_parent) => if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) {
-            Rc::new(v2_rt::map_keys(&typed_parent.type_env.clone().bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| if is_bridge_placeholder(placeholder_names.clone(), name.clone()) {
-                bacc.clone()
-} else {
-                match v2_rt::map_get(&typed_parent.type_env.clone().bindings.clone(), name.clone()) {
-    Some(binding) => v2_rt::rc_map_insert(bacc.clone(), name.clone(), binding.clone()),
-    None => bacc.clone(),
-}
-})
-} else {
-            v2_rt::rc_map_merge(acc.clone(), typed_parent.type_env.clone().bindings.clone())
-},
+    Some(typed_parent) => v2_rt::rc_map_merge(acc.clone(), typed_parent.type_env.clone().bindings.clone()),
     None => acc.clone(),
 });
 let import_recursive = parent_envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));

@@ -19,14 +19,7 @@ import std.algebra {
   NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf, AlgebraTypeVariable,
   AlgebraFieldTemplate,
   kernel_algebra_profile,
-  algebra_templates_for_profile,
-  partial_function_templates,
-  free_monoid_collection_templates,
-  free_monoid_scalar_templates,
-  boolean_algebra_collection_templates,
-  boolean_algebra_templates,
-  approximate_field_templates,
-  ordered_ring_templates
+  algebra_templates_for_profile
 }
 import v2.std.core {
   Node, make_param_node, param_node_type_expr,
@@ -896,65 +889,3 @@ fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
   }
 }
 
-// Collect NamedTemplate names from an AlgebraTypeTemplate tree.
-fn collect_named_templates(template: AlgebraTypeTemplate, acc: Map<String, Bool>) -> Map<String, Bool> {
-  match template {
-    ReceiverSelf => acc
-    ReceiverElement => acc
-    ReceiverKey => acc
-    ReceiverValue => acc
-    NamedTemplate { name: n } => map_insert(acc, n, true)
-    ReceiverCollectionOf { element: inner } => collect_named_templates(template: inner, acc: acc)
-    ListOf { element: inner } => collect_named_templates(template: inner, acc: acc)
-    OptionalOf { inner: inner } => collect_named_templates(template: inner, acc: acc)
-    TupleOf { first: f, second: s } =>
-      let acc2 = collect_named_templates(template: f, acc: acc)
-      collect_named_templates(template: s, acc: acc2)
-    CallableOf { params: p, return_type: r } =>
-      let acc2 = p |> fold(init: acc, f: (a, tp) => collect_named_templates(template: tp, acc: a))
-      collect_named_templates(template: r, acc: acc2)
-    AlgebraTypeVariable { id: _ } => acc
-  }
-}
-
-// Collect all NamedTemplate names from a list of AlgebraFieldTemplates.
-fn collect_field_template_names(templates: List<AlgebraFieldTemplate>, acc: Map<String, Bool>) -> Map<String, Bool> {
-  templates |> fold(init: acc, f: (a, t) =>
-    let a2 = t.param_types |> fold(init: a, f: (pa, pt) => collect_named_templates(template: pt, acc: pa))
-    collect_named_templates(template: t.return_type, acc: a2)
-  )
-}
-
-// Build the full set of bridge placeholder type names structurally from
-// algebra templates and type parameters. NamedTemplate names from field
-// templates that don't correspond to concrete types are placeholders
-// (e.g. FoldAccumulator, MappedElement). Algebra generic type parameters
-// (T, K, V from FreeMonoid<T>, PartialFunction<K, V>) are always
-// placeholders regardless of template content.
-fn bridge_placeholder_type_names() -> Map<String, Bool> {
-  let type_params = map_insert(map_insert(map_insert(empty_map(), "T", true), "K", true), "V", true)
-  let n1 = collect_field_template_names(templates: partial_function_templates(), acc: empty_map())
-  let n2 = collect_field_template_names(templates: free_monoid_collection_templates(), acc: n1)
-  let n3 = collect_field_template_names(templates: free_monoid_scalar_templates(), acc: n2)
-  let n4 = collect_field_template_names(templates: boolean_algebra_collection_templates(), acc: n3)
-  let n5 = collect_field_template_names(templates: boolean_algebra_templates(), acc: n4)
-  let n6 = collect_field_template_names(templates: approximate_field_templates(), acc: n5)
-  let all_template_names = collect_field_template_names(templates: ordered_ring_templates(), acc: n6)
-  let concrete_types = kernel_algebra_profile |> map_keys |> fold(init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, true)
-  )
-  let concrete_types = map_insert(map_insert(concrete_types, "Char", true), "Ordering", true)
-  all_template_names |> map_keys |> fold(init: type_params, f: (acc, name) =>
-    match map_get(concrete_types, name) {
-      Some { value: _ } => acc
-      None => map_insert(acc, name, true)
-    }
-  )
-}
-
-fn is_bridge_placeholder(placeholder_names: Map<String, Bool>, name: String) -> Bool {
-  match map_get(placeholder_names, name) {
-    Some { value: _ } => true
-    None => false
-  }
-}
