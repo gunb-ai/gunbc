@@ -249,7 +249,7 @@ BRIDGE count (already 0), but would improve inference for edge cases
 where expected type is available but not threaded (e.g., nested
 `empty_map()` in complex expressions).
 
-### Unified container child encoding (PR #339, in progress)
+### Unified container child encoding (PR #339, merged)
 
 **Root cause:** Container type nodes (List, Map, Set) encode their type
 parameters as bare children (child IS the type, `inferred: none`), while
@@ -270,15 +270,23 @@ transition).
 - [x] `container_node`, `map_node`, `bare_map_node` produce field-style children
 - [x] `child_type_node` bridge helper (handles both bare and field-style)
 - [x] `container_param_name` returns `String?` (fail-closed, no fabricated default)
-- [~] Consumer updates: major readers updated to `child_type_node` — lookup,
+- [x] Consumer updates: major readers updated to `child_type_node` — lookup,
   items, patterns, emit_info, emit, emit_rust, access, infer, resolve.
-  Remaining readers still use raw `rt_type` in emit/emit_go/emit_python
-  sites and algebra template paths. These work post-resolve (Resolved
-  wrappers guarantee correct extraction) but bypass the bridge.
 - [x] All 314 tests pass, 0 self-compile diagnostics, L1 ratchet unchanged
-- [ ] Endgame: all post-resolve readers use `child_type_node`, hardcoded
-  "T"/"K"/"V" replaced by data table reads, wrapper construction via
-  single helper (not inline Node literals)
+
+**Completed (PR #340) — data-table reads + boundary-contract dissolution:**
+- [x] Hardcoded `"T"`/`"K"`/`"V"` replaced by `container_param_name()` data
+  table reads in `map_node`, `bare_map_node`, `list_of_type_variable`,
+  `list_of_element`, `apply_type_substitution`, `resolve_node_bounded`
+- [x] `rt_type` dissolved — 105 call sites migrated to two boundary-contract
+  accessors: `decl_resolved_type` (54 Strict sites) and `emit_guarded_type`
+  (48 Guarded sites). `rt_type` deleted.
+- [x] `std/boundary.dag` added — `BoundaryContract` type (Strict/Tolerant/
+  Guarded) as general vocabulary for producer/consumer cross-talk patterns
+- [x] `child_type_node` updated to use `decl_resolved_type`
+- [x] `is_fully_resolved`, `algebra_child_or_placeholder`, `for_each_element_type_node`,
+  `apply_type_substitution` migrated from `rt_type` to `child_type_node`/`decl_resolved_type`
+- [x] 316 tests pass, L1 ratchet 27 (unchanged), stage0 fresh
 
 **Completed (bootstrap convergence):**
 - [x] `substitute_type_slots` recurses into `inferred` on field-style
@@ -290,37 +298,60 @@ transition).
   function deleted
 - [x] `__EMIT_BUG_ANONYMOUS_FIELD__` removed — dead code
 
-**Modeling gaps exposed by edge-case analysis (next PR):**
+**PR #340 review feedback (deferred — 2 items):**
 
-Three reviewer-flagged edge cases share a common root: the `inferred`
-field carries implicit invariants that should be structural facts.
+1. **Fabrication fallback in `container_param_name` callers.** The `None`
+   branches in `map_node`, `list_of_type_variable`, etc. fabricate `"T"`/
+   `"K"`/`"V"` strings. For known container names (List, Map), this is
+   dead code — `container_param_name` always returns `Some`. But the
+   fallback violates "no fallbacks that fabricate." Fix: eliminate the
+   `None` branches by surfacing resolved parameter nodes from the
+   declaration as the single authority (M9), or by asserting the lookup
+   succeeds for known containers.
 
-1. **`inferred` has multiple semantic roles with different error contracts.**
-   On expressions: can be CompilerError/TypeVariable/Untyped (all meaningful).
-   On struct field children: should always be Resolved.
-   On container wrapper children: should always be Resolved.
-   These roles use the same `InferredNode?` type, so `rt_type` treats them
-   all with the same Unit fallback — correct for emission, wrong for type
-   reasoning where errors should propagate or be impossible by construction.
+2. **Boundary-contract split is naming, not structural authority.** The
+   `decl_resolved_type`/`emit_guarded_type` split documents the consumer
+   contract but doesn't change the underlying structure — both still read
+   from the same `inferred: InferredNode?` field. The endgame is structural:
+   declaration children should carry their type through a channel that
+   can ONLY be Resolved, so the wrong question is unaskable. This is the
+   `inferred` cross-talk pattern (see below).
 
-2. **`rt_type` is one function for multiple operations.**
-   "Extract for emission" (Unit fallback OK) vs "extract for type reasoning"
-   (error = bug, not fallback) vs "extract parameter binding" (always
-   Resolved by construction). A typed model would have separate accessors
-   with different error semantics.
+**Cross-talk analysis (PR #340 investigation):**
 
-3. **Pre-resolve vs post-resolve is a convention, not a structural fact.**
-   "Post-resolve children use field-style encoding" is enforced by
-   producer convention. `child_type_node` exists as a bridge because
-   the structure doesn't distinguish resolved from unresolved nodes.
-   If resolve's output were structurally marked, consumers wouldn't need
-   the bridge — the wrong question would be unaskable.
+Eight Node fields serve multiple semantic roles, forcing consumers to
+disambiguate. `inferred` is the first to get boundary-contract accessors.
+General vocabulary in `std/boundary.dag`.
 
-**Direction:** These are instances of the same CM pattern — implicit
-pipeline-stage invariants that should be structural facts on the Node.
-Candidate modeling: `inferred` role (expression/field/parameter)
-distinguishable from Node structure, or resolve-boundary marking that
-makes pre/post-resolve structurally distinct.
+| Field | Roles | Cross-talk? | Status |
+|-------|-------|-------------|--------|
+| `inferred` | declaration type vs expression type | YES (different error contracts) | Accessors split (PR #340). Structural fix: future |
+| `name` | identifier, type name, field name, method name (~7 roles) | YES (same guarantee, different semantics) | M4 dissolution target |
+| `children` | struct fields, container params, if/match/call layouts (~12) | YES (layout-dependent) | ChildRole metadata table exists |
+| `params` | function parameters vs type parameters | YES | Connective disambiguates |
+| `return_cardinality` | field cardinality vs function return cardinality | YES | accessor naming exists |
+| `properties` | transport config, module markers, operation modifiers | YES | transport-specific accessors |
+| `body` | function body vs none-for-external | No (same contract) | — |
+| `match_pattern` | match arm pattern vs field binding pattern | YES | — |
+
+**Next steps — tightening the boundary contracts:**
+
+1. **Eliminate fabrication fallbacks.** `container_param_name` `None`
+   branches and `decl_resolved_type`/`emit_guarded_type` non-Resolved
+   branches both fabricate `unit_type`. For Strict-contract sites, the
+   non-Resolved branch should emit a diagnostic, not fabricate.
+
+2. **Structural authority for `inferred` roles.** The two producers
+   (resolve for declarations, infer for expressions) write to the same
+   `inferred` field with different guarantees. The endgame: declaration
+   children use a channel that is Resolved by construction. This is
+   the `inferred` cross-talk pattern — same shape as the other 7 fields
+   but `inferred` is the only one causing information loss (Unit fallback
+   masks compiler bugs).
+
+3. **Generalize `std/boundary.dag`.** Apply the Strict/Tolerant/Guarded
+   vocabulary to other cross-talk fields as they are dissolved (M4 for
+   `name`, MM-2 for type structure, etc.).
 
 ### Acceptance
 
