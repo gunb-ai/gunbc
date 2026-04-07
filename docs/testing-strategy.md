@@ -145,25 +145,33 @@ What it doesn't prove: the code does the right thing when run.
 
 **What:** Emitted code runs and produces correct results.
 
-**Five verification oracles, all but the last derive from structure:**
+**Witnesses provide the inputs. Oracles check the outputs.** Five
+oracles, all but the last derived from structure:
 
-| Oracle | What it checks | Hand-written? |
-|---|---|---|
-| Type correctness | Output has the right shape | No (compiler proves statically) |
-| Constraint satisfaction | Output satisfies `where` predicates | No (run output through type's predicates) |
-| Algebraic laws | Operations satisfy declared laws | No (laws on algebra types) |
-| Cross-target agreement | Same input → same output across targets | No (differential comparison) |
-| Known values | Specific input → specific output | Sometimes |
+| Oracle | What it checks | Witness layer | Hand-written? |
+|---|---|---|---|
+| Type membership | Output inhabits return type | L1 (canonical) | No — compiler proves statically |
+| Constraint satisfaction | Output passes `where` predicates | L4 (boundary) | No — predicate IS the oracle |
+| Algebraic laws | Operations satisfy declared laws | L3 (algebra) | No — laws declared on algebra |
+| Cross-target agreement | Same input → same output | All layers | No — differential comparison |
+| Known values | Specific input → specific output | L5 (samples) | Sometimes |
+
+**Example:** `filter([0, 1, 2, 3], x > 1)` with FreeMonoid algebra:
+- Type membership: output is `List<Int>` ✓
+- Constraint: every output element satisfies `x > 1` ✓ (predicate oracle)
+- Algebraic: `output.count <= input.count` ✓ (filter never grows)
+- Cross-target: Rust and Python both produce `[2, 3]` ✓
+- Known value: `[2, 3]` — but Layers 1-3 already prove correctness
 
 **Current state:** Almost nothing. Only bootstrap fixed-point indirectly
 executes emitted code. No tests run emitted Rust/Python/Go with inputs
 and check outputs.
 
 **What's needed:**
-- Structural witnesses as test inputs (compositional mock generation)
-- Constraint predicates as test oracles
-- Algebraic law declarations as property tests
-- Cross-target differential testing
+- Witness generation from type structure (Layers 1-5 above)
+- Oracle evaluation: run emitted code, apply structural checks
+- Service DryRun: exercise operations with mock_response witnesses
+- Cross-target differential: same .dag → multiple targets → compare
 
 ### Level 5: Cross-language equivalence
 
@@ -209,44 +217,146 @@ regressions independent of machine load.
 
 ---
 
-## Compositional mock generation
+## Witness generation: layered, structural
 
-Mock data is compositional. Sample values live ON the type definition
-and propagate through composition. The compiler generates realistic
-mocks by composing child samples.
+A **witness** is a concrete value that proves a type is inhabited.
+An **oracle** is a structural check that determines whether a function's
+output is correct — derived from the type system, not hand-written.
 
-### Structural witnesses (compiler-generated, automatic)
+Witnesses are generated in layers. Each layer adds more witnesses from
+deeper structural information. The compiler determines how many witnesses
+it needs from the algebra's laws and the type's constraints.
 
-Every type gets a canonical witness from its structure:
+### Layer 1: Canonical witnesses (type inhabitation)
 
-| Type pattern | Canonical witness |
-|---|---|
-| Product (all edges) | All fields present with child witnesses |
-| Coproduct (one edge) | First variant + each variant separately |
-| Optional | BOTH: present(witness) AND absent |
-| Refinement (`where`) | Value satisfying the constraint |
-| Collection | Empty + one-element with child witness |
-| Leaf (Int, String, Bool) | Zero / empty / false |
+One value per type form. Proves the type is constructible.
+
+| Type pattern | Witness | Derived from |
+|---|---|---|
+| Leaf (`Int`, `Float`) | `0`, `0.0` | Primitive zero value |
+| Leaf (`String`, `Bytes`) | `""`, `[]` | Primitive empty value |
+| Leaf (`Bool`) | `false` | Primitive false value |
+| Product (all edges) | All fields with child witnesses | Product of constructible = constructible |
+| Coproduct (one edge) | First variant with child witness | At least one variant is constructible |
+| Optional | present(witness) AND absent | Two witnesses per optional |
+| Collection | `[]` AND `[witness]` | Empty + one-element |
+
+Layer 1 proves types exist but doesn't exercise operations meaningfully.
+`multiply(0, 0)` is always 0 — doesn't catch multiplication bugs.
+
+### Layer 2: Variant witnesses (coproduct exhaustiveness)
+
+One witness per variant of every sum type. Exhaustive.
+
+| Type | Witnesses | What it exercises |
+|---|---|---|
+| `Bool` | `true`, `false` | Both values (exhaustive — Bool has cardinality 2) |
+| `Shape = Circle \| Rect` | `Circle { r: 0.0 }`, `Rect { w: 0.0, h: 0.0 }` | Both code paths |
+| `Result<T, E>` | `Ok(witness_T)`, `Err(witness_E)` | Success and failure paths |
 
 **Cardinality coverage falls out of structure.** A type with N optional
 fields has 2^N cardinality combinations. The compiler generates witnesses
 for all valid combinations (respecting cross-field constraints).
 
-### Compositional samples (type-authored, domain-specific)
+### Layer 3: Algebra-derived witnesses (law exercise)
 
-Types carry sample values as part of their definition:
+The algebra declares special elements. These determine WHICH values are
+interesting for operations. The compiler reads the algebra declaration
+and derives the minimum witness set needed to exercise its laws.
+
+| Algebra | Special elements | Witnesses | Laws exercised |
+|---|---|---|---|
+| Monoid | identity | `e`, `a`, `b` | `op(e, a) == a`, `op(op(a,b),c) == op(a,op(b,c))` |
+| Ring | zero, one | `0`, `1`, `-1`, `2`, `3` | `add(0,x)==x`, `mul(1,x)==x`, `mul(2,3)==6` |
+| FreeMonoid | empty | `[]`, `[a]`, `[a,b]` | `concat([],xs)==xs`, `filter` preserves predicate |
+| BooleanAlgebra | empty | `{}`, `{a}`, `{a,b}` | `union({},s)==s`, `intersect` commutes |
+
+**Why this matters for thoroughness:** a binary operation needs at least
+3 witnesses (identity + two non-identity values). With only `0`, you'd
+never exercise `multiply(2, 3) == 6`. The algebra's laws tell the compiler
+exactly how many distinct witnesses it needs and what roles they play.
+
+The special elements (identity, zero, one) come from the algebra
+declarations in `std/algebra.dag`. The non-trivial witnesses (`2`, `3`)
+come from "the smallest non-special inhabitants of the carrier type."
+
+### Layer 4: Constraint-boundary witnesses (predicate edges)
+
+If a type has `where` predicates, the boundaries are structurally
+interesting:
+
+```dag
+type PositiveInt = Int where > 0
+```
+
+Witnesses: `1` (just inside boundary — should pass), `0` (just outside —
+should be rejected). The constraint predicate IS the oracle: the compiler
+runs the value through the predicate and checks the result.
+
+For string patterns: `Url = String where pattern("https?://.*")` — the
+compiler can generate a value matching the pattern if the pattern is
+simple enough, or require a user-provided sample (Layer 5) if not.
+
+### Layer 5: Compositional samples (user-declared domain knowledge)
+
+When Layers 1-4 can't produce a structurally valid witness (e.g., a
+complex regex, a domain-specific format), the user provides samples:
 
 ```dag
 type Url = String where pattern("https?://.*") {
   samples: ["https://example.com", "https://api.github.com/repos/owner/repo"]
 }
-
-// PullRequest mock is COMPOSED from field type samples:
-//   number <- Int.samples -> [0, 1, -1]
-//   title <- String.samples -> ["", "hello"]
-//   html_url <- Url.samples -> ["https://example.com"]
-type PullRequest { number: Int, title: String, html_url: Url, user: GitHubUser }
 ```
+
+Samples propagate compositionally — any type using `Url` automatically
+gets realistic URLs. `PullRequest { html_url: Url }` gets its `html_url`
+from `Url.samples` without the user redeclaring it.
+
+**The compiler tells you when Layer 5 is needed:** if a type has
+constraints that Layers 1-4 can't satisfy, the compiler emits
+`under_specified` and requires samples. This is the mechanism that makes
+untestable code structurally unrepresentable — you must provide enough
+information for the compiler to generate witnesses.
+
+### Service witness generation
+
+Services have the richest witness structure because they combine type
+witnesses with protocol semantics. A service operation like:
+
+```dag
+service github.Gist {
+  operation Create {
+    input { description: String, content: String, public: Bool = false, auth_token: Secret }
+    output { id: GistId, html_url: Url }
+    response { 201 => Gist, 401 => ErrorShape, 422 => ErrorShape }
+    mock_response {
+      201 => { id: "gist-abc123", ... } "Created successfully"
+      401 => { message: "Bad credentials" } "Invalid auth"
+      422 => { message: "Validation Failed" } "Empty files rejected"
+    }
+  }
+}
+```
+
+generates witnesses at multiple layers:
+
+| Layer | Source | Witnesses generated |
+|---|---|---|
+| L1 (canonical) | Input param types | `{ description: "", content: "", public: false, auth_token: "" }` |
+| L2 (variants) | Response status codes | One test per status code (201, 401, 422) |
+| L3 (algebra) | Transport classification | DryRun vs Selective vs Full Real tier |
+| L4 (constraints) | `GistId = String where format(uuid)` | Valid UUID + invalid UUID |
+| L5 (samples) | `mock_response` blocks | Complete response bodies per status code |
+
+**The `mock_response` block is Layer 5 for services** — user-provided
+witness data for each response scenario. The compiler verifies mock
+data matches the declared response type (structural oracle). It also
+generates the DryRun test (Tier 1) and the integration test artifact
+(Tier 3) from the same mock data.
+
+**Error paths are witnesses too.** Each error response code (401, 422)
+is a variant witness — the compiler generates a test that exercises
+the error handling path with the mock error response.
 
 ### Scenario mocks (hand-authored, cross-field)
 
