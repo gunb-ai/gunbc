@@ -118,7 +118,8 @@ import v2.compiler.emit {
   ServiceFieldSet, compute_service_fields, service_field_decls,
   TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
   seed_bindings,
-  emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts
+  emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts,
+  emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared
 }
 // =========================================================================
 // Go language facts -- from std.languages spec (go_language, go_literals)
@@ -633,7 +634,7 @@ fn emit_go_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 }
 
 fn emit_go_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  concat(make_indent(level: depth), emit_go_typed_cast(expr: cast_expr(texpr: expr), target: cast_target(texpr: expr), registry: registry, scope: scope))
+  concat(make_indent(level: depth), emit_typed_cast_shared(expr: cast_expr(texpr: expr), cast_target_node: cast_target(texpr: expr), target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: 0, fuel: 1024)))
 }
 
 fn emit_go_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -641,11 +642,11 @@ fn emit_go_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: Inf
 }
 
 fn emit_go_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  concat(make_indent(level: depth), emit_go_typed_index(base: index_base(texpr: expr), index: index_expr(texpr: expr), registry: registry, scope: scope))
+  concat(make_indent(level: depth), emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: 0, fuel: 1024)))
 }
 
 fn emit_go_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  concat(make_indent(level: depth), emit_go_typed_slice(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), registry: registry, scope: scope))
+  concat(make_indent(level: depth), emit_typed_slice_shared(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: 0, fuel: 1024)))
 }
 
 fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int) -> String {
@@ -697,40 +698,6 @@ fn emit_go_typed_for_each(variable: String, collection: Node, body: Node, regist
   let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1, fuel: 1024)
   concat(make_indent(level: depth), "for _, ", emit_ident(name: variable, target: Go), " := range ", coll_str, " {\n",
     body_str, "\n", make_indent(level: depth), "}")
-}
-
-fn emit_go_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let spec = language_spec(target: Go)
-  let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0, fuel: 1024)
-  let index_str = emit_go_typed_expr(texpr: index, registry: registry, scope: scope, depth: 0, fuel: 1024)
-  let base_node = normalize_access_type_node(n: rt_type(n: base))
-  let is_map = node_is_keyed_collection(n: base_node)
-  if is_string_like(target: Go, name: base_node.name) {
-    apply_type_template2(template: spec.indexing.string_index, arg0: base_str, arg1: index_str)
-  } else if is_map {
-    apply_type_template2(template: spec.indexing.map_index, arg0: base_str, arg1: index_str)
-  } else {
-    apply_type_template2(template: spec.indexing.list_index, arg0: base_str, arg1: index_str)
-  }
-}
-
-fn emit_go_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let spec = language_spec(target: Go)
-  let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0, fuel: 1024)
-  let start_str = emit_go_typed_expr(texpr: start, registry: registry, scope: scope, depth: 0, fuel: 1024)
-  let end_str = emit_go_typed_expr(texpr: end, registry: registry, scope: scope, depth: 0, fuel: 1024)
-  let base_node = normalize_access_type_node(n: rt_type(n: base))
-  if is_string_like(target: Go, name: base_node.name) {
-    match spec.indexing.string_slice {
-      Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
-      None => emit_error_expr(message: "unsupported string slice for target", target: Go)
-    }
-  } else {
-    match spec.indexing.list_slice {
-      Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
-      None => emit_error_expr(message: "unsupported slice for target", target: Go)
-    }
-  }
 }
 
 fn go_bridge_method_name(method_name: String) -> String {
@@ -882,18 +849,6 @@ fn emit_go_typed_record_lit(type_name: String?, fields: List<Node>, registry: Ma
 }
 
 
-fn emit_go_typed_bin_op(op: BinOp, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let l_str = emit_go_typed_expr(texpr: left, registry: registry, scope: scope, depth: 0, fuel: 1024)
-  let r_str = emit_go_typed_expr(texpr: right, registry: registry, scope: scope, depth: 0, fuel: 1024)
-  if is_null_coalesce(op: op) {
-    emit_null_coalesce(l_str: l_str, r_str: r_str, target: Go)
-  } else {
-    let op_str = emit_bin_op_symbol(op: op, target: Go)
-    concat("(", l_str, " ", op_str, " ", r_str, ")")
-  }
-}
-
-
 fn emit_go_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
   let fmt_parts = parts |> map(p => go_typed_interp_segment(part: p, registry: registry, scope: scope, has_interpolations: has_interpolations))
@@ -923,12 +878,6 @@ fn emit_go_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope
   let state = emit_go_block_stmts(
     remaining: stmts, text: [], scope: scope, registry: registry, depth: depth)
   state.text |> join(separator: "\n")
-}
-
-fn emit_go_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let expr_str = emit_go_typed_expr(texpr: expr, registry: registry, scope: scope, depth: 0, fuel: 1024)
-  let ty_str = emit_node_type(n: target, target: Go)
-  concat(ty_str, "(", expr_str, ")")
 }
 
 // =========================================================================

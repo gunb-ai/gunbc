@@ -57,7 +57,7 @@ use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
-pub use crate::v2_compiler_infer_types::{rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection};
+pub use crate::v2_compiler_infer_types::{rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -67,7 +67,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, ReservedWordStrategy, ImportRule, language_spec_for_target, test_conventions_for_target, target_keyword, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
@@ -1795,6 +1795,54 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
     expr: arg_value(child.clone()),
 }),
 }); } __result })
+}
+
+pub fn emit_typed_cast_shared(expr: Rc<Node>, cast_target_node: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let expr_str = recurse(expr);
+let ty_str = emit_node_type(cast_target_node, target);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(ty_str, "(".to_string()), expr_str), ")".to_string())
+}
+}
+
+pub fn emit_typed_index_shared(base: Rc<Node>, index: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+let base_str = recurse(base.clone());
+let index_str = recurse(index);
+let base_node = normalize_access_type_node(rt_type(base.clone()));
+let is_map = node_is_keyed_collection(base_node.clone());
+if is_string_like(target.clone(), base_node.name.clone()) {
+            apply_type_template2(spec.indexing.clone().string_index.clone(), base_str, index_str)
+} else {
+            if is_map {
+                apply_type_template2(spec.indexing.clone().map_index.clone(), base_str, index_str)
+} else {
+                apply_type_template2(spec.indexing.clone().list_index.clone(), base_str, index_str)
+}
+}
+}
+}
+
+pub fn emit_typed_slice_shared(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+let base_str = recurse(base.clone());
+let start_str = recurse(start);
+let end_str = recurse(end);
+let base_node = normalize_access_type_node(rt_type(base.clone()));
+if is_string_like(target.clone(), base_node.name.clone()) {
+            match spec.indexing.clone().string_slice.clone() {
+    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
+    None => emit_error_expr("unsupported string slice for target".to_string(), target.clone()),
+}
+} else {
+            match spec.indexing.clone().list_slice.clone() {
+    Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
+    None => emit_error_expr("unsupported slice for target".to_string(), target.clone()),
+}
+}
+}
 }
 
 pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>, wrap_result: impl Fn(String) -> String + Clone, recurse: impl Fn(Rc<Node>) -> String + Clone, emit_var: impl Fn(Rc<Node>) -> String + Clone, emit_field_access: impl Fn(Rc<Node>) -> String + Clone, emit_call: impl Fn(Rc<Node>) -> String + Clone, emit_method_call: impl Fn(Rc<Node>) -> String + Clone, emit_match: impl Fn(Rc<Node>) -> String + Clone, emit_if: impl Fn(Rc<Node>) -> String + Clone, emit_let: impl Fn(Rc<Node>) -> String + Clone, emit_record_lit: impl Fn(Rc<Node>) -> String + Clone, emit_string_interp: impl Fn(Rc<Node>) -> String + Clone, emit_block: impl Fn(Rc<Node>) -> String + Clone, emit_cast: impl Fn(Rc<Node>) -> String + Clone, emit_for_each: impl Fn(Rc<Node>) -> String + Clone, emit_index: impl Fn(Rc<Node>) -> String + Clone, emit_slice: impl Fn(Rc<Node>) -> String + Clone, emit_bin_op: impl Fn(Rc<Node>) -> String + Clone) -> String {

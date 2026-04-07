@@ -59,7 +59,7 @@ import v2.std.core {
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding, RecursiveVariantFieldWitness }
-import v2.compiler.infer_types { rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection }
+import v2.compiler.infer_types { rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
 import std.types { is_container_type, container_to_algebra_name }
 import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
@@ -81,7 +81,7 @@ import v2.compiler.languages {
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
   ContainerUsageTrigger, AsyncUsageTrigger,
-  language_spec_for_target,
+  language_spec_for_target, is_string_like,
   test_conventions_for_target,
   target_keyword,
   wrap_shared_type
@@ -1700,6 +1700,49 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
     ExprLiteral { value: LitStr { value: text } } => Text { value: text }
     _ => Interpolation { expr: arg_value(n: child) }
   })
+}
+
+// Shared ExprCast — target-parameterized, recurse for sub-expression.
+fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+  let expr_str = recurse(expr)
+  let ty_str = emit_node_type(n: cast_target_node, target: target)
+  concat(ty_str, "(", expr_str, ")")
+}
+
+// Shared ExprIndex — dispatches on string/map/list via LanguageSpec.indexing.
+fn emit_typed_index_shared(base: Node, index: Node, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+  let spec = language_spec(target: target)
+  let base_str = recurse(base)
+  let index_str = recurse(index)
+  let base_node = normalize_access_type_node(n: rt_type(n: base))
+  let is_map = node_is_keyed_collection(n: base_node)
+  if is_string_like(target: target, name: base_node.name) {
+    apply_type_template2(template: spec.indexing.string_index, arg0: base_str, arg1: index_str)
+  } else if is_map {
+    apply_type_template2(template: spec.indexing.map_index, arg0: base_str, arg1: index_str)
+  } else {
+    apply_type_template2(template: spec.indexing.list_index, arg0: base_str, arg1: index_str)
+  }
+}
+
+// Shared ExprSlice — dispatches on string/list via LanguageSpec.indexing.
+fn emit_typed_slice_shared(base: Node, start: Node, end: Node, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+  let spec = language_spec(target: target)
+  let base_str = recurse(base)
+  let start_str = recurse(start)
+  let end_str = recurse(end)
+  let base_node = normalize_access_type_node(n: rt_type(n: base))
+  if is_string_like(target: target, name: base_node.name) {
+    match spec.indexing.string_slice {
+      Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
+      None => emit_error_expr(message: "unsupported string slice for target", target: target)
+    }
+  } else {
+    match spec.indexing.list_slice {
+      Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
+      None => emit_error_expr(message: "unsupported slice for target", target: target)
+    }
+  }
 }
 
 // =========================================================================
