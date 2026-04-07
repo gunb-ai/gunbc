@@ -77,6 +77,7 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.coercion { coerce_primitive_type, is_copy }
+import extdeps.languages.rust.types { integer_types, float_types }
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
@@ -1635,7 +1636,19 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_t
     }
 }
 
-fn is_primitive_numeric_node(n: Node) -> Bool { is_rust_value_type(n: n) }
+// is_primitive_numeric_node: checks `as`-castability, NOT just Copy.
+// Unit is Copy but `expr as ()` is invalid Rust. Resolve to the Rust
+// target type and check against integer_types/float_types/bool.
+fn is_primitive_numeric_node(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  let rust_type = coerce_primitive_type(target: Rust, dag_name: normed.name)
+  if rust_type == normed.name { false }
+  else {
+    integer_types |> any(t => t == rust_type)
+    || float_types |> any(t => t == rust_type)
+    || rust_type == "bool"
+  }
+}
 fn is_simple_type_node(n: Node) -> Bool { is_rust_value_type(n: n) }
 
 // =========================================================================
