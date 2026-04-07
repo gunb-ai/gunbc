@@ -33,7 +33,7 @@ import std.computation {
   CallPattern,
   ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall,
   ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall,
-  LoweringTarget, lower_call_pattern, size_bound_param,
+  LoweringTarget, lower_call_pattern, size_bound_param, constant_bound_value,
   IterationDimension, TreeDescent, CollectionFold, ArithmeticRepeat,
   type_iteration_dimension
 }
@@ -2978,8 +2978,10 @@ fn bounded_recursive_cost(target: LoweringTarget, per_iter: CostExpr) -> CostExp
       CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
     None =>
       // Constant bound (Forever/ExplicitCount): fixed iteration count.
-      // CostSum over SizeConst normalizes to a constant in classify_complexity.
-      CostSum { binder: "__k", upper: SizeConst { value: 1 }, body: simplify_cost(expr: per_iter) }
+      // Preserves the actual literal for ExplicitCount; Forever → 1.
+      // CostSum over SizeConst normalizes to body cost in classify_complexity.
+      let k = constant_bound_value(bound: target.bound)
+      CostSum { binder: "__k", upper: SizeConst { value: k }, body: simplify_cost(expr: per_iter) }
   }
 }
 
@@ -2990,7 +2992,8 @@ fn bounded_scc_cost(target: LoweringTarget, per_iter: CostExpr) -> CostExpr {
       let var = concat("n_", v)
       CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
     None =>
-      CostSum { binder: "__k", upper: SizeConst { value: 1 }, body: simplify_cost(expr: per_iter) }
+      let k = constant_bound_value(bound: target.bound)
+      CostSum { binder: "__k", upper: SizeConst { value: k }, body: simplify_cost(expr: per_iter) }
   }
 }
 

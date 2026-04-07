@@ -55,7 +55,7 @@ pub use crate::std_termination::{DescentEvidence, RankingDimension, DescentSourc
 use crate::std_termination::DescentEvidence::{Strict, NonIncreasing, DescentUnknown};
 use crate::std_termination::RankingDimension::{TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality};
 use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, ArithmeticDecrease, ParserAdvance, SetRemoval, FoldIteration};
-pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension, type_iteration_dimension};
+pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, constant_bound_value, IterationDimension, type_iteration_dimension};
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
 use crate::std_computation::IterationDimension::{TreeDescent, CollectionFold, ArithmeticRepeat};
 pub use crate::v2_std_core::{Node, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_value, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_call_func, expr_var_name, field_access_base, field_access_field, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing};
@@ -2527,13 +2527,16 @@ Rc::new(CostExpr::CostSum {
     body: simplify_cost(per_iter),
 })
 },
-    None => Rc::new(CostExpr::CostSum {
+    None => {
+            let k = constant_bound_value(target.bound.clone());
+Rc::new(CostExpr::CostSum {
     binder: "__k".to_string(),
     upper: Rc::new(SizeExpr::SizeConst {
-    value: 1,
+    value: k,
 }),
     body: simplify_cost(per_iter),
-}),
+})
+},
 }
 }
 }
@@ -2552,13 +2555,16 @@ Rc::new(CostExpr::CostSum {
     body: simplify_cost(per_iter),
 })
 },
-    None => Rc::new(CostExpr::CostSum {
+    None => {
+            let k = constant_bound_value(target.bound.clone());
+Rc::new(CostExpr::CostSum {
     binder: "__k".to_string(),
     upper: Rc::new(SizeExpr::SizeConst {
-    value: 1,
+    value: k,
 }),
     body: simplify_cost(per_iter),
-}),
+})
+},
 }
 }
 }

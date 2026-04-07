@@ -993,6 +993,47 @@ Over-retention:
 No test >2s without justification. Self-compile time tracked per-PR.
 Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
+### CX-NEXT: Cost algebra as compositional data modeling
+
+**Status:** Design direction established (PR #336 discussion). Not yet implemented.
+
+**Core problem:** `SizeExpr` and `CostExpr` are parallel expression algebras.
+SizeExpr reinvents Add/Max/Log as size-specific variants instead of deriving
+them from existing std/ concepts. This is the same anti-pattern as building
+a mini-language inside the cost analyzer instead of composing facts from the
+data model.
+
+**Design direction:**
+- **Sizes are facts, not expressions.** A collection's size is a structural
+  fact (Layer 3 in MODELING.md), not a symbolic expression. The cost algebra
+  should reference sizes by identity, not by re-encoding them in SizeExpr.
+- **CostLog should emerge from iteration structure.** Divide-and-conquer
+  (n → n/2) produces log₂(n) iterations — this should emerge from the
+  recursion pattern, not from a hand-placed CostLog primitive. Remove CostLog
+  from CostExpr; add SizeLog to SizeExpr (or better: derive it from the
+  descent evidence in SizeBound).
+- **SizeBound should carry descent type.** Currently `ArithmeticParam` drops
+  whether descent is subtraction (linear: n iterations) or division
+  (logarithmic: log n iterations). Preserving `ArithmeticDescent { op, by }`
+  in SizeBound lets `bounded_recursive_cost` produce the correct iteration
+  count without adding ad-hoc SizeExpr variants.
+- **ExplicitCount should preserve the literal.** `ExplicitCount { n: 5 }`
+  should produce `SizeConst { value: 5 }`, not `SizeConst { value: 1 }`.
+  The constant IS the bound — collapsing it to 1 loses information. Only
+  asymptotic normalization (formatting) should collapse constants.
+
+**Open review feedback (PR #336, deferred to follow-up):**
+- #8-9: `dfs_finish_order`/`dfs_collect_component` — visited-set-bounded
+  recursion needs worklist primitive (ROADMAP I1/I2)
+- #10: CostExtern — needs stdlib cost contract system
+- #11: `iteration_element_name` — positional heuristic, needs cross-module
+  template lookup (CG-2/CG-3)
+- #13-14: `is_valid_proof` / `proof_has_non_descending_cycle` — proof
+  validation gaps in std/graph.dag
+- #15: SCC zero-placeholder — standard fixed-point technique, but should be
+  documented as such (not silent fabrication)
+- #16: `SizeConst(1)` for ExplicitCount — loses literal bound
+
 ---
 
 # CM: Compiler Concept Modeling (cross-cutting retrospective)

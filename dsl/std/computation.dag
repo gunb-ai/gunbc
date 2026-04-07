@@ -267,6 +267,17 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
   }
 }
 
+// Get the constant value for a constant bound.
+// ExplicitCount returns the developer-specified literal.
+// Forever returns 1 (machine max — asymptotically constant).
+fn constant_bound_value(bound: SizeBound) -> Int {
+  match bound {
+    ExplicitCount { n: count } => count
+    Forever                    => 1
+    _                          => 1
+  }
+}
+
 // =========================================================================
 // Computation profile: enrichment for expression patterns
 //
