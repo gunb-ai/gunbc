@@ -16,7 +16,7 @@ import std.algebra {
   FreeMonoidScalarProfile,
   FreeMonoidCollectionProfile, PartialFunctionProfile,
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
-  NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf,
+  NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf, AlgebraTypeVariable,
   AlgebraFieldTemplate,
   kernel_algebra_profile,
   algebra_templates_for_profile,
@@ -183,10 +183,6 @@ fn placeholder_type_node(name: String) -> Node {
 
 // Parametric placeholder names in algebra templates. These represent
 // unbound type variables in the algebra declaration, NOT concrete types.
-fn is_algebra_placeholder_name(name: String) -> Bool {
-  name == "MappedElement" || name == "FoldAccumulator"
-}
-
 fn nominal_type_ref(name: String) -> Node {
   leaf_node_with_span(name: name, span: make_span(start: 0, end: 0))
 }
@@ -207,12 +203,8 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node) -> Node {
     ReceiverElement => elem
     ReceiverKey => key_node
     ReceiverValue => val_node
-    NamedTemplate { name: n } =>
-      // Concrete type names (Bool, Int, Ordering, String) stay as nominal refs.
-      // Parametric placeholders (MappedElement, FoldAccumulator) become
-      // TypeVariables so the binding is preserved for structural resolution.
-      if is_algebra_placeholder_name(name: n) { type_variable_node(id: n) }
-      else { nominal_type_ref(name: n) }
+    NamedTemplate { name: n } => nominal_type_ref(name: n)
+    AlgebraTypeVariable { id: var_id } => type_variable_node(id: var_id)
     ReceiverCollectionOf { element: inner } => container_node(kind_name: base.name, element: instantiate_algebra_type(template: inner, base: base))
     ListOf { element: inner } => container_node(kind_name: "List", element: instantiate_algebra_type(template: inner, base: base))
     OptionalOf { inner: inner } => with_optional_cardinality(n: instantiate_algebra_type(template: inner, base: base))
@@ -249,6 +241,201 @@ fn enrich_kernel_type(name: String, base: Node) -> Node {
       enrich_base_with_fields(name: name, base: base, fields: fields)
     None => base
   }
+}
+
+// =========================================================================
+// Structural type variable resolution (Phase C)
+// =========================================================================
+
+fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node, subst: Map<String, Node>) -> Map<String, Node> {
+  match template {
+    AlgebraTypeVariable { id: var_id } =>
+      if map_get(subst, var_id) != none { subst }
+      else { map_insert(subst, var_id, concrete) }
+    ReceiverSelf =>
+      // Non-first ReceiverSelf (e.g., map_merge overlay). Extract children
+      // to enrich bare receiver: overlay's key/value fill __key__/__value__.
+      let s1 = match concrete.children |> first {
+        Some { value: k } =>
+          if map_get(subst, "__key__") != none { subst } else { map_insert(subst, "__key__", k) }
+        None => subst
+      }
+      match concrete.children |> skip(1) |> first {
+        Some { value: v } =>
+          if map_get(s1, "__value__") != none { s1 } else { map_insert(s1, "__value__", v) }
+        None => s1
+      }
+    ReceiverKey =>
+      // Bind arg type as receiver key — used to enrich bare ReceiverSelf.
+      if map_get(subst, "__key__") != none { subst }
+      else { map_insert(subst, "__key__", concrete) }
+    ReceiverValue =>
+      if map_get(subst, "__value__") != none { subst }
+      else { map_insert(subst, "__value__", concrete) }
+    ReceiverElement =>
+      if map_get(subst, "__element__") != none { subst }
+      else { map_insert(subst, "__element__", concrete) }
+    CallableOf { params: _, return_type: ret_template } =>
+      // concrete is the arg's inferred type. For a callable arg, this is
+      // already the lambda's return type (extracted by rt_type). Unify
+      // the template's return_type directly against the concrete value.
+      unify_template(template: ret_template, concrete: concrete, receiver: receiver, subst: subst)
+    ReceiverCollectionOf { element: elem_template } =>
+      match concrete.children |> first {
+        Some { value: child } => unify_template(template: elem_template, concrete: child, receiver: receiver, subst: subst)
+        None => subst
+      }
+    ListOf { element: elem_template } =>
+      match concrete.children |> first {
+        Some { value: child } => unify_template(template: elem_template, concrete: child, receiver: receiver, subst: subst)
+        None => subst
+      }
+    OptionalOf { inner: inner_template } =>
+      match concrete.children |> first {
+        Some { value: child } => unify_template(template: inner_template, concrete: child, receiver: receiver, subst: subst)
+        None => subst
+      }
+    TupleOf { first: ft, second: st } =>
+      let s2 = match concrete.children |> first {
+        Some { value: c } => unify_template(template: ft, concrete: c, receiver: receiver, subst: subst)
+        None => subst
+      }
+      match concrete.children |> skip(1) |> first {
+        Some { value: c } => unify_template(template: st, concrete: c, receiver: receiver, subst: s2)
+        None => s2
+      }
+    _ => subst
+  }
+}
+
+fn is_receiver_self(t: AlgebraTypeTemplate) -> Bool {
+  match t {
+    ReceiverSelf => true
+    _ => false
+  }
+}
+
+fn build_type_substitution(param_templates: List<AlgebraTypeTemplate>, arg_types: List<Node>, receiver: Node, base_subst: Map<String, Node>) -> Map<String, Node> {
+  // Skip only the FIRST ReceiverSelf (the receiver). Subsequent ReceiverSelf
+  // entries are real args (e.g., map_merge's overlay is also ReceiverSelf).
+  let first_is_self = match param_templates |> first {
+    Some { value: t } => is_receiver_self(t: t)
+    None => false
+  }
+  let non_receiver_templates = if first_is_self { param_templates |> skip(1) } else { param_templates }
+  let pairs = non_receiver_templates |> enumerate |> filter(pair =>
+    pair.first < (arg_types |> count)
+  )
+  pairs |> fold(init: base_subst, f: (subst, pair) =>
+    let arg_type = match arg_types |> enumerate |> filter(ap => ap.first == pair.first) |> map(ap => ap.second) |> first {
+      Some { value: a } => a
+      None => error_type
+    }
+    unify_template(template: pair.second, concrete: arg_type, receiver: receiver, subst: subst)
+  )
+}
+
+fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Node>, receiver: Node) -> Node {
+  match template {
+    AlgebraTypeVariable { id: var_id } =>
+      match map_get(subst, var_id) {
+        Some { value: resolved } => resolved
+        None => type_variable_node(id: var_id)
+      }
+    ReceiverSelf =>
+      // When the receiver is a bare container (no children), try to enrich
+      // it from arg-derived bindings captured during unification.
+      if receiver.children |> count == 0 && is_container_type(name: receiver.name) {
+        let arity = container_expected_arity(name: receiver.name)
+        if arity == Some { value: 2 } {
+          // Keyed container (Map): enrich from __key__ and __value__ bindings.
+          match map_get(subst, "__key__") {
+            Some { value: key } =>
+              let val = match map_get(subst, "__value__") {
+                Some { value: v } => v
+                None => type_variable_node(id: "V")
+              }
+              map_node(key: key, value: val)
+            None => receiver
+          }
+        } else if arity == Some { value: 1 } {
+          // Element container (List): enrich from __element__ binding.
+          match map_get(subst, "__element__") {
+            Some { value: elem } => container_node(kind_name: receiver.name, element: elem)
+            None => receiver
+          }
+        } else { receiver }
+      } else { receiver }
+    ReceiverElement =>
+      match receiver.children |> first {
+        Some { value: child } => child
+        None =>
+          match map_get(subst, "__element__") {
+            Some { value: elem } => elem
+            None => type_variable_node(id: "T")
+          }
+      }
+    ReceiverKey =>
+      match receiver.children |> first {
+        Some { value: child } => child
+        None =>
+          match map_get(subst, "__key__") {
+            Some { value: key } => key
+            None => type_variable_node(id: "K")
+          }
+      }
+    ReceiverValue =>
+      match receiver.children |> skip(1) |> first {
+        Some { value: child } => child
+        None =>
+          match map_get(subst, "__value__") {
+            Some { value: val } => val
+            None => type_variable_node(id: "V")
+          }
+      }
+    NamedTemplate { name: n } => nominal_type_ref(name: n)
+    ReceiverCollectionOf { element: inner } =>
+      container_node(kind_name: receiver.name, element: apply_type_substitution(template: inner, subst: subst, receiver: receiver))
+    ListOf { element: inner } =>
+      container_node(kind_name: "List", element: apply_type_substitution(template: inner, subst: subst, receiver: receiver))
+    OptionalOf { inner: inner } =>
+      with_optional_cardinality(n: apply_type_substitution(template: inner, subst: subst, receiver: receiver))
+    TupleOf { first: ft, second: st } =>
+      tuple_node(
+        first: apply_type_substitution(template: ft, subst: subst, receiver: receiver),
+        second: apply_type_substitution(template: st, subst: subst, receiver: receiver)
+      )
+    CallableOf { params: p, return_type: r } =>
+      let param_nodes = p |> map(tp => apply_type_substitution(template: tp, subst: subst, receiver: receiver))
+      callable_node(func_params: param_nodes |> map(pn => make_param_node(name: "_", type_expr: pn, default_value: none, span: no_span())), ret: apply_type_substitution(template: r, subst: subst, receiver: receiver))
+  }
+}
+
+// Check if a template's return type contains any AlgebraTypeVariable nodes.
+fn template_return_has_variables(template: AlgebraFieldTemplate) -> Bool {
+  has_type_variable(t: template.return_type)
+}
+
+fn has_type_variable(t: AlgebraTypeTemplate) -> Bool {
+  match t {
+    AlgebraTypeVariable { id: _ } => true
+    ReceiverCollectionOf { element: inner } => has_type_variable(t: inner)
+    ListOf { element: inner } => has_type_variable(t: inner)
+    OptionalOf { inner: inner } => has_type_variable(t: inner)
+    TupleOf { first: f, second: s } => has_type_variable(t: f) || has_type_variable(t: s)
+    CallableOf { params: _, return_type: r } => has_type_variable(t: r)
+    _ => false
+  }
+}
+
+fn resolve_type_variables_from_template(template: AlgebraFieldTemplate, arg_types: List<Node>, receiver_type: Node, overrides: Map<String, Node>) -> Node {
+  let subst = build_type_substitution(
+    param_templates: template.param_types,
+    arg_types: arg_types,
+    receiver: receiver_type,
+    base_subst: overrides
+  )
+  apply_type_substitution(template: template.return_type, subst: subst, receiver: receiver_type)
 }
 
 fn callable_node(func_params: List<Node>, ret: Node) -> Node {
@@ -726,6 +913,7 @@ fn collect_named_templates(template: AlgebraTypeTemplate, acc: Map<String, Bool>
     CallableOf { params: p, return_type: r } =>
       let acc2 = p |> fold(init: acc, f: (a, tp) => collect_named_templates(template: tp, acc: a))
       collect_named_templates(template: r, acc: acc2)
+    AlgebraTypeVariable { id: _ } => acc
   }
 }
 

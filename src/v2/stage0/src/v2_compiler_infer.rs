@@ -66,7 +66,7 @@ use crate::v2_std_core::UnaryOpKind::{Not, Neg};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport};
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, map_node, bare_map_node, callable_inferred, normalize_access_type_node, bridge_placeholder_type_names, is_bridge_placeholder, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{child_inferred_or_name, nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, map_node, bare_map_node, callable_inferred, normalize_access_type_node, bridge_placeholder_type_names, is_bridge_placeholder, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type, list_of_element};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, RecursiveVariantFieldWitness, put_recursive_variant_field_witness, merge_recursive_variant_fields};
@@ -830,134 +830,21 @@ pub fn is_lambda_expr(e: Rc<Node>) -> bool {
 }
 }
 
-pub fn refine_collection_result_type(semantics: Option<Rc<MethodSemantics>>, typed_args: Rc<Vec<Rc<Node>>>, receiver_type: Rc<Node>, fallback: Rc<Node>) -> Rc<Node> {
+pub fn seed_override_map() -> Rc<HashMap<String, Rc<Node>>> {
+    Rc::new(vec!["".to_string()]).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, k: String| v2_rt::rc_map_insert(acc.clone(), k.clone(), unit_type()))
+}
+
+pub fn fold_override_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
     {
-        let receiver_type_name = receiver_type.name.clone();
-let receiver_is_map = node_is_keyed_collection(receiver_type.clone());
-let method_name = if (semantics.clone() == None) {
-            None
-} else {
-            match (*semantics.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_def: md, .. } => Some(md.name.clone()),
-    _ => None,
-}
-};
-if method_name_is(method_name.clone(), "map".to_string()) {
-            match Rc::new({ let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }).first().cloned() {
-    Some(lambda_arg) => {
-                let lambda_ret = rt_type(arg_value(lambda_arg.clone()));
-named_collection_type(receiver_type_name, lambda_ret)
-},
-    None => fallback.clone(),
-}
-} else {
-            if method_name_is(method_name.clone(), "flat_map".to_string()) {
-                match Rc::new({ let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }).first().cloned() {
-    Some(lambda_arg) => match (*rt_node(arg_value(lambda_arg.clone()))).clone() {
-    NodeType::Typed { node: rt, .. } => rt.clone(),
-    NodeType::InferError { .. } => fallback.clone(),
-    NodeType::InferVariable { .. } => fallback.clone(),
-    NodeType::Untyped => fallback.clone(),
-},
-    None => fallback.clone(),
-}
-} else {
-                if (((method_name_is(method_name.clone(), "filter".to_string()) || method_name_is(method_name.clone(), "sort_by".to_string())) || method_name_is(method_name.clone(), "unique".to_string())) || method_name_is(method_name.clone(), "reverse".to_string())) {
-                    receiver_type.clone()
-} else {
-                    if method_name_is(method_name.clone(), "fold".to_string()) {
-                        {
-                            let fold_acc = if (semantics.clone() == None) {
-                                None
-} else {
-                                match (*semantics.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { fold_accumulator_type: fat, .. } => fat.clone(),
-    _ => None,
-}
-};
-let acc_under_resolved = match fold_acc.clone() {
-    Some(acc_type) => !is_fully_resolved(acc_type.clone()),
-    None => true,
-};
-if acc_under_resolved {
-                                match Rc::new({ let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }).first().cloned() {
-    Some(lambda_arg) => rt_type(arg_value(lambda_arg.clone())),
-    None => match fold_acc.clone() {
-    Some(at) => at.clone(),
-    None => fallback.clone(),
-},
-}
-} else {
-                                match fold_acc.clone() {
-    Some(at) => at.clone(),
-    None => fallback.clone(),
+        let seed = seed_override_map();
+v2_rt::rc_map_insert(Rc::new(v2_rt::map_keys(&seed)).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, k: String| acc.clone()), key, value)
 }
 }
-}
-} else {
-                        if ((method_name_is(method_name.clone(), "list_push".to_string()) && ((typed_args.clone().len() as i64) >= 1)) && ((receiver_type.children.clone().len() as i64) == 0)) {
-                            match typed_args.clone().first().cloned() {
-    Some(item_arg) => match (*rt_node(arg_value(item_arg.clone()))).clone() {
-    NodeType::Typed { node: rt, .. } => named_collection_type("List".to_string(), rt.clone()),
-    NodeType::InferError { .. } => fallback.clone(),
-    NodeType::InferVariable { .. } => fallback.clone(),
-    NodeType::Untyped => fallback.clone(),
-},
-    None => fallback.clone(),
-}
-} else {
-                            if ((((method_name_is(method_name.clone(), "map_insert".to_string()) && ((receiver_type.children.clone().len() as i64) == 0)) && is_container_type(receiver_type.name.clone())) && (container_expected_arity(receiver_type.name.clone()) == Some(2))) && ((typed_args.clone().len() as i64) >= 2)) {
-                                {
-                                    let key_type = match typed_args.clone().first().cloned() {
-    Some(key_arg) => match (*rt_node(arg_value(key_arg.clone()))).clone() {
-    NodeType::Typed { node: rt, .. } => rt.clone(),
-    NodeType::InferError { .. } => fallback.clone(),
-    NodeType::InferVariable { .. } => fallback.clone(),
-    NodeType::Untyped => fallback.clone(),
-},
-    None => fallback.clone(),
-};
-match typed_args.clone().get(1 as usize).cloned() {
-    Some(val_arg) => map_node(key_type, match (*rt_node(arg_value(val_arg.clone()))).clone() {
-    NodeType::Typed { node: rt, .. } => rt.clone(),
-    NodeType::InferError { .. } => fallback.clone(),
-    NodeType::InferVariable { .. } => fallback.clone(),
-    NodeType::Untyped => fallback.clone(),
-}),
-    None => fallback.clone(),
-}
-}
-} else {
-                                if ((method_name_is(method_name.clone(), "map_merge".to_string()) && (receiver_is_map || (is_container_type(receiver_type.name.clone()) && (container_expected_arity(receiver_type.name.clone()) == Some(2))))) && ((typed_args.clone().len() as i64) >= 1)) {
-                                    {
-                                        let overlay_type = match typed_args.clone().first().cloned() {
-    Some(overlay_arg) => match (*rt_node(arg_value(overlay_arg.clone()))).clone() {
-    NodeType::Typed { node: rt, .. } => rt.clone(),
-    NodeType::InferError { .. } => receiver_type.clone(),
-    NodeType::InferVariable { .. } => receiver_type.clone(),
-    NodeType::Untyped => receiver_type.clone(),
-},
-    None => receiver_type.clone(),
-};
-if (((receiver_type.children.clone().len() as i64) == 0) && ((overlay_type.children.clone().len() as i64) > 0)) {
-                                            overlay_type.clone()
-} else {
-                                            if ((receiver_type.children.clone().len() as i64) > 0) {
-                                                receiver_type.clone()
-} else {
-                                                fallback.clone()
-}
-}
-}
-} else {
-                                    fallback.clone()
-}
-}
-}
-}
-}
-}
-}
+
+pub fn empty_override_map() -> Rc<HashMap<String, Rc<Node>>> {
+    {
+        let seed = seed_override_map();
+Rc::new(v2_rt::map_keys(&seed)).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, k: String| acc.clone())
 }
 }
 
@@ -1215,7 +1102,7 @@ let refined_call_fold_acc_type = if ((call_fold_info.clone() != None) && call_ac
                         call_fold_acc_type.clone()
 };
 let method_resolution = resolve_known_method_node(method_receiver.clone(), first_arg_type.clone(), func_name.clone(), if (call_fold_info.clone() != None) {
-                        Some(refined_call_fold_acc_type)
+                        Some(refined_call_fold_acc_type.clone())
 } else {
                         None
 }, scope.service_registry.clone());
@@ -1228,7 +1115,29 @@ let base_result_type = match method_resolution.result_type.clone() {
     Some(mt) => mt.clone(),
     None => error_type(),
 };
-let bridge_result_type = refine_collection_result_type(method_resolution.semantics.clone(), remaining.clone(), first_arg_type.clone(), base_result_type);
+let bridge_result_type = if (method_resolution.semantics.clone() == None) {
+                                base_result_type.clone()
+} else {
+                                match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
+    MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. } => match at.clone() {
+    Some(t) => if (template_return_has_variables(t.clone()) || !is_fully_resolved(base_result_type.clone())) {
+                                    {
+                                        let call_arg_types = Rc::new({ let mut __result = Vec::new(); for a in remaining.clone().iter().cloned() { __result.push(rt_type(arg_value(a.clone()))); } __result });
+let fold_overrides = if (call_fold_info.clone() != None) {
+                                            fold_override_map("FoldAccumulator".to_string(), refined_call_fold_acc_type.clone())
+} else {
+                                            empty_override_map()
+};
+resolve_type_variables_from_template(t.clone(), call_arg_types, first_arg_type.clone(), fold_overrides)
+}
+} else {
+                                    base_result_type.clone()
+},
+    None => base_result_type.clone(),
+},
+    _ => base_result_type.clone(),
+}
+};
 let remaining_arg_nodes = Rc::new({ let mut __result = Vec::new(); for ta in remaining.clone().iter().cloned() { __result.push(make_arg_node(arg_name(ta.clone()), arg_value(ta.clone()), span.clone())); } __result });
 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprMethodCall {
@@ -1412,7 +1321,7 @@ let refined_fold_acc_type = if ((fold_info.clone() != None) && mc_acc_is_under_r
                 fold_acc_type.clone()
 };
 let method_resolution = resolve_known_method_node(recv_typed.clone(), recv_rt.clone(), method_name.clone(), if (fold_info.clone() != None) {
-                Some(refined_fold_acc_type)
+                Some(refined_fold_acc_type.clone())
 } else {
                 None
 }, scope.service_registry.clone());
@@ -1434,7 +1343,29 @@ let base_result_type = match method_resolution.result_type.clone() {
 }
 },
 };
-let result_type = refine_collection_result_type(method_resolution.semantics.clone(), typed_mc_args.clone(), recv_rt.clone(), base_result_type);
+let result_type = if (method_resolution.semantics.clone() == None) {
+                base_result_type.clone()
+} else {
+                match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
+    MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. } => match at.clone() {
+    Some(t) => if (template_return_has_variables(t.clone()) || !is_fully_resolved(base_result_type.clone())) {
+                    {
+                        let mc_arg_types = Rc::new({ let mut __result = Vec::new(); for a in typed_mc_args.clone().iter().cloned() { __result.push(rt_type(arg_value(a.clone()))); } __result });
+let mc_fold_overrides = if (fold_info.clone() != None) {
+                            fold_override_map("FoldAccumulator".to_string(), refined_fold_acc_type.clone())
+} else {
+                            empty_override_map()
+};
+resolve_type_variables_from_template(t.clone(), mc_arg_types, recv_rt.clone(), mc_fold_overrides)
+}
+} else {
+                    base_result_type.clone()
+},
+    None => base_result_type.clone(),
+},
+    _ => base_result_type.clone(),
+}
+};
 let method_semantics = if (method_resolution.semantics.clone() != None) {
                 method_resolution.semantics.clone()
 } else {
