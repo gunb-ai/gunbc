@@ -68,6 +68,7 @@ pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions,
 pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_string_like};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy};
+pub use crate::extdeps_languages_rust_types::{integer_types, float_types};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, rt_type, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
@@ -1578,7 +1579,15 @@ if (n.name.clone().as_str() == "__EmitTypeCacheMiss".to_string().as_str()) {
 }
 
 pub fn is_primitive_numeric_node(n: Rc<Node>) -> bool {
-    is_rust_value_type(n)
+    {
+        let normed = normalize_access_type_node(n);
+let rust_type = coerce_primitive_type(RenderTarget::Rust, normed.name.clone());
+if (rust_type.clone().as_str() == normed.name.clone().as_str()) {
+            false
+} else {
+            ({ let mut __found = false; for t in integer_types().iter().cloned() { if (t.clone().as_str() == rust_type.clone().as_str()) { __found = true; break; } } __found } || { let mut __found = false; for t in float_types().iter().cloned() { if (t.clone().as_str() == rust_type.clone().as_str()) { __found = true; break; } } __found })
+}
+}
 }
 
 pub fn is_simple_type_node(n: Rc<Node>) -> bool {

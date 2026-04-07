@@ -51,7 +51,7 @@ use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::BinOp::{NullCoalesce};
-use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
+use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{CardOptional};
 use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
@@ -888,7 +888,8 @@ let err_str = match target.clone() {
 return err_str
 }
 }
-if (n.name.clone().as_str() == "Callable".to_string().as_str()) {
+let is_arrow = (n.connective.clone() == Connective::Arrow);
+if is_arrow {
                 {
                     let repr = target_callable(target.clone());
 let param_strs = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(render_node_type(param_node_type_expr(p.clone()), target.clone(), shared_types.clone())); } __result });
@@ -955,7 +956,14 @@ if is_conj {
 return refined_str
 }
 }
-if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
+let is_pair = ((((n.children.clone().len() as i64) == 2) && match n.children.clone().first().cloned() {
+    Some(c0) => (c0.name.clone().as_str() == "first".to_string().as_str()),
+    None => false,
+}) && match n.children.clone().get(1 as usize).cloned() {
+    Some(c1) => (c1.name.clone().as_str() == "second".to_string().as_str()),
+    None => false,
+});
+if is_pair {
                         {
                             let first_child = match n.children.clone().first().cloned() {
     Some(c) => if (c.inferred.clone() != None) {
@@ -1041,7 +1049,7 @@ let base = if bare_is_map.clone() {
 emit_container(to_snake(n.name.clone()), inner, target.clone())
 }
 } else {
-                                if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
+                                if (n.name.clone().as_str() == tuple_type_name().as_str()) {
                                     render_tuple_parts(Rc::new(vec![]), target.clone())
 } else {
                                     coerce_primitive_type(target.clone(), n.name.clone())
@@ -1104,7 +1112,7 @@ return single_str
 }
 }
 let child_strs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(render_node_type(c.clone(), target.clone(), shared_types.clone())); } __result });
-if (n.name.clone().as_str() == "Tuple".to_string().as_str()) {
+if (n.name.clone().as_str() == tuple_type_name().as_str()) {
                 {
                     let multi_tuple_str = render_tuple_parts(child_strs.clone(), target.clone());
 return multi_tuple_str
