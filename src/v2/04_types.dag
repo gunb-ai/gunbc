@@ -9,7 +9,7 @@
 
 module v2.compiler.infer_types
 
-import std.types { SourceSpan, is_container_type, container_expected_arity }
+import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -61,6 +61,14 @@ fn child_inferred_or_name(ch: Node) -> Node {
   else { rt_type(n: ch) }
 }
 
+// Extract the type from a child node. Handles both field-style encoding
+// (inferred set → extract via rt_type) and bare encoding from parser
+// (inferred none → child IS the type). This is the normalization bridge;
+// once all producers use field-style, this simplifies to rt_type.
+fn child_type_node(ch: Node) -> Node {
+  if ch.inferred != none { rt_type(n: ch) } else { ch }
+}
+
 // Basic node/cardinality helpers
 // moved to 00_core.dag (C1 — timeless node vocabulary).
 
@@ -107,12 +115,15 @@ fn is_fully_resolved(n: Node) -> Bool {
       None => false
     }
     if under_param { false }
-    else { n.children |> all(ch => is_fully_resolved(n: ch)) }
+    else { n.children |> all(ch => if ch.inferred != none { is_fully_resolved(n: rt_type(n: ch)) } else { is_fully_resolved(n: ch) }) }
   }
 }
 
 fn container_node(kind_name: String, element: Node) -> Node {
-  Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: none, children: [element], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let param_name = container_param_name(kind_name: kind_name, index: 0)
+  Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: none, children: [
+    Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {
@@ -123,11 +134,14 @@ fn tuple_node(first: Node, second: Node) -> Node {
 }
 
 fn map_node(key: Node, value: Node) -> Node {
-  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: none, children: [key, value], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: none, children: [
+    Node { name: "K", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "V", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn bare_map_node() -> Node {
-  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  map_node(key: type_variable_node(id: "K"), value: type_variable_node(id: "V"))
 }
 
 // P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
@@ -182,7 +196,7 @@ fn nominal_type_ref(name: String) -> Node {
 
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> Node {
   match base.children |> enumerate |> filter(pair => pair.first == child_index) |> map(pair => pair.second) |> first {
-    Some { value: child } => child
+    Some { value: child } => rt_type(n: child)
     None => type_variable_node(id: placeholder)
   }
 }
@@ -250,12 +264,12 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
       // to enrich bare receiver: overlay's key/value fill __key__/__value__.
       let s1 = match concrete.children |> first {
         Some { value: k } =>
-          if map_get(subst, "__key__") != none { subst } else { map_insert(subst, "__key__", k) }
+          if map_get(subst, "__key__") != none { subst } else { map_insert(subst, "__key__", rt_type(n: k)) }
         None => subst
       }
       match concrete.children |> skip(1) |> first {
         Some { value: v } =>
-          if map_get(s1, "__value__") != none { s1 } else { map_insert(s1, "__value__", v) }
+          if map_get(s1, "__value__") != none { s1 } else { map_insert(s1, "__value__", rt_type(n: v)) }
         None => s1
       }
     ReceiverKey =>
@@ -275,26 +289,26 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
       unify_template(template: ret_template, concrete: concrete, receiver: receiver, subst: subst)
     ReceiverCollectionOf { element: elem_template } =>
       match concrete.children |> first {
-        Some { value: child } => unify_template(template: elem_template, concrete: child, receiver: receiver, subst: subst)
+        Some { value: child } => unify_template(template: elem_template, concrete: rt_type(n: child), receiver: receiver, subst: subst)
         None => subst
       }
     ListOf { element: elem_template } =>
       match concrete.children |> first {
-        Some { value: child } => unify_template(template: elem_template, concrete: child, receiver: receiver, subst: subst)
+        Some { value: child } => unify_template(template: elem_template, concrete: rt_type(n: child), receiver: receiver, subst: subst)
         None => subst
       }
     OptionalOf { inner: inner_template } =>
       match concrete.children |> first {
-        Some { value: child } => unify_template(template: inner_template, concrete: child, receiver: receiver, subst: subst)
+        Some { value: child } => unify_template(template: inner_template, concrete: rt_type(n: child), receiver: receiver, subst: subst)
         None => subst
       }
     TupleOf { first: ft, second: st } =>
       let s2 = match concrete.children |> first {
-        Some { value: c } => unify_template(template: ft, concrete: c, receiver: receiver, subst: subst)
+        Some { value: c } => unify_template(template: ft, concrete: rt_type(n: c), receiver: receiver, subst: subst)
         None => subst
       }
       match concrete.children |> skip(1) |> first {
-        Some { value: c } => unify_template(template: st, concrete: c, receiver: receiver, subst: s2)
+        Some { value: c } => unify_template(template: st, concrete: rt_type(n: c), receiver: receiver, subst: s2)
         None => s2
       }
     _ => subst
@@ -336,9 +350,10 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         None => type_variable_node(id: var_id)
       }
     ReceiverSelf =>
-      // When the receiver is a bare container (no children), try to enrich
+      // When the receiver is a bare container (children are TypeVariables), try to enrich
       // it from arg-derived bindings captured during unification.
-      if receiver.children |> count == 0 && is_container_type(name: receiver.name) {
+      let is_bare = is_container_type(name: receiver.name) && (receiver.children |> all(ch => if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { true }))
+      if is_bare {
         let arity = container_expected_arity(name: receiver.name)
         if arity == Some { value: 2 } {
           // Keyed container (Map): enrich from __key__ and __value__ bindings.
@@ -361,7 +376,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       } else { receiver }
     ReceiverElement =>
       match receiver.children |> first {
-        Some { value: child } => child
+        Some { value: child } => rt_type(n: child)
         None =>
           match map_get(subst, "__element__") {
             Some { value: elem } => elem
@@ -370,7 +385,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       }
     ReceiverKey =>
       match receiver.children |> first {
-        Some { value: child } => child
+        Some { value: child } => rt_type(n: child)
         None =>
           match map_get(subst, "__key__") {
             Some { value: key } => key
@@ -379,7 +394,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       }
     ReceiverValue =>
       match receiver.children |> skip(1) |> first {
-        Some { value: child } => child
+        Some { value: child } => rt_type(n: child)
         None =>
           match map_get(subst, "__value__") {
             Some { value: val } => val
@@ -508,7 +523,7 @@ fn node_type_shape(n: Node) -> String {
       let is_map = node_is_keyed_collection(n: n)
       if __is_container {
         let elem_shape = match n.children |> first {
-          Some { value: el } => node_type_shape(n: el)
+          Some { value: el } => node_type_shape(n: child_type_node(ch: el))
           None => "?"
         }
         concat("Container(", n.name, ",", elem_shape, ")")
@@ -546,9 +561,11 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
       if left.name != right.name { false }
       else {
         match left.children |> first {
-          Some { value: left_el } =>
+          Some { value: left_ch } =>
             match right.children |> first {
-              Some { value: right_el } =>
+              Some { value: right_ch } =>
+                let left_el = child_type_node(ch: left_ch)
+                let right_el = child_type_node(ch: right_ch)
                 let left_el_is_unit = left_el.connective == Conj && left_el.children |> count == 0
                 let right_el_is_unit = right_el.connective == Conj && right_el.children |> count == 0
                 if left_el_is_unit || right_el_is_unit { true }
@@ -579,7 +596,8 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
   let left_norm_name = left.name
   let left_is_unit_inner = if left_is_container {
     match left_first_child {
-      Some { value: el } =>
+      Some { value: ch } =>
+        let el = child_type_node(ch: ch)
         let el_is_unit = el.connective == Conj && el.children |> count == 0
         el_is_unit
       None => false
@@ -662,9 +680,9 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
       if left.name != right.name { false }
       else {
         match left.children |> first {
-          Some { value: left_el } =>
+          Some { value: left_ch } =>
             match right.children |> first {
-              Some { value: right_el } => node_type_equals(left: left_el, right: right_el)
+              Some { value: right_ch } => node_type_equals(left: child_type_node(ch: left_ch), right: child_type_node(ch: right_ch))
               None => false
             }
           None => false
@@ -683,7 +701,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
                     Some { value: left_second } =>
                       match right.children |> skip(1) |> first {
                         Some { value: right_second } =>
-                          node_type_equals(left: left_first, right: right_first) && node_type_equals(left: left_second, right: right_second)
+                          node_type_equals(left: child_type_node(ch: left_first), right: child_type_node(ch: right_first)) && node_type_equals(left: child_type_node(ch: left_second), right: child_type_node(ch: right_second))
                         None => false
                       }
                     None => false
@@ -796,9 +814,15 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
 fn method_receiver_element_node(receiver_type: Node) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
   let maybe_element = if node_is_keyed_collection(n: normed) {
-    normed.children |> skip(1) |> first
+    match normed.children |> skip(1) |> first {
+      Some { value: ch } => Some { value: rt_type(n: ch) }
+      None => none
+    }
   } else if normed.connective == NoConnective && normed.children |> count == 1 {
-    normed.children |> first
+    match normed.children |> first {
+      Some { value: ch } => Some { value: rt_type(n: ch) }
+      None => none
+    }
   } else {
     none
   }
@@ -879,7 +903,12 @@ fn infer_binop_type_node(op: BinOp, left_type: Node) -> Node {
 fn for_each_element_type_node(n: Node) -> Node {
   let normed = normalize_access_type_node(n: n)
   let is_single_child = normed.connective == NoConnective && normed.children |> count == 1
-  let extracted = if is_single_child { normed.children |> first } else { none }
+  let extracted = if is_single_child {
+    match normed.children |> first {
+      Some { value: ch } => Some { value: rt_type(n: ch) }
+      None => none
+    }
+  } else { none }
   match extracted {
     Some { value: el } => el
     None =>

@@ -12,7 +12,7 @@
 
 module v2.compiler.infer_resolve
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, container_param_name }
 import v2.std.core {
   Node,
   make_param_node, param_node_name, param_node_type_expr, param_node_default_value,
@@ -42,7 +42,7 @@ import v2.std.core {
   unit_type, string_type
 }
 import v2.compiler.infer_types {
-  rt_type, node_is_keyed_collection
+  rt_type, child_type_node, node_is_keyed_collection
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for
@@ -379,36 +379,39 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
   } else {
     let is_map = node_is_keyed_collection(n: n)
     if is_map {
-      // Map: recurse on both key and value children
+      // Map: recurse on both key and value children (extract type from field-style encoding)
       let type_name = n.name
-      let key_child = match n.children |> first {
-        Some { value: k } => k
-        None => string_type
-      }
-      let val_child = match skip(n.children, 1) |> first {
-        Some { value: v } => v
-        None => unit_type
-      }
-      let key_result = resolve_node_bounded(n: key_child, env: env, module_name: module_name, depth: depth + 1)
+      let key_child_node = match n.children |> first { Some { value: k } => k  None => n }
+      let val_child_node = match skip(n.children, 1) |> first { Some { value: v } => v  None => n }
+      let key_type = child_type_node(ch: key_child_node)
+      let val_type = child_type_node(ch: val_child_node)
+      let key_result = resolve_node_bounded(n: key_type, env: env, module_name: module_name, depth: depth + 1)
       let key_resolved = key_result.resolved
       let key_diags = key_result.diagnostics
-      let val_result = resolve_node_bounded(n: val_child, env: env, module_name: module_name, depth: depth + 1)
+      let val_result = resolve_node_bounded(n: val_type, env: env, module_name: module_name, depth: depth + 1)
       let val_resolved = val_result.resolved
       let val_diags = val_result.diagnostics
+      let key_param_name = if key_child_node.inferred != none { key_child_node.name } else { "K" }
+      let val_param_name = if val_child_node.inferred != none { val_child_node.name } else { "V" }
+      let resolved_key_child = Node { name: key_param_name, span: key_child_node.span, ident_span: key_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let resolved_val_child = Node { name: val_param_name, span: val_child_node.span, ident_span: val_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: val_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       NodeResolveResult {
-        resolved: Node { name: type_name, span: n.span, ident_span: n.ident_span, children: [key_resolved, val_resolved], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+        resolved: Node { name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_key_child, resolved_val_child], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
         diagnostics: concat(key_diags, val_diags)
       }
     } else if n.children |> count == 1 {
-    // Container (List, Set, etc.): recurse on single child (element type)
+    // Container (List, Set, etc.): recurse on single child (extract type from field-style encoding)
     let type_name = n.name
     match n.children |> first {
-      Some { value: el } =>
-        let el_result = resolve_node_bounded(n: el, env: env, module_name: module_name, depth: depth + 1)
+      Some { value: child_node } =>
+        let el_type = child_type_node(ch: child_node)
+        let el_result = resolve_node_bounded(n: el_type, env: env, module_name: module_name, depth: depth + 1)
         let el_resolved = el_result.resolved
         let el_diags = el_result.diagnostics
+        let el_param_name = if child_node.inferred != none { child_node.name } else { container_param_name(kind_name: type_name, index: 0) }
+        let resolved_child = Node { name: el_param_name, span: child_node.span, ident_span: child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: el_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         NodeResolveResult {
-          resolved: Node { name: type_name, span: n.span, ident_span: n.ident_span, children: [el_resolved], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+          resolved: Node { name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_child], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
           diagnostics: el_diags
         }
       None => NodeResolveResult { resolved: n, diagnostics: [] }

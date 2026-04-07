@@ -6,7 +6,7 @@ use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, container_node, is_fully_resolved, map_node, node_is_keyed_collection,
+    bare_map_node, container_node, is_fully_resolved, map_node, node_is_keyed_collection, rt_type,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::{
@@ -62,6 +62,8 @@ fn list_int_index_returns_optional_element_type() {
 
 #[test]
 fn malformed_map_index_returns_compiler_error_type() {
+    // bare_map_node() now has K/V wrapper children with TypeVariable inferred,
+    // so it's recognized as a keyed collection — key type mismatch is diagnosed
     let result = v2_compiler_infer_access::check_index_access_node(
         bare_map_node(),
         leaf_node("String".to_string()),
@@ -70,7 +72,7 @@ fn malformed_map_index_returns_compiler_error_type() {
     );
 
     assert_eq!(result.diagnostics.len(), 1);
-    assert_compiler_error(&result.inferred, "indexing is only supported");
+    assert_compiler_error(&result.inferred, "key type does not match");
 }
 
 #[test]
@@ -440,8 +442,11 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
     .expect("keys must resolve on Map<String,Int>");
     assert_eq!(result.result_type.name, "List", "keys should return List");
     assert_eq!(result.result_type.children.len(), 1, "keys result should have one child");
+    // Children are now field-style wrappers — extract type from inferred
+    let elem_child = &result.result_type.children[0];
+    let elem_type = rt_type(elem_child.clone());
     assert_eq!(
-        result.result_type.children[0].name, "String",
+        elem_type.name, "String",
         "keys on Map<String,Int> should return List<String>"
     );
 }
@@ -486,12 +491,13 @@ fn keyed_collection_parts_returns_none_for_element_collection() {
 }
 
 #[test]
-fn keyed_collection_parts_returns_none_for_bare_map() {
+fn keyed_collection_parts_returns_type_variables_for_bare_map() {
+    // bare_map_node() now has K/V wrapper children with TypeVariable inferred
     let bare = bare_map_node();
     let parts = v2_compiler_infer_access::keyed_collection_parts(bare);
     assert!(
-        parts.is_none(),
-        "bare Map (no children) should return None"
+        parts.is_some(),
+        "bare Map has K/V children (TypeVariable inferred)"
     );
 }
 

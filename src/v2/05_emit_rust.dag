@@ -83,7 +83,7 @@ import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import v2.compiler.infer_types {
   normalize_access_type_node, for_each_element_type_node,
-  rt_type, emit_map_has,
+  rt_type, child_type_node, emit_map_has,
   node_is_keyed_collection, node_is_element_collection, node_is_collection
 }
 import v2.compiler.infer_method {
@@ -1912,8 +1912,8 @@ fn rust_runtime_bridge_name(function_name: String) -> String {
 
 fn rust_empty_map_value_type_str(map_type: Node, shared_types: Map<String, Bool>) -> String {
   match map_type.children |> skip(1) |> first {
-    Some { value: value_type } =>
-      let rendered = render_rust_type(n: value_type, shared_types: shared_types)
+    Some { value: value_child } =>
+      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types)
       if rendered == "" { "" } else { rendered }
     None => ""
   }
@@ -2424,10 +2424,11 @@ fn collection_element_type(receiver_type: InferredNode?, shared_types: Map<Strin
       let __rt_is_container = node_is_element_collection(n: rt)
       if __rt_is_container {
         match rt.children |> first {
-          Some { value: elem_node } =>
+          Some { value: elem_child } =>
+            let elem_node = child_type_node(ch: elem_child)
             // If element type is CompilerError, fall back to _ for Rust inference
-            let elem_is_error = if elem_node.inferred != none { is_compiler_error(inferred: elem_node.inferred.value) } else { false }
-            let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
+            let elem_is_error = if elem_child.inferred != none { is_compiler_error(inferred: elem_child.inferred.value) } else { false }
+            let elem_is_type_var = if elem_child.inferred != none { is_type_variable(inferred: elem_child.inferred.value) } else { false }
             if elem_is_error || elem_is_type_var { "_" } else { render_rust_type(n: elem_node, shared_types: shared_types) }
           None => "_"
         }

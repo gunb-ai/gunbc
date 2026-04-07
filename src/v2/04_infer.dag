@@ -86,7 +86,7 @@ import v2.compiler.infer_types {
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
-  rt_type,
+  rt_type, child_type_node,
   emit_map_has,
   enrich_kernel_type
 }
@@ -1581,7 +1581,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let elem_expected = match expected {
         Some { value: exp } =>
           if node_is_element_collection(n: exp) {
-            match exp.children |> first { Some { value: elem } => Some { value: elem }  None => none }
+            match exp.children |> first { Some { value: elem } => Some { value: child_type_node(ch: elem) }  None => none }
           } else { none }
         None => none
       }
@@ -1599,7 +1599,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Some { value: exp } =>
             if node_is_element_collection(n: exp) {
               match exp.children |> first {
-                Some { value: elem } => elem
+                Some { value: elem } => child_type_node(ch: elem)
                 None => unit_type
               }
             } else { unit_type }
