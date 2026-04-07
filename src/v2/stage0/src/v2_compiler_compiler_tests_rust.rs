@@ -46,6 +46,10 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
+pub use crate::v2_compiler_artifact::{RenderTarget};
+use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go};
+pub use crate::v2_compiler_coercion::{extract_coercion_tests, CoercionTestEntry, CoercionAssertion};
+use crate::v2_compiler_coercion::CoercionAssertion::{CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion};
 
 pub fn ct_module_header() -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat("#[cfg(test)]\n".to_string(), "mod compiler_tests {\n".to_string()), "    use std::collections::HashMap;\n".to_string()), "    use crate::v2_compiler_tokenize::tokenize;\n\n".to_string())
@@ -64,7 +68,7 @@ pub fn ct_source_builders() -> String {
 }
 
 pub fn ct_self_compile_sources() -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    /// Build the self-compile source closure: dsl/ dependencies + all src/v2/*.dag.\n".to_string(), "    fn self_compile_sources() -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {\n".to_string()), "        let dsl_deps = &[\n".to_string()), "            \"dsl/extdeps/languages/go/emit.dag\",\n".to_string()), "            \"dsl/extdeps/languages/python/emit.dag\",\n".to_string()), "            \"dsl/extdeps/languages/rust/emit.dag\",\n".to_string()), "            \"dsl/extdeps/languages/dag/syntax.dag\",\n".to_string()), "            \"dsl/std/algebra.dag\",\n".to_string()), "            \"dsl/std/syntax.dag\",\n".to_string()), "            \"dsl/std/types.dag\",\n".to_string()), "        ];\n".to_string()), "        let root = workspace_root();\n".to_string()), "        let mut sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = dsl_deps\n".to_string()), "            .iter()\n".to_string()), "            .map(|p| {\n".to_string()), "                let full = root.join(p);\n".to_string()), "                let content = std::fs::read_to_string(&full)\n".to_string()), "                    .unwrap_or_else(|e| panic!(\"failed to read {}: {}\", full.display(), e));\n".to_string()), "                std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {\n".to_string()), "                    path: p.to_string(),\n".to_string()), "                    content,\n".to_string()), "                })\n".to_string()), "            })\n".to_string()), "            .collect();\n\n".to_string()), "        let v2_files = discover_dag_files(\"src/v2\");\n".to_string()), "        sources.extend(source_files_from(&v2_files));\n".to_string()), "        sources\n".to_string()), "    }\n\n".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    /// Build the self-compile source closure: dsl/ dependencies + all src/v2/*.dag.\n".to_string(), "    fn self_compile_sources() -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {\n".to_string()), "        let dsl_deps = &[\n".to_string()), "            \"dsl/extdeps/languages/go/emit.dag\",\n".to_string()), "            \"dsl/extdeps/languages/python/emit.dag\",\n".to_string()), "            \"dsl/extdeps/languages/rust/emit.dag\",\n".to_string()), "            \"dsl/extdeps/languages/dag/syntax.dag\",\n".to_string()), "            \"dsl/std/algebra.dag\",\n".to_string()), "            \"dsl/std/syntax.dag\",\n".to_string()), "            \"dsl/std/types.dag\",\n".to_string()), "            \"dsl/std/verification.dag\",\n".to_string()), "        ];\n".to_string()), "        let root = workspace_root();\n".to_string()), "        let mut sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = dsl_deps\n".to_string()), "            .iter()\n".to_string()), "            .map(|p| {\n".to_string()), "                let full = root.join(p);\n".to_string()), "                let content = std::fs::read_to_string(&full)\n".to_string()), "                    .unwrap_or_else(|e| panic!(\"failed to read {}: {}\", full.display(), e));\n".to_string()), "                std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {\n".to_string()), "                    path: p.to_string(),\n".to_string()), "                    content,\n".to_string()), "                })\n".to_string()), "            })\n".to_string()), "            .collect();\n\n".to_string()), "        let v2_files = discover_dag_files(\"src/v2\");\n".to_string()), "        sources.extend(source_files_from(&v2_files));\n".to_string()), "        sources\n".to_string()), "    }\n\n".to_string())
 }
 
 pub fn ct_gist_sources() -> String {
@@ -104,7 +108,69 @@ pub fn ct_type_size_test() -> String {
 }
 
 pub fn ct_coercion_tests() -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    // =========================================================================\n".to_string(), "    // Coercion registry tests\n".to_string()), "    // =========================================================================\n\n".to_string()), "    #[test]\n".to_string()), "    fn coercion_rust_checkpoint_resolves_primitives() {\n".to_string()), "        use crate::v2_compiler_coercion::*;\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Int\".into()), \"i64\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Float\".into()), \"f64\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Bool\".into()), \"bool\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"String\".into()), \"String\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Unit\".into()), \"()\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Bytes\".into()), \"Vec<u8>\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Json\".into()), \"serde_json::Value\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"FooBar\".into()), \"FooBar\");\n".to_string()), "    }\n\n".to_string()), "    #[test]\n".to_string()), "    fn coercion_python_checkpoint_resolves_primitives() {\n".to_string()), "        use crate::v2_compiler_coercion::*;\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Python, \"Int\".into()), \"int\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Python, \"String\".into()), \"str\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Python, \"Bool\".into()), \"bool\");\n".to_string()), "    }\n\n".to_string()), "    #[test]\n".to_string()), "    fn coercion_go_checkpoint_resolves_primitives() {\n".to_string()), "        use crate::v2_compiler_coercion::*;\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Go, \"Int\".into()), \"int64\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Go, \"String\".into()), \"string\");\n".to_string()), "        assert_eq!(coerce_primitive_type(RenderTarget::Go, \"Unit\".into()), \"struct{}\");\n".to_string()), "    }\n\n".to_string()), "    #[test]\n".to_string()), "    fn coercion_inhabitant_resolves_containers() {\n".to_string()), "        use crate::v2_compiler_coercion::*;\n".to_string()), "        assert_eq!(\n".to_string()), "            coerce_container_template(RenderTarget::Rust, \"List\".into()),\n".to_string()), "            Some(\"Vec<{0}>\".to_string())\n".to_string()), "        );\n".to_string()), "        assert_eq!(\n".to_string()), "            coerce_container_template(RenderTarget::Rust, \"FreeMonoid\".into()),\n".to_string()), "            Some(\"Vec<{0}>\".to_string())\n".to_string()), "        );\n".to_string()), "        assert_eq!(\n".to_string()), "            coerce_container_template(RenderTarget::Rust, \"Map\".into()),\n".to_string()), "            Some(\"HashMap<{0}, {1}>\".to_string())\n".to_string()), "        );\n".to_string()), "        assert_eq!(\n".to_string()), "            coerce_container_template(RenderTarget::Rust, \"Set\".into()),\n".to_string()), "            Some(\"std::collections::BTreeSet<{0}>\".to_string())\n".to_string()), "        );\n".to_string()), "        assert_eq!(coerce_container_template(RenderTarget::Rust, \"FooBar\".into()), None);\n".to_string()), "    }\n\n".to_string()), "    #[test]\n".to_string()), "    fn coercion_cross_language_inhabitant_templates() {\n".to_string()), "        use crate::v2_compiler_coercion::*;\n".to_string()), "        assert_eq!(coerce_container_template(RenderTarget::Python, \"List\".into()), Some(\"list[{0}]\".to_string()));\n".to_string()), "        assert_eq!(coerce_container_template(RenderTarget::Python, \"Map\".into()), Some(\"dict[{0}, {1}]\".to_string()));\n".to_string()), "        assert_eq!(coerce_container_template(RenderTarget::Python, \"Set\".into()), Some(\"set[{0}]\".to_string()));\n\n".to_string()), "        assert_eq!(coerce_container_template(RenderTarget::Go, \"List\".into()), Some(\"[]{0}\".to_string()));\n".to_string()), "        assert_eq!(coerce_container_template(RenderTarget::Go, \"Map\".into()), Some(\"map[{0}]{1}\".to_string()));\n".to_string()), "        assert_eq!(coerce_container_template(RenderTarget::Go, \"Set\".into()), Some(\"map[{0}]struct{}\".to_string()));\n".to_string()), "    }\n\n".to_string()), "    #[test]\n".to_string()), "    fn coercion_is_copy_from_checkpoint() {\n".to_string()), "        use crate::v2_compiler_coercion::*;\n".to_string()), "        assert_eq!(is_copy(RenderTarget::Rust, \"Int\".into()), Some(true));\n".to_string()), "        assert_eq!(is_copy(RenderTarget::Rust, \"Bool\".into()), Some(true));\n".to_string()), "        assert_eq!(is_copy(RenderTarget::Rust, \"String\".into()), Some(false));\n".to_string()), "        assert_eq!(is_copy(RenderTarget::Rust, \"Unknown\".into()), None);\n\n".to_string()), "        assert_eq!(is_copy(RenderTarget::Python, \"Int\".into()), None);\n".to_string()), "    }\n\n".to_string()), "    #[test]\n".to_string()), "    fn coercion_template_application() {\n".to_string()), "        use crate::v2_compiler_coercion::*;\n".to_string()), "        assert_eq!(apply_inhabitant_template1(\"Vec<{0}>\".into(), \"i64\".into()), \"Vec<i64>\");\n".to_string()), "        assert_eq!(apply_inhabitant_template2(\"HashMap<{0}, {1}>\".into(), \"String\".into(), \"i64\".into()), \"HashMap<String, i64>\");\n".to_string()), "        assert_eq!(apply_inhabitant_template1(\"[]{0}\".into(), \"int64\".into()), \"[]int64\");\n".to_string()), "        assert_eq!(apply_inhabitant_template2(\"map[{0}]{1}\".into(), \"string\".into(), \"int64\".into()), \"map[string]int64\");\n".to_string()), "    }\n\n".to_string())
+    {
+        let entries = extract_coercion_tests();
+let test_fns = Rc::new({ let mut __result = Vec::new(); for e in entries.iter().cloned() { __result.push(render_coercion_test_rust(e.clone())); } __result });
+v2_rt::concat(v2_rt::concat(v2_rt::concat("    // =========================================================================\n".to_string(), "    // Coercion registry tests (auto-generated from data declarations)\n".to_string()), "    // =========================================================================\n\n".to_string()), test_fns.join(&"\n".to_string()))
+}
+}
+
+pub fn render_target_rust_enum(target: RenderTarget) -> String {
+    match target {
+    RenderTarget::Rust => "RenderTarget::Rust".to_string(),
+    RenderTarget::Python => "RenderTarget::Python".to_string(),
+    RenderTarget::Go => "RenderTarget::Go".to_string(),
+    RenderTarget::Dag => "RenderTarget::Dag".to_string(),
+}
+}
+
+pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
+    {
+        let assertions = Rc::new({ let mut __result = Vec::new(); for a in entry.assertions.clone().iter().cloned() { __result.push(render_coercion_assertion_rust(a.clone())); } __result });
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    #[test]\n".to_string(), "    fn ".to_string()), entry.test_name.clone()), "() {\n".to_string()), "        use crate::v2_compiler_coercion::*;\n".to_string()), assertions.join(&"".to_string())), "    }\n\n".to_string())
+}
+}
+
+pub fn first_or_empty(items: Rc<Vec<String>>) -> String {
+    match items.first().cloned() {
+    Some(v) => v.clone(),
+    None => "".to_string(),
+}
+}
+
+pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
+    match items.get(1 as usize).cloned() {
+    Some(v) => v.clone(),
+    None => "".to_string(),
+}
+}
+
+pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
+    match (*a).clone() {
+    CoercionAssertion::CheckpointAssertion { target: t, dag_name: name, expected_type: expected, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(coerce_primitive_type(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string()),
+    CoercionAssertion::ContainerAssertion { target: t, container_name: name, expected_template: expected, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(coerce_container_template(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into()), Some(\"".to_string()), expected.clone()), "\".to_string()));\n".to_string()),
+    CoercionAssertion::CopyAssertion { target: t, dag_name: name, expected_copy: expected, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(is_copy(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into()), Some(".to_string()), if expected.clone() {
+        "true".to_string()
+} else {
+        "false".to_string()
+}), "));\n".to_string()),
+    CoercionAssertion::TemplateAssertion { template: tmpl, args: arg_list, expected, .. } => if ((arg_list.clone().len() as i64) == 1) {
+        {
+            let arg0 = first_or_empty(arg_list.clone());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(apply_inhabitant_template1(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
+}
+} else {
+        if ((arg_list.clone().len() as i64) == 2) {
+            {
+                let arg0 = first_or_empty(arg_list.clone());
+let arg1 = second_or_empty(arg_list.clone());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0), "\".into(), \"".to_string()), arg1), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
+}
+} else {
+            "".to_string()
+}
+},
+}
 }
 
 pub fn ct_profile_helpers() -> String {

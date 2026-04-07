@@ -53,6 +53,7 @@ pub use crate::std_types::{container_to_algebra_name};
 pub use crate::extdeps_languages_rust_types::{rust_type_checkpoints, rust_algebra_inhabitants, rust_callable, rust_optional_template};
 pub use crate::extdeps_languages_python_types::{python_type_checkpoints, python_algebra_inhabitants, python_callable, python_optional_template};
 pub use crate::extdeps_languages_go_types::{go_type_checkpoints, go_algebra_inhabitants, go_callable, go_optional_template};
+use CoercionAssertion::*;
 
 pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
     match target {
@@ -133,4 +134,140 @@ pub fn apply_inhabitant_template1(template: String, inner: String) -> String {
 
 pub fn apply_inhabitant_template2(template: String, first: String, second: String) -> String {
     v2_rt::replace(v2_rt::replace(template, "{0}".to_string(), first), "{1}".to_string(), second)
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum CoercionAssertion {
+    CheckpointAssertion {
+        target: RenderTarget,
+        dag_name: String,
+        expected_type: String,
+    },
+    ContainerAssertion {
+        target: RenderTarget,
+        container_name: String,
+        expected_template: String,
+    },
+    CopyAssertion {
+        target: RenderTarget,
+        dag_name: String,
+        expected_copy: bool,
+    },
+    TemplateAssertion {
+        template: String,
+        args: Rc<Vec<String>>,
+        expected: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CoercionTestEntry {
+    pub test_name: String,
+    pub assertions: Rc<Vec<Rc<CoercionAssertion>>>,
+}
+
+pub fn target_label(target: RenderTarget) -> String {
+    match target {
+    RenderTarget::Rust => "rust".to_string(),
+    RenderTarget::Python => "python".to_string(),
+    RenderTarget::Go => "go".to_string(),
+    RenderTarget::Dag => "dag".to_string(),
+}
+}
+
+pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+    {
+        let label = target_label(target.clone());
+let cps = target_checkpoints(target.clone());
+if ((cps.clone().len() as i64) == 0) {
+            Rc::new(vec![])
+} else {
+            Rc::new(vec![Rc::new(CoercionTestEntry {
+    test_name: v2_rt::concat(v2_rt::concat("coercion_".to_string(), label), "_checkpoint_resolves_primitives".to_string()),
+    assertions: Rc::new({ let mut __result = Vec::new(); for cp in cps.clone().iter().cloned() { __result.push(Rc::new(CoercionAssertion::CheckpointAssertion {
+    target: target.clone(),
+    dag_name: cp.dag_name.clone(),
+    expected_type: cp.target_type.clone(),
+})); } __result }),
+})])
+}
+}
+}
+
+pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+    {
+        let label = target_label(target.clone());
+let inhs = target_inhabitants(target.clone());
+let container_names = match target.clone() {
+    RenderTarget::Rust => Rc::new(vec!["List".to_string(), "FreeMonoid".to_string(), "Map".to_string(), "Set".to_string()]),
+    RenderTarget::Python => Rc::new(vec!["List".to_string(), "Map".to_string(), "Set".to_string()]),
+    RenderTarget::Go => Rc::new(vec!["List".to_string(), "Map".to_string(), "Set".to_string()]),
+    RenderTarget::Dag => Rc::new(vec![]),
+};
+if ((container_names.clone().len() as i64) == 0) {
+            Rc::new(vec![])
+} else {
+            Rc::new(vec![Rc::new(CoercionTestEntry {
+    test_name: v2_rt::concat(v2_rt::concat("coercion_".to_string(), label), "_inhabitant_resolves_containers".to_string()),
+    assertions: Rc::new({ let mut __result = Vec::new(); for name in container_names.clone().iter().cloned() { __result.extend((*match coerce_container_template(target.clone(), name.clone()) {
+    Some(tmpl) => Rc::new(vec![Rc::new(CoercionAssertion::ContainerAssertion {
+    target: target.clone(),
+    container_name: name.clone(),
+    expected_template: tmpl.clone(),
+})]),
+    None => Rc::new(vec![]),
+}).iter().cloned()); } __result }),
+})])
+}
+}
+}
+
+pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+    {
+        let cps = target_checkpoints(RenderTarget::Rust);
+let copy_assertions = Rc::new({ let mut __result = Vec::new(); for cp in cps.iter().cloned() { __result.extend((*match cp.is_copy.clone() {
+    Some(v) => Rc::new(vec![Rc::new(CoercionAssertion::CopyAssertion {
+    target: RenderTarget::Rust,
+    dag_name: cp.dag_name.clone(),
+    expected_copy: v.clone(),
+})]),
+    None => Rc::new(vec![]),
+}).iter().cloned()); } __result });
+if ((copy_assertions.clone().len() as i64) == 0) {
+            Rc::new(vec![])
+} else {
+            Rc::new(vec![Rc::new(CoercionTestEntry {
+    test_name: "coercion_is_copy_from_checkpoint".to_string(),
+    assertions: copy_assertions.clone(),
+})])
+}
+}
+}
+
+pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+    Rc::new(vec![Rc::new(CoercionTestEntry {
+    test_name: "coercion_template_application".to_string(),
+    assertions: Rc::new(vec![Rc::new(CoercionAssertion::TemplateAssertion {
+    template: "Vec<{0}>".to_string(),
+    args: Rc::new(vec!["i64".to_string()]),
+    expected: "Vec<i64>".to_string(),
+}), Rc::new(CoercionAssertion::TemplateAssertion {
+    template: "HashMap<{0}, {1}>".to_string(),
+    args: Rc::new(vec!["String".to_string(), "i64".to_string()]),
+    expected: "HashMap<String, i64>".to_string(),
+}), Rc::new(CoercionAssertion::TemplateAssertion {
+    template: "[]{0}".to_string(),
+    args: Rc::new(vec!["int64".to_string()]),
+    expected: "[]int64".to_string(),
+}), Rc::new(CoercionAssertion::TemplateAssertion {
+    template: "map[{0}]{1}".to_string(),
+    args: Rc::new(vec!["string".to_string(), "int64".to_string()]),
+    expected: "map[string]int64".to_string(),
+})]),
+})])
+}
+
+pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(checkpoint_tests(RenderTarget::Rust), checkpoint_tests(RenderTarget::Python)), checkpoint_tests(RenderTarget::Go)), inhabitant_tests(RenderTarget::Rust)), inhabitant_tests(RenderTarget::Python)), inhabitant_tests(RenderTarget::Go)), copy_tests()), template_application_tests())
 }

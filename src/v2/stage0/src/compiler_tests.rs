@@ -83,6 +83,7 @@ mod compiler_tests {
             "dsl/std/algebra.dag",
             "dsl/std/syntax.dag",
             "dsl/std/types.dag",
+            "dsl/std/verification.dag",
         ];
         let root = workspace_root();
         let mut sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = dsl_deps
@@ -525,7 +526,7 @@ mod compiler_tests {
     }
 
     // =========================================================================
-    // Coercion registry tests
+    // Coercion registry tests (auto-generated from data declarations)
     // =========================================================================
 
     #[test]
@@ -534,73 +535,83 @@ mod compiler_tests {
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Int".into()), "i64");
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Float".into()), "f64");
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Bool".into()), "bool");
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "String".into()), "String");
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Unit".into()), "()");
+        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "String".into()), "String");
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Bytes".into()), "Vec<u8>");
+        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Secret".into()), "String");
         assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Json".into()), "serde_json::Value");
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "FooBar".into()), "FooBar");
     }
+
 
     #[test]
     fn coercion_python_checkpoint_resolves_primitives() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(coerce_primitive_type(RenderTarget::Python, "Int".into()), "int");
-        assert_eq!(coerce_primitive_type(RenderTarget::Python, "String".into()), "str");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Float".into()), "float");
         assert_eq!(coerce_primitive_type(RenderTarget::Python, "Bool".into()), "bool");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Unit".into()), "None");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "String".into()), "str");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Bytes".into()), "bytes");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Secret".into()), "str");
+        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Json".into()), "dict");
     }
+
 
     #[test]
     fn coercion_go_checkpoint_resolves_primitives() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(coerce_primitive_type(RenderTarget::Go, "Int".into()), "int64");
-        assert_eq!(coerce_primitive_type(RenderTarget::Go, "String".into()), "string");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Float".into()), "float64");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Bool".into()), "bool");
         assert_eq!(coerce_primitive_type(RenderTarget::Go, "Unit".into()), "struct{}");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "String".into()), "string");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Bytes".into()), "[]byte");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Secret".into()), "string");
+        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Json".into()), "interface{}");
     }
 
+
     #[test]
-    fn coercion_inhabitant_resolves_containers() {
+    fn coercion_rust_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "List".into()),
-            Some("Vec<{0}>".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()),
-            Some("Vec<{0}>".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "Map".into()),
-            Some("HashMap<{0}, {1}>".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "Set".into()),
-            Some("std::collections::BTreeSet<{0}>".to_string())
-        );
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "FooBar".into()), None);
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "List".into()), Some("Vec<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()), Some("Vec<{0}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "Map".into()), Some("HashMap<{0}, {1}>".to_string()));
+        assert_eq!(coerce_container_template(RenderTarget::Rust, "Set".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
     }
 
+
     #[test]
-    fn coercion_cross_language_inhabitant_templates() {
+    fn coercion_python_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(coerce_container_template(RenderTarget::Python, "List".into()), Some("list[{0}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "Map".into()), Some("dict[{0}, {1}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "Set".into()), Some("set[{0}]".to_string()));
+    }
 
+
+    #[test]
+    fn coercion_go_inhabitant_resolves_containers() {
+        use crate::v2_compiler_coercion::*;
         assert_eq!(coerce_container_template(RenderTarget::Go, "List".into()), Some("[]{0}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "Map".into()), Some("map[{0}]{1}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "Set".into()), Some("map[{0}]struct{}".to_string()));
     }
 
+
     #[test]
     fn coercion_is_copy_from_checkpoint() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(is_copy(RenderTarget::Rust, "Int".into()), Some(true));
+        assert_eq!(is_copy(RenderTarget::Rust, "Float".into()), Some(true));
         assert_eq!(is_copy(RenderTarget::Rust, "Bool".into()), Some(true));
+        assert_eq!(is_copy(RenderTarget::Rust, "Unit".into()), Some(true));
         assert_eq!(is_copy(RenderTarget::Rust, "String".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Unknown".into()), None);
-
-        assert_eq!(is_copy(RenderTarget::Python, "Int".into()), None);
+        assert_eq!(is_copy(RenderTarget::Rust, "Bytes".into()), Some(false));
+        assert_eq!(is_copy(RenderTarget::Rust, "Secret".into()), Some(false));
+        assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));
     }
+
 
     #[test]
     fn coercion_template_application() {

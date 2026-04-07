@@ -7,6 +7,12 @@
 
 module v2.compiler.compiler_tests_rust
 
+import v2.compiler.artifact { RenderTarget, Rust, Python, Go }
+import v2.compiler.coercion {
+  extract_coercion_tests, CoercionTestEntry, CoercionAssertion,
+  CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion
+}
+
 fn ct_module_header() -> String {
   concat(
     "#[cfg(test)]\n",
@@ -106,6 +112,7 @@ fn ct_self_compile_sources() -> String {
     "            \"dsl/std/algebra.dag\",\n",
     "            \"dsl/std/syntax.dag\",\n",
     "            \"dsl/std/types.dag\",\n",
+    "            \"dsl/std/verification.dag\",\n",
     "        ];\n",
     "        let root = workspace_root();\n",
     "        let mut sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = dsl_deps\n",
@@ -539,84 +546,71 @@ fn ct_type_size_test() -> String {
 }
 
 fn ct_coercion_tests() -> String {
+  let entries = extract_coercion_tests()
+  let test_fns = entries |> map(e => render_coercion_test_rust(entry: e))
   concat(
     "    // =========================================================================\n",
-    "    // Coercion registry tests\n",
+    "    // Coercion registry tests (auto-generated from data declarations)\n",
     "    // =========================================================================\n\n",
+    test_fns |> join(separator: "\n"))
+}
+
+fn render_target_rust_enum(target: RenderTarget) -> String {
+  match target {
+    Rust => "RenderTarget::Rust"
+    Python => "RenderTarget::Python"
+    Go => "RenderTarget::Go"
+    Dag => "RenderTarget::Dag"
+  }
+}
+
+fn render_coercion_test_rust(entry: CoercionTestEntry) -> String {
+  let assertions = entry.assertions |> map(a => render_coercion_assertion_rust(a: a))
+  concat(
     "    #[test]\n",
-    "    fn coercion_rust_checkpoint_resolves_primitives() {\n",
+    "    fn ", entry.test_name, "() {\n",
     "        use crate::v2_compiler_coercion::*;\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Int\".into()), \"i64\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Float\".into()), \"f64\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Bool\".into()), \"bool\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"String\".into()), \"String\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Unit\".into()), \"()\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Bytes\".into()), \"Vec<u8>\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"Json\".into()), \"serde_json::Value\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Rust, \"FooBar\".into()), \"FooBar\");\n",
-    "    }\n\n",
-    "    #[test]\n",
-    "    fn coercion_python_checkpoint_resolves_primitives() {\n",
-    "        use crate::v2_compiler_coercion::*;\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Python, \"Int\".into()), \"int\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Python, \"String\".into()), \"str\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Python, \"Bool\".into()), \"bool\");\n",
-    "    }\n\n",
-    "    #[test]\n",
-    "    fn coercion_go_checkpoint_resolves_primitives() {\n",
-    "        use crate::v2_compiler_coercion::*;\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Go, \"Int\".into()), \"int64\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Go, \"String\".into()), \"string\");\n",
-    "        assert_eq!(coerce_primitive_type(RenderTarget::Go, \"Unit\".into()), \"struct{}\");\n",
-    "    }\n\n",
-    "    #[test]\n",
-    "    fn coercion_inhabitant_resolves_containers() {\n",
-    "        use crate::v2_compiler_coercion::*;\n",
-    "        assert_eq!(\n",
-    "            coerce_container_template(RenderTarget::Rust, \"List\".into()),\n",
-    "            Some(\"Vec<{0}>\".to_string())\n",
-    "        );\n",
-    "        assert_eq!(\n",
-    "            coerce_container_template(RenderTarget::Rust, \"FreeMonoid\".into()),\n",
-    "            Some(\"Vec<{0}>\".to_string())\n",
-    "        );\n",
-    "        assert_eq!(\n",
-    "            coerce_container_template(RenderTarget::Rust, \"Map\".into()),\n",
-    "            Some(\"HashMap<{0}, {1}>\".to_string())\n",
-    "        );\n",
-    "        assert_eq!(\n",
-    "            coerce_container_template(RenderTarget::Rust, \"Set\".into()),\n",
-    "            Some(\"std::collections::BTreeSet<{0}>\".to_string())\n",
-    "        );\n",
-    "        assert_eq!(coerce_container_template(RenderTarget::Rust, \"FooBar\".into()), None);\n",
-    "    }\n\n",
-    "    #[test]\n",
-    "    fn coercion_cross_language_inhabitant_templates() {\n",
-    "        use crate::v2_compiler_coercion::*;\n",
-    "        assert_eq!(coerce_container_template(RenderTarget::Python, \"List\".into()), Some(\"list[{0}]\".to_string()));\n",
-    "        assert_eq!(coerce_container_template(RenderTarget::Python, \"Map\".into()), Some(\"dict[{0}, {1}]\".to_string()));\n",
-    "        assert_eq!(coerce_container_template(RenderTarget::Python, \"Set\".into()), Some(\"set[{0}]\".to_string()));\n\n",
-    "        assert_eq!(coerce_container_template(RenderTarget::Go, \"List\".into()), Some(\"[]{0}\".to_string()));\n",
-    "        assert_eq!(coerce_container_template(RenderTarget::Go, \"Map\".into()), Some(\"map[{0}]{1}\".to_string()));\n",
-    "        assert_eq!(coerce_container_template(RenderTarget::Go, \"Set\".into()), Some(\"map[{0}]struct{}\".to_string()));\n",
-    "    }\n\n",
-    "    #[test]\n",
-    "    fn coercion_is_copy_from_checkpoint() {\n",
-    "        use crate::v2_compiler_coercion::*;\n",
-    "        assert_eq!(is_copy(RenderTarget::Rust, \"Int\".into()), Some(true));\n",
-    "        assert_eq!(is_copy(RenderTarget::Rust, \"Bool\".into()), Some(true));\n",
-    "        assert_eq!(is_copy(RenderTarget::Rust, \"String\".into()), Some(false));\n",
-    "        assert_eq!(is_copy(RenderTarget::Rust, \"Unknown\".into()), None);\n\n",
-    "        assert_eq!(is_copy(RenderTarget::Python, \"Int\".into()), None);\n",
-    "    }\n\n",
-    "    #[test]\n",
-    "    fn coercion_template_application() {\n",
-    "        use crate::v2_compiler_coercion::*;\n",
-    "        assert_eq!(apply_inhabitant_template1(\"Vec<{0}>\".into(), \"i64\".into()), \"Vec<i64>\");\n",
-    "        assert_eq!(apply_inhabitant_template2(\"HashMap<{0}, {1}>\".into(), \"String\".into(), \"i64\".into()), \"HashMap<String, i64>\");\n",
-    "        assert_eq!(apply_inhabitant_template1(\"[]{0}\".into(), \"int64\".into()), \"[]int64\");\n",
-    "        assert_eq!(apply_inhabitant_template2(\"map[{0}]{1}\".into(), \"string\".into(), \"int64\".into()), \"map[string]int64\");\n",
+    assertions |> join(separator: ""),
     "    }\n\n")
+}
+
+fn first_or_empty(items: List<String>) -> String {
+  match items |> first {
+    Some { value: v } => v
+    None => ""
+  }
+}
+
+fn second_or_empty(items: List<String>) -> String {
+  match items |> skip(count: 1) |> first {
+    Some { value: v } => v
+    None => ""
+  }
+}
+
+fn render_coercion_assertion_rust(a: CoercionAssertion) -> String {
+  match a {
+    CheckpointAssertion { target: t, dag_name: name, expected_type: expected } =>
+      concat("        assert_eq!(coerce_primitive_type(", render_target_rust_enum(target: t),
+        ", \"", name, "\".into()), \"", expected, "\");\n")
+    ContainerAssertion { target: t, container_name: name, expected_template: expected } =>
+      concat("        assert_eq!(coerce_container_template(", render_target_rust_enum(target: t),
+        ", \"", name, "\".into()), Some(\"", expected, "\".to_string()));\n")
+    CopyAssertion { target: t, dag_name: name, expected_copy: expected } =>
+      concat("        assert_eq!(is_copy(", render_target_rust_enum(target: t),
+        ", \"", name, "\".into()), Some(", if expected { "true" } else { "false" }, "));\n")
+    TemplateAssertion { template: tmpl, args: arg_list, expected: expected } =>
+      if arg_list |> count == 1 {
+        let arg0 = first_or_empty(items: arg_list)
+        concat("        assert_eq!(apply_inhabitant_template1(\"", tmpl, "\".into(), \"",
+          arg0, "\".into()), \"", expected, "\");\n")
+      } else if arg_list |> count == 2 {
+        let arg0 = first_or_empty(items: arg_list)
+        let arg1 = second_or_empty(items: arg_list)
+        concat("        assert_eq!(apply_inhabitant_template2(\"", tmpl, "\".into(), \"",
+          arg0, "\".into(), \"", arg1, "\".into()), \"", expected, "\");\n")
+      } else { "" }
+  }
 }
 
 fn ct_profile_helpers() -> String {

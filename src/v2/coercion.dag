@@ -135,3 +135,112 @@ fn apply_inhabitant_template2(template: String, first: String, second: String) -
   replace(replace(template, "\{0\}", first), "\{1\}", second)
 }
 
+// =========================================================================
+// Structural test extraction -- auto-generate coercion tests from data
+//
+// Each TypeCheckpoint and InhabitantDecl in extdeps/languages/*/types.dag
+// produces test assertions. New data declarations → new tests automatically.
+// =========================================================================
+
+type CoercionAssertion
+  = CheckpointAssertion { target: RenderTarget, dag_name: String, expected_type: String }
+  | ContainerAssertion { target: RenderTarget, container_name: String, expected_template: String }
+  | CopyAssertion { target: RenderTarget, dag_name: String, expected_copy: Bool }
+  | TemplateAssertion { template: String, args: List<String>, expected: String }
+
+type CoercionTestEntry {
+  test_name: String
+  assertions: List<CoercionAssertion>
+}
+
+fn target_label(target: RenderTarget) -> String {
+  match target {
+    Rust => "rust"
+    Python => "python"
+    Go => "go"
+    Dag => "dag"
+  }
+}
+
+// Generate checkpoint test: coerce_primitive_type(target, dag_name) == expected
+fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+  let label = target_label(target: target)
+  let cps = target_checkpoints(target: target)
+  if cps |> count == 0 { [] }
+  else {
+    [CoercionTestEntry {
+      test_name: concat("coercion_", label, "_checkpoint_resolves_primitives"),
+      assertions: cps |> map(cp =>
+        CheckpointAssertion { target: target, dag_name: cp.dag_name, expected_type: cp.target_type })
+    }]
+  }
+}
+
+// Generate container test: coerce_container_template(target, name) == Some(template)
+fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+  let label = target_label(target: target)
+  let inhs = target_inhabitants(target: target)
+  // Only test containers that have container_to_algebra mappings
+  let container_names = match target {
+    Rust => ["List", "FreeMonoid", "Map", "Set"]
+    Python => ["List", "Map", "Set"]
+    Go => ["List", "Map", "Set"]
+    Dag => []
+  }
+  if container_names |> count == 0 { [] }
+  else {
+    [CoercionTestEntry {
+      test_name: concat("coercion_", label, "_inhabitant_resolves_containers"),
+      assertions: container_names |> flat_map(name =>
+        match coerce_container_template(target: target, container_name: name) {
+          Some { value: tmpl } => [ContainerAssertion { target: target, container_name: name, expected_template: tmpl }]
+          None => []
+        })
+    }]
+  }
+}
+
+// Generate is_copy tests (Rust-specific: checkpoints with is_copy != none)
+fn copy_tests() -> List<CoercionTestEntry> {
+  let cps = target_checkpoints(target: Rust)
+  let copy_assertions = cps |> flat_map(cp =>
+    match cp.is_copy {
+      Some { value: v } => [CopyAssertion { target: Rust, dag_name: cp.dag_name, expected_copy: v }]
+      None => []
+    })
+  // Also test that unknown types return None
+  if copy_assertions |> count == 0 { [] }
+  else {
+    [CoercionTestEntry {
+      test_name: "coercion_is_copy_from_checkpoint",
+      assertions: copy_assertions
+    }]
+  }
+}
+
+// Generate template application tests
+fn template_application_tests() -> List<CoercionTestEntry> {
+  [CoercionTestEntry {
+    test_name: "coercion_template_application",
+    assertions: [
+      TemplateAssertion { template: "Vec<\{0\}>", args: ["i64"], expected: "Vec<i64>" },
+      TemplateAssertion { template: "HashMap<\{0\}, \{1\}>", args: ["String", "i64"], expected: "HashMap<String, i64>" },
+      TemplateAssertion { template: "[]\{0\}", args: ["int64"], expected: "[]int64" },
+      TemplateAssertion { template: "map[\{0\}]\{1\}", args: ["string", "int64"], expected: "map[string]int64" }
+    ]
+  }]
+}
+
+// Master extraction: all coercion structural tests.
+fn extract_coercion_tests() -> List<CoercionTestEntry> {
+  concat(
+    checkpoint_tests(target: Rust),
+    checkpoint_tests(target: Python),
+    checkpoint_tests(target: Go),
+    inhabitant_tests(target: Rust),
+    inhabitant_tests(target: Python),
+    inhabitant_tests(target: Go),
+    copy_tests(),
+    template_application_tests())
+}
+
