@@ -793,13 +793,11 @@ fn seed_override_map() -> Map<String, Node> {
 }
 
 fn fold_override_map(key: String, value: Node) -> Map<String, Node> {
-  let seed = seed_override_map()
-  fold(map_keys(seed), init: empty_map(), f: (acc, k) => acc) |> map_insert(key, value)
+  map_insert(seed_override_map(), key, value)
 }
 
 fn empty_override_map() -> Map<String, Node> {
-  let seed = seed_override_map()
-  fold(map_keys(seed), init: empty_map(), f: (acc, k) => acc)
+  seed_override_map()
 }
 
 // refine_collection_result_type was deleted — callers removed by M2 Phase C (PR #332).
@@ -1439,8 +1437,23 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let else_result = infer_expr(texpr: else_branch, scope: scope, expected: else_expected)
           let else_typed = else_result.typed
           let else_diags = else_result.diagnostics
-          let then_rt = rt_type(n: then_typed)
+          let raw_then_rt = rt_type(n: then_typed)
           let else_rt = rt_type(n: else_typed)
+          // Bidirectional: if then was under-resolved but else is resolved,
+          // patch the then branch to match (e.g., if cond { empty_map() } else { typed_map }).
+          let then_typed = if !is_fully_resolved(n: raw_then_rt) && is_fully_resolved(n: else_rt) {
+            Node {
+              name: then_typed.name, span: then_typed.span, ident_span: then_typed.ident_span,
+              children: then_typed.children, connective: then_typed.connective, params: then_typed.params,
+              inferred: Some { value: Resolved { node: else_rt } },
+              return_cardinality: then_typed.return_cardinality, uses: then_typed.uses,
+              body: then_typed.body, transport: then_typed.transport,
+              properties: then_typed.properties, type_annotation: then_typed.type_annotation,
+              is_self_recursive: then_typed.is_self_recursive, has_non_tail_self_call: then_typed.has_non_tail_self_call,
+              match_pattern: then_typed.match_pattern, expr_data: then_typed.expr_data
+            }
+          } else { then_typed }
+          let then_rt = rt_type(n: then_typed)
           let branch_diags = if node_type_compatible(
             left: then_rt,
             right: else_rt

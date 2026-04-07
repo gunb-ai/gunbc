@@ -642,7 +642,7 @@ if is_type_def_item(item.clone()) {
                     if is_function_item(item.clone()) {
                         {
                             let fn_movable = if is_tco_eligible(item_text.clone(), item.body.clone().clone().unwrap(), registry.clone()) {
-                                Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */
+                                v2_rt::rc_empty_map::<bool>()
 } else {
                                 match v2_rt::map_get(&emit_info.ownership_index.clone(), item.name.clone()) {
     Some(m) => m.clone(),

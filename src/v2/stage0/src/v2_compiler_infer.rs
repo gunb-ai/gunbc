@@ -839,17 +839,11 @@ pub fn seed_override_map() -> Rc<HashMap<String, Rc<Node>>> {
 }
 
 pub fn fold_override_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
-    {
-        let seed = seed_override_map();
-v2_rt::rc_map_insert(Rc::new(v2_rt::map_keys(&seed)).iter().cloned().fold(Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */, |acc: _, k: String| acc.clone()), key, value)
-}
+    v2_rt::rc_map_insert(seed_override_map(), key, value)
 }
 
 pub fn empty_override_map() -> Rc<HashMap<String, Rc<Node>>> {
-    {
-        let seed = seed_override_map();
-Rc::new(v2_rt::map_keys(&seed)).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, k: String| acc.clone())
-}
+    seed_override_map()
 }
 
 pub fn infer_arg_with_element_type(arg: Rc<Node>, element_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<ArgInferResult> {
@@ -1518,8 +1512,34 @@ if is_fully_resolved(then_rt.clone()) {
 let else_result = infer_expr(else_branch.clone(), scope.clone(), else_expected);
 let else_typed = else_result.typed.clone();
 let else_diags = else_result.diagnostics.clone();
-let then_rt = rt_type(then_typed.clone());
+let raw_then_rt = rt_type(then_typed.clone());
 let else_rt = rt_type(else_typed.clone());
+let then_typed = if (!is_fully_resolved(raw_then_rt) && is_fully_resolved(else_rt.clone())) {
+                    Rc::new(Node {
+    name: then_typed.name.clone(),
+    span: then_typed.span.clone(),
+    ident_span: then_typed.ident_span.clone(),
+    children: then_typed.children.clone(),
+    connective: then_typed.connective.clone(),
+    params: then_typed.params.clone(),
+    inferred: Some(Rc::new(InferredNode::Resolved {
+    node: else_rt.clone(),
+})),
+    return_cardinality: then_typed.return_cardinality.clone(),
+    uses: then_typed.uses.clone(),
+    body: then_typed.body.clone(),
+    transport: then_typed.transport.clone(),
+    properties: then_typed.properties.clone(),
+    type_annotation: then_typed.type_annotation.clone(),
+    is_self_recursive: then_typed.is_self_recursive.clone(),
+    has_non_tail_self_call: then_typed.has_non_tail_self_call.clone(),
+    match_pattern: then_typed.match_pattern.clone(),
+    expr_data: then_typed.expr_data.clone(),
+})
+} else {
+                    then_typed.clone()
+};
+let then_rt = rt_type(then_typed.clone());
 let branch_diags = if node_type_compatible(then_rt.clone(), else_rt.clone()) {
                     Rc::new(vec![])
 } else {
