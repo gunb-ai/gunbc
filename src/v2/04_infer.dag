@@ -23,6 +23,7 @@ module v2.compiler.infer
 import std.types { SourceSpan }
 import v2.std.core {
   Node,
+  authored_name_at, NewlineIndex, has_child_named,
   module_node, module_imports, module_items, import_is_all, import_specific_names,
   make_param_node, param_node_name, param_node_type_expr,
   field_node_type_expr,
@@ -484,7 +485,7 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
         Some { value: parent } =>
           let is_coproduct = parent.connective == Disj
           if is_coproduct {
-            if parent.children |> any(child => child.name == name) {
+            if has_child_named(n: parent, name: name, source_index: scope.type_env.source_index) {
               Some { value: binding.resolved.name }
             } else { none }
           } else { none }
@@ -749,8 +750,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       // Build synthetic callable expected with acc_type (first) + elem_type (last).
       // ExprLambda's callable-expected handler threads params positionally.
       let fold_params = [
-        make_param_node(name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span()),
-        make_param_node(name: "elem", type_expr: element_type, default_value: none, span: no_span())
+        make_param_node(name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span(), name_span: no_span()),
+        make_param_node(name: "elem", type_expr: element_type, default_value: none, span: no_span(), name_span: no_span())
       ]
       let fold_callable = Node {
         name: "", span: no_span(), ident_span: none, children: [],
@@ -1635,7 +1636,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let right_result = infer_expr(texpr: right_expr, scope: scope, expected: none)
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
-      let result_type = infer_binop_type_node(op: op, left_type: rt_type(n: left_typed))
+      let result_type = infer_binop_type_node(op: op, left_type: rt_type(n: left_typed), source_index: scope.type_env.source_index)
       let bo_texpr = make_expr_node(expr_data: ExprBinOp { op: op }, children: [left_typed, right_typed], inferred: Some { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
@@ -1972,7 +1973,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   }
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name(n: fi)
-    let field_expected = match struct_fields |> filter(sf => sf.name == fi_name) |> first {
+    let field_expected = match struct_fields |> filter(sf => authored_name_at(source_index: scope.type_env.source_index, node: sf) == fi_name) |> first {
       Some { value: sf } =>
         // Struct definition children store type in inferred (via field_to_child_node),
         // not in children[0] (which is empty).
@@ -1984,7 +1985,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let ar_typed = ar.typed
     let ar_diags = ar.diagnostics
     FieldInferResult {
-      typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span),
+      typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: fi.span),
       infer_result: ar,
       diagnostics: ar_diags
     }

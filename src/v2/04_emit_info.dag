@@ -12,6 +12,7 @@ module v2.compiler.infer_emit_info
 
 import v2.std.core {
   Node,
+  authored_name_at, NewlineIndex, find_child_named, has_child_named,
   InferredNode, Resolved, TypeVariable,
   FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue,
@@ -218,7 +219,7 @@ fn is_pair_children(children: List<Node>) -> Bool {
     match children |> first {
       Some { value: c0 } =>
         match children |> skip(1) |> first {
-          Some { value: c1 } => c0.name == "first" && c1.name == "second"
+          Some { value: c1 } => authored_name_at(source_index: none, node: c0) == "first" && authored_name_at(source_index: none, node: c1) == "second"
           None => false
         }
       None => false
@@ -253,7 +254,7 @@ fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummar
 fn find_first_enum_field_node(variants: List<Node>, field_name: String) -> Node? {
   match variants |> first {
     Some { value: variant } =>
-      match variant.children |> filter(f => f.name == field_name) |> first {
+      match find_child_named(n: variant, name: field_name, source_index: none) {
         Some { value: field_child } => Some { value: field_child }
         None => none
       }
@@ -263,13 +264,13 @@ fn find_first_enum_field_node(variants: List<Node>, field_name: String) -> Node?
 
 fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String) -> Bool {
   variants |> all(variant =>
-    variant.children |> any(field_child => field_child.name == field_name)
+    has_child_named(n: variant, name: field_name, source_index: none)
   )
 }
 
 fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node) -> Bool {
   variants |> all(variant =>
-    match variant.children |> filter(f => f.name == field_name) |> first {
+    match find_child_named(n: variant, name: field_name, source_index: none) {
       Some { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected)
       None => false
     }

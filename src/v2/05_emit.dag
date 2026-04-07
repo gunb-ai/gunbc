@@ -970,7 +970,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     }
     // Positional product (tuple): Conj with children named "first"/"second".
     // Structural check — no name == "Tuple" needed.
-    let is_pair = n.children |> count == 2 && (match n.children |> first { Some { value: c0 } => c0.name == "first"  None => false }) && (match n.children |> skip(1) |> first { Some { value: c1 } => c1.name == "second"  None => false })
+    let is_pair = n.children |> count == 2 && (match n.children |> first { Some { value: c0 } => authored_name_at(source_index: none, node: c0) == "first"  None => false }) && (match n.children |> skip(1) |> first { Some { value: c1 } => authored_name_at(source_index: none, node: c1) == "second"  None => false })
     if is_pair {
       let first_child = match n.children |> first {
         Some { value: c } => if c.inferred != none { render_node_type(n: rt_type(n: c), target: target, shared_types: shared_types) } else { render_node_type(n: c, target: target, shared_types: shared_types) }

@@ -11,6 +11,7 @@ module v2.compiler.infer_patterns
 import std.types { SourceSpan }
 import v2.std.core {
   Node,
+  find_child_named, NewlineIndex,
   ExprData, NoExprData,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   NodeType, Typed, InferError, InferVariable, Untyped,
@@ -142,7 +143,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         // Non-variant leaf type (Unit, Int, etc.): suppress cascade diagnostics.
         node_lookup_failed(diagnostics: [])
       } else {
-        let direct_match = scrut_node.children |> filter(c => c.name == variant_name) |> first
+        let direct_match = find_child_named(n: scrut_node, name: variant_name, source_index: none)
         let fallback = if scrut_opt && variant_name == "Some" {
           node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
         } else if scrut_opt && variant_name == "None" {
@@ -165,7 +166,7 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
     PatternDynamic { span: dynamic_span } =>
       node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
     PatternResolved { node: variant_node } =>
-      match variant_node.children |> filter(c => c.name == field_name) |> first {
+      match find_child_named(n: variant_node, name: field_name, source_index: none) {
         Some { value: field_child } =>
           let resolved = child_type_node(ch: field_child)
           node_lookup_resolved(node: resolved)

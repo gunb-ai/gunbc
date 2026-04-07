@@ -11,6 +11,7 @@ module v2.compiler.infer_lookup
 
 import v2.std.core {
   Node, param_node_type_expr,
+  authored_name_at, NewlineIndex, find_child_named, has_child_named,
   InferredNode, Resolved, TypeVariable,
   NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,
@@ -104,7 +105,7 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
     if has_structure {
       let is_product = n.connective == Conj
       if is_product {
-        match n.children |> filter(c => c.name == field_name) |> first {
+        match find_child_named(n: n, name: field_name, source_index: none) {
           Some { value: field_child } =>
             Some { value: child_type_node(ch: field_child) }
           None => none
@@ -118,12 +119,12 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
 
 fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) -> Node? {
   let found_in_all = variants |> all(v =>
-    v.children |> any(c => c.name == field_name)
+    has_child_named(n: v, name: field_name, source_index: none)
   )
   let first_field = if found_in_all {
     match variants |> first {
       Some { value: first_variant } =>
-        first_variant.children |> filter(c => c.name == field_name) |> first
+        find_child_named(n: first_variant, name: field_name, source_index: none)
       None => none
     }
   } else { none }
@@ -258,7 +259,7 @@ type MethodFieldResult {
 }
 
 fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldResult? {
-  let matching = product.children |> filter(c => c.name == method_name)
+  let matching = product.children |> filter(c => authored_name_at(source_index: none, node: c) == method_name)
   match matching |> first {
     Some { value: field } =>
       match field.inferred {

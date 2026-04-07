@@ -186,8 +186,9 @@ type FromKeyResult { from_key: String?, state: ParserState, err: ErrorNode? }
 
 // Multi-field results
 type PostfixResult { expr: Node, changed: Bool, state: ParserState, err: ErrorNode? }
-type LambdaCheckResult { is_lambda: Bool, params: List<String>, state: ParserState, err: ErrorNode? }
-type IdentCollectResult { success: Bool, params: List<String>, state: ParserState, err: ErrorNode? }
+type ParserParam { name: String, span: SourceSpan }
+type LambdaCheckResult { is_lambda: Bool, params: List<ParserParam>, state: ParserState, err: ErrorNode? }
+type IdentCollectResult { success: Bool, params: List<ParserParam>, state: ParserState, err: ErrorNode? }
 type RangeArgsResult { min_val: Int?, max_val: Int?, state: ParserState, err: ErrorNode? }
 type NamedIntResult { arg_name: String, arg_value: Int, state: ParserState, err: ErrorNode? }
 type ServiceBodyResult { config: ServiceConfig?, transport: Node, operations: List<Node>, state: ParserState, err: ErrorNode? }
@@ -945,12 +946,12 @@ fn node_inferred_to_outputs(rt: Node) -> List<Node> {
     let all_children_typed = rt.children |> all(ch => match rt_node(n: ch) { Typed { node: _ } => true  _ => false })
     if all_children_typed {
       rt.children
-        |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span))
+        |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span, name_span: ch.span))
     } else {
       []
     }
   } else {
-    [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: rt.span)]
+    [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: rt.span, name_span: rt.span)]
   }
 }
 
@@ -1240,7 +1241,7 @@ fn parse_item_by_form(tokens: List<Token>, state: ParserState, form: ItemForm) -
 fn field_to_child_node(field: Node) -> Node {
   let ret_type = field_node_type_expr(n: field)
   let props = match field_node_from_key(n: field) {
-    Some { value: key } => [make_field_init_node(name: "from_key", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: key } }, children: [], inferred: none, span: field.span), span: field.span)]
+    Some { value: key } => [make_field_init_node(name: "from_key", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: key } }, children: [], inferred: none, span: field.span), span: field.span, name_span: field.span)]
     None => []
   }
   Node { name: field_node_name(n: field), span: field.span, ident_span: field.ident_span,
@@ -1289,7 +1290,7 @@ fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>
     children: [],
     params: inputs |> map(f => make_param_node(
       name: field_node_name(n: f), type_expr: field_node_type_expr(n: f),
-      default_value: field_node_default_value(n: f), span: f.span
+      default_value: field_node_default_value(n: f), span: f.span, name_span: f.span
     )),
     inferred: outputs_to_inferred(outputs: outputs, span: span), return_cardinality: Required,
     uses: [], body: none, connective: NoConnective,
@@ -1303,7 +1304,7 @@ fn make_capability_node(name: String, ident_span: SourceSpan?, inputs: List<Node
     children: [],
     params: inputs |> map(f => make_param_node(
       name: field_node_name(n: f), type_expr: field_node_type_expr(n: f),
-      default_value: field_node_default_value(n: f), span: f.span
+      default_value: field_node_default_value(n: f), span: f.span, name_span: f.span
     )),
     inferred: outputs_to_inferred(outputs: outputs, span: span), return_cardinality: Required,
     uses: [], body: none, connective: NoConnective,
@@ -1414,7 +1415,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
 
     // If followed by { or |, it's a sum type
     if peek_is_lbrace(tokens: tokens, state: s) || peek_is_pipe(tokens: tokens, state: s) {
-      let r = parse_variant_fields(tokens: tokens, state: s, vname: first_name)
+      let r = parse_variant_fields(tokens: tokens, state: s, vname: first_name, vname_span: first_name_span)
       if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
       let first_variant = r.variant
       let rest = parse_more_variants_acc(tokens: tokens, state: r.state, acc: [first_variant])
@@ -1481,7 +1482,7 @@ fn parse_predicates_acc(tokens: List<Token>, state: ParserState, acc: List<Node>
 // Returns Node directly -- no intermediate Predicate type needed.
 fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult {
   let zero_span = make_span(start: 0, end: 0)
-  let dummy_pred = make_field_init_node(name: "", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: false } }, children: [], inferred: none, span: zero_span), span: zero_span)
+  let dummy_pred = make_field_init_node(name: "", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: false } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span)
   // Use expect_name to accept keywords (like "pattern") as predicate names.
   let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return PredResult { predicate: dummy_pred, state: r.state, err: r.err } }
@@ -1497,35 +1498,35 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        PredResult { predicate: make_field_init_node(name: "Pattern", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
+        PredResult { predicate: make_field_init_node(name: "Pattern", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), state: r3.state, err: none }
       }
       "format" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        PredResult { predicate: make_field_init_node(name: "Format", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
+        PredResult { predicate: make_field_init_node(name: "Format", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), state: r3.state, err: none }
       }
       "brand" => {
         let r2 = parse_string_literal_value(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        PredResult { predicate: make_field_init_node(name: "Brand", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
+        PredResult { predicate: make_field_init_node(name: "Brand", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), state: r3.state, err: none }
       }
       "content" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        PredResult { predicate: make_field_init_node(name: "ContentEncoding", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
+        PredResult { predicate: make_field_init_node(name: "ContentEncoding", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), state: r3.state, err: none }
       }
       "domain" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        PredResult { predicate: make_field_init_node(name: "Domain", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
+        PredResult { predicate: make_field_init_node(name: "Domain", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), state: r3.state, err: none }
       }
       "range" => {
         // range(min: N) | range(max: N) | range(min: N, max: N)
@@ -1535,12 +1536,12 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         // Preserve min/max values as structured record fields
         let min_fields = if r2.min_val != none {
-          [make_field_init_node(name: "min", value: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: r2.min_val.value } }, children: [], inferred: none, span: zero_span), span: zero_span)]
+          [make_field_init_node(name: "min", value: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: r2.min_val.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span)]
         } else { [] }
         let max_fields = if r2.max_val != none {
-          [make_field_init_node(name: "max", value: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: r2.max_val.value } }, children: [], inferred: none, span: zero_span), span: zero_span)]
+          [make_field_init_node(name: "max", value: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: r2.max_val.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span)]
         } else { [] }
-        PredResult { predicate: make_field_init_node(name: "Range", value: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: concat(min_fields, max_fields), inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
+        PredResult { predicate: make_field_init_node(name: "Range", value: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: concat(min_fields, max_fields), inferred: none, span: zero_span), span: zero_span, name_span: zero_span), state: r3.state, err: none }
       }
       _ =>
         PredResult { predicate: dummy_pred, state: e.state, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: current_span(tokens: tokens, state: e.state)) } }
@@ -1550,9 +1551,9 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
     // Accept any identifier; later phases validate semantics.
     match pred_name {
       "non_empty" =>
-        PredResult { predicate: make_field_init_node(name: "NonEmpty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span), state: s, err: none }
+        PredResult { predicate: make_field_init_node(name: "NonEmpty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), state: s, err: none }
       _ =>
-        PredResult { predicate: make_field_init_node(name: pred_name, value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span), state: s, err: none }
+        PredResult { predicate: make_field_init_node(name: pred_name, value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), state: s, err: none }
     }
   }
 }
@@ -1592,20 +1593,20 @@ fn parse_single_named_int(tokens: List<Token>, state: ParserState) -> NamedIntRe
   NamedIntResult { arg_name: name, arg_value: r3.value, state: r3.state, err: none }
 }
 
-fn parse_variant_fields(tokens: List<Token>, state: ParserState, vname: String) -> VariantResult {
+fn parse_variant_fields(tokens: List<Token>, state: ParserState, vname: String, vname_span: SourceSpan) -> VariantResult {
   let start_span = current_span(tokens: tokens, state: state)
   let e = eat(tokens: tokens, state: state, expected: ExpectLBrace)
   if e.consumed {
     let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state))
-    if has_err(err: r.err) { return VariantResult { variant: make_variant_node(name: vname, fields: [], span: start_span), state: r.state, err: r.err } }
+    if has_err(err: r.err) { return VariantResult { variant: make_variant_node(name: vname, fields: [], span: start_span, name_span: vname_span), state: r.state, err: r.err } }
     let s = skip_newlines(tokens: tokens, state: r.state)
     let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
-    if has_err(err: r2.err) { return VariantResult { variant: make_variant_node(name: vname, fields: [], span: start_span), state: r2.state, err: r2.err } }
-    let v = make_variant_node(name: vname, fields: r.fields, span: start_span)
+    if has_err(err: r2.err) { return VariantResult { variant: make_variant_node(name: vname, fields: [], span: start_span, name_span: vname_span), state: r2.state, err: r2.err } }
+    let v = make_variant_node(name: vname, fields: r.fields, span: start_span, name_span: vname_span)
     VariantResult { variant: v, state: r2.state, err: none }
   } else {
     // Unit variant (no fields)
-    let v = make_variant_node(name: vname, fields: [], span: start_span)
+    let v = make_variant_node(name: vname, fields: [], span: vname_span, name_span: vname_span)
     VariantResult { variant: v, state: state, err: none }
   }
 }
@@ -1621,7 +1622,7 @@ fn parse_more_variants_acc(tokens: List<Token>, state: ParserState, acc: List<No
     let s = skip_newlines(tokens: tokens, state: e.state)
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return VariantsResult { variants: [], state: r.state, err: r.err } }
-    let r2 = parse_variant_fields(tokens: tokens, state: r.state, vname: r.name)
+    let r2 = parse_variant_fields(tokens: tokens, state: r.state, vname: r.name, vname_span: r.span)
     if has_err(err: r2.err) { return VariantsResult { variants: [], state: r2.state, err: r2.err } }
     parse_more_variants_acc(tokens: tokens, state: r2.state, acc: list_push(acc, r2.variant))
   } else {
@@ -1719,7 +1720,7 @@ fn parse_callable_type_expr(tokens: List<Token>, state: ParserState, start_span:
 fn parse_callable_param_types(tokens: List<Token>, state: ParserState, acc: List<Node>) -> ParamsResult {
   let r = parse_type_expr(tokens: tokens, state: state)
   if has_err(err: r.err) { return ParamsResult { params: [], state: r.state, err: r.err } }
-  let param = make_param_node(name: "", type_expr: r.type_expr, default_value: none, span: r.type_expr.span)
+  let param = make_param_node(name: "", type_expr: r.type_expr, default_value: none, span: r.type_expr.span, name_span: r.type_expr.span)
   let acc = list_push(acc, param)
 
   let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
@@ -1783,7 +1784,7 @@ fn collect_type_param_names(tokens: List<Token>, state: ParserState, params: Lis
   if is_ident(tokens: tokens, state: state) {
     let r = expect_ident(tokens: tokens, state: state)
     let span = r.span
-    let param = make_param_node(name: r.name, type_expr: leaf_type_node(name: r.name, span: span), default_value: none, span: span)
+    let param = make_param_node(name: r.name, type_expr: leaf_type_node(name: r.name, span: span), default_value: none, span: span, name_span: span)
     let next_params = list_push(params, param)
     let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
     if e.consumed {
@@ -1854,10 +1855,11 @@ fn parse_field_list_acc(tokens: List<Token>, state: ParserState, acc: List<Node>
 
 fn parse_field(tokens: List<Token>, state: ParserState) -> FieldResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let dummy_field = make_field_node(name: "", type_expr: leaf_type_node(name: "", span: start_span), cardinality: Required, default_value: none, from_key: none, span: start_span)
+  let dummy_field = make_field_node(name: "", type_expr: leaf_type_node(name: "", span: start_span), cardinality: Required, default_value: none, from_key: none, span: start_span, name_span: start_span)
   let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return FieldResult { field: dummy_field, state: r.state, err: r.err } }
   let name = r.name
+  let name_span = r.span
 
   let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
   if has_err(err: r2.err) { return FieldResult { field: dummy_field, state: r2.state, err: r2.err } }
@@ -1883,13 +1885,13 @@ fn parse_field(tokens: List<Token>, state: ParserState) -> FieldResult {
     if has_err(err: r4.err) { return FieldResult { field: dummy_field, state: r4.state, err: r4.err } }
     let f = make_field_node(
       name: name, type_expr: te, cardinality: te.return_cardinality,
-      default_value: Some { value: r4.expr }, from_key: from_key, span: start_span
+      default_value: Some { value: r4.expr }, from_key: from_key, span: start_span, name_span: name_span
     )
     FieldResult { field: f, state: r4.state, err: none }
   } else {
     let f = make_field_node(
       name: name, type_expr: te, cardinality: te.return_cardinality,
-      default_value: none, from_key: from_key, span: start_span
+      default_value: none, from_key: from_key, span: start_span, name_span: name_span
     )
     FieldResult { field: f, state: s, err: none }
   }
@@ -2179,7 +2181,7 @@ fn parse_resource_config_acc(tokens: List<Token>, state: ParserState, acc: List<
   if has_err(err: r2.err) { return ResConfigResult { fields: [], state: r2.state, err: r2.err } }
   let r3 = parse_expr(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return ResConfigResult { fields: [], state: r3.state, err: r3.err } }
-  let fi = make_field_init_node(name: field_name, value: r3.expr, span: zero_span)
+  let fi = make_field_init_node(name: field_name, value: r3.expr, span: zero_span, name_span: zero_span)
   let acc = list_push(acc, fi)
   let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
   if e.consumed {
@@ -2238,7 +2240,7 @@ fn parse_service_after_kw(tokens: List<Token>, state: ParserState, start_span: S
   // Operations are already Nodes (D2d dissolution) -- use directly as children
   // Preserve namespace root as a structural property so downstream stages
   // don't need to reverse-engineer it by string-splitting.
-  let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span)
+  let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: start_span)
   let svc_props = match r.config {
     Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, rate_limit: cfg.rate_limit, retry: cfg.retry)
     None => []
@@ -2688,7 +2690,7 @@ fn parse_op_body_entries(
 
 // Convert a modifier keyword to a Node property.
 fn modifier_to_prop(name: String, span: SourceSpan) -> Node {
-  make_field_init_node(name: name, value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: span), span: span)
+  make_field_init_node(name: name, value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: span), span: span, name_span: span)
 }
 
 // Convert a list of OperationModifier values to Node properties.
@@ -2822,7 +2824,7 @@ fn parse_exit_entries_acc(tokens: List<Token>, state: ParserState, acc: List<Nod
     let code_str = status_expr_to_str(expr: code)
     let type_name = node_to_name_str(n: r3.type_expr)
     let prop_name = concat("exit_", code_str)
-    let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span), span: r3.type_expr.span)
+    let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span), span: r3.type_expr.span, name_span: r3.type_expr.span)
     let e = eat(tokens: tokens, state: desc_r.state, expected: ExpectComma)
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { desc_r.state })
     parse_exit_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
@@ -2945,7 +2947,7 @@ fn parse_response_entries_acc(tokens: List<Token>, state: ParserState, acc: List
     let status_str = status_expr_to_str(expr: status)
     let type_name = node_to_name_str(n: r3.type_expr)
     let prop_name = concat("response_", status_str)
-    let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span), span: r3.type_expr.span)
+    let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span), span: r3.type_expr.span, name_span: r3.type_expr.span)
     let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r3.state })
     parse_response_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
@@ -3004,7 +3006,7 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, state: ParserState, acc:
     // Convert to property: mock_<status> = body_expr
     let status_str = status_expr_to_str(expr: status)
     let prop_name = concat("mock_", status_str)
-    let entry = make_field_init_node(name: prop_name, value: body, span: make_span(start: 0, end: 0))
+    let entry = make_field_init_node(name: prop_name, value: body, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
     let e = eat(tokens: tokens, state: desc_r.state, expected: ExpectComma)
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { desc_r.state })
     parse_mock_response_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
@@ -3094,7 +3096,7 @@ fn parse_resource_entries(tokens: List<Token>, state: ParserState, properties: L
           if has_err(err: r2.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r2.state, err: r2.err } }
           let r3 = parse_expr(tokens: tokens, state: r2.state)
           if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
-          let fi = make_field_init_node(name: fname, value: r3.expr, span: make_span(start: 0, end: 0))
+          let fi = make_field_init_node(name: fname, value: r3.expr, span: make_span(start: 0, end: 0), name_span: r.span)
           parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: list_push(properties, fi), capabilities: capabilities)
         } else {
           ResPropResult { properties: properties, capabilities: capabilities, state: s, err: Some { value: parse_error(msg: "unexpected token in resource block", span: current_span(tokens: tokens, state: s)) } }
@@ -3299,10 +3301,11 @@ fn parse_param_list_acc(tokens: List<Token>, state: ParserState, acc: List<Node>
 
 fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let dummy_param = make_param_node(name: "", type_expr: leaf_type_node(name: "", span: start_span), default_value: none, span: start_span)
+  let dummy_param = make_param_node(name: "", type_expr: leaf_type_node(name: "", span: start_span), default_value: none, span: start_span, name_span: start_span)
   let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return ParamResult { param: dummy_param, state: r.state, err: r.err } }
   let name = r.name
+  let name_span = r.span
 
   let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
   if has_err(err: r2.err) { return ParamResult { param: dummy_param, state: r2.state, err: r2.err } }
@@ -3323,13 +3326,13 @@ fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
     if has_err(err: r4.err) { return ParamResult { param: dummy_param, state: r4.state, err: r4.err } }
     let p = make_param_node(
       name: name, type_expr: type_expr,
-      default_value: Some { value: r4.expr }, span: start_span
+      default_value: Some { value: r4.expr }, span: start_span, name_span: name_span
     )
     ParamResult { param: p, state: r4.state, err: none }
   } else {
     let p = make_param_node(
       name: name, type_expr: type_expr,
-      default_value: none, span: start_span
+      default_value: none, span: start_span, name_span: name_span
     )
     ParamResult { param: p, state: s, err: none }
   }
@@ -3964,7 +3967,7 @@ fn parse_constraint_list(tokens: List<Token>, state: ParserState, acc: List<Node
   let adv = advance(tokens: tokens, state: s)
   let r = parse_expr(tokens: tokens, state: adv.state)
   if has_err(err: r.err) { return ConstraintsResult { constraints: [], state: r.state, err: r.err } }
-  let fi = make_field_init_node(name: kw_name, value: r.expr, span: make_span(start: 0, end: 0))
+  let fi = make_field_init_node(name: kw_name, value: r.expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
   let acc = list_push(acc, fi)
   let ec = eat(tokens: tokens, state: r.state, expected: ExpectComma)
   if ec.consumed {
@@ -4637,7 +4640,7 @@ fn parse_field_init_list_acc(tokens: List<Token>, state: ParserState, acc: List<
 
 fn parse_field_init(tokens: List<Token>, state: ParserState) -> FieldInitResult {
   let zero_span = make_span(start: 0, end: 0)
-  let dummy_fi = make_field_init_node(name: "", value: parse_recovery_placeholder(), span: zero_span)
+  let dummy_fi = make_field_init_node(name: "", value: parse_recovery_placeholder(), span: zero_span, name_span: zero_span)
   if is_ident(tokens: tokens, state: state) || is_keyword_name(tokens: tokens, state: state) {
     let name_r = expect_name(tokens: tokens, state: state)
     if has_err(err: name_r.err) { return FieldInitResult { field: dummy_fi, state: name_r.state, err: name_r.err } }
@@ -4646,10 +4649,10 @@ fn parse_field_init(tokens: List<Token>, state: ParserState) -> FieldInitResult 
       let adv2 = advance(tokens: tokens, state: name_r.state)
       let r = parse_expr(tokens: tokens, state: adv2.state)
       if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, state: r.state, err: r.err } }
-      let fi = make_field_init_node(name: n, value: r.expr, span: current_span(tokens: tokens, state: state))
+      let fi = make_field_init_node(name: n, value: r.expr, span: current_span(tokens: tokens, state: state), name_span: name_r.span)
       FieldInitResult { field: fi, state: r.state, err: none }
     } else {
-      let fi = make_field_init_node(name: n, value: make_named_expr_node(name: n, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: current_span(tokens: tokens, state: state)), span: current_span(tokens: tokens, state: state))
+      let fi = make_field_init_node(name: n, value: make_named_expr_node(name: n, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: current_span(tokens: tokens, state: state)), span: current_span(tokens: tokens, state: state), name_span: name_r.span)
       FieldInitResult { field: fi, state: name_r.state, err: none }
     }
   } else if peek_is_lit_str(tokens: tokens, state: state) && peek_is_colon_after_ident(tokens: tokens, state: state) {
@@ -4662,12 +4665,12 @@ fn parse_field_init(tokens: List<Token>, state: ParserState) -> FieldInitResult 
     let adv2 = advance(tokens: tokens, state: adv.state)
     let r = parse_expr(tokens: tokens, state: adv2.state)
     if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, state: r.state, err: r.err } }
-    let fi = make_field_init_node(name: str_name, value: r.expr, span: current_span(tokens: tokens, state: state))
+    let fi = make_field_init_node(name: str_name, value: r.expr, span: current_span(tokens: tokens, state: state), name_span: current_span(tokens: tokens, state: state))
     FieldInitResult { field: fi, state: r.state, err: none }
   } else {
     let r = parse_expr(tokens: tokens, state: state)
     if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, state: r.state, err: r.err } }
-    let fi = make_field_init_node(name: "_", value: r.expr, span: current_span(tokens: tokens, state: state))
+    let fi = make_field_init_node(name: "_", value: r.expr, span: current_span(tokens: tokens, state: state), name_span: current_span(tokens: tokens, state: state))
     FieldInitResult { field: fi, state: r.state, err: none }
   }
 }
@@ -4737,7 +4740,7 @@ fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
     if lambda_r.is_lambda {
       let r = parse_lambda_body(tokens: tokens, state: lambda_r.state)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
-      ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(name: p, span: span))), inferred: none, span: span), state: r.state, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), state: r.state, err: none }
     } else {
       let r = parse_expr(tokens: tokens, state: s)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
@@ -4774,11 +4777,11 @@ fn parse_fn_lambda(tokens: List<Token>, state: ParserState) -> ExprResult {
   // Parse body: { ... }
   let body_r = parse_brace_expr(tokens: tokens, state: s)
   if has_err(err: body_r.err) { return body_r }
-  ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(name: p, span: span))), inferred: none, span: span), state: body_r.state, err: none }
+  ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), state: body_r.state, err: none }
 }
 
 // Collect comma-separated identifiers for fn lambda params.
-fn collect_fn_lambda_params(tokens: List<Token>, state: ParserState, acc: List<String>) -> IdentCollectResult {
+fn collect_fn_lambda_params(tokens: List<Token>, state: ParserState, acc: List<ParserParam>) -> IdentCollectResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if peek_is_rparen(tokens: tokens, state: s) {
     // End of params
@@ -4791,10 +4794,10 @@ fn collect_fn_lambda_params(tokens: List<Token>, state: ParserState, acc: List<S
       let s2 = skip_newlines(tokens: tokens, state: name_r.state)
       if peek_is_comma(tokens: tokens, state: s2) {
         let adv = advance(tokens: tokens, state: s2)
-        collect_fn_lambda_params(tokens: tokens, state: adv.state, acc: list_push(acc, name_r.name))
+        collect_fn_lambda_params(tokens: tokens, state: adv.state, acc: list_push(acc, ParserParam { name: name_r.name, span: name_r.span }))
       } else {
         // Last param (no trailing comma)
-        IdentCollectResult { success: true, params: list_push(acc, name_r.name), state: s2, err: none }
+        IdentCollectResult { success: true, params: list_push(acc, ParserParam { name: name_r.name, span: name_r.span }), state: s2, err: none }
       }
     }
   }
@@ -4824,12 +4827,12 @@ fn try_lambda_params(tokens: List<Token>, state: ParserState) -> LambdaCheckResu
   }
 }
 
-fn collect_lambda_idents(tokens: List<Token>, state: ParserState, acc: List<String>) -> IdentCollectResult {
+fn collect_lambda_idents(tokens: List<Token>, state: ParserState, acc: List<ParserParam>) -> IdentCollectResult {
   if is_ident(tokens: tokens, state: state) {
     let tok = peek(tokens: tokens, state: state)
-    let n = tok.value.text
+    let param = ParserParam { name: tok.value.text, span: tok.value.span }
     let adv = advance(tokens: tokens, state: state)
-    let new_acc = list_push(acc, n)
+    let new_acc = list_push(acc, param)
     let e = eat(tokens: tokens, state: adv.state, expected: ExpectComma)
     if e.consumed {
       collect_lambda_idents(tokens: tokens, state: e.state, acc: new_acc)

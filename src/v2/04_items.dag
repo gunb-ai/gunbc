@@ -94,18 +94,18 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Node> 
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
                 let child_type = child_type_node(ch: child)
-                make_field_node(name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span)
+                make_field_node(name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span, name_span: span)
               )
             } else {
-              [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span)]
+              [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: span)]
             }
           } else {
-            [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span)]
+            [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: span)]
           }
         } else if rt.connective == Conj && rt.children |> count == 0 {
           []
         } else {
-          [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span)]
+          [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: span)]
         }
     }
   }

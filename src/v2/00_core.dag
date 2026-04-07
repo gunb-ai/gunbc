@@ -531,9 +531,9 @@ fn resource_use_resource(n: Node) -> Node {
 }
 
 // Field init node: name carries the field name, child is the value expression.
-fn make_field_init_node(name: String, value: Node, span: SourceSpan) -> Node {
+fn make_field_init_node(name: String, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [value], connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [value], connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -608,10 +608,10 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
 // =========================================================================
 
 // Param constructor: name carries param name, child[0] is type_expr, child[1] is default_value if present.
-fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: SourceSpan) -> Node {
+fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: SourceSpan, name_span: SourceSpan) -> Node {
   let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: children, connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -640,6 +640,20 @@ fn authored_name_at(source_index: NewlineIndex?, node: Node) -> String {
   }
 }
 
+// Child-by-name lookup — routes through authored_name_at so the name
+// is source-derived when source_index is available. Falls back to
+// node.name when source_index is none or file doesn't match.
+fn find_child_named(n: Node, name: String, source_index: NewlineIndex?) -> Node? {
+  match n.children |> filter(c => authored_name_at(source_index: source_index, node: c) == name) |> first {
+    Some { value: ch } => Some { value: ch }
+    None => none
+  }
+}
+
+fn has_child_named(n: Node, name: String, source_index: NewlineIndex?) -> Bool {
+  n.children |> any(c => authored_name_at(source_index: source_index, node: c) == name)
+}
+
 fn param_node_type_expr(n: Node) -> Node {
   match n.children |> first {
     Some { value: v } => v
@@ -656,14 +670,14 @@ fn param_node_default_value(n: Node) -> Node? {
 fn param_node_span(n: Node) -> SourceSpan { n.span }
 
 // Field constructor: extends Param with cardinality and from_key.
-fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: SourceSpan) -> Node {
+fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: SourceSpan, name_span: SourceSpan) -> Node {
   let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
   let props = match from_key {
     Some { value: fk } => [leaf_node(name: fk)]
     None => []
   }
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: children, connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
     params: [], inferred: none, return_cardinality: cardinality,
     uses: [], body: none, transport: none, properties: props,
     type_annotation: none, is_self_recursive: false,
@@ -698,9 +712,10 @@ fn field_node_from_key(n: Node) -> String? {
 fn field_node_span(n: Node) -> SourceSpan { n.span }
 
 // Variant constructor: a Node with name + span + children (dissolved Field nodes).
-fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan) -> Node {
+// name_span is the span of the variant identifier token (for ident_span accuracy).
+fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: fields, connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: fields, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -1083,17 +1098,26 @@ fn local_transport_node(span: SourceSpan) -> Node {
 }
 
 fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, span: SourceSpan) -> Node {
-  let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: make_span(start: 0, end: 0))
+  let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
   let props = concat([url_field], auth_props, headers)
   make_transport_node(properties: props, children: [], span: span)
 }
 
 fn shell_transport_node(argv: List<Node>, env: List<Node>, span: SourceSpan) -> Node {
-  make_transport_node(properties: env, children: argv, span: span)
+  // Shell transports set body to a marker node so they're structurally
+  // distinguishable from local even when argv and env are empty.
+  let shell_marker = Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node {
+    name: "", span: span, ident_span: none, children: argv, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: Some { value: shell_marker }, transport: none, properties: env,
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
 }
 
 fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
-  let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0))
+  let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
   make_transport_node(properties: [path_field], children: [], span: span)
 }
 
@@ -1131,7 +1155,7 @@ fn transport_base_path(t: Node) -> Node? {
 fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
 
 fn is_rest_transport(t: Node) -> Bool { transport_base_url(t: t) != none }
-fn is_shell_transport(t: Node) -> Bool { transport_has_argv(t: t) }
+fn is_shell_transport(t: Node) -> Bool { t.body != none }
 fn is_file_transport(t: Node) -> Bool { transport_base_path(t: t) != none }
 fn is_local_transport(t: Node) -> Bool { !is_rest_transport(t: t) && !is_shell_transport(t: t) && !is_file_transport(t: t) }
 
@@ -1303,17 +1327,17 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
 
 fn service_config_properties(endpoint: Node, auth: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
   let zero_span = make_span(start: 0, end: 0)
-  let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span)]
+  let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
   let auth_prop = match auth {
-    Some { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span)]
+    Some { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span, name_span: zero_span)]
     None => []
   }
   let rate_prop = match rate_limit {
-    Some { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span)]
+    Some { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span, name_span: zero_span)]
     None => []
   }
   let retry_prop = match retry {
-    Some { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span)]
+    Some { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span, name_span: zero_span)]
     None => []
   }
   concat(ep_prop, auth_prop, rate_prop, retry_prop)
@@ -1358,20 +1382,24 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
 }
 
 fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan) -> Node {
+  // Wildcard imports set body to a marker node so they're structurally
+  // distinguishable from empty specific imports (import foo {}).
+  let wildcard_marker = if is_all {
+    Some { value: Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
+  } else { none }
   Node {
     name: module_path, span: span, ident_span: default_ident_span(name: module_path, span: span), children: specific_names, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
-    uses: [], body: none, transport: none, properties: [],
+    uses: [], body: wildcard_marker, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
 
-// Wildcard import: no specific-name children.
-// Specific import: children are the imported name nodes.
+// Wildcard import: body marker set by import_node when is_all=true.
 fn import_is_all(n: Node) -> Bool {
-  n.children |> count == 0
+  n.body != none
 }
 
 fn import_specific_names(n: Node) -> List<String> {
@@ -1491,11 +1519,9 @@ fn source_line_at(index: NewlineIndex, line: Int) -> String {
 }
 
 // Extract source text by character-indexed span. O(n) over span width.
-// BRIDGE: stub — implementing this changes authored_name_at behavior,
-// which is bootstrap-breaking (ident_span on lambda params is inaccurate).
-// Re-enable in Pass B after ident_span accuracy is fixed.
+// Extract source text by byte-indexed span.
 fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
-  ""
+  substring(s: index.source, start: span.start, end: span.end)
 }
 
 fn with_optional_cardinality(n: Node) -> Node {

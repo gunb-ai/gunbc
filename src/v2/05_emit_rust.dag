@@ -18,7 +18,7 @@ import v2.std.core {
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   import_is_all, import_specific_names, module_imports, module_items,
   param_node_name, param_node_type_expr, param_node_default_value,
-  authored_name_at, NewlineIndex,
+  authored_name_at, NewlineIndex, find_child_named,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
   param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at,
   LiteralValue,
@@ -3165,9 +3165,9 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
 // (e.g. LitStr in both TokenShape and LiteralValue).
 // Handles both Conj nodes (struct fields are direct children) and Disj nodes
 // (need to find the variant first, then look in its children).
-fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_name: String?) -> String? {
+fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_name: String?, source_index: NewlineIndex?) -> String? {
   // First try: direct children (works for Conj/struct nodes)
-  let direct = match struct_node.children |> filter(c => c.name == field_name) |> first {
+  let direct = match find_child_named(n: struct_node, name: field_name, source_index: source_index) {
     Some { value: field_child } =>
       if field_child.inferred != none {
         let field_type = rt_type(n: field_child)
@@ -3184,9 +3184,9 @@ fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_
       // Second try: for Disj (enum) nodes, find the variant first then its fields
       match variant_name {
         Some { value: vn } =>
-          match struct_node.children |> filter(c => c.name == vn) |> first {
+          match find_child_named(n: struct_node, name: vn, source_index: source_index) {
             Some { value: variant_child } =>
-              match variant_child.children |> filter(c => c.name == field_name) |> first {
+              match find_child_named(n: variant_child, name: field_name, source_index: source_index) {
                 Some { value: field_child } =>
                   if field_child.inferred != none {
                     let field_type = rt_type(n: field_child)
@@ -3215,7 +3215,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
       match tn {
         Some { value: variant_name } =>
           // Try node-based lookup first, then fall back to type_summaries
-          let node_lookup = lookup_struct_field_type_name(struct_node: struct_node, field_name: field_name, variant_name: outer_type_name)
+          let node_lookup = lookup_struct_field_type_name(struct_node: struct_node, field_name: field_name, variant_name: outer_type_name, source_index: scope.type_env.source_index)
           let expected_type = match node_lookup {
             Some { value: _ } => node_lookup
             None =>
