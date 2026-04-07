@@ -993,45 +993,34 @@ Over-retention:
 No test >2s without justification. Self-compile time tracked per-PR.
 Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
-### CX-NEXT: Reduce 526 violations through structural analyzer improvements
+### CX-NEXT: 526 → 0 violations (3 structural fixes)
 
-**Status:** 526 honest violations. Each is a function where the analyzer
-falls back to SameArgumentCall → Forever → CostUnknown ("I don't know").
-The count ratchets DOWN as the analyzer structurally improves. Each
-reduction traces to a specific fix, not a fallback.
+**Status:** 526 honest violations. Full triage in
+[`docs/cx-violation-triage.md`](docs/cx-violation-triage.md).
 
-**Violation categories (estimated from self-compile):**
-- Parser SCCs (~80): recursive parser state machines where TokenPosition
-  descent isn't recognized across mutual recursion boundaries
-- Fold/catamorphism (~40): lambda-based iteration where the element
-  parameter can't be unified with descent evidence
-- Accessor-on-var (~14): field projection descent unrecognized
-  (pattern matching on Option/Result types)
-- General SameArgumentCall (~390+): functions where no descent evidence
-  is found — mix of genuine unknowns and analyzer gaps
+All 526 trace to 3 root causes. 280 are direct (recursive functions
+where the analyzer can't see descent). 227 are composed (callers of
+direct unknowns — resolve automatically). 3 structural fixes cover all:
 
-**Structural fixes (each reduces the count):**
-1. Wire TokenPosition evidence through SCC analysis → fixes parser SCCs
-2. Recognize fold lambda element as descent witness → fixes fold/catamorphism
-3. Wire is_child_accessor_in_model for field projection → fixes accessor-on-var
-4. Arithmetic descent for division (n/2) → enables O(log n) classification
-5. Worklist-based DFS (I1/I2) → fixes graph utility functions
+| Fix | Direct | Composed | Total |
+|-----|--------|----------|-------|
+| Node tree descent recognition | ~230 | ~200 | ~430 |
+| Parser SCC TokenPosition threading | ~73 | ~53 | ~126 |
+| Graph DFS worklist (I1/I2) | 2 | ~10 | ~12 |
 
-**Design direction (cost algebra):**
-- SizeExpr is a parallel expression algebra that should derive from std/
-  concepts. Sizes are structural facts, not symbolic expressions.
-- CostLog should emerge from iteration structure, not be a hand-placed
-  primitive. Blocked on SizeBound carrying descent type (subtract vs divide).
-- The algebra should compose from existing std/ concepts (Layer 3 in
-  MODELING.md), not reinvent them.
+When all three are done, `CostUnknown` can be deleted from `CostExpr`
+— because no code path can produce it.
 
-**Open review feedback (PR #336, deferred to follow-up):**
-- #8-9: dfs_finish_order/dfs_collect_component — worklist primitive (I1/I2)
-- #10: CostExtern — stdlib cost contract system
-- #11: iteration_element_name — cross-module template lookup (CG-2/CG-3)
-- #13-14: is_valid_proof — proof validation gaps in std/graph.dag
-- #15: SCC zero-placeholder — document as fixed-point technique
-- #16-18: ExplicitCount literal, stage gate, constant_bound_value fallback
+**Cost algebra design direction:** SizeExpr is a parallel algebra that
+should derive from std/ concepts. Sizes are structural facts, not
+symbolic expressions. CostLog should emerge from iteration structure.
+See triage doc for details.
+
+**Open review feedback (PR #336):**
+#8-9 (DFS worklist), #10 (CostExtern contracts), #11 (element name
+heuristic), #13-14 (proof validation), #15 (SCC placeholder),
+#16-18 (ExplicitCount, stage gate, fallback). All documented at code
+sites and in the triage doc.
 
 ---
 
