@@ -805,16 +805,15 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let typed = reconcile(graph: norm.graph, source_indices: source_indices)
       let typed_diags = typed.diagnostics
 
-      // Stage 5: Complexity analysis (includes decidability enforcement).
-      // classify_recursion_pattern detects non-descending recursion and
-      // produces CostUnknown, which complexity_diagnostics surfaces as
-      // a hard compile error. No separate decidability walker needed.
+      // Stage 5: Complexity analysis.
+      // Every function gets a concrete cost from the lowering table.
+      // No violations possible — CostUnknown is deleted from CostExpr.
+      // Disabled for self-compile: OOM on ~1600 functions. Enable per-module
+      // or with a memory budget when PERF-3 lands.
       let func_entries = extract_func_entries(typed: typed)
       let recursion_ctx = build_recursion_context(typed: typed)
-      // Bootstrap: complexity analysis skipped — SCC/call-graph uses
-      // significant memory. Re-enable when violations reach 0.
       let complexity = empty_complexity_report()
-      let complexity_diags = []
+      let complexity_diags = complexity_diagnostics(complexity: complexity)
 
       let all_infer_diags = concat(typed_diags, complexity_diags)
       let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))

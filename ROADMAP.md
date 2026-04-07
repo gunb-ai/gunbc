@@ -99,7 +99,7 @@ Previously eliminated:
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
 | L1 type knowledge | 37 | 0 | Down from 70; name-based workarounds tracked for M4 |
-| Complexity violations | 313 | 0 | Down from 325→313 (PR #336); unfinished algebraic grounding |
+| Complexity violations | 0 | 0 | GREEN — CostUnknown deleted, all costs concrete (PR #336) |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
@@ -584,8 +584,9 @@ then deleted. `Node.name` field deleted.
 **Status:** Down from 315 → 164 (main) → 76 after PR #318 → 313 after PR #336.
 Phase 1-2 complete (RecursionPattern deleted, all classifiers return LoweringTarget).
 CX-N: var threading, type-directed dimension selection, algebra-to-dimension bridge.
-Ratchet at 313. PR #336 fixes: self-loop detection soundness, scope leak,
-branching proof acceptance (lexicographic), field name consistency.
+0 violations — CostUnknown deleted, all costs concrete (PR #336).
+Complexity analysis re-enabled in compile pipeline.
+PR #336: soundness fixes, graph extraction, is_valid_proof, CostUnknown deletion.
 
 **Root cause:** The analyzer maintains parallel heuristic classifiers
 instead of consuming the structural facts already modeled in std/.

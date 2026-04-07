@@ -617,7 +617,7 @@ let typed_diags = typed.diagnostics.clone();
 let func_entries = extract_func_entries(typed.clone());
 let recursion_ctx = build_recursion_context(typed.clone());
 let complexity = empty_complexity_report();
-let complexity_diags = Rc::new(vec![]);
+let complexity_diags = complexity_diagnostics(complexity.clone());
 let all_infer_diags = v2_rt::concat(typed_diags, complexity_diags);
 let typecheck_errors = Rc::new({ let mut __result = Vec::new(); for d in all_infer_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
 if ((typecheck_errors.len() as i64) > 0) {
