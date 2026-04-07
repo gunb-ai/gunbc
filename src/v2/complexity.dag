@@ -3782,8 +3782,7 @@ fn collection_output(binder: String, size: SizeExpr) -> Map<String, CostExpr> {
 }
 
 fn scalar_output() -> Map<String, CostExpr> {
-  let result = empty_map()
-  result
+  empty_map()
 }
 
 
@@ -3953,11 +3952,9 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
     ShapeLinearScan =>
       let loop_work = cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 })
       let scan_os = if produces_collection {
-        let r = seed_cost_map(key: "result", value: cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
-        r
+        seed_cost_map(key: "result", value: cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
       } else {
-        let r = empty_map()
-        r
+        empty_map()
       }
       SummaryResult {
         summary: ComplexitySummary {

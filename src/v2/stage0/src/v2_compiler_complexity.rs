@@ -3384,10 +3384,7 @@ result
 }
 
 pub fn scalar_output() -> Rc<HashMap<String, Rc<CostExpr>>> {
-    {
-        let result = Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */;
-result
-}
+    v2_rt::rc_empty_map::<Rc<CostExpr>>()
 }
 
 pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
@@ -3562,17 +3559,11 @@ Rc::new(SummaryResult {
     value: 1,
 }));
 let scan_os = if pc.clone() {
-            {
-                let r = seed_cost_map("result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
+            seed_cost_map("result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
     value: 1,
-})));
-r
-}
+})))
 } else {
-            {
-                let r = Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */;
-r
-}
+            v2_rt::rc_empty_map::<Rc<CostExpr>>()
 };
 Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
