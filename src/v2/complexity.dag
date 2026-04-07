@@ -3586,27 +3586,43 @@ fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEn
   result.index
 }
 
-// Compose two sequential costs.
+// Compose two sequential costs. Eagerly eliminates identity (0 + x = x).
 fn cost_seq(a: CostExpr, b: CostExpr) -> CostExpr {
-  CostAdd { left: a, right: b }
+  match a {
+    CostConst { value: 0 } => b
+    _ => match b {
+      CostConst { value: 0 } => a
+      _ => CostAdd { left: a, right: b }
+    }
+  }
 }
 
-// Compose two parallel spans (critical path).
+// Compose two parallel spans (critical path). Eagerly eliminates identity.
 fn cost_par(a: CostExpr, b: CostExpr) -> CostExpr {
-  CostMax { left: a, right: b }
+  match a {
+    CostConst { value: 0 } => b
+    _ => match b {
+      CostConst { value: 0 } => a
+      _ => CostMax { left: a, right: b }
+    }
+  }
 }
 
 // Loop cost: sum of body over binder from 0 to upper.
+// Eagerly eliminates zero-cost loops.
 fn cost_loop(binder: String, iterations: SizeExpr, body: CostExpr) -> CostExpr {
-  CostSum { binder: binder, upper: iterations, body: body }
+  match body {
+    CostConst { value: 0 } => CostConst { value: 0 }
+    _ => CostSum { binder: binder, upper: iterations, body: body }
+  }
 }
 
 // Conditional cost: condition + max(branches). NOT sum.
 fn cost_conditional(condition: CostExpr, branches: List<CostExpr>) -> CostExpr {
   let max_branch = branches |> fold(init: CostConst { value: 0 }, f: fn(acc, b) {
-    CostMax { left: acc, right: b }
+    cost_par(a: acc, b: b)
   })
-  CostAdd { left: condition, right: max_branch }
+  cost_seq(a: condition, b: max_branch)
 }
 
 // Output size for collection-producing operations: a single "result" entry
@@ -4447,23 +4463,12 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
     None =>
       match map_get(func_index, func_name) {
         Some { value: entry } =>
-          // Determine recursion pattern BEFORE walking the body.
-          // For recursive functions, cache a zero-cost placeholder so self-calls
-          // contribute 0 (the iteration cost is captured by the outer bound).
-          let scc_target = match map_get(scc_index, func_name) {
+          // Look up pre-computed recursion pattern (no body walking here).
+          let target = match map_get(scc_index, func_name) {
             Some { value: info } => Some { value: info.pattern }
             None => none
           }
-          let self_recursive = max_path_self_calls(body: entry.body, func_name: func_name) > 0
-          let single_target = if self_recursive && scc_target == none {
-            Some { value: classify_recursion_pattern(
-              func_name: func_name,
-              body: entry.body,
-              params: entry.params,
-              parser_always_advancing: parser_always_advancing
-            ) }
-          } else { none }
-          let is_recursive = scc_target != none || single_target != none
+          let is_recursive = target != none
           // Cache zero placeholder for recursive functions (self-calls return 0)
           let zero_placeholder = ComplexitySummary {
             work: CostConst { value: 0 },
@@ -4477,25 +4482,15 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
           // Walk the function body
           let result = cost_of_expr(texpr: entry.body, func_index: func_index, scc_index: scc_index, table: table_prepped, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
           // For recursive functions, wrap per-iteration cost in bounded summation
-          let bounded = match scc_target {
-            Some { value: target } =>
+          let bounded = match target {
+            Some { value: t } =>
               ComplexitySummary {
-                work: bounded_scc_cost(target: target, per_iter: result.summary.work),
-                span: bounded_scc_cost(target: target, per_iter: result.summary.span),
+                work: bounded_recursive_cost(target: t, per_iter: result.summary.work),
+                span: bounded_recursive_cost(target: t, per_iter: result.summary.span),
                 output_size: result.summary.output_size,
                 certainty: Conservative
               }
-            None =>
-              match single_target {
-                Some { value: target } =>
-                  ComplexitySummary {
-                    work: bounded_recursive_cost(target: target, per_iter: result.summary.work),
-                    span: bounded_recursive_cost(target: target, per_iter: result.summary.span),
-                    output_size: result.summary.output_size,
-                    certainty: Conservative
-                  }
-                None => result.summary
-              }
+            None => result.summary
           }
           // Simplify and cache
           let simplified = ComplexitySummary {
@@ -4533,6 +4528,30 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   )
   let scc_index = build_scc_index(func_entries: func_entries, func_index: func_index)
   let parser_always_advancing = infer_all_parser_always_advancing(func_index: func_index)
+  // Pre-compute recursion patterns for ALL recursive functions.
+  // SCC patterns are already in scc_index. For single-function recursion,
+  // add synthetic SccInfo entries so get_or_compute_summary finds them
+  // without re-walking function bodies during the cost phase.
+  let full_scc_index = func_entries |> fold(init: scc_index, f: (acc, entry) =>
+    match map_get(acc, entry.name) {
+      Some { value: _ } => acc  // already in SCC index
+      None =>
+        if max_path_self_calls(body: entry.body, func_name: entry.name) > 0 {
+          let pattern = classify_recursion_pattern(
+            func_name: entry.name,
+            body: entry.body,
+            params: entry.params,
+            parser_always_advancing: parser_always_advancing
+          )
+          let info = SccInfo {
+            members: [entry.name],
+            member_set: map_insert(empty_map(), entry.name, true),
+            pattern: pattern
+          }
+          map_insert(acc, entry.name, info)
+        } else { acc }
+    }
+  )
   // Compute summaries for all functions
   let result = func_entries |> fold(init: SummaryResult {
     summary: ComplexitySummary {
@@ -4543,7 +4562,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
     },
     table: empty_intern_table()
   }, f: fn(acc, entry) {
-    let sr = get_or_compute_summary(func_name: entry.name, func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
+    let sr = get_or_compute_summary(func_name: entry.name, func_index: func_index, scc_index: full_scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
     SummaryResult { summary: sr.summary, table: sr.table }
   })
   // No violations possible — every function has a concrete cost.

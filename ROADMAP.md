@@ -800,12 +800,17 @@ lanes — any lane can introduce a regression.
   block emission — not yet an unconditional gate. Convergence proof
   (pass-1 = pass-2) remains in `bootstrap_fixed_point` (`#[ignore]`,
   not yet a CI gate — expensive: two full builds + two compiles).
-- **PERF-3**: Track self-compile memory. The CX OOM root cause was
-  repeated complexity classification on large compiles, not raw budget.
-  Add a memory-usage ratchet or at minimum log peak RSS during
-  `performance_ratchet`. **Blocked-by: CX-E** (complexity analysis
-  currently disabled for memory; can't validate memory ratchet until
-  CX is re-enabled and the classification OOM is resolved).
+- **PERF-3**: Self-compile complexity analysis. CX-E resolved (0 violations,
+  CostUnknown deleted). OOM remains on full self-compile (~1600 functions):
+  complexity analysis disabled in compile.dag for memory. Root causes (PR #336):
+  (1) CostExpr tree blowup — mitigated by eager simplification in cost_seq/cost_par
+  (2) Redundant body walks — mitigated by pre-computing all recursion patterns
+      in build_complexity_report before the cost phase
+  (3) Persistent map threading — each cache_summary creates a new Rc<CostInternTable>
+      with cloned map (not yet addressed)
+  (4) Rc-based CostExpr accumulation — ~1000 nodes per function × 1600 functions
+      (not yet addressed — requires arena allocation or structural sharing)
+  Next: profile peak RSS to identify which of (3)/(4) dominates.
 - **PERF-4**: Test suite wall-clock ratchet. Current: ~270s for 271
   tests. Budget TBD. Individual tests >2s are suspect (per project
   convention). Add per-test timing visibility.
@@ -814,10 +819,37 @@ lanes — any lane can introduce a regression.
   than wall-clock time. More deterministic, catches algorithmic
   regressions independent of machine load.
 
+### PERF-6: Redundant work elimination
+
+**Thesis:** Re-derivation is poor dependency modeling. When the compiler
+walks the same function body multiple times for different analyses
+(proof construction, descent vars, cost computation), the redundancy
+is a structural fact about missing shared computation — not an
+optimization target.
+
+**Current redundancy inventory (self-compile, ~1600 functions):**
+- `classify_recursion_pattern` walks body 2-3× (proof dimensions)
+- `construct_scc_termination_proof` walks body 5-6× per SCC member
+- `collect_descent_vars` walks body 1× per param per dimension
+- `cost_of_expr` walks body 1× (but triggers recursive callee analysis)
+- `max_path_self_calls` walks body 1× (could be cached)
+
+**Mitigation (PR #336):**
+- Pre-compute all recursion patterns before cost phase
+- Eager simplification in cost composition (prevent CostExpr blowup)
+- Single-function patterns stored in scc_index (avoid re-classification)
+
+**Endgame:** Each function body is walked ONCE. All analyses (proof
+construction, descent evidence, cost computation) read from a shared
+`FunctionAnalysis` record produced by that single walk. Redundant
+walks become unrepresentable because the analysis function returns
+all facts together.
+
 ### Acceptance
 
 `performance_ratchet` and `bootstrap_stage0_to_stage1` running in CI.
 No test >2s without justification. Self-compile time tracked per-PR.
+Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
 ---
 

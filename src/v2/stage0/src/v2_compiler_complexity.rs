@@ -3229,39 +3229,50 @@ result.index.clone()
 }
 
 pub fn cost_seq(a: Rc<CostExpr>, b: Rc<CostExpr>) -> Rc<CostExpr> {
-    Rc::new(CostExpr::CostAdd {
-    left: a,
-    right: b,
-})
+    match (*a.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => b.clone(),
+    _ => match (*b.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => a.clone(),
+    _ => Rc::new(CostExpr::CostAdd {
+    left: a.clone(),
+    right: b.clone(),
+}),
+},
+}
 }
 
 pub fn cost_par(a: Rc<CostExpr>, b: Rc<CostExpr>) -> Rc<CostExpr> {
-    Rc::new(CostExpr::CostMax {
-    left: a,
-    right: b,
-})
+    match (*a.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => b.clone(),
+    _ => match (*b.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => a.clone(),
+    _ => Rc::new(CostExpr::CostMax {
+    left: a.clone(),
+    right: b.clone(),
+}),
+},
+}
 }
 
 pub fn cost_loop(binder: String, iterations: Rc<SizeExpr>, body: Rc<CostExpr>) -> Rc<CostExpr> {
-    Rc::new(CostExpr::CostSum {
+    match (*body.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => Rc::new(CostExpr::CostConst {
+    value: 0,
+}),
+    _ => Rc::new(CostExpr::CostSum {
     binder: binder,
     upper: iterations,
-    body: body,
-})
+    body: body.clone(),
+}),
+}
 }
 
 pub fn cost_conditional(condition: Rc<CostExpr>, branches: Rc<Vec<Rc<CostExpr>>>) -> Rc<CostExpr> {
     {
         let max_branch = branches.iter().cloned().fold(Rc::new(CostExpr::CostConst {
     value: 0,
-}), |acc: Rc<CostExpr>, b: Rc<CostExpr>| Rc::new(CostExpr::CostMax {
-    left: acc.clone(),
-    right: b.clone(),
-}));
-Rc::new(CostExpr::CostAdd {
-    left: condition,
-    right: max_branch,
-})
+}), |acc: Rc<CostExpr>, b: Rc<CostExpr>| cost_par(acc.clone(), b.clone()));
+cost_seq(condition, max_branch)
 }
 }
 
@@ -4161,17 +4172,11 @@ pub fn get_or_compute_summary(func_name: String, func_index: Rc<HashMap<String, 
 }),
     None => match v2_rt::map_get(&func_index, func_name.clone()) {
     Some(entry) => {
-        let scc_target = match v2_rt::map_get(&scc_index, func_name.clone()) {
+        let target = match v2_rt::map_get(&scc_index, func_name.clone()) {
     Some(info) => Some(info.pattern.clone()),
     None => None,
 };
-let self_recursive = (max_path_self_calls(entry.body.clone(), func_name.clone()) > 0);
-let single_target = if (self_recursive && (scc_target.clone() == None)) {
-            Some(classify_recursion_pattern(func_name.clone(), entry.body.clone(), entry.params.clone(), parser_always_advancing.clone()))
-} else {
-            None
-};
-let is_recursive = ((scc_target.clone() != None) || (single_target.clone() != None));
+let is_recursive = (target.clone() != None);
 let zero_placeholder = Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -4187,23 +4192,15 @@ let table_prepped = if is_recursive {
 } else {
             table.clone()
 };
-let result = cost_of_expr(entry.body.clone(), func_index.clone(), scc_index.clone(), table_prepped, parser_always_advancing.clone(), recursion_ctx);
-let bounded = match scc_target.clone() {
-    Some(target) => Rc::new(ComplexitySummary {
-    work: bounded_scc_cost(target.clone(), result.summary.clone().work.clone()),
-    span: bounded_scc_cost(target.clone(), result.summary.clone().span.clone()),
-    output_size: result.summary.clone().output_size.clone(),
-    certainty: Certainty::Conservative,
-}),
-    None => match single_target.clone() {
-    Some(target) => Rc::new(ComplexitySummary {
-    work: bounded_recursive_cost(target.clone(), result.summary.clone().work.clone()),
-    span: bounded_recursive_cost(target.clone(), result.summary.clone().span.clone()),
+let result = cost_of_expr(entry.body.clone(), func_index.clone(), scc_index.clone(), table_prepped, parser_always_advancing, recursion_ctx);
+let bounded = match target.clone() {
+    Some(t) => Rc::new(ComplexitySummary {
+    work: bounded_recursive_cost(t.clone(), result.summary.clone().work.clone()),
+    span: bounded_recursive_cost(t.clone(), result.summary.clone().span.clone()),
     output_size: result.summary.clone().output_size.clone(),
     certainty: Certainty::Conservative,
 }),
     None => result.summary.clone(),
-},
 };
 let simplified = Rc::new(ComplexitySummary {
     work: simplify_cost(bounded.work.clone()),
@@ -4242,6 +4239,22 @@ pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>, recursion_c
         let func_index = func_entries.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FuncEntry>>(), |acc: Rc<HashMap<String, Rc<FuncEntry>>>, entry: Rc<FuncEntry>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), entry.clone()));
 let scc_index = build_scc_index(func_entries.clone(), func_index.clone());
 let parser_always_advancing = infer_all_parser_always_advancing(func_index.clone());
+let full_scc_index = func_entries.clone().iter().cloned().fold(scc_index.clone(), |acc: Rc<HashMap<String, Rc<SccInfo>>>, entry: Rc<FuncEntry>| match v2_rt::map_get(&acc, entry.name.clone()) {
+    Some(_) => acc.clone(),
+    None => if (max_path_self_calls(entry.body.clone(), entry.name.clone()) > 0) {
+            {
+                let pattern = classify_recursion_pattern(entry.name.clone(), entry.body.clone(), entry.params.clone(), parser_always_advancing.clone());
+let info = Rc::new(SccInfo {
+    members: Rc::new(vec![entry.name.clone()]),
+    member_set: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<bool>(), entry.name.clone(), true),
+    pattern: pattern.clone(),
+});
+v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), info.clone())
+}
+} else {
+            acc.clone()
+},
+});
 let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
@@ -4255,7 +4268,7 @@ let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
 }),
     table: empty_intern_table(),
 }), |acc: Rc<SummaryResult>, entry: Rc<FuncEntry>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
-            let sr = get_or_compute_summary(entry.name.clone(), func_index.clone(), scc_index.clone(), acc.table, parser_always_advancing.clone(), recursion_ctx.clone());
+            let sr = get_or_compute_summary(entry.name.clone(), func_index.clone(), full_scc_index.clone(), acc.table, parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: sr.summary.clone(),
     table: sr.table.clone(),
