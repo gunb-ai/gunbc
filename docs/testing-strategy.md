@@ -4,7 +4,14 @@ This document describes the testing and verification strategy — what the
 compiler proves, what it tests, and what it generates for external
 verification. See [ROADMAP.md](../ROADMAP.md) M3 for current status.
 
-## Core thesis: testing is compilation
+## Core thesis: verifiable by construction
+
+Every `.dag` program is verifiable by construction. Untestable code is
+structurally unrepresentable — the type system ensures every construct
+carries enough information to derive its verification obligations. This
+is the testing analog of the Decidability Invariant: the structure makes
+unbounded computation impossible; the structure makes untested code
+impossible. See [INVARIANTS.md](../INVARIANTS.md) §Verifiability Invariant.
 
 Tests run DURING compilation. Failure is a compile error, not a report
 the developer might not read. This is the same philosophy as
