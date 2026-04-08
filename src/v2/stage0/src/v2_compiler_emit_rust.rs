@@ -289,7 +289,10 @@ pub fn is_simple_disj(item: Rc<Node>) -> bool {
 }
 
 pub fn is_dag_value_type_name(name: String) -> bool {
-    (((name.clone().as_str() == "Int".to_string().as_str()) || (name.clone().as_str() == "Bool".to_string().as_str())) || (name.clone().as_str() == "Float".to_string().as_str()))
+    match is_copy(RenderTarget::Rust, name) {
+    Some(v) => v.clone(),
+    None => false,
+}
 }
 
 pub fn is_type_constant(summary: Rc<TypeSummary>, recursive_type_set: Rc<HashMap<String, bool>>) -> bool {

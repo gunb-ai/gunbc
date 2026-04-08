@@ -329,9 +329,13 @@ fn is_simple_disj(item: Node) -> Bool {
 }
 
 // DAG-level value type names: fixed-width carriers that never need
-// indirection or heap allocation in any target language.
+// indirection or heap allocation. Reads is_copy from TypeCheckpoint
+// in extdeps/languages/rust/types.dag — no hardcoded type names.
 fn is_dag_value_type_name(name: String) -> Bool {
-  name == "Int" || name == "Bool" || name == "Float"
+  match is_copy(target: Rust, dag_name: name) {
+    Some { value: v } => v
+    None => false
+  }
 }
 
 // A type is constant (fixed-width carrier) when it needs no shared-pointer
