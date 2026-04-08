@@ -26,22 +26,29 @@ The accessor is just a projection — the descent fact lives in the type.
 derived from type declarations. Adding a new accessor function should
 require zero changes to the complexity analyzer.
 
-## P2: The analyzer reads, never derives
+## P2: The analyzer reads .dag structure, never derives from AST
 
 The complexity analyzer is a **consumer** of structural facts, not a
 producer. Every fact it needs — which parameters carry recursive
 structure, which expressions descend, which calls are bounded — should
-be annotated on the IR by upstream stages (resolve/infer).
+be represented as .dag structure (types, edges, functions) produced by
+upstream stages (resolve/infer).
+
+**Not annotations.** The Modeling Faithfulness Invariant (INVARIANTS.md)
+requires facts to be .dag structure, not metadata. Descent evidence is
+modeled as .dag values (`DescentEvidence`, `TerminationProof` from
+`std/termination.dag`), not as IR annotations on nodes.
 
 Today the analyzer re-derives descent from AST pattern-matching. This
 is the root cause of every heuristic extension: each new code pattern
 requires a new recognizer. The fix is not better recognizers — it's
-making the pipeline produce the facts so the analyzer just reads them.
+making the pipeline produce .dag-typed descent facts that the analyzer
+reads.
 
 **Implication:** `collect_descent_vars`, `collect_evidence_incremental`,
 `classify_self_call_evidence`, `expr_contains_descent` — the entire
 pattern-matching apparatus — should dissolve. The analyzer reads
-descent witnesses from the IR the same way it reads `method_semantics`.
+descent witnesses the same way it reads `method_semantics`.
 
 ## P3: No rejected patterns — but Forever factors out
 
@@ -198,31 +205,45 @@ reading (1) and (2).
 | `std/termination.dag` | 275 | DescentEvidence, RankingDimension, TerminationProof, DescentSource — well-designed, keep |
 | `std/iteration.dag` | 163 | fold/descend/repeat conceptual model — keep |
 | `std/computation.dag` | 369 | CallPattern → LoweringTarget — keep |
-| Pipeline facts | — | `is_self_recursive`, `AlgebraMethodSemantics` already produced by inference |
+| Pipeline facts | — | `is_self_recursive`, `AlgebraMethodSemantics`, `recursive_type_set`, `RecursiveVariantFieldWitness` already produced by inference |
 | `complexity.dag` | 4965 | Heuristic analyzer — replace, not extend |
 | `00_core.dag` tables | — | `node_field_roles`, `expr_child_roles`, `function_size_effects` — dissolve into type-derived facts |
 
 ### CX-L1: Type-level recursive field detection
 
-**Where:** Resolve (type processing).
+**Where:** Inference already does this.
 
-**What:** When resolving a type declaration, detect fields whose type
-references the containing type (directly or through List/Optional/Map).
-Annotate each such field with its recursion dimension.
+**What already exists:** The pipeline detects recursive types and
+tracks which fields carry self-references:
 
-| Field pattern | Dimension |
-|---------------|-----------|
-| `children: List<Self>` | TreeSize |
-| `left: Self`, `right: Self` | TreeSize |
-| `tail: List<T>` (T is param) | ListLength |
-| `body: Self?` | TreeSize |
+- `TypeEnv.recursive_type_set: Map<String, Bool>` — which types
+  are self-referential (detected via dependency cycle analysis)
+- `TypeEnv.recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>`
+  — which variant fields reference the parent type
+- `RecursiveVariantFieldWitness { variant_name, field_name }` — e.g.,
+  for `type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }`,
+  witness is `{ variant_name: "Cons", field_name: "tail" }`
+- `is_recursive_type(env, name)` — queries the set
 
-**Output:** Per-type metadata — which fields are recursion carriers
-and their dimension. This is derived from the type definition, not
-hand-maintained.
+**Recursive types in .dag:** The bounded kernel invariant says Node
+is the only recursive type in the **compiler IR**. But users CAN
+define recursive types (`MyList<T>`, binary trees, etc.) — these are
+represented as Node trees in the IR, and the compiler tracks their
+recursion via `recursive_type_set`. Test: `generic_recursive_type`
+in pipeline.rs.
+
+**What CX-L1 adds:** Map the existing `RecursiveVariantFieldWitness`
+to ranking dimensions for complexity analysis.
+
+| Witness pattern | Dimension |
+|-----------------|-----------|
+| Field type == parent type | TreeSize |
+| Field type == `List<parent>` | TreeSize (children-style) |
+| Field type == `parent?` | TreeSize |
 
 **Dissolves:** `node_field_roles`, `expr_child_roles` (for descent
-purposes), `function_size_effects`.
+purposes), `function_size_effects` — these hand-maintained tables
+are replaced by the type-derived `RecursiveVariantFieldWitness`.
 
 ### CX-L2: Descent witness production in inference
 

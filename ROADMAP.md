@@ -1012,19 +1012,22 @@ reads structural facts — no heuristic name-matching in the analyzer.
 
 **Goal:** User-written .dag functions get proven complexity bounds.
 Built on type-derived strict descent (not heuristic pattern-matching).
-Informational — reports bounds, does not block compilation.
+Fail-closed: unknown complexity is a hard error (INVARIANTS.md).
 
 **Hard gate:**
-- Strict descent on standard patterns: tree walks (`Node.children`),
-  list consumption (`List |> fold/map`), arithmetic decrease (`n - 1`)
-- Descent derived from type declarations, not hand-maintained tables
+- Strict descent on standard patterns: tree walks (recursive type
+  fields), list consumption (`List |> fold/map`), arithmetic decrease
+- Descent derived from type declarations (`recursive_type_set`,
+  `RecursiveVariantFieldWitness`), not hand-maintained tables
+- Fail-closed: if the analyzer cannot prove a bound, compilation
+  fails with a hard error telling the user to restructure
 - Bounds reported as user-facing diagnostics (`info: f is O(n) in tree_size`)
 - Architecture consistent with `docs/cx-design.md` (P1-P6)
 
 **Aspirational (not blocking launch):**
 - Suboptimality rejection: small hand-curated equivalence catalog
   (e.g., `filter |> count > 0` → error, suggest `any()`)
-- Compiler self-analysis: 524 internal violations → 0
+- Compiler self-analysis: internal violations → 0
 - CostUnknown variant deleted
 
 **What this does NOT require:**
@@ -1040,6 +1043,7 @@ cx_launch_user_code_bounds
   Assert: each function gets a proven bound in diagnostics
   Assert: no heuristic pattern-matching in the analysis path
   Assert: descent facts derived from type declarations
+  Assert: function with unresolvable recursion produces hard error
 ```
 
 ---
