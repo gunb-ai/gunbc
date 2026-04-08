@@ -97,9 +97,13 @@ import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
   is_recursive_type, lookup_type, lookup_type_for, merge_envs,
-  put_inductive_field, merge_inductive_fields
+  put_inductive_field, merge_inductive_fields, inductive_fields_for
 }
-import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
+import std.induction {
+  InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
+  SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown,
+  ShrinkFactor, UnitShrink
+}
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
   NodeResolveResult, ItemResult
@@ -2102,6 +2106,203 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   }
 }
 
+// =========================================================================
+// CX-L2: Descent evidence annotation (post-inference)
+//
+// After a function body is type-inferred, this pass walks the typed body
+// and annotates each self-call ExprCall node with descent_evidence.
+// The pass reads InductiveField facts from TypeEnv — it never pattern-
+// matches AST to discover descent. Adding a new recursive type requires
+// zero changes here.
+// =========================================================================
+
+// Context threaded through the descent annotation walk.
+// sub_value_vars tracks which local variables are known sub-values of
+// a parameter, and what their structural relationship is.
+type DescentContext {
+  fn_name: String
+  param_names: Map<String, String>  // param_name → type_name
+  type_env: TypeEnv
+  sub_value_vars: Map<String, SubValueRelation>
+}
+
+// Classify one self-call argument against its corresponding parameter.
+fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
+  match arg_expr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let vname = expr_var_name(texpr: arg_expr)
+      if vname == param_name { PreservedValue }
+      else {
+        match map_get(ctx.sub_value_vars, vname) {
+          Some { value: rel } => rel
+          None => SubValueUnknown
+        }
+      }
+    // param.field where field is an inductive field → StrictSubValue
+    ExprFieldAccess { summary: _ } =>
+      let base = field_access_base(texpr: arg_expr)
+      let field = field_access_field(texpr: arg_expr)
+      match base.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let bname = expr_var_name(texpr: base)
+          let type_name = match map_get(ctx.param_names, bname) {
+            Some { value: t } => t
+            None => ""
+          }
+          let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
+          let matching = fields |> filter(f => f.field_name == field) |> first
+          match matching {
+            Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+            None => SubValueUnknown
+          }
+        _ => SubValueUnknown
+      }
+    _ => SubValueUnknown
+  }
+}
+
+// Build descent_evidence for a self-call: one SubValueRelation per argument.
+fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRelation> {
+  call_node.children |> map(arg_node =>
+    let aname = arg_name(n: arg_node)
+    let arg_val = arg_value(n: arg_node)
+    match aname {
+      Some { value: pname } =>
+        match map_get(ctx.param_names, pname) {
+          Some { value: _ } => classify_argument(arg_expr: arg_val, param_name: pname, ctx: ctx)
+          None => SubValueUnknown
+        }
+      None => SubValueUnknown
+    }
+  )
+}
+
+// Walk a typed body and annotate self-call ExprCall nodes with descent_evidence.
+// Extends sub_value_vars when entering match arms (variant field bindings)
+// and let-bindings (aliases of known sub-values).
+fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
+  match body.expr_data {
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      let callee = expr_call_func(texpr: body)
+      if callee == ctx.fn_name {
+        // Self-call: compute descent evidence for each argument
+        let evidence = build_call_evidence(call_node: body, ctx: ctx)
+        // Also annotate children (arguments may contain nested self-calls)
+        let annotated_children = body.children |> map(child => annotate_descent(body: child, ctx: ctx))
+        Node {
+          name: body.name, span: body.span, ident_span: body.ident_span,
+          children: annotated_children, connective: body.connective, params: body.params,
+          inferred: body.inferred, return_cardinality: body.return_cardinality,
+          uses: body.uses, body: body.body, transport: body.transport,
+          properties: body.properties, type_annotation: body.type_annotation,
+          is_self_recursive: body.is_self_recursive,
+          has_non_tail_self_call: body.has_non_tail_self_call,
+          match_pattern: body.match_pattern,
+          expr_data: ExprCall { call_semantics: cs, descent_evidence: Some { value: evidence } }
+        }
+      } else {
+        // Non-self-call: just recurse into children
+        map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
+      }
+    ExprMatch =>
+      // If scrutinee is a parameter or a known sub-value, extend context
+      // with variant field bindings from each arm
+      let scrut = match_scrutinee(texpr: body)
+      let scrut_type = match scrut.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let sname = expr_var_name(texpr: scrut)
+          match map_get(ctx.param_names, sname) {
+            Some { value: t } => t
+            None => ""
+          }
+        _ => ""
+      }
+      let scrut_has_inductive = scrut_type != "" && (inductive_fields_for(env: ctx.type_env, type_name: scrut_type) |> count > 0)
+      // Annotate scrutinee
+      let annotated_scrut = annotate_descent(body: scrut, ctx: ctx)
+      // Process each arm with extended context
+      let annotated_arms = match_arm_nodes(texpr: body) |> map(arm_node =>
+        let arm_ctx = if scrut_has_inductive {
+          match arm_pattern(n: arm_node) {
+            VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
+              let ind_fields = inductive_fields_for(env: ctx.type_env, type_name: scrut_type)
+              bindings |> fold(init: ctx, f: (c, fb) =>
+                let fb_name = field_binding_name(n: fb)
+                let matching = ind_fields |> filter(f => f.variant_name == vname && f.field_name == fb_name) |> first
+                match matching {
+                  Some { value: ind_field } =>
+                    DescentContext {
+                      fn_name: c.fn_name, param_names: c.param_names, type_env: c.type_env,
+                      sub_value_vars: map_insert(c.sub_value_vars, fb_name, StrictSubValue { field: ind_field, factor: UnitShrink })
+                    }
+                  None => c
+                }
+              )
+            Bind { name: bname } =>
+              // Bare bind on a parameter that has inductive fields: the bound
+              // variable IS the parameter value (PreservedValue, not sub-value)
+              ctx
+            _ => ctx
+          }
+        } else { ctx }
+        let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: arm_ctx)
+        // Reconstruct arm node with annotated body
+        make_arm_node(pattern: arm_pattern(n: arm_node), guard: arm_guard(n: arm_node), body: annotated_body, span: arm_node.span)
+      )
+      // Reconstruct match with annotated scrutinee and arms
+      Node {
+        name: body.name, span: body.span, ident_span: body.ident_span,
+        children: concat([annotated_scrut], annotated_arms),
+        connective: body.connective, params: body.params,
+        inferred: body.inferred, return_cardinality: body.return_cardinality,
+        uses: body.uses, body: body.body, transport: body.transport,
+        properties: body.properties, type_annotation: body.type_annotation,
+        is_self_recursive: body.is_self_recursive,
+        has_non_tail_self_call: body.has_non_tail_self_call,
+        match_pattern: body.match_pattern, expr_data: body.expr_data
+      }
+    ExprLet =>
+      // If let-value is a known sub-value var, extend context for binding name
+      let val = let_value(texpr: body)
+      let binding_name = let_binding_name(texpr: body)
+      let val_relation = match val.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let vname = expr_var_name(texpr: val)
+          map_get(ctx.sub_value_vars, vname)
+        _ => none
+      }
+      let inner_ctx = match val_relation {
+        Some { value: rel } =>
+          DescentContext {
+            fn_name: ctx.fn_name, param_names: ctx.param_names, type_env: ctx.type_env,
+            sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel)
+          }
+        None => ctx
+      }
+      // Recurse into value and body
+      map_children(node: body, transform: child => annotate_descent(body: child, ctx: inner_ctx))
+    _ =>
+      // All other expression types: recurse into children
+      map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
+  }
+}
+
+// Top-level: annotate a self-recursive function body with descent evidence.
+fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv) -> Node {
+  let param_name_map = params |> fold(init: empty_map(), f: (acc, p) =>
+    let pname = param_node_name(n: p)
+    let ptype = param_node_type_expr(n: p).name
+    map_insert(acc, pname, ptype)
+  )
+  let ctx = DescentContext {
+    fn_name: fn_name,
+    param_names: param_name_map,
+    type_env: type_env,
+    sub_value_vars: empty_map()
+  }
+  annotate_descent(body: body, ctx: ctx)
+}
+
 // -------------------------------------------------------------------------
 // infer_item: wraps each Node into its Node counterpart with inferred types
 // -------------------------------------------------------------------------
@@ -2133,13 +2334,18 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
+    // CX-L2: annotate self-call sites with descent evidence
+    let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: item.name)
+    let annotated_body = if is_recursive {
+      annotate_descent_evidence(body: body_typed, fn_name: item.name, params: item.params, type_env: scope.type_env)
+    } else { body_typed }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
-        inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: item.uses, body: Some { value: body_typed },
+        inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: item.uses, body: Some { value: annotated_body },
         connective: NoConnective, transport: item.transport,
                properties: item.properties, type_annotation: typed_anno,
-        is_self_recursive: expr_has_self_call(texpr: body_typed, fn_name: item.name),
+        is_self_recursive: is_recursive,
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true),
         match_pattern: none, expr_data: NoExprData
       },

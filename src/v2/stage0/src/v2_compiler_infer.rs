@@ -68,9 +68,11 @@ pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport
 pub use crate::v2_compiler_infer_types::{nominal_type_ref, container_node, callable_node, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self, map_node, bare_map_node, callable_inferred, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, resolved_type, child_type_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type, list_of_element};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
-pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, merge_inductive_fields};
-pub use crate::std_induction::{InductiveField, RecursionShape};
+pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, merge_inductive_fields, inductive_fields_for};
+pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
+use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
+use crate::std_induction::ShrinkFactor::{UnitShrink};
 pub use crate::v2_compiler_infer_resolve::{resolve_node, resolve_item_types, NodeResolveResult, ItemResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult, resolve_func_sigs};
 pub use crate::v2_compiler_infer_emit_info::{TypeRepr, TypeSummary, EmitGraphInfo, EmitInfoBuildState, empty_emit_graph_info, lookup_emit_type_summary, build_struct_field_summaries, build_enum_field_summaries, add_emit_item_summary, derive_variant_to_enum};
@@ -2153,6 +2155,212 @@ Rc::new(InferResult {
 }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DescentContext {
+    pub fn_name: String,
+    pub param_names: Rc<HashMap<String, String>>,
+    pub type_env: Rc<TypeEnv>,
+    pub sub_value_vars: Rc<HashMap<String, Rc<SubValueRelation>>>,
+}
+
+pub fn classify_argument(arg_expr: Rc<Node>, param_name: String, ctx: Rc<DescentContext>) -> Rc<SubValueRelation> {
+    match (*arg_expr.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+        let vname = expr_var_name(arg_expr.clone());
+if (vname.clone().as_str() == param_name.as_str()) {
+            Rc::new(SubValueRelation::PreservedValue)
+} else {
+            match v2_rt::map_get(&ctx.sub_value_vars.clone(), vname.clone()) {
+    Some(rel) => rel.clone(),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
+}
+},
+    ExprData::ExprFieldAccess { .. } => {
+        let base = field_access_base(arg_expr.clone());
+let field = field_access_field(arg_expr.clone());
+match (*base.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+            let bname = expr_var_name(base.clone());
+let type_name = match v2_rt::map_get(&ctx.param_names.clone(), bname) {
+    Some(t) => t.clone(),
+    None => "".to_string(),
+};
+let fields = inductive_fields_for(ctx.type_env.clone(), type_name);
+let matching = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if (f.field_name.clone().as_str() == field.clone().as_str()) { __result.push(f); } } __result }).first().cloned();
+match matching {
+    Some(ind_field) => Rc::new(SubValueRelation::StrictSubValue {
+    field: ind_field.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+}),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+}
+
+pub fn build_call_evidence(call_node: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Vec<Rc<SubValueRelation>>> {
+    Rc::new({ let mut __result = Vec::new(); for arg_node in call_node.children.clone().iter().cloned() { __result.push({
+        let aname = arg_name(arg_node.clone());
+let arg_val = arg_value(arg_node.clone());
+match aname.clone() {
+    Some(pname) => match v2_rt::map_get(&ctx.param_names.clone(), pname.clone()) {
+    Some(_) => classify_argument(arg_val.clone(), pname.clone(), ctx.clone()),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
+}); } __result })
+}
+
+pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*body.expr_data.clone()).clone() {
+    ExprData::ExprCall { call_semantics: cs, .. } => {
+            let callee = expr_call_func(body.clone());
+if (callee.as_str() == ctx.fn_name.clone().as_str()) {
+                {
+                    let evidence = build_call_evidence(body.clone(), ctx.clone());
+let annotated_children = Rc::new({ let mut __result = Vec::new(); for child in body.children.clone().iter().cloned() { __result.push(annotate_descent(child.clone(), ctx.clone())); } __result });
+Rc::new(Node {
+    name: body.name.clone(),
+    span: body.span.clone(),
+    ident_span: body.ident_span.clone(),
+    children: annotated_children,
+    connective: body.connective.clone(),
+    params: body.params.clone(),
+    inferred: body.inferred.clone(),
+    return_cardinality: body.return_cardinality.clone(),
+    uses: body.uses.clone(),
+    body: body.body.clone(),
+    transport: body.transport.clone(),
+    properties: body.properties.clone(),
+    type_annotation: body.type_annotation.clone(),
+    is_self_recursive: body.is_self_recursive.clone(),
+    has_non_tail_self_call: body.has_non_tail_self_call.clone(),
+    match_pattern: body.match_pattern.clone(),
+    expr_data: Rc::new(ExprData::ExprCall {
+    call_semantics: cs.clone(),
+    descent_evidence: Some(evidence),
+}),
+})
+}
+} else {
+                map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone()))
+}
+},
+    ExprData::ExprMatch => {
+            let scrut = match_scrutinee(body.clone());
+let scrut_type = match (*scrut.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                let sname = expr_var_name(scrut.clone());
+match v2_rt::map_get(&ctx.param_names.clone(), sname) {
+    Some(t) => t.clone(),
+    None => "".to_string(),
+}
+},
+    _ => "".to_string(),
+};
+let scrut_has_inductive = ((scrut_type.clone().as_str() != "".to_string().as_str()) && ((inductive_fields_for(ctx.type_env.clone(), scrut_type.clone()).len() as i64) > 0));
+let annotated_scrut = annotate_descent(scrut.clone(), ctx.clone());
+let annotated_arms = Rc::new({ let mut __result = Vec::new(); for arm_node in match_arm_nodes(body.clone()).iter().cloned() { __result.push({
+                let arm_ctx = if scrut_has_inductive.clone() {
+                    match (*arm_pattern(arm_node.clone())).clone() {
+    MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => {
+                        let ind_fields = inductive_fields_for(ctx.type_env.clone(), scrut_type.clone());
+bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| {
+                            let fb_name = field_binding_name(fb.clone());
+let matching = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.clone().iter().cloned() { if ((f.variant_name.clone().as_str() == vname.clone().as_str()) && (f.field_name.clone().as_str() == fb_name.clone().as_str())) { __result.push(f); } } __result }).first().cloned();
+match matching.clone() {
+    Some(ind_field) => Rc::new(DescentContext {
+    fn_name: c.fn_name.clone(),
+    param_names: c.param_names.clone(),
+    type_env: c.type_env.clone(),
+    sub_value_vars: v2_rt::rc_map_insert(c.sub_value_vars.clone(), fb_name.clone(), Rc::new(SubValueRelation::StrictSubValue {
+    field: ind_field.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+})),
+}),
+    None => c.clone(),
+}
+})
+},
+    MatchPattern::Bind { name: bname, .. } => ctx.clone(),
+    _ => ctx.clone(),
+}
+} else {
+                    ctx.clone()
+};
+let annotated_body = annotate_descent(arm_body(arm_node.clone()), arm_ctx.clone());
+make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annotated_body.clone(), arm_node.span.clone())
+}); } __result });
+Rc::new(Node {
+    name: body.name.clone(),
+    span: body.span.clone(),
+    ident_span: body.ident_span.clone(),
+    children: v2_rt::concat(Rc::new(vec![annotated_scrut]), annotated_arms),
+    connective: body.connective.clone(),
+    params: body.params.clone(),
+    inferred: body.inferred.clone(),
+    return_cardinality: body.return_cardinality.clone(),
+    uses: body.uses.clone(),
+    body: body.body.clone(),
+    transport: body.transport.clone(),
+    properties: body.properties.clone(),
+    type_annotation: body.type_annotation.clone(),
+    is_self_recursive: body.is_self_recursive.clone(),
+    has_non_tail_self_call: body.has_non_tail_self_call.clone(),
+    match_pattern: body.match_pattern.clone(),
+    expr_data: body.expr_data.clone(),
+})
+},
+    ExprData::ExprLet => {
+            let val = let_value(body.clone());
+let binding_name = let_binding_name(body.clone());
+let val_relation = match (*val.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                let vname = expr_var_name(val.clone());
+v2_rt::map_get(&ctx.sub_value_vars.clone(), vname.clone())
+},
+    _ => None,
+};
+let inner_ctx = match val_relation {
+    Some(rel) => Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: ctx.param_names.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), binding_name, rel.clone()),
+}),
+    None => ctx.clone(),
+};
+map_children(body.clone(), |child| annotate_descent(child.clone(), inner_ctx.clone()))
+},
+    _ => map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone())),
+}
+    })
+}
+
+pub fn annotate_descent_evidence(body: Rc<Node>, fn_name: String, params: Rc<Vec<Rc<Node>>>, type_env: Rc<TypeEnv>) -> Rc<Node> {
+    {
+        let param_name_map = params.iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
+            let pname = param_node_name(p.clone());
+let ptype = param_node_type_expr(p.clone()).name.clone();
+v2_rt::rc_map_insert(acc.clone(), pname.clone(), ptype.clone())
+});
+let ctx = Rc::new(DescentContext {
+    fn_name: fn_name,
+    param_names: param_name_map,
+    type_env: type_env,
+    sub_value_vars: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+});
+annotate_descent(body, ctx)
+}
+}
+
 pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
@@ -2200,6 +2408,12 @@ let inferred_ret = if (item.inferred.clone() != None) {
 } else {
                             body_typed.inferred.clone()
 };
+let is_recursive = expr_has_self_call(body_typed.clone(), item.name.clone());
+let annotated_body = if is_recursive.clone() {
+                            annotate_descent_evidence(body_typed.clone(), item.name.clone(), item.params.clone(), scope.type_env.clone())
+} else {
+                            body_typed.clone()
+};
 Rc::new(TypedItemResult {
     item: Rc::new(Node {
     name: item.name.clone(),
@@ -2210,12 +2424,12 @@ Rc::new(TypedItemResult {
     inferred: inferred_ret,
     return_cardinality: item.return_cardinality.clone(),
     uses: item.uses.clone(),
-    body: Some(body_typed.clone()),
+    body: Some(annotated_body),
     connective: Connective::NoConnective,
     transport: item.transport.clone(),
     properties: item.properties.clone(),
     type_annotation: typed_anno,
-    is_self_recursive: expr_has_self_call(body_typed.clone(), item.name.clone()),
+    is_self_recursive: is_recursive.clone(),
     has_non_tail_self_call: expr_has_non_tail_self_call(body_typed.clone(), item.name.clone(), true),
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
