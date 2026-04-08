@@ -3902,15 +3902,37 @@ fn emit_rest_http_method(transport: Node) -> String {
 }
 
 // RE-1b: Path template URL construction.
-// Path interpolation deferred: requires extdeps/languages/bash/ modeling
-// to handle parameter substitution faithfully across shell and REST contexts.
-// Currently emits the literal path string appended to base_url.
+// Handles both literal paths and string interpolation (parameter substitution).
+// String interpolation paths like "/repos/{owner}/{repo}" produce ExprStringInterp
+// with structured Text + Interpolation parts — no ad-hoc template scanning needed.
 fn emit_rest_url_line(transport: Node, op_name: String) -> String {
   match transport_path_template(t: transport) {
     Some { value: path_node } => match path_node.expr_data {
       ExprLiteral { value: LitStr { value: path_str } } =>
         concat("let url = format!(\"{}", escape_string_literal_body(s: path_str), "\", self.base_url);")
-      _ => "compile_error!(\"transport path must be a string literal\");"
+      ExprStringInterp => {
+        // Structured interpolation: emit format! with base_url prefix + parts
+        let parts = path_node.children |> map(child => match child.expr_data {
+          ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+          _ => Interpolation { expr: arg_value(n: child) }
+        })
+        let fmt_segments = parts |> map(p => match p {
+          Text { value: v } => escape_rust_interp_text(s: v)
+          Interpolation { expr: _ } => "{}"
+        })
+        let fmt_str = fmt_segments |> join(separator: "")
+        let args = parts |> flat_map(p => match p {
+          Text { value: _ } => []
+          Interpolation { expr: e } => [emit_ident(name: expr_var_name(texpr: e), target: Rust)]
+        })
+        if args |> count == 0 {
+          concat("let url = format!(\"{}", fmt_str, "\", self.base_url);")
+        } else {
+          let args_str = args |> join(separator: ", ")
+          concat("let url = format!(\"{}", fmt_str, "\", self.base_url, ", args_str, ");")
+        }
+      }
+      _ => "compile_error!(\"transport path must be a string literal or interpolation\");"
     }
     None => concat("let url = format!(\"{}/{}\", self.base_url, \"",
       emit_ident(name: op_name, target: Rust), "\");")
@@ -4124,15 +4146,38 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   }
 }
 
-// Emit a single argv element as a Rust string literal or expression.
-// Argv parameter interpolation deferred: requires extdeps/languages/bash/
-// modeling to handle shell string escaping and parameter substitution
-// faithfully. Currently emits literal strings as-is and variables as
-// .to_string() references.
+// Emit a single argv element as a Rust expression.
+// Handles three cases:
+// 1. Literal string ("find", "-maxdepth") → Rust string literal
+// 2. String interpolation ("{path}") → format!("{}", path)
+// 3. Variable reference → &var.to_string()
+//
+// String interpolation uses the parser's ExprStringInterp structure
+// (Text + Interpolation parts) — no ad-hoc template scanning.
+// Bash quoting/escaping facts from extdeps/languages/bash/emit.dag
+// will be consumed here when parameter injection safety is wired.
 fn emit_shell_argv_element(arg: Node) -> String {
   match arg.expr_data {
     ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", escape_string_literal_body(s: s), "\"")
+    ExprStringInterp => {
+      // Structured interpolation: emit format! with parts
+      let parts = arg.children |> map(child => match child.expr_data {
+        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+        _ => Interpolation { expr: arg_value(n: child) }
+      })
+      let fmt_segments = parts |> map(p => match p {
+        Text { value: v } => escape_rust_interp_text(s: v)
+        Interpolation { expr: _ } => "{}"
+      })
+      let fmt_str = fmt_segments |> join(separator: "")
+      let args = parts |> flat_map(p => match p {
+        Text { value: _ } => []
+        Interpolation { expr: e } => [emit_ident(name: expr_var_name(texpr: e), target: Rust)]
+      })
+      let args_str = args |> join(separator: ", ")
+      concat("&format!(\"", fmt_str, "\", ", args_str, ")")
+    }
     ExprVar { binding_kind: _ } => concat("&", emit_ident(name: expr_var_name(texpr: arg), target: Rust), ".to_string()")
     _ => emit_simple_expr(expr: arg, target: Rust, source_index: none)
   }

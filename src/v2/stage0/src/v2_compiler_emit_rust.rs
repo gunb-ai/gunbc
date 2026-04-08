@@ -4124,7 +4124,34 @@ pub fn emit_rest_url_line(transport: Rc<Node>, op_name: String) -> String {
     match transport_path_template(transport) {
     Some(path_node) => match (*path_node.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: path_str, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat("let url = format!(\"{}".to_string(), escape_string_literal_body(path_str.clone())), "\", self.base_url);".to_string()) },
-    _ => "compile_error!(\"transport path must be a string literal\");".to_string(),
+    ExprData::ExprStringInterp => {
+        let parts = Rc::new({ let mut __result = Vec::new(); for child in path_node.children.clone().iter().cloned() { __result.push(match (*child.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: text, .. } = value.as_ref() else { unreachable!() }; Rc::new(StringPart::Text {
+    value: text.clone(),
+}) },
+    _ => Rc::new(StringPart::Interpolation {
+    expr: arg_value(child.clone()),
+}),
+}); } __result });
+let fmt_segments = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
+    StringPart::Text { value: v, .. } => escape_rust_interp_text(v.clone()),
+    StringPart::Interpolation { .. } => "{}".to_string(),
+}); } __result });
+let fmt_str = fmt_segments.join(&"".to_string());
+let args = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.extend((*match (*p.clone()).clone() {
+    StringPart::Text { .. } => Rc::new(vec![]),
+    StringPart::Interpolation { expr: e, .. } => Rc::new(vec![emit_ident(expr_var_name(e.clone()), RenderTarget::Rust)]),
+}).iter().cloned()); } __result });
+if ((args.clone().len() as i64) == 0) {
+            v2_rt::concat(v2_rt::concat("let url = format!(\"{}".to_string(), fmt_str), "\", self.base_url);".to_string())
+} else {
+            {
+                let args_str = args.clone().join(&", ".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let url = format!(\"{}".to_string(), fmt_str), "\", self.base_url, ".to_string()), args_str), ");".to_string())
+}
+}
+},
+    _ => "compile_error!(\"transport path must be a string literal or interpolation\");".to_string(),
 },
     None => v2_rt::concat(v2_rt::concat("let url = format!(\"{}/{}\", self.base_url, \"".to_string(), emit_ident(op_name, RenderTarget::Rust)), "\");".to_string()),
 }
@@ -4346,6 +4373,27 @@ all_lines.join(&"\n".to_string())
 pub fn emit_shell_argv_element(arg: Rc<Node>) -> String {
     match (*arg.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat("\"".to_string(), escape_string_literal_body(s.clone())), "\"".to_string()) },
+    ExprData::ExprStringInterp => {
+        let parts = Rc::new({ let mut __result = Vec::new(); for child in arg.children.clone().iter().cloned() { __result.push(match (*child.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: text, .. } = value.as_ref() else { unreachable!() }; Rc::new(StringPart::Text {
+    value: text.clone(),
+}) },
+    _ => Rc::new(StringPart::Interpolation {
+    expr: arg_value(child.clone()),
+}),
+}); } __result });
+let fmt_segments = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
+    StringPart::Text { value: v, .. } => escape_rust_interp_text(v.clone()),
+    StringPart::Interpolation { .. } => "{}".to_string(),
+}); } __result });
+let fmt_str = fmt_segments.join(&"".to_string());
+let args = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.extend((*match (*p.clone()).clone() {
+    StringPart::Text { .. } => Rc::new(vec![]),
+    StringPart::Interpolation { expr: e, .. } => Rc::new(vec![emit_ident(expr_var_name(e.clone()), RenderTarget::Rust)]),
+}).iter().cloned()); } __result });
+let args_str = args.join(&", ".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("&format!(\"".to_string(), fmt_str), "\", ".to_string()), args_str), ")".to_string())
+},
     ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat("&".to_string(), emit_ident(expr_var_name(arg.clone()), RenderTarget::Rust)), ".to_string()".to_string()),
     _ => emit_simple_expr(arg.clone(), RenderTarget::Rust, None),
 }

@@ -4623,7 +4623,25 @@ fn rest_emit_uses_transport_method() {
 
 #[test]
 fn rest_emit_substitutes_path_template() {
-    let source = "module re1b\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    input { owner: String, repo: String }\n    output { name: String }\n    transport rest { method: GET, path: \"/repos/\\{owner\\}/\\{repo\\}\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n";
+    let source = r#"module re1b
+
+service test.Svc {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation GetItem {
+    input { owner: String, repo: String }
+    output { name: String }
+    transport rest { method: GET, path: "/repos/{owner}/{repo}" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => "ok" "item"
+    }
+  }
+}
+"#;
     let result = compile_dag_target(source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/re1b.rs");
@@ -4677,7 +4695,7 @@ service shell.Run {
   operation Exec {
     input { script: String }
     output { result: String }
-    transport shell { argv: ["sh", "-lc", "\{script\}"] }
+    transport shell { argv: ["sh", "-lc", "{script}"] }
     mock_response {
       0 => "done" "result"
     }
@@ -4701,7 +4719,7 @@ service shell.Run {
   operation Exec {
     input { cmd: String }
     output { result: String }
-    transport shell { argv: ["sh", "-c", "\{cmd\}"] }
+    transport shell { argv: ["sh", "-c", "{cmd}"] }
     exit {
       0 => Unit
       nonzero => String "command failed"
