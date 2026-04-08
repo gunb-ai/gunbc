@@ -4170,7 +4170,7 @@ if (name.clone().as_str() == "GET".to_string().as_str()) {
                                 if (name.clone().as_str() == "OPTIONS".to_string().as_str()) {
                                     "options".to_string()
 } else {
-                                    "post".to_string()
+                                    v2_rt::concat(v2_rt::concat("compile_error!(\"unsupported HTTP method: ".to_string(), name.clone()), "\"); post".to_string())
 }
 }
 }
@@ -4179,7 +4179,7 @@ if (name.clone().as_str() == "GET".to_string().as_str()) {
 }
 }
 },
-    _ => "post".to_string(),
+    _ => "compile_error!(\"transport method must be an identifier (GET, POST, etc.)\"); post".to_string(),
 },
     None => "post".to_string(),
 }
@@ -4200,7 +4200,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let url = format!(\"{}"
 }
 }
 } },
-    _ => v2_rt::concat(v2_rt::concat("let url = format!(\"{}/{}\", self.base_url, \"".to_string(), emit_ident(op_name, RenderTarget::Rust)), "\");".to_string()),
+    _ => "compile_error!(\"transport path must be a string literal\");".to_string(),
 },
     None => v2_rt::concat(v2_rt::concat("let url = format!(\"{}/{}\", self.base_url, \"".to_string(), emit_ident(op_name, RenderTarget::Rust)), "\");".to_string()),
 }
@@ -4328,7 +4328,7 @@ match auth_scheme {
 };
 let token_param = match auth_input_name {
     Some(n) => emit_ident(n.clone(), RenderTarget::Rust),
-    None => "auth_token".to_string(),
+    None => "compile_error!(\"service config has auth but no auth_input\")".to_string(),
 };
 if (auth_name.as_str() == "BearerToken".to_string().as_str()) {
                 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = client.".to_string(), http_method), "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ".to_string()), token_param), "));".to_string())
@@ -4338,11 +4338,11 @@ if (auth_name.as_str() == "BearerToken".to_string().as_str()) {
     ExprData::ExprCall { .. } => match auth.children.clone().first().cloned() {
     Some(arg_node) => match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; s.clone() },
-    _ => "Authorization".to_string(),
+    _ => "compile_error!(\"auth Header argument must be a string literal\")".to_string(),
 },
-    None => "Authorization".to_string(),
+    None => "compile_error!(\"auth Header() requires a header name argument\")".to_string(),
 },
-    _ => "Authorization".to_string(),
+    _ => "compile_error!(\"unsupported auth scheme — expected BearerToken or Header(name)\")".to_string(),
 };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = client.".to_string(), http_method), "(&url)\n    .header(\"".to_string()), header_name), "\", ".to_string()), token_param), ");".to_string())
 }
@@ -4415,7 +4415,14 @@ let is_success = if (v2_rt::string_length(&code_str) >= 1) {
 let pattern = if (code_str.clone().as_str() == "nonzero".to_string().as_str()) {
             "_".to_string()
 } else {
-            code_str.clone()
+            if ((v2_rt::string_length(&code_str) == 3) && (v2_rt::substring(&code_str, 1, 3).as_str() == "xx".to_string().as_str())) {
+                {
+                    let prefix = v2_rt::substring(&code_str, 0, 1);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "00..=".to_string()), prefix.clone()), "99".to_string())
+}
+} else {
+                code_str.clone()
+}
 };
 if is_success {
             v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { let result = response.json().await?; Ok(result) },".to_string())
@@ -4436,10 +4443,37 @@ pub fn has_exit_prefix(name: String) -> bool {
 pub fn emit_exit_code_handling(op_node: Rc<Node>, inferred: Rc<Node>) -> String {
     {
         let exit_props = Rc::new({ let mut __result = Vec::new(); for p in op_node.properties.clone().iter().cloned() { if has_exit_prefix(field_init_node_name(p.clone())) { __result.push(p); } } __result });
-if ((exit_props.len() as i64) == 0) {
-            emit_shell_return(inferred)
+if ((exit_props.clone().len() as i64) == 0) {
+            emit_shell_return(inferred.clone())
 } else {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if output.status.success() {\n".to_string(), "    ".to_string()), emit_shell_return(inferred)), "\n".to_string()), "} else {\n".to_string()), "    let stderr = String::from_utf8_lossy(&output.stderr).to_string();\n".to_string()), "    Err(stderr.into())\n".to_string()), "}".to_string())
+            {
+                let has_nonzero = { let mut __found = false; for p in exit_props.clone().iter().cloned() { if (field_init_node_name(p.clone()).as_str() == "exit_nonzero".to_string().as_str()) { __found = true; break; } } __found };
+let exit_arms = Rc::new({ let mut __result = Vec::new(); for p in exit_props.clone().iter().cloned() { __result.push(emit_exit_arm(p.clone(), inferred.clone())); } __result });
+let default_arm = if has_nonzero {
+                    "".to_string()
+} else {
+                    "\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(stderr.into()) },".to_string()
+};
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let exit_code = output.status.code().unwrap_or(-1);\n".to_string(), "match exit_code {\n".to_string()), exit_arms.join(&"\n".to_string())), default_arm), "\n}".to_string())
+}
+}
+}
+}
+
+pub fn emit_exit_arm(prop: Rc<Node>, inferred: Rc<Node>) -> String {
+    {
+        let name = field_init_node_name(prop);
+let code_str = v2_rt::substring(&name, 5, v2_rt::string_length(&name));
+let pattern = if (code_str.clone().as_str() == "nonzero".to_string().as_str()) {
+            "_".to_string()
+} else {
+            code_str.clone()
+};
+let is_success = (code_str.clone().as_str() == "0".to_string().as_str());
+if is_success {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { ".to_string()), emit_shell_return(inferred)), " },".to_string())
+} else {
+            v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(stderr.into()) },".to_string())
 }
 }
 }
@@ -4461,7 +4495,7 @@ let arg_lines = if ((argv.clone().len() as i64) > 1) {
             Rc::new(vec![])
 };
 let env_entries = transport_env(transport.clone());
-let env_lines = Rc::new({ let mut __result = Vec::new(); for e in Rc::new({ let mut __result = Vec::new(); for e in env_entries.iter().cloned() { if (field_init_node_name(e.clone()).as_str() != "stdin".to_string().as_str()) { __result.push(e); } } __result }).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    .env(\"".to_string(), field_init_node_name(e.clone())), "\", ".to_string()), emit_simple_expr(field_init_node_value(e.clone()), RenderTarget::Rust, None)), ")".to_string())); } __result });
+let env_lines = Rc::new({ let mut __result = Vec::new(); for e in env_entries.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    .env(\"".to_string(), field_init_node_name(e.clone())), "\", ".to_string()), emit_simple_expr(field_init_node_value(e.clone()), RenderTarget::Rust, None)), ")".to_string())); } __result });
 let has_stdin = match transport_stdin(transport.clone()) {
     Some(_) => true,
     None => false,

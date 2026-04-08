@@ -1706,7 +1706,7 @@ pub fn transport_headers(t: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn transport_env(t: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    t.properties.clone()
+    Rc::new({ let mut __result = Vec::new(); for p in t.properties.clone().iter().cloned() { if !is_config_reserved_key(field_init_node_name(p.clone())) { __result.push(p); } } __result })
 }
 
 pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + Clone) -> Rc<Node> {

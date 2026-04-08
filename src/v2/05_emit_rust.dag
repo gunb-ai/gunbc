@@ -3873,7 +3873,8 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   all_lines |> join(separator: "\n")
 }
 
-// RE-1a: HTTP method dispatch — reads transport method field, defaults to POST.
+// RE-1a: HTTP method dispatch — reads transport method field.
+// Fail-closed: unknown method or non-identifier expression → compile_error!
 fn emit_rest_http_method(transport: Node) -> String {
   match transport_method(t: transport) {
     Some { value: m } => match m.expr_data {
@@ -3886,9 +3887,9 @@ fn emit_rest_http_method(transport: Node) -> String {
         else if name == "DELETE" { "delete" }
         else if name == "HEAD" { "head" }
         else if name == "OPTIONS" { "options" }
-        else { "post" }
+        else { concat("compile_error!(\"unsupported HTTP method: ", name, "\"); post") }
       }
-      _ => "post"
+      _ => "compile_error!(\"transport method must be an identifier (GET, POST, etc.)\"); post"
     }
     None => "post"
   }
@@ -3908,8 +3909,7 @@ fn emit_rest_url_line(transport: Node, op_name: String) -> String {
           concat("let url = format!(\"{}", fmt_str, "\", self.base_url, ", args, ");")
         }
       }
-      _ => concat("let url = format!(\"{}/{}\", self.base_url, \"",
-        emit_ident(name: op_name, target: Rust), "\");")
+      _ => "compile_error!(\"transport path must be a string literal\");"
     }
     None => concat("let url = format!(\"{}/{}\", self.base_url, \"",
       emit_ident(name: op_name, target: Rust), "\");")
@@ -3978,7 +3978,7 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String)
       }
       let token_param = match auth_input_name {
         Some { value: n } => emit_ident(name: n, target: Rust)
-        None => "auth_token"
+        None => "compile_error!(\"service config has auth but no auth_input\")"
       }
       if auth_name == "BearerToken" {
         concat("let request = client.", http_method, "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ", token_param, "));")
@@ -3988,11 +3988,11 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String)
           ExprCall { call_semantics: _ } => match auth.children |> first {
             Some { value: arg_node } => match arg_value(n: arg_node).expr_data {
               ExprLiteral { value: LitStr { value: s } } => s
-              _ => "Authorization"
+              _ => "compile_error!(\"auth Header argument must be a string literal\")"
             }
-            None => "Authorization"
+            None => "compile_error!(\"auth Header() requires a header name argument\")"
           }
-          _ => "Authorization"
+          _ => "compile_error!(\"unsupported auth scheme — expected BearerToken or Header(name)\")"
         }
         concat("let request = client.", http_method, "(&url)\n    .header(\"", header_name, "\", ", token_param, ");")
       }
@@ -4067,9 +4067,13 @@ fn emit_response_arm(prop: Node) -> String {
   let is_success = if string_length(s: code_str) >= 1 {
     substring(s: code_str, start: 0, end: 1) == "2"
   } else { false }
-  // Build the match pattern
-  let pattern = if code_str == "nonzero" { "_"
-  } else { code_str }
+  // Build the match pattern — handle wildcards like 5xx → 500..=599
+  let pattern = if code_str == "nonzero" { "_" }
+    else if string_length(s: code_str) == 3 && substring(s: code_str, start: 1, end: 3) == "xx" {
+      let prefix = substring(s: code_str, start: 0, end: 1)
+      concat(prefix, "00..=", prefix, "99")
+    }
+    else { code_str }
   if is_success {
     concat("    ", pattern, " => { let result = response.json().await?; Ok(result) },")
   } else {
@@ -4089,14 +4093,30 @@ fn emit_exit_code_handling(op_node: Node, inferred: Node) -> String {
     // No exit block: use default heuristic
     emit_shell_return(inferred: inferred)
   } else {
-    // Emit success/failure branching
+    // Map declared exit codes to specific handling
+    let has_nonzero = exit_props |> any(p => field_init_node_name(n: p) == "exit_nonzero")
+    let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred))
+    let default_arm = if has_nonzero { "" }
+      else { "\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(stderr.into()) }," }
     concat(
-      "if output.status.success() {\n",
-      "    ", emit_shell_return(inferred: inferred), "\n",
-      "} else {\n",
-      "    let stderr = String::from_utf8_lossy(&output.stderr).to_string();\n",
-      "    Err(stderr.into())\n",
-      "}")
+      "let exit_code = output.status.code().unwrap_or(-1);\n",
+      "match exit_code {\n",
+      exit_arms |> join(separator: "\n"),
+      default_arm,
+      "\n}")
+  }
+}
+
+fn emit_exit_arm(prop: Node, inferred: Node) -> String {
+  let name = field_init_node_name(n: prop)
+  let code_str = substring(s: name, start: 5, end: string_length(s: name))
+  let pattern = if code_str == "nonzero" { "_" }
+    else { code_str }
+  let is_success = code_str == "0"
+  if is_success {
+    concat("    ", pattern, " => { ", emit_shell_return(inferred: inferred), " },")
+  } else {
+    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(stderr.into()) },")
   }
 }
 
@@ -4120,10 +4140,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
     )
   } else { [] }
   let env_entries = transport_env(t: transport)
-  let env_lines = env_entries |> filter(e =>
-    // Filter out stdin property — it's not an env var
-    field_init_node_name(n: e) != "stdin"
-  ) |> map(e =>
+  let env_lines = env_entries |> map(e =>
     concat("    .env(\"", field_init_node_name(n: e), "\", ", emit_simple_expr(expr: field_init_node_value(n: e), target: Rust, source_index: none), ")")
   )
   // RE-1g: Shell stdin — if present, use spawn + write + wait_with_output

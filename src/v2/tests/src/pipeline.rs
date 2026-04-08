@@ -4716,8 +4716,8 @@ service shell.Run {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/re1h.rs");
     assert!(
-        content.contains("success()"),
-        "RE-1h: expected exit code check in emitted code, got:\n{content}"
+        content.contains("exit_code") || content.contains("success()"),
+        "RE-1h: expected exit code handling in emitted code, got:\n{content}"
     );
 }
 

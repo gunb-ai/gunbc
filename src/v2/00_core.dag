@@ -1223,7 +1223,9 @@ fn transport_headers(t: Node) -> List<Node> {
 }
 
 fn transport_env(t: Node) -> List<Node> {
-  t.properties
+  t.properties |> filter(p =>
+    !is_config_reserved_key(name: field_init_node_name(n: p))
+  )
 }
 
 // =========================================================================
