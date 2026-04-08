@@ -29,6 +29,7 @@ M1 COMPLETE─┤                                       ├→ M4 (structural id
 Bootstrap D ┼─ Lane 2: CG (codegen correctness) ───┘       └→ M5 → M6 → M7
   COMPLETE  ├─ Lane 3: CX (164 → 0)
             ├─ Lane 4: LS (language spec modeling) ─→ CG-3 parameterized emission
+            ├─ Lane 5: RE (real-program emission) ──→ review.dag → agent workflows
             └─ PERF (continuous — parallel to all lanes)
             CM: cross-cutting design lens (informs all lanes) → src/v2/CM.md
 
@@ -36,10 +37,12 @@ Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
 Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, ownership, languages
 Lane 3 owns: complexity, dsl/std/
 Lane 4 owns: dsl/extdeps/languages/{rust,go,python}/ — spec-sourced data
+Lane 5 owns: 05_emit_rust.dag transport emission, dsl/gunbc/tools/, dsl/extdeps/{llm,github,shell}/
 CM informs how Lanes 1-3 approach work; does not own files separately
 PERF owns: performance ratchets, bootstrap convergence tests, timing budgets
 M4 follows Lanes 1+2 (needs structural facts + clean render path)
 LS follows CG-3 (needs parameterized emission to consume spec data)
+RE follows CG (needs correct emission) — parallel to M4, CX, LS
 ```
 
 ---
@@ -1095,32 +1098,243 @@ heuristic). All documented at code sites and in the triage doc.
 
 ## RE: Real-Program Rust Emission (Lane 4)
 
-**Goal:** Compile real .dag programs to fully executable Rust. Target:
-workflows in `../ctrl/` (Python scripts managing colima, cargo, etc.)
-reimplemented in .dag and compiled to Rust binaries.
+**Goal:** Compile real .dag programs to fully executable Rust. First
+target: `gunbc/tools/review.dag` — a PR review agent using GitHub API,
+LLM CLI backends, shell commands, and cron scheduling. This exercises
+the full service/transport/workflow stack and serves as a stress test
+for agent/LLM workflow patterns.
 
-**Status:** Emission produces compilable Rust for the compiler's own
-modules (self-compile). Real programs require:
+**Status:** More infrastructure exists than this section previously
+documented. The pipeline already handles:
+- `func` → `async fn` with `.await?` on effectful calls
+- Service struct generation with config fields
+- Service instance threading as extra function args
+- String interpolation → `format!()`
+- CLI entrypoint with clap (subcommand per `func`)
+- `Cargo.toml` with reqwest/tokio/serde when `has_services`
+- Dry-run mode with mock_response data
+- REST, shell, and file transport call scaffolding
 
-**RE-1: Service/transport emission**
-- REST calls, file I/O, process spawning — currently emit stubs
-- Need: runtime bridge implementations for each service type
-- Blocked on: E0 structural emission (feedback_e0_structural_emission)
+The gap: transport call bodies are scaffold-level — they don't consume
+the detailed config (path templates, argv, HTTP method, query params)
+already flowing to the emitter. The modeling is done; emission needs
+to read what it already receives.
 
-**RE-2: Workflow execution model**
-- Sequential steps with error propagation
-- CLI argument parsing (already emitted via clap)
-- Environment variable access, config file reading
+**First target: `review.dag`** — chosen because it's a stateless CLI
+tool calling REST APIs and shell commands, which maps cleanly to .dag's
+service model. The extdeps are already modeled:
+- `extdeps/github/pulls.dag` (List, Get, Diff, CreateReview, ListReviews)
+- `extdeps/llm/cli.dag` (Codex, Claude, Gemini via shell transport)
+- `extdeps/shell.dag` (Exec.Run — `sh -lc {script}`)
+- `extdeps/cron.dag` (Tab.Upsert — idempotent cron schedule)
 
-**RE-3: Missing language features for real programs**
-- String interpolation in emitted Rust
-- Error handling / Result propagation
-- Async service calls (tokio runtime)
+### Dependency chain
 
-**RE-4: End-to-end validation**
-- Pick one ctrl/ workflow, implement in .dag, compile to Rust, run
-- Measure: does the compiled binary do what the Python script does?
-- Gate: no hand-maintained Rust outside stage0
+```
+RE-1: Transport emission fidelity (emit reads existing config)
+  ├→ RE-2: review.dag compiles (dry-run)
+  │    └→ RE-3: review.dag passes live integration
+  └→ RE-4: Anthropic REST API end-to-end
+       └→ RE-5: Multi-backend agent (CLI + REST switchable)
+```
+
+### RE-1: Transport emission fidelity
+
+Make `emit_rest_call` and `emit_shell_call` consume the transport
+config they already receive. No new .dag modeling needed.
+
+**REST:**
+- [ ] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
+- [ ] RE-1b: Path template from `transport.path` with param substitution
+  → `format!("/repos/{}/{}/pulls", owner, repo)`
+- [ ] RE-1c: Query parameters from `transport.query`
+  → `.query(&[("state", &state)])`
+- [ ] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
+- [ ] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
+
+**Shell:**
+- [ ] RE-1f: argv from `transport.argv` with param substitution
+  → `Command::new("sh").arg("-lc").arg(&script)`
+- [ ] RE-1g: stdin from `transport.stdin`
+  → `.stdin(Stdio::piped())` + write
+- [ ] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
+
+**Response:**
+- [ ] RE-1i: `from "content/0/text"` JSON path extraction on response
+- [ ] RE-1j: Nested output struct field mapping via serde rename
+
+**Blocked by:** Nothing — all data already flows to the emitter.
+
+**Acceptance tests** (add to `v2-compiler-tests`):
+
+```
+# RE-1a: HTTP method
+rest_emit_uses_transport_method
+  Input:  service with `transport rest { method: GET, path: "/items" }`
+  Assert: emitted Rust contains `client.get(` not `client.post(`
+
+# RE-1b: Path template
+rest_emit_substitutes_path_template
+  Input:  service with `path: "/repos/{owner}/{repo}/pulls"`
+  Assert: emitted Rust contains `format!("/repos/{}/{}/pulls", owner, repo)`
+
+# RE-1c: Query params
+rest_emit_includes_query_params
+  Input:  service with `query: { state: state, per_page: per_page }`
+  Assert: emitted Rust contains `.query(` with both params
+
+# RE-1f: Shell argv
+shell_emit_uses_transport_argv
+  Input:  service with `transport shell { argv: ["sh", "-lc", "{script}"] }`
+  Assert: emitted Rust contains `Command::new("sh")` and `.arg("-lc")`
+
+# RE-1g: Shell stdin
+shell_emit_pipes_stdin
+  Input:  service with `transport shell { argv: [...], stdin: prompt }`
+  Assert: emitted Rust contains `Stdio::piped` and write to stdin
+
+# RE-1h: Exit code
+shell_emit_checks_exit_code
+  Input:  service with `exit { 0 => Unit, nonzero => String }`
+  Assert: emitted Rust checks `output.status.success()`
+```
+
+### RE-2: review.dag dry-run compilation
+
+Compile `review.dag` + its imports to a binary that runs with
+`--dry-run`, returning mock responses.
+
+- [ ] RE-2a: Async for-each — detect FuncItem body, emit `.await?`
+  in collection loop body
+- [ ] RE-2b: Cross-module service resolution — review.dag imports
+  from 4 modules (FF-9 handles this; verify it works for dsl/ tree)
+- [ ] RE-2c: Conditional guard — review.dag's `already_done` check
+  needs to short-circuit (`if`/`return` or restructured nesting)
+- [ ] RE-2d: End-to-end compilation gate
+
+**Blocked by:** RE-1
+
+**Acceptance tests:**
+
+```
+# RE-2a: Async for-each
+async_for_each_awaits_func_body
+  Input:  `func f() -> Int { ... }` called inside `for x in items { f() }`
+  Assert: emitted Rust contains `.await?` inside the for loop body
+
+# RE-2d: End-to-end (ignored, CI gate)
+review_dag_compiles_to_rust
+  Run: compile dsl/gunbc/tools/review.dag + imports to Rust
+  Assert: 0 hard diagnostics
+  Assert: emitted files include main.rs with `review-pr` subcommand
+  Assert: emitted Cargo.toml includes reqwest + tokio
+
+# RE-2d: Emitted Rust compiles (ignored, CI gate)
+review_dag_emitted_rust_builds
+  Run: compile review.dag → write to /tmp → cargo check
+  Assert: cargo check exits 0
+  Note: same pattern as bootstrap_stage0_to_stage1
+```
+
+### RE-3: review.dag live integration
+
+Make the compiled binary work against real GitHub + LLM CLI.
+
+- [ ] RE-3a: Auth token injection — `auth_token` from env var
+  (`GITHUB_TOKEN`) or secret manager
+- [ ] RE-3b: REST response deserialization — emitted struct fields
+  match GitHub API JSON shape (serde attrs: `#[serde(rename)]`)
+- [ ] RE-3c: Shell stdout capture for multi-line LLM output
+- [ ] RE-3d: Cron upsert produces valid crontab entry
+
+**Blocked by:** RE-2
+
+**Acceptance tests:**
+
+```
+# RE-3a: Auth from env
+service_auth_reads_env_var
+  Input:  service with `auth_input: api_key` + func param `api_key: Secret`
+  Assert: emitted CLI reads --api-key or GITHUB_TOKEN env var
+
+# RE-3d: Cron emission
+cron_upsert_emits_valid_crontab
+  Input:  service call `cron.Tab.Upsert(tag: "x", schedule: "*/10 * * * *", ...)`
+  Assert: emitted Rust writes crontab entry with tag-based dedup
+
+# Integration (manual gate, not CI):
+review_agent_dry_run_prints_mock_json
+  Run: `./review-agent review-pr --owner gunb-ai --repo gunbc --pr-number 342 --dry-run`
+  Assert: prints JSON with `{ "reviewed": true, "comment_url": "..." }`
+
+review_agent_live_posts_review
+  Run: `./review-agent review-pr --owner gunb-ai --repo gunbc --pr-number <N>`
+  Assert: GitHub PR has new review comment
+  Gate: manual — requires GITHUB_TOKEN + LLM CLI installed
+```
+
+### RE-4: Anthropic REST API end-to-end
+
+Compile a .dag program calling `llm.Anthropic.Messages(...)` directly
+via REST (not CLI wrapper). Exercises JSON body construction, response
+path extraction, API versioning headers.
+
+- [ ] RE-4a: JSON request body from input fields
+  → `serde_json::json!({ "model": model, "messages": messages, ... })`
+- [ ] RE-4b: `from "content/0/text"` path extraction on response JSON
+- [ ] RE-4c: API version header from `current_api_version` data
+- [ ] RE-4d: Secret handling — `api_key: Secret` → `x-api-key` header
+
+**Blocked by:** RE-1
+
+**Acceptance tests:**
+
+```
+# RE-4b: JSON path extraction
+rest_output_from_clause_extracts_nested_field
+  Input:  operation output `{ content: String from "content/0/text" }`
+  Assert: emitted Rust extracts via serde_json pointer or indexing
+
+# RE-4c: Custom headers
+rest_emit_includes_api_version_header
+  Input:  service with custom header config
+  Assert: emitted Rust includes `.header("anthropic-version", "2023-06-01")`
+
+# Integration (manual):
+anthropic_messages_returns_response
+  Run: .dag program sends prompt to Claude API, prints response text
+  Assert: non-empty response string, valid token counts
+  Gate: requires ANTHROPIC_API_KEY
+```
+
+### RE-5: Multi-backend agent (future)
+
+A single .dag workflow that switches between CLI and REST backends
+via config. Exercises backend-agnostic service dispatch.
+
+**Blocked by:** RE-3, RE-4
+
+**Acceptance test:**
+
+```
+multi_backend_review_agent
+  Run: same workflow with --backend codex (CLI) and --backend anthropic (REST)
+  Assert: both produce review output (different shape, same semantic result)
+  Gate: requires both API keys + CLI tools
+```
+
+### RE ratchet
+
+Track progress via a single ratchet: how many of the acceptance tests
+above are green.
+
+| Metric | Current | Target |
+|--------|---------|--------|
+| RE-1 transport tests | 0/10 | 10 |
+| RE-2 compilation tests | 0/3 | 3 |
+| RE-3 integration tests | 0/4 | 4 |
+| RE-4 API tests | 0/3 | 3 |
+| Total | 0/20 | 20 |
 
 **Depends on:** CG (codegen correctness) for reliable emission.
 Parallel to CX (complexity doesn't block emission).
