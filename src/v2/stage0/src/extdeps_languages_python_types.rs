@@ -4,49 +4,9 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
-pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax};
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
+pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr};
 use PythonTypeKind::*;
 
 pub fn python_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
@@ -80,7 +40,7 @@ pub fn python_callable() -> Rc<CallableRepr> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
+
 pub enum PythonTypeKind {
     DynamicType,
     AnnotatedType,
@@ -279,16 +239,6 @@ pub fn type_checker_strict() -> String {
     thread_local! {
         static CACHED: String = {
             "mypy --strict".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn python_cast_syntax() -> Rc<CastSyntax> {
-    thread_local! {
-        static CACHED: Rc<CastSyntax> = {
-            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "valid_targets": [], "fail_open": true}))
-                .expect("valid data definition")
         };
     }
     CACHED.with(|c| c.clone())

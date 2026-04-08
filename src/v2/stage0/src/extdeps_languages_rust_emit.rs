@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 
 pub fn rust_type_map() -> Rc<HashMap<String, String>> {
     thread_local! {
@@ -192,121 +152,13 @@ pub fn rust_enum_derives_copy() -> String {
 pub fn rust_serde_tag() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[serde(tag = \"_variant\")]".to_string()
+            "".to_string()
         };
     }
     CACHED.with(|c| c.clone())
 }
 
 pub fn rust_serde_rename_template() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "#[serde(rename = \"{0}\")]".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_func_keyword() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "fn".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_async_prefix() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "async ".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_struct_keyword() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "struct".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_enum_keyword() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "enum".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_type_alias_keyword() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "type".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_param_separator() -> String {
-    thread_local! {
-        static CACHED: String = {
-            ", ".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_return_arrow() -> String {
-    thread_local! {
-        static CACHED: String = {
-            " -> ".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_param_type_sep() -> String {
-    thread_local! {
-        static CACHED: String = {
-            ": ".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_string_literal_suffix() -> String {
-    thread_local! {
-        static CACHED: String = {
-            ".to_string()".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_module_keyword() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "mod".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_import_keyword() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "use".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn rust_import_from_keyword() -> String {
     thread_local! {
         static CACHED: String = {
             "".to_string()

@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan, is_container_type, container_expected_arity, container_param_name};
 pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile};
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
@@ -122,22 +82,6 @@ pub fn node_is_keyed_collection(n: Rc<Node>) -> bool {
 
 pub fn node_is_element_collection(n: Rc<Node>) -> bool {
     (node_is_collection(n.clone()) && ((n.children.clone().len() as i64) == 1))
-}
-
-pub fn is_product_type(n: Rc<Node>) -> bool {
-    (n.connective.clone() == Connective::Conj)
-}
-
-pub fn is_coproduct_type(n: Rc<Node>) -> bool {
-    (n.connective.clone() == Connective::Disj)
-}
-
-pub fn is_leaf_type(n: Rc<Node>) -> bool {
-    (n.connective.clone() == Connective::NoConnective)
-}
-
-pub fn is_unit_like(n: Rc<Node>) -> bool {
-    ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
 }
 
 pub fn is_fully_resolved(n: Rc<Node>) -> bool {
@@ -864,8 +808,8 @@ let right_tv = if (right.inferred.clone() != None) {
 };
 let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
 let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
-let right_is_unit = is_unit_like(right.clone());
-let left_is_unit = is_unit_like(left.clone());
+let right_is_unit = ((right.connective.clone() == Connective::Conj) && ((right.children.clone().len() as i64) == 0));
+let left_is_unit = ((left.connective.clone() == Connective::Conj) && ((left.children.clone().len() as i64) == 0));
 if (left_err.clone() || right_err.clone()) {
             break true;
 } else {
@@ -888,8 +832,8 @@ if (left_is_container.clone() && right_is_container.clone()) {
     Some(left_ch) => { match right.children.clone().first().cloned() {
     Some(right_ch) => { let left_el = child_type_node(left_ch.clone());
 let right_el = child_type_node(right_ch.clone());
-let left_el_is_unit = is_unit_like(left_el.clone());
-let right_el_is_unit = is_unit_like(right_el.clone());
+let left_el_is_unit = ((left_el.connective.clone() == Connective::Conj) && ((left_el.children.clone().len() as i64) == 0));
+let right_el_is_unit = ((right_el.connective.clone() == Connective::Conj) && ((right_el.children.clone().len() as i64) == 0));
 if (left_el_is_unit.clone() || right_el_is_unit.clone()) {
                                     break true;
 } else {
@@ -910,8 +854,8 @@ continue;
                             if (left_opt.clone() && right_opt.clone()) {
                                 let left_inner = with_required_cardinality(left.clone());
 let right_inner = with_required_cardinality(right.clone());
-let left_inner_is_unit = is_unit_like(left_inner.clone());
-let right_inner_is_unit = is_unit_like(right_inner.clone());
+let left_inner_is_unit = ((left_inner.connective.clone() == Connective::Conj) && ((left_inner.children.clone().len() as i64) == 0));
+let right_inner_is_unit = ((right_inner.connective.clone() == Connective::Conj) && ((right_inner.children.clone().len() as i64) == 0));
 if (left_inner_is_unit.clone() || right_inner_is_unit.clone()) {
                                     break true;
 } else {
@@ -948,7 +892,7 @@ let left_is_unit_inner = if left_is_container.clone() {
             match left_first_child {
     Some(ch) => {
                 let el = child_type_node(ch.clone());
-let el_is_unit = is_unit_like(el);
+let el_is_unit = ((el.connective.clone() == Connective::Conj) && ((el.children.clone().len() as i64) == 0));
 el_is_unit
 },
     None => false,
@@ -956,7 +900,7 @@ el_is_unit
 } else {
             if left_is_optional.clone() {
                 {
-                    let left_is_unit = is_unit_like(left.clone());
+                    let left_is_unit = ((left.connective.clone() == Connective::Conj) && ((left.children.clone().len() as i64) == 0));
 left_is_unit
 }
 } else {
@@ -1010,8 +954,8 @@ let right_tv = if (right.inferred.clone() != None) {
 };
 let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
 let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
-let right_is_unit_eq = is_unit_like(right.clone());
-let left_is_unit_eq = is_unit_like(left.clone());
+let right_is_unit_eq = ((right.connective.clone() == Connective::Conj) && ((right.children.clone().len() as i64) == 0));
+let left_is_unit_eq = ((left.connective.clone() == Connective::Conj) && ((left.children.clone().len() as i64) == 0));
 if (left_err || right_err) {
             true
 } else {
