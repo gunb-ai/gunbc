@@ -975,3 +975,15 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<Algeb
     AlgebraProfile::PartialFunctionProfile => partial_function_templates(),
 }
 }
+
+pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
+    match profile {
+    AlgebraProfile::OrderedRingProfile => Rc::new(vec![]),
+    AlgebraProfile::ApproximateFieldProfile => Rc::new(vec![]),
+    AlgebraProfile::BooleanAlgebraProfile => Rc::new(vec![]),
+    AlgebraProfile::BooleanAlgebraCollectionProfile => Rc::new(vec!["T".to_string()]),
+    AlgebraProfile::FreeMonoidScalarProfile => Rc::new(vec![]),
+    AlgebraProfile::FreeMonoidCollectionProfile => Rc::new(vec!["T".to_string()]),
+    AlgebraProfile::PartialFunctionProfile => Rc::new(vec!["K".to_string(), "V".to_string()]),
+}
+}

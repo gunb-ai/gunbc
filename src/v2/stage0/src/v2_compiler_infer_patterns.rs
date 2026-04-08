@@ -47,10 +47,9 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, find_child_named, NewlineIndex, ExprData, InferredNode, is_compiler_error, NodeType, Cardinality, Connective, ErrorNode, make_error_node, MatchPattern, arm_pattern, LiteralValue, leaf_node, with_optional_cardinality, none_type, error_type, no_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, find_child_named, NewlineIndex, ExprData, InferredNode, is_compiler_error, Cardinality, Connective, ErrorNode, make_error_node, MatchPattern, arm_pattern, LiteralValue, leaf_node, with_optional_cardinality, none_type, error_type, no_span, CompilerDiagnostic};
 use crate::v2_std_core::ExprData::{NoExprData};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
-use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::Connective::{Disj, NoConnective};
 use crate::v2_std_core::CompilerDiagnostic::{VariantNotFound, FieldNotFound, NonExhaustiveMatch};
@@ -167,12 +166,10 @@ if is_error {
 }
 }
 
-pub fn pattern_subject_from_node_type(n: Rc<NodeType>) -> Rc<PatternSubject> {
-    match (*n).clone() {
-    NodeType::Typed { node: resolved, .. } => pattern_subject_from_node(resolved.clone()),
-    NodeType::InferError { .. } => Rc::new(PatternSubject::PatternLookupBlocked),
-    NodeType::InferVariable { .. } => Rc::new(PatternSubject::PatternLookupBlocked),
-    NodeType::Untyped => Rc::new(PatternSubject::PatternLookupBlocked),
+pub fn pattern_subject_from_inferred(n: Option<Rc<InferredNode>>) -> Rc<PatternSubject> {
+    match n.as_deref().cloned() {
+    Some(InferredNode::Resolved { node: resolved, .. }) => pattern_subject_from_node(resolved.clone()),
+    _ => Rc::new(PatternSubject::PatternLookupBlocked),
 }
 }
 

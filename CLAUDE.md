@@ -22,10 +22,3 @@ cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored 
 When the language grows by one type, one expression, or one transport,
 how many files need editing? The answer should be 1.
 
-## Review Queue Discipline
-
-When draining review feedback on an automation queue branch:
-- choose one primary invariant theme and record it
-- resolve at most one review-feedback item on that branch/PR
-- stop after that item instead of stacking fixes
-- keep each commit strictly scoped — no unrelated cleanup

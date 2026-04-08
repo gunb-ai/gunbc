@@ -50,7 +50,7 @@ pub use crate::std_types::{SourceSpan, is_ordered_element_collection};
 pub use crate::v2_std_core::{Node, InferredNode, ErrorNode, make_error_node, diagnostic_to_message, with_optional_cardinality, unit_type, string_type, int_type, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError};
-pub use crate::v2_compiler_infer_types::{resolved_type_or_error, normalize_access_type_node, node_type_equals, node_is_keyed_collection, node_is_element_collection, for_each_element_type_node};
+pub use crate::v2_compiler_infer_types::{resolved_type, normalize_access_type_node, node_type_equals, node_is_keyed_collection, node_is_element_collection, for_each_element_type_node};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AccessCheckResultNode {
@@ -101,8 +101,8 @@ pub fn keyed_collection_parts(n: Rc<Node>) -> Option<Rc<KeyedCollectionParts>> {
         match n.children.clone().first().cloned() {
     Some(key_child) => match n.children.clone().get(1 as usize).cloned() {
     Some(value_child) => Some(Rc::new(KeyedCollectionParts {
-    key_type: resolved_type_or_error(key_child.clone()),
-    value_type: resolved_type_or_error(value_child.clone()),
+    key_type: resolved_type(key_child.clone()),
+    value_type: resolved_type(value_child.clone()),
 })),
     None => None,
 },
