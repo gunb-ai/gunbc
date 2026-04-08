@@ -1183,6 +1183,16 @@ rest_emit_includes_query_params
   Input:  service with `query: { state: state, per_page: per_page }`
   Assert: emitted Rust contains `.query(` with both params
 
+# RE-1d: Auth scheme
+rest_emit_uses_auth_scheme
+  Input:  service with `auth: Header("x-api-key"), auth_input: api_key`
+  Assert: emitted Rust contains `.header("x-api-key", ...)` not `Authorization`
+
+# RE-1e: Response code mapping
+rest_emit_maps_response_codes
+  Input:  service with `response { 200 => Data, 401 => ErrorShape }`
+  Assert: emitted Rust checks status code and deserializes accordingly
+
 # RE-1f: Shell argv
 shell_emit_uses_transport_argv
   Input:  service with `transport shell { argv: ["sh", "-lc", "{script}"] }`
@@ -1197,6 +1207,16 @@ shell_emit_pipes_stdin
 shell_emit_checks_exit_code
   Input:  service with `exit { 0 => Unit, nonzero => String }`
   Assert: emitted Rust checks `output.status.success()`
+
+# RE-1i: JSON path extraction (general mechanism)
+rest_output_from_clause_extracts_path
+  Input:  operation with `output { value: String from "data/items/0/name" }`
+  Assert: emitted Rust uses serde_json pointer or index chain to extract
+
+# RE-1j: Nested output field mapping
+rest_output_struct_uses_serde_rename
+  Input:  operation with output fields whose JSON names differ from Rust names
+  Assert: emitted struct has `#[serde(rename = "...")]` attributes
 ```
 
 ### RE-2: review.dag dry-run compilation
@@ -1290,10 +1310,10 @@ path extraction, API versioning headers.
 **Acceptance tests:**
 
 ```
-# RE-4b: JSON path extraction
-rest_output_from_clause_extracts_nested_field
-  Input:  operation output `{ content: String from "content/0/text" }`
-  Assert: emitted Rust extracts via serde_json pointer or indexing
+# RE-4b: Anthropic response shape (uses RE-1i general mechanism)
+anthropic_response_extracts_content_text
+  Input:  `llm.Anthropic.Messages(...)` operation with `from "content/0/text"`
+  Assert: emitted Rust extracts nested `content[0].text` from API response
 
 # RE-4c: Custom headers
 rest_emit_includes_api_version_header
@@ -1334,7 +1354,8 @@ above are green.
 | RE-2 compilation tests | 0/3 | 3 |
 | RE-3 integration tests | 0/4 | 4 |
 | RE-4 API tests | 0/3 | 3 |
-| Total | 0/20 | 20 |
+| RE-5 multi-backend test | 0/1 | 1 |
+| Total | 0/21 | 21 |
 
 **Depends on:** CG (codegen correctness) for reliable emission.
 Parallel to CX (complexity doesn't block emission).
@@ -1713,3 +1734,242 @@ everywhere — CLI, tests, and CI.
 - **Post-Rust path**: .dag → native code (LLVM/Cranelift) directly,
   no Rust intermediate. Optional — Rust/Go as intermediates may
   suffice indefinitely.
+
+---
+
+# Public Release Gate
+
+**Goal:** Ship gunbc as a public, demonstrable system. Every item
+below is a non-negotiable gate — the release is the conjunction of
+all of them. No partial credit.
+
+## Gate 1: All Active Lanes Complete
+
+Every Layer 2 root-cause track reaches its acceptance criteria.
+
+| Lane | Gate condition | Current | Ratchet |
+|------|---------------|---------|---------|
+| M2 | No fabricated types, no BRIDGE, BND-1..4 landed | BRIDGEs=0, BND open | `full_dsl_compiles` 0 diagnostics |
+| CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_stage0_to_stage1` 0 errors |
+| M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=37 | `l1-ratchet.sh --check` |
+| CX | 0 violations, gate blocking, no heuristic classifiers | 526 violations (non-blocking) | `strict_compile_diagnostic_count` = 0 CX |
+| LS | All emitter decisions from spec-referenced data | Not started | No inline target-language knowledge in emitter |
+| RE | review.dag compiles and runs (RE ratchet 21/21) | 0/21 | RE ratchet table |
+| PERF | No test >2s, self-compile <30s, no OOM | ~4.8s, OOM fixed | `performance_ratchet` |
+
+**Acceptance test:**
+```
+release_gate_all_lanes
+  Run: all CI gates green simultaneously
+  Assert: l1-ratchet=0, CX violations=0, RE=21/21,
+          bootstrap fresh, full_dsl 0 diags, perf <30s
+```
+
+## Gate 2: Structural Debt = 0
+
+The Structural Debt Scoreboard reaches 0 across all categories.
+
+| Category | Current | Gate |
+|----------|---------|------|
+| Map<String,...> semantic keys | 537 | 0 |
+| Positional projections | 298 | 0 |
+| Fail-open fallbacks | 239 | 0 |
+| Heuristic name matching | 37 | 0 |
+| Manual recursion | ~27 | 0 |
+| String-prefix dispatch | 4 | 0 |
+| Total | ~1,115 | 0 |
+
+Dissolves via M4 (~800), CX (~27), LS (~262). Not independent
+work — completing the lanes IS the debt elimination.
+
+**Acceptance test:**
+```
+structural_debt_zero
+  Run: scripts/structural-debt-count.sh (grep-based marker count)
+  Assert: total = 0
+```
+
+## Gate 3: Language Parity and Correctness
+
+All three target languages (Rust, Go, Python) produce correct,
+equivalent output for the full .dag surface area.
+
+| Criterion | Test |
+|-----------|------|
+| All 3 backends compile the full DSL tree | `full_dsl_compiles` with each `RenderTarget` |
+| Structural form coverage | Test generator emits one program per `(NodeKind × TypeForm × Cardinality)` triple; all 3 backends compile each |
+| Expression semantics equivalence | Shared test inputs produce semantically identical output across backends |
+| Coercion data coverage | Every `TypeCheckpoint` + `InhabitantDecl` in each language's `types.dag` has a corresponding test |
+| No backend-specific emission logic | P1-B complete: 3 backends → 1 parameterized homomorphism |
+
+**Acceptance tests:**
+```
+full_dsl_compiles_all_targets
+  Run: compile dsl/ tree to Rust, Go, Python
+  Assert: 0 hard diagnostics for each target
+
+structural_form_coverage_all_targets
+  Run: test generator produces programs for each emission algebra element
+  Assert: all programs compile for all 3 targets
+
+language_parity_expression_equivalence
+  Run: shared expression test suite compiled to all 3 targets
+  Assert: outputs match (modulo language-specific formatting)
+```
+
+## Gate 4: Complexity Fully Proven
+
+The complexity analyzer proves bounds for ALL functions — no
+`CostUnknown`, no suppression, no heuristic classifiers.
+
+| Criterion | Test |
+|-----------|------|
+| 0 CostUnknown | `CostUnknown` variant deleted from `CostExpr` |
+| 0 heuristic classifiers | No name-matching in complexity analysis |
+| All descent from structural facts | `std/termination.dag`, `std/computation.dag`, `std/algebra.dag` are the only authorities |
+| Gate blocking | CX gate re-enabled (CX-E), complexity failures = compile failures |
+| Self-compile proves itself | The compiler's own 1600 functions all have proven bounds |
+
+**Acceptance tests:**
+```
+complexity_zero_violations
+  Run: cargo test strict_compile_diagnostic_count -- --ignored
+  Assert: 0 complexity diagnostics (not just 0 hard errors — 0 total CX)
+
+cost_unknown_variant_deleted
+  Assert: CostExpr enum has no CostUnknown variant (grep)
+
+no_heuristic_classifiers
+  Assert: 0 name-matching patterns in complexity.dag (grep for .name ==)
+```
+
+## Gate 5: Business Cases
+
+Real programs compiled from .dag to working binaries. Each
+demonstrates a distinct capability.
+
+### BC-1: PR Review Agent (review.dag)
+
+Covered by RE lane. A CLI tool that:
+- Lists open PRs via GitHub API
+- Fetches diffs and context files via shell
+- Sends to LLM (Codex/Claude/Gemini) for review
+- Posts review comments to GitHub
+- Self-schedules via cron
+
+**Acceptance:** `./review-agent review-cycle` reviews open PRs
+end-to-end. RE ratchet 21/21.
+
+### BC-2: Code Snapshot Tool (gist.dag)
+
+Already modeled in `dsl/gunbc/tools/gist.dag`. A CLI tool that:
+- Captures git diff or recent changes
+- Creates GitHub Gist with formatted markdown
+- Returns shareable URL
+
+**Acceptance tests:**
+```
+gist_dag_compiles_to_rust
+  Run: compile gist.dag + imports to Rust
+  Assert: 0 diagnostics, emitted binary has gist/gist-diff/gist-recent subcommands
+
+gist_agent_dry_run
+  Run: ./gist-agent gist --dry-run
+  Assert: prints mock gist URL
+```
+
+### BC-3: LLM API Client (anthropic.dag / openai.dag)
+
+A .dag program that calls an LLM API directly (REST, not CLI
+wrapper). Demonstrates service modeling, auth, JSON handling.
+
+**Acceptance tests:**
+```
+llm_client_compiles
+  Run: compile a .dag program using llm.Anthropic.Messages(...)
+  Assert: 0 diagnostics, emitted Rust includes reqwest + auth header
+
+llm_client_live
+  Run: send a prompt, get response
+  Assert: non-empty response text
+  Gate: manual, requires ANTHROPIC_API_KEY
+```
+
+### BC-4: Self-Hosted CI Pipeline (stretch)
+
+The compiler's own build/test/regen pipeline modeled in .dag and
+compiled to a binary that replaces the current shell scripts
+(`regenerate-stage0.sh`, `check-stage0-freshness.sh`, `l1-ratchet.sh`).
+
+**Acceptance:** Shell scripts deleted, replaced by .dag-compiled
+binary. BP-1 acceptance criteria met.
+
+## Gate 6: Automated Test Generation (M3)
+
+Tests are structural claims derived from .dag type definitions.
+The compiler generates tests, not humans.
+
+| Criterion | Test |
+|-----------|------|
+| Structural form coverage | One test per emission algebra element, auto-generated |
+| Coercion round-trip tests | Generated from `TypeCheckpoint` × `InhabitantDecl` data |
+| Algebra law tests | Generated from `std/algebra.dag` declarations |
+| Cross-language equivalence | Same .dag input → all backends → compare outputs |
+| Receipt schema | `TestReceipt` type in `std/verification.dag` as CI authority |
+
+**Acceptance tests:**
+```
+test_generator_produces_structural_coverage
+  Run: test generator from emission algebra
+  Assert: at least one test per (NodeKind × TypeForm) pair
+
+generated_tests_all_pass
+  Run: generated test suite
+  Assert: 0 failures across all targets
+
+test_receipt_validates
+  Run: CI produces TestReceipt, validates against ratchets
+  Assert: receipt covers all structural forms
+```
+
+## Gate 7: Demo Polish
+
+The system should be demonstrable to a public audience. This means
+clean documentation, compelling examples, and one "wow" moment.
+
+| Item | What |
+|------|------|
+| Landing page / README | What gunbc is, why it exists, 30-second getting started |
+| Example gallery | 3-5 .dag programs showing types, services, compilation |
+| English-language error messages | Diagnostics readable by non-compiler-engineers |
+| "Spice" demo | One impressive demonstration — e.g., compile a .dag agent workflow, show the generated Rust, run it live against a real API, show the complexity proof |
+
+**Acceptance:** A new user can clone the repo, compile an example
+.dag program to Rust/Go/Python, and run the result — in under
+5 minutes, with no prior knowledge of the system.
+
+## Release dependency chain
+
+```
+Gate 1 (lanes) ──┬──→ Gate 2 (debt=0) ──→ Gate 7 (polish)
+                 ├──→ Gate 3 (parity)
+                 ├──→ Gate 4 (complexity)
+                 ├──→ Gate 5 (business cases)
+                 └──→ Gate 6 (test generation)
+
+Gates 2-6 can proceed in parallel once Gate 1 lanes reach
+their respective acceptance criteria. Gate 7 is last because
+polish depends on stable features.
+```
+
+## Release ratchet (master scoreboard)
+
+| Gate | Status | Acceptance |
+|------|--------|-----------|
+| 1. Active lanes | IN PROGRESS | All lane ratchets green |
+| 2. Structural debt | 1,115 → 0 | `structural-debt-count.sh` = 0 |
+| 3. Language parity | PARTIAL | 3-target `full_dsl_compiles` green |
+| 4. Complexity proven | 526 → 0 | `CostUnknown` deleted |
+| 5. Business cases | 0/4 | BC-1..4 acceptance met |
+| 6. Test generation | NOT STARTED | Generated tests all pass |
+| 7. Demo polish | NOT STARTED | 5-minute onboarding works |
