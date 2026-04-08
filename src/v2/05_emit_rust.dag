@@ -361,12 +361,17 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Map<String, Bool>)
 }
 
 // Build the shared_types map: the SINGLE authority for sharing (Rc) decisions.
-// Includes user-defined types (structs, data enums) and built-in collection
-// types. Container templates are BARE — Rc is applied here, not in templates.
-// Constant types (fixed-width carriers) skip sharing.
-fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_set: Map<String, Bool>) -> Map<String, Bool> {
+// For languages with needs_sharing=false (GC languages), returns empty map —
+// all Rc wrapping and cloning become no-ops via identity SharingStrategy templates.
+// For Rust: includes user-defined types (structs, data enums) and built-in
+// collection types. Constant types (fixed-width carriers) skip sharing.
+fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_set: Map<String, Bool>, target: RenderTarget) -> Map<String, Bool> {
+  // needs_sharing: Rust=true (ownership), Python/Go=false (GC).
+  // When false, both folds produce empty results → identity SharingStrategy
+  // templates produce no-op wrapping/cloning.
+  let sharing = sharing_for_target(target: target)
   let user_shared = map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
-    let needs_sharing = match summary.repr {
+    let needs_sharing = sharing.needs_sharing && match summary.repr {
       StructRepr => true
       EnumRepr { unit_only: unit_only } => unit_only == false
     }
@@ -376,12 +381,11 @@ fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_s
       acc
     }
   )
-  // Collection types derived from container templates: any template key whose
-  // bare type has O(n) clone cost needs Rc. "optional" and "boolean_algebra"
-  // are excluded (Option wraps an already-typed inner; bool is Copy).
+  // Collection types: any template key whose bare type has O(n) clone cost.
+  // "optional" and "boolean_algebra" excluded. GC languages: sharing.needs_sharing
+  // is false so the filter produces an empty list.
   let collection_keys = map_keys(rust_container_templates)
-    |> filter(k => k != "optional" && k != "boolean_algebra")
-  // Template keys are snake_case; type names are PascalCase.
+    |> filter(k => sharing.needs_sharing && k != "optional" && k != "boolean_algebra")
   collection_keys |> fold(init: user_shared, f: (acc, key) =>
     let pascal = to_pascal(name: key)
     map_insert(acc, pascal, true)
@@ -421,7 +425,7 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let base_info = build_emit_graph_info(modules: typed.modules)
   let ownership = build_ownership_results(modules: typed.modules)
-  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set)
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
@@ -526,7 +530,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
 // Backwards-compatible wrapper for tests that call emit_module directly.
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let base_info = build_emit_graph_info(modules: [typed_module])
-  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set)
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,

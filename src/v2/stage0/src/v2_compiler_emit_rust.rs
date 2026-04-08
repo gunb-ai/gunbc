@@ -318,20 +318,21 @@ if (ft_count < field_count) {
 }
 }
 
-pub fn build_shared_types(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>, recursive_type_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, bool>> {
+pub fn build_shared_types(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>, recursive_type_set: Rc<HashMap<String, bool>>, target: RenderTarget) -> Rc<HashMap<String, bool>> {
     {
-        let user_shared = Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, summary: Rc<TypeSummary>| {
-            let needs_sharing = match (*summary.repr.clone()).clone() {
+        let sharing = sharing_for_target(target);
+let user_shared = Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, summary: Rc<TypeSummary>| {
+            let needs_sharing = (sharing.needs_sharing.clone() && match (*summary.repr.clone()).clone() {
     TypeRepr::StructRepr => true,
     TypeRepr::EnumRepr { unit_only, .. } => (unit_only.clone() == false),
-};
+});
 if (needs_sharing.clone() && !is_type_constant(summary.clone(), recursive_type_set.clone())) {
                 v2_rt::rc_map_insert(acc.clone(), summary.name.clone(), true)
 } else {
                 acc.clone()
 }
 });
-let collection_keys = Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&rust_container_templates())).iter().cloned() { if ((k.clone().as_str() != "optional".to_string().as_str()) && (k.clone().as_str() != "boolean_algebra".to_string().as_str())) { __result.push(k); } } __result });
+let collection_keys = Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&rust_container_templates())).iter().cloned() { if ((sharing.needs_sharing.clone() && (k.clone().as_str() != "optional".to_string().as_str())) && (k.clone().as_str() != "boolean_algebra".to_string().as_str())) { __result.push(k); } } __result });
 collection_keys.iter().cloned().fold(user_shared.clone(), |acc: Rc<HashMap<String, bool>>, key: String| {
             let pascal = to_pascal(key.clone());
 v2_rt::rc_map_insert(acc.clone(), pascal.clone(), true)
@@ -373,7 +374,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let base_info = build_emit_graph_info(typed.modules.clone());
 let ownership = build_ownership_results(typed.modules.clone());
-let shared = build_shared_types(base_info.type_summaries.clone(), base_info.recursive_type_set.clone());
+let shared = build_shared_types(base_info.type_summaries.clone(), base_info.recursive_type_set.clone(), RenderTarget::Rust);
 let emit_info = Rc::new(EmitGraphInfo {
     type_summaries: base_info.type_summaries.clone(),
     recursive_type_set: base_info.recursive_type_set.clone(),
@@ -473,7 +474,7 @@ Rc::new(TextFile {
 pub fn emit_module(typed_module: Rc<TypedModule>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<TextFile> {
     {
         let base_info = build_emit_graph_info(Rc::new(vec![typed_module.clone()]));
-let shared = build_shared_types(base_info.type_summaries.clone(), base_info.recursive_type_set.clone());
+let shared = build_shared_types(base_info.type_summaries.clone(), base_info.recursive_type_set.clone(), RenderTarget::Rust);
 let emit_info = Rc::new(EmitGraphInfo {
     type_summaries: base_info.type_summaries.clone(),
     recursive_type_set: base_info.recursive_type_set.clone(),

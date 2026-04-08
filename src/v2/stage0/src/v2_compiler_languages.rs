@@ -145,6 +145,7 @@ pub struct ImportRule {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SharingStrategy {
+    pub needs_sharing: bool,
     pub wrap_template: String,
     pub clone_value: String,
     pub deref_clone: String,
@@ -278,6 +279,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
 }),
     top_level_visibility: rust_visibility(),
     sharing: Rc::new(SharingStrategy {
+    needs_sharing: true,
     wrap_template: "Rc<{0}>".to_string(),
     clone_value: "{0}.clone()".to_string(),
     deref_clone: "(*{0}).clone()".to_string(),
@@ -384,6 +386,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
 }),
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
+    needs_sharing: false,
     wrap_template: "{0}".to_string(),
     clone_value: "{0}".to_string(),
     deref_clone: "{0}".to_string(),
@@ -490,6 +493,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
 }),
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
+    needs_sharing: false,
     wrap_template: "{0}".to_string(),
     clone_value: "{0}".to_string(),
     deref_clone: "{0}".to_string(),

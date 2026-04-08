@@ -123,6 +123,7 @@ type ImportRule {
 }
 
 type SharingStrategy {
+  needs_sharing: Bool         // Rust: true (ownership), Python/Go: false (GC)
   wrap_template: String
   // Clone templates: {0}=value, {1}=field (for field_clone).
   // In GC'd languages these are identity — no ownership transfer needed.
@@ -283,6 +284,7 @@ fn rust_spec() -> LanguageSpec {
     },
     top_level_visibility: rust_visibility,
     sharing: SharingStrategy {
+      needs_sharing: true,
       wrap_template: "Rc<{0}>",
       clone_value: "{0}.clone()",
       deref_clone: "(*{0}).clone()",
@@ -379,6 +381,7 @@ fn python_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     sharing: SharingStrategy {
+      needs_sharing: false,
       wrap_template: "{0}",
       clone_value: "{0}",
       deref_clone: "{0}",
@@ -475,6 +478,7 @@ fn go_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     sharing: SharingStrategy {
+      needs_sharing: false,
       wrap_template: "{0}",
       clone_value: "{0}",
       deref_clone: "{0}",
