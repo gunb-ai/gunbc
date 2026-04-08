@@ -12,7 +12,6 @@ use v2_compiler::v2_compiler_artifact;
 use v2_compiler::v2_std_core::{
     diagnostic_to_message, diagnostic_to_span,
     byte_to_line_col, source_line_at, NewlineIndex,
-    CompilerDiagnostic,
 };
 
 #[derive(Parser)]
@@ -251,11 +250,7 @@ let _result = match cli.command {
             eprintln!("compiled: {} files emitted, {} diagnostics",
                 result.files.len(), result.diagnostics.len());
             render_diagnostics(&result);
-            // Complexity violations are non-blocking (analyzer limitations).
-            let hard_errors = result.diagnostics.iter().any(|d| {
-                !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })
-            });
-            if hard_errors {
+            if !result.diagnostics.is_empty() {
                 std::process::exit(1);
             }
             if result.files.is_empty() {
