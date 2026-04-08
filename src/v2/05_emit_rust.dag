@@ -501,7 +501,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
     // Extract mod name from path: strip "src/" prefix and ".rs" suffix.
     let path_len = string_length(s: f.path)
     let mod_name = substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
-    concat("pub mod ", mod_name, ";")
+    concat(rust_visibility_prefix(), "mod ", mod_name, ";")
   )
   let test_mod = if has_compiler_tests {
     "\n\n#[cfg(test)]\nmod compiler_tests;"
@@ -562,7 +562,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     match map_get(svc_module_map, sn) {
       Some { value: mod_file } =>
         if mod_file == this_mod_filename { [] }
-        else { [concat("pub use crate::", mod_file, "::", sanitize_service_name(name: sn), ";")] }
+        else { [concat(rust_visibility_prefix(), "use crate::", mod_file, "::", sanitize_service_name(name: sn), ";")] }
       None => []
     }
   )
@@ -657,7 +657,7 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
               let names_str = top_with_parents |> map(n =>
                 emit_import_name(n: n, registry: registry)
               ) |> join(separator: ", ")
-              concat("pub use crate::", mod_name, "::{", names_str, "};")
+              concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};")
             } else { "" }
             // Emit per-enum variant import lines for explicitly listed variants.
             let variant_lines = parent_list |> map(parent =>
@@ -1178,7 +1178,7 @@ fn emit_tco_params(params: List<Node>, shared_types: Map<String, Bool>, source_i
 fn emit_tco_param(param: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
   let n = param_node_type_expr(n: param)
   let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_index: source_index)
-  concat("mut ", emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), ": ", ty)
+  concat("mut ", emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
@@ -3792,7 +3792,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>) -> String {
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_index: env.source_index))
+    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_index: env.source_index))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3965,7 +3965,7 @@ fn emit_resource_def(item: Node, shared_types: Map<String, Bool>, env: TypeEnv) 
 
 fn emit_capability_method(cap_node: Node, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_index: env.source_index))
+    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_index: env.source_index))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
