@@ -88,7 +88,7 @@ Previously eliminated:
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (316 pass, 0 fail, 44 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
-| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (all complexity violations) |
+| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (0 self-compile diagnostics) |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | 37 (target: 0) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
@@ -96,9 +96,9 @@ Previously eliminated:
 
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
-| Self-compile diagnostics | 314 | 0 | All indirect-recursion complexity violations |
+| Self-compile diagnostics | 314 | 526 | Honest count — complexity violations surfaced, non-blocking |
 | L1 type knowledge | 37 | 0 | Down from 70; name-based workarounds tracked for M4 |
-| Complexity violations | 164 | 0 | Down from 315; unfinished algebraic grounding |
+| Complexity violations | 325 | 526 | Honest: 526 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
@@ -749,10 +749,13 @@ then deleted. `Node.name` field deleted.
 
 ## CX: Complexity Analyzer (Lane 3)
 
-**Status:** Down from 315 → 164 (main) → 76 after PR #318.
+**Status:** Down from 315 → 164 (main) → 76 after PR #318 → 526 honest (PR #336).
 Phase 1-2 complete (RecursionPattern deleted, all classifiers return LoweringTarget).
 CX-N: var threading, type-directed dimension selection, algebra-to-dimension bridge.
-Ratchet at 325.
+526 honest violations — CostUnknown restored for unresolved descent patterns.
+Complexity analysis re-enabled in compile pipeline (non-blocking gate).
+PR #336: soundness fixes, graph extraction, is_valid_proof, honest CostUnknown.
+See `docs/cx-violation-triage.md` for the 3-fix reduction path.
 
 **Root cause:** The analyzer maintains parallel heuristic classifiers
 instead of consuming the structural facts already modeled in std/.
@@ -822,32 +825,34 @@ remaining path is sound. Work accomplished:
 - SCC parameter name unification in emit_pattern (CX-Q/CX-R)
 - Soundness fixes: branching_only, all_safe, any-argument fabrication
 
-### Review feedback (deferred — 15 items from PR #318)
+### Review feedback (15 items from PR #318 — 10 resolved, 5 remaining)
 
-Per Review Queue Discipline, these are recorded but not stacked:
+**Theme A: Heuristic descent recognizers** (6 items)
+- [x] #1-4: Already data-driven via `function_size_effects`, `node_field_roles`,
+  `AlgebraMethodSemantics` tables (fixed in PR #328, stale line numbers)
+- [~] #5: `is_match_option_descent` — documented assumption (PR #336).
+  Full fix deferred to CX-D (coproduct projection metadata in std/)
+- [~] #6: `lambda_param_names |> last` — replaced by `iteration_element_name`
+  (PR #336). Direct template lookup deferred: emitter inlines cross-module
+  AlgebraTypeTemplate variants into caller, breaking compilation.
+  Structural fact confirmed in std/algebra.dag CallableOf declarations.
 
-**Theme A: Heuristic descent recognizers** (read structural facts instead)
-- `complexity.dag:1962` — child-descent hardcodes `"children"` and list-methods
-- `complexity.dag:2056` — `is_tree_size_preserving_wrapper` hardcodes callee name
-- `complexity.dag:2088` — hardcoded `rt_type`, `param_node_type_expr`, `field_binding_pattern` as sub-value extractors
-- `complexity.dag:2170` — treats any `param.field` as descent without structural witness
-- `complexity.dag:2244` — `is_match_option_descent` is shape heuristic for missing Option/Result facts
-- `complexity.dag:2312` — `lambda_param_names |> last` heuristic for missing method-signature facts
+**Theme B: Producer patches** (2 items)
+- [ ] `02_parse.dag:2759` — `node_to_name_str` split. Deferred until P4.1
+  (wrapper transparency in SCC edge classification)
+- [x] `04_types.dag:418` — not a patch; proper cardinality design
 
-**Theme B: Producer patches** (fix analyzer root cause instead)
-- `02_parse.dag:2759` — `node_to_name_str` split to make SCC shape friendlier
-- `04_types.dag:418` — optional-cardinality split to make analyzer see Same edge
+**Theme C: Fabrication / scope issues** (5 items — all fixed in PR #336)
+- [x] `ParserResultDirectState` field renamed `progress` → `input` (consistency)
+- [x] `same_progress_subgraph_has_cycle` now detects 1-node ProgressSame self-loops
+- [x] `val_inner_vars` scope leak fixed — arm-local bindings no longer escape
+- [x] `proof_safe_for_branching` requires ALL dimensions structural (not just first)
+- [x] Self-loop detection matches `proof_has_non_descending_cycle` pattern
 
-**Theme C: Fabrication / scope issues** (unsound)
-- `complexity.dag:275` — `ParserResultDirectState` duplicates state-progress fact
-- `complexity.dag:1382` — filtering `ProgressSame` self-edges fabricates acyclicity
-- `complexity.dag:2346` — `val_inner_vars` leaks arm-local bindings into outer scope
-- `complexity.dag:3061` — `branching_proof_safe` fallback fabricates LinearRecursion
-- `same_progress_subgraph_has_cycle` drops self-loops for 1-node SCCs
-
-**Theme D: Boundary / testing**
-- `tests/pipeline.rs:2505` — diagnostic tests read workspace source tree (not hermetic)
-- `05_emit_rust.dag:1334` — `emit_variant_pattern` returns empty string on impossible input
+**Theme D: Boundary / testing** (2 items)
+- [ ] `tests/pipeline.rs:2505` — diagnostic tests non-hermetic (larger scope, deferred)
+- [x] `05_emit_rust.dag:1334` — `emit_variant_pattern` checks `fielded_variants`
+  when all bindings are wildcards (PR #336)
 
 ### Dependency chain
 
@@ -903,9 +908,10 @@ CX-D (model facts in std/)
   Dead `skip()` ExprCall handlers removed (inference bridge normalizes).
   **(PR #328)**
   Deferred: `is_valid_proof` stub in termination.dag (blocked on
-  bootstrap); `ParserResultDirectState` duplication (refactoring);
-  `branching_proof_safe` only accepts TreeSize/ListLength (extend to
-  lexicographic).
+  graph utility extraction to `std/graph.dag` — import direction
+  prevents termination.dag from calling SCC detection in complexity.dag).
+  `ParserResultDirectState` field renamed (PR #336).
+  `branching_proof_safe` now accepts lexicographic proofs (PR #336).
 - **CX-B**: CostExpr/SizeExpr dissolution — cost expressions become flat
   products of SizeBounds from `std/computation.dag`'s lowering table.
   **Partial.** `CostShape` type moved to `dsl/std/algebra.dag`, declared
@@ -928,10 +934,11 @@ CX-D (model facts in std/)
   un-ignore 14 complexity tests (10 `complexity_*`, 3 `soundness_*`,
   1 `structural_classify_*`; all `#[ignore]` with "CX track" comment).
   **Blocked-by: CX-A, CX-B, CX-C** (0 violations required).
+  **Current: 526 violations (non-blocking gate). See CX-NEXT.**
 
 ### Acceptance
 
-0 violations without suppression. CX gate re-enabled. Node is the only
+0 violations without suppression. CX gate blocking. Node is the only
 recursive type consumed by complexity analysis. All descent evidence
 reads structural facts — no heuristic name-matching in the analyzer.
 
@@ -963,12 +970,18 @@ lanes — any lane can introduce a regression.
   block emission — not yet an unconditional gate. Convergence proof
   (pass-1 = pass-2) remains in `bootstrap_fixed_point` (`#[ignore]`,
   not yet a CI gate — expensive: two full builds + two compiles).
-- **PERF-3**: Track self-compile memory. The CX OOM root cause was
-  repeated complexity classification on large compiles, not raw budget.
-  Add a memory-usage ratchet or at minimum log peak RSS during
-  `performance_ratchet`. **Blocked-by: CX-E** (complexity analysis
-  currently disabled for memory; can't validate memory ratchet until
-  CX is re-enabled and the classification OOM is resolved).
+- **PERF-3**: Self-compile complexity analysis. 526 honest violations
+  (CostUnknown restored). OOM resolved by lambda recursion detection fix
+  (PR #336). Complexity analysis re-enabled in compile.dag (non-blocking).
+  Original OOM root causes (PR #336):
+  (1) CostExpr tree blowup — mitigated by eager simplification in cost_seq/cost_par
+  (2) Redundant body walks — mitigated by pre-computing all recursion patterns
+      in build_complexity_report before the cost phase
+  (3) Persistent map threading — each cache_summary creates a new Rc<CostInternTable>
+      with cloned map (not yet addressed)
+  (4) Rc-based CostExpr accumulation — ~1000 nodes per function × 1600 functions
+      (not yet addressed — requires arena allocation or structural sharing)
+  Next: profile peak RSS to identify which of (3)/(4) dominates.
 - **PERF-4**: Test suite wall-clock ratchet. Current: ~270s for 271
   tests. Budget TBD. Individual tests >2s are suspect (per project
   convention). Add per-test timing visibility.
@@ -977,10 +990,139 @@ lanes — any lane can introduce a regression.
   than wall-clock time. More deterministic, catches algorithmic
   regressions independent of machine load.
 
+### PERF-6: Dependency-modeled computation (no redundancy, no retention)
+
+**Thesis:** Re-derivation and over-retention are symptoms of the same
+root cause: the pipeline doesn't model computation dependencies. When
+it doesn't know what depends on what, it re-computes (redundancy) and
+retains everything (over-retention) because it can't prove when a value
+is safe to drop or when a walk is redundant.
+
+**Two manifestations:**
+
+1. **Redundant work** — same function body walked N times by different
+   analyses that could share a single traversal.
+2. **Over-retention** — intermediate values (CostExpr trees, descent var
+   maps) kept in memory after all consumers have read them, because
+   the pipeline has no concept of "transit vs result."
+
+The general principle: if you can't express "this value is no longer
+needed," you can't drop it. Every `Map<String, X>` that accumulates
+full intermediate state and never prunes is an instance.
+
+**Current instances (self-compile, ~1600 functions):**
+
+Redundant work:
+- `classify_recursion_pattern` walks body 2-3× (proof dimensions)
+- `construct_scc_termination_proof` walks body 5-6× per SCC member
+- `collect_descent_vars` walks body 1× per param per dimension
+- `max_path_self_calls` walks body 1× (could be cached)
+
+Over-retention:
+- `CostInternTable.summaries` holds full CostExpr trees for ALL 1600
+  functions simultaneously. Each tree is ~1000 Rc nodes. Consumers
+  only need the classified string ("O(n)"), not the tree. But there's
+  no transit/result distinction — everything is retained.
+- Processing order is declaration order, not topological (callee-first).
+  Topological order would allow dropping callee summaries after all
+  callers are processed. The SCC computation already provides this order.
+
+**Mitigation (PR #336):**
+- Pre-compute all recursion patterns before cost phase
+- Eager simplification in cost composition (prevent CostExpr blowup)
+- Single-function patterns stored in scc_index (avoid re-classification)
+
+**Endgame:** Two structural changes:
+1. **Single-walk analysis:** Each function body walked ONCE → produces a
+   `FunctionAnalysis` record with all facts (proof, descent vars, cost).
+   Redundant walks become unrepresentable.
+2. **Transit/result distinction:** Intermediate values (CostExpr trees)
+   classified eagerly and dropped. The report stores classifications,
+   not trees. `CostInternTable` becomes a transit cache with pruning,
+   not a permanent accumulator. Functions processed in topological order
+   so callees can be dropped when all callers are done.
+
 ### Acceptance
 
 `performance_ratchet` and `bootstrap_stage0_to_stage1` running in CI.
 No test >2s without justification. Self-compile time tracked per-PR.
+Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
+
+### CX-NEXT: 526 → 0 violations (3 structural fixes)
+
+**Status:** 526 honest violations. Full triage in
+[`docs/cx-violation-triage.md`](docs/cx-violation-triage.md).
+
+All 526 trace to 3 root causes. 280 are direct (recursive functions
+where the analyzer can't see descent). 227 are composed (callers of
+direct unknowns — resolve automatically). 3 structural fixes cover all:
+
+| Fix | Direct | Composed | Total |
+|-----|--------|----------|-------|
+| Node tree descent recognition | ~230 | ~200 | ~430 |
+| Parser SCC TokenPosition threading | ~73 | ~53 | ~126 |
+| Graph DFS worklist (I1/I2) | 2 | ~10 | ~12 |
+
+When all three are done, `CostUnknown` can be deleted from `CostExpr`
+— because no code path can produce it.
+
+**Cost algebra design direction:** SizeExpr is a parallel algebra that
+should derive from std/ concepts. Sizes are structural facts, not
+symbolic expressions. CostLog should emerge from iteration structure.
+See triage doc for details.
+
+**Deferred CX design improvements:**
+- ComplexityReport stores rendered class strings; should keep typed
+  CostExpr as authority and derive display at reporting boundary (M5/M9).
+- ExplicitCount/Forever should be first-class iteration witnesses, not
+  ad-hoc helpers (is_constant_bound, constant_bound_value).
+- SCC edge collector (CX-P) checks all arg values — sound for
+  single-Node-param functions but theoretically unsound for multi-Node-param
+  functions. Proper fix: thread callee measure params through edge collection.
+- Optional unwrap tracing: serialize SCC includes json_optional_node(Node?)
+  — analyzer can't trace descent through Optional unwrap patterns.
+- Condition-dependent termination: emit_cli_param_type_node recurses with
+  with_required_cardinality (preserving, bounded by 1 via condition change).
+  Analyzer can't express "condition becomes false after transformation."
+
+**Open review feedback (PR #336):**
+#8-9 (DFS worklist), #10 (CostExtern contracts), #11 (element name
+heuristic). All documented at code sites and in the triage doc.
+#13-14 (proof validation) and #20-21 (violation reason/span) resolved.
+
+---
+
+## RE: Real-Program Rust Emission (Lane 4)
+
+**Goal:** Compile real .dag programs to fully executable Rust. Target:
+workflows in `../ctrl/` (Python scripts managing colima, cargo, etc.)
+reimplemented in .dag and compiled to Rust binaries.
+
+**Status:** Emission produces compilable Rust for the compiler's own
+modules (self-compile). Real programs require:
+
+**RE-1: Service/transport emission**
+- REST calls, file I/O, process spawning — currently emit stubs
+- Need: runtime bridge implementations for each service type
+- Blocked on: E0 structural emission (feedback_e0_structural_emission)
+
+**RE-2: Workflow execution model**
+- Sequential steps with error propagation
+- CLI argument parsing (already emitted via clap)
+- Environment variable access, config file reading
+
+**RE-3: Missing language features for real programs**
+- String interpolation in emitted Rust
+- Error handling / Result propagation
+- Async service calls (tokio runtime)
+
+**RE-4: End-to-end validation**
+- Pick one ctrl/ workflow, implement in .dag, compile to Rust, run
+- Measure: does the compiled binary do what the Python script does?
+- Gate: no hand-maintained Rust outside stage0
+
+**Depends on:** CG (codegen correctness) for reliable emission.
+Parallel to CX (complexity doesn't block emission).
 
 ---
 
@@ -1125,6 +1267,39 @@ authority cannot be surfaced to the consumer, and (c) the new layer
 lands with a real downstream consumer in the same change. Speculative
 metadata is rejected — the repo has already deleted prior boundary
 layers that introduced unused or lossy fact tables.
+
+---
+
+# Structural Debt Scoreboard
+
+**Goal: 0 structural debt.** The codebase is <20 compiler .dag files —
+elimination is tractable.
+
+**Current (2026-04-07): ~1,115 markers across 54 files.**
+
+| Category | Count | Upstream cause | Dissolves when |
+|----------|-------|---------------|----------------|
+| Map<String,...> semantic keys | 537 | M4: no structural identity | M4 lands (structural refs replace string keys) |
+| Positional projections (\|> first/last) | 298 | No list constructors | Cons/Nil or named projections in std/ |
+| Fail-open fallbacks (_ => "") | 239 | No fail-closed strategy | M4 + exhaustive match enforcement |
+| Heuristic name matching (.name == "X") | 37 | Dispatch on string literals | M4 + variant-based dispatch |
+| Manual recursion (no bounded witness) | ~27 | No fold/repeat primitive | I1/I2 (repeat primitive) |
+| String-prefix diagnostic dispatch | 4 | Fixed for CX (variant), emitted code remains | Full diagnostic variant coverage |
+
+**Concentration:** emit_rust (262), complexity (202), infer (80), parse (68).
+The top 5 files account for ~60% of all debt.
+
+**Root cause correlation:** M4 (structural identity) is the upstream cause
+of ~70% of debt. Map<String,...> keys (537) force fail-open lookups (239)
+which force heuristic name matching (37). Fix M4 → ~800 markers dissolve.
+
+**Emit dissolution path:** emit_rust's 262 markers are symptoms of
+encoding language-specific decisions as imperative code. The correct
+architecture: language specs in `dsl/extdeps/languages/` declare type
+mappings, ownership rules, formatting conventions as structural facts.
+A generic emitter reads those facts. Per-language emit files dissolve
+into the spec declarations (P1-B: 3 backends → 1 parameterized
+homomorphism, ~2,500 lines eliminated).
 
 ---
 

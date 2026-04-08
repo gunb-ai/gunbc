@@ -461,6 +461,11 @@ pub enum CompilerDiagnostic {
         message: String,
         span: Rc<SourceSpan>,
     },
+    ComplexityUnknown {
+        func_name: String,
+        reason: String,
+        span: Rc<SourceSpan>,
+    },
     OwnershipViolation {
         binding: String,
         fn_name: String,
@@ -490,6 +495,7 @@ impl CompilerDiagnostic {
             CompilerDiagnostic::MissingAnnotation { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::ParseError { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::InternalError { span: __val, .. } => __val.clone(),
+            CompilerDiagnostic::ComplexityUnknown { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::OwnershipViolation { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::VariantCollision { span: __val, .. } => __val.clone(),
         }
@@ -522,6 +528,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
     CompilerDiagnostic::MissingAnnotation { span: s, .. } => s.clone(),
     CompilerDiagnostic::ParseError { span: s, .. } => s.clone(),
     CompilerDiagnostic::InternalError { span: s, .. } => s.clone(),
+    CompilerDiagnostic::ComplexityUnknown { span: s, .. } => s.clone(),
     CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
     CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
 }
@@ -542,6 +549,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MissingAnnotation { fn_name: f, what: w, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("function '".to_string(), f.clone()), "' requires ".to_string()), w.clone()), " annotation".to_string()),
     CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
     CompilerDiagnostic::InternalError { message: m, .. } => m.clone(),
+    CompilerDiagnostic::ComplexityUnknown { func_name: f, reason: r, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat("complexity: ".to_string(), f.clone()), ": ".to_string()), r.clone()),
     CompilerDiagnostic::OwnershipViolation { binding: b, fn_name: f, consumers: c, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("ownership: binding '".to_string(), b.clone()), "' in '".to_string()), f.clone()), "' has ".to_string()), (c.clone()).to_string()), " consumers".to_string()),
     CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
 }

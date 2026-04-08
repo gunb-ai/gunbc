@@ -2754,45 +2754,37 @@ fn last_child_or_self(n: Node) -> Node {
 // Extract a string name from a Node for use in property values.
 // Keyed-container detection derives from container_type_arity (single authority
 // for container identity and arity) plus structural child count — no parallel name list.
-//
-// Split into wrapper (Optional prefix) + inner (child descent) so the CX
-// analyzer sees a 2-member SCC with edges [NonIncreasing, Strict]:
-//   node_to_name_str -> node_to_name_str_inner: with_required_cardinality or same n
-//   node_to_name_str_inner -> node_to_name_str: structural child via match
+// Recursion is structurally bounded: all self-calls pass a strict child of n.
+// Optional handling uses with_required_cardinality (TreeSizePreserving wrapper);
+// the CX analyzer sees through this via wrapper transparency in SCC edge classification.
 fn node_to_name_str(n: Node) -> String {
   let is_optional = n.return_cardinality == CardOptional
-  if is_optional {
-    concat("Optional_", node_to_name_str_inner(n: with_required_cardinality(n: n)))
-  } else {
-    node_to_name_str_inner(n: n)
-  }
-}
-
-fn node_to_name_str_inner(n: Node) -> String {
-  let is_keyed_container = is_container_type(name: n.name) && n.children |> count == 2
+  let effective_n = if is_optional { with_required_cardinality(n: n) } else { n }
+  let opt_prefix = if is_optional { "Optional_" } else { "" }
+  let is_keyed_container = is_container_type(name: effective_n.name) && effective_n.children |> count == 2
   if is_keyed_container {
-    match n.children |> last {
-      Some { value: ch } => concat(n.name, "_", node_to_name_str(n: ch))
-      None => n.name
+    match effective_n.children |> last {
+      Some { value: ch } => concat(opt_prefix, effective_n.name, "_", node_to_name_str(n: ch))
+      None => concat(opt_prefix, effective_n.name)
     }
-  } else if n.name == "Refined" {
-    match n.children |> first {
-      Some { value: ch } => node_to_name_str(n: ch)
-      None => n.name
+  } else if effective_n.name == "Refined" {
+    match effective_n.children |> first {
+      Some { value: ch } => concat(opt_prefix, node_to_name_str(n: ch))
+      None => concat(opt_prefix, effective_n.name)
     }
-  } else if is_container_type(name: n.name) {
-    match n.children |> first {
-      Some { value: ch } => concat("List_", node_to_name_str(n: ch))
-      None => n.name
+  } else if is_container_type(name: effective_n.name) {
+    match effective_n.children |> first {
+      Some { value: ch } => concat(opt_prefix, "List_", node_to_name_str(n: ch))
+      None => concat(opt_prefix, effective_n.name)
     }
-  } else if n.name == "" {
-    let is_conj = n.connective == Conj
-    let is_disj = n.connective == Disj
-    if is_conj { "Record" }
-    else if is_disj { "Union" }
-    else { n.name }
+  } else if effective_n.name == "" {
+    let is_conj = effective_n.connective == Conj
+    let is_disj = effective_n.connective == Disj
+    if is_conj { concat(opt_prefix, "Record") }
+    else if is_disj { concat(opt_prefix, "Union") }
+    else { concat(opt_prefix, effective_n.name) }
   } else {
-    n.name
+    concat(opt_prefix, effective_n.name)
   }
 }
 
