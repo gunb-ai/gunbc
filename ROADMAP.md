@@ -88,7 +88,7 @@ Phase 4:        Gate 7 (demo polish) — after all other gates
 | Stage | Status | Gate | Notes |
 |-------|--------|------|-------|
 | **A** | GREEN | 0 diagnostics | PR #264 |
-| **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_stage0_to_stage1` still `#[ignore]` |
+| **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_fixed_point` CI gate (PR #346) |
 | **C** | GREEN | regen binary self-compiles | PR #308. 1 perf-only bootstrap patch: `dag_syntax_spec` cache |
 | **D** | GREEN | `regenerate-stage0.sh && git diff --exit-code` | PR #308. Freshness gate blocking in CI. `render_node_type` fuses Node → String directly (TypeRendering dissolved PR #331) |
 
@@ -1013,12 +1013,10 @@ lanes — any lane can introduce a regression.
 
 - **PERF-1**: ~~Un-ignore `performance_ratchet` in CI.~~ DONE (PR #326).
   30s budget, ~4.8s actual. CI gate catches O(n²) regressions.
-- **PERF-2**: `bootstrap_stage0_to_stage1` enabled in CI (PR #326).
-  When emission succeeds, gates emitted-Rust correctness (0 cargo check
-  errors). Returns early without validation when complexity violations
-  block emission — not yet an unconditional gate. Convergence proof
-  (pass-1 = pass-2) remains in `bootstrap_fixed_point` (`#[ignore]`,
-  not yet a CI gate — expensive: two full builds + two compiles).
+- **PERF-2**: `bootstrap_fixed_point` enabled in CI (PR #346).
+  Two-pass self-hosting gate: builds stage1, uses it to produce stage2,
+  diffs for idempotence. Subsumes `bootstrap_stage0_to_stage1`.
+  Complexity early-return removed — test is unconditional.
 - **PERF-3**: Self-compile complexity analysis. 526 honest violations
   (CostUnknown restored). OOM resolved by lambda recursion detection fix
   (PR #336). Complexity analysis re-enabled in compile.dag (non-blocking).
@@ -1093,7 +1091,7 @@ Over-retention:
 
 ### Acceptance
 
-`performance_ratchet` and `bootstrap_stage0_to_stage1` running in CI.
+`performance_ratchet` and `bootstrap_fixed_point` running in CI.
 No test >2s without justification. Self-compile time tracked per-PR.
 Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
@@ -2207,7 +2205,7 @@ Every Layer 2 root-cause track reaches its acceptance criteria.
 | Lane | Gate condition | Current | Ratchet |
 |------|---------------|---------|---------|
 | M2 | No fabricated types, no BRIDGE, BND-1..4 landed | 0 real BRIDGEs (4 emitter template strings remain), BND open | `full_dsl_compiles` 0 diagnostics |
-| CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_stage0_to_stage1` 0 errors |
+| CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_fixed_point` passes |
 | M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=37 | `l1-ratchet.sh --check` |
 | CX | 0 violations, gate blocking, no heuristic classifiers | 526 violations (non-blocking) | `strict_compile_diagnostic_count` = 0 CX |
 | LS | All emitter decisions from spec-referenced data | Not started | No inline target-language knowledge in emitter |
