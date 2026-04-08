@@ -4123,131 +4123,10 @@ if (name.clone().as_str() == "GET".to_string().as_str()) {
 pub fn emit_rest_url_line(transport: Rc<Node>, op_name: String) -> String {
     match transport_path_template(transport) {
     Some(path_node) => match (*path_node.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: path_str, .. } = value.as_ref() else { unreachable!() }; {
-        let fmt_str = template_format_string(path_str.clone(), 0, Rc::new(vec![]));
-let param_names = template_param_names(path_str.clone(), 0, Rc::new(vec![]));
-if ((param_names.clone().len() as i64) == 0) {
-            v2_rt::concat(v2_rt::concat("let url = format!(\"{}".to_string(), path_str.clone()), "\", self.base_url);".to_string())
-} else {
-            {
-                let args = Rc::new({ let mut __result = Vec::new(); for p in param_names.clone().iter().cloned() { __result.push(emit_ident(p.clone(), RenderTarget::Rust)); } __result }).join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let url = format!(\"{}".to_string(), fmt_str), "\", self.base_url, ".to_string()), args), ");".to_string())
-}
-}
-} },
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: path_str, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat("let url = format!(\"{}".to_string(), escape_string_literal_body(path_str.clone())), "\", self.base_url);".to_string()) },
     _ => "compile_error!(\"transport path must be a string literal\");".to_string(),
 },
     None => v2_rt::concat(v2_rt::concat("let url = format!(\"{}/{}\", self.base_url, \"".to_string(), emit_ident(op_name, RenderTarget::Rust)), "\");".to_string()),
-}
-}
-
-pub fn template_format_string(mut template: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> String {
-    loop {
-        if (pos.clone() >= v2_rt::string_length(&template)) {
-            break acc.clone().join(&"".to_string());
-} else {
-            let ch = v2_rt::char_at(&template, pos.clone());
-if (ch.clone().as_str() == "{".to_string().as_str()) {
-                let end_pos = scan_to_close_brace(template.clone(), (pos.clone() + 1));
-if (end_pos.clone() > pos.clone()) {
-                    {
-                        let __tco_0 = template;
-let __tco_1 = end_pos.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, "{}".to_string());
-template = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
-} else {
-                    {
-                        let __tco_0 = template;
-let __tco_1 = (pos + 1);
-let __tco_2 = v2_rt::rc_list_push(acc, ch.clone());
-template = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
-}
-} else {
-                {
-                    let __tco_0 = template;
-let __tco_1 = (pos + 1);
-let __tco_2 = v2_rt::rc_list_push(acc, ch.clone());
-template = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
-}
-}
-}
-}
-
-pub fn template_param_names(mut template: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    loop {
-        if (pos.clone() >= v2_rt::string_length(&template)) {
-            break acc.clone();
-} else {
-            let ch = v2_rt::char_at(&template, pos.clone());
-if (ch.clone().as_str() == "{".to_string().as_str()) {
-                let end_pos = scan_to_close_brace(template.clone(), (pos.clone() + 1));
-if (end_pos.clone() > pos.clone()) {
-                    let name = v2_rt::substring(&template, (pos.clone() + 1), (end_pos.clone() - 1));
-{
-                        let __tco_0 = template;
-let __tco_1 = end_pos.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, name.clone());
-template = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
-} else {
-                    {
-                        let __tco_0 = template;
-let __tco_1 = (pos + 1);
-let __tco_2 = acc;
-template = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
-}
-} else {
-                {
-                    let __tco_0 = template;
-let __tco_1 = (pos + 1);
-let __tco_2 = acc;
-template = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
-}
-}
-}
-}
-
-pub fn scan_to_close_brace(mut template: String, mut pos: i64) -> i64 {
-    loop {
-        if (pos.clone() >= v2_rt::string_length(&template)) {
-            break 0;
-} else {
-            let ch = v2_rt::char_at(&template, pos.clone());
-if (ch.clone().as_str() == "}".to_string().as_str()) {
-                break (pos.clone() + 1);
-} else {
-                {
-                    let __tco_0 = template;
-let __tco_1 = (pos + 1);
-template = __tco_0;
-pos = __tco_1;
-continue;
-}
-}
-}
 }
 }
 
@@ -4466,18 +4345,7 @@ all_lines.join(&"\n".to_string())
 
 pub fn emit_shell_argv_element(arg: Rc<Node>) -> String {
     match (*arg.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; {
-        let param_names = template_param_names(s.clone(), 0, Rc::new(vec![]));
-if ((param_names.clone().len() as i64) > 0) {
-            {
-                let fmt_str = template_format_string(s.clone(), 0, Rc::new(vec![]));
-let args = Rc::new({ let mut __result = Vec::new(); for p in param_names.clone().iter().cloned() { __result.push(emit_ident(p.clone(), RenderTarget::Rust)); } __result }).join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("&format!(\"".to_string(), fmt_str), "\", ".to_string()), args), ")".to_string())
-}
-} else {
-            v2_rt::concat(v2_rt::concat("\"".to_string(), escape_string_literal_body(s.clone())), "\"".to_string())
-}
-} },
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat("\"".to_string(), escape_string_literal_body(s.clone())), "\"".to_string()) },
     ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat("&".to_string(), emit_ident(expr_var_name(arg.clone()), RenderTarget::Rust)), ".to_string()".to_string()),
     _ => emit_simple_expr(arg.clone(), RenderTarget::Rust, None),
 }

@@ -3901,73 +3901,19 @@ fn emit_rest_http_method(transport: Node) -> String {
   }
 }
 
-// RE-1b: Path template URL construction — scans literal "{name}" patterns.
+// RE-1b: Path template URL construction.
+// Path interpolation deferred: requires extdeps/languages/bash/ modeling
+// to handle parameter substitution faithfully across shell and REST contexts.
+// Currently emits the literal path string appended to base_url.
 fn emit_rest_url_line(transport: Node, op_name: String) -> String {
   match transport_path_template(t: transport) {
     Some { value: path_node } => match path_node.expr_data {
-      ExprLiteral { value: LitStr { value: path_str } } => {
-        let fmt_str = template_format_string(template: path_str, pos: 0, acc: [])
-        let param_names = template_param_names(template: path_str, pos: 0, acc: [])
-        if param_names |> count == 0 {
-          concat("let url = format!(\"{}", path_str, "\", self.base_url);")
-        } else {
-          let args = param_names |> map(p => emit_ident(name: p, target: Rust)) |> join(separator: ", ")
-          concat("let url = format!(\"{}", fmt_str, "\", self.base_url, ", args, ");")
-        }
-      }
+      ExprLiteral { value: LitStr { value: path_str } } =>
+        concat("let url = format!(\"{}", escape_string_literal_body(s: path_str), "\", self.base_url);")
       _ => "compile_error!(\"transport path must be a string literal\");"
     }
     None => concat("let url = format!(\"{}/{}\", self.base_url, \"",
       emit_ident(name: op_name, target: Rust), "\");")
-  }
-}
-
-// Build the format string from a "{name}" template: replaces {name} with {}.
-fn template_format_string(template: String, pos: Int, acc: List<String>) -> String {
-  if pos >= string_length(s: template) {
-    acc |> join(separator: "")
-  } else {
-    let ch = char_at(s: template, pos: pos)
-    if ch == "{" {
-      let end_pos = scan_to_close_brace(template: template, pos: pos + 1)
-      if end_pos > pos {
-        template_format_string(template: template, pos: end_pos, acc: list_push(acc, "{}"))
-      } else {
-        template_format_string(template: template, pos: pos + 1, acc: list_push(acc, ch))
-      }
-    } else {
-      template_format_string(template: template, pos: pos + 1, acc: list_push(acc, ch))
-    }
-  }
-}
-
-// Extract parameter names from a "{name}" template.
-fn template_param_names(template: String, pos: Int, acc: List<String>) -> List<String> {
-  if pos >= string_length(s: template) {
-    acc
-  } else {
-    let ch = char_at(s: template, pos: pos)
-    if ch == "{" {
-      let end_pos = scan_to_close_brace(template: template, pos: pos + 1)
-      if end_pos > pos {
-        let name = substring(s: template, start: pos + 1, end: end_pos - 1)
-        template_param_names(template: template, pos: end_pos, acc: list_push(acc, name))
-      } else {
-        template_param_names(template: template, pos: pos + 1, acc: acc)
-      }
-    } else {
-      template_param_names(template: template, pos: pos + 1, acc: acc)
-    }
-  }
-}
-
-// Scan forward from pos to find closing "}". Returns position after "}" or 0 if not found.
-fn scan_to_close_brace(template: String, pos: Int) -> Int {
-  if pos >= string_length(s: template) { 0 }
-  else {
-    let ch = char_at(s: template, pos: pos)
-    if ch == "}" { pos + 1 }
-    else { scan_to_close_brace(template: template, pos: pos + 1) }
   }
 }
 
@@ -4178,19 +4124,15 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   }
 }
 
-// Emit a single argv element — handles literal strings with {name} template vars.
+// Emit a single argv element as a Rust string literal or expression.
+// Argv parameter interpolation deferred: requires extdeps/languages/bash/
+// modeling to handle shell string escaping and parameter substitution
+// faithfully. Currently emits literal strings as-is and variables as
+// .to_string() references.
 fn emit_shell_argv_element(arg: Node) -> String {
   match arg.expr_data {
-    ExprLiteral { value: LitStr { value: s } } => {
-      let param_names = template_param_names(template: s, pos: 0, acc: [])
-      if param_names |> count > 0 {
-        let fmt_str = template_format_string(template: s, pos: 0, acc: [])
-        let args = param_names |> map(p => emit_ident(name: p, target: Rust)) |> join(separator: ", ")
-        concat("&format!(\"", fmt_str, "\", ", args, ")")
-      } else {
-        concat("\"", escape_string_literal_body(s: s), "\"")
-      }
-    }
+    ExprLiteral { value: LitStr { value: s } } =>
+      concat("\"", escape_string_literal_body(s: s), "\"")
     ExprVar { binding_kind: _ } => concat("&", emit_ident(name: expr_var_name(texpr: arg), target: Rust), ".to_string()")
     _ => emit_simple_expr(expr: arg, target: Rust, source_index: none)
   }
