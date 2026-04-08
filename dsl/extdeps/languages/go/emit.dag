@@ -73,6 +73,9 @@ data go_param_separator: String = ", "
 data go_return_arrow: String = " "
 data go_param_type_sep: String = " "
 data go_string_literal_suffix: String = ""
+data go_module_keyword: String = "package"
+data go_import_keyword: String = "import"
+data go_import_from_keyword: String = ""
 
 // -- Project scaffold ----------------------------------------------------
 // Ref: Go modules reference (go.dev/ref/mod)

@@ -288,6 +288,33 @@ pub fn rust_string_literal_suffix() -> String {
     CACHED.with(|c| c.clone())
 }
 
+pub fn rust_module_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "mod".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_import_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "use".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_import_from_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn rust_source_extension() -> String {
     thread_local! {
         static CACHED: String = {

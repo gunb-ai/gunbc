@@ -218,6 +218,33 @@ pub fn python_string_literal_suffix() -> String {
     CACHED.with(|c| c.clone())
 }
 
+pub fn python_module_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_import_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "import".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_import_from_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "from".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn python_source_extension() -> String {
     thread_local! {
         static CACHED: String = {
