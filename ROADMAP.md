@@ -1737,6 +1737,320 @@ everywhere — CLI, tests, and CI.
 
 ---
 
+# Killer Features (KF)
+
+These are capabilities that do not exist in any production system
+today. They are the reason to use gunbc over writing Rust/Go/Python
+directly. Each is grounded in the same structural property: .dag
+programs are decidable, Node-bounded, and finite — so the compiler
+can prove things that are undecidable in general-purpose languages.
+
+## KF-1: Complexity Proof on Every Compile
+
+**What:** Every function gets a proven asymptotic bound at compile
+time. Not a lint. Not an optional analysis. A structural proof that
+`find_duplicates` is O(n²) and `merge_sorted` is O(n).
+
+**Why it doesn't exist:** General-purpose languages have undecidable
+control flow (unbounded while, general recursion). .dag's three
+iteration primitives (fold/descend/repeat) make the bound derivable
+by construction.
+
+**Example:**
+```dag
+fn find_duplicates(items: List<String>) -> List<String> {
+  items |> filter(item =>
+    items |> any(other => other == item)
+  )
+}
+// Compiler: complexity: find_duplicates is O(n²)
+//   filter(O(n)) × any(O(n)) = O(n × n)
+```
+
+**Status:** Partially working. The analyzer computes CostExpr for
+all 1600 compiler functions. 526 get CostUnknown because descent
+evidence doesn't propagate through Node trees and parser SCCs.
+When the 3 structural fixes land (CX-NEXT), every function has a
+proven bound and CostUnknown is deleted from the type system.
+
+**Remaining work:**
+- [ ] KF-1a: Node tree descent recognition (~230 direct violations)
+- [ ] KF-1b: Parser SCC TokenPosition threading (~73 direct)
+- [ ] KF-1c: Graph DFS worklist (2 direct, ~10 composed)
+- [ ] KF-1d: Delete `CostUnknown` variant from CostExpr
+- [ ] KF-1e: Re-enable CX gate as blocking (CX-E)
+
+**Maps to:** CX lane (CX-NEXT). Same work, different framing — CX
+frames it as "analyzer improvement," KF-1 frames it as "every program
+gets a complexity certificate."
+
+**Acceptance:**
+```
+every_function_has_complexity_bound
+  Run: compile any .dag program
+  Assert: ComplexityReport has 0 CostUnknown entries
+  Assert: every function_class is one of O(1), O(n), O(n²), O(n log n), etc.
+  Assert: CostUnknown variant does not exist in CostExpr enum
+```
+
+## KF-2: Reject Suboptimal Algorithms
+
+**What:** The compiler refuses to compile code when a provably
+cheaper equivalent exists. Not a suggestion — a compile error.
+
+**Why it doesn't exist:** Requires (a) a decidable cost algebra with
+ordering, (b) a catalog of equivalent operations with different costs,
+and (c) the ability to compare implementations structurally. General-
+purpose languages can't do (a) because cost is undecidable. .dag can
+because all operations have declared CostShape.
+
+**Example:**
+```dag
+fn has_match(items: List<String>, target: String) -> Bool {
+  items |> filter(item => item == target) |> count > 0
+}
+// Compiler ERROR: suboptimal: filter(p).count() > 0 is O(n) allocation
+//   + O(n) count. Use any(p) for O(n) with O(1) allocation.
+//   Suggested: items |> any(item => item == target)
+```
+
+More examples:
+```dag
+// ERROR: sort then take first → O(n log n). Use min() → O(n).
+items |> sort_by(x => x.score) |> first
+
+// ERROR: map then filter → intermediate allocation.
+// Use filter_map (single pass, no intermediate list).
+items |> map(transform) |> filter(predicate)
+
+// ERROR: nested any() is O(n²). Use Set lookup for O(n).
+items |> filter(item => others |> any(o => o.id == item.id))
+```
+
+**Status:** NOT BUILT. The infrastructure is close:
+- CostShape per method: declared in `std/algebra.dag` (done)
+- CostExpr composition: `cost_seq`/`cost_mul` (done)
+- Missing: cost ordering, call-site pattern detection, violation type
+
+**Remaining work:**
+- [ ] KF-2a: Cost ordering — `cost_dominates(a, b) -> Bool` on CostExpr
+- [ ] KF-2b: Equivalence catalog — declare `(pattern, replacement, proof)`
+  triples in `std/optimization.dag`. Pattern: structural method chain.
+  Replacement: cheaper equivalent. Proof: `cost_dominates(replacement, pattern)`.
+- [ ] KF-2c: Call-site analysis — detect method chain patterns in inferred
+  AST, look up equivalence catalog, compare costs
+- [ ] KF-2d: `SuboptimalCost` violation type in ComplexityViolation
+- [ ] KF-2e: Diagnostic with suggestion — show original cost, replacement
+  cost, and the equivalent code
+
+**Maps to:** Exploratory direction "cost comparator." KF-2 makes it
+concrete with an equivalence catalog and call-site analysis.
+
+**Acceptance:**
+```
+reject_filter_count_when_any_exists
+  Input: fn f(xs: List<Int>) -> Bool { xs |> filter(x => x > 0) |> count > 0 }
+  Assert: compile ERROR with suggestion to use any()
+
+reject_sort_first_when_min_exists
+  Input: fn f(xs: List<Int>) -> Int { xs |> sort_by(x => x) |> first }
+  Assert: compile ERROR with suggestion to use min()
+
+accept_optimal_code
+  Input: fn f(xs: List<Int>) -> Bool { xs |> any(x => x > 0) }
+  Assert: compiles with no suboptimality warning
+```
+
+## KF-3: Automated Test Generation from Types
+
+**What:** The compiler generates tests from type definitions. Add a
+type → tests appear. No hand-written test code for structural
+properties.
+
+**Why it doesn't exist:** Requires (a) a finite, enumerable type
+algebra, (b) canonical witness generation per type form, and (c) the
+compiler itself as the test oracle. General-purpose languages have
+open type systems (user-defined classes, traits, generics) that make
+exhaustive enumeration impossible. .dag's types are compositional
+products/coproducts over a finite kernel.
+
+**Example:** Defining a type automatically generates:
+```dag
+type Shape
+  = Circle { radius: Float }
+  | Rect { width: Float, height: Float }
+  | Triangle { a: Float, b: Float, c: Float }
+```
+The compiler generates:
+1. **Witness tests:** One canonical value per variant (Circle{0.0},
+   Rect{0.0, 0.0}, Triangle{0.0, 0.0, 0.0})
+2. **Round-trip tests:** serialize → deserialize = identity, per target
+3. **Emission tests:** each variant compiles to valid Rust/Go/Python
+4. **Pattern exhaustiveness:** match on Shape covers all 3 variants
+5. **Algebra law tests:** if Shape has algebra methods, test monoid/
+   lattice laws with generated witnesses
+
+**Status:** Level 0 done (coercion data → test assertions, ~48 tests
+auto-generated). Levels 4-6 designed in `docs/testing-strategy.md` but
+not implemented.
+
+**Remaining work:**
+- [ ] KF-3a: Witness generator — one canonical value per type form
+  (primitive→zero, product→all fields, coproduct→each variant,
+  optional→Some+None, collection→[]+[witness])
+- [ ] KF-3b: Emission algebra enumerator — enumerate all
+  `(NodeKind × TypeForm × Cardinality)` triples from .dag type defs
+- [ ] KF-3c: Program synthesizer — one minimal .dag program per
+  emission algebra element
+- [ ] KF-3d: Cross-target compilation — synthesized programs compile
+  to all 3 targets with 0 errors
+- [ ] KF-3e: Algebra law tests — for types with algebraic structure,
+  generate identity/associativity/commutativity checks from
+  `std/algebra.dag` declarations
+- [ ] KF-3f: Test receipt — `TestReceipt` from `std/verification.dag`
+  as CI authority: what was proven, tested, generated, unknown
+
+**Maps to:** Gate 6 (test generation), M3 (deferred milestone).
+
+**Acceptance:**
+```
+new_type_generates_witness_tests
+  Input: add `type Color = Red | Green | Blue` to a .dag file
+  Assert: test suite grows by 3 witness tests (one per variant)
+  Assert: no hand-written test code for Color
+
+emission_algebra_coverage
+  Run: enumerate all (NodeKind × TypeForm) pairs
+  Assert: synthesized program exists for each
+  Assert: all compile to Rust, Go, Python with 0 errors
+
+algebra_law_tests_generated
+  Input: type with Monoid algebra (e.g., List with concat)
+  Assert: identity law test generated: concat([], x) == x
+  Assert: associativity test: concat(concat(a,b), c) == concat(a, concat(b,c))
+```
+
+## KF-4: Cross-Language Equivalence Proof
+
+**What:** Compile one .dag source to Rust, Go, and Python. The
+compiler proves all three compute the same result for all inputs
+by structural induction on Node depth.
+
+**Why it doesn't exist:** No system compiles to 3+ targets with a
+structural proof that outputs are equivalent. Transpilers (e.g.,
+Haxe, Kotlin Multiplatform) compile to multiple targets but provide
+no equivalence guarantee — bugs are found by running tests, not by
+construction.
+
+**Example:**
+```dag
+fn fibonacci(n: Int) -> Int {
+  match n {
+    0 => 0
+    1 => 1
+    _ => fibonacci(n: n - 1) + fibonacci(n: n - 2)
+  }
+}
+// Compiler proves: fibonacci(10) in Rust == Go == Python
+// by structural induction: base cases are literals (identical),
+// inductive step preserves + semantics across all targets
+// (IntegerArithmetic in LanguageSpec has identical semantics).
+```
+
+**Status:** Not started. The foundation exists:
+- 3 backends compile the full DSL tree (full_dsl_compiles)
+- Coercion data maps .dag types to target types per language
+- LanguageSpec declares per-target semantics
+
+Missing: differential testing infrastructure, semantic equivalence
+assertions, shared test oracle.
+
+**Remaining work:**
+- [ ] KF-4a: Shared test oracle — given a .dag function + inputs,
+  compile to all 3 targets, run each, compare outputs
+- [ ] KF-4b: Semantic equivalence assertions — declare which
+  LanguageSpec properties preserve equivalence (integer overflow,
+  float precision, string encoding)
+- [ ] KF-4c: Divergence catalog — document where targets intentionally
+  differ (e.g., Rust panics on overflow, Python has arbitrary-precision
+  ints) and how .dag handles it (coercion or explicit constraint)
+- [ ] KF-4d: CI gate — differential test suite runs on every PR
+
+**Maps to:** Gate 3 (language parity), P1-B (3→1 homomorphism).
+
+**Acceptance:**
+```
+cross_language_equivalence_fibonacci
+  Run: compile fibonacci.dag to Rust, Go, Python
+  Run: execute each with input n=20
+  Assert: all three return 6765
+
+cross_language_equivalence_full_suite
+  Run: compile all .dag example programs to 3 targets
+  Run: execute each with shared inputs
+  Assert: outputs match (modulo documented divergences)
+```
+
+## KF-5: Decidability Certificate
+
+**What:** Every .dag program comes with a machine-checkable proof
+that it terminates. Not "probably terminates" — provably terminates
+for all inputs, by construction.
+
+**Why it doesn't exist:** The halting problem is undecidable for
+Turing-complete languages. .dag is sub-Turing: no unbounded `while`,
+no general recursion. All iteration is fold (structural descent),
+descend (with proof witness), or repeat (with explicit fuel). The
+compiler can prove termination because the language makes non-
+termination unrepresentable.
+
+**Status:** The language property is DONE — .dag programs can't
+diverge by construction. What's missing is surfacing this as a
+user-visible certificate.
+
+**Remaining work:**
+- [ ] KF-5a: Termination certificate in test receipt — for each
+  function, the receipt includes the bound (O(n), O(n²), etc.)
+  and the structural proof witness (fold over list, descent on tree)
+- [ ] KF-5b: Human-readable proof summary — "this function terminates
+  because it folds over `items` (size decreases by 1 per step)"
+- [ ] KF-5c: Machine-checkable proof format — exportable proof that
+  an external verifier can check independently
+
+**Maps to:** KF-1 (complexity = bound + proof). The decidability
+certificate is the bound + the witness that produces it.
+
+**Acceptance:**
+```
+every_function_has_termination_proof
+  Run: compile any .dag program
+  Assert: every function in ComplexityReport has a non-Unknown bound
+  Assert: bound includes proof witness type (Fold, Descend, Repeat, Const)
+```
+
+## KF summary and dependency chain
+
+```
+KF-1 (complexity proof) ←── CX lane (same work)
+  └→ KF-2 (reject suboptimal) ←── new: equivalence catalog + cost ordering
+KF-3 (test generation) ←── M3 + verification.dag
+  └→ KF-4 (cross-language proof) ←── KF-3 + LanguageSpec completion
+KF-5 (decidability cert) ←── KF-1 (bound IS the certificate)
+```
+
+KF-1 and KF-3 are independent entry points. KF-2 requires KF-1.
+KF-4 requires KF-3. KF-5 is a projection of KF-1.
+
+| Feature | Effort | Impact | Priority |
+|---------|--------|--------|----------|
+| KF-1: Complexity proof | Medium (3 fixes, CX lane) | High — table stakes for the thesis | P0 |
+| KF-2: Reject suboptimal | Medium (catalog + analysis) | Very high — the "wow" demo | P1 |
+| KF-3: Test generation | Large (witness gen + synthesis) | High — eliminates manual tests | P1 |
+| KF-4: Cross-language proof | Large (oracle + divergence catalog) | Medium — impressive but niche | P2 |
+| KF-5: Decidability cert | Small (projection of KF-1) | High — unique value prop | P0 |
+
+---
+
 # Public Release Gate
 
 **Goal:** Ship gunbc as a public, demonstrable system. Every item
@@ -1789,10 +2103,11 @@ structural_debt_zero
   Assert: total = 0
 ```
 
-## Gate 3: Language Parity and Correctness
+## Gate 3: Language Parity and Correctness (KF-4)
 
 All three target languages (Rust, Go, Python) produce correct,
-equivalent output for the full .dag surface area.
+equivalent output for the full .dag surface area. See KF-4 for
+the cross-language equivalence proof design.
 
 | Criterion | Test |
 |-----------|------|
@@ -1817,10 +2132,9 @@ language_parity_expression_equivalence
   Assert: outputs match (modulo language-specific formatting)
 ```
 
-## Gate 4: Complexity Fully Proven
+## Gate 4: Complexity Fully Proven + Suboptimality Rejection
 
-The complexity analyzer proves bounds for ALL functions — no
-`CostUnknown`, no suppression, no heuristic classifiers.
+KF-1 (complexity proof) and KF-2 (reject suboptimal) must both ship.
 
 | Criterion | Test |
 |-----------|------|
@@ -1829,6 +2143,8 @@ The complexity analyzer proves bounds for ALL functions — no
 | All descent from structural facts | `std/termination.dag`, `std/computation.dag`, `std/algebra.dag` are the only authorities |
 | Gate blocking | CX gate re-enabled (CX-E), complexity failures = compile failures |
 | Self-compile proves itself | The compiler's own 1600 functions all have proven bounds |
+| Suboptimal rejection | Equivalence catalog in `std/optimization.dag` with at least 5 pattern→replacement rules |
+| Decidability certificate | Every function's bound + proof witness in test receipt |
 
 **Acceptance tests:**
 ```
@@ -1841,6 +2157,14 @@ cost_unknown_variant_deleted
 
 no_heuristic_classifiers
   Assert: 0 name-matching patterns in complexity.dag (grep for .name ==)
+
+suboptimal_filter_count_rejected
+  Input: fn f(xs: List<Int>) -> Bool { xs |> filter(x => x > 0) |> count > 0 }
+  Assert: compile error with suggestion to use any()
+
+decidability_certificate_in_receipt
+  Run: compile any .dag program
+  Assert: test receipt includes bound + witness for every function
 ```
 
 ## Gate 5: Business Cases
@@ -1904,10 +2228,10 @@ compiled to a binary that replaces the current shell scripts
 **Acceptance:** Shell scripts deleted, replaced by .dag-compiled
 binary. BP-1 acceptance criteria met.
 
-## Gate 6: Automated Test Generation (M3)
+## Gate 6: Automated Test Generation (M3 + KF-3)
 
 Tests are structural claims derived from .dag type definitions.
-The compiler generates tests, not humans.
+The compiler generates tests, not humans. See KF-3 for full design.
 
 | Criterion | Test |
 |-----------|------|
@@ -1968,8 +2292,18 @@ polish depends on stable features.
 |------|--------|-----------|
 | 1. Active lanes | IN PROGRESS | All lane ratchets green |
 | 2. Structural debt | 1,115 → 0 | `structural-debt-count.sh` = 0 |
-| 3. Language parity | PARTIAL | 3-target `full_dsl_compiles` green |
-| 4. Complexity proven | 526 → 0 | `CostUnknown` deleted |
+| 3. Language parity (KF-4) | PARTIAL | 3-target `full_dsl_compiles` + cross-language equivalence |
+| 4. Complexity + suboptimality (KF-1, KF-2) | 526 → 0 | `CostUnknown` deleted + equivalence catalog ships |
 | 5. Business cases | 0/4 | BC-1..4 acceptance met |
-| 6. Test generation | NOT STARTED | Generated tests all pass |
-| 7. Demo polish | NOT STARTED | 5-minute onboarding works |
+| 6. Test generation (KF-3) | NOT STARTED | Generated tests all pass |
+| 7. Demo polish (KF-5) | NOT STARTED | 5-minute onboarding + decidability certificates |
+
+## Killer feature ratchet
+
+| Feature | Status | Gate |
+|---------|--------|------|
+| KF-1: Complexity proof on every compile | 526 unknown → 0 | CostUnknown deleted |
+| KF-2: Reject suboptimal algorithms | NOT STARTED | 5+ rules in equivalence catalog |
+| KF-3: Test generation from types | Level 0 done | Levels 4-6 implemented |
+| KF-4: Cross-language equivalence proof | NOT STARTED | Differential test suite green |
+| KF-5: Decidability certificate | Language property done | Surfaced in test receipt |
