@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name, variant_node_fields, leaf_node, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name, variant_node_fields, leaf_node, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_stdin_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -242,6 +242,7 @@ pub struct ItemPrefixResult {
 pub struct ServiceConfig {
     pub endpoint: Rc<Node>,
     pub auth: Option<Rc<Node>>,
+    pub auth_input: Option<Rc<Node>>,
     pub rate_limit: Option<Rc<Node>>,
     pub retry: Option<Rc<Node>>,
 }
@@ -260,7 +261,7 @@ pub struct BindingPower {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
+
 pub enum ExpectedToken {
     ExpectKeyword {
         text: String,
@@ -580,7 +581,7 @@ pub struct IntLitResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
+
 pub enum ParserHelperIdentity {
     ParserHelperSkipNewlines,
     ParserHelperSkipContinuationNewlines,
@@ -588,7 +589,7 @@ pub enum ParserHelperIdentity {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
+
 pub enum ParserCallIdentity {
     ParserCallHelper {
         helper: ParserHelperIdentity,
@@ -599,7 +600,7 @@ pub enum ParserCallIdentity {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
+
 pub enum ParserResultWitness {
     ParserWitnessAdvance,
     ParserWitnessExpect,
@@ -4840,7 +4841,7 @@ let ns_prop = make_field_init_node("namespace_root".to_string(), make_expr_node(
 }),
 }), Rc::new(vec![]), None, start_span.clone()), start_span.clone(), start_span.clone());
 let svc_props = match r.config.clone() {
-    Some(cfg) => service_config_properties(cfg.endpoint.clone(), cfg.auth.clone(), cfg.rate_limit.clone(), cfg.retry.clone()),
+    Some(cfg) => service_config_properties(cfg.endpoint.clone(), cfg.auth.clone(), cfg.auth_input.clone(), cfg.rate_limit.clone(), cfg.retry.clone()),
     None => Rc::new(vec![]),
 };
 let item = Rc::new(Node {
@@ -5022,10 +5023,10 @@ continue;
 }
 
 pub fn parse_service_config_block(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> Rc<ConfigResult> {
-    parse_config_fields(tokens, state, None, None, None, None)
+    parse_config_fields(tokens, state, None, None, None, None, None)
 }
 
-pub fn parse_config_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut endpoint: Option<Rc<Node>>, mut auth: Option<Rc<Node>>, mut rate_limit: Option<Rc<Node>>, mut retry: Option<Rc<Node>>) -> Rc<ConfigResult> {
+pub fn parse_config_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut endpoint: Option<Rc<Node>>, mut auth: Option<Rc<Node>>, mut auth_input: Option<Rc<Node>>, mut rate_limit: Option<Rc<Node>>, mut retry: Option<Rc<Node>>) -> Rc<ConfigResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
@@ -5039,6 +5040,7 @@ if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone(
 }), Rc::new(vec![]), None, make_span(0, 0)),
 },
     auth: auth.clone(),
+    auth_input: auth_input.clone(),
     rate_limit: rate_limit.clone(),
     retry: retry.clone(),
 });
@@ -5055,6 +5057,7 @@ break Rc::new(ConfigResult {
 }),
 }), Rc::new(vec![]), None, make_span(0, 0)),
     auth: None,
+    auth_input: None,
     rate_limit: None,
     retry: None,
 });
@@ -5096,14 +5099,16 @@ match fname.clone().as_str() {
 let __tco_1 = s3.clone();
 let __tco_2 = Some(r3.expr.clone());
 let __tco_3 = auth;
-let __tco_4 = rate_limit;
-let __tco_5 = retry;
+let __tco_4 = auth_input;
+let __tco_5 = rate_limit;
+let __tco_6 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
-rate_limit = __tco_4;
-retry = __tco_5;
+auth_input = __tco_4;
+rate_limit = __tco_5;
+retry = __tco_6;
 continue;
 } },
     "auth" => { {
@@ -5111,14 +5116,33 @@ continue;
 let __tco_1 = s3.clone();
 let __tco_2 = endpoint;
 let __tco_3 = Some(r3.expr.clone());
-let __tco_4 = rate_limit;
-let __tco_5 = retry;
+let __tco_4 = auth_input;
+let __tco_5 = rate_limit;
+let __tco_6 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
-rate_limit = __tco_4;
-retry = __tco_5;
+auth_input = __tco_4;
+rate_limit = __tco_5;
+retry = __tco_6;
+continue;
+} },
+    "auth_input" => { {
+                let __tco_0 = tokens;
+let __tco_1 = s3.clone();
+let __tco_2 = endpoint;
+let __tco_3 = auth;
+let __tco_4 = Some(r3.expr.clone());
+let __tco_5 = rate_limit;
+let __tco_6 = retry;
+tokens = __tco_0;
+state = __tco_1;
+endpoint = __tco_2;
+auth = __tco_3;
+auth_input = __tco_4;
+rate_limit = __tco_5;
+retry = __tco_6;
 continue;
 } },
     "rate_limit" => { {
@@ -5126,14 +5150,16 @@ continue;
 let __tco_1 = s3.clone();
 let __tco_2 = endpoint;
 let __tco_3 = auth;
-let __tco_4 = Some(r3.expr.clone());
-let __tco_5 = retry;
+let __tco_4 = auth_input;
+let __tco_5 = Some(r3.expr.clone());
+let __tco_6 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
-rate_limit = __tco_4;
-retry = __tco_5;
+auth_input = __tco_4;
+rate_limit = __tco_5;
+retry = __tco_6;
 continue;
 } },
     "retry" => { {
@@ -5141,14 +5167,16 @@ continue;
 let __tco_1 = s3.clone();
 let __tco_2 = endpoint;
 let __tco_3 = auth;
-let __tco_4 = rate_limit;
-let __tco_5 = Some(r3.expr.clone());
+let __tco_4 = auth_input;
+let __tco_5 = rate_limit;
+let __tco_6 = Some(r3.expr.clone());
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
-rate_limit = __tco_4;
-retry = __tco_5;
+auth_input = __tco_4;
+rate_limit = __tco_5;
+retry = __tco_6;
 continue;
 } },
     _ => { {
@@ -5156,14 +5184,16 @@ continue;
 let __tco_1 = s3.clone();
 let __tco_2 = endpoint;
 let __tco_3 = auth;
-let __tco_4 = rate_limit;
-let __tco_5 = retry;
+let __tco_4 = auth_input;
+let __tco_5 = rate_limit;
+let __tco_6 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
-rate_limit = __tco_4;
-retry = __tco_5;
+auth_input = __tco_4;
+rate_limit = __tco_5;
+retry = __tco_6;
 continue;
 } },
 }
@@ -5305,10 +5335,10 @@ Rc::new(TransportResult {
 }
 
 pub fn parse_rest_binding_body(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> Rc<TransportResult> {
-    parse_rest_fields(tokens, state, None)
+    parse_rest_fields(tokens, state, None, None, None, None)
 }
 
-pub fn parse_rest_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut base_url: Option<Rc<Node>>) -> Rc<TransportResult> {
+pub fn parse_rest_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut base_url: Option<Rc<Node>>, mut method: Option<Rc<Node>>, mut path_template: Option<Rc<Node>>, mut query: Option<Rc<Node>>) -> Rc<TransportResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 let span = current_span(tokens.clone(), s.clone());
@@ -5323,7 +5353,7 @@ if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone(
 }), Rc::new(vec![]), None, make_span(0, 0)),
 };
 break Rc::new(TransportResult {
-    transport: rest_transport_node(bu.clone(), Rc::new(vec![]), Rc::new(vec![]), span.clone()),
+    transport: rest_transport_node(bu.clone(), Rc::new(vec![]), Rc::new(vec![]), method.clone(), path_template.clone(), query.clone(), span.clone()),
     state: s.clone(),
     err: None,
 });
@@ -5359,42 +5389,109 @@ let s2 = if e.consumed.clone() {
 } else {
                 r3.state.clone()
 };
-match fname.clone() {
-    transport_url_key => { {
-                let __tco_0 = tokens;
+if (fname.clone().as_str() == transport_url_key().as_str()) {
+                {
+                    let __tco_0 = tokens;
 let __tco_1 = s2.clone();
 let __tco_2 = Some(r3.expr.clone());
+let __tco_3 = method;
+let __tco_4 = path_template;
+let __tco_5 = query;
 tokens = __tco_0;
 state = __tco_1;
 base_url = __tco_2;
+method = __tco_3;
+path_template = __tco_4;
+query = __tco_5;
 continue;
-} },
-    _ => { {
-                let __tco_0 = tokens;
+}
+} else {
+                if (fname.clone().as_str() == transport_method_key().as_str()) {
+                    {
+                        let __tco_0 = tokens;
 let __tco_1 = s2.clone();
 let __tco_2 = base_url;
+let __tco_3 = Some(r3.expr.clone());
+let __tco_4 = path_template;
+let __tco_5 = query;
 tokens = __tco_0;
 state = __tco_1;
 base_url = __tco_2;
+method = __tco_3;
+path_template = __tco_4;
+query = __tco_5;
 continue;
-} },
+}
+} else {
+                    if (fname.clone().as_str() == transport_path_template_key().as_str()) {
+                        {
+                            let __tco_0 = tokens;
+let __tco_1 = s2.clone();
+let __tco_2 = base_url;
+let __tco_3 = method;
+let __tco_4 = Some(r3.expr.clone());
+let __tco_5 = query;
+tokens = __tco_0;
+state = __tco_1;
+base_url = __tco_2;
+method = __tco_3;
+path_template = __tco_4;
+query = __tco_5;
+continue;
+}
+} else {
+                        if (fname.clone().as_str() == transport_query_key().as_str()) {
+                            {
+                                let __tco_0 = tokens;
+let __tco_1 = s2.clone();
+let __tco_2 = base_url;
+let __tco_3 = method;
+let __tco_4 = path_template;
+let __tco_5 = Some(r3.expr.clone());
+tokens = __tco_0;
+state = __tco_1;
+base_url = __tco_2;
+method = __tco_3;
+path_template = __tco_4;
+query = __tco_5;
+continue;
+}
+} else {
+                            {
+                                let __tco_0 = tokens;
+let __tco_1 = s2.clone();
+let __tco_2 = base_url;
+let __tco_3 = method;
+let __tco_4 = path_template;
+let __tco_5 = query;
+tokens = __tco_0;
+state = __tco_1;
+base_url = __tco_2;
+method = __tco_3;
+path_template = __tco_4;
+query = __tco_5;
+continue;
+}
+}
+}
+}
 }
 }
 }
 }
 
 pub fn parse_shell_binding_body(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> Rc<TransportResult> {
-    parse_shell_fields(tokens, state, Rc::new(vec![]))
+    parse_shell_fields(tokens, state, Rc::new(vec![]), None)
 }
 
-pub fn parse_shell_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut argv: Rc<Vec<Rc<Node>>>) -> Rc<TransportResult> {
+pub fn parse_shell_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut argv: Rc<Vec<Rc<Node>>>, mut stdin: Option<Rc<Node>>) -> Rc<TransportResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 let span = current_span(tokens.clone(), s.clone());
 let dummy = local_transport_node(span.clone());
 if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(TransportResult {
-    transport: shell_transport_node(argv.clone(), Rc::new(vec![]), span.clone()),
+    transport: shell_transport_node(argv.clone(), Rc::new(vec![]), stdin.clone(), span.clone()),
     state: s.clone(),
     err: None,
 });
@@ -5416,10 +5513,10 @@ if has_err(r2.err.clone()) {
     err: r2.err.clone(),
 })
 }
-match fname.clone().as_str() {
-    "argv" => { let r3 = expect(tokens.clone(), r2.state.clone(), Rc::new(ExpectedToken::ExpectLBracket));
+if (fname.clone().as_str() == "argv".to_string().as_str()) {
+                let r3 = expect(tokens.clone(), r2.state.clone(), Rc::new(ExpectedToken::ExpectLBracket));
 if has_err(r3.err.clone()) {
-                return Rc::new(TransportResult {
+                    return Rc::new(TransportResult {
     transport: dummy.clone(),
     state: r3.state.clone(),
     err: r3.err.clone(),
@@ -5427,7 +5524,7 @@ if has_err(r3.err.clone()) {
 }
 let r4 = parse_expr_list_until(tokens.clone(), r3.state.clone(), Rc::new(ExpectedToken::ExpectRBracket));
 if has_err(r4.err.clone()) {
-                return Rc::new(TransportResult {
+                    return Rc::new(TransportResult {
     transport: dummy.clone(),
     state: r4.state.clone(),
     err: r4.err.clone(),
@@ -5435,7 +5532,7 @@ if has_err(r4.err.clone()) {
 }
 let r5 = expect(tokens.clone(), r4.state.clone(), Rc::new(ExpectedToken::ExpectRBracket));
 if has_err(r5.err.clone()) {
-                return Rc::new(TransportResult {
+                    return Rc::new(TransportResult {
     transport: dummy.clone(),
     state: r5.state.clone(),
     err: r5.err.clone(),
@@ -5443,22 +5540,26 @@ if has_err(r5.err.clone()) {
 }
 let e = eat(tokens.clone(), r5.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 let s2 = if e.consumed.clone() {
-                e.state.clone()
+                    e.state.clone()
 } else {
-                r5.state.clone()
+                    r5.state.clone()
 };
 {
-                let __tco_0 = tokens;
+                    let __tco_0 = tokens;
 let __tco_1 = s2.clone();
 let __tco_2 = r4.exprs.clone();
+let __tco_3 = stdin;
 tokens = __tco_0;
 state = __tco_1;
 argv = __tco_2;
+stdin = __tco_3;
 continue;
-} },
-    _ => { let r3 = parse_expr(tokens.clone(), r2.state.clone());
+}
+} else {
+                if (fname.clone().as_str() == transport_stdin_key().as_str()) {
+                    let r3 = parse_expr(tokens.clone(), r2.state.clone());
 if has_err(r3.err.clone()) {
-                return Rc::new(TransportResult {
+                        return Rc::new(TransportResult {
     transport: dummy.clone(),
     state: r3.state.clone(),
     err: r3.err.clone(),
@@ -5466,19 +5567,48 @@ if has_err(r3.err.clone()) {
 }
 let e = eat(tokens.clone(), r3.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 let s2 = if e.consumed.clone() {
-                e.state.clone()
+                        e.state.clone()
 } else {
-                r3.state.clone()
+                        r3.state.clone()
 };
 {
-                let __tco_0 = tokens;
+                        let __tco_0 = tokens;
 let __tco_1 = s2.clone();
 let __tco_2 = argv;
+let __tco_3 = Some(r3.expr.clone());
 tokens = __tco_0;
 state = __tco_1;
 argv = __tco_2;
+stdin = __tco_3;
 continue;
-} },
+}
+} else {
+                    let r3 = parse_expr(tokens.clone(), r2.state.clone());
+if has_err(r3.err.clone()) {
+                        return Rc::new(TransportResult {
+    transport: dummy.clone(),
+    state: r3.state.clone(),
+    err: r3.err.clone(),
+})
+}
+let e = eat(tokens.clone(), r3.state.clone(), Rc::new(ExpectedToken::ExpectComma));
+let s2 = if e.consumed.clone() {
+                        e.state.clone()
+} else {
+                        r3.state.clone()
+};
+{
+                        let __tco_0 = tokens;
+let __tco_1 = s2.clone();
+let __tco_2 = argv;
+let __tco_3 = stdin;
+tokens = __tco_0;
+state = __tco_1;
+argv = __tco_2;
+stdin = __tco_3;
+continue;
+}
+}
 }
 }
 }
@@ -6285,7 +6415,7 @@ let ch = match Rc::new({ let mut __result = Vec::new(); for p in Rc::new(digit_c
 };
 {
                 let __tco_0 = rest.clone();
-let __tco_1 = v2_rt::rc_list_push(acc, ch.clone());
+let __tco_1 = v2_rt::concat(Rc::new(vec![ch.clone()]), acc);
 value = __tco_0;
 acc = __tco_1;
 continue;

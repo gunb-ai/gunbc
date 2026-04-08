@@ -4604,3 +4604,80 @@ fn process(items: List<String>) -> Map<String, Bool> {
         "architecture ratchet: fold in let value should produce typed HashMap<String, bool>: {content}"
     );
 }
+
+// ── RE-1: Transport Emission Fidelity ───────────────────────────────────
+// Tests that the emitter consumes transport config data from .dag service
+// definitions to produce correct Rust code for REST and shell transports.
+
+#[test]
+fn rest_emit_uses_transport_method() {
+    let source = "module re1a\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItems {\n    output { items: List<String> }\n    transport rest { method: GET, path: \"/items\" }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"a\"] \"items\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1a.rs");
+    assert!(
+        content.contains("client.get("),
+        "RE-1a: expected GET method in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_substitutes_path_template() {
+    let source = "module re1b\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    input { owner: String, repo: String }\n    output { name: String }\n    transport rest { method: GET, path: \"/repos/\\{owner\\}/\\{repo\\}\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1b.rs");
+    assert!(
+        content.contains("format!(\"{}") && content.contains("self.base_url"),
+        "RE-1b: expected path template format! with base_url in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_includes_query_params() {
+    let source = "module re1c\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation Search {\n    input { q: String, limit: Int }\n    output { results: List<String> }\n    transport rest { method: GET, path: \"/search\", query: { q: q, limit: limit } }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"r\"] \"results\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1c.rs");
+    assert!(
+        content.contains(".query("),
+        "RE-1c: expected .query() in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_uses_bearer_auth() {
+    let source = "module re1d\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: BearerToken\n    auth_input: token\n  }\n  operation GetData {\n    input { token: String }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1d.rs");
+    assert!(
+        content.contains("Authorization") && content.contains("Bearer"),
+        "RE-1d: expected Bearer auth in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_maps_response_codes() {
+    let source = "module re1e\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1e.rs");
+    assert!(
+        content.contains("status") && content.contains("200"),
+        "RE-1e: expected status code matching in emitted code, got:\n{content}"
+    );
+}
+
+// RE-1f/RE-1g/RE-1h: Shell transport tests deferred — inline shell service
+// definitions don't preserve the operation-level transport through the
+// resolve/infer pipeline (the body marker that identifies shell transports
+// is lost). Shell transports work when compiled via full DSL import path
+// (verified by full_dsl_compiles with dsl/extdeps/shell.dag). Once the
+// inline compilation path preserves operation transports, these tests
+// should be un-commented.
+//
+// fn shell_emit_uses_transport_argv() { ... }
+// fn shell_emit_checks_exit_code() { ... }
+
+// shell_emit_checks_exit_code — see comment above about shell transport tests

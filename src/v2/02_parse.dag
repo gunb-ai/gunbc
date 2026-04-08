@@ -42,6 +42,7 @@ import v2.std.core {
   StringPart, Text, Interpolation,
   local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
   transport_url_key, transport_path_key,
+  transport_method_key, transport_path_template_key, transport_query_key, transport_stdin_key,
   service_config_properties,
   OperationModifier, Idempotent, Readonly, Hermetic,
   Token, TokenShape,
@@ -126,7 +127,7 @@ type ItemPrefixResult {
 
 // Parser-local intermediate: ServiceConfig is dissolved into Node properties at the
 // service Node construction boundary. This type exists only inside the parser.
-type ServiceConfig { endpoint: Node, auth: Node?, rate_limit: Node?, retry: Node? }
+type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, rate_limit: Node?, retry: Node? }
 type ConfigResult { config: ServiceConfig, state: ParserState, err: ErrorNode? }
 
 // Pratt parser binding power
@@ -2240,7 +2241,7 @@ fn parse_service_after_kw(tokens: List<Token>, state: ParserState, start_span: S
   // don't need to reverse-engineer it by string-splitting.
   let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: start_span)
   let svc_props = match r.config {
-    Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, rate_limit: cfg.rate_limit, retry: cfg.retry)
+    Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, rate_limit: cfg.rate_limit, retry: cfg.retry)
     None => []
   }
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span },
@@ -2308,10 +2309,10 @@ fn parse_service_entries(tokens: List<Token>, state: ParserState, config: Servic
 
 fn parse_service_config_block(tokens: List<Token>, state: ParserState) -> ConfigResult {
   // Parse key: value pairs for config
-  parse_config_fields(tokens: tokens, state: state, endpoint: none, auth: none, rate_limit: none, retry: none)
+  parse_config_fields(tokens: tokens, state: state, endpoint: none, auth: none, auth_input: none, rate_limit: none, retry: none)
 }
 
-fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?, auth: Node?, rate_limit: Node?, retry: Node?) -> ConfigResult {
+fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?, auth: Node?, auth_input: Node?, rate_limit: Node?, retry: Node?) -> ConfigResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if peek_is_rbrace(tokens: tokens, state: s) || at_end(tokens: tokens, state: s) {
     let cfg = ServiceConfig {
@@ -2320,12 +2321,13 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
         None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
       },
       auth: auth,
+      auth_input: auth_input,
       rate_limit: rate_limit,
       retry: retry
     }
     ConfigResult { config: cfg, state: s, err: none }
   } else {
-    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), auth: none, rate_limit: none, retry: none }
+    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), auth: none, auth_input: none, rate_limit: none, retry: none }
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return ConfigResult { config: dummy_cfg, state: r.state, err: r.err } }
     let fname = r.name
@@ -2338,11 +2340,12 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
     let s3 = if e.consumed { e.state } else { s2 }
 
     match fname {
-      "endpoint" => parse_config_fields(tokens: tokens, state: s3, endpoint: Some { value: r3.expr }, auth: auth, rate_limit: rate_limit, retry: retry)
-      "auth" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: Some { value: r3.expr }, rate_limit: rate_limit, retry: retry)
-      "rate_limit" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, rate_limit: Some { value: r3.expr }, retry: retry)
-      "retry" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, rate_limit: rate_limit, retry: Some { value: r3.expr })
-      _ => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, rate_limit: rate_limit, retry: retry)
+      "endpoint" => parse_config_fields(tokens: tokens, state: s3, endpoint: Some { value: r3.expr }, auth: auth, auth_input: auth_input, rate_limit: rate_limit, retry: retry)
+      "auth" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: Some { value: r3.expr }, auth_input: auth_input, rate_limit: rate_limit, retry: retry)
+      "auth_input" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: Some { value: r3.expr }, rate_limit: rate_limit, retry: retry)
+      "rate_limit" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, rate_limit: Some { value: r3.expr }, retry: retry)
+      "retry" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, rate_limit: rate_limit, retry: Some { value: r3.expr })
+      _ => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, rate_limit: rate_limit, retry: retry)
     }
   }
 }
@@ -2394,11 +2397,11 @@ fn parse_transport_binding(tokens: List<Token>, state: ParserState) -> Transport
 }
 
 fn parse_rest_binding_body(tokens: List<Token>, state: ParserState) -> TransportResult {
-  // Parse base_url (auth/headers always empty at parse time)
-  parse_rest_fields(tokens: tokens, state: state, base_url: none)
+  // Parse REST transport fields (auth/headers always empty at parse time)
+  parse_rest_fields(tokens: tokens, state: state, base_url: none, method: none, path_template: none, query: none)
 }
 
-fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?) -> TransportResult {
+fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?, method: Node?, path_template: Node?, query: Node?) -> TransportResult {
   let s = skip_newlines(tokens: tokens, state: state)
   let span = current_span(tokens: tokens, state: s)
   let dummy = local_transport_node(span: span)
@@ -2407,7 +2410,7 @@ fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?) -
       Some { value: e } => e
       None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
     }
-    TransportResult { transport: rest_transport_node(base_url: bu, auth_props: [], headers: [], span: span), state: s, err: none }
+    TransportResult { transport: rest_transport_node(base_url: bu, auth_props: [], headers: [], method: method, path: path_template, query: query, span: span), state: s, err: none }
   } else {
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
@@ -2418,49 +2421,59 @@ fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?) -
     if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
     let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
     let s2 = if e.consumed { e.state } else { r3.state }
-    match fname {
-      transport_url_key => parse_rest_fields(tokens: tokens, state: s2, base_url: Some { value: r3.expr })
-      _ => parse_rest_fields(tokens: tokens, state: s2, base_url: base_url)
+    if fname == transport_url_key {
+      parse_rest_fields(tokens: tokens, state: s2, base_url: Some { value: r3.expr }, method: method, path_template: path_template, query: query)
+    } else if fname == transport_method_key {
+      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: Some { value: r3.expr }, path_template: path_template, query: query)
+    } else if fname == transport_path_template_key {
+      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: Some { value: r3.expr }, query: query)
+    } else if fname == transport_query_key {
+      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: Some { value: r3.expr })
+    } else {
+      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: query)
     }
   }
 }
 
 fn parse_shell_binding_body(tokens: List<Token>, state: ParserState) -> TransportResult {
   // Parse argv (env always empty at parse time)
-  parse_shell_fields(tokens: tokens, state: state, argv: [])
+  parse_shell_fields(tokens: tokens, state: state, argv: [], stdin: none)
 }
 
-fn parse_shell_fields(tokens: List<Token>, state: ParserState, argv: List<Node>) -> TransportResult {
+fn parse_shell_fields(tokens: List<Token>, state: ParserState, argv: List<Node>, stdin: Node?) -> TransportResult {
   let s = skip_newlines(tokens: tokens, state: state)
   let span = current_span(tokens: tokens, state: s)
   let dummy = local_transport_node(span: span)
   if peek_is_rbrace(tokens: tokens, state: s) || at_end(tokens: tokens, state: s) {
-    TransportResult { transport: shell_transport_node(argv: argv, env: [], span: span), state: s, err: none }
+    TransportResult { transport: shell_transport_node(argv: argv, env: [], stdin: stdin, span: span), state: s, err: none }
   } else {
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
     let fname = r.name
     let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
     if has_err(err: r2.err) { return TransportResult { transport: dummy, state: r2.state, err: r2.err } }
-    match fname {
-      "argv" => {
-        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectLBracket)
-        if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-        let r4 = parse_expr_list_until(tokens: tokens, state: r3.state, end_expected: ExpectRBracket)
-        if has_err(err: r4.err) { return TransportResult { transport: dummy, state: r4.state, err: r4.err } }
-        let r5 = expect(tokens: tokens, state: r4.state, expected: ExpectRBracket)
-        if has_err(err: r5.err) { return TransportResult { transport: dummy, state: r5.state, err: r5.err } }
-        let e = eat(tokens: tokens, state: r5.state, expected: ExpectComma)
-        let s2 = if e.consumed { e.state } else { r5.state }
-        parse_shell_fields(tokens: tokens, state: s2, argv: r4.exprs)
-      }
-      _ => {
-        let r3 = parse_expr(tokens: tokens, state: r2.state)
-        if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-        let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
-        let s2 = if e.consumed { e.state } else { r3.state }
-        parse_shell_fields(tokens: tokens, state: s2, argv: argv)
-      }
+    if fname == "argv" {
+      let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectLBracket)
+      if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
+      let r4 = parse_expr_list_until(tokens: tokens, state: r3.state, end_expected: ExpectRBracket)
+      if has_err(err: r4.err) { return TransportResult { transport: dummy, state: r4.state, err: r4.err } }
+      let r5 = expect(tokens: tokens, state: r4.state, expected: ExpectRBracket)
+      if has_err(err: r5.err) { return TransportResult { transport: dummy, state: r5.state, err: r5.err } }
+      let e = eat(tokens: tokens, state: r5.state, expected: ExpectComma)
+      let s2 = if e.consumed { e.state } else { r5.state }
+      parse_shell_fields(tokens: tokens, state: s2, argv: r4.exprs, stdin: stdin)
+    } else if fname == transport_stdin_key {
+      let r3 = parse_expr(tokens: tokens, state: r2.state)
+      if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
+      let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
+      let s2 = if e.consumed { e.state } else { r3.state }
+      parse_shell_fields(tokens: tokens, state: s2, argv: argv, stdin: Some { value: r3.expr })
+    } else {
+      let r3 = parse_expr(tokens: tokens, state: r2.state)
+      if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
+      let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
+      let s2 = if e.consumed { e.state } else { r3.state }
+      parse_shell_fields(tokens: tokens, state: s2, argv: argv, stdin: stdin)
     }
   }
 }
@@ -2732,7 +2745,8 @@ fn int_to_string_acc(value: Int, acc: List<String>) -> List<String> {
       Some { value: p } => p.second
       None => "?"
     }
-    int_to_string_acc(value: rest, acc: list_push(acc, ch))
+    // Prepend digit (most significant digits are extracted last)
+    int_to_string_acc(value: rest, acc: concat([ch], acc))
   }
 }
 
