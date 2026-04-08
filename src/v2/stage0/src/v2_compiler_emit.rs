@@ -1873,12 +1873,20 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
 
 pub fn emit_typed_cast_shared(expr: Rc<Node>, cast_target_node: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let expr_str = recurse(expr);
-let ty_str = emit_node_type(cast_target_node, target.clone(), source_index);
-if can_cast(target.clone(), ty_str.clone()) {
-            render_cast(expr_str, ty_str.clone(), target.clone())
+        let expr_str = recurse(expr.clone());
+let ty_str = emit_node_type(cast_target_node, target.clone(), source_index.clone());
+let src_ty = match expr.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: n, .. }) => emit_node_type(n.clone(), target.clone(), source_index.clone()),
+    _ => "".to_string(),
+};
+if ((src_ty.clone().as_str() != "".to_string().as_str()) && (src_ty.clone().as_str() == ty_str.clone().as_str())) {
+            expr_str
 } else {
-            v2_rt::concat(v2_rt::concat("compile_error!(\"unsupported cast to ".to_string(), ty_str.clone()), "\")".to_string())
+            if can_cast(target.clone(), ty_str.clone()) {
+                render_cast(expr_str, ty_str.clone(), target.clone())
+} else {
+                v2_rt::concat(v2_rt::concat("compile_error!(\"unsupported cast to ".to_string(), ty_str.clone()), "\")".to_string())
+}
 }
 }
 }

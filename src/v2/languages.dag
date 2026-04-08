@@ -560,7 +560,7 @@ fn binop_symbol(target: RenderTarget, op: BinOp) -> String {
   })
   match matching |> first {
     Some { value: spec } => spec.symbol
-    None => "??"
+    None => "__MISSING_BINOP__"
   }
 }
 

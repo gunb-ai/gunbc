@@ -1858,7 +1858,14 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, source_index: NewlineIndex?) -> String {
   let expr_str = recurse(expr)
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_index: source_index)
-  if can_cast(target: target, target_type: ty_str) {
+  // Identity cast: if source and target render to the same type, pass through.
+  let src_ty = match expr.inferred {
+    Some { value: Resolved { node: n } } => emit_node_type(n: n, target: target, source_index: source_index)
+    _ => ""
+  }
+  if src_ty != "" && src_ty == ty_str {
+    expr_str
+  } else if can_cast(target: target, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
   } else {
     concat("compile_error!(\"unsupported cast to ", ty_str, "\")")

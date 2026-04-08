@@ -73,7 +73,7 @@ $STAGE0_CMD compile \
 if ! diff -r "$PASS2_DIR" "$OUTPUT_DIR" > /dev/null 2>&1; then
     echo "=== Pass 1 != Pass 2. Attempting automatic convergence (pass 3)... ==="
     echo "--- Diff (first 20 lines): ---"
-    diff -r "$PASS2_DIR" "$OUTPUT_DIR" | head -20
+    diff -r "$PASS2_DIR" "$OUTPUT_DIR" | head -20 || true
     echo "---"
 
     # Pass 2 output is the better approximation — copy to stage0
