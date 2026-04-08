@@ -73,7 +73,6 @@ pub use crate::extdeps_languages_rust_types::{integer_types, float_types};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, resolved_type_or_error, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
-use crate::v2_compiler_infer_method::*;
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem, DataItem};
@@ -1571,8 +1570,8 @@ continue;
                 break "".to_string();
 }
 } else {
-            let preludes = Rc::new({ let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { __result.extend((*if field_needs_rc_ref(field_binding_name_at(fb.clone(), source_index.clone()), rc_analysis.clone()) {
-                Rc::new(vec![v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), emit_pattern(field_binding_pattern(fb.clone()), shared_types.clone(), "".to_string(), source_index.clone(), emit_info.clone())), " = ".to_string()), emit_ident(field_binding_name_at(fb.clone(), source_index.clone()), RenderTarget::Rust)), ".as_ref() else { unreachable!() };".to_string())])
+            let preludes = Rc::new({ let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { __result.extend((*if field_needs_rc_ref(field_binding_name(fb.clone()), rc_analysis.clone()) {
+                Rc::new(vec![v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), emit_pattern(field_binding_pattern(fb.clone()), shared_types.clone(), "".to_string(), source_index.clone(), emit_info.clone())), " = ".to_string()), emit_ident(field_binding_name(fb.clone()), RenderTarget::Rust)), ".as_ref() else { unreachable!() };".to_string())])
 } else {
                 Rc::new(vec![])
 }).iter().cloned()); } __result });
@@ -1849,7 +1848,10 @@ if ((bt.children.clone().len() as i64) == 1) {
                     {
                         let matches = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(bt.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.1.clone().name.clone().as_str() == field.clone().as_str()) { __result.push(pair); } } __result });
 match matches.first().cloned() {
-    Some(m) => v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), (m.0.clone()).to_string()),
+    Some(m) => {
+                            let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+apply_type_template1(sharing.clone_value.clone(), v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), (m.0.clone()).to_string()))
+},
     None => v2_rt::concat(v2_rt::concat("compile_error!(\"anonymous record field not found: ".to_string(), field.clone()), "\")".to_string()),
 }
 }

@@ -65,7 +65,6 @@ pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffi
 pub use crate::v2_compiler_languages::{scaffold_for_target, TestConventions, test_conventions_for_target, is_string_like};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{for_each_element_type_node, resolved_type_or_error, normalize_access_type_node, node_is_keyed_collection};
-use crate::v2_compiler_infer_method::*;
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};

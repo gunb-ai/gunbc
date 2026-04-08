@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, module_node, module_imports, module_items, import_is_all, import_specific_names, make_param_node, param_node_name, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, field_access_base, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name, rt_node, has_inferred, is_compiler_error, InferredNode, NodeType, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name, resource_use_resource, kernel_type_set, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, has_child_named, module_node, module_imports, module_items, import_is_all, import_specific_names, make_param_node, param_node_name, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, field_access_base, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name, rt_node, has_inferred, is_compiler_error, InferredNode, NodeType, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name, resource_use_resource, kernel_type_set, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -436,12 +436,16 @@ pub fn internal_expr_error_node(message: String, span: Rc<SourceSpan>) -> Rc<Nod
 }
 
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
-    match v2_rt::map_get(&scope.locals.clone(), name) {
+    match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
     Some(binding) => match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
     Some(parent) => {
         let is_coproduct = (parent.connective.clone() == Connective::Disj);
 if is_coproduct {
-            Some(binding.resolved.clone().name.clone())
+            if has_child_named(parent.clone(), name.clone(), scope.type_env.clone().source_index.clone()) {
+                Some(binding.resolved.clone().name.clone())
+} else {
+                None
+}
 } else {
             None
 }
