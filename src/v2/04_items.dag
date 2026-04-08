@@ -15,7 +15,8 @@ import v2.std.core {
   InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
-  Connective, Conj, Disj, NoConnective
+  Connective, Conj, Disj, NoConnective,
+  node_name_span, no_span
 }
 import v2.compiler.infer_types {
   child_type_node
@@ -94,18 +95,18 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Node> 
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
                 let child_type = child_type_node(ch: child)
-                make_field_node(name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span)
+                make_field_node(name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span, name_span: node_name_span(n: child))
               )
             } else {
-              [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span)]
+              [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: no_span())]
             }
           } else {
-            [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span)]
+            [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: no_span())]
           }
         } else if rt.connective == Conj && rt.children |> count == 0 {
           []
         } else {
-          [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span)]
+          [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: no_span())]
         }
     }
   }

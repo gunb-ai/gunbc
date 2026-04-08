@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, ExprData, InferredNode, is_compiler_error, NodeType, Cardinality, Connective, ErrorNode, make_error_node, MatchPattern, arm_pattern, LiteralValue, leaf_node, with_optional_cardinality, none_type, error_type, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, find_child_named, NewlineIndex, ExprData, InferredNode, is_compiler_error, NodeType, Cardinality, Connective, ErrorNode, make_error_node, MatchPattern, arm_pattern, LiteralValue, leaf_node, with_optional_cardinality, none_type, error_type, no_span, CompilerDiagnostic};
 use crate::v2_std_core::ExprData::{NoExprData};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
@@ -109,7 +109,7 @@ pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
 let value_field = Rc::new(Node {
     name: "value".to_string(),
     span: scrut.span.clone(),
-    ident_span: Some(scrut.span.clone()),
+    ident_span: Some(no_span()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -130,7 +130,7 @@ let value_field = Rc::new(Node {
 let some_node = Rc::new(Node {
     name: "Some".to_string(),
     span: scrut.span.clone(),
-    ident_span: Some(scrut.span.clone()),
+    ident_span: Some(no_span()),
     children: Rc::new(vec![value_field]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -215,7 +215,7 @@ pub fn variant_not_found_result(scrut: Rc<Node>, variant_name: String, module_na
 }), module_name)]))
 }
 
-pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: String, module_name: String) -> Rc<NodeLookupResult> {
+pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: String, module_name: String, source_index: Option<Rc<NewlineIndex>>) -> Rc<NodeLookupResult> {
     match (*scrut).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
     PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::VariantNotFound {
@@ -229,7 +229,7 @@ if (((scrut_node.connective.clone() == Connective::NoConnective) && ((scrut_node
             node_lookup_failed(Rc::new(vec![]))
 } else {
             {
-                let direct_match = Rc::new({ let mut __result = Vec::new(); for c in scrut_node.children.clone().iter().cloned() { if (c.name.clone().as_str() == variant_name.clone().as_str()) { __result.push(c); } } __result }).first().cloned();
+                let direct_match = find_child_named(scrut_node.clone(), variant_name.clone(), source_index);
 let fallback = if (scrut_opt.clone() && (variant_name.clone().as_str() == "Some".to_string().as_str())) {
                     node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
 } else {
@@ -249,7 +249,7 @@ match direct_match {
 }
 }
 
-pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, module_name: String) -> Rc<NodeLookupResult> {
+pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, module_name: String, source_index: Option<Rc<NewlineIndex>>) -> Rc<NodeLookupResult> {
     match (*variant).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
     PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
@@ -257,7 +257,7 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, 
     type_name: "unresolved".to_string(),
     span: dynamic_span.clone(),
 }), module_name)])),
-    PatternSubject::PatternResolved { node: variant_node, .. } => match Rc::new({ let mut __result = Vec::new(); for c in variant_node.children.clone().iter().cloned() { if (c.name.clone().as_str() == field_name.clone().as_str()) { __result.push(c); } } __result }).first().cloned() {
+    PatternSubject::PatternResolved { node: variant_node, .. } => match find_child_named(variant_node.clone(), field_name.clone(), source_index) {
     Some(field_child) => {
         let resolved = child_type_node(field_child.clone());
 node_lookup_resolved(resolved)

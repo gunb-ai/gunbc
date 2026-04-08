@@ -23,6 +23,7 @@ module v2.compiler.infer
 import std.types { SourceSpan }
 import v2.std.core {
   Node,
+  authored_name_at, NewlineIndex, has_child_named,
   module_node, module_imports, module_items, import_is_all, import_specific_names,
   make_param_node, param_node_name, param_node_type_expr,
   field_node_type_expr,
@@ -72,7 +73,7 @@ import v2.std.core {
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   is_container_type, container_expected_arity,
-  default_ident_span
+  default_ident_span, node_name_span
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
@@ -478,13 +479,17 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
 }
 
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
+  // BRIDGE DEBT (M4): uses has_child_named to verify variant membership.
+  // scope.locals contains ALL locals (params, let bindings, match bindings),
+  // not just variant bindings — the Disj check alone is insufficient.
+  // Deletion point: when variant bindings carry a structural parent edge.
   match map_get(scope.locals, name) {
     Some { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
         Some { value: parent } =>
           let is_coproduct = parent.connective == Disj
           if is_coproduct {
-            if parent.children |> any(child => child.name == name) {
+            if has_child_named(n: parent, name: name, source_index: scope.type_env.source_index) {
               Some { value: binding.resolved.name }
             } else { none }
           } else { none }
@@ -576,10 +581,10 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
         PatternDynamic { span: _ } => none
         PatternLookupBlocked => none
       }
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, source_index: scope.type_env.source_index)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let annotated_bindings = bindings |> map(binding =>
-        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name(n: binding), module_name: scope.module_name)
+        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name(n: binding), module_name: scope.module_name, source_index: scope.type_env.source_index)
         let field_subject = lookup_result_subject(result: field_lookup)
         make_field_binding_node(field_name: field_binding_name(n: binding), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, scope: scope), span: binding.span)
       )
@@ -676,11 +681,11 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, source_index: scope.type_env.source_index)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
       fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
-        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name(n: fb), module_name: scope.module_name)
+        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name(n: fb), module_name: scope.module_name, source_index: scope.type_env.source_index)
         let field_subject = lookup_result_subject(result: field_lookup)
         let field_type = pattern_binding_type(subject: field_subject)
         let fb_pattern = field_binding_pattern(n: fb)
@@ -749,8 +754,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       // Build synthetic callable expected with acc_type (first) + elem_type (last).
       // ExprLambda's callable-expected handler threads params positionally.
       let fold_params = [
-        make_param_node(name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span()),
-        make_param_node(name: "elem", type_expr: element_type, default_value: none, span: no_span())
+        make_param_node(name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span(), name_span: no_span()),
+        make_param_node(name: "elem", type_expr: element_type, default_value: none, span: no_span(), name_span: no_span())
       ]
       let fold_callable = Node {
         name: "", span: no_span(), ident_span: none, children: [],
@@ -897,7 +902,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           diagnostics: base_diags
         }
       } else {
-      match lookup_field_type_node(n: resolved_base, field_name: field_name) {
+      match lookup_field_type_node(n: resolved_base, field_name: field_name, source_index: scope.type_env.source_index) {
         Some { value: field_type } =>
           let field_summary = field_summary_for_type(base_type: base_rt, env: scope.type_env, field: field_name)
           let fa_texpr = make_named_expr_node(
@@ -1051,7 +1056,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           receiver_type: first_arg_type,
           method_name: func_name,
           fold_accumulator_type: if call_fold_info != none { Some { value: refined_call_fold_acc_type } } else { none },
-          service_registry: scope.service_registry
+          service_registry: scope.service_registry,
+          source_index: scope.type_env.source_index
         )
         let is_known_method = method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
@@ -1288,7 +1294,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         receiver_type: recv_rt,
         method_name: method_name,
         fold_accumulator_type: if fold_info != none { Some { value: refined_fold_acc_type } } else { none },
-        service_registry: scope.service_registry
+        service_registry: scope.service_registry,
+        source_index: scope.type_env.source_index
       )
       let base_result_type = match method_resolution.result_type {
         Some { value: rt } => rt
@@ -1635,7 +1642,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let right_result = infer_expr(texpr: right_expr, scope: scope, expected: none)
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
-      let result_type = infer_binop_type_node(op: op, left_type: resolved_type_or_error(n: left_typed))
+      let result_type = infer_binop_type_node(op: op, left_type: resolved_type_or_error(n: left_typed), source_index: scope.type_env.source_index)
       let bo_texpr = make_expr_node(expr_data: ExprBinOp { op: op }, children: [left_typed, right_typed], inferred: Some { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
@@ -1972,7 +1979,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   }
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name(n: fi)
-    let field_expected = match struct_fields |> filter(sf => sf.name == fi_name) |> first {
+    let field_expected = match struct_fields |> filter(sf => authored_name_at(source_index: scope.type_env.source_index, node: sf) == fi_name) |> first {
       Some { value: sf } =>
         // Struct definition children store type in inferred (via field_to_child_node),
         // not in children[0] (which is empty).
@@ -1984,7 +1991,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let ar_typed = ar.typed
     let ar_diags = ar.diagnostics
     FieldInferResult {
-      typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span),
+      typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
       diagnostics: ar_diags
     }
@@ -2966,7 +2973,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   }
   let built = modules |> fold(init: init, f: (state, typed_module) =>
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
-      add_emit_item_summary(state: inner_state, item: item)
+      add_emit_item_summary(state: inner_state, item: item, source_index: typed_module.type_env.source_index)
     )
   )
   let all_recursive = modules |> fold(init: empty_map(), f: (acc, m) =>

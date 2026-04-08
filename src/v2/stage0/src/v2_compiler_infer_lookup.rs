@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, param_node_type_expr, InferredNode, NodeType, Cardinality, MethodSemantics, FieldAccessStyle, FieldValueShape, FieldSummary, with_optional_cardinality, with_required_cardinality, Connective};
+pub use crate::v2_std_core::{Node, param_node_type_expr, authored_name_at, NewlineIndex, find_child_named, has_child_named, InferredNode, NodeType, Cardinality, MethodSemantics, FieldAccessStyle, FieldValueShape, FieldSummary, with_optional_cardinality, with_required_cardinality, Connective};
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -88,7 +88,7 @@ pub fn lookup_func_sig(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc
     v2_rt::map_get(&func_env.signatures.clone(), name)
 }
 
-pub fn lookup_field_type_node(n: Rc<Node>, field_name: String) -> Option<Rc<Node>> {
+pub fn lookup_field_type_node(n: Rc<Node>, field_name: String, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -98,7 +98,7 @@ if is_optional {
 if (field_name.clone().as_str() == "value".to_string().as_str()) {
                         Some(inner)
 } else {
-                        match lookup_field_type_node(inner, field_name.clone()) {
+                        match lookup_field_type_node(inner, field_name.clone(), source_index) {
     Some(inner_result) => Some(with_optional_cardinality(inner_result.clone())),
     None => None,
 }
@@ -111,12 +111,12 @@ if has_structure {
                         {
                             let is_product = (n.connective.clone() == Connective::Conj);
 if is_product {
-                                match Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if (c.name.clone().as_str() == field_name.clone().as_str()) { __result.push(c); } } __result }).first().cloned() {
+                                match find_child_named(n.clone(), field_name.clone(), source_index) {
     Some(field_child) => Some(child_type_node(field_child.clone())),
     None => None,
 }
 } else {
-                                lookup_coproduct_common_field_node(n.children.clone(), field_name.clone())
+                                lookup_coproduct_common_field_node(n.children.clone(), field_name.clone(), source_index)
 }
 }
 } else {
@@ -128,12 +128,12 @@ if is_product {
     })
 }
 
-pub fn lookup_coproduct_common_field_node(variants: Rc<Vec<Rc<Node>>>, field_name: String) -> Option<Rc<Node>> {
+pub fn lookup_coproduct_common_field_node(variants: Rc<Vec<Rc<Node>>>, field_name: String, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
     {
-        let found_in_all = { let mut __all = true; for v in variants.clone().iter().cloned() { if !({ let mut __found = false; for c in v.children.clone().iter().cloned() { if (c.name.clone().as_str() == field_name.clone().as_str()) { __found = true; break; } } __found }) { __all = false; break; } } __all };
+        let found_in_all = { let mut __all = true; for v in variants.clone().iter().cloned() { if !(has_child_named(v.clone(), field_name.clone(), source_index.clone())) { __all = false; break; } } __all };
 let first_field = if found_in_all {
             match variants.clone().first().cloned() {
-    Some(first_variant) => Rc::new({ let mut __result = Vec::new(); for c in first_variant.children.clone().iter().cloned() { if (c.name.clone().as_str() == field_name.clone().as_str()) { __result.push(c); } } __result }).first().cloned(),
+    Some(first_variant) => find_child_named(first_variant.clone(), field_name.clone(), source_index.clone()),
     None => None,
 }
 } else {
@@ -284,9 +284,9 @@ if no_structure {
                             {
                                 let is_product = (resolved.connective.clone() == Connective::Conj);
 if is_product {
-                                    v2_rt::map_get(&build_struct_field_summaries(resolved.children.clone()), field.clone())
+                                    v2_rt::map_get(&build_struct_field_summaries(resolved.clone(), env.source_index.clone()), field.clone())
 } else {
-                                    v2_rt::map_get(&build_enum_field_summaries(resolved.children.clone()), field.clone())
+                                    v2_rt::map_get(&build_enum_field_summaries(resolved.children.clone(), env.source_index.clone()), field.clone())
 }
 }
 }
@@ -306,9 +306,9 @@ pub struct MethodFieldResult {
     pub algebra_template: Option<Rc<AlgebraFieldTemplate>>,
 }
 
-pub fn lookup_field_in_product(product: Rc<Node>, method_name: String) -> Option<Rc<MethodFieldResult>> {
+pub fn lookup_field_in_product(product: Rc<Node>, method_name: String, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<MethodFieldResult>> {
     {
-        let matching = Rc::new({ let mut __result = Vec::new(); for c in product.children.clone().iter().cloned() { if (c.name.clone().as_str() == method_name.clone().as_str()) { __result.push(c); } } __result });
+        let matching = Rc::new({ let mut __result = Vec::new(); for c in product.children.clone().iter().cloned() { if (authored_name_at(source_index.clone(), c.clone()).as_str() == method_name.clone().as_str()) { __result.push(c); } } __result });
 match matching.first().cloned() {
     Some(field) => match field.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => if ((rt.params.clone().len() as i64) > 0) {
@@ -344,12 +344,12 @@ match matching.first().cloned() {
 }
 }
 
-pub fn lookup_structural_method(receiver_type: Rc<Node>, method_name: String) -> Option<Rc<MethodFieldResult>> {
+pub fn lookup_structural_method(receiver_type: Rc<Node>, method_name: String, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<MethodFieldResult>> {
     {
         let is_product = (receiver_type.connective.clone() == Connective::Conj);
 if is_product {
             {
-                let direct = lookup_field_in_product(receiver_type.clone(), method_name.clone());
+                let direct = lookup_field_in_product(receiver_type.clone(), method_name.clone(), source_index);
 match direct.clone() {
     Some(_) => direct.clone(),
     None => None,
@@ -360,7 +360,7 @@ match direct.clone() {
                 let enriched = enrich_kernel_type(receiver_type.name.clone(), receiver_type.clone());
 if ((enriched.connective.clone() == Connective::Conj) && ((enriched.children.clone().len() as i64) > 0)) {
                     {
-                        let base_result = lookup_field_in_product(enriched.clone(), method_name.clone());
+                        let base_result = lookup_field_in_product(enriched.clone(), method_name.clone(), source_index);
 match base_result.clone() {
     Some(mfr) => {
                             let profile = v2_rt::map_get(&kernel_algebra_profile(), receiver_type.name.clone());
@@ -393,9 +393,9 @@ match template_match {
 }
 }
 
-pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, method_name: String, fold_accumulator_type: Option<Rc<Node>>, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Rc<KnownMethodResolution> {
+pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, method_name: String, fold_accumulator_type: Option<Rc<Node>>, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<KnownMethodResolution> {
     {
-        let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
+        let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone(), source_index);
 match tier0_result {
     Some(mfr) => {
             let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {

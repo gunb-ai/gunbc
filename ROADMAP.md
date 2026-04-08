@@ -174,6 +174,9 @@ Clean-repo workflow:
 3. `cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored --nocapture`
 4. Run `./scripts/regenerate-stage0.sh`
 5. Require `git diff --exit-code src/v2/stage0`
+6. **Self-hosting check:** `./scripts/regenerate-stage0.sh` a second time
+   (pass N+1 must compile). Without this, codegen regressions hide behind
+   the one-pass "compiles from main's binary" check.
 
 Stabilization rules:
 - No manual `src/v2/stage0/` edits once regeneration is green.
@@ -181,6 +184,31 @@ Stabilization rules:
 - Stage0 generated `.rs` files use `-merge` in `.gitattributes` (no line-level merge).
 - CX gate disabled in both stage0 and `compile.dag` — emission not blocked by complexity violations. Re-enable when CX violations reach 0.
 - CLI exit code filters complexity diagnostics: `main.rs` exits non-zero only for hard errors (non-`ComplexityUnknown`). Without this filter, the 522 pre-existing complexity violations make the freshness gate fatal. Remove the filter when CX reaches 0 (same gate as CX-E).
+
+### Self-Hosting Gap (discovered 2026-04-08)
+
+**Problem:** `bootstrap_stage0_to_stage1` returns early when complexity
+violations block emission, so it never validates the generated Rust.
+`bootstrap_fixed_point` (the two-pass self-hosting test) is `#[ignore]`
+and not a CI gate. This allowed a codegen regression (variant
+misclassification from mixed name authorities in emit) to ship
+undetected across multiple commits.
+
+**Root causes:**
+1. The complexity violations (526) provide an escape hatch for the
+   bootstrap gate — emission succeeds but validation is skipped.
+2. `bootstrap_fixed_point` is marked expensive (~20s for 2 release
+   builds + 2 compiles) but this is well within CI budget.
+3. The one-pass regen workflow (`git checkout origin/main -- stage0/`
+   then regen) masks self-hosting failures because main's binary
+   generates correct code even when the branch's binary wouldn't.
+
+**Fix priority (P0 — blocks all codegen-touching work):**
+- [ ] Un-ignore `bootstrap_fixed_point` in CI. The ~20s cost is
+  acceptable. Self-hosting regressions are silent and cumulative.
+- [ ] Remove the complexity early-return from `bootstrap_stage0_to_stage1`
+  so it always validates generated Rust, even with CX violations.
+- [ ] Add two-pass regen to the clean-repo workflow (step 6 above).
 
 ## Reviewer Root Cause Analysis (2026-04-03)
 
@@ -993,7 +1021,8 @@ lanes — any lane can introduce a regression.
 | What | Where | Status |
 |------|-------|--------|
 | Self-compile time ratchet | `bootstrap::performance_ratchet` | `#[ignore]`, CI gate, 30s budget (~4.8s actual) |
-| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, CI gate, ratchet 0 |
+| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, CI gate, ratchet 0 — **validation skipped when CX blocks emission** |
+| Bootstrap fixed-point | `bootstrap::bootstrap_fixed_point` | `#[ignore]`, NOT a CI gate — **P0: must un-ignore** |
 | Full DSL compile | `pipeline::full_dsl_compiles` | `#[ignore]`, GREEN |
 | Stage0 freshness gate | `scripts/check-stage0-freshness.sh` | CI blocking |
 | Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, ratchet 325 |

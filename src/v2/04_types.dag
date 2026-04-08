@@ -23,6 +23,7 @@ import std.algebra {
 }
 import v2.std.core {
   Node, make_param_node, param_node_type_expr,
+  find_child_named, NewlineIndex,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
   NoExprData, ExprLiteral,
@@ -64,6 +65,14 @@ fn type_variable_node(id: String) -> Node {
 // simplifies to resolved_type_or_error.
 fn child_type_node(ch: Node) -> Node {
   if ch.inferred != none { resolved_type_or_error(n: ch) } else { ch }
+}
+
+// Positional child type access — get the type of the nth child (0-indexed).
+fn child_type_at(n: Node, index: Int) -> Node? {
+  match n.children |> skip(index) |> first {
+    Some { value: ch } => Some { value: child_type_node(ch: ch) }
+    None => none
+  }
 }
 
 // Basic node/cardinality helpers
@@ -128,10 +137,13 @@ fn container_node(kind_name: String, element: Node) -> Node {
   ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
+// Tuples are anonymous positional products: ident_span = none marks them
+// structurally as unnamed Conj. Named Conj types have real ident_spans.
+// Children retain "first"/"second" names for summary keying.
 fn tuple_node(first: Node, second: Node) -> Node {
-  Node { name: "Tuple", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
-    Node { name: "first", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: "second", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [
+    Node { name: "first", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "second", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
@@ -181,7 +193,7 @@ fn algebra_value_field(name: String, type_node: Node) -> Node {
 // lookup_structural_method checks params.count > 0 to distinguish callable
 // from value fields, so we need real Param entries.
 fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
-  let params = param_types |> map(t => make_param_node(name: "_", type_expr: t, default_value: none, span: no_span()))
+  let params = param_types |> map(t => make_param_node(name: "_", type_expr: t, default_value: none, span: no_span(), name_span: no_span()))
   Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable_node(func_params: params, ret: return_type) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
@@ -424,7 +436,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       )
     CallableOf { params: p, return_type: r } =>
       let param_nodes = p |> map(tp => apply_type_substitution(template: tp, subst: subst, receiver: receiver))
-      callable_node(func_params: param_nodes |> map(pn => make_param_node(name: "_", type_expr: pn, default_value: none, span: no_span())), ret: apply_type_substitution(template: r, subst: subst, receiver: receiver))
+      callable_node(func_params: param_nodes |> map(pn => make_param_node(name: "_", type_expr: pn, default_value: none, span: no_span(), name_span: no_span())), ret: apply_type_substitution(template: r, subst: subst, receiver: receiver))
   }
 }
 
@@ -870,7 +882,7 @@ fn binop_algebra_field(op: BinOp) -> String {
   }
 }
 
-fn infer_binop_type_node(op: BinOp, left_type: Node) -> Node {
+fn infer_binop_type_node(op: BinOp, left_type: Node, source_index: NewlineIndex?) -> Node {
   // Comparison and boolean ops always return Bool
   match op {
     Eq => bool_type
@@ -883,14 +895,13 @@ fn infer_binop_type_node(op: BinOp, left_type: Node) -> Node {
     Or => bool_type
     NullCoalesce => extract_optional_inner_node(n: left_type)
     _ =>
-      // Arithmetic ops: try structural lookup on the receiver type.
-      // If the type's algebra has an "add"/"mul" field, use its return type.
-      // Fall back to left_type (current behavior) if no algebra structure found.
+      // Arithmetic ops: look up the algebra method on the receiver type.
+      // Delegates to find_child_named (centralized lookup) rather than
+      // inline string scan. Falls back to left_type if no algebra found.
       let field_name = binop_algebra_field(op: op)
       let is_product = left_type.connective == Conj
       if is_product {
-        let matching = left_type.children |> filter(c => c.name == field_name)
-        match matching |> first {
+        match find_child_named(n: left_type, name: field_name, source_index: source_index) {
           Some { value: field } =>
             match field.inferred {
               Some { value: Resolved { node: rt } } =>

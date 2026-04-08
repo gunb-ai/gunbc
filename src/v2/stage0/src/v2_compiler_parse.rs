@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, NodeType, rt_node, Connective, is_container_type, Cardinality, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name, variant_node_fields, leaf_node, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, CompilerDiagnostic};
+pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, NodeType, rt_node, Connective, is_container_type, Cardinality, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name, variant_node_fields, leaf_node, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
@@ -450,9 +450,15 @@ pub struct PostfixResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParserParam {
+    pub name: String,
+    pub span: Rc<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LambdaCheckResult {
     pub is_lambda: bool,
-    pub params: Rc<Vec<String>>,
+    pub params: Rc<Vec<Rc<ParserParam>>>,
     pub state: ParserState,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -460,7 +466,7 @@ pub struct LambdaCheckResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdentCollectResult {
     pub success: bool,
-    pub params: Rc<Vec<String>>,
+    pub params: Rc<Vec<Rc<ParserParam>>>,
     pub state: ParserState,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -1705,13 +1711,13 @@ pub fn node_inferred_to_outputs(rt: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     _ => false,
 }) { __all = false; break; } } __all };
 if all_children_typed {
-                Rc::new({ let mut __result = Vec::new(); for ch in rt.children.clone().iter().cloned() { __result.push(make_field_node(ch.name.clone(), child_inferred_or_empty(ch.clone()), Cardinality::Required, ch.body.clone(), None, ch.span.clone())); } __result })
+                Rc::new({ let mut __result = Vec::new(); for ch in rt.children.clone().iter().cloned() { __result.push(make_field_node(ch.name.clone(), child_inferred_or_empty(ch.clone()), Cardinality::Required, ch.body.clone(), None, ch.span.clone(), node_name_span(ch.clone()))); } __result })
 } else {
                 Rc::new(vec![])
 }
 }
 } else {
-        Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, rt.span.clone())])
+        Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, rt.span.clone(), no_span())])
 }
 }
 
@@ -2268,7 +2274,7 @@ let props = match field_node_from_key(field.clone()) {
     value: Rc::new(LiteralValue::LitStr {
     value: key.clone(),
 }),
-}), Rc::new(vec![]), None, field.span.clone()), field.span.clone())]),
+}), Rc::new(vec![]), None, field.span.clone()), field.span.clone(), no_span())]),
     None => Rc::new(vec![]),
 };
 Rc::new(Node {
@@ -2361,7 +2367,7 @@ Rc::new(Node {
     span: span.clone(),
     ident_span: ident_span,
     children: Rc::new(vec![]),
-    params: Rc::new({ let mut __result = Vec::new(); for f in inputs.iter().cloned() { __result.push(make_param_node(field_node_name(f.clone()), field_node_type_expr(f.clone()), field_node_default_value(f.clone()), f.span.clone())); } __result }),
+    params: Rc::new({ let mut __result = Vec::new(); for f in inputs.iter().cloned() { __result.push(make_param_node(field_node_name(f.clone()), field_node_type_expr(f.clone()), field_node_default_value(f.clone()), f.span.clone(), node_name_span(f.clone()))); } __result }),
     inferred: outputs_to_inferred(outputs, span.clone()),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -2384,7 +2390,7 @@ pub fn make_capability_node(name: String, ident_span: Option<Rc<SourceSpan>>, in
     span: span.clone(),
     ident_span: ident_span,
     children: Rc::new(vec![]),
-    params: Rc::new({ let mut __result = Vec::new(); for f in inputs.iter().cloned() { __result.push(make_param_node(field_node_name(f.clone()), field_node_type_expr(f.clone()), field_node_default_value(f.clone()), f.span.clone())); } __result }),
+    params: Rc::new({ let mut __result = Vec::new(); for f in inputs.iter().cloned() { __result.push(make_param_node(field_node_name(f.clone()), field_node_type_expr(f.clone()), field_node_default_value(f.clone()), f.span.clone(), node_name_span(f.clone()))); } __result }),
     inferred: outputs_to_inferred(outputs, span.clone()),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -2728,7 +2734,7 @@ let first_name_span = r.span.clone();
 let s = skip_newlines(tokens.clone(), r.state.clone());
 if (peek_is_lbrace(tokens.clone(), s.clone()) || peek_is_pipe(tokens.clone(), s.clone())) {
                     {
-                        let r = parse_variant_fields(tokens.clone(), s.clone(), first_name);
+                        let r = parse_variant_fields(tokens.clone(), s.clone(), first_name, first_name_span);
 if has_err(r.err.clone()) {
                             return Rc::new(ItemResult {
     item: dummy.clone(),
@@ -2976,7 +2982,7 @@ let dummy_pred = make_field_init_node("".to_string(), make_expr_node(Rc::new(Exp
     value: Rc::new(LiteralValue::LitBool {
     value: false,
 }),
-}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone());
+}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone(), zero_span.clone());
 let r = expect_name(tokens.clone(), state);
 if has_err(r.err.clone()) {
             return Rc::new(PredResult {
@@ -3012,7 +3018,7 @@ Rc::new(PredResult {
     value: Rc::new(LiteralValue::LitStr {
     value: r2.value.clone(),
 }),
-}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone()),
+}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone(), zero_span.clone()),
     state: r3.state.clone(),
     err: None,
 })
@@ -3039,7 +3045,7 @@ Rc::new(PredResult {
     value: Rc::new(LiteralValue::LitStr {
     value: r2.name.clone(),
 }),
-}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone()),
+}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone(), zero_span.clone()),
     state: r3.state.clone(),
     err: None,
 })
@@ -3066,7 +3072,7 @@ Rc::new(PredResult {
     value: Rc::new(LiteralValue::LitStr {
     value: r2.value.clone(),
 }),
-}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone()),
+}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone(), zero_span.clone()),
     state: r3.state.clone(),
     err: None,
 })
@@ -3093,7 +3099,7 @@ Rc::new(PredResult {
     value: Rc::new(LiteralValue::LitStr {
     value: r2.name.clone(),
 }),
-}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone()),
+}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone(), zero_span.clone()),
     state: r3.state.clone(),
     err: None,
 })
@@ -3120,7 +3126,7 @@ Rc::new(PredResult {
     value: Rc::new(LiteralValue::LitStr {
     value: r2.name.clone(),
 }),
-}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone()),
+}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone(), zero_span.clone()),
     state: r3.state.clone(),
     err: None,
 })
@@ -3147,7 +3153,7 @@ let min_fields = if (r2.min_val.clone() != None) {
     value: Rc::new(LiteralValue::LitInt {
     value: r2.min_val.clone().clone().unwrap(),
 }),
-}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone())])
+}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone(), zero_span.clone())])
 } else {
                     Rc::new(vec![])
 };
@@ -3156,14 +3162,14 @@ let max_fields = if (r2.max_val.clone() != None) {
     value: Rc::new(LiteralValue::LitInt {
     value: r2.max_val.clone().clone().unwrap(),
 }),
-}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone())])
+}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone(), zero_span.clone())])
 } else {
                     Rc::new(vec![])
 };
 Rc::new(PredResult {
     predicate: make_field_init_node("Range".to_string(), make_expr_node(Rc::new(ExprData::ExprRecordLit {
     parent_enum: None,
-}), v2_rt::concat(min_fields, max_fields), None, zero_span.clone()), zero_span.clone()),
+}), v2_rt::concat(min_fields, max_fields), None, zero_span.clone()), zero_span.clone(), zero_span.clone()),
     state: r3.state.clone(),
     err: None,
 })
@@ -3181,7 +3187,7 @@ Rc::new(PredResult {
     value: Rc::new(LiteralValue::LitBool {
     value: true,
 }),
-}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone()),
+}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone(), zero_span.clone()),
     state: s.clone(),
     err: None,
 }),
@@ -3190,7 +3196,7 @@ Rc::new(PredResult {
     value: Rc::new(LiteralValue::LitBool {
     value: true,
 }),
-}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone()),
+}), Rc::new(vec![]), None, zero_span.clone()), zero_span.clone(), zero_span.clone()),
     state: s.clone(),
     err: None,
 }),
@@ -3309,7 +3315,7 @@ Rc::new(NamedIntResult {
 }
 }
 
-pub fn parse_variant_fields(tokens: Rc<Vec<Rc<Token>>>, state: ParserState, vname: String) -> Rc<VariantResult> {
+pub fn parse_variant_fields(tokens: Rc<Vec<Rc<Token>>>, state: ParserState, vname: String, vname_span: Rc<SourceSpan>) -> Rc<VariantResult> {
     {
         let start_span = current_span(tokens.clone(), state.clone());
 let e = eat(tokens.clone(), state.clone(), Rc::new(ExpectedToken::ExpectLBrace));
@@ -3318,7 +3324,7 @@ if e.consumed.clone() {
                 let r = parse_field_list(tokens.clone(), skip_newlines(tokens.clone(), e.state.clone()));
 if has_err(r.err.clone()) {
                     return Rc::new(VariantResult {
-    variant: make_variant_node(vname.clone(), Rc::new(vec![]), start_span.clone()),
+    variant: make_variant_node(vname.clone(), Rc::new(vec![]), start_span.clone(), vname_span.clone()),
     state: r.state.clone(),
     err: r.err.clone(),
 })
@@ -3327,12 +3333,12 @@ let s = skip_newlines(tokens.clone(), r.state.clone());
 let r2 = expect(tokens.clone(), s, Rc::new(ExpectedToken::ExpectRBrace));
 if has_err(r2.err.clone()) {
                     return Rc::new(VariantResult {
-    variant: make_variant_node(vname.clone(), Rc::new(vec![]), start_span.clone()),
+    variant: make_variant_node(vname.clone(), Rc::new(vec![]), start_span.clone(), vname_span.clone()),
     state: r2.state.clone(),
     err: r2.err.clone(),
 })
 }
-let v = make_variant_node(vname.clone(), r.fields.clone(), start_span.clone());
+let v = make_variant_node(vname.clone(), r.fields.clone(), start_span.clone(), vname_span.clone());
 Rc::new(VariantResult {
     variant: v,
     state: r2.state.clone(),
@@ -3341,7 +3347,7 @@ Rc::new(VariantResult {
 }
 } else {
             {
-                let v = make_variant_node(vname.clone(), Rc::new(vec![]), start_span.clone());
+                let v = make_variant_node(vname.clone(), Rc::new(vec![]), vname_span.clone(), vname_span.clone());
 Rc::new(VariantResult {
     variant: v,
     state: state.clone(),
@@ -3370,7 +3376,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let r2 = parse_variant_fields(tokens.clone(), r.state.clone(), r.name.clone());
+let r2 = parse_variant_fields(tokens.clone(), r.state.clone(), r.name.clone(), r.span.clone());
 if has_err(r2.err.clone()) {
                 return Rc::new(VariantsResult {
     variants: Rc::new(vec![]),
@@ -3568,7 +3574,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let param = make_param_node("".to_string(), r.type_expr.clone(), None, r.type_expr.clone().span.clone());
+let param = make_param_node("".to_string(), r.type_expr.clone(), None, r.type_expr.clone().span.clone(), r.type_expr.clone().span.clone());
 acc = v2_rt::rc_list_push(acc.clone(), param.clone());
 let e = eat(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
@@ -3690,7 +3696,7 @@ pub fn collect_type_param_names(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Parse
         if is_ident(tokens.clone(), state.clone()) {
             let r = expect_ident(tokens.clone(), state.clone());
 let span = r.span.clone();
-let param = make_param_node(r.name.clone(), leaf_type_node(r.name.clone(), span.clone()), None, span.clone());
+let param = make_param_node(r.name.clone(), leaf_type_node(r.name.clone(), span.clone()), None, span.clone(), span.clone());
 let next_params = v2_rt::rc_list_push(params.clone(), param.clone());
 let e = eat(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
@@ -3849,7 +3855,7 @@ continue;
 pub fn parse_field(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> Rc<FieldResult> {
     {
         let start_span = current_span(tokens.clone(), state.clone());
-let dummy_field = make_field_node("".to_string(), leaf_type_node("".to_string(), start_span.clone()), Cardinality::Required, None, None, start_span.clone());
+let dummy_field = make_field_node("".to_string(), leaf_type_node("".to_string(), start_span.clone()), Cardinality::Required, None, None, start_span.clone(), start_span.clone());
 let r = expect_name(tokens.clone(), state.clone());
 if has_err(r.err.clone()) {
             return Rc::new(FieldResult {
@@ -3859,6 +3865,7 @@ if has_err(r.err.clone()) {
 })
 }
 let name = r.name.clone();
+let name_span = r.span.clone();
 let r2 = expect(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectColon));
 if has_err(r2.err.clone()) {
             return Rc::new(FieldResult {
@@ -3899,7 +3906,7 @@ if has_err(r4.err.clone()) {
     err: r4.err.clone(),
 })
 }
-let f = make_field_node(name, te.clone(), te.return_cardinality.clone(), Some(r4.expr.clone()), from_key, start_span.clone());
+let f = make_field_node(name, te.clone(), te.return_cardinality.clone(), Some(r4.expr.clone()), from_key, start_span.clone(), name_span);
 Rc::new(FieldResult {
     field: f,
     state: r4.state.clone(),
@@ -3908,7 +3915,7 @@ Rc::new(FieldResult {
 }
 } else {
             {
-                let f = make_field_node(name, te.clone(), te.return_cardinality.clone(), None, from_key, start_span.clone());
+                let f = make_field_node(name, te.clone(), te.return_cardinality.clone(), None, from_key, start_span.clone(), name_span);
 Rc::new(FieldResult {
     field: f,
     state: s.clone(),
@@ -4662,7 +4669,7 @@ if has_err(r3.err.clone()) {
     err: r3.err.clone(),
 })
 }
-let fi = make_field_init_node(field_name.clone(), r3.expr.clone(), zero_span.clone());
+let fi = make_field_init_node(field_name.clone(), r3.expr.clone(), zero_span.clone(), zero_span.clone());
 acc = v2_rt::rc_list_push(acc.clone(), fi.clone());
 let e = eat(tokens.clone(), r3.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
@@ -4834,7 +4841,7 @@ let ns_prop = make_field_init_node("namespace_root".to_string(), make_expr_node(
     value: Rc::new(LiteralValue::LitStr {
     value: namespace_root.clone(),
 }),
-}), Rc::new(vec![]), None, start_span.clone()), start_span.clone());
+}), Rc::new(vec![]), None, start_span.clone()), start_span.clone(), start_span.clone());
 let svc_props = match r.config.clone() {
     Some(cfg) => service_config_properties(cfg.endpoint.clone(), cfg.auth.clone(), cfg.rate_limit.clone(), cfg.retry.clone()),
     None => Rc::new(vec![]),
@@ -6233,7 +6240,7 @@ pub fn modifier_to_prop(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     value: Rc::new(LiteralValue::LitBool {
     value: true,
 }),
-}), Rc::new(vec![]), None, span.clone()), span.clone())
+}), Rc::new(vec![]), None, span.clone()), span.clone(), span.clone())
 }
 
 pub fn modifiers_to_props(modifiers: Rc<Vec<OperationModifier>>, span: Rc<SourceSpan>) -> Rc<Vec<Rc<Node>>> {
@@ -6424,7 +6431,7 @@ let type_name = node_to_name_str(r3.type_expr.clone());
 let prop_name = v2_rt::concat("exit_".to_string(), code_str.clone());
 let entry = make_field_init_node(prop_name.clone(), make_named_expr_node(type_name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: None,
-}), Rc::new(vec![]), None, r3.type_expr.clone().span.clone()), r3.type_expr.clone().span.clone());
+}), Rc::new(vec![]), None, r3.type_expr.clone().span.clone()), r3.type_expr.clone().span.clone(), no_span());
 let e = eat(tokens.clone(), desc_r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 e.state.clone()
@@ -6706,7 +6713,7 @@ let type_name = node_to_name_str(r3.type_expr.clone());
 let prop_name = v2_rt::concat("response_".to_string(), status_str.clone());
 let entry = make_field_init_node(prop_name.clone(), make_named_expr_node(type_name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: None,
-}), Rc::new(vec![]), None, r3.type_expr.clone().span.clone()), r3.type_expr.clone().span.clone());
+}), Rc::new(vec![]), None, r3.type_expr.clone().span.clone()), r3.type_expr.clone().span.clone(), no_span());
 let e = eat(tokens.clone(), r3.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 e.state.clone()
@@ -6837,7 +6844,7 @@ Rc::new(DescResult {
 };
 let status_str = status_expr_to_str(status.clone());
 let prop_name = v2_rt::concat("mock_".to_string(), status_str.clone());
-let entry = make_field_init_node(prop_name.clone(), body.clone(), make_span(0, 0));
+let entry = make_field_init_node(prop_name.clone(), body.clone(), make_span(0, 0), make_span(0, 0));
 let e = eat(tokens.clone(), desc_r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 e.state.clone()
@@ -7134,7 +7141,7 @@ if has_err(r3.err.clone()) {
     err: r3.err.clone(),
 })
 }
-let fi = make_field_init_node(fname.clone(), r3.expr.clone(), make_span(0, 0));
+let fi = make_field_init_node(fname.clone(), r3.expr.clone(), make_span(0, 0), r.span.clone());
 {
                     let __tco_0 = tokens.clone();
 let __tco_1 = skip_newlines(tokens.clone(), r3.state.clone());
@@ -7671,7 +7678,7 @@ continue;
 pub fn parse_param(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> Rc<ParamResult> {
     {
         let start_span = current_span(tokens.clone(), state.clone());
-let dummy_param = make_param_node("".to_string(), leaf_type_node("".to_string(), start_span.clone()), None, start_span.clone());
+let dummy_param = make_param_node("".to_string(), leaf_type_node("".to_string(), start_span.clone()), None, start_span.clone(), start_span.clone());
 let r = expect_name(tokens.clone(), state.clone());
 if has_err(r.err.clone()) {
             return Rc::new(ParamResult {
@@ -7681,6 +7688,7 @@ if has_err(r.err.clone()) {
 })
 }
 let name = r.name.clone();
+let name_span = r.span.clone();
 let r2 = expect(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectColon));
 if has_err(r2.err.clone()) {
             return Rc::new(ParamResult {
@@ -7718,7 +7726,7 @@ if has_err(r4.err.clone()) {
     err: r4.err.clone(),
 })
 }
-let p = make_param_node(name, type_expr, Some(r4.expr.clone()), start_span.clone());
+let p = make_param_node(name, type_expr, Some(r4.expr.clone()), start_span.clone(), name_span);
 Rc::new(ParamResult {
     param: p,
     state: r4.state.clone(),
@@ -7727,7 +7735,7 @@ Rc::new(ParamResult {
 }
 } else {
             {
-                let p = make_param_node(name, type_expr, None, start_span.clone());
+                let p = make_param_node(name, type_expr, None, start_span.clone(), name_span);
 Rc::new(ParamResult {
     param: p,
     state: s.clone(),
@@ -8901,7 +8909,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let fi = make_field_init_node(kw_name.clone(), r.expr.clone(), make_span(0, 0));
+let fi = make_field_init_node(kw_name.clone(), r.expr.clone(), make_span(0, 0), make_span(0, 0));
 acc = v2_rt::rc_list_push(acc.clone(), fi.clone());
 let ec = eat(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if ec.consumed.clone() {
@@ -10290,7 +10298,7 @@ continue;
 pub fn parse_field_init(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> Rc<FieldInitResult> {
     {
         let zero_span = make_span(0, 0);
-let dummy_fi = make_field_init_node("".to_string(), parse_recovery_placeholder(), zero_span);
+let dummy_fi = make_field_init_node("".to_string(), parse_recovery_placeholder(), zero_span.clone(), zero_span.clone());
 if (is_ident(tokens.clone(), state.clone()) || is_keyword_name(tokens.clone(), state.clone())) {
             {
                 let name_r = expect_name(tokens.clone(), state.clone());
@@ -10313,7 +10321,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let fi = make_field_init_node(n.clone(), r.expr.clone(), current_span(tokens.clone(), state.clone()));
+let fi = make_field_init_node(n.clone(), r.expr.clone(), current_span(tokens.clone(), state.clone()), name_r.span.clone());
 Rc::new(FieldInitResult {
     field: fi,
     state: r.state.clone(),
@@ -10324,7 +10332,7 @@ Rc::new(FieldInitResult {
                     {
                         let fi = make_field_init_node(n.clone(), make_named_expr_node(n.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: None,
-}), Rc::new(vec![]), None, current_span(tokens.clone(), state.clone())), current_span(tokens.clone(), state.clone()));
+}), Rc::new(vec![]), None, current_span(tokens.clone(), state.clone())), current_span(tokens.clone(), state.clone()), name_r.span.clone());
 Rc::new(FieldInitResult {
     field: fi,
     state: name_r.state.clone(),
@@ -10351,7 +10359,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let fi = make_field_init_node(str_name, r.expr.clone(), current_span(tokens.clone(), state.clone()));
+let fi = make_field_init_node(str_name, r.expr.clone(), current_span(tokens.clone(), state.clone()), current_span(tokens.clone(), state.clone()));
 Rc::new(FieldInitResult {
     field: fi,
     state: r.state.clone(),
@@ -10368,7 +10376,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let fi = make_field_init_node("_".to_string(), r.expr.clone(), current_span(tokens.clone(), state.clone()));
+let fi = make_field_init_node("_".to_string(), r.expr.clone(), current_span(tokens.clone(), state.clone()), current_span(tokens.clone(), state.clone()));
 Rc::new(FieldInitResult {
     field: fi,
     state: r.state.clone(),
@@ -10482,7 +10490,7 @@ if peek_is_rparen(tokens.clone(), s.clone()) {
 Rc::new(ExprResult {
     expr: make_expr_node(Rc::new(ExprData::ExprRecordLit {
     parent_enum: None,
-}), Rc::new(vec![]), None, span.clone()),
+}), Rc::new(vec![]), None, span),
     state: adv.state.clone(),
     err: None,
 })
@@ -10503,7 +10511,7 @@ if has_err(r.err.clone()) {
 Rc::new(ExprResult {
     expr: make_expr_node(Rc::new(ExprData::ExprLambda {
     semantics: None,
-}), v2_rt::concat(Rc::new(vec![r.expr.clone()]), Rc::new({ let mut __result = Vec::new(); for p in lambda_r.params.clone().iter().cloned() { __result.push(parsed_name_leaf(p.clone(), span.clone())); } __result })), None, span.clone()),
+}), v2_rt::concat(Rc::new(vec![r.expr.clone()]), Rc::new({ let mut __result = Vec::new(); for p in lambda_r.params.clone().iter().cloned() { __result.push(parsed_name_leaf(p.name.clone(), p.span.clone())); } __result })), None, span),
     state: r.state.clone(),
     err: None,
 })
@@ -10578,14 +10586,14 @@ if has_err(body_r.err.clone()) {
 Rc::new(ExprResult {
     expr: make_expr_node(Rc::new(ExprData::ExprLambda {
     semantics: None,
-}), v2_rt::concat(Rc::new(vec![body_r.expr.clone()]), Rc::new({ let mut __result = Vec::new(); for p in params_r.params.clone().iter().cloned() { __result.push(parsed_name_leaf(p.clone(), span.clone())); } __result })), None, span.clone()),
+}), v2_rt::concat(Rc::new(vec![body_r.expr.clone()]), Rc::new({ let mut __result = Vec::new(); for p in params_r.params.clone().iter().cloned() { __result.push(parsed_name_leaf(p.name.clone(), p.span.clone())); } __result })), None, span),
     state: body_r.state.clone(),
     err: None,
 })
 }
 }
 
-pub fn collect_fn_lambda_params(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut acc: Rc<Vec<String>>) -> Rc<IdentCollectResult> {
+pub fn collect_fn_lambda_params(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut acc: Rc<Vec<Rc<ParserParam>>>) -> Rc<IdentCollectResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 if peek_is_rparen(tokens.clone(), s.clone()) {
@@ -10611,7 +10619,10 @@ if peek_is_comma(tokens.clone(), s2.clone()) {
 {
                         let __tco_0 = tokens;
 let __tco_1 = adv.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, name_r.name.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, Rc::new(ParserParam {
+    name: name_r.name.clone(),
+    span: name_r.span.clone(),
+}));
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -10620,7 +10631,10 @@ continue;
 } else {
                     break Rc::new(IdentCollectResult {
     success: true,
-    params: v2_rt::rc_list_push(acc.clone(), name_r.name.clone()),
+    params: v2_rt::rc_list_push(acc.clone(), Rc::new(ParserParam {
+    name: name_r.name.clone(),
+    span: name_r.span.clone(),
+})),
     state: s2.clone(),
     err: None,
 });
@@ -10685,13 +10699,16 @@ Rc::new(LambdaCheckResult {
 }
 }
 
-pub fn collect_lambda_idents(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut acc: Rc<Vec<String>>) -> Rc<IdentCollectResult> {
+pub fn collect_lambda_idents(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut acc: Rc<Vec<Rc<ParserParam>>>) -> Rc<IdentCollectResult> {
     loop {
         if is_ident(tokens.clone(), state.clone()) {
             let tok = peek(tokens.clone(), state.clone());
-let n = tok.clone().unwrap().text.clone();
+let param = Rc::new(ParserParam {
+    name: tok.clone().unwrap().text.clone(),
+    span: tok.clone().unwrap().span.clone(),
+});
 let adv = advance(tokens.clone(), state.clone());
-let new_acc = v2_rt::rc_list_push(acc.clone(), n.clone());
+let new_acc = v2_rt::rc_list_push(acc.clone(), param.clone());
 let e = eat(tokens.clone(), adv.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
                 {

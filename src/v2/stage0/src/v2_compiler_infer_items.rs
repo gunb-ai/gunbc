@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, ErrorNode, make_param_node, param_node_name, param_node_type_expr, make_field_node, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, Connective};
+pub use crate::v2_std_core::{Node, ErrorNode, make_param_node, param_node_name, param_node_type_expr, make_field_node, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, Connective, node_name_span, no_span};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Cardinality::{Required};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
@@ -119,20 +119,20 @@ if is_product {
                         if (rt.ident_span.clone() == None) {
                             Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
                                 let child_type = child_type_node(child.clone());
-make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone())
+make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone(), node_name_span(child.clone()))
 }); } __result })
 } else {
-                            Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())])
+                            Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
 }
 } else {
-                        Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())])
+                        Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
 }
 }
 } else {
                 if ((rt.connective.clone() == Connective::Conj) && ((rt.children.clone().len() as i64) == 0)) {
                     Rc::new(vec![])
 } else {
-                    Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())])
+                    Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
 }
 }
 },

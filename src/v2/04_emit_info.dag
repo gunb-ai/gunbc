@@ -12,6 +12,7 @@ module v2.compiler.infer_emit_info
 
 import v2.std.core {
   Node,
+  authored_name_at, NewlineIndex, find_child_named, has_child_named,
   InferredNode, Resolved, TypeVariable,
   FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue,
@@ -212,37 +213,28 @@ fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
   else { PlainValue }
 }
 
-fn is_pair_children(children: List<Node>) -> Bool {
-  if children |> count != 2 { false }
-  else {
-    match children |> first {
-      Some { value: c0 } =>
-        match children |> skip(1) |> first {
-          Some { value: c1 } => c0.name == "first" && c1.name == "second"
-          None => false
-        }
-      None => false
-    }
-  }
-}
-
-fn pair_access_style(field_name: String) -> FieldAccessStyle {
-  if field_name == "first" { TupleFirst }
-  else { TupleSecond }
+// Structural tuple detection: unnamed 2-child Conj (ident_span == none).
+// The tuple constructor is the sole producer of this shape. Named Conj
+// types and anonymous user products both have ident_span set.
+fn is_tuple_type(n: Node) -> Bool {
+  n.connective == Conj && n.ident_span == none && n.children |> count == 2
 }
 
 // =========================================================================
 // Struct and enum field summary builders
 // =========================================================================
 
-fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummary> {
-  let is_pair = is_pair_children(children: children)
-  fold(children, init: empty_map(), f: (acc, child) =>
+fn build_struct_field_summaries(parent: Node, source_index: NewlineIndex?) -> Map<String, FieldSummary> {
+  let is_pair = is_tuple_type(n: parent)
+  fold(parent.children |> enumerate, init: empty_map(), f: (acc, pair) =>
+    let idx = pair.first
+    let child = pair.second
     if child.inferred == none {
       acc
     } else {
-      let style = if is_pair { pair_access_style(field_name: child.name) } else { StoredField }
-      map_insert(acc, child.name, FieldSummary {
+      let style = if is_pair { if idx == 0 { TupleFirst } else { TupleSecond } } else { StoredField }
+      let key = authored_name_at(source_index: source_index, node: child)
+      map_insert(acc, key, FieldSummary {
         access_style: style,
         value_shape: field_value_shape_from_type_node(type_node: child_type_node(ch: child))
       })
@@ -250,10 +242,10 @@ fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummar
   )
 }
 
-fn find_first_enum_field_node(variants: List<Node>, field_name: String) -> Node? {
+fn find_first_enum_field_node(variants: List<Node>, field_name: String, source_index: NewlineIndex?) -> Node? {
   match variants |> first {
     Some { value: variant } =>
-      match variant.children |> filter(f => f.name == field_name) |> first {
+      match find_child_named(n: variant, name: field_name, source_index: source_index) {
         Some { value: field_child } => Some { value: field_child }
         None => none
       }
@@ -261,38 +253,38 @@ fn find_first_enum_field_node(variants: List<Node>, field_name: String) -> Node?
   }
 }
 
-fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String) -> Bool {
+fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String, source_index: NewlineIndex?) -> Bool {
   variants |> all(variant =>
-    variant.children |> any(field_child => field_child.name == field_name)
+    has_child_named(n: variant, name: field_name, source_index: source_index)
   )
 }
 
-fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node) -> Bool {
+fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node, source_index: NewlineIndex?) -> Bool {
   variants |> all(variant =>
-    match variant.children |> filter(f => f.name == field_name) |> first {
+    match find_child_named(n: variant, name: field_name, source_index: source_index) {
       Some { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected)
       None => false
     }
   )
 }
 
-fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary> {
+fn build_enum_field_summaries(variants: List<Node>, source_index: NewlineIndex?) -> Map<String, FieldSummary> {
   let first_field_names = match variants |> first {
-    Some { value: first_variant } => first_variant.children |> map(f => f.name)
+    Some { value: first_variant } => first_variant.children |> map(f => authored_name_at(source_index: source_index, node: f))
     None => []
   }
   let shared = first_field_names |> filter(field_name =>
-    enum_field_present_in_all_variants(variants: variants, field_name: field_name)
+    enum_field_present_in_all_variants(variants: variants, field_name: field_name, source_index: source_index)
   )
   let consistent = shared |> filter(field_name =>
-    match find_first_enum_field_node(variants: variants, field_name: field_name) {
+    match find_first_enum_field_node(variants: variants, field_name: field_name, source_index: source_index) {
       Some { value: first_field } =>
-        enum_field_type_consistent(variants: variants, field_name: field_name, expected: child_type_node(ch:first_field))
+        enum_field_type_consistent(variants: variants, field_name: field_name, expected: child_type_node(ch:first_field), source_index: source_index)
       None => false
     }
   )
   fold(consistent, init: empty_map(), f: (acc, field_name) =>
-    match find_first_enum_field_node(variants: variants, field_name: field_name) {
+    match find_first_enum_field_node(variants: variants, field_name: field_name, source_index: source_index) {
       Some { value: first_field } =>
         map_insert(acc, field_name, FieldSummary {
           access_style: EnumAccessor,
@@ -307,7 +299,7 @@ fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary>
 // Type summary builders
 // =========================================================================
 
-fn build_field_type_map(children: List<Node>) -> Map<String, String> {
+fn build_field_type_map(children: List<Node>, source_index: NewlineIndex?) -> Map<String, String> {
   fold(children, init: empty_map(), f: (acc, child) =>
     match child.inferred {
       Some { value: Resolved { node: ft } } =>
@@ -315,15 +307,16 @@ fn build_field_type_map(children: List<Node>) -> Map<String, String> {
         let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
         // Fail-closed: exclude empty names, type variables, and placeholder types.
         // Dynamic is a compatibility placeholder that must not enter the authority surface.
+        let key = authored_name_at(source_index: source_index, node: child)
         if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {
-          map_insert(acc, child.name, resolved_name)
+          map_insert(acc, key, resolved_name)
         } else { acc }
       _ => acc
     }
   )
 }
 
-fn build_type_summary(item: Node) -> TypeSummary? {
+fn build_type_summary(item: Node, source_index: NewlineIndex?) -> TypeSummary? {
   if item.connective == NoConnective || item.connective == Arrow || item.transport != none {
     return none
   }
@@ -339,8 +332,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
     Some { value: TypeSummary {
       name: item.name,
       repr: StructRepr,
-      field_summaries: build_struct_field_summaries(children: item.children),
-      field_type_map: build_field_type_map(children: item.children),
+      field_summaries: build_struct_field_summaries(parent: item, source_index: source_index),
+      field_type_map: build_field_type_map(children: item.children, source_index: source_index),
       variant_name_set: empty_map(),
       generic_param_names: gpn,
       has_fn_fields: has_fn
@@ -350,17 +343,17 @@ fn build_type_summary(item: Node) -> TypeSummary? {
     Some { value: TypeSummary {
       name: item.name,
       repr: EnumRepr { unit_only: unit_only },
-      field_summaries: build_enum_field_summaries(variants: item.children),
+      field_summaries: build_enum_field_summaries(variants: item.children, source_index: source_index),
       field_type_map: empty_map(),
-      variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, child.name, true)),
+      variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, authored_name_at(source_index: source_index, node: child), true)),
       generic_param_names: gpn,
       has_fn_fields: has_fn
     } }
   }
 }
 
-fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuildState {
-  match build_type_summary(item: item) {
+fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_index: NewlineIndex?) -> EmitInfoBuildState {
+  match build_type_summary(item: item, source_index: source_index) {
     Some { value: summary } =>
       // Add per-variant summaries for enums so is_optional_struct_field can look up
       // individual variant field types (e.g. VariantPattern.parent_enum).
@@ -374,11 +367,12 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
                   _ => false
                 }
               )
-              map_insert(acc, variant.name, TypeSummary {
-                name: variant.name,
+              let vname = authored_name_at(source_index: source_index, node: variant)
+              map_insert(acc, vname, TypeSummary {
+                name: vname,
                 repr: StructRepr,
-                field_summaries: build_struct_field_summaries(children: variant.children),
-                field_type_map: build_field_type_map(children: variant.children),
+                field_summaries: build_struct_field_summaries(parent: variant, source_index: source_index),
+                field_type_map: build_field_type_map(children: variant.children, source_index: source_index),
                 variant_name_set: empty_map(),
                 generic_param_names: [],
                 has_fn_fields: v_has_fn
