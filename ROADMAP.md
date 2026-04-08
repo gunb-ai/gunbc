@@ -760,13 +760,14 @@ algebra.
 **Status: L1 = 0 (hard gate, PR #352).** All 10 name comparisons
 dissolved (Arrow connective for Callable, structural `is_pair` for
 Tuple, `is_compiler_error` for Dynamic/Error, `ordered_element_collections`
-for List). All 27 type constructor functions dissolved: `ListOf` and
-`ReceiverCollectionOf` merged into `ContainerOf { source: ContainerSource,
-element }` in algebra.dag; `container_node`, `tuple_node`, `callable_node`,
-`map_node`, `bare_map_node`, `leaf_node` deleted; construction inlined
-at call sites. `unify_template` enforces `ContainerSource` (carrier
-name must match). `__MISSING_PARAM__` sentinels dissolved via
-`container_param_name_required`.
+for List). `ListOf` and `ReceiverCollectionOf` merged into
+`ContainerOf { source: ContainerSource, element }` in algebra.dag.
+L1-tracked constructor functions deleted from production code:
+`container_node`, `tuple_node`, `callable_node`, `map_node`, `leaf_node`.
+`bare_map_node` remains (not L1-tracked, inlined its `map_node` call).
+`unify_template` enforces `ContainerSource` (carrier name must match).
+`container_param_name_required` replaces `__MISSING_PARAM__` sentinels
+(fail-closed: visible error marker if profile missing).
 
 ### M4 Lane 1: Declaration-driven algebra (Lane A)
 
