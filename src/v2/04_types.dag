@@ -23,7 +23,7 @@ import std.algebra {
 }
 import v2.std.core {
   Node, make_param_node, param_node_type_expr,
-  authored_name_at, NewlineIndex,
+  find_child_named, NewlineIndex,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
   NoExprData, ExprLiteral,
@@ -882,14 +882,13 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, source_index: NewlineIndex?
     Or => bool_type
     NullCoalesce => extract_optional_inner_node(n: left_type)
     _ =>
-      // Arithmetic ops: try structural lookup on the receiver type.
-      // If the type's algebra has an "add"/"mul" field, use its return type.
-      // Fall back to left_type (current behavior) if no algebra structure found.
+      // Arithmetic ops: look up the algebra method on the receiver type.
+      // Delegates to find_child_named (centralized lookup) rather than
+      // inline string scan. Falls back to left_type if no algebra found.
       let field_name = binop_algebra_field(op: op)
       let is_product = left_type.connective == Conj
       if is_product {
-        let matching = left_type.children |> filter(c => authored_name_at(source_index: source_index, node: c) == field_name)
-        match matching |> first {
+        match find_child_named(n: left_type, name: field_name, source_index: source_index) {
           Some { value: field } =>
             match field.inferred {
               Some { value: Resolved { node: rt } } =>

@@ -23,7 +23,7 @@ module v2.compiler.infer
 import std.types { SourceSpan }
 import v2.std.core {
   Node,
-  authored_name_at, NewlineIndex, has_child_named,
+  authored_name_at, NewlineIndex,
   module_node, module_imports, module_items, import_is_all, import_specific_names,
   make_param_node, param_node_name, param_node_type_expr,
   field_node_type_expr,
@@ -479,15 +479,16 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
 }
 
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
+  // Variant bindings are built by variant_locals_from_items: the binding's
+  // resolved field IS the parent coproduct. Membership is structural —
+  // no need to re-verify with has_child_named.
   match map_get(scope.locals, name) {
     Some { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
         Some { value: parent } =>
           let is_coproduct = parent.connective == Disj
           if is_coproduct {
-            if has_child_named(n: parent, name: name, source_index: scope.type_env.source_index) {
-              Some { value: binding.resolved.name }
-            } else { none }
+            Some { value: binding.resolved.name }
           } else { none }
         None => none
       }
