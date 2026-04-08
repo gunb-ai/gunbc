@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, make_param_node, param_node_name, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, field_access_base, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name, rt_node, has_inferred, is_compiler_error, InferredNode, NodeType, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name, resource_use_resource, kernel_type_set, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, NewlineIndex, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, module_node, module_imports, module_items, import_is_all, import_specific_names, make_param_node, param_node_name, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, field_access_base, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name, rt_node, has_inferred, is_compiler_error, InferredNode, NodeType, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name, resource_use_resource, kernel_type_set, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, NewlineIndex, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, CompilerDiagnostic};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -2025,7 +2025,7 @@ let fi_infer_results = Rc::new({ let mut __result = Vec::new(); for fi in field_
 let field_expected = match Rc::new({ let mut __result = Vec::new(); for sf in struct_fields.clone().iter().cloned() { if (sf.name.clone().as_str() == fi_name.clone().as_str()) { __result.push(sf); } } __result }).first().cloned() {
     Some(sf) => {
                 let ft = resolved_type_or_error(sf.clone());
-if (ft.name.clone().as_str() != "".to_string().as_str()) {
+if (ft.ident_span.clone() != None) {
                     Some(ft.clone())
 } else {
                     None
@@ -2049,7 +2049,7 @@ if (type_name.clone() == None) {
                 let child_nodes = Rc::new({ let mut __result = Vec::new(); for fir in fi_infer_results.clone().iter().cloned() { __result.push(Rc::new(Node {
     name: field_init_node_name(fir.typed_field.clone()),
     span: no_span(),
-    ident_span: None,
+    ident_span: default_ident_span(field_init_node_name(fir.typed_field.clone()), no_span()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2386,7 +2386,7 @@ let kernel_bindings_base = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().c
     resolved: Rc::new(Node {
     name: name.clone(),
     span: no_span(),
-    ident_span: None,
+    ident_span: default_ident_span(name.clone(), no_span()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2408,7 +2408,7 @@ let kernel_bindings = v2_rt::rc_map_insert(kernel_bindings_base, "Unit".to_strin
     resolved: Rc::new(Node {
     name: "Unit".to_string(),
     span: no_span(),
-    ident_span: None,
+    ident_span: Some(no_span()),
     children: Rc::new(vec![]),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
@@ -2428,7 +2428,7 @@ let kernel_bindings = v2_rt::rc_map_insert(kernel_bindings_base, "Unit".to_strin
 let some_value_field = Rc::new(Node {
     name: "value".to_string(),
     span: zero_span.clone(),
-    ident_span: None,
+    ident_span: Some(zero_span.clone()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2449,7 +2449,7 @@ let some_value_field = Rc::new(Node {
 let some_variant = Rc::new(Node {
     name: "Some".to_string(),
     span: zero_span.clone(),
-    ident_span: None,
+    ident_span: Some(zero_span.clone()),
     children: Rc::new(vec![some_value_field]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2468,7 +2468,7 @@ let some_variant = Rc::new(Node {
 let kernel_optional = Rc::new(Node {
     name: "Optional".to_string(),
     span: zero_span.clone(),
-    ident_span: None,
+    ident_span: Some(zero_span.clone()),
     children: Rc::new(vec![some_variant, none_type()]),
     connective: Connective::Disj,
     params: Rc::new(vec![]),
@@ -2706,7 +2706,7 @@ let kernel_bindings = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned
     resolved: Rc::new(Node {
     name: name.clone(),
     span: no_span(),
-    ident_span: None,
+    ident_span: default_ident_span(name.clone(), no_span()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2726,7 +2726,7 @@ let kernel_bindings = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned
 let some_value_field = Rc::new(Node {
     name: "value".to_string(),
     span: zero_span.clone(),
-    ident_span: None,
+    ident_span: Some(zero_span.clone()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2747,7 +2747,7 @@ let some_value_field = Rc::new(Node {
 let some_variant = Rc::new(Node {
     name: "Some".to_string(),
     span: zero_span.clone(),
-    ident_span: None,
+    ident_span: Some(zero_span.clone()),
     children: Rc::new(vec![some_value_field]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2766,7 +2766,7 @@ let some_variant = Rc::new(Node {
 let kernel_optional = Rc::new(Node {
     name: "Optional".to_string(),
     span: zero_span.clone(),
-    ident_span: None,
+    ident_span: Some(zero_span.clone()),
     children: Rc::new(vec![some_variant, none_type()]),
     connective: Connective::Disj,
     params: Rc::new(vec![]),

@@ -3113,30 +3113,51 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
 //
 // CX-N: Extends descent_vars through ExprLet/ExprMatch/ExprBlock/ExprIf,
 // mirroring collect_evidence_incremental's var threading.
-fn collect_scc_child_edges(body: Node, caller: String, param_name: String, descent_vars: Map<String, Bool>, target_set: Map<String, Bool>, check_child: Bool, check_list: Bool) -> List<ParserProgressEdge> {
+fn collect_scc_child_edges(body: Node, caller: String, param_name: String, descent_vars: Map<String, Bool>, target_set: Map<String, Bool>, check_child: Bool, check_list: Bool, scc_measure_params: Map<String, Map<String, String>>) -> List<ParserProgressEdge> {
   match body.expr_data {
     ExprLambda { semantics: _ } => []
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: body)
       let own_edges = if set_has(m: target_set, key: callee) {
+        // CX-P: Check arguments targeting the CALLEE's measure parameters.
+        // The old check (aname == param_name) failed when caller and callee
+        // used different parameter names. Checking all args is unsound —
+        // descent on a non-measure callee param doesn't prove the measure
+        // dimension decreases. Instead, look up the callee's measure params
+        // and only classify arguments that target one of them.
+        //
+        // Known limitation: if a callee has MULTIPLE measure params, the
+        // fold takes the best progress across all of them. This can mix
+        // evidence from different callee params (e.g., Strict on param B
+        // but Same on param A, where A drives recursion). The sound fix
+        // is per-callee-param edge tracking — deferred because all current
+        // .dag functions have at most one Node param driving recursion.
+        let callee_params = match map_get(scc_measure_params, callee) {
+          Some { value: p } => p
+          None => empty_map()
+        }
         let progress = body.children |> fold(init: ProgressUnknown, f: (acc, arg_node) =>
-          match arg_name(n: arg_node) {
+          let targets_measure = match arg_name(n: arg_node) {
             Some { value: aname } =>
-              if aname == param_name {
-                let arg_progress = classify_scc_call_progress(arg_expr: arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars)
-                match arg_progress {
-                  ProgressStrict => ProgressStrict
-                  ProgressSame => match acc { ProgressStrict => acc  _ => ProgressSame }
-                  ProgressUnknown => acc
-                }
-              } else { acc }
-            None => acc
+              // Single authority: callee's measure params determine which
+              // argument carries the ranking dimension. No fallback to
+              // caller's param name (dual authority is unsound).
+              map_get(callee_params, aname) != none
+            None => false
           }
+          if targets_measure {
+            let arg_progress = classify_scc_call_progress(arg_expr: arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars)
+            match arg_progress {
+              ProgressStrict => ProgressStrict
+              ProgressSame => match acc { ProgressStrict => acc  _ => ProgressSame }
+              ProgressUnknown => acc
+            }
+          } else { acc }
         )
         [ParserProgressEdge { caller: caller, callee: callee, progress: progress }]
       } else { [] }
       let child_edges = body.children |> flat_map(child =>
-        collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+        collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
       )
       concat(own_edges, child_edges)
     ExprMethodCall { method_semantics: ms } =>
@@ -3146,7 +3167,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
       let is_iter = is_algebra_iteration_method(method_semantics: ms)
       let is_struct = is_structural_children(expr: receiver, param_name: param_name, vars: descent_vars)
       if is_iter && is_struct {
-        let recv_edges = collect_scc_child_edges(body: receiver, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+        let recv_edges = collect_scc_child_edges(body: receiver, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
         let args_edges = method_arg_nodes(texpr: body) |> flat_map(arg_node =>
           let arg_val = arg_value(n: arg_node)
           match arg_val.expr_data {
@@ -3155,22 +3176,22 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
               match iteration_element_name(method_semantics: ms, lambda: arg_val) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(descent_vars, iter_name, true)
-                  collect_scc_child_edges(body: lambda_body(texpr: arg_val), caller: caller, param_name: param_name, descent_vars: ext_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+                  collect_scc_child_edges(body: lambda_body(texpr: arg_val), caller: caller, param_name: param_name, descent_vars: ext_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
                 None => []
               }
-            _ => collect_scc_child_edges(body: arg_val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+            _ => collect_scc_child_edges(body: arg_val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
           }
         )
         concat(recv_edges, args_edges)
       } else {
         body.children |> flat_map(child =>
-          collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+          collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
         )
       }
     // CX-N: Thread descent vars through let-bindings.
     ExprLet =>
       let val = let_value(texpr: body)
-      let val_edges = collect_scc_child_edges(body: val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+      let val_edges = collect_scc_child_edges(body: val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
       let is_direct = (check_child && is_child_descent_expr(expr: val, param_name: param_name, vars: descent_vars))
         || (check_list && is_list_shrink_expr(expr: val, param_name: param_name))
       let is_var = match val.expr_data {
@@ -3220,7 +3241,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         map_insert(descent_vars, let_binding_name(texpr: body), true)
       } else { descent_vars }
       let body_edges = match let_body(texpr: body) {
-        Some { value: b } => collect_scc_child_edges(body: b, caller: caller, param_name: param_name, descent_vars: next_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+        Some { value: b } => collect_scc_child_edges(body: b, caller: caller, param_name: param_name, descent_vars: next_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
         None => []
       }
       concat(val_edges, body_edges)
@@ -3231,15 +3252,15 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
     // body; that is the single authority for descent variable discovery.
     ExprMatch =>
       let scrut = match_scrutinee(texpr: body)
-      let scrut_edges = collect_scc_child_edges(body: scrut, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+      let scrut_edges = collect_scc_child_edges(body: scrut, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
       let arms_edges = match_arm_nodes(texpr: body) |> flat_map(arm_node =>
-        collect_scc_child_edges(body: arm_body(n: arm_node), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+        collect_scc_child_edges(body: arm_body(n: arm_node), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
       )
       concat(scrut_edges, arms_edges)
     // CX-N: Thread descent vars through block statements sequentially.
     ExprBlock =>
       let result = body.children |> fold(init: SccEdgeBlockAcc { edges: [], vars: descent_vars }, f: (acc, stmt) =>
-        let stmt_edges = collect_scc_child_edges(body: stmt, caller: caller, param_name: param_name, descent_vars: acc.vars, target_set: target_set, check_child: check_child, check_list: check_list)
+        let stmt_edges = collect_scc_child_edges(body: stmt, caller: caller, param_name: param_name, descent_vars: acc.vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
         let next_vars = match stmt.expr_data {
           ExprLet =>
             let val = let_value(texpr: stmt)
@@ -3297,18 +3318,18 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
       )
       result.edges
     ExprIf =>
-      let cond_edges = collect_scc_child_edges(body: if_condition(texpr: body), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+      let cond_edges = collect_scc_child_edges(body: if_condition(texpr: body), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
       let then_branch = if_then_branch(texpr: body)
       let else_opt = if_else_branch(texpr: body)
-      let then_edges = collect_scc_child_edges(body: then_branch, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+      let then_edges = collect_scc_child_edges(body: then_branch, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
       let else_edges = match else_opt {
-        Some { value: eb } => collect_scc_child_edges(body: eb, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+        Some { value: eb } => collect_scc_child_edges(body: eb, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
         None => []
       }
       concat(cond_edges, concat(then_edges, else_edges))
     _ =>
       body.children |> flat_map(child =>
-        collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list)
+        collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params)
       )
   }
 }
@@ -3318,6 +3339,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
 // child (ProgressStrict). Fail-closed: any ProgressUnknown edge or
 // any all-Same cycle means SameArgumentCall (bounded by Forever).
 fn is_scc_container_child_descent(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>) -> Bool {
+  let measure_params = build_scc_measure_params(members: members, func_index: func_index)
   // For each member, try each param as the descent param.
   // Collect edges across all members.
   let edges = members |> flat_map(name =>
@@ -3328,7 +3350,7 @@ fn is_scc_container_child_descent(members: List<String>, func_index: Map<String,
         let best_edges = entry.params |> fold(init: [], f: (best, p) =>
           let pname = param_node_name(n: p)
           let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: true)
-          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: true, check_list: true)
+          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: true, check_list: true, scc_measure_params: measure_params)
           // Heuristic: keep the param whose edges have fewest ProgressUnknown.
           // This is a SEARCH heuristic, not a proof obligation — soundness comes
           // from the subsequent same_progress_subgraph_has_cycle check, which
@@ -3381,6 +3403,7 @@ fn count_unknown_proof_edges(edges: List<ProofEdge>) -> Int {
 }
 
 fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, check_child: Bool, check_list: Bool) -> List<ProofEdge> {
+  let measure_params = build_scc_measure_params(members: members, func_index: func_index)
   members |> flat_map(name =>
     match map_get(func_index, name) {
       Some { value: entry } =>
@@ -3389,7 +3412,7 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
         let best_map = entry.params |> fold(init: empty_map(), f: (best, p) =>
           let pname = param_node_name(n: p)
           let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: check_child, check_list: check_list)
-          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: check_child, check_list: check_list)
+          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: check_child, check_list: check_list, scc_measure_params: measure_params)
           let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best, candidate: param_map)
         )
@@ -3444,6 +3467,7 @@ fn pick_best_param_edges(current: Map<String, DescentEvidence>, candidate: Map<S
 // TreeSize and ListLength across ALL params. Different dims can use
 // different params (e.g., TreeSize from "texpr", ListLength from "remaining").
 fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>) -> List<ProofEdge> {
+  let measure_params = build_scc_measure_params(members: members, func_index: func_index)
   members |> flat_map(name =>
     match map_get(func_index, name) {
       Some { value: entry } =>
@@ -3451,7 +3475,7 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
         let tree_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
           let pname = param_node_name(n: p)
           let tree_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false)
-          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set, check_child: true, check_list: false)
+          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set, check_child: true, check_list: false, scc_measure_params: measure_params)
           let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best_map, candidate: param_map)
         )
@@ -3459,7 +3483,7 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
         let list_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
           let pname = param_node_name(n: p)
           let list_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: false, check_list: true)
-          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: list_vars, target_set: scc_name_set, check_child: false, check_list: true)
+          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: list_vars, target_set: scc_name_set, check_child: false, check_list: true, scc_measure_params: measure_params)
           let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best_map, candidate: param_map)
         )
@@ -3496,6 +3520,7 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
   if (all_parser_edges |> count) == 0 {
     []
   } else {
+    let measure_params = build_scc_measure_params(members: members, func_index: func_index)
     members |> flat_map(name =>
       match map_get(func_index, name) {
         Some { value: entry } =>
@@ -3503,7 +3528,7 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
           let tree_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
             let pname = param_node_name(n: p)
             let tree_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false)
-            let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set, check_child: true, check_list: false)
+            let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set, check_child: true, check_list: false, scc_measure_params: measure_params)
             let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
             pick_best_param_edges(current: best_map, candidate: param_map)
           )

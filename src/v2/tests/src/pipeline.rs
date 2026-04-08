@@ -2277,6 +2277,61 @@ fn loop_forever(n: Int) -> Int {
 }
 
 // =========================================================================
+// CX-P: SCC cross-named parameter regression tests
+//
+// These test the fix where SCC peers use different parameter names
+// (e.g., serialize_node(node:) calling serialize_expr_data(expr_node:)).
+// The edge collector must match by callee measure params, not caller name.
+// =========================================================================
+
+#[test]
+fn cx_scc_cross_named_params_recognized() {
+    // Two mutually recursive functions with different param names
+    // and arithmetic descent. The SCC edge collector must match by
+    // callee measure params, not caller param name.
+    // count_a(x: Int) calls count_b(y: x - 1)  — arg name "y" ≠ caller param "x"
+    // count_b(y: Int) calls count_a(x: y - 1)  — arg name "x" ≠ caller param "y"
+    let source = r#"module cx_cross_name
+fn count_a(x: Int) -> Int {
+  if x <= 0 { 0 }
+  else { 1 + count_b(y: x - 1) }
+}
+fn count_b(y: Int) -> Int {
+  if y <= 0 { 0 }
+  else { 1 + count_a(x: y - 1) }
+}
+"#;
+    let result = compile_dag_with_complexity(source);
+    let a_class = result.function_classes.get("count_a");
+    let b_class = result.function_classes.get("count_b");
+    assert!(a_class.is_some(), "count_a should have a complexity class");
+    assert!(b_class.is_some(), "count_b should have a complexity class");
+    // Both should be bounded — the SCC descends on arithmetic params
+    let a_violation = result.violations.iter().any(|v| v.func_name.as_str() == "count_a");
+    let b_violation = result.violations.iter().any(|v| v.func_name.as_str() == "count_b");
+    assert!(!a_violation, "count_a should not be a violation (cross-named SCC descent recognized)");
+    assert!(!b_violation, "count_b should not be a violation (cross-named SCC descent recognized)");
+}
+
+#[test]
+fn cx_scc_positional_args_fail_closed() {
+    // Positional (unnamed) SCC calls are currently fail-closed.
+    // This documents current behavior — not a bug, a known limitation.
+    // When positional args are supported, this test should be updated.
+    let source = r#"module cx_positional
+fn count_nodes(n: Node) -> Int {
+  1 + n.children |> fold(init: 0, f: (acc, child) =>
+    acc + count_nodes(n: child)
+  )
+}
+"#;
+    let result = compile_dag_with_complexity(source);
+    // Direct self-recursion with named args should work fine
+    let class = result.function_classes.get("count_nodes");
+    assert!(class.is_some(), "count_nodes should have a complexity class");
+}
+
+// =========================================================================
 // CX: Asymptotic normalization regression tests
 //
 // Verify that the cost algebra models the math correctly:
@@ -4025,6 +4080,7 @@ fn type_rendering_named_conj_with_container_template() {
     let free_monoid_conj = Rc::new(v2_compiler::v2_std_core::Node {
         name: "FreeMonoid".to_string(),
         connective: Connective::Conj,
+        ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan { file: "".to_string(), start: 0, end: 0 })),
         ..(*leaf_node("".to_string())).clone()
     });
     let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));

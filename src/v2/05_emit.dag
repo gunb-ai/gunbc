@@ -47,8 +47,7 @@ import v2.std.core {
   slice_start, slice_end, unaryop_operand,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
-  is_rest_transport, is_shell_transport, is_file_transport, is_local_transport,
-  is_transport_kind, transport_kind_rest, transport_kind_shell, transport_kind_file,
+  is_rest_transport, is_shell_transport, is_file_transport,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
@@ -203,7 +202,7 @@ fn collect_type_names_from_items(items: List<Node>) -> List<String> {
 }
 
 fn collect_type_names_from_node(n: Node) -> List<String> {
-  let self_name = if n.name != "" { [n.name] } else { [] }
+  let self_name = if n.ident_span != none { [n.name] } else { [] }
   let child_names = n.children |> flat_map(child => collect_type_names_from_node(n: child))
   self_name |> concat(child_names)
 }
@@ -948,7 +947,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   let shared = emit_map_has(m: shared_types, key: n.name)
 
   if is_disj {
-    let base = if n.name != "" {
+    let base = if n.ident_span != none {
       coerce_primitive_type(target: target, dag_name: n.name)
     } else {
       match target {
@@ -962,7 +961,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
 
   if is_conj {
     // Refined: unwrap to base type
-    if n.name == "Refined" {
+    if n.type_annotation != none {
       let refined_str = match n.children |> first {
         Some { value: base } => render_node_type(n: base, target: target, shared_types: shared_types)
         None => coerce_primitive_type(target: target, dag_name: "Refined")
@@ -985,7 +984,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
       return tuple_str
     }
     // Named conjunction with container template
-    if n.name != "" {
+    if n.ident_span != none {
       let snake = to_snake(name: n.name)
       let has_template = match container_to_algebra_name(name: snake) { Some { value: _ } => true  None => false }
       if has_template {
@@ -1157,25 +1156,29 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
 }
 
 // Structural transport queries: check if any operation in the service
-// uses a specific transport kind. Generic helper eliminates per-kind duplication.
-fn service_has_transport_kind(kind: String, fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_transport_kind(t: fallback_transport, kind: kind)
+// uses a transport with specific structural properties.
+fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = is_rest_transport(t: fallback_transport)
   let from_ops = op_children |> any(op =>
-    if op.transport != none { is_transport_kind(t: op.transport.value, kind: kind) } else { false }
+    if op.transport != none { is_rest_transport(t: op.transport.value) } else { false }
   )
   from_fallback || from_ops
 }
 
-fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  service_has_transport_kind(kind: transport_kind_rest, fallback_transport: fallback_transport, op_children: op_children)
-}
-
 fn service_has_shell(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  service_has_transport_kind(kind: transport_kind_shell, fallback_transport: fallback_transport, op_children: op_children)
+  let from_fallback = is_shell_transport(t: fallback_transport)
+  let from_ops = op_children |> any(op =>
+    if op.transport != none { is_shell_transport(t: op.transport.value) } else { false }
+  )
+  from_fallback || from_ops
 }
 
 fn service_has_file(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  service_has_transport_kind(kind: transport_kind_file, fallback_transport: fallback_transport, op_children: op_children)
+  let from_fallback = is_file_transport(t: fallback_transport)
+  let from_ops = op_children |> any(op =>
+    if op.transport != none { is_file_transport(t: op.transport.value) } else { false }
+  )
+  from_fallback || from_ops
 }
 
 // Check if any REST operation (or the service-level fallback) has auth.
@@ -1281,17 +1284,6 @@ fn is_service_def_item(item: Node) -> Bool {
 fn is_resource_def_item(item: Node) -> Bool {
   (item.transport == none && item.children |> count > 0)
   || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none)
-}
-
-// Transport kind classification: single-dispatch alternative to repeated
-// if/else chains in each backend's transport_call emitter.
-type TransportKind = RestKind | ShellKind | FileKind | LocalKind
-
-fn classify_transport(t: Node) -> TransportKind {
-  if is_rest_transport(t: t) { RestKind }
-  else if is_shell_transport(t: t) { ShellKind }
-  else if is_file_transport(t: t) { FileKind }
-  else { LocalKind }
 }
 
 

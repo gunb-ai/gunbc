@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan, container_param_name};
-pub use crate::v2_std_core::{Node, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, NodeType, rt_node, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, is_kernel_type, is_container_type, leaf_node, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, NodeType, rt_node, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, is_kernel_type, is_container_type, leaf_node, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, default_ident_span, CompilerDiagnostic};
 use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, ArityMismatch, UnresolvedType};
@@ -246,7 +246,7 @@ pub fn classify_alias(target: Rc<Node>) -> AliasKind {
 if (((target.children.clone().len() as i64) > 0) && nc.clone()) {
             AliasKind::AliasParameterized
 } else {
-            if ((((target.children.clone().len() as i64) == 0) && nc.clone()) && (target.name.clone().as_str() != "".to_string().as_str())) {
+            if ((((target.children.clone().len() as i64) == 0) && nc.clone()) && (target.ident_span.clone() != None)) {
                 AliasKind::AliasLeaf
 } else {
                 AliasKind::AliasPassthrough
@@ -283,7 +283,7 @@ if has_structure {
                 {
                     let is_product = (n.connective.clone() == Connective::Conj);
 if is_product {
-                        if (n.name.clone().as_str() == "Refined".to_string().as_str()) {
+                        if (n.type_annotation.clone() != None) {
                             match n.children.clone().first().cloned() {
     Some(base) => {
                                 let base_result = resolve_node_bounded(base.clone(), env.clone(), module_name.clone(), (depth.clone() + 1));
@@ -1013,7 +1013,7 @@ let child_results = Rc::new({ let mut __result = Vec::new(); for c in transport.
 let resolved_children = Rc::new({ let mut __result = Vec::new(); for cr in child_results.clone().iter().cloned() { __result.push(cr.expr.clone()); } __result });
 let child_diags = Rc::new({ let mut __result = Vec::new(); for cr in child_results.clone().iter().cloned() { __result.extend((*cr.diagnostics.clone()).iter().cloned()); } __result });
 Rc::new(TransportResolveResult {
-    transport: make_transport_node(transport.name.clone(), resolved_props, resolved_children, transport.span.clone()),
+    transport: make_transport_node(resolved_props, resolved_children, transport.span.clone()),
     diagnostics: v2_rt::concat(prop_diags, child_diags),
 })
 }
@@ -1058,7 +1058,7 @@ Rc::new(ExprResolveResult {
     None => arg_node.clone(),
 };
 let vr = resolve_expr_types(val.clone(), env.clone(), module_name.clone());
-make_arg_node(if (arg_node.name.clone().as_str() == "".to_string().as_str()) {
+make_arg_node(if (arg_node.ident_span.clone() == None) {
                     None
 } else {
                     Some(arg_node.name.clone())
@@ -1095,7 +1095,7 @@ rr.expr.clone()
     None => child.clone(),
 };
 let vr = resolve_expr_types(val.clone(), env.clone(), module_name.clone());
-make_arg_node(if (child.name.clone().as_str() == "".to_string().as_str()) {
+make_arg_node(if (child.ident_span.clone() == None) {
                             None
 } else {
                             Some(child.name.clone())
@@ -1536,7 +1536,7 @@ let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: S
     resolved: Rc::new(Node {
     name: tp_name.clone(),
     span: no_span(),
-    ident_span: None,
+    ident_span: default_ident_span(tp_name.clone(), no_span()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),

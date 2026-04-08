@@ -16,7 +16,7 @@ module v2.compiler.emit_rust
 
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
-  is_import_node, import_is_all, import_specific_names, module_imports, module_items,
+  import_is_all, import_specific_names, module_imports, module_items,
   param_node_name, param_node_type_expr, param_node_default_value,
   authored_name_at, NewlineIndex,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
@@ -59,7 +59,7 @@ import v2.std.core {
   leaf_node, make_span, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
-  is_rest_transport, is_shell_transport, is_file_transport, is_local_transport
+  is_rest_transport, is_shell_transport, is_file_transport
 }
 
 import v2.compiler.artifact { RenderTarget, Rust }
@@ -137,7 +137,6 @@ import v2.compiler.emit {
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
-  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
   extract_modifier_names,
   seed_bindings
 }
@@ -879,7 +878,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
   // Fix self-referential Conj types: when a field's resolved type is a full
   // type definition (Conj with many children), render Name<Params> from the
   // TypeEnv's binding params instead of letting the Conj renderer emit bare name.
-  let ty = if rt_child.connective == Conj && rt_child.name != "" && rt_child.children |> count > 2 {
+  let ty = if rt_child.connective == Conj && rt_child.ident_span != none && rt_child.children |> count > 2 {
     match map_get(env.bindings, rt_child.name) {
       Some { value: binding } =>
         if binding.resolved.params |> count > 0 {
@@ -1507,7 +1506,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   }
   let scrutinee_is_rc_wrapped = match scrutinee.inferred {
     Some { value: Resolved { node: rt } } =>
-      if rt.children |> count == 0 && rt.name != "" {
+      if rt.children |> count == 0 && rt.ident_span != none {
         emit_map_has(m: shared_types, key: rt.name)
       } else { false }
     _ => false
@@ -1655,7 +1654,7 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_t
   }
   // Normalize: unwrap Refined nodes to their base
   let has_structure = inferred_node.connective != NoConnective
-  let n = if inferred_node.name == "Refined" && has_structure {
+  let n = if inferred_node.type_annotation != none && has_structure {
     match inferred_node.children |> first {
       Some { value: base } => base
       None => inferred_node
@@ -1667,10 +1666,10 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_t
   if n.name == "__EmitTypeCacheMiss" { type_name }
     else if n_is_error { type_name }
     else if is_product {
-      if n.name == "" { type_name } else { Some { value: n.name } }
+      if n.ident_span == none { type_name } else { Some { value: n.name } }
     } else if is_coproduct {
       type_name
-    } else if n.children |> count == 0 && n.name != "" {
+    } else if n.children |> count == 0 && n.ident_span != none {
       Some { value: n.name }
     } else {
       type_name
@@ -1759,7 +1758,7 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
       // Fallback: resolved type for ambiguous variants or external modules.
       match resolved_type {
         Some { value: Resolved { node: rt } } =>
-          if rt.name != "" && rt.name != name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: name, enum_name: rt.name) {
+          if rt.ident_span != none && rt.name != name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: name, enum_name: rt.name) {
             Some { value: rt.name }
           } else {
             variant_parent_from_binding_kind(binding_kind: binding_kind)
@@ -1861,7 +1860,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
   let base_is_anon_record = match base.inferred {
     Some { value: Resolved { node: bt } } =>
       let is_product = bt.connective == Conj
-      if is_product && bt.name == "" { true } else { false }
+      if is_product && bt.ident_span == none { true } else { false }
     _ => false
   }
   if base_is_anon_record {
@@ -2199,7 +2198,7 @@ fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolve
         Some { value: explicit_parent }
       } else { none }
     None =>
-      if resolved_type.name != "" && resolved_type.name != variant_name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: resolved_type.name) {
+      if resolved_type.ident_span != none && resolved_type.name != variant_name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: resolved_type.name) {
         Some { value: resolved_type.name }
       } else { none }
   }
@@ -2586,7 +2585,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   }
   let acc_type_node = match fold_accumulator_type {
     Some { value: acc_type } =>
-      let acc_children_have_unit = acc_type.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
+      let acc_children_have_unit = acc_type.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.ident_span == none) || acc_type.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.ident_span == none))
       let is_under_resolved_map = node_is_keyed_collection(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit)
       let is_under_resolved_list = node_is_element_collection(n: acc_type) && acc_type.children |> count == 0
       let is_under_resolved_non_collection = !node_is_keyed_collection(n: acc_type) && !node_is_element_collection(n: acc_type) && !node_is_collection(n: acc_type)
@@ -2654,7 +2653,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   // resolution needs the real type for turbofish generation.
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_node.name)
   let lambda_acc_type_str = if is_bare_container { "_" } else { acc_type_str }
-  let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
+  let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.ident_span == none))
   let init_str = match args |> first {
     Some { value: init_arg } =>
       match arg_value(n: init_arg).expr_data {
@@ -2692,7 +2691,7 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
       let resolved = rt
       let elem = for_each_element_type_node(n: resolved)
       let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
-      if elem.name != "" && !elem_is_type_var {
+      if elem.ident_span != none && !elem_is_type_var {
         render_rust_type(n: elem, shared_types: shared_types)
       } else { "_" }
     _ => "_"
@@ -2818,7 +2817,7 @@ fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<St
   let type_name = match receiver.inferred {
     Some { value: Resolved { node: rt } } =>
       let rt_is_error = if rt.inferred != none { is_compiler_error(inferred: rt.inferred.value) } else { false }
-      if rt_is_error || rt.name == "" {
+      if rt_is_error || rt.ident_span == none {
         "compile_error!(\"with method missing resolved record type\")"
       } else { rt.name }
     _ => "compile_error!(\"with method missing resolved record type\")"
@@ -3173,7 +3172,7 @@ fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_
       if field_child.inferred != none {
         let field_type = resolved_type_or_error(n: field_child)
         let ft_is_type_var = if field_type.inferred != none { is_type_variable(inferred: field_type.inferred.value) } else { false }
-        if field_type.name != "" && !ft_is_type_var {
+        if field_type.ident_span != none && !ft_is_type_var {
           Some { value: field_type.name }
         } else { none }
       } else { none }
@@ -3192,7 +3191,7 @@ fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_
                   if field_child.inferred != none {
                     let field_type = resolved_type_or_error(n: field_child)
                     let ft_is_type_var = if field_type.inferred != none { is_type_variable(inferred: field_type.inferred.value) } else { false }
-                    if field_type.name != "" && !ft_is_type_var {
+                    if field_type.ident_span != none && !ft_is_type_var {
                       Some { value: field_type.name }
                     } else { none }
                   } else { none }
@@ -3223,7 +3222,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
               // Fallback: when resolved_type is a leaf node without children
               // (e.g., Token struct where resolved_type has name "Token" but no field defs),
               // look up the field type from the per-type field_type_map in type_summaries.
-              if struct_node.name != "" {
+              if struct_node.ident_span != none {
                 match lookup_emit_type_summary(emit_info: emit_info, type_name: struct_node.name) {
                   Some { value: summary } => map_get(summary.field_type_map, field_name)
                   None => none
@@ -3284,7 +3283,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       // Fallback: if resolved_type has a name that's a known struct in type_summaries,
       // use it. This covers record literals nested in list literals where the type
       // name doesn't propagate from the list element type context.
-      if resolved_type.name != "" && map_contains_key(emit_info.type_summaries, resolved_type.name) {
+      if resolved_type.ident_span != none && map_contains_key(emit_info.type_summaries, resolved_type.name) {
         Some { value: resolved_type.name }
       } else { none }
   }
@@ -3292,7 +3291,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
     None =>
       // Anonymous record literal: emit as bare value (single-field) or tuple (multi-field).
       let is_product = resolved_type.connective == Conj
-      if is_product && resolved_type.name == "" {
+      if is_product && resolved_type.ident_span == none {
         if fields |> count == 1 {
           match fields |> first {
             Some { value: f } =>
@@ -3335,7 +3334,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         Some { value: context_parent } => Some { value: context_parent }
         None =>
           let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
-          if resolved_type.name != "" && resolved_type.name != tn && !rt_is_type_var && resolved_type.name != "Error" {
+          if resolved_type.ident_span != none && resolved_type.name != tn && !rt_is_type_var && resolved_type.name != "Error" {
             Some { value: resolved_type.name }
           } else {
             parent_enum
@@ -3861,12 +3860,10 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 }
 
 fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node) -> String {
-  match classify_transport(t: transport) {
-    RestKind => emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth)
-    ShellKind => emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred)
-    FileKind => emit_file_call(op_name: op_name, inferred: inferred)
-    LocalKind => emit_local_call(op_name: op_name)
-  }
+  if is_rest_transport(t: transport) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth) }
+  else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred) }
+  else if is_file_transport(t: transport) { emit_file_call(op_name: op_name, inferred: inferred) }
+  else { emit_local_call(op_name: op_name) }
 }
 
 fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
@@ -3936,7 +3933,7 @@ fn emit_shell_return(inferred: Node) -> String {
 
 fn unwrap_single_field_product(n: Node) -> Node {
   let is_product = n.connective == Conj
-  if is_product && n.name == "" && n.children |> count == 1 {
+  if is_product && n.ident_span == none && n.children |> count == 1 {
     match n.children |> first {
       Some { value: field_node } => resolved_type_or_error(n: field_node)
       None => n

@@ -24,7 +24,7 @@ module v2.compiler.emit_go
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   VarBindingKind, FunctionValueBinding,
-  is_import_node, import_is_all, import_specific_names, module_imports, module_items,
+  import_is_all, import_specific_names, module_imports, module_items,
   param_node_type_expr,
   authored_name_at, NewlineIndex,
   expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at,
@@ -62,7 +62,7 @@ import v2.std.core {
   leaf_node, with_required_cardinality,
   Connective, Conj, Disj,
   CardOptional,
-  is_rest_transport, is_shell_transport, is_file_transport, is_local_transport
+  is_rest_transport, is_shell_transport, is_file_transport
 }
 
 import v2.compiler.artifact { RenderTarget, Go }
@@ -116,7 +116,6 @@ import v2.compiler.emit {
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls,
-  TransportKind, RestKind, ShellKind, FileKind, LocalKind, classify_transport,
   seed_bindings,
   emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts,
   emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared
@@ -1113,12 +1112,10 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  match classify_transport(t: transport) {
-    RestKind => emit_go_rest_call(op_name: op_name, transport: transport, depth: depth)
-    ShellKind => emit_go_shell_call(op_name: op_name, transport: transport, depth: depth)
-    FileKind => emit_go_file_call(op_name: op_name, depth: depth)
-    LocalKind => emit_go_local_call(op_name: op_name, depth: depth)
-  }
+  if is_rest_transport(t: transport) { emit_go_rest_call(op_name: op_name, transport: transport, depth: depth) }
+  else if is_shell_transport(t: transport) { emit_go_shell_call(op_name: op_name, transport: transport, depth: depth) }
+  else if is_file_transport(t: transport) { emit_go_file_call(op_name: op_name, depth: depth) }
+  else { emit_go_local_call(op_name: op_name, depth: depth) }
 }
 
 fn emit_go_rest_call(op_name: String, transport: Node, depth: Int) -> String {

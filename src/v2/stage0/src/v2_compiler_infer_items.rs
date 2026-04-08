@@ -116,7 +116,7 @@ if has_structure {
                 {
                     let is_product = (rt.connective.clone() == Connective::Conj);
 if is_product {
-                        if (rt.name.clone().as_str() == "".to_string().as_str()) {
+                        if (rt.ident_span.clone() == None) {
                             Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
                                 let child_type = child_type_node(child.clone());
 make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone())

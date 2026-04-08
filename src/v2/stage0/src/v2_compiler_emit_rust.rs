@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, InferredNode, is_compiler_error, is_import_node, import_is_all, import_specific_names, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at, LiteralValue, ExprData, make_expr_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, field_access_field, foreach_variable, foreach_variable_at, expr_var_name, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name, record_lit_type_name_at, arg_name, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_name_at, field_init_node_value, field_binding_name, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, lambda_param_names, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, leaf_node, make_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, InferredNode, is_compiler_error, import_is_all, import_specific_names, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at, LiteralValue, ExprData, make_expr_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, field_access_field, foreach_variable, foreach_variable_at, expr_var_name, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name, record_lit_type_name_at, arg_name, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_name_at, field_init_node_value, field_binding_name, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, lambda_param_names, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, leaf_node, make_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, is_shell_transport, is_file_transport, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond};
@@ -73,6 +73,7 @@ pub use crate::extdeps_languages_rust_types::{integer_types, float_types};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, resolved_type_or_error, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
+use crate::v2_compiler_infer_method::*;
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem, DataItem};
@@ -81,8 +82,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope,
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 pub use crate::v2_compiler_ownership::{OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, TransportKind, classify_transport, extract_modifier_names, seed_bindings};
-use crate::v2_compiler_emit::TransportKind::{RestKind, ShellKind, FileKind, LocalKind};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings};
 
 pub fn render_rust_type(n: Rc<Node>, shared_types: Rc<HashMap<String, bool>>) -> String {
     render_node_type(n, RenderTarget::Rust, shared_types)
@@ -797,7 +797,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_struct_field_from_child(child: Rc<Node>, recursive_types: Rc<HashMap<String, bool>>, shared_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
     {
         let rt_child = resolved_type_or_error(child.clone());
-let ty = if (((rt_child.connective.clone() == Connective::Conj) && (rt_child.name.clone().as_str() != "".to_string().as_str())) && ((rt_child.children.clone().len() as i64) > 2)) {
+let ty = if (((rt_child.connective.clone() == Connective::Conj) && (rt_child.ident_span.clone() != None)) && ((rt_child.children.clone().len() as i64) > 2)) {
             match v2_rt::map_get(&env.bindings.clone(), rt_child.name.clone()) {
     Some(binding) => if ((binding.resolved.clone().params.clone().len() as i64) > 0) {
                 {
@@ -1404,7 +1404,7 @@ let scrutinee_is_optional = match scrutinee.inferred.clone().as_deref().cloned()
     _ => false,
 };
 let scrutinee_is_rc_wrapped = match scrutinee.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => if (((rt.children.clone().len() as i64) == 0) && (rt.name.clone().as_str() != "".to_string().as_str())) {
+    Some(InferredNode::Resolved { node: rt, .. }) => if (((rt.children.clone().len() as i64) == 0) && (rt.ident_span.clone() != None)) {
             emit_map_has(shared_types.clone(), rt.name.clone())
 } else {
             false
@@ -1593,7 +1593,7 @@ return result
 }
 }
 let has_structure = (inferred_node.connective.clone() != Connective::NoConnective);
-let n = if ((inferred_node.name.clone().as_str() == "Refined".to_string().as_str()) && has_structure) {
+let n = if ((inferred_node.type_annotation.clone() != None) && has_structure) {
             match inferred_node.children.clone().first().cloned() {
     Some(base) => base.clone(),
     None => inferred_node.clone(),
@@ -1615,7 +1615,7 @@ if (n.name.clone().as_str() == "__EmitTypeCacheMiss".to_string().as_str()) {
                 type_name.clone()
 } else {
                 if is_product {
-                    if (n.name.clone().as_str() == "".to_string().as_str()) {
+                    if (n.ident_span.clone() == None) {
                         type_name.clone()
 } else {
                         Some(n.name.clone())
@@ -1624,7 +1624,7 @@ if (n.name.clone().as_str() == "__EmitTypeCacheMiss".to_string().as_str()) {
                     if is_coproduct {
                         type_name.clone()
 } else {
-                        if (((n.children.clone().len() as i64) == 0) && (n.name.clone().as_str() != "".to_string().as_str())) {
+                        if (((n.children.clone().len() as i64) == 0) && (n.ident_span.clone() != None)) {
                             Some(n.name.clone())
 } else {
                             type_name.clone()
@@ -1702,7 +1702,7 @@ pub fn effective_variant_parent(name: String, binding_kind: Option<Rc<VarBinding
 match cached {
     Some(parent) => Some(parent.clone()),
     None => match resolved_type.as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => if (((rt.name.clone().as_str() != "".to_string().as_str()) && (rt.name.clone().as_str() != name.clone().as_str())) && variant_belongs_to_enum(emit_info.type_summaries.clone(), name.clone(), rt.name.clone())) {
+    Some(InferredNode::Resolved { node: rt, .. }) => if (((rt.ident_span.clone() != None) && (rt.name.clone().as_str() != name.clone().as_str())) && variant_belongs_to_enum(emit_info.type_summaries.clone(), name.clone(), rt.name.clone())) {
             Some(rt.name.clone())
 } else {
             variant_parent_from_binding_kind(binding_kind)
@@ -1832,7 +1832,7 @@ pub fn emit_typed_field_access(base: Rc<Node>, field: String, summary: Option<Rc
 let base_is_anon_record = match base.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: bt, .. }) => {
             let is_product = (bt.connective.clone() == Connective::Conj);
-if (is_product && (bt.name.clone().as_str() == "".to_string().as_str())) {
+if (is_product && (bt.ident_span.clone() == None)) {
                 true
 } else {
                 false
@@ -2197,7 +2197,7 @@ pub fn contextual_variant_parent(variant_name: String, parent_enum: Option<Strin
 } else {
         None
 },
-    None => if (((resolved_type.name.clone().as_str() != "".to_string().as_str()) && (resolved_type.name.clone().as_str() != variant_name.clone().as_str())) && variant_belongs_to_enum(emit_info.type_summaries.clone(), variant_name.clone(), resolved_type.name.clone())) {
+    None => if (((resolved_type.ident_span.clone() != None) && (resolved_type.name.clone().as_str() != variant_name.clone().as_str())) && variant_belongs_to_enum(emit_info.type_summaries.clone(), variant_name.clone(), resolved_type.name.clone())) {
         Some(resolved_type.name.clone())
 } else {
         None
@@ -2651,7 +2651,7 @@ let contextual_acc_type = match result_type.as_deref().cloned() {
 };
 let acc_type_node = match fold_accumulator_type {
     Some(acc_type) => {
-            let acc_children_have_unit = ({ let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if (((c.connective.clone() == Connective::Conj) && ((c.children.clone().len() as i64) == 0)) || (c.name.clone().as_str() == "".to_string().as_str())) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if (((gc.connective.clone() == Connective::Conj) && ((gc.children.clone().len() as i64) == 0)) || (gc.name.clone().as_str() == "".to_string().as_str())) { __found = true; break; } } __found } { __found = true; break; } } __found });
+            let acc_children_have_unit = ({ let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if (((c.connective.clone() == Connective::Conj) && ((c.children.clone().len() as i64) == 0)) || (c.ident_span.clone() == None)) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if (((gc.connective.clone() == Connective::Conj) && ((gc.children.clone().len() as i64) == 0)) || (gc.ident_span.clone() == None)) { __found = true; break; } } __found } { __found = true; break; } } __found });
 let is_under_resolved_map = (node_is_keyed_collection(acc_type.clone()) && (((acc_type.children.clone().len() as i64) == 0) || acc_children_have_unit));
 let is_under_resolved_list = (node_is_element_collection(acc_type.clone()) && ((acc_type.children.clone().len() as i64) == 0));
 let is_under_resolved_non_collection = ((!node_is_keyed_collection(acc_type.clone()) && !node_is_element_collection(acc_type.clone())) && !node_is_collection(acc_type.clone()));
@@ -2722,7 +2722,7 @@ let lambda_acc_type_str = if is_bare_container {
 } else {
             acc_type_str.clone()
 };
-let acc_has_unit_child = ({ let mut __found = false; for c in acc_type_node.children.clone().iter().cloned() { if (((c.connective.clone() == Connective::Conj) && ((c.children.clone().len() as i64) == 0)) || (c.name.clone().as_str() == "".to_string().as_str())) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type_node.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if (((gc.connective.clone() == Connective::Conj) && ((gc.children.clone().len() as i64) == 0)) || (gc.name.clone().as_str() == "".to_string().as_str())) { __found = true; break; } } __found } { __found = true; break; } } __found });
+let acc_has_unit_child = ({ let mut __found = false; for c in acc_type_node.children.clone().iter().cloned() { if (((c.connective.clone() == Connective::Conj) && ((c.children.clone().len() as i64) == 0)) || (c.ident_span.clone() == None)) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type_node.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if (((gc.connective.clone() == Connective::Conj) && ((gc.children.clone().len() as i64) == 0)) || (gc.ident_span.clone() == None)) { __found = true; break; } } __found } { __found = true; break; } } __found });
 let init_str = match args.clone().first().cloned() {
     Some(init_arg) => match (*arg_value(init_arg.clone()).expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
@@ -2769,7 +2769,7 @@ let elem_is_type_var = if (elem.inferred.clone() != None) {
 } else {
                 false
 };
-if ((elem.name.clone().as_str() != "".to_string().as_str()) && !elem_is_type_var) {
+if ((elem.ident_span.clone() != None) && !elem_is_type_var) {
                 render_rust_type(elem.clone(), shared_types.clone())
 } else {
                 "_".to_string()
@@ -2939,7 +2939,7 @@ let type_name = match receiver.inferred.clone().as_deref().cloned() {
 } else {
                 false
 };
-if (rt_is_error || (rt.name.clone().as_str() == "".to_string().as_str())) {
+if (rt_is_error || (rt.ident_span.clone() == None)) {
                 "compile_error!(\"with method missing resolved record type\")".to_string()
 } else {
                 rt.name.clone()
@@ -3338,7 +3338,7 @@ let ft_is_type_var = if (field_type.inferred.clone() != None) {
 } else {
                     false
 };
-if ((field_type.name.clone().as_str() != "".to_string().as_str()) && !ft_is_type_var.clone()) {
+if ((field_type.ident_span.clone() != None) && !ft_is_type_var.clone()) {
                     Some(field_type.name.clone())
 } else {
                     None
@@ -3362,7 +3362,7 @@ let ft_is_type_var = if (field_type.inferred.clone() != None) {
 } else {
                     false
 };
-if ((field_type.name.clone().as_str() != "".to_string().as_str()) && !ft_is_type_var.clone()) {
+if ((field_type.ident_span.clone() != None) && !ft_is_type_var.clone()) {
                     Some(field_type.name.clone())
 } else {
                     None
@@ -3391,7 +3391,7 @@ match tn.clone() {
             let node_lookup = lookup_struct_field_type_name(struct_node.clone(), field_name.clone(), outer_type_name);
 let expected_type = match node_lookup.clone() {
     Some(_) => node_lookup.clone(),
-    None => if (struct_node.name.clone().as_str() != "".to_string().as_str()) {
+    None => if (struct_node.ident_span.clone() != None) {
                 match lookup_emit_type_summary(emit_info.clone(), struct_node.name.clone()) {
     Some(summary) => v2_rt::map_get(&summary.field_type_map.clone(), field_name.clone()),
     None => None,
@@ -3455,7 +3455,7 @@ pub fn emit_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<Node>>
         let struct_name = explicit_record_struct_name(type_name.clone(), resolved_type.clone(), shared_types.clone());
 let qualified_name = match struct_name {
     Some(sn) => Some(sn.clone()),
-    None => if ((resolved_type.name.clone().as_str() != "".to_string().as_str()) && v2_rt::map_contains_key(&emit_info.type_summaries.clone(), resolved_type.name.clone())) {
+    None => if ((resolved_type.ident_span.clone() != None) && v2_rt::map_contains_key(&emit_info.type_summaries.clone(), resolved_type.name.clone())) {
             Some(resolved_type.name.clone())
 } else {
             None
@@ -3464,7 +3464,7 @@ let qualified_name = match struct_name {
 match qualified_name {
     None => {
             let is_product = (resolved_type.connective.clone() == Connective::Conj);
-if (is_product && (resolved_type.name.clone().as_str() == "".to_string().as_str())) {
+if (is_product && (resolved_type.ident_span.clone() == None)) {
                 if ((fields.clone().len() as i64) == 1) {
                     match fields.clone().first().cloned() {
     Some(f) => emit_typed_expr(field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024),
@@ -3509,7 +3509,7 @@ let effective_parent = match context_lookup {
 } else {
                     false
 };
-if ((((resolved_type.name.clone().as_str() != "".to_string().as_str()) && (resolved_type.name.clone().as_str() != tn.clone().as_str())) && !rt_is_type_var) && (resolved_type.name.clone().as_str() != "Error".to_string().as_str())) {
+if ((((resolved_type.ident_span.clone() != None) && (resolved_type.name.clone().as_str() != tn.clone().as_str())) && !rt_is_type_var) && (resolved_type.name.clone().as_str() != "Error".to_string().as_str())) {
                     Some(resolved_type.name.clone())
 } else {
                     parent_enum.clone()
@@ -4111,11 +4111,18 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(log_line, 
 }
 
 pub fn emit_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, inferred: Rc<Node>) -> String {
-    match classify_transport(transport.clone()) {
-    TransportKind::RestKind => emit_rest_call(op_name, transport.clone(), registry, depth),
-    TransportKind::ShellKind => emit_shell_call(op_name, transport.clone(), registry, depth, inferred),
-    TransportKind::FileKind => emit_file_call(op_name, inferred),
-    TransportKind::LocalKind => emit_local_call(op_name),
+    if is_rest_transport(transport.clone()) {
+        emit_rest_call(op_name, transport.clone(), registry, depth)
+} else {
+        if is_shell_transport(transport.clone()) {
+            emit_shell_call(op_name, transport.clone(), registry, depth, inferred)
+} else {
+            if is_file_transport(transport.clone()) {
+                emit_file_call(op_name, inferred)
+} else {
+                emit_local_call(op_name)
+}
+}
 }
 }
 
@@ -4187,7 +4194,7 @@ if __eff_is_container {
 pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
     {
         let is_product = (n.connective.clone() == Connective::Conj);
-if ((is_product && (n.name.clone().as_str() == "".to_string().as_str())) && ((n.children.clone().len() as i64) == 1)) {
+if ((is_product && (n.ident_span.clone() == None)) && ((n.children.clone().len() as i64) == 1)) {
             match n.children.clone().first().cloned() {
     Some(field_node) => resolved_type_or_error(field_node.clone()),
     None => n.clone(),
