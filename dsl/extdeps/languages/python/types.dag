@@ -150,8 +150,11 @@ data pass_statement: String = "pass"
 data type_checker: String = "mypy"
 data type_checker_strict: String = "mypy --strict"
 
-// Cast syntax: Python uses constructor calls, always syntactically valid.
-// Runtime errors are Python's business — the emitter just produces valid syntax.
+// Cast syntax: Python uses constructor calls (int(x), float(x), str(x)).
+// fail_open=true models Python's actual semantics: constructor calls are
+// always syntactically valid. Invalid casts (e.g., int("hello")) produce
+// runtime errors, not syntax errors. The emitter faithfully renders the
+// construct; the target language's runtime validates.
 data python_cast_syntax: CastSyntax = {
   template: "\{type\}(\{expr\})",
   valid_targets: [],

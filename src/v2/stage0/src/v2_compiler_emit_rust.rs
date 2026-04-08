@@ -455,7 +455,7 @@ let ext_len = v2_rt::string_length(&rust_source_ext());
 let mod_decls = Rc::new({ let mut __result = Vec::new(); for f in all_module_files.iter().cloned() { __result.push({
             let path_len = v2_rt::string_length(&f.path.clone());
 let mod_name = v2_rt::substring(&f.path.clone(), src_prefix_len.clone(), (path_len.clone() - ext_len.clone()));
-v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "mod ".to_string()), mod_name.clone()), ";".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), rust_items().module_keyword.clone()), " ".to_string()), mod_name.clone()), ";".to_string())
 }); } __result });
 let test_mod = if has_compiler_tests {
             "\n\n#[cfg(test)]\nmod compiler_tests;".to_string()

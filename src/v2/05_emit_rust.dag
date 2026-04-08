@@ -505,7 +505,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
     // Extract mod name from path: strip "src/" prefix and ".rs" suffix.
     let path_len = string_length(s: f.path)
     let mod_name = substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
-    concat(rust_visibility_prefix(), "mod ", mod_name, ";")
+    concat(rust_visibility_prefix(), rust_items().module_keyword, " ", mod_name, ";")
   )
   let test_mod = if has_compiler_tests {
     "\n\n#[cfg(test)]\nmod compiler_tests;"

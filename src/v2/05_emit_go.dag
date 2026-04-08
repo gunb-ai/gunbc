@@ -261,7 +261,7 @@ fn emit_go_test_file(module_name: String, projections: List<TestProjection>) -> 
     let content = concat(
       "// Generated tests -- do not edit.\n",
       "// Source module: ", module_name, "\n\n",
-      "package ", package_name, "\n\n",
+      language_spec(target: Go).items.module_keyword, " ", package_name, "\n\n",
       go_test_import_block(projections: projections),
       tests_str, "\n")
     TextFile { path: go_test_file_path(module_name: module_name), content: content }
@@ -299,7 +299,7 @@ fn emit_go_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let pkg_name = go_package_name(module_name: m.name)
-  let pkg_decl = concat("package ", pkg_name)
+  let pkg_decl = concat(language_spec(target: Go).items.module_keyword, " ", pkg_name)
   let imports_str = emit_go_imports(items: typed_module.items, imports: module_imports(n: m))
   let imports_section = if imports_str == "" { "" } else { concat("\n\n", imports_str) }
   let items_str = typed_module.items

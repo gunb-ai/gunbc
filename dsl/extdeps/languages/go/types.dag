@@ -155,7 +155,9 @@ data float_types: List<String> = ["float32", "float64"]
 
 data type_conversion_template: String = "\{type\}(\{expr\})"
 
-// Cast syntax: Go uses type conversion, all numeric conversions valid.
+// Cast syntax: Go uses type conversion T(x). fail_open=true models Go's
+// actual semantics: type conversions are syntactically valid for compatible
+// types. The Go compiler validates type compatibility at build time.
 data go_cast_syntax: CastSyntax = {
   template: "\{type\}(\{expr\})",
   valid_targets: [],

@@ -217,7 +217,7 @@ pub fn emit_go_test_file(module_name: String, projections: Rc<Vec<Rc<TestProject
         {
             let package_name = go_package_name(module_name.clone());
 let tests_str = Rc::new({ let mut __result = Vec::new(); for p in projections.clone().iter().cloned() { __result.push(emit_go_operation_test(p.clone(), 0)); } __result }).join(&"\n\n".to_string());
-let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Generated tests -- do not edit.\n".to_string(), "// Source module: ".to_string()), module_name.clone()), "\n\n".to_string()), "package ".to_string()), package_name), "\n\n".to_string()), go_test_import_block(projections.clone())), tests_str), "\n".to_string());
+let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Generated tests -- do not edit.\n".to_string(), "// Source module: ".to_string()), module_name.clone()), "\n\n".to_string()), language_spec(RenderTarget::Go).items.clone().module_keyword.clone()), " ".to_string()), package_name), "\n\n".to_string()), go_test_import_block(projections.clone())), tests_str), "\n".to_string());
 Rc::new(TextFile {
     path: go_test_file_path(module_name.clone()),
     content: content,
@@ -245,7 +245,7 @@ pub fn emit_go_module(typed_module: Rc<TypedModule>, registry: Rc<HashMap<String
         let m = typed_module.module.clone();
 let scope = module_emit_scope(typed_module.clone());
 let pkg_name = go_package_name(m.name.clone());
-let pkg_decl = v2_rt::concat("package ".to_string(), pkg_name);
+let pkg_decl = v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().module_keyword.clone(), " ".to_string()), pkg_name);
 let imports_str = emit_go_imports(typed_module.items.clone(), module_imports(m.clone()));
 let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str()) {
             "".to_string()
