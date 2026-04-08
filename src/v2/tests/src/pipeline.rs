@@ -2223,6 +2223,60 @@ fn cx_forever_bound_produces_violation() {
 }
 
 // =========================================================================
+// CX: Soundness negative tests
+//
+// These tests verify that the analyzer REJECTS unsound patterns.
+// A test here asserts that a function produces O(?) (violation), NOT
+// that it compiles successfully. Removing these tests silently allows
+// soundness regressions.
+// =========================================================================
+
+#[test]
+fn soundness_branching_recursion_produces_violation() {
+    // Branching recursion: split(n) calls split(n-1) twice on the same path.
+    // This is O(2^n), not O(n). The analyzer must produce a violation.
+    let source = r#"module soundness_branch
+fn split(n: Int) -> Int {
+  if n <= 0 { 1 }
+  else { split(n: n - 1) + split(n: n - 1) }
+}
+"#;
+    let result = compile_dag_with_complexity(source);
+    assert!(!result.violations.is_empty(),
+        "branching recursion should produce a violation, got 0");
+}
+
+#[test]
+fn soundness_conditional_descent_not_accepted() {
+    // Conditional descent: only one branch descends, the other passes
+    // the parameter unchanged. The analyzer must reject this.
+    let source = r#"module soundness_cond
+fn cond_recurse(n: Int, flag: Bool) -> Int {
+  if flag { cond_recurse(n: n - 1, flag: flag) }
+  else { cond_recurse(n: n, flag: true) }
+}
+"#;
+    let result = compile_dag_with_complexity(source);
+    assert!(!result.violations.is_empty(),
+        "conditional descent should produce a violation, got 0");
+}
+
+#[test]
+fn soundness_same_argument_stays_violation() {
+    // Same-argument recursion: f(n) calls f(n) — infinite loop.
+    // Must always be a violation.
+    let source = r#"module soundness_same
+fn loop_forever(n: Int) -> Int {
+  loop_forever(n: n)
+}
+"#;
+    let result = compile_dag_with_complexity(source);
+    let class = result.function_classes.get("loop_forever")
+        .expect("loop_forever should have a complexity class");
+    assert_eq!(class.as_str(), "O(?)", "same-argument recursion should be O(?), got {}", class);
+}
+
+// =========================================================================
 // CX: Asymptotic normalization regression tests
 //
 // Verify that the cost algebra models the math correctly:

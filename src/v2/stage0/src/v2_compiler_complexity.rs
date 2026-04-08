@@ -4599,7 +4599,27 @@ Rc::new(SummaryResult {
 })
 },
     None => {
-        let external_summary = Rc::new(ComplexitySummary {
+        let is_unexpected_miss = (v2_rt::map_get(&scc_index, func_name.clone()) != None);
+if is_unexpected_miss {
+            {
+                let miss_summary = Rc::new(ComplexitySummary {
+    work: Rc::new(CostExpr::CostUnknown {
+    reason: v2_rt::concat("internal function missing from index: ".to_string(), func_name.clone()),
+}),
+    span: Rc::new(CostExpr::CostUnknown {
+    reason: v2_rt::concat("internal function missing from index: ".to_string(), func_name.clone()),
+}),
+    output_size: v2_rt::rc_empty_map::<Rc<CostExpr>>(),
+    certainty: Certainty::Conservative,
+});
+Rc::new(SummaryResult {
+    summary: miss_summary,
+    table: table.clone(),
+})
+}
+} else {
+            {
+                let external_summary = Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostExtern {
     name: func_name.clone(),
 }),
@@ -4613,6 +4633,8 @@ Rc::new(SummaryResult {
     summary: external_summary,
     table: table.clone(),
 })
+}
+}
 },
 },
 }

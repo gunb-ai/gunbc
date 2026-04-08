@@ -4787,21 +4787,34 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
           let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
           SummaryResult { summary: simplified, table: final_table }
         None =>
-          // External function — outside our proof boundary. Cost is opaque
-          // until declared (like C++ std specifying O(n log n) for sort).
-          // REVIEW #10: CostExtern succeeds silently. Future: stdlib cost
-          // contract system where builtins declare their complexity (e.g.,
-          // map_get → O(1), sort → O(n log n)). Until then, CostExtern
-          // is the honest "we can't measure this" marker. Not a violation
-          // because external functions are by definition outside our proof
-          // boundary — the uncertainty is at the boundary, not fabricated.
-          let external_summary = ComplexitySummary {
-            work: CostExtern { name: func_name },
-            span: CostExtern { name: func_name },
-            output_size: empty_map(),
-            certainty: Conservative
+          // Function not in func_index. Distinguish genuine externals
+          // (Rust stdlib, runtime) from unexpected misses (internal function
+          // lost from index — a bug that should not fail open).
+          let is_unexpected_miss = map_get(scc_index, func_name) != none
+          if is_unexpected_miss {
+            // Internal function in SCC index but missing from func_index.
+            // Fail closed — this is a bug in extract_func_entries or the
+            // import closure, not a genuine external.
+            let miss_summary = ComplexitySummary {
+              work: CostUnknown { reason: concat("internal function missing from index: ", func_name) },
+              span: CostUnknown { reason: concat("internal function missing from index: ", func_name) },
+              output_size: empty_map(),
+              certainty: Conservative
+            }
+            SummaryResult { summary: miss_summary, table: table }
+          } else {
+            // Genuine external — outside our proof boundary. Cost is opaque
+            // until declared (like C++ std specifying O(n log n) for sort).
+            // REVIEW #10: Future: stdlib cost contract system where builtins
+            // declare their complexity (map_get → O(1), sort → O(n log n)).
+            let external_summary = ComplexitySummary {
+              work: CostExtern { name: func_name },
+              span: CostExtern { name: func_name },
+              output_size: empty_map(),
+              certainty: Conservative
+            }
+            SummaryResult { summary: external_summary, table: table }
           }
-          SummaryResult { summary: external_summary, table: table }
       }
   }
 }

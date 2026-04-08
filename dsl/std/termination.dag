@@ -33,6 +33,9 @@
 module std.termination
 
 import std.algebra { Ordering }
+// NOTE: is_valid_proof lives in std.graph (graph algorithm needs SCC
+// primitives). Cannot re-export here (circular: termination → graph →
+// termination). Consumers import from std.graph directly.
 
 // =========================================================================
 // Descent evidence: what happens to a ranking dimension at one call edge
