@@ -3726,7 +3726,9 @@ fn emit_service_def(
   shared_types: Map<String, Bool>,
   env: TypeEnv
 ) -> String {
-  let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
+  // Use node.name (full dotted name like "shell.Find") instead of authored_name
+  // (which only covers the ident_span of the first token, e.g. "shell").
+  let safe_name = sanitize_service_name(name: item.name)
   let fallback_transport = service_fallback_transport(item: item)
   let op_children = item.children
   let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children)

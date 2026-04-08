@@ -3947,11 +3947,11 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n".to_string(), make_indent((depth.
 
 pub fn emit_service_def(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, shared_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
     {
-        let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
+        let safe_name = sanitize_service_name(item.name.clone());
 let fallback_transport = service_fallback_transport(item.clone());
 let op_children = item.children.clone();
 let struct_def = emit_service_struct(safe_name.clone(), fallback_transport.clone(), op_children.clone());
-let impl_block = emit_service_impl(safe_name.clone(), fallback_transport.clone(), op_children.clone(), registry, shared_types, env.clone(), item.clone());
+let impl_block = emit_service_impl(safe_name.clone(), fallback_transport.clone(), op_children.clone(), registry, shared_types, env, item.clone());
 v2_rt::concat(v2_rt::concat(struct_def, "\n\n".to_string()), impl_block)
 }
 }
