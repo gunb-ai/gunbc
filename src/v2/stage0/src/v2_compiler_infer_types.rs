@@ -91,17 +91,11 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 })
 }
 
-pub fn child_type_node(mut ch: Rc<Node>) -> Rc<Node> {
-    loop {
-        if (ch.inferred.clone() != None) {
-            {
-                let __tco_0 = ch;
-ch = __tco_0;
-continue;
-}
+pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
+    if (ch.inferred.clone() != None) {
+        resolved_type_or_error(ch.clone())
 } else {
-            break ch.clone();
-}
+        ch.clone()
 }
 }
 

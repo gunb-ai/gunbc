@@ -62,7 +62,7 @@ fn type_variable_node(id: String) -> Node {
 // normalization bridge; once all producers use field-style, this
 // simplifies to resolved_type_or_error.
 fn child_type_node(ch: Node) -> Node {
-  if ch.inferred != none { child_type_node(ch: ch) } else { ch }
+  if ch.inferred != none { resolved_type_or_error(n: ch) } else { ch }
 }
 
 // Basic node/cardinality helpers
