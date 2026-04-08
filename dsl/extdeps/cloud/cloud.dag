@@ -10,14 +10,7 @@
 
 module extdeps.cloud.cloud
 
-// -- Authentication schemes ----------------------------------------
-// How cloud APIs authenticate requests. Each provider uses a subset.
-
-type CloudAuthScheme
-  = BearerToken
-  | SigV4 { region: String, service: String }
-  | ApiKey
-  | OidcToken { audience: String }
+import std.types { AuthScheme }
 
 // -- Service endpoints ---------------------------------------------
 
@@ -38,7 +31,7 @@ type RateLimitPolicy {
 // -- Credentials ---------------------------------------------------
 
 type Credential {
-  scheme: CloudAuthScheme
+  scheme: AuthScheme
   scopes: List<String>?
   expires_seconds: Int?
 }

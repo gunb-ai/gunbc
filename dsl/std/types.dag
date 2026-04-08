@@ -447,6 +447,11 @@ type MimeType = String where pattern("^[a-z]+/[a-z0-9.+-]+$")
 // Defines the partitioning:  classify: [FilePath] -> TextFilePath | BinaryFilePath
 // file_types configuration removed (was annotation)
 
+// --- Transport types (Level 3+4: Coproduct DAGs) -----------------------
+// RFC 9110 Section 9: HTTP request methods.
+// Moved from extdeps/transports/rest.dag to std/ — universal concept.
+type HttpMethod = GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
+
 // --- Auth types (Level 3+4: Product and Coproduct DAGs) ---------------
 // Records compile to Product nodes with parallel SubDag fields.
 // Sums compile to Coproduct nodes that branch on variant tag.
@@ -457,6 +462,9 @@ type AuthScheme
   = Bearer
   | Header { name: String }
   | Basic { username: String }
+  | ApiKey
+  | SigV4 { region: String, service: String }
+  | OidcToken { audience: String }
 
 // [AccessToken] = [Secret] x [AuthScheme] x [String?]
 //               = [Secret] x [AuthScheme] x ([String] U {none})
@@ -496,7 +504,7 @@ type ToolHandle       = String where brand("ToolHandle")
 // --- Transport types (Level 3: Labeled Products) ----------------------
 
 type TransportRequest {
-  method: String
+  method: HttpMethod
   url: String
   headers: Json
   body: String

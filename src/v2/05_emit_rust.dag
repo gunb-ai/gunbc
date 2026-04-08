@@ -3980,7 +3980,7 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String)
         Some { value: n } => emit_ident(name: n, target: Rust)
         None => "compile_error!(\"service config has auth but no auth_input\")"
       }
-      if auth_name == "BearerToken" {
+      if auth_name == "Bearer" || auth_name == "BearerToken" {
         concat("let request = client.", http_method, "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ", token_param, "));")
       } else {
         // Header("x-api-key") pattern — extract header name from call args

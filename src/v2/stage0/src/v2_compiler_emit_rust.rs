@@ -4330,7 +4330,7 @@ let token_param = match auth_input_name {
     Some(n) => emit_ident(n.clone(), RenderTarget::Rust),
     None => "compile_error!(\"service config has auth but no auth_input\")".to_string(),
 };
-if (auth_name.as_str() == "BearerToken".to_string().as_str()) {
+if ((auth_name.clone().as_str() == "Bearer".to_string().as_str()) || (auth_name.clone().as_str() == "BearerToken".to_string().as_str())) {
                 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = client.".to_string(), http_method), "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ".to_string()), token_param), "));".to_string())
 } else {
                 {
