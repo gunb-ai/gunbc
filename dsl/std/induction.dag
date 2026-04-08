@@ -8,23 +8,33 @@
 //
 // EXTERNAL AUTHORITY:
 //   - Initial algebras of endofunctors: Lambek (1968)
+//     https://en.wikipedia.org/wiki/Initial_algebra
 //     An inductive type is the initial algebra of its signature functor.
 //     The type definition IS the functor; the constructors are the algebra.
 //   - Catamorphisms: Meijer, Fokkinga, Paterson (1991) "Bananas" paper
+//     https://en.wikipedia.org/wiki/Catamorphism
 //     Every initial algebra has a unique fold (catamorphism). A function
 //     that recurses only on sub-terms of its inductive argument IS a
 //     catamorphism. Termination is guaranteed by well-foundedness.
 //   - Size-change termination: Lee, Jones, Ben-Amram (2001)
+//     https://en.wikipedia.org/wiki/Size-change_termination_principle
 //     Termination is decidable when each call either strictly decreases
 //     or preserves a well-founded measure. SubValueRelation models the
 //     size-change graph edges.
 //   - Well-founded induction: Floyd (1967), Turing (1949)
+//     https://en.wikipedia.org/wiki/Well-founded_relation
 //     Every inductive type has a natural well-founded ordering: the
 //     sub-term relation. The size measure (constructor count) maps to ℕ.
+//   - Structural induction / primitive recursion:
+//     https://en.wikipedia.org/wiki/Structural_induction
+//     Recursion on sub-terms of an inductively defined structure is
+//     guaranteed to terminate. InductiveField models the sub-term positions.
 //   - Master theorem: Bentley, Haken, Saxe (1980); CLRS Theorem 4.1
+//     https://en.wikipedia.org/wiki/Master_theorem_(analysis_of_algorithms)
 //     For recurrences T(n) = a·T(n/b) + O(n^d), the asymptotic bound
 //     is determined by comparing log_b(a) with d.
 //   - Asymptotic notation: Knuth (1976) "Big Omicron and big Omega"
+//     https://en.wikipedia.org/wiki/Big_O_notation
 //     O(f(n)) denotes the class of functions bounded above by c·f(n)
 //     for sufficiently large n.
 //
@@ -393,6 +403,7 @@ fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponen
 // =========================================================================
 
 // --- Structural recursion (catamorphisms) ---
+// https://en.wikipedia.org/wiki/Tree_traversal
 
 fn tree_traversal_bound() -> CostBound {
   catamorphism_bound(param: "tree", nesting_depth: 1)
@@ -402,42 +413,54 @@ fn nested_iteration_bound() -> CostBound {
   catamorphism_bound(param: "items", nesting_depth: 2)
 }
 
+// https://en.wikipedia.org/wiki/Fold_(higher-order_function)
 fn linear_scan_bound() -> CostBound {
   catamorphism_bound(param: "xs", nesting_depth: 1)
 }
 
 // --- Divide-and-conquer (Master theorem) ---
+// https://en.wikipedia.org/wiki/Divide-and-conquer_algorithm
 
+// https://en.wikipedia.org/wiki/Binary_search
 fn binary_search_bound() -> CostBound {
   derive_bound(param: "xs", branches: 1, factor: ProportionalShrink { divisor: 2 }, work_exponent: 0)
 }
 
+// https://en.wikipedia.org/wiki/Merge_sort
 fn mergesort_bound() -> CostBound {
   derive_bound(param: "xs", branches: 2, factor: ProportionalShrink { divisor: 2 }, work_exponent: 1)
 }
 
-// Karatsuba: a=3, b=2, d=1 → O(n^(log_2(3))) ≈ O(n^1.585) — exact via LogBasedExp
+// https://en.wikipedia.org/wiki/Karatsuba_algorithm
+// a=3, b=2, d=1 → O(n^(log_2(3))) ≈ O(n^1.585) — exact via LogBasedExp
 fn karatsuba_bound() -> CostBound {
   derive_bound(param: "digits", branches: 3, factor: ProportionalShrink { divisor: 2 }, work_exponent: 1)
 }
 
-// Strassen: a=7, b=2, d=2 → O(n^(log_2(7))) ≈ O(n^2.807) — exact via LogBasedExp
+// https://en.wikipedia.org/wiki/Strassen_algorithm
+// a=7, b=2, d=2 → O(n^(log_2(7))) ≈ O(n^2.807) — exact via LogBasedExp
 fn strassen_bound() -> CostBound {
   derive_bound(param: "n", branches: 7, factor: ProportionalShrink { divisor: 2 }, work_exponent: 2)
 }
 
 // --- Root complexity ---
 
+// https://en.wikipedia.org/wiki/Trial_division
 fn trial_division_bound() -> CostBound { cost_sqrt(param: "n") }
 fn cube_root_bound() -> CostBound { cost_cbrt(param: "n") }
+// https://en.wikipedia.org/wiki/Nth_root
 fn kth_root_bound(k: Int) -> CostBound { cost_root(param: "n", k: k) }
 
 // --- Graph algorithms (multi-parameter) ---
+// https://en.wikipedia.org/wiki/Graph_traversal
 
+// https://en.wikipedia.org/wiki/Breadth-first_search
+// https://en.wikipedia.org/wiki/Depth-first_search
 fn bfs_dfs_bound() -> CostBound {
   cost_graph_linear(v_param: "V", e_param: "E")
 }
 
+// https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
 fn dijkstra_bound() -> CostBound {
   // O((V+E) · log V) in sum-of-products: O(V·log V + E·log V)
   SumOfProductsBound { terms: [
@@ -446,6 +469,7 @@ fn dijkstra_bound() -> CostBound {
   ] }
 }
 
+// https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm
 fn bellman_ford_bound() -> CostBound {
   ProductBound { factors: [
     PolyCost { param: "V", exponent: IntegerExp { value: 1 } },
@@ -453,6 +477,7 @@ fn bellman_ford_bound() -> CostBound {
   ] }
 }
 
+// https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm
 fn floyd_warshall_bound() -> CostBound {
   cost_poly(param: "V", degree: 3)
 }
