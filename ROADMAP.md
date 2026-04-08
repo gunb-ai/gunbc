@@ -204,11 +204,11 @@ undetected across multiple commits.
    generates correct code even when the branch's binary wouldn't.
 
 **Fix priority (P0 — blocks all codegen-touching work):**
-- [ ] Un-ignore `bootstrap_fixed_point` in CI. The ~20s cost is
+- [x] Un-ignore `bootstrap_fixed_point` in CI. The ~20s cost is
   acceptable. Self-hosting regressions are silent and cumulative.
-- [ ] Remove the complexity early-return from `bootstrap_stage0_to_stage1`
+- [x] Remove the complexity early-return from `bootstrap_stage0_to_stage1`
   so it always validates generated Rust, even with CX violations.
-- [ ] Add two-pass regen to the clean-repo workflow (step 6 above).
+- [x] Add two-pass regen to the clean-repo workflow (step 6 above).
 
 ## Reviewer Root Cause Analysis (2026-04-03)
 
@@ -1021,8 +1021,8 @@ lanes — any lane can introduce a regression.
 | What | Where | Status |
 |------|-------|--------|
 | Self-compile time ratchet | `bootstrap::performance_ratchet` | `#[ignore]`, CI gate, 30s budget (~4.8s actual) |
-| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, CI gate, ratchet 0 — **validation skipped when CX blocks emission** |
-| Bootstrap fixed-point | `bootstrap::bootstrap_fixed_point` | `#[ignore]`, NOT a CI gate — **P0: must un-ignore** |
+| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, not in CI — subsumed by fixed-point |
+| Bootstrap fixed-point | `bootstrap::bootstrap_fixed_point` | `#[ignore]`, CI gate (~60s) — subsumes stage0→stage1 |
 | Full DSL compile | `pipeline::full_dsl_compiles` | `#[ignore]`, GREEN |
 | Stage0 freshness gate | `scripts/check-stage0-freshness.sh` | CI blocking |
 | Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, ratchet 325 |

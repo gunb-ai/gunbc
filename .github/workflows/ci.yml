@@ -64,5 +64,5 @@ jobs:
       - name: Performance Ratchet
         run: cargo test -p v2-compiler-tests performance_ratchet -- --ignored --nocapture
 
-      - name: Bootstrap Stage0 to Stage1
-        run: cargo test -p v2-compiler-tests bootstrap_stage0_to_stage1 -- --ignored --nocapture
+      - name: Bootstrap Fixed Point
+        run: cargo test -p v2-compiler-tests bootstrap_fixed_point -- --ignored --nocapture

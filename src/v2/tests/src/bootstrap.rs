@@ -264,30 +264,16 @@ fn bootstrap_stage0_to_stage1() {
         .expect("failed to run stage0 compile");
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    // Emission may be blocked by complexity violations (fail-closed gate).
-    // Only skip cargo check for that known case — other failures are real
-    // regressions (parser crash, CLI breakage, etc.) and must fail the test.
-    if !output.status.success() || !stage1_dir.join("Cargo.toml").exists() {
-        let has_complexity_block = stderr.contains("complexity violation")
-            && stderr.contains("no files emitted");
-        if has_complexity_block {
-            let diag_count = stderr.lines()
-                .filter(|l| l.starts_with("error[") || l.starts_with("error:"))
-                .count();
-            eprintln!(
-                "stage0 compile blocked by complexity violations ({} diagnostics). \
-                 Bootstrap B cargo check skipped — unblock by reducing \
-                 complexity violations to 0.",
-                diag_count
-            );
-            let _ = std::fs::remove_dir_all(&stage1_dir);
-            return;
-        }
-        panic!(
-            "stage0 compile failed (not complexity-blocked):\n{}",
-            stderr
-        );
-    }
+    assert!(
+        output.status.success(),
+        "stage0 compile failed:\n{}",
+        stderr
+    );
+    assert!(
+        stage1_dir.join("Cargo.toml").exists(),
+        "stage0 compile produced no output (no Cargo.toml in {})",
+        stage1_dir.display()
+    );
 
     let check = std::process::Command::new("cargo")
         .arg("check")

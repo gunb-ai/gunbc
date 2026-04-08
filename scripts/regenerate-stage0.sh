@@ -53,9 +53,7 @@ for f in "$OUTPUT_DIR"/src/*.rs; do
 done
 
 echo "=== Verifying stage0 compiles ==="
-if cargo check -p v2-compiler 2>&1 | tail -5; then
-    echo "=== Done. Stage0 regenerated via v2 self-compile. ==="
-else
+if ! cargo check -p v2-compiler 2>&1 | tail -5; then
     echo ""
     echo "=== Stage0 has compilation errors. ==="
     cargo check -p v2-compiler 2>&1 | grep "^error" | wc -l
@@ -63,4 +61,25 @@ else
     exit 1
 fi
 
+echo "=== Pass 2: self-hosting check (regenerated binary re-compiles itself) ==="
+cargo build -p v2-compiler --release
+PASS2_DIR="$ROOT/.regen-pass2"
+rm -rf "$PASS2_DIR"
+$STAGE0_CMD compile \
+    --source-root "$ROOT/src/v2" \
+    --source-root "$ROOT/dsl" \
+    --output-dir "$PASS2_DIR"
+
+if ! diff -r "$PASS2_DIR/src" "$STAGE0_DIR/src" > /dev/null 2>&1; then
+    echo "=== FIXED POINT FAILURE: pass 2 output differs from pass 1 ==="
+    diff -r "$PASS2_DIR/src" "$STAGE0_DIR/src" | head -50
+    rm -rf "$PASS2_DIR"
+    rm -rf "$OUTPUT_DIR"
+    exit 1
+fi
+
+echo "=== Fixed point verified (pass 1 == pass 2). ==="
+
+rm -rf "$PASS2_DIR"
 rm -rf "$OUTPUT_DIR"
+echo "=== Done. Stage0 regenerated via v2 self-compile. ==="
