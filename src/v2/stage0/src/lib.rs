@@ -17,6 +17,7 @@ pub mod extdeps_languages_go_types;
 pub mod extdeps_languages_python_types;
 pub mod extdeps_languages_rust_types;
 pub mod std_computation;
+pub mod std_graph;
 pub mod v2_std_core;
 pub mod v2_compiler_artifact;
 pub mod v2_compiler_infer_env;
