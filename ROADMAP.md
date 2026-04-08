@@ -439,11 +439,27 @@ type parameter names) — independent of BND-1/BND-2.
 **Progress (PR #347):** `resolved_type_or_error`, `rt_node`, `NodeType`
 deleted. Fabrication eliminated (`unit_type` → `error_type`). Hardcoded
 `container_type_param_names` table deleted (derives from algebra).
+Type parameter roles declared directly per-profile (no template scanning).
 Net -201 lines.
 
-**Acceptance:** `resolved_type` accessor deleted. Consumers
-pattern-match on boundary-specific coproduct carriers directly. No
-bridge accessors, no error branches on impossible states.
+**Current state:** `resolved_type` is the explicit boundary contract —
+a 4-line fail-closed accessor that returns `error_type` for non-Resolved.
+The `_ => error_type` branches are compiler-bug paths (resolve guarantees
+Resolved for declarations, infer guarantees Resolved for successful
+expressions). This is not fabrication — `error_type` carries
+`CompilerError` in its `inferred` field and propagates visibly.
+
+**Design direction — `Node<I>` parameterization (deferred):**
+Recursive generics work in the language (tested: `MyList<T> = Nil | Cons { head: T, tail: MyList<T> }`).
+`Node<I>` could parameterize the `inferred` field type. Challenge:
+a single Node tree is heterogeneous (declaration children have
+`Resolved`, expression children have `InferredNode`), so uniform `I`
+doesn't capture the per-node invariant. Would require either per-field
+parameterization or separate declaration/expression subtrees. Worth
+exploring when Node generics or per-stage IR becomes practical.
+
+**Acceptance:** No fabrication (done). `resolved_type` is the boundary
+API. Further structural enforcement deferred to `Node<I>` exploration.
 
 ### Acceptance
 
