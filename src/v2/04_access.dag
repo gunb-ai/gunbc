@@ -18,7 +18,7 @@ import v2.std.core {
   unit_type, string_type, int_type
 }
 import v2.compiler.infer_types {
-  decl_resolved_type, normalize_access_type_node,
+  resolved_type_or_error, normalize_access_type_node,
   node_type_equals, node_is_keyed_collection,
   node_is_element_collection, for_each_element_type_node
 }
@@ -68,7 +68,7 @@ fn keyed_collection_parts(n: Node) -> KeyedCollectionParts? {
     match n.children |> first {
       Some { value: key_child } =>
         match n.children |> skip(1) |> first {
-          Some { value: value_child } => Some { value: KeyedCollectionParts { key_type: decl_resolved_type(n: key_child), value_type: decl_resolved_type(n: value_child) } }
+          Some { value: value_child } => Some { value: KeyedCollectionParts { key_type: resolved_type_or_error(n: key_child), value_type: resolved_type_or_error(n: value_child) } }
           None => none
         }
       None => none

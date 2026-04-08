@@ -91,24 +91,21 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 })
 }
 
-pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
-    if (ch.inferred.clone() != None) {
-        decl_resolved_type(ch.clone())
+pub fn child_type_node(mut ch: Rc<Node>) -> Rc<Node> {
+    loop {
+        if (ch.inferred.clone() != None) {
+            {
+                let __tco_0 = ch;
+ch = __tco_0;
+continue;
+}
 } else {
-        ch.clone()
+            break ch.clone();
 }
-}
-
-pub fn decl_resolved_type(n: Rc<Node>) -> Rc<Node> {
-    match (*rt_node(n)).clone() {
-    NodeType::Typed { node: rt, .. } => rt.clone(),
-    NodeType::InferError { .. } => error_type(),
-    NodeType::InferVariable { .. } => error_type(),
-    NodeType::Untyped => error_type(),
 }
 }
 
-pub fn emit_guarded_type(n: Rc<Node>) -> Rc<Node> {
+pub fn resolved_type_or_error(n: Rc<Node>) -> Rc<Node> {
     match (*rt_node(n)).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
     NodeType::InferError { .. } => error_type(),
@@ -500,7 +497,7 @@ pub fn unify_template(template: Rc<AlgebraTypeTemplate>, concrete: Rc<Node>, rec
     Some(k) => if (v2_rt::map_get(&subst, "__key__".to_string()) != None) {
                 subst.clone()
 } else {
-                v2_rt::rc_map_insert(subst.clone(), "__key__".to_string(), decl_resolved_type(k.clone()))
+                v2_rt::rc_map_insert(subst.clone(), "__key__".to_string(), child_type_node(k.clone()))
 },
     None => subst.clone(),
 };
@@ -508,7 +505,7 @@ match concrete.children.clone().get(1 as usize).cloned() {
     Some(v) => if (v2_rt::map_get(&s1, "__value__".to_string()) != None) {
                 s1.clone()
 } else {
-                v2_rt::rc_map_insert(s1.clone(), "__value__".to_string(), decl_resolved_type(v.clone()))
+                v2_rt::rc_map_insert(s1.clone(), "__value__".to_string(), child_type_node(v.clone()))
 },
     None => s1.clone(),
 }
@@ -530,24 +527,24 @@ match concrete.children.clone().get(1 as usize).cloned() {
 },
     AlgebraTypeTemplate::CallableOf { return_type: ret_template, .. } => unify_template(ret_template.clone(), concrete.clone(), receiver.clone(), subst.clone()),
     AlgebraTypeTemplate::ReceiverCollectionOf { element: elem_template, .. } => match concrete.children.clone().first().cloned() {
-    Some(child) => unify_template(elem_template.clone(), decl_resolved_type(child.clone()), receiver.clone(), subst.clone()),
+    Some(child) => unify_template(elem_template.clone(), child_type_node(child.clone()), receiver.clone(), subst.clone()),
     None => subst.clone(),
 },
     AlgebraTypeTemplate::ListOf { element: elem_template, .. } => match concrete.children.clone().first().cloned() {
-    Some(child) => unify_template(elem_template.clone(), decl_resolved_type(child.clone()), receiver.clone(), subst.clone()),
+    Some(child) => unify_template(elem_template.clone(), child_type_node(child.clone()), receiver.clone(), subst.clone()),
     None => subst.clone(),
 },
     AlgebraTypeTemplate::OptionalOf { inner: inner_template, .. } => match concrete.children.clone().first().cloned() {
-    Some(child) => unify_template(inner_template.clone(), decl_resolved_type(child.clone()), receiver.clone(), subst.clone()),
+    Some(child) => unify_template(inner_template.clone(), child_type_node(child.clone()), receiver.clone(), subst.clone()),
     None => subst.clone(),
 },
     AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => {
             let s2 = match concrete.children.clone().first().cloned() {
-    Some(c) => unify_template(ft.clone(), decl_resolved_type(c.clone()), receiver.clone(), subst.clone()),
+    Some(c) => unify_template(ft.clone(), child_type_node(c.clone()), receiver.clone(), subst.clone()),
     None => subst.clone(),
 };
 match concrete.children.clone().get(1 as usize).cloned() {
-    Some(c) => unify_template(st.clone(), decl_resolved_type(c.clone()), receiver.clone(), s2),
+    Some(c) => unify_template(st.clone(), child_type_node(c.clone()), receiver.clone(), s2),
     None => s2,
 }
 },
@@ -1231,13 +1228,13 @@ pub fn method_receiver_element_node(receiver_type: Rc<Node>) -> Rc<Node> {
         let normed = normalize_access_type_node(receiver_type.clone());
 let maybe_element = if node_is_keyed_collection(normed.clone()) {
             match normed.children.clone().get(1 as usize).cloned() {
-    Some(ch) => Some(decl_resolved_type(ch.clone())),
+    Some(ch) => Some(child_type_node(ch.clone())),
     None => None,
 }
 } else {
             if ((normed.connective.clone() == Connective::NoConnective) && ((normed.children.clone().len() as i64) == 1)) {
                 match normed.children.clone().first().cloned() {
-    Some(ch) => Some(decl_resolved_type(ch.clone())),
+    Some(ch) => Some(child_type_node(ch.clone())),
     None => None,
 }
 } else {

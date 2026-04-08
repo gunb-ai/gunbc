@@ -63,7 +63,7 @@ pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Python};
 pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, is_string_like};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
-pub use crate::v2_compiler_infer_types::{for_each_element_type_node, decl_resolved_type, emit_guarded_type, normalize_access_type_node, node_is_keyed_collection};
+pub use crate::v2_compiler_infer_types::{for_each_element_type_node, resolved_type_or_error, normalize_access_type_node, node_is_keyed_collection};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
@@ -328,16 +328,16 @@ if is_type_def_item(item.clone()) {
             emit_py_type_def_from_connective(item.clone(), env.clone())
 } else {
             if is_type_alias_item(item.clone()) {
-                v2_rt::concat(v2_rt::concat(item_text, " = ".to_string()), emit_node_type(decl_resolved_type(item.clone()), RenderTarget::Python))
+                v2_rt::concat(v2_rt::concat(item_text, " = ".to_string()), emit_node_type(resolved_type_or_error(item.clone()), RenderTarget::Python))
 } else {
                 if is_type_decl_item(item.clone()) {
                     "".to_string()
 } else {
                     if is_function_item(item.clone()) {
                         if ((item.uses.clone().len() as i64) > 0) {
-                            emit_py_func_def(item_text, item.params.clone(), decl_resolved_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry, scope.clone())
+                            emit_py_func_def(item_text, item.params.clone(), resolved_type_or_error(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry, scope.clone())
 } else {
-                            emit_py_fn_def(item_text, item.params.clone(), decl_resolved_type(item.clone()), item.body.clone().clone().unwrap(), registry, scope.clone())
+                            emit_py_fn_def(item_text, item.params.clone(), resolved_type_or_error(item.clone()), item.body.clone().clone().unwrap(), registry, scope.clone())
 }
 } else {
                         if is_data_def_item(item.clone()) {
@@ -386,8 +386,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "
 
 pub fn emit_py_dataclass_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
-        let ty = emit_node_type(decl_resolved_type(child.clone()), RenderTarget::Python);
-let is_optional = (decl_resolved_type(child.clone()).return_cardinality.clone() == Cardinality::CardOptional);
+        let ty = emit_node_type(resolved_type_or_error(child.clone()), RenderTarget::Python);
+let is_optional = (resolved_type_or_error(child.clone()).return_cardinality.clone() == Cardinality::CardOptional);
 let default_str = if is_optional {
             v2_rt::concat(" = ".to_string(), py_default_value())
 } else {
@@ -636,7 +636,7 @@ if is_func.clone() {
 pub fn emit_py_typed_for_each(variable: String, collection: Rc<Node>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let coll_str = emit_py_typed_expr(collection.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let elem_type = for_each_element_type_node(emit_guarded_type(collection.clone()));
+let elem_type = for_each_element_type_node(resolved_type_or_error(collection.clone()));
 let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type);
 let body_str = emit_py_typed_expr(body, registry.clone(), body_scope, (depth.clone() + 1), 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("for ".to_string(), emit_ident(variable.clone(), RenderTarget::Python)), " in ".to_string()), coll_str), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
@@ -768,7 +768,7 @@ pub fn emit_py_typed_let(name: String, value: Rc<Node>, body: Option<Rc<Node>>, 
 let let_line = emit_let_binding(name.clone(), val_str, RenderTarget::Python);
 match body {
     Some(bd) => {
-            let next_scope = extend_scope(scope.clone(), name.clone(), emit_guarded_type(value.clone()));
+            let next_scope = extend_scope(scope.clone(), name.clone(), resolved_type_or_error(value.clone()));
 v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_py_typed_expr(bd.clone(), registry.clone(), next_scope, depth.clone(), 1024))
 },
     None => let_line,
@@ -856,7 +856,7 @@ let v = let_value(body.clone());
 let inner = let_body(body.clone());
 let val_str = emit_py_typed_expr(v.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
 let let_line = emit_let_binding(n.clone(), val_str, RenderTarget::Python);
-let next_scope = extend_scope(scope.clone(), n.clone(), emit_guarded_type(v.clone()));
+let next_scope = extend_scope(scope.clone(), n.clone(), resolved_type_or_error(v.clone()));
 match inner {
     Some(bd) => v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_py_typed_func_body(bd.clone(), registry.clone(), next_scope, depth.clone())),
     None => let_line,
@@ -948,7 +948,7 @@ let v = let_value(frame.expr.clone());
 let bd = let_body(frame.expr.clone());
 let val_str = emit_py_typed_expr(v.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone(), 1024);
 let let_line = emit_let_binding(n.clone(), val_str, RenderTarget::Python);
-let next_scope = extend_scope(frame.scope.clone(), n.clone(), emit_guarded_type(v.clone()));
+let next_scope = extend_scope(frame.scope.clone(), n.clone(), resolved_type_or_error(v.clone()));
 match bd {
     Some(b) => v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_py_typed_tco_expr(b.clone(), fn_name, params, registry.clone(), next_scope, frame.depth.clone())),
     None => let_line,
@@ -1060,7 +1060,7 @@ let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
 } else {
             v2_rt::concat("self, ".to_string(), params_str.clone())
 };
-let ret_type = emit_node_type(decl_resolved_type(op_node.clone()), RenderTarget::Python);
+let ret_type = emit_node_type(resolved_type_or_error(op_node.clone()), RenderTarget::Python);
 let eff_transport = effective_operation_transport(op_node.clone(), transport);
 let body = emit_py_transport_call(eff_transport, op_text.clone(), registry);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async def ".to_string(), emit_ident(op_text.clone(), RenderTarget::Python)), "(".to_string()), all_params), ") -> ".to_string()), ret_type), ":\n".to_string()), make_indent((depth + 1))), body)
@@ -1150,7 +1150,7 @@ let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
 } else {
             v2_rt::concat("self, ".to_string(), params_str.clone())
 };
-let ret = emit_node_type(decl_resolved_type(cap_node.clone()), RenderTarget::Python);
+let ret = emit_node_type(resolved_type_or_error(cap_node.clone()), RenderTarget::Python);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("@abstractmethod\n".to_string(), "async def ".to_string()), emit_ident(authored_name(env.clone(), cap_node.clone()), RenderTarget::Python)), "(".to_string()), all_params), ") -> ".to_string()), ret), ":\n".to_string()), "    ...".to_string())
 }
 }

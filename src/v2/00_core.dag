@@ -874,8 +874,7 @@ type FunctionSizeEffect
 
 data function_size_effects: Map<String, FunctionSizeEffect> = {
   "with_required_cardinality": TreeSizePreserving,
-  "decl_resolved_type": TreeSizeReducing,
-  "emit_guarded_type": TreeSizeReducing,
+  "resolved_type_or_error": TreeSizeReducing,
   "param_node_type_expr": TreeSizeReducing,
   "field_binding_pattern": TreeSizeReducing
 }

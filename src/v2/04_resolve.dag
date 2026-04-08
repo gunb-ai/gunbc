@@ -42,7 +42,7 @@ import v2.std.core {
   unit_type, string_type
 }
 import v2.compiler.infer_types {
-  decl_resolved_type, child_type_node, node_is_keyed_collection
+  resolved_type_or_error, child_type_node, node_is_keyed_collection
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for
@@ -263,7 +263,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           if child.inferred == none {
             NodeResolveResult { resolved: child, diagnostics: [] }
           } else {
-            let child_rt = decl_resolved_type(n: child)
+            let child_rt = resolved_type_or_error(n: child)
             let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, depth: depth + 1)
             let rt_resolved = rt_result.resolved
             let rt_diags = rt_result.diagnostics
@@ -298,7 +298,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
             if field_child.inferred == none {
               NodeResolveResult { resolved: field_child, diagnostics: [] }
             } else {
-              let field_rt = decl_resolved_type(n: field_child)
+              let field_rt = resolved_type_or_error(n: field_child)
               // Skip resolution for self-referencing fields in recursive types
               // (e.g., tail: MyList<T> inside MyList's Cons variant).
               // Check both parent match and is_recursive_type to catch generic

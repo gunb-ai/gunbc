@@ -85,7 +85,7 @@ import v2.compiler.infer_types {
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
-  decl_resolved_type, emit_guarded_type, child_type_node,
+  resolved_type_or_error, resolved_type_or_error, child_type_node,
   emit_map_has,
   enrich_kernel_type
 }
@@ -206,7 +206,7 @@ fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferSc
       let stmt_result = infer_expr(texpr: stmt, scope: scope, expected: stmt_expected)
       let stmt_typed = stmt_result.typed
       let stmt_diags = stmt_result.diagnostics
-      let stmt_rt = emit_guarded_type(n: stmt_typed)
+      let stmt_rt = resolved_type_or_error(n: stmt_typed)
       let next_scope = scope_after_stmt_node(
         stmt: stmt,
         stmt_type: stmt_rt,
@@ -351,7 +351,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               InferScopeComponents {
                 func_sigs: acc.func_sigs,
                 svc_registry: acc.svc_registry,
-                svc_locals: map_insert(acc.svc_locals, titem.name, TypeBinding { name: titem.name, resolved: decl_resolved_type(n: titem) })
+                svc_locals: map_insert(acc.svc_locals, titem.name, TypeBinding { name: titem.name, resolved: resolved_type_or_error(n: titem) })
               }
             }
             else {
@@ -983,7 +983,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         match call_args |> first {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
-            let first_type = emit_guarded_type(n: first_result.typed)
+            let first_type = resolved_type_or_error(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
             concat(
@@ -1030,7 +1030,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       } else {
         // Tier 2: try bridging to method call on first argument
         let first_arg_type = match typed_args |> first {
-          Some { value: ta } => emit_guarded_type(n: arg_value(n: ta))
+          Some { value: ta } => resolved_type_or_error(n: arg_value(n: ta))
           None => unit_type
         }
         let method_receiver = match typed_args |> first {
@@ -1041,7 +1041,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         let call_acc_is_under_resolved = !is_fully_resolved(n: call_fold_acc_type)
         let refined_call_fold_acc_type = if call_fold_info != none && call_acc_is_under_resolved {
           match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-            Some { value: lambda_arg } => emit_guarded_type(n: arg_value(n: lambda_arg))
+            Some { value: lambda_arg } => resolved_type_or_error(n: arg_value(n: lambda_arg))
             None => call_fold_acc_type
           }
         } else { call_fold_acc_type }
@@ -1067,7 +1067,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 match at {
                   Some { value: t } =>
                     if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type) {
-                      let call_arg_types = remaining |> map(a => emit_guarded_type(n: arg_value(n: a)))
+                      let call_arg_types = remaining |> map(a => resolved_type_or_error(n: arg_value(n: a)))
                       let fold_overrides = if call_fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_call_fold_acc_type) } else { empty_override_map() }
                       resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides)
                     } else { base_result_type }
@@ -1260,7 +1260,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let recv_diags = recv_result.diagnostics
       // Type lambda args from receiver's element type instead of type variables.
       // For fold: also infer init arg to type accumulator param.
-      let recv_rt = emit_guarded_type(n: recv_typed)
+      let recv_rt = resolved_type_or_error(n: recv_typed)
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
       // Use method name string directly for dispatch.
       let mc_method_name = Some { value: method_name }
@@ -1278,7 +1278,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type)
       let refined_fold_acc_type = if fold_info != none && mc_acc_is_under_resolved {
         match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-          Some { value: lambda_arg } => emit_guarded_type(n: arg_value(n: lambda_arg))
+          Some { value: lambda_arg } => resolved_type_or_error(n: arg_value(n: lambda_arg))
           None => fold_acc_type
         }
       } else { fold_acc_type }
@@ -1312,7 +1312,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             match at {
               Some { value: t } =>
                 if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type) {
-                  let mc_arg_types = typed_mc_args |> map(a => emit_guarded_type(n: arg_value(n: a)))
+                  let mc_arg_types = typed_mc_args |> map(a => resolved_type_or_error(n: arg_value(n: a)))
                   let mc_fold_overrides = if fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_fold_acc_type) } else { empty_override_map() }
                   resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides)
                 } else { base_result_type }
@@ -1343,7 +1343,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let scrut_result = infer_expr(texpr: scrut, scope: scope, expected: none)
       let scrut_typed = scrut_result.typed
       let scrut_diags = scrut_result.diagnostics
-      let scrut_rt = emit_guarded_type(n: scrut_typed)
+      let scrut_rt = resolved_type_or_error(n: scrut_typed)
       let scrut_subject = pattern_subject_from_node_type(n: rt_node(n: scrut_typed))
       // Infer all match arms independently with only the caller's expected type.
       // Post-inference: compute a unified type across all arms, then patch any
@@ -1378,7 +1378,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             span: span
           ),
           diagnostics: concat(pattern_diags, concat(guard_diags, body_diags)),
-          body_type: emit_guarded_type(n: body_typed)
+          body_type: resolved_type_or_error(n: body_typed)
         }
       )
       // Compute unified type across all arms via prefer_specific_type.
@@ -1429,7 +1429,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 span: span
               ),
               diagnostics: concat(pattern_diags, concat(guard_diags, body_diags)),
-              body_type: emit_guarded_type(n: body_typed)
+              body_type: resolved_type_or_error(n: body_typed)
             }
           } else { original }
         )
@@ -1483,8 +1483,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           // re-infer it with the resolved branch's type as expected.
           // This is order-independent — either branch can provide context.
           let else_result = infer_expr(texpr: else_branch, scope: scope, expected: expected)
-          let then_rt = emit_guarded_type(n: then_result.typed)
-          let else_rt = emit_guarded_type(n: else_result.typed)
+          let then_rt = resolved_type_or_error(n: then_result.typed)
+          let else_rt = resolved_type_or_error(n: else_result.typed)
           // Re-infer under-resolved branch with the resolved branch's type.
           let then_result = if !is_fully_resolved(n: then_rt) && is_fully_resolved(n: else_rt) {
             infer_expr(texpr: then_expr, scope: scope, expected: Some { value: else_rt })
@@ -1496,8 +1496,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let then_diags = then_result.diagnostics
           let else_typed = else_result.typed
           let else_diags = else_result.diagnostics
-          let then_rt = emit_guarded_type(n: then_typed)
-          let else_rt = emit_guarded_type(n: else_typed)
+          let then_rt = resolved_type_or_error(n: then_typed)
+          let else_rt = resolved_type_or_error(n: else_typed)
           let unified = prefer_specific_type(left: then_rt, right: else_rt)
           let branch_diags = if node_type_compatible(
             left: then_rt,
@@ -1548,7 +1548,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let val_result = infer_expr(texpr: val_expr, scope: scope, expected: val_expected)
       let val_typed = val_result.typed
       let val_diags = val_result.diagnostics
-      let val_type = emit_guarded_type(n: val_typed)
+      let val_type = resolved_type_or_error(n: val_typed)
       if body_expr == none {
         let let_texpr = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Some { value: Resolved { node: val_type } }, span: span)
         InferResult {
@@ -1560,7 +1560,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         let body_result = infer_expr(texpr: body_expr.value, scope: extended, expected: expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
-        let let_texpr2 = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed, body_typed], inferred: Some { value: Resolved { node: emit_guarded_type(n: body_typed) } }, span: span)
+        let let_texpr2 = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed, body_typed], inferred: body_typed.inferred, span: span)
         InferResult {
           typed: let_texpr2,
           diagnostics: concat(val_diags, body_diags)
@@ -1589,7 +1589,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let elem_diags = flat_map(elem_results, r => r.diagnostics)
       let elem_type_node = if count(elem_results) > 0 {
         match first(elem_results) {
-          Some { value: r } => emit_guarded_type(n: r.typed)
+          Some { value: r } => resolved_type_or_error(n: r.typed)
           None => unit_type
         }
       } else {
@@ -1634,7 +1634,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let right_result = infer_expr(texpr: right_expr, scope: scope, expected: none)
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
-      let result_type = infer_binop_type_node(op: op, left_type: emit_guarded_type(n: left_typed))
+      let result_type = infer_binop_type_node(op: op, left_type: resolved_type_or_error(n: left_typed))
       let bo_texpr = make_expr_node(expr_data: ExprBinOp { op: op }, children: [left_typed, right_typed], inferred: Some { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
@@ -1650,7 +1650,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let operand_diags = operand_result.diagnostics
       let result_type = match op {
         Not => bool_type
-        Neg => emit_guarded_type(n: operand_typed)
+        Neg => resolved_type_or_error(n: operand_typed)
       }
       let uo_texpr = make_expr_node(expr_data: ExprUnaryOp { op: op }, children: [operand_typed], inferred: Some { value: Resolved { node: result_type } }, span: span)
       InferResult {
@@ -1711,7 +1711,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           semantics: Some { value: lambda_semantics_from_param_types(param_types: lambda_param_types_from_scope(scope: lam_scope, params: lam_params)) }
         },
         children: concat([body_typed], lam_param_nodes),
-        inferred: Some { value: Resolved { node: emit_guarded_type(n: body_typed) } },
+        inferred: body_typed.inferred,
         span: span
       )
       InferResult {
@@ -1794,12 +1794,12 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let coll_result = infer_expr(texpr: coll, scope: scope, expected: none)
       let coll_typed = coll_result.typed
       let coll_diags = coll_result.diagnostics
-      let elem_type_node = for_each_element_type_node(n: emit_guarded_type(n: coll_typed))
+      let elem_type_node = for_each_element_type_node(n: resolved_type_or_error(n: coll_typed))
       let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node)
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
-      let fe_texpr = make_named_expr_node(name: variable, expr_data: ExprForEach, children: [coll_typed, body_typed], inferred: Some { value: Resolved { node: emit_guarded_type(n: body_typed) } }, span: span)
+      let fe_texpr = make_named_expr_node(name: variable, expr_data: ExprForEach, children: [coll_typed, body_typed], inferred: body_typed.inferred, span: span)
       InferResult {
         typed: fe_texpr,
         diagnostics: concat(coll_diags, body_diags)
@@ -1930,7 +1930,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // children: [value]
       let inner_expr = return_value(texpr: texpr)
       let inner_result = infer_expr(texpr: inner_expr, scope: scope, expected: expected)
-      let ret_texpr = make_expr_node(expr_data: ExprReturn, children: [inner_result.typed], inferred: Some { value: Resolved { node: emit_guarded_type(n: inner_result.typed) } }, span: span)
+      let ret_texpr = make_expr_node(expr_data: ExprReturn, children: [inner_result.typed], inferred: inner_result.typed.inferred, span: span)
       InferResult {
         typed: ret_texpr,
         diagnostics: inner_result.diagnostics
@@ -1975,7 +1975,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       Some { value: sf } =>
         // Struct definition children store type in inferred (via field_to_child_node),
         // not in children[0] (which is empty).
-        let ft = decl_resolved_type(n: sf)
+        let ft = resolved_type_or_error(n: sf)
         if ft.name != "" { Some { value: ft } } else { none }
       None => none
     }
@@ -1996,7 +1996,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       Node {
         name: field_init_node_name(n: fir.typed_field), span: no_span(), ident_span: none,
         children: [], connective: NoConnective,
-               params: [], inferred: Some { value: Resolved { node: emit_guarded_type(n: fir.infer_result.typed) } }, return_cardinality: Required, uses: [],
+               params: [], inferred: fir.infer_result.typed.inferred, return_cardinality: Required, uses: [],
         body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
     )
@@ -2039,7 +2039,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let resolved_node = if is_some_ctor {
       let val_field = fi_infer_results |> filter(fir => field_init_node_name(n: fir.typed_field) == "value") |> first
       match val_field {
-        Some { value: val_fir } => with_optional_cardinality(n: emit_guarded_type(n: val_fir.infer_result.typed))
+        Some { value: val_fir } => with_optional_cardinality(n: resolved_type_or_error(n: val_fir.infer_result.typed))
         None => raw_resolved
       }
     } else { raw_resolved }
@@ -2093,19 +2093,15 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
       extend_scope(scope: s, name: resource_use_name(n: u), resolved: resource_use_resource(n: u))
     )
-    let fn_return_expected = if item.inferred != none { Some { value: decl_resolved_type(n: item) } } else { none }
+    let fn_return_expected = if item.inferred != none { Some { value: resolved_type_or_error(n: item) } } else { none }
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: fn_return_expected)
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
-    let resolved_ret = if item.inferred == none {
-      emit_guarded_type(n: body_typed)
-    } else {
-      decl_resolved_type(n: item)
-    }
+    let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
-        inferred: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: item.uses, body: Some { value: body_typed },
+        inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: item.uses, body: Some { value: body_typed },
         connective: NoConnective, transport: item.transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: expr_has_self_call(texpr: body_typed, fn_name: item.name),
@@ -2119,14 +2115,13 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   // Must be checked BEFORE data definition to avoid misclassifying `fn foo() -> T { ... }` as data.
   else if item.body != none && item.params |> count == 0 && item.inferred != none {
     let fn_scope = scope
-    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: Some { value: decl_resolved_type(n: item) })
+    let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: Some { value: resolved_type_or_error(n: item) })
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
-    let resolved_ret = decl_resolved_type(n: item)
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
-        inferred: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: [], body: Some { value: body_typed },
+        inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: Some { value: body_typed },
         connective: NoConnective, transport: item.transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
@@ -2140,11 +2135,11 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let val_result = infer_expr(texpr: item.body.value, scope: scope, expected: data_expected)
     let val_typed = val_result.typed
     let val_diags = val_result.diagnostics
-    let resolved_ret = if item.type_annotation == none { emit_guarded_type(n: val_typed) } else { item.type_annotation.value }
+    let inferred_ret = if item.type_annotation != none { Some { value: Resolved { node: item.type_annotation.value } } } else { val_typed.inferred }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
-        inferred: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: [], body: Some { value: val_typed },
+        inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: [], body: Some { value: val_typed },
         connective: NoConnective, transport: item.transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
@@ -2154,11 +2149,10 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   // Extern func: has params but no body
   else if item.params |> count > 0 && item.body == none {
-    let resolved_ret = if item.inferred == none { unit_type } else { decl_resolved_type(n: item) }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
-        inferred: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
+        inferred: if item.inferred != none { item.inferred } else { Some { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: NoConnective, transport: item.transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
@@ -2168,11 +2162,10 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   // Service/Resource/other: pass through
   else {
-    let resolved_ret = if item.inferred == none { unit_type } else { decl_resolved_type(n: item) }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
-        inferred: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
+        inferred: if item.inferred != none { item.inferred } else { Some { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: item.transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
@@ -2552,7 +2545,7 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
   let is_zero_arg_func = ritem.params |> count == 0 && ritem.inferred != none && ritem.body != none
   let func_sig = if is_func || is_zero_arg_func {
     let declared_rt = if ritem.inferred != none {
-      Some { value: decl_resolved_type(n: ritem) }
+      Some { value: resolved_type_or_error(n: ritem) }
     } else {
       none
     }

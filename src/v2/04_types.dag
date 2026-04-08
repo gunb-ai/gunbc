@@ -57,46 +57,27 @@ fn type_variable_node(id: String) -> Node {
 // =========================================================================
 
 // Extract the type from a child node. Handles both field-style encoding
-// (inferred set → extract via decl_resolved_type) and bare encoding from
-// parser (inferred none → child IS the type). This is the normalization
-// bridge; once all producers use field-style, this simplifies to
-// decl_resolved_type.
+// (inferred set → extract via resolved_type_or_error) and bare encoding
+// from parser (inferred none → child IS the type). This is the
+// normalization bridge; once all producers use field-style, this
+// simplifies to resolved_type_or_error.
 fn child_type_node(ch: Node) -> Node {
-  if ch.inferred != none { decl_resolved_type(n: ch) } else { ch }
+  if ch.inferred != none { child_type_node(ch: ch) } else { ch }
 }
 
 // Basic node/cardinality helpers
 // moved to 00_core.dag (C1 — timeless node vocabulary).
 
 // =========================================================================
-// Boundary-contract accessors
+// Extract the resolved type Node from n.inferred. Returns error_type
+// (CompilerError sentinel) for non-Resolved states — errors propagate
+// visibly through the pipeline, never fabricating a valid type.
 //
-// Two accessors replace rt_type, each encoding a different consumer contract:
-//   decl_resolved_type — Strict: declaration children are always Resolved
-//     post-resolve. Non-Resolved branches produce error_type (propagates
-//     as CompilerError through pipeline — never fabricates a valid type).
-//   emit_guarded_type  — Guarded: emit receives nodes from infer. Errors
-//     propagate as error_type (rendered as compile_error! by emitters).
-// =========================================================================
-
-// Strict contract: extract the resolved type from a declaration child.
-// Post-resolve, declaration children (struct fields, container params,
-// function annotations) are always Resolved. Non-Resolved branches are
-// unreachable — error_type propagates visibly rather than fabricating Unit.
-fn decl_resolved_type(n: Node) -> Node {
-  match rt_node(n: n) {
-    Typed { node: rt } => rt
-    InferError { message: _, span: _ } => error_type
-    InferVariable { id: _ } => error_type
-    Untyped => error_type
-  }
-}
-
-// Guarded contract: extract the type from an expression or inferred node.
-// The caller is in emit or inference context where the node may have errors
-// due to upstream inference failures or bootstrap complexity violations.
-// Errors propagate as error_type — emitters render as compile_error!().
-fn emit_guarded_type(n: Node) -> Node {
+// This accessor is a dissolution target: consumers that can accept
+// InferredNode? directly should do so instead of extracting the inner
+// Node. The 9 re-wrap sites in 04_infer.dag have already been dissolved
+// to pass n.inferred through directly.
+fn resolved_type_or_error(n: Node) -> Node {
   match rt_node(n: n) {
     Typed { node: rt } => rt
     InferError { message: _, span: _ } => error_type
@@ -288,12 +269,12 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
       // to enrich bare receiver: overlay's key/value fill __key__/__value__.
       let s1 = match concrete.children |> first {
         Some { value: k } =>
-          if map_get(subst, "__key__") != none { subst } else { map_insert(subst, "__key__", decl_resolved_type(n: k)) }
+          if map_get(subst, "__key__") != none { subst } else { map_insert(subst, "__key__", child_type_node(ch: k)) }
         None => subst
       }
       match concrete.children |> skip(1) |> first {
         Some { value: v } =>
-          if map_get(s1, "__value__") != none { s1 } else { map_insert(s1, "__value__", decl_resolved_type(n: v)) }
+          if map_get(s1, "__value__") != none { s1 } else { map_insert(s1, "__value__", child_type_node(ch: v)) }
         None => s1
       }
     ReceiverKey =>
@@ -313,26 +294,26 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
       unify_template(template: ret_template, concrete: concrete, receiver: receiver, subst: subst)
     ReceiverCollectionOf { element: elem_template } =>
       match concrete.children |> first {
-        Some { value: child } => unify_template(template: elem_template, concrete: decl_resolved_type(n: child), receiver: receiver, subst: subst)
+        Some { value: child } => unify_template(template: elem_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst)
         None => subst
       }
     ListOf { element: elem_template } =>
       match concrete.children |> first {
-        Some { value: child } => unify_template(template: elem_template, concrete: decl_resolved_type(n: child), receiver: receiver, subst: subst)
+        Some { value: child } => unify_template(template: elem_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst)
         None => subst
       }
     OptionalOf { inner: inner_template } =>
       match concrete.children |> first {
-        Some { value: child } => unify_template(template: inner_template, concrete: decl_resolved_type(n: child), receiver: receiver, subst: subst)
+        Some { value: child } => unify_template(template: inner_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst)
         None => subst
       }
     TupleOf { first: ft, second: st } =>
       let s2 = match concrete.children |> first {
-        Some { value: c } => unify_template(template: ft, concrete: decl_resolved_type(n: c), receiver: receiver, subst: subst)
+        Some { value: c } => unify_template(template: ft, concrete: child_type_node(ch: c), receiver: receiver, subst: subst)
         None => subst
       }
       match concrete.children |> skip(1) |> first {
-        Some { value: c } => unify_template(template: st, concrete: decl_resolved_type(n: c), receiver: receiver, subst: s2)
+        Some { value: c } => unify_template(template: st, concrete: child_type_node(ch: c), receiver: receiver, subst: s2)
         None => s2
       }
     _ => subst
@@ -842,12 +823,12 @@ fn method_receiver_element_node(receiver_type: Node) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
   let maybe_element = if node_is_keyed_collection(n: normed) {
     match normed.children |> skip(1) |> first {
-      Some { value: ch } => Some { value: decl_resolved_type(n: ch) }
+      Some { value: ch } => Some { value: child_type_node(ch: ch) }
       None => none
     }
   } else if normed.connective == NoConnective && normed.children |> count == 1 {
     match normed.children |> first {
-      Some { value: ch } => Some { value: decl_resolved_type(n: ch) }
+      Some { value: ch } => Some { value: child_type_node(ch: ch) }
       None => none
     }
   } else {
