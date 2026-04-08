@@ -4720,3 +4720,106 @@ service shell.Run {
         "RE-1h: expected exit code check in emitted code, got:\n{content}"
     );
 }
+
+// ── RE-2: review.dag compiles to Rust ───────────────────────────────────
+// Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
+// This is the acceptance gate for RE-2.
+
+#[test]
+#[ignore] // Expensive: reads from disk, writes temp project, runs cargo check
+fn review_dag_compiles_to_rust() {
+    let ws = crate::helpers::workspace_root();
+    let review_path = ws.join("dsl/gunbc/tools/review.dag");
+    let review_content = std::fs::read_to_string(&review_path)
+        .expect("failed to read review.dag");
+
+    // Compile review.dag + all transitive imports
+    let result = compile_dag_named(
+        "dsl/gunbc/tools/review.dag",
+        &review_content,
+        RenderTarget::Rust,
+    );
+
+    // Check for hard diagnostics (non-complexity)
+    let hard_diags: Vec<_> = diagnostic_messages(&result)
+        .into_iter()
+        .filter(|d| !d.contains("complexity:"))
+        .collect();
+    assert!(
+        hard_diags.is_empty(),
+        "RE-2: review.dag has hard diagnostics:\n{}",
+        hard_diags.join("\n")
+    );
+
+    let paths = emitted_file_paths(&result);
+    eprintln!("RE-2: emitted {} files: {:?}", paths.len(), paths);
+    assert!(
+        !result.files.is_empty(),
+        "RE-2: review.dag produced no emitted files"
+    );
+
+    // Write emitted files to temp dir
+    let out_dir = std::env::temp_dir().join("v2-re2-review");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    std::fs::create_dir_all(&out_dir).expect("failed to create temp dir");
+
+    for file in result.files.iter() {
+        let file_path = out_dir.join(&file.path);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::write(&file_path, &file.content)
+            .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
+    }
+
+    // Run cargo check
+    let check = std::process::Command::new("cargo")
+        .arg("check")
+        .current_dir(&out_dir)
+        .output()
+        .expect("failed to run cargo check");
+
+    let check_stderr = String::from_utf8_lossy(&check.stderr);
+
+    // Count errors
+    let error_count = check_stderr
+        .lines()
+        .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
+        .count();
+
+    // Categorize
+    let mut categories: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for line in check_stderr.lines() {
+        if line.starts_with("error[") {
+            let code = line.split(']').next().unwrap_or("unknown").to_string() + "]";
+            *categories.entry(code).or_insert(0) += 1;
+        }
+    }
+    let mut cats: Vec<_> = categories.iter().collect();
+    cats.sort_by(|a, b| b.1.cmp(a.1));
+
+    eprintln!("RE-2 cargo check: {} errors", error_count);
+    for (code, count) in cats.iter().take(10) {
+        eprintln!("  {}: {}", code, count);
+    }
+
+    // Show first few error lines for diagnosis
+    let error_lines: Vec<_> = check_stderr
+        .lines()
+        .filter(|l| l.starts_with("error"))
+        .take(20)
+        .collect();
+    if !error_lines.is_empty() {
+        eprintln!("RE-2 sample errors:\n{}", error_lines.join("\n"));
+    }
+
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&out_dir);
+
+    assert_eq!(
+        error_count, 0,
+        "RE-2: review.dag emitted Rust has {} cargo check errors (target: 0)",
+        error_count
+    );
+}
