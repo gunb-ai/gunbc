@@ -72,7 +72,7 @@ import v2.compiler.languages {
   is_string_like
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
-import v2.compiler.infer_types { for_each_element_type_node, rt_type, normalize_access_type_node, node_is_keyed_collection }
+import v2.compiler.infer_types { for_each_element_type_node, resolved_type_or_error, normalize_access_type_node, node_is_keyed_collection }
 import v2.compiler.infer_method {
 }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
@@ -367,14 +367,14 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   if is_type_def_item(item: item) {
     emit_go_type_def_from_connective(item: item, env: env)
   } else if is_type_alias_item(item: item) {
-    emit_go_type_alias(name: item_text, base: rt_type(n: item))
+    emit_go_type_alias(name: item_text, base: resolved_type_or_error(n: item))
   } else if is_type_decl_item(item: item) {
     ""
   } else if is_function_item(item: item) {
     if item.uses |> count > 0 {
-      emit_go_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+      emit_go_func_def(name: item_text, params: item.params, inferred: resolved_type_or_error(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
-      emit_go_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
+      emit_go_fn_def(name: item_text, params: item.params, inferred: resolved_type_or_error(n: item), body: item.body.value, registry: registry, scope: scope)
     }
   } else if is_data_def_item(item: item) {
     emit_go_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0)
@@ -416,7 +416,7 @@ fn emit_go_struct_from_children(name: String, children: List<Node>, env: TypeEnv
 
 fn emit_go_struct_field_from_child(child: Node, env: TypeEnv) -> String {
   let child_text = authored_name(env: env, node: child)
-  let ty = emit_node_type(n: rt_type(n: child), target: Go)
+  let ty = emit_node_type(n: resolved_type_or_error(n: child), target: Go)
   let json_tag = concat(" `json:\"", to_snake(name: child_text), "\"`")
   concat("\t", go_export_ident(name: child_text), " ", ty, json_tag)
 }
@@ -693,7 +693,7 @@ fn emit_go_typed_call(func: String, args: List<Node>, registry: Map<String, Item
 
 fn emit_go_typed_for_each(variable: String, collection: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let coll_str = emit_go_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  let elem_type = for_each_element_type_node(n: rt_type(n: collection))
+  let elem_type = for_each_element_type_node(n: resolved_type_or_error(n: collection))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1, fuel: 1024)
   concat("for _, ", emit_ident(name: variable, target: Go), " := range ", coll_str, " {\n",
@@ -814,7 +814,7 @@ fn emit_go_typed_let(name: String, value: Node, body: Node?, registry: Map<Strin
   let let_line = emit_let_binding(name: name, value: val_str, target: Go)
   match body {
     Some { value: bd } =>
-      let next_scope = extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
+      let next_scope = extend_scope(scope: scope, name: name, resolved: resolved_type_or_error(n: value))
       concat(let_line, "\n", emit_go_typed_expr(texpr: bd, registry: registry, scope: next_scope, depth: depth, fuel: 1024))
     None => let_line
   }
@@ -894,7 +894,7 @@ fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
       let inner = let_body(texpr: body)
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, fuel: 1024)
       let let_line = concat(prefix, emit_let_binding(name: n, value: val_str, target: Go))
-      let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
+      let next_scope = extend_scope(scope: scope, name: n, resolved: resolved_type_or_error(n: v))
       match inner {
         Some { value: bd } =>
           concat(let_line, "\n", emit_go_typed_func_body(body: bd, registry: registry, scope: next_scope, depth: depth))
@@ -990,7 +990,7 @@ fn emit_go_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registr
       let bd = let_body(texpr: frame.expr)
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth, fuel: 1024)
       let let_line = concat(prefix, emit_let_binding(name: n, value: val_str, target: Go))
-      let next_scope = extend_scope(scope: frame.scope, name: n, resolved: rt_type(n: v))
+      let next_scope = extend_scope(scope: frame.scope, name: n, resolved: resolved_type_or_error(n: v))
       match bd {
         Some { value: b } =>
           concat(let_line, "\n", emit_go_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope, depth: frame.depth))
@@ -1103,7 +1103,7 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
   let params_str = input_params |> join(separator: ", ")
   let receiver = concat("(c *", service_name, ")")
   // After dissolution, inferred on the child node IS the output type
-  let ret_type = emit_node_type(n: rt_type(n: op_node), target: Go)
+  let ret_type = emit_node_type(n: resolved_type_or_error(n: op_node), target: Go)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let body = emit_go_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: 1)
   concat("func ", receiver, " ", go_export_ident(name: op_text),
@@ -1208,7 +1208,7 @@ fn emit_go_capability_method(cap_node: Node, depth: Int, env: TypeEnv) -> String
   )
   let params_str = input_params |> join(separator: ", ")
   // After dissolution, inferred on the child node IS the output type
-  let ret = emit_node_type(n: rt_type(n: cap_node), target: Go)
+  let ret = emit_node_type(n: resolved_type_or_error(n: cap_node), target: Go)
   concat(make_indent(level: depth), go_export_ident(name: authored_name(env: env, node: cap_node)), "(", params_str, ") (", ret, ", error)")
 }
 

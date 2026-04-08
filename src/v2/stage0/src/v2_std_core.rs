@@ -1146,7 +1146,7 @@ pub fn function_size_effects() -> Rc<HashMap<String, FunctionSizeEffect>> {
         static CACHED: Rc<HashMap<String, FunctionSizeEffect>> = {
             let mut __m = HashMap::new();
             __m.insert("with_required_cardinality".to_string(), FunctionSizeEffect::TreeSizePreserving);
-            __m.insert("rt_type".to_string(), FunctionSizeEffect::TreeSizeReducing);
+            __m.insert("resolved_type_or_error".to_string(), FunctionSizeEffect::TreeSizeReducing);
             __m.insert("param_node_type_expr".to_string(), FunctionSizeEffect::TreeSizeReducing);
             __m.insert("field_binding_pattern".to_string(), FunctionSizeEffect::TreeSizeReducing);
             Rc::new(__m)

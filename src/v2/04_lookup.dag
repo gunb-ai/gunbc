@@ -33,7 +33,7 @@ import v2.compiler.infer_types {
   nominal_type_ref,
   normalize_access_type_node, node_is_keyed_collection,
   method_receiver_element_node,
-  rt_type, rt_node,
+  rt_node,
   emit_map_has,
   enrich_kernel_type
 }

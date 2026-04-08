@@ -64,7 +64,7 @@ use crate::v2_std_core::BinOp::{Sub, Div};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::LiteralValue::{LitNull, LitInt};
-pub use crate::v2_compiler_infer_types::{node_is_collection, rt_type};
+pub use crate::v2_compiler_infer_types::{node_is_collection, resolved_type_or_error};
 pub use crate::std_algebra::{CollectionSizeEffect, CostShape};
 use crate::std_algebra::CollectionSizeEffect::{ShrinkEffect, ProjectionEffect, IdentityEffect};
 use crate::std_algebra::CostShape::{ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody};
@@ -4283,7 +4283,7 @@ let method_cost_result = if (ms.clone() == None) {
 } else {
                 match (*ms.clone().unwrap()).clone() {
     MethodSemantics::AlgebraMethodSemantics { method_def: md, cost_shape: cs, .. } => {
-                    let pc = node_is_collection(rt_type(texpr.clone()));
+                    let pc = node_is_collection(resolved_type_or_error(texpr.clone()));
 match cs.clone() {
     Some(shape) => Some(cost_of_method_by_shape(shape.clone(), pc, recv_r.clone(), mc_args.clone(), size.clone(), binder, func_index.clone(), scc_index.clone(), parser_always_advancing.clone(), recursion_ctx.clone())),
     None => Some(Rc::new(SummaryResult {

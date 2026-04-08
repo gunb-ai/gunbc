@@ -58,7 +58,7 @@ pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTempla
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverCollectionOf, ListOf};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
-pub use crate::v2_compiler_infer_types::{child_type_node, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{child_type_node, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, rt_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
