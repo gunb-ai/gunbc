@@ -235,7 +235,7 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
     } else {
       let is_product = resolved.connective == Conj
       if is_product {
-        map_get(build_struct_field_summaries(children: resolved.children, source_index: env.source_index), field)
+        map_get(build_struct_field_summaries(parent: resolved, source_index: env.source_index), field)
       } else {
         map_get(build_enum_field_summaries(variants: resolved.children, source_index: env.source_index), field)
       }

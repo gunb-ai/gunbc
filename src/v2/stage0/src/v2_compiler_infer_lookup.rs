@@ -284,7 +284,7 @@ if no_structure {
                             {
                                 let is_product = (resolved.connective.clone() == Connective::Conj);
 if is_product {
-                                    v2_rt::map_get(&build_struct_field_summaries(resolved.children.clone(), env.source_index.clone()), field.clone())
+                                    v2_rt::map_get(&build_struct_field_summaries(resolved.clone(), env.source_index.clone()), field.clone())
 } else {
                                     v2_rt::map_get(&build_enum_field_summaries(resolved.children.clone(), env.source_index.clone()), field.clone())
 }

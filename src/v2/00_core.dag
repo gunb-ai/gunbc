@@ -646,9 +646,10 @@ fn authored_name_at(source_index: NewlineIndex?, node: Node) -> String {
   }
 }
 
-// Child-by-name lookup — routes through authored_name_at so the name
-// is source-derived when source_index is available. Falls back to
-// node.name when source_index is none or file doesn't match.
+// BRIDGE DEBT (M4 Lane 2): child lookup by authored string name.
+// Deletion point: when Node.name is removed, replace all call sites
+// with positional access (children[i]) or structural field identity.
+// Until then, routes through authored_name_at for source-derived names.
 fn find_child_named(n: Node, name: String, source_index: NewlineIndex?) -> Node? {
   match n.children |> filter(c => authored_name_at(source_index: source_index, node: c) == name) |> first {
     Some { value: ch } => Some { value: ch }

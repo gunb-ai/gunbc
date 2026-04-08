@@ -968,10 +968,9 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
       }
       return refined_str
     }
-    // Positional product (tuple): 2-child Conj with synthetic ident_spans.
-    // Compiler-synthesized positional fields have zero-length file="" spans;
-    // user-authored fields have real ident_spans from source.
-    let is_pair = n.children |> count == 2 && n.children |> all(c => match c.ident_span { Some { value: s } => s.file == "" && s.start == s.end  None => false })
+    // Structural tuple detection: unnamed 2-child Conj (ident_span == none).
+    // The tuple constructor is the sole producer of this shape.
+    let is_pair = n.connective == Conj && n.ident_span == none && n.children |> count == 2
     if is_pair {
       let first_child = match n.children |> first {
         Some { value: c } => if c.inferred != none { render_node_type(n: resolved_type_or_error(n: c), target: target, shared_types: shared_types, source_index: source_index) } else { render_node_type(n: c, target: target, shared_types: shared_types, source_index: source_index) }

@@ -955,10 +955,7 @@ if is_conj {
 return refined_str
 }
 }
-let is_pair = (((n.children.clone().len() as i64) == 2) && { let mut __all = true; for c in n.children.clone().iter().cloned() { if !(match c.ident_span.clone() {
-    Some(s) => ((s.file.clone().as_str() == "".to_string().as_str()) && (s.start.clone() == s.end.clone())),
-    None => false,
-}) { __all = false; break; } } __all });
+let is_pair = (((n.connective.clone() == Connective::Conj) && (n.ident_span.clone() == None)) && ((n.children.clone().len() as i64) == 2));
 if is_pair {
                         {
                             let first_child = match n.children.clone().first().cloned() {

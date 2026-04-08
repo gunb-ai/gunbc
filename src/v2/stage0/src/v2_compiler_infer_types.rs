@@ -203,13 +203,13 @@ Rc::new(Node {
 
 pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
-    name: "Tuple".to_string(),
+    name: "".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: None,
     children: Rc::new(vec![Rc::new(Node {
     name: "first".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -229,7 +229,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 }), Rc::new(Node {
     name: "second".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
