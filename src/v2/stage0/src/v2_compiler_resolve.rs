@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{kernel_type_set};
-pub use crate::v2_std_core::{Node, Connective, ErrorNode, make_error_node, no_span, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, Connective, ErrorNode, make_error_node, no_span, module_node, import_node, import_is_all, import_specific_names, module_imports, module_items, CompilerDiagnostic};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::CompilerDiagnostic::{UnresolvedImport, MissingExport, DuplicateModule, CircularDependency};
 

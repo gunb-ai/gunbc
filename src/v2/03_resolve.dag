@@ -14,7 +14,7 @@
 module v2.compiler.resolve
 
 import std.types { kernel_type_set }
-import v2.std.core { Node, Connective, Conj, Disj, NoConnective, ErrorNode, make_error_node, UnresolvedImport, MissingExport, DuplicateModule, CircularDependency, no_span, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node }
+import v2.std.core { Node, Connective, Conj, Disj, NoConnective, ErrorNode, make_error_node, UnresolvedImport, MissingExport, DuplicateModule, CircularDependency, no_span, module_node, import_node, import_is_all, import_specific_names, module_imports, module_items }
 
 // =========================================================================
 // Output types

@@ -230,7 +230,7 @@ fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
         name: "User".to_string(),
         span: zero_span(),
-        ident_span: None,
+        ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan { file: "".to_string(), start: 0, end: 0 })),
         children: Rc::new(vec![]),
         connective: v2_compiler::v2_std_core::Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -598,8 +598,10 @@ fn map_index_with_wrong_key_type_reports_error() {
 fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
     // Conj node with two children: one Typed, one CompilerError.
     // Fail-closed gate must return [] — no partial output synthesis.
+    let syn_span = Some(Rc::new(v2_compiler::v2_std_core::SourceSpan { file: "".to_string(), start: 0, end: 0 }));
     let typed_child = Rc::new(Node {
         name: "x".to_string(),
+        ident_span: syn_span.clone(),
         inferred: Some(Rc::new(InferredNode::Resolved {
             node: leaf_node("Int".to_string()),
         })),
@@ -608,6 +610,7 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
     });
     let error_child = Rc::new(Node {
         name: "y".to_string(),
+        ident_span: syn_span.clone(),
         inferred: Some(Rc::new(InferredNode::CompilerError {
             message: "upstream failure".to_string(),
             span: zero_span(),
@@ -617,6 +620,7 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
     });
     let conj_node = Rc::new(Node {
         name: "Result".to_string(),
+        ident_span: syn_span.clone(),
         connective: Connective::Conj,
         children: Rc::new(vec![typed_child, error_child]),
         ..(*leaf_node("".to_string())).clone()

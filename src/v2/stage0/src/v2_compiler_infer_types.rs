@@ -50,7 +50,7 @@ pub use crate::std_types::{SourceSpan, is_container_type, container_expected_ari
 pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile};
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf, AlgebraTypeVariable};
-pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, rt_node, has_inferred, is_compiler_error, NodeType, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, ExprData};
+pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, rt_node, has_inferred, is_compiler_error, NodeType, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, ExprData};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral};
@@ -159,11 +159,11 @@ pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
 Rc::new(Node {
     name: kind_name.clone(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: default_ident_span(kind_name.clone(), make_span(0, 0)),
     children: Rc::new(vec![Rc::new(Node {
-    name: param_name,
+    name: param_name.clone(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: default_ident_span(param_name.clone(), make_span(0, 0)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -202,11 +202,11 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: "Tuple".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![Rc::new(Node {
     name: "first".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -226,7 +226,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 }), Rc::new(Node {
     name: "second".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -264,11 +264,11 @@ pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: "Map".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![Rc::new(Node {
     name: "K".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -288,7 +288,7 @@ pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
 }), Rc::new(Node {
     name: "V".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -328,9 +328,9 @@ pub fn bare_map_node() -> Rc<Node> {
 
 pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
-    name: name,
+    name: name.clone(),
     span: no_span(),
-    ident_span: None,
+    ident_span: default_ident_span(name.clone(), no_span()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -354,9 +354,9 @@ pub fn algebra_method_field(name: String, param_types: Rc<Vec<Rc<Node>>>, return
     {
         let params = Rc::new({ let mut __result = Vec::new(); for t in param_types.iter().cloned() { __result.push(make_param_node("_".to_string(), t.clone(), None, no_span())); } __result });
 Rc::new(Node {
-    name: name,
+    name: name.clone(),
     span: no_span(),
-    ident_span: None,
+    ident_span: default_ident_span(name.clone(), no_span()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -573,7 +573,7 @@ pub fn apply_type_substitution(template: Rc<AlgebraTypeTemplate>, subst: Rc<Hash
 if (inner.inferred.clone() != None) {
                     is_type_variable(inner.inferred.clone().clone().unwrap())
 } else {
-                    ((inner.name.clone().as_str() == "".to_string().as_str()) || !is_kernel_type(inner.name.clone()))
+                    ((inner.ident_span.clone() == None) || !is_kernel_type(inner.name.clone()))
 }
 }) { __all = false; break; } } __all });
 if is_bare {
@@ -672,7 +672,7 @@ pub fn callable_node(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> 
     Rc::new(Node {
     name: "Callable".to_string(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: Some(make_span(0, 0)),
     children: Rc::new(vec![]),
     connective: Connective::Arrow,
     params: func_params,
@@ -710,7 +710,7 @@ if is_callable {
 pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
     loop {
         let has_structure = (n.connective.clone() != Connective::NoConnective);
-let unwrapped = if ((n.name.clone().as_str() == "Refined".to_string().as_str()) && has_structure.clone()) {
+let unwrapped = if ((n.type_annotation.clone() != None) && has_structure.clone()) {
             n.children.clone().first().cloned()
 } else {
             None
@@ -736,7 +736,7 @@ if __is_leaf {
                         false
 } else {
                         match (*rt_node(n.clone())).clone() {
-    NodeType::Typed { node: rt, .. } => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.name.clone().as_str() != "".to_string().as_str())) && (rt.name.clone().as_str() != "None".to_string().as_str())) && (is_kernel_type(rt.name.clone()) == false)),
+    NodeType::Typed { node: rt, .. } => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (rt.name.clone().as_str() != "None".to_string().as_str())) && (is_kernel_type(rt.name.clone()) == false)),
     NodeType::InferError { .. } => false,
     NodeType::InferVariable { .. } => false,
     NodeType::Untyped => false,
@@ -753,14 +753,14 @@ if __is_named_ref {
                     let is_product = (n.connective.clone() == Connective::Conj);
 let is_coproduct = (n.connective.clone() == Connective::Disj);
 if is_product {
-                        if (n.name.clone().as_str() == "".to_string().as_str()) {
+                        if (n.ident_span.clone() == None) {
                             "Product(<anon>)".to_string()
 } else {
                             v2_rt::concat(v2_rt::concat("Product(".to_string(), n.name.clone()), ")".to_string())
 }
 } else {
                         if is_coproduct {
-                            if (n.name.clone().as_str() == "".to_string().as_str()) {
+                            if (n.ident_span.clone() == None) {
                                 "Coproduct(<anon>)".to_string()
 } else {
                                 v2_rt::concat(v2_rt::concat("Coproduct(".to_string(), n.name.clone()), ")".to_string())
@@ -1124,7 +1124,7 @@ let __is_named_ref = if (n.inferred.clone() == None) {
                 false
 } else {
                 match (*rt_node(n.clone())).clone() {
-    NodeType::Typed { node: rt, .. } => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.name.clone().as_str() != "".to_string().as_str())) && (rt.name.clone().as_str() != "None".to_string().as_str())) && (is_kernel_type(rt.name.clone()) == false)),
+    NodeType::Typed { node: rt, .. } => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (rt.name.clone().as_str() != "None".to_string().as_str())) && (is_kernel_type(rt.name.clone()) == false)),
     NodeType::InferError { .. } => false,
     NodeType::InferVariable { .. } => false,
     NodeType::Untyped => false,
@@ -1162,14 +1162,14 @@ if __is_named_ref {
                         if ((n.children.clone().len() as i64) > 0) {
                             {
                                 let child_deps = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*node_type_deps(child.clone())).iter().cloned()); } __result });
-if ((n.name.clone().as_str() != "".to_string().as_str()) && (is_kernel_type(n.name.clone()) == false)) {
+if ((n.ident_span.clone() != None) && (is_kernel_type(n.name.clone()) == false)) {
                                     v2_rt::concat(Rc::new(vec![n.name.clone()]), child_deps)
 } else {
                                     child_deps
 }
 }
 } else {
-                            if ((is_kernel_type(n.name.clone()) || (n.name.clone().as_str() == none_type().name.clone().as_str())) || (n.name.clone().as_str() == "".to_string().as_str())) {
+                            if ((is_kernel_type(n.name.clone()) || (n.name.clone().as_str() == none_type().name.clone().as_str())) || (n.ident_span.clone() == None)) {
                                 Rc::new(vec![])
 } else {
                                 Rc::new(vec![n.name.clone()])

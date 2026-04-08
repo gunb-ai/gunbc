@@ -35,7 +35,8 @@ import v2.std.core {
   NodeType, Typed, InferError, InferVariable, Untyped,
   leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
-  error_type
+  error_type,
+  default_ident_span
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -116,22 +117,22 @@ fn is_fully_resolved(n: Node) -> Bool {
 
 fn container_node(kind_name: String, element: Node) -> Node {
   let param_name = match container_param_name(kind_name: kind_name, index: 0) { Some { value: n } => n  None => kind_name }
-  Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: none, children: [
-    Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: kind_name, span: make_span(start: 0, end: 0)), children: [
+    Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {
-  Node { name: "Tuple", span: make_span(start: 0, end: 0), ident_span: none, children: [
-    Node { name: "first", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: "second", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Tuple", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
+    Node { name: "first", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "second", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn map_node(key: Node, value: Node) -> Node {
-  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: none, children: [
-    Node { name: "K", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: "V", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
+    Node { name: "K", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "V", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
@@ -162,7 +163,7 @@ fn bare_map_node() -> Node {
 
 // Build a value field (e.g., zero: Int, identity: String).
 fn algebra_value_field(name: String, type_node: Node) -> Node {
-  Node { name: name, span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // Build a callable field (e.g., add: fn(Int, Int) -> Int).
@@ -171,7 +172,7 @@ fn algebra_value_field(name: String, type_node: Node) -> Node {
 // from value fields, so we need real Param entries.
 fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
   let params = param_types |> map(t => make_param_node(name: "_", type_expr: t, default_value: none, span: no_span()))
-  Node { name: name, span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable_node(func_params: params, ret: return_type) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable_node(func_params: params, ret: return_type) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // Apply algebra fields to a base node, producing a Conj product.
@@ -349,7 +350,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       // it from arg-derived bindings captured during unification.
       let is_bare = is_container_type(name: receiver.name) && (receiver.children |> all(ch =>
         let inner = child_type_node(ch: ch)
-        if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { inner.name == "" || !is_kernel_type(name: inner.name) }
+        if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { inner.ident_span == none || !is_kernel_type(name: inner.name) }
       ))
       if is_bare {
         let arity = container_expected_arity(name: receiver.name)
@@ -451,7 +452,7 @@ fn resolve_type_variables_from_template(template: AlgebraFieldTemplate, arg_type
 }
 
 fn callable_node(func_params: List<Node>, ret: Node) -> Node {
-  Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: Arrow, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn callable_inferred(n: Node) -> Node {
@@ -474,7 +475,7 @@ fn callable_inferred(n: Node) -> Node {
 
 fn normalize_access_type_node(n: Node) -> Node {
   let has_structure = n.connective != NoConnective
-  let unwrapped = if n.name == "Refined" && has_structure {
+  let unwrapped = if n.type_annotation != none && has_structure {
     n.children |> first
   } else { none }
   match unwrapped {
@@ -496,7 +497,7 @@ fn node_type_shape(n: Node) -> String {
       match rt_node(n: n) {
         Typed { node: rt } =>
           rt.connective == NoConnective && rt.children |> count == 0
-            && rt.name != "" && rt.name != "None"
+            && rt.ident_span != none && rt.name != "None"
             && is_kernel_type(name: rt.name) == false
         InferError { message: _, span: _ } => false
         InferVariable { id: _ } => false
@@ -512,9 +513,9 @@ fn node_type_shape(n: Node) -> String {
     let is_product = n.connective == Conj
     let is_coproduct = n.connective == Disj
     if is_product {
-      if n.name == "" { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
+      if n.ident_span == none { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
     } else if is_coproduct {
-      if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
+      if n.ident_span == none { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
     } else {
       let __is_container = node_is_element_collection(n: n)
       let is_optional = n.return_cardinality == CardOptional
@@ -757,7 +758,7 @@ fn node_type_deps(n: Node) -> List<String> {
     match rt_node(n: n) {
       Typed { node: rt } =>
         rt.connective == NoConnective && rt.children |> count == 0
-          && rt.name != "" && rt.name != "None"
+          && rt.ident_span != none && rt.name != "None"
           && is_kernel_type(name: rt.name) == false
       InferError { message: _, span: _ } => false
       InferVariable { id: _ } => false
@@ -781,10 +782,10 @@ fn node_type_deps(n: Node) -> List<String> {
     // Parameterized type reference (e.g., MyList<T>): the node name IS a
     // dependency (MyList) AND the children (type args like T) may also be.
     let child_deps = flat_map(n.children, child => node_type_deps(n: child))
-    if n.name != "" && is_kernel_type(name: n.name) == false {
+    if n.ident_span != none && is_kernel_type(name: n.name) == false {
       concat([n.name], child_deps)
     } else { child_deps }
-  } else if is_kernel_type(name: n.name) || n.name == none_type.name || n.name == "" {
+  } else if is_kernel_type(name: n.name) || n.name == none_type.name || n.ident_span == none {
     []
   } else {
     [n.name]

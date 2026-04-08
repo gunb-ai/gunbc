@@ -89,7 +89,7 @@ type TokenShape
 
 // Module, Import, ImportNames dissolved into Node compositions.
 // See dissolution helpers: module_node(), import_node(), module_imports(),
-// module_items(), is_import_node(), import_is_all(), import_specific_names().
+// module_items(), import_is_all(), import_specific_names().
 
 // Connective -- the logical primitive for type structure.
 // Conj = conjunction (product): all children hold simultaneously (record fields).
@@ -918,7 +918,7 @@ fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
 // -- Wrapper node accessors (arg, arm, field-init) --
 
 fn arg_name(n: Node) -> String? {
-  if n.name == "" { none } else { Some { value: n.name } }
+  if n.ident_span == none { none } else { Some { value: n.name } }
 }
 fn arg_name_at(n: Node, source_index: NewlineIndex?) -> String? {
   let name = authored_name_at(source_index: source_index, node: n)
@@ -1040,7 +1040,7 @@ fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
 
 // -- ExprRecordLit (D3: type_name dissolved into Node.name, parent_enum stays in ExprData) --
 fn record_lit_type_name(texpr: Node) -> String? {
-  if texpr.name == "" { none } else { Some { value: texpr.name } }
+  if texpr.ident_span == none { none } else { Some { value: texpr.name } }
 }
 fn record_lit_type_name_at(texpr: Node, source_index: NewlineIndex?) -> String? {
   let name = authored_name_at(source_index: source_index, node: texpr)
@@ -1067,17 +1067,10 @@ data transport_auth_token_key: String = "auth_token"
 data transport_auth_header_key: String = "auth_header"
 data transport_auth_scheme_key: String = "auth_scheme"
 
-// Transport kind names — single authority for transport identity.
-// Constructors and predicates both reference these constants.
-data transport_kind_rest: String = "rest"
-data transport_kind_shell: String = "shell"
-data transport_kind_file: String = "file"
-data transport_kind_local: String = "local"
-
-fn make_transport_node(name: String, properties: List<Node>, children: List<Node>, span: SourceSpan) -> Node {
+fn make_transport_node(properties: List<Node>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: children, connective: NoConnective,
-   
+    name: "", span: span, ident_span: none, children: children, connective: NoConnective,
+
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
     type_annotation: none, is_self_recursive: false,
@@ -1086,22 +1079,22 @@ fn make_transport_node(name: String, properties: List<Node>, children: List<Node
 }
 
 fn local_transport_node(span: SourceSpan) -> Node {
-  make_transport_node(name: transport_kind_local, properties: [], children: [], span: span)
+  make_transport_node(properties: [], children: [], span: span)
 }
 
 fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, span: SourceSpan) -> Node {
   let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: make_span(start: 0, end: 0))
   let props = concat([url_field], auth_props, headers)
-  make_transport_node(name: transport_kind_rest, properties: props, children: [], span: span)
+  make_transport_node(properties: props, children: [], span: span)
 }
 
 fn shell_transport_node(argv: List<Node>, env: List<Node>, span: SourceSpan) -> Node {
-  make_transport_node(name: transport_kind_shell, properties: env, children: argv, span: span)
+  make_transport_node(properties: env, children: argv, span: span)
 }
 
 fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0))
-  make_transport_node(name: transport_kind_file, properties: [path_field], children: [], span: span)
+  make_transport_node(properties: [path_field], children: [], span: span)
 }
 
 // =========================================================================
@@ -1125,15 +1118,22 @@ fn find_property_string(props: List<Node>, prop_name: String) -> String? {
   }
 }
 
-// Transport identity predicates. Constructors are the authority for
-// transport kind (they set the name field); predicates are name lookups.
-// See extdeps/transports/{rest,shell,file}.dag for transport definitions.
-fn is_rest_transport(t: Node) -> Bool { t.name == transport_kind_rest }
-fn is_shell_transport(t: Node) -> Bool { t.name == transport_kind_shell }
-fn is_file_transport(t: Node) -> Bool { t.name == transport_kind_file }
-fn is_local_transport(t: Node) -> Bool { t.name == transport_kind_local }
+// Transport identity — structural property queries.
+// Transport kind is emergent from structural properties:
+//   has base_url → URL-endpoint transport (REST)
+//   has argv children → subprocess transport (shell)
+//   has base_path → filesystem transport (file)
+//   none of the above → local (pure computation)
+fn transport_base_path(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_path_key)
+}
 
-fn is_transport_kind(t: Node, kind: String) -> Bool { t.name == kind }
+fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
+
+fn is_rest_transport(t: Node) -> Bool { transport_base_url(t: t) != none }
+fn is_shell_transport(t: Node) -> Bool { transport_has_argv(t: t) }
+fn is_file_transport(t: Node) -> Bool { transport_base_path(t: t) != none }
+fn is_local_transport(t: Node) -> Bool { !is_rest_transport(t: t) && !is_shell_transport(t: t) && !is_file_transport(t: t) }
 
 fn field_init_operation_modifier(field_init: Node) -> OperationModifier? {
   let fi_name = field_init_node_name(n: field_init)
@@ -1341,48 +1341,37 @@ fn service_config_retry(n: Node) -> Node? {
 
 // --- Module as Node ---
 // A Module dissolves into a Node where:
-//   name = module name, children = import nodes ++ item nodes,
-//   property "__is_module" = true, span = module span.
-// Import nodes have property "__is_import" = true, name = module_path.
-// ImportAll: property "__import_all" = true. ImportSpecific: children named per import.
+//   name = module name, params = import nodes, children = item nodes.
+// Import nodes: name = module_path, children = specific imported names.
+// Wildcard import: children is empty. Specific import: children are name nodes.
+// No metadata markers — structural position (params vs children) IS the distinction.
 
 fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
-  let marker = make_field_init_node(name: "__is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: concat(imports, items), connective: NoConnective,
-   
-    params: [], inferred: none, return_cardinality: Required,
-    uses: [], body: none, transport: none, properties: [marker],
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: items, connective: NoConnective,
+
+    params: imports, inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
 
 fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan) -> Node {
-  let import_prop = make_field_init_node(name: "__is_import", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))
-  let all_prop = if is_all {
-    [make_field_init_node(name: "__import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))]
-  } else { [] }
   Node {
     name: module_path, span: span, ident_span: default_ident_span(name: module_path, span: span), children: specific_names, connective: NoConnective,
-   
+
     params: [], inferred: none, return_cardinality: Required,
-    uses: [], body: none, transport: none, properties: concat([import_prop], all_prop),
+    uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
 
-fn is_module_node(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "__is_module")
-}
-
-fn is_import_node(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "__is_import")
-}
-
+// Wildcard import: no specific-name children.
+// Specific import: children are the imported name nodes.
 fn import_is_all(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "__import_all")
+  n.children |> count == 0
 }
 
 fn import_specific_names(n: Node) -> List<String> {
@@ -1390,19 +1379,11 @@ fn import_specific_names(n: Node) -> List<String> {
 }
 
 fn module_imports(n: Node) -> List<Node> {
-  n.children |> filter(c => is_import_node(n: c))
+  n.params
 }
 
 fn module_items(n: Node) -> List<Node> {
-  n.children |> filter(c => is_import_node(n: c) == false)
-}
-
-// --- Token as Node ---
-// When dissolved, a Token becomes a Node where:
-//   name = kind tag string, span = token span, properties encode payload.
-
-fn is_token_node(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "__is_token")
+  n.children
 }
 
 // =========================================================================
@@ -1414,7 +1395,7 @@ fn is_token_node(n: Node) -> Bool {
 // =========================================================================
 
 fn leaf_node(name: String) -> Node {
-  Node { name: name, span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn leaf_node_with_span(name: String, span: SourceSpan) -> Node {
@@ -1426,12 +1407,12 @@ fn leaf_node_with_span(name: String, span: SourceSpan) -> Node {
 // Each constant encodes the structural form once; callers reference it.
 // Unit is the terminal object (empty product: Conj + 0 children).
 // All others are bare leaves until std declarations carry richer structure.
-data unit_type: Node = Node { name: "Unit", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data bool_type: Node = Node { name: "Bool", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data string_type: Node = Node { name: "String", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data int_type: Node = Node { name: "Int", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data float_type: Node = Node { name: "Float", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data none_type: Node = Node { name: "None", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data unit_type: Node = Node { name: "Unit", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data bool_type: Node = Node { name: "Bool", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data string_type: Node = Node { name: "String", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data int_type: Node = Node { name: "Int", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data float_type: Node = Node { name: "Float", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data none_type: Node = Node { name: "None", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 // Tuple type name — tuples are parameterized Conj products, no bare constant.
 data tuple_type_name: String = "Tuple"
 // Error sentinel — inference failed. Downstream code uses rt_node()

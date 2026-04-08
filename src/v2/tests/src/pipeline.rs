@@ -4080,6 +4080,7 @@ fn type_rendering_named_conj_with_container_template() {
     let free_monoid_conj = Rc::new(v2_compiler::v2_std_core::Node {
         name: "FreeMonoid".to_string(),
         connective: Connective::Conj,
+        ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan { file: "".to_string(), start: 0, end: 0 })),
         ..(*leaf_node("".to_string())).clone()
     });
     let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
