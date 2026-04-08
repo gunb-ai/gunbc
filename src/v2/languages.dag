@@ -177,6 +177,15 @@ type BlockSyntax {
   significant_whitespace: Bool  // true (Python) or false (Go/Rust)
 }
 
+type TcoSyntax {
+  loop_keyword: String        // "loop" (Rust), "for" (Go), "while True" (Python)
+  break_return: String        // "break" (Rust), "return" (Go/Python)
+  continue_str: String        // "continue" (Rust/Go/Python) — includes terminator
+  temp_var_prefix: String     // "__tco_" (Rust/Python), "tco" (Go)
+  temp_decl_prefix: String    // "let " (Rust), "" (Go/Python)
+  temp_assign_op: String      // " = " (Rust/Python), " := " (Go)
+}
+
 type LanguageSpec {
   target_name: String
   reserved_words: ReservedWords
@@ -190,6 +199,7 @@ type LanguageSpec {
   method_templates: Map<String, String>?
   service_fields: ServiceFieldTemplates
   block_syntax: BlockSyntax
+  tco: TcoSyntax
 }
 
 // =========================================================================
@@ -267,6 +277,14 @@ fn rust_spec() -> LanguageSpec {
       match_keyword: "match ", case_keyword: "",
       arm_separator: ",", stmt_terminator: ";",
       significant_whitespace: false
+    },
+    tco: TcoSyntax {
+      loop_keyword: "loop",
+      break_return: "break",
+      continue_str: "continue;",
+      temp_var_prefix: "__tco_",
+      temp_decl_prefix: "let ",
+      temp_assign_op: " = "
     }
   }
 }
@@ -341,6 +359,14 @@ fn python_spec() -> LanguageSpec {
       match_keyword: "match ", case_keyword: "case ",
       arm_separator: "\n", stmt_terminator: "",
       significant_whitespace: true
+    },
+    tco: TcoSyntax {
+      loop_keyword: "while True",
+      break_return: "return",
+      continue_str: "continue",
+      temp_var_prefix: "__tco_",
+      temp_decl_prefix: "",
+      temp_assign_op: " = "
     }
   }
 }
@@ -415,6 +441,14 @@ fn go_spec() -> LanguageSpec {
       match_keyword: "switch ", case_keyword: "case ",
       arm_separator: "\n", stmt_terminator: "",
       significant_whitespace: false
+    },
+    tco: TcoSyntax {
+      loop_keyword: "for",
+      break_return: "return",
+      continue_str: "continue",
+      temp_var_prefix: "tco",
+      temp_decl_prefix: "",
+      temp_assign_op: " := "
     }
   }
 }
