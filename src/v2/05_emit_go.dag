@@ -68,7 +68,7 @@ import v2.std.core {
 import v2.compiler.artifact { RenderTarget, Go }
 import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix }
 import v2.compiler.languages {
-  scaffold_for_target, TestConventions, test_conventions_for_target,
+  scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target,
   is_string_like
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
@@ -261,7 +261,7 @@ fn emit_go_test_file(module_name: String, projections: List<TestProjection>) -> 
     let content = concat(
       "// Generated tests -- do not edit.\n",
       "// Source module: ", module_name, "\n\n",
-      "package ", package_name, "\n\n",
+      language_spec(target: Go).items.module_keyword, " ", package_name, "\n\n",
       go_test_import_block(projections: projections),
       tests_str, "\n")
     TextFile { path: go_test_file_path(module_name: module_name), content: content }
@@ -276,7 +276,7 @@ fn emit_go_operation_test(projection: TestProjection, depth: Int) -> String {
     |> map(mp => emit_go_mock_prop_setup(mock_prop: mp, depth: depth + 1))
     |> join(separator: "\n")
   concat(
-    "func ", test_name, "(t *testing.T) {\n",
+    language_spec(target: Go).items.func_keyword, " ", test_name, "(t *testing.T) {\n",
     indent, go_test_signature_comment(projection: projection), "\n",
     indent, "_ = ", struct_name, "{}\n",
     indent, mock_setup, "\n",
@@ -299,7 +299,7 @@ fn emit_go_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let pkg_name = go_package_name(module_name: m.name)
-  let pkg_decl = concat("package ", pkg_name)
+  let pkg_decl = concat(language_spec(target: Go).items.module_keyword, " ", pkg_name)
   let imports_str = emit_go_imports(items: typed_module.items, imports: module_imports(n: m))
   let imports_section = if imports_str == "" { "" } else { concat("\n\n", imports_str) }
   let items_str = typed_module.items
@@ -385,7 +385,7 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   } else if is_resource_def_item(item: item) {
     emit_go_resource_def(item: item, env: env)
   } else {
-    concat("func init() { panic(\"EMIT BUG: unhandled item: ", item_text, "\") }")
+    concat(language_spec(target: Go).items.func_keyword, " init() { panic(\"EMIT BUG: unhandled item: ", item_text, "\") }")
   }
 }
 
@@ -408,11 +408,11 @@ fn emit_go_type_def_from_connective(item: Node, env: TypeEnv) -> String {
 // Go struct from Conj children
 fn emit_go_struct_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
   if children |> count == 0 {
-    concat("type ", name, " struct{}")
+    concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, "{}")
   } else {
     let field_lines = children |> map(child => emit_go_struct_field_from_child(child: child, env: env))
     let fields_str = field_lines |> join(separator: "\n")
-    concat("type ", name, " struct {\n", fields_str, "\n}")
+    concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, " {\n", fields_str, "\n}")
   }
 }
 
@@ -432,13 +432,13 @@ fn emit_go_sum_from_children(name: String, children: List<Node>, env: TypeEnv) -
   let has_data = children |> any(child => child.children |> count > 0)
   if has_data {
     // Tagged union: interface + struct per variant
-    let iface = concat("type ", name, " interface {\n\tis", name, "()\n}")
+    let iface = concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " interface {\n\tis", name, "()\n}")
     let variant_structs = children |> map(child => emit_go_variant_struct(parent_name: name, child: child, env: env))
     let structs_str = variant_structs |> join(separator: "\n\n")
     concat(iface, "\n\n", structs_str)
   } else {
     // Simple enum: iota constants
-    let type_decl = concat("type ", name, " int")
+    let type_decl = concat(language_spec(target: Go).items.enum_keyword, " ", name, " int")
     let variant_consts = children |> enumerate |> map(pair =>
       let child = pair.second
       let child_text = authored_name(env: env, node: child)
@@ -455,18 +455,18 @@ fn emit_go_sum_from_children(name: String, children: List<Node>, env: TypeEnv) -
 
 fn emit_go_variant_struct(parent_name: String, child: Node, env: TypeEnv) -> String {
   let struct_name = concat(parent_name, authored_name(env: env, node: child))
-  let marker_method = concat("func (", struct_name, ") is", parent_name, "() {}")
+  let marker_method = concat(language_spec(target: Go).items.func_keyword, " (", struct_name, ") is", parent_name, "() {}")
   if child.children |> count == 0 {
-    concat("type ", struct_name, " struct{}\n\n", marker_method)
+    concat(language_spec(target: Go).items.type_alias_keyword, " ", struct_name, " ", language_spec(target: Go).items.struct_keyword, "{}\n\n", marker_method)
   } else {
     let field_lines = child.children |> map(f => emit_go_struct_field_from_child(child: f, env: env))
     let fields_str = field_lines |> join(separator: "\n")
-    concat("type ", struct_name, " struct {\n", fields_str, "\n}\n\n", marker_method)
+    concat(language_spec(target: Go).items.type_alias_keyword, " ", struct_name, " ", language_spec(target: Go).items.struct_keyword, " {\n", fields_str, "\n}\n\n", marker_method)
   }
 }
 
 fn emit_go_type_alias(name: String, base: Node, source_index: NewlineIndex?) -> String {
-  concat("type ", name, " = ", emit_node_type(n: base, target: Go, source_index: source_index))
+  concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " = ", emit_node_type(n: base, target: Go, source_index: source_index))
 }
 
 // =========================================================================
@@ -493,11 +493,11 @@ fn emit_go_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, 
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry)
   if use_tco {
     let body_str = emit_go_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: 1)
-    concat("func ", go_export_ident(name: name), "(", params_str, ")", ret_str, " {\n",
+    concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), "(", params_str, ")", ret_str, " {\n",
       body_str, "\n}")
   } else {
     let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: 1, fuel: 1024)
-    concat("func ", go_export_ident(name: name), "(", params_str, ")", ret_str, " {\n",
+    concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), "(", params_str, ")", ret_str, " {\n",
       make_indent(level: 1), "return ", body_str, "\n}")
   }
 }
@@ -530,7 +530,7 @@ fn emit_go_func_def(
     extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: si), resolved: resource_use_resource(n: u))
   )
   let body_str = emit_go_typed_func_body(body: body, registry: registry, scope: body_scope, depth: 1)
-  concat("func ", go_export_ident(name: name), "(", params_str, ") (", ret_type, ", error) {\n",
+  concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), "(", params_str, ") (", ret_type, ", error) {\n",
     body_str, "\n}")
 }
 
@@ -558,7 +558,7 @@ fn emit_go_params(params: List<Node>, source_index: NewlineIndex?) -> String {
 
 fn emit_go_param(param: Node, source_index: NewlineIndex?) -> String {
   let ty = emit_node_type(n: param_node_type_expr(n: param), target: Go, source_index: source_index)
-  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Go), " ", ty)
+  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Go), language_spec(target: Go).items.param_type_sep, ty)
 }
 
 fn emit_go_inferred(inferred: Node, source_index: NewlineIndex?) -> String {
@@ -566,7 +566,7 @@ fn emit_go_inferred(inferred: Node, source_index: NewlineIndex?) -> String {
   if ty == "struct{}" {
     ""
   } else {
-    concat(" ", ty)
+    concat(language_spec(target: Go).items.return_arrow, ty)
   }
 }
 fn emit_go_pattern(pattern: MatchPattern) -> String {
@@ -1053,9 +1053,9 @@ fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: L
   let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
   let decls = service_field_decls(fs: fs, t: language_spec(target: Go).service_fields)
   if decls |> count == 0 {
-    concat("type ", name, " struct{}")
+    concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, "{}")
   } else {
-    concat("type ", name, " struct {\n", decls |> join(separator: "\n"), "\n}")
+    concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, " {\n", decls |> join(separator: "\n"), "\n}")
   }
 }
 
@@ -1070,7 +1070,7 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
   let ret_type = emit_node_type(n: resolved_type(n: op_node), target: Go, source_index: env.source_index)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let body = emit_go_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: 1)
-  concat("func ", receiver, " ", go_export_ident(name: op_text),
+  concat(language_spec(target: Go).items.func_keyword, " ", receiver, " ", go_export_ident(name: op_text),
     "(", params_str, ") (", ret_type, ", error) {\n",
     body, "\n}")
 }
@@ -1162,7 +1162,7 @@ fn emit_go_resource_def(item: Node, env: TypeEnv) -> String {
   let cap_children = item.children |> filter(c => c.params |> count > 0)
   let methods = cap_children |> map(c => emit_go_capability_method(cap_node: c, depth: 1, env: env))
   let methods_str = methods |> join(separator: "\n")
-  concat("type ", item_text, " interface {\n",
+  concat(language_spec(target: Go).items.type_alias_keyword, " ", item_text, " interface {\n",
     methods_str, "\n}")
 }
 

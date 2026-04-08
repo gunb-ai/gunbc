@@ -62,6 +62,21 @@ data go_reserved: List<String> = [
 // the emitter appends "_" for keywords that clash with identifiers).
 data go_reserved_escape_suffix: String = "_"
 
+// -- Item definition facts ------------------------------------------------
+// Ref: Go Specification "Declarations and scope"
+data go_func_keyword: String = "func"
+data go_async_prefix: String = ""
+data go_struct_keyword: String = "struct"
+data go_enum_keyword: String = "type"
+data go_type_alias_keyword: String = "type"
+data go_param_separator: String = ", "
+data go_return_arrow: String = " "
+data go_param_type_sep: String = " "
+data go_string_literal_suffix: String = ""
+data go_module_keyword: String = "package"
+data go_import_keyword: String = "import"
+data go_import_from_keyword: String = ""
+
 // -- Project scaffold ----------------------------------------------------
 // Ref: Go modules reference (go.dev/ref/mod)
 // Mirrors go_scaffold from std.languages.

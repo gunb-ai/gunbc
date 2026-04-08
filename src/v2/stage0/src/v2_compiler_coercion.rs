@@ -48,11 +48,11 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr};
+pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax};
 pub use crate::std_types::{container_to_algebra_name, container_to_algebra};
-pub use crate::extdeps_languages_rust_types::{rust_type_checkpoints, rust_algebra_inhabitants, rust_callable, rust_optional_template};
-pub use crate::extdeps_languages_python_types::{python_type_checkpoints, python_algebra_inhabitants, python_callable, python_optional_template};
-pub use crate::extdeps_languages_go_types::{go_type_checkpoints, go_algebra_inhabitants, go_callable, go_optional_template};
+pub use crate::extdeps_languages_rust_types::{rust_type_checkpoints, rust_algebra_inhabitants, rust_callable, rust_optional_template, rust_cast_syntax};
+pub use crate::extdeps_languages_python_types::{python_type_checkpoints, python_algebra_inhabitants, python_callable, python_optional_template, python_cast_syntax};
+pub use crate::extdeps_languages_go_types::{go_type_checkpoints, go_algebra_inhabitants, go_callable, go_optional_template, go_cast_syntax};
 use CoercionAssertion::*;
 
 pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
@@ -93,6 +93,37 @@ pub fn target_optional_template(target: RenderTarget) -> String {
     RenderTarget::Python => python_optional_template(),
     RenderTarget::Go => go_optional_template(),
     RenderTarget::Dag => "{0}?".to_string(),
+}
+}
+
+pub fn target_cast_syntax(target: RenderTarget) -> Rc<CastSyntax> {
+    match target {
+    RenderTarget::Rust => rust_cast_syntax(),
+    RenderTarget::Python => python_cast_syntax(),
+    RenderTarget::Go => go_cast_syntax(),
+    RenderTarget::Dag => Rc::new(CastSyntax {
+    template: "{expr}".to_string(),
+    valid_targets: Rc::new(vec![]),
+    fail_open: true,
+}),
+}
+}
+
+pub fn can_cast(target: RenderTarget, target_type: String) -> bool {
+    {
+        let syntax = target_cast_syntax(target);
+if syntax.fail_open.clone() {
+            true
+} else {
+            { let mut __found = false; for t in syntax.valid_targets.clone().iter().cloned() { if (t.clone().as_str() == target_type.clone().as_str()) { __found = true; break; } } __found }
+}
+}
+}
+
+pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
+    {
+        let syntax = target_cast_syntax(target);
+v2_rt::replace(v2_rt::replace(syntax.template.clone(), "{expr}".to_string(), expr_str), "{type}".to_string(), type_str)
 }
 }
 
@@ -137,7 +168,7 @@ pub fn apply_inhabitant_template2(template: String, first: String, second: Strin
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CoercionAssertion {
     CheckpointAssertion {
         target: RenderTarget,

@@ -21,6 +21,11 @@ import std.syntax {
   ServiceBody, ResourceBody
 }
 
+import extdeps.languages.rust.syntax { rust_operators }
+import extdeps.languages.python.syntax { python_operators }
+import extdeps.languages.go.syntax { go_operators }
+import extdeps.languages.dag.syntax { dag_operators }
+
 import extdeps.languages.rust.emit {
   rust_keywords, rust_container_templates,
   rust_reserved, rust_reserved_escape_prefix,
@@ -29,7 +34,12 @@ import extdeps.languages.rust.emit {
   rust_serde_tag, rust_serde_rename_template,
   rust_source_extension, rust_source_dir, rust_visibility,
   rust_string_types,
-  rust_method_templates
+  rust_method_templates,
+  rust_func_keyword, rust_async_prefix, rust_struct_keyword,
+  rust_enum_keyword, rust_type_alias_keyword,
+  rust_param_separator, rust_return_arrow,
+  rust_param_type_sep, rust_string_literal_suffix,
+  rust_module_keyword, rust_import_keyword, rust_import_from_keyword
 }
 
 import extdeps.languages.python.emit {
@@ -38,7 +48,12 @@ import extdeps.languages.python.emit {
   python_derive_attribute, python_default_value,
   python_source_extension, python_module_init,
   python_method_templates,
-  python_string_types
+  python_string_types,
+  python_func_keyword, python_async_prefix, python_struct_keyword,
+  python_enum_keyword, python_type_alias_keyword,
+  python_param_separator, python_return_arrow,
+  python_param_type_sep, python_string_literal_suffix,
+  python_module_keyword, python_import_keyword, python_import_from_keyword
 }
 
 import extdeps.languages.go.emit {
@@ -46,7 +61,12 @@ import extdeps.languages.go.emit {
   go_reserved, go_reserved_escape_suffix,
   go_manifest_file,
   go_method_templates,
-  go_string_types
+  go_string_types,
+  go_func_keyword, go_async_prefix, go_struct_keyword,
+  go_enum_keyword, go_type_alias_keyword,
+  go_param_separator, go_return_arrow,
+  go_param_type_sep, go_string_literal_suffix,
+  go_module_keyword, go_import_keyword, go_import_from_keyword
 }
 
 type ReservedWordStrategy
@@ -175,6 +195,11 @@ type BlockSyntax {
   arm_separator: String         // "," (Rust) or "\n" (Go/Python)
   stmt_terminator: String       // ";" (Rust) or "" (Go/Python)
   significant_whitespace: Bool  // true (Python) or false (Go/Rust)
+  arm_header_depth_offset: Int  // Python: 1 (case indented under match), Go/Rust: 0
+  arm_body_depth_offset: Int    // Python: 2 (body under case under match), Go/Rust: 1
+  if_else_expr_template: String? // Python: ternary "({1}) if ({0}) else ({2})", Go/Rust: none (IIFE/block)
+  func_return_suffix: String    // Go: ", nil" (error return), Python/Rust: ""
+  empty_return: String          // Go: "return struct{}{}, nil", Python: "return None", Rust: ""
 }
 
 type TcoSyntax {
@@ -184,6 +209,23 @@ type TcoSyntax {
   temp_var_prefix: String     // "__tco_" (Rust/Python), "tco" (Go)
   temp_decl_prefix: String    // "let " (Rust), "" (Go/Python)
   temp_assign_op: String      // " = " (Rust/Python), " := " (Go)
+}
+
+// Item definition facts — individual tokens the emitter composes.
+// Not templates: each field is one language fact.
+type ItemKeywords {
+  func_keyword: String          // "fn" / "def" / "func"
+  async_prefix: String          // "async " / "async " / ""
+  struct_keyword: String        // "struct" / "class" / "struct"
+  enum_keyword: String          // "enum" / "class" / "type"
+  type_alias_keyword: String    // "type" / "" / "type"
+  param_separator: String       // ", " (universal so far)
+  return_arrow: String          // " -> " / " -> " / " "
+  param_type_sep: String         // ": " (Rust/Python) / " " (Go)
+  string_literal_suffix: String // ".to_string()" / "" / ""
+  module_keyword: String         // "mod" (Rust) / "" (Python) / "package" (Go)
+  import_keyword: String         // "use" (Rust) / "import" (Python) / "import" (Go)
+  import_from_keyword: String    // "" (Rust) / "from" (Python) / "" (Go)
 }
 
 type LanguageSpec {
@@ -200,6 +242,7 @@ type LanguageSpec {
   service_fields: ServiceFieldTemplates
   block_syntax: BlockSyntax
   tco: TcoSyntax
+  items: ItemKeywords
 }
 
 // =========================================================================
@@ -276,7 +319,10 @@ fn rust_spec() -> LanguageSpec {
       else_clause: "\} else \{\n",
       match_keyword: "match ", case_keyword: "",
       arm_separator: ",", stmt_terminator: ";",
-      significant_whitespace: false
+      significant_whitespace: false,
+      arm_header_depth_offset: 0, arm_body_depth_offset: 1,
+      if_else_expr_template: none,
+      func_return_suffix: "", empty_return: ""
     },
     tco: TcoSyntax {
       loop_keyword: "loop",
@@ -285,6 +331,17 @@ fn rust_spec() -> LanguageSpec {
       temp_var_prefix: "__tco_",
       temp_decl_prefix: "let ",
       temp_assign_op: " = "
+    },
+    items: ItemKeywords {
+      func_keyword: rust_func_keyword, async_prefix: rust_async_prefix,
+      struct_keyword: rust_struct_keyword, enum_keyword: rust_enum_keyword,
+      type_alias_keyword: rust_type_alias_keyword,
+      param_separator: rust_param_separator, return_arrow: rust_return_arrow,
+      param_type_sep: rust_param_type_sep,
+      string_literal_suffix: rust_string_literal_suffix,
+      module_keyword: rust_module_keyword,
+      import_keyword: rust_import_keyword,
+      import_from_keyword: rust_import_from_keyword
     }
   }
 }
@@ -358,7 +415,10 @@ fn python_spec() -> LanguageSpec {
       else_clause: "else:\n",
       match_keyword: "match ", case_keyword: "case ",
       arm_separator: "\n", stmt_terminator: "",
-      significant_whitespace: true
+      significant_whitespace: true,
+      arm_header_depth_offset: 1, arm_body_depth_offset: 2,
+      if_else_expr_template: Some { value: "(\{then\}) if (\{cond\}) else (\{else\})" },
+      func_return_suffix: "", empty_return: "return None"
     },
     tco: TcoSyntax {
       loop_keyword: "while True",
@@ -367,6 +427,17 @@ fn python_spec() -> LanguageSpec {
       temp_var_prefix: "__tco_",
       temp_decl_prefix: "",
       temp_assign_op: " = "
+    },
+    items: ItemKeywords {
+      func_keyword: python_func_keyword, async_prefix: python_async_prefix,
+      struct_keyword: python_struct_keyword, enum_keyword: python_enum_keyword,
+      type_alias_keyword: python_type_alias_keyword,
+      param_separator: python_param_separator, return_arrow: python_return_arrow,
+      param_type_sep: python_param_type_sep,
+      string_literal_suffix: python_string_literal_suffix,
+      module_keyword: python_module_keyword,
+      import_keyword: python_import_keyword,
+      import_from_keyword: python_import_from_keyword
     }
   }
 }
@@ -440,7 +511,10 @@ fn go_spec() -> LanguageSpec {
       else_clause: "\} else \{\n",
       match_keyword: "switch ", case_keyword: "case ",
       arm_separator: "\n", stmt_terminator: "",
-      significant_whitespace: false
+      significant_whitespace: false,
+      arm_header_depth_offset: 0, arm_body_depth_offset: 1,
+      if_else_expr_template: none,
+      func_return_suffix: ", nil", empty_return: "return struct\{\}\{\}, nil"
     },
     tco: TcoSyntax {
       loop_keyword: "for",
@@ -449,6 +523,17 @@ fn go_spec() -> LanguageSpec {
       temp_var_prefix: "tco",
       temp_decl_prefix: "",
       temp_assign_op: " := "
+    },
+    items: ItemKeywords {
+      func_keyword: go_func_keyword, async_prefix: go_async_prefix,
+      struct_keyword: go_struct_keyword, enum_keyword: go_enum_keyword,
+      type_alias_keyword: go_type_alias_keyword,
+      param_separator: go_param_separator, return_arrow: go_return_arrow,
+      param_type_sep: go_param_type_sep,
+      string_literal_suffix: go_string_literal_suffix,
+      module_keyword: go_module_keyword,
+      import_keyword: go_import_keyword,
+      import_from_keyword: go_import_from_keyword
     }
   }
 }
@@ -468,6 +553,29 @@ fn target_keyword(target: RenderTarget, key: String) -> String {
     Go => match lookup(go_keywords, key: key) { Some { value: kw } => kw  None => key }
     Python => match lookup(python_keywords, key: key) { Some { value: kw } => kw  None => key }
     Dag => key
+  }
+}
+
+fn target_operators(target: RenderTarget) -> List<OperatorSpec> {
+  match target {
+    Rust => rust_operators
+    Python => python_operators
+    Go => go_operators
+    Dag => dag_operators
+  }
+}
+
+// Look up the target language's symbol for a BinOp.
+// Reads from per-language OperatorSpec in extdeps/languages/*/syntax.dag.
+fn binop_symbol(target: RenderTarget, op: BinOp) -> String {
+  let ops = target_operators(target: target)
+  let matching = ops |> filter(spec => match spec.binop {
+    Some { value: b } => b == op
+    None => false
+  })
+  match matching |> first {
+    Some { value: spec } => spec.symbol
+    None => "__MISSING_BINOP__"
   }
 }
 

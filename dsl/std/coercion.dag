@@ -82,3 +82,22 @@ type CallableRepr {
   return_separator: String
   import_path: String?
 }
+
+// CastSyntax: how type casts render in the target language.
+//
+// Each language has different cast rules:
+//   Rust:   `expr as type` — only valid for specific source-target pairs
+//           (Rust Reference §8.2.4 "Type cast expressions")
+//   Go:     `type(expr)` — all numeric conversions valid
+//   Python: `type(expr)` — constructor calls, always syntactically valid
+//
+// Fields:
+//   template       — cast expression template ({expr} and {type} placeholders)
+//   valid_targets  — target types valid for casting (empty if fail_open)
+//   fail_open      — true = all casts syntactically valid (Python/Go),
+//                    false = check valid_targets (Rust)
+type CastSyntax {
+  template: String
+  valid_targets: List<String>
+  fail_open: Bool
+}
