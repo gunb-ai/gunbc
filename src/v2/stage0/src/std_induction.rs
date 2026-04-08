@@ -47,14 +47,16 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_termination::{DescentEvidence, RankingDimension};
-use crate::std_termination::DescentEvidence::{Strict, NonIncreasing};
+use crate::std_termination::DescentEvidence::{Strict, NonIncreasing, DescentUnknown};
 use crate::std_termination::RankingDimension::{TreeSize};
 pub use crate::std_computation::{CallPattern};
 use crate::std_computation::CallPattern::{ChildAccessorCall, FoldBodyCall, SameArgumentCall};
 use RecursionShape::*;
-use SubValueRelation::*;
 use ShrinkFactor::*;
-use CostTerm::*;
+use SubValueRelation::*;
+use PolynomialExponent::*;
+use AtomicCost::*;
+use CostBound::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 
@@ -62,6 +64,8 @@ pub enum RecursionShape {
     DirectRecursion,
     ListRecursion,
     OptionalRecursion,
+    SetRecursion,
+    MapValueRecursion,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -80,46 +84,6 @@ pub fn inductive_field_to_dimension(field: Rc<InductiveField>, param: String) ->
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 
-pub enum SubValueRelation {
-    StrictSubValue {
-        field: Rc<InductiveField>,
-        factor: Rc<ShrinkFactor>,
-    },
-    IteratedSubValue {
-        field: Rc<InductiveField>,
-    },
-    PreservedValue,
-}
-impl SubValueRelation {
-    pub fn field(&self) -> Rc<InductiveField> {
-        match self {
-            SubValueRelation::StrictSubValue { field: __val, .. } => __val.clone(),
-            SubValueRelation::IteratedSubValue { field: __val, .. } => __val.clone(),
-            SubValueRelation::PreservedValue => panic!("no field on unit variant"),
-        }
-    }
-}
-
-pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence {
-    match (*relation).clone() {
-    SubValueRelation::StrictSubValue { .. } => DescentEvidence::Strict,
-    SubValueRelation::IteratedSubValue { .. } => DescentEvidence::Strict,
-    SubValueRelation::PreservedValue => DescentEvidence::NonIncreasing,
-}
-}
-
-pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Rc<CallPattern> {
-    match (*relation).clone() {
-    SubValueRelation::StrictSubValue { .. } => Rc::new(CallPattern::ChildAccessorCall {
-    accessor: "structural".to_string(),
-}),
-    SubValueRelation::IteratedSubValue { .. } => Rc::new(CallPattern::FoldBodyCall),
-    SubValueRelation::PreservedValue => Rc::new(CallPattern::SameArgumentCall),
-}
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
 pub enum ShrinkFactor {
     UnitShrink,
     ConstantShrink {
@@ -130,109 +94,185 @@ pub enum ShrinkFactor {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Rational {
-    pub p: i64,
-    pub q: i64,
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum SubValueRelation {
+    StrictSubValue {
+        field: Rc<InductiveField>,
+        factor: Rc<ShrinkFactor>,
+    },
+    IteratedSubValue {
+        field: Rc<InductiveField>,
+    },
+    PreservedValue,
+    SubValueUnknown,
+}
+impl SubValueRelation {
+    pub fn field(&self) -> Rc<InductiveField> {
+        match self {
+            SubValueRelation::StrictSubValue { field: __val, .. } => __val.clone(),
+            SubValueRelation::IteratedSubValue { field: __val, .. } => __val.clone(),
+            SubValueRelation::PreservedValue => panic!("no field on unit variant"),
+            SubValueRelation::SubValueUnknown => panic!("no field on unit variant"),
+        }
+    }
 }
 
-pub fn rational(p: i64, q: i64) -> Rational {
-    Rational {
-    p: p,
-    q: q,
+pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence {
+    match (*relation).clone() {
+    SubValueRelation::StrictSubValue { .. } => DescentEvidence::Strict,
+    SubValueRelation::IteratedSubValue { .. } => DescentEvidence::Strict,
+    SubValueRelation::PreservedValue => DescentEvidence::NonIncreasing,
+    SubValueRelation::SubValueUnknown => DescentEvidence::DescentUnknown,
 }
 }
 
-pub fn integer(n: i64) -> Rational {
-    Rational {
-    p: n,
-    q: 1,
+pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Rc<CallPattern> {
+    match (*relation).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => Rc::new(CallPattern::ChildAccessorCall {
+    accessor: f.field_name.clone(),
+}),
+    SubValueRelation::IteratedSubValue { field: f, .. } => Rc::new(CallPattern::ChildAccessorCall {
+    accessor: f.field_name.clone(),
+}),
+    SubValueRelation::PreservedValue => Rc::new(CallPattern::SameArgumentCall),
+    SubValueRelation::SubValueUnknown => Rc::new(CallPattern::SameArgumentCall),
 }
-}
-
-pub fn rational_less(a: Rational, b: Rational) -> bool {
-    ((a.p.clone() * b.q.clone()) < (b.p.clone() * a.q.clone()))
-}
-
-pub fn rational_equal(a: Rational, b: Rational) -> bool {
-    ((a.p.clone() * b.q.clone()) == (b.p.clone() * a.q.clone()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 
-pub enum CostTerm {
-    CostOne,
-    CostPoly {
+pub enum PolynomialExponent {
+    IntegerExp {
+        value: i64,
+    },
+    FractionExp {
+        numerator: i64,
+        root: i64,
+    },
+    LogBasedExp {
+        base: i64,
+        argument: i64,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum AtomicCost {
+    PolyCost {
         param: String,
-        exponent: Rational,
+        exponent: Rc<PolynomialExponent>,
     },
-    CostLog {
+    LogCost {
         param: String,
     },
-    CostProduct {
-        factors: Rc<Vec<Rc<CostTerm>>>,
+}
+impl AtomicCost {
+    pub fn param(&self) -> String {
+        match self {
+            AtomicCost::PolyCost { param: __val, .. } => __val.clone(),
+            AtomicCost::LogCost { param: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum CostBound {
+    ConstantBound,
+    AtomicBound {
+        cost: Rc<AtomicCost>,
     },
-    CostSum {
-        terms: Rc<Vec<Rc<CostTerm>>>,
+    ProductBound {
+        factors: Rc<Vec<Rc<AtomicCost>>>,
     },
-    CostForever,
+    SumOfProductsBound {
+        terms: Rc<Vec<Rc<Vec<Rc<AtomicCost>>>>>,
+    },
+    ForeverBound,
+    ErrorBound,
 }
 
-pub fn cost_constant() -> Rc<CostTerm> {
-    Rc::new(CostTerm::CostOne)
+pub fn cost_constant() -> Rc<CostBound> {
+    Rc::new(CostBound::ConstantBound)
 }
 
-pub fn cost_linear(param: String) -> Rc<CostTerm> {
-    Rc::new(CostTerm::CostPoly {
+pub fn cost_linear(param: String) -> Rc<CostBound> {
+    Rc::new(CostBound::AtomicBound {
+    cost: Rc::new(AtomicCost::PolyCost {
     param: param,
-    exponent: integer(1),
+    exponent: Rc::new(PolynomialExponent::IntegerExp {
+    value: 1,
+}),
+}),
 })
 }
 
-pub fn cost_quadratic(param: String) -> Rc<CostTerm> {
-    Rc::new(CostTerm::CostPoly {
+pub fn cost_poly(param: String, degree: i64) -> Rc<CostBound> {
+    Rc::new(CostBound::AtomicBound {
+    cost: Rc::new(AtomicCost::PolyCost {
     param: param,
-    exponent: integer(2),
+    exponent: Rc::new(PolynomialExponent::IntegerExp {
+    value: degree,
+}),
+}),
 })
 }
 
-pub fn cost_root(param: String, k: i64) -> Rc<CostTerm> {
-    Rc::new(CostTerm::CostPoly {
+pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
+    Rc::new(CostBound::AtomicBound {
+    cost: Rc::new(AtomicCost::PolyCost {
     param: param,
-    exponent: rational(1, k),
+    exponent: Rc::new(PolynomialExponent::FractionExp {
+    numerator: 1,
+    root: k,
+}),
+}),
 })
 }
 
-pub fn cost_sqrt(param: String) -> Rc<CostTerm> {
+pub fn cost_sqrt(param: String) -> Rc<CostBound> {
     cost_root(param, 2)
 }
 
-pub fn cost_cbrt(param: String) -> Rc<CostTerm> {
+pub fn cost_cbrt(param: String) -> Rc<CostBound> {
     cost_root(param, 3)
 }
 
-pub fn cost_log(param: String) -> Rc<CostTerm> {
-    Rc::new(CostTerm::CostLog {
+pub fn cost_log(param: String) -> Rc<CostBound> {
+    Rc::new(CostBound::AtomicBound {
+    cost: Rc::new(AtomicCost::LogCost {
     param: param,
+}),
 })
 }
 
-pub fn cost_nlogn(param: String) -> Rc<CostTerm> {
-    Rc::new(CostTerm::CostProduct {
-    factors: Rc::new(vec![cost_linear(param.clone()), cost_log(param.clone())]),
+pub fn cost_nlogn(param: String) -> Rc<CostBound> {
+    Rc::new(CostBound::ProductBound {
+    factors: Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+    param: param.clone(),
+    exponent: Rc::new(PolynomialExponent::IntegerExp {
+    value: 1,
+}),
+}), Rc::new(AtomicCost::LogCost {
+    param: param.clone(),
+})]),
 })
 }
 
-pub fn cost_poly(param: String, degree: i64) -> Rc<CostTerm> {
-    Rc::new(CostTerm::CostPoly {
-    param: param,
-    exponent: integer(degree),
-})
-}
-
-pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostTerm> {
-    Rc::new(CostTerm::CostSum {
-    terms: Rc::new(vec![cost_linear(v_param), cost_linear(e_param)]),
+pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostBound> {
+    Rc::new(CostBound::SumOfProductsBound {
+    terms: Rc::new(vec![Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+    param: v_param,
+    exponent: Rc::new(PolynomialExponent::IntegerExp {
+    value: 1,
+}),
+})]), Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+    param: e_param,
+    exponent: Rc::new(PolynomialExponent::IntegerExp {
+    value: 1,
+}),
+})])]),
 })
 }
 
@@ -244,47 +284,83 @@ pub struct RecurrenceForm {
     pub work_exponent: i64,
 }
 
-pub fn int_pow(base: i64, exp: i64) -> i64 {
+pub fn int_pow_bounded(base: i64, exp: i64) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (exp.clone() == 0) {
+        if (exp.clone() <= 0) {
             1
 } else {
             {
-                let prev = int_pow(base.clone(), (exp.clone() - 1));
+                let prev = int_pow_bounded(base.clone(), (exp.clone() - 1));
 (base.clone() * prev)
 }
 }
     })
 }
 
-pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostTerm> {
-    {
-        let n = form.param.clone();
-let a = form.branches.clone();
-let b = form.divisor.clone();
-let d = form.work_exponent.clone();
-if ((a.clone() < 1) || (b.clone() < 2)) {
-            Rc::new(CostTerm::CostOne)
+pub fn ceil_log(base: i64, argument: i64) -> i64 {
+    ceil_log_iter(base, argument, 0, 1)
+}
+
+pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i64) -> i64 {
+    loop {
+        if (power.clone() >= argument.clone()) {
+            break k.clone();
 } else {
             {
-                let b_to_d = int_pow(b.clone(), d.clone());
+                let __tco_0 = base.clone();
+let __tco_1 = argument;
+let __tco_2 = (k + 1);
+let __tco_3 = (power * base.clone());
+base = __tco_0;
+argument = __tco_1;
+k = __tco_2;
+power = __tco_3;
+continue;
+}
+}
+}
+}
+
+pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
+    {
+        let a = form.branches.clone();
+let b = form.divisor.clone();
+let d = form.work_exponent.clone();
+let n = form.param.clone();
+if ((a.clone() < 1) || (b.clone() < 2)) {
+            Rc::new(CostBound::ErrorBound)
+} else {
+            {
+                let b_to_d = int_pow_bounded(b.clone(), d.clone());
 if (a.clone() < b_to_d.clone()) {
                     match d.clone() {
-    0 => Rc::new(CostTerm::CostOne),
+    0 => Rc::new(CostBound::ConstantBound),
     _ => cost_poly(n.clone(), d.clone()),
 }
 } else {
                     if (a.clone() == b_to_d.clone()) {
                         match d.clone() {
     0 => cost_log(n.clone()),
-    _ => Rc::new(CostTerm::CostProduct {
-    factors: Rc::new(vec![cost_poly(n.clone(), d.clone()), cost_log(n.clone())]),
+    _ => Rc::new(CostBound::ProductBound {
+    factors: Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+    param: n.clone(),
+    exponent: Rc::new(PolynomialExponent::IntegerExp {
+    value: d.clone(),
+}),
+}), Rc::new(AtomicCost::LogCost {
+    param: n.clone(),
+})]),
 }),
 }
 } else {
-                        Rc::new(CostTerm::CostPoly {
+                        Rc::new(CostBound::AtomicBound {
+    cost: Rc::new(AtomicCost::PolyCost {
     param: n.clone(),
-    exponent: integer((d.clone() + 1)),
+    exponent: Rc::new(PolynomialExponent::LogBasedExp {
+    base: b.clone(),
+    argument: a.clone(),
+}),
+}),
 })
 }
 }
@@ -293,25 +369,25 @@ if (a.clone() < b_to_d.clone()) {
 }
 }
 
-pub fn catamorphism_bound(param: String, nesting_depth: i64) -> Rc<CostTerm> {
+pub fn catamorphism_bound(param: String, nesting_depth: i64) -> Rc<CostBound> {
     match nesting_depth.clone() {
-    0 => Rc::new(CostTerm::CostOne),
+    0 => Rc::new(CostBound::ConstantBound),
     _ => cost_poly(param, nesting_depth.clone()),
 }
 }
 
-pub fn shrink_to_steps(param: String, factor: Rc<ShrinkFactor>) -> Rc<CostTerm> {
+pub fn derive_bound(param: String, branches: i64, factor: Rc<ShrinkFactor>, work_exponent: i64) -> Rc<CostBound> {
     match (*factor).clone() {
-    ShrinkFactor::UnitShrink => cost_linear(param),
-    ShrinkFactor::ConstantShrink { .. } => cost_linear(param),
-    ShrinkFactor::ProportionalShrink { .. } => cost_log(param),
-}
-}
-
-pub fn derive_bound(param: String, branches: i64, factor: Rc<ShrinkFactor>, work_exponent: i64) -> Rc<CostTerm> {
-    match (*factor).clone() {
-    ShrinkFactor::UnitShrink => catamorphism_bound(param, 1),
-    ShrinkFactor::ConstantShrink { .. } => catamorphism_bound(param, 1),
+    ShrinkFactor::UnitShrink => if (branches <= 1) {
+        cost_linear(param)
+} else {
+        Rc::new(CostBound::ForeverBound)
+},
+    ShrinkFactor::ConstantShrink { .. } => if (branches <= 1) {
+        cost_linear(param)
+} else {
+        Rc::new(CostBound::ForeverBound)
+},
     ShrinkFactor::ProportionalShrink { divisor: d, .. } => master_theorem(Rc::new(RecurrenceForm {
     param: param,
     branches: branches,
@@ -321,64 +397,94 @@ pub fn derive_bound(param: String, branches: i64, factor: Rc<ShrinkFactor>, work
 }
 }
 
-pub fn tree_traversal_bound() -> Rc<CostTerm> {
+pub fn tree_traversal_bound() -> Rc<CostBound> {
     catamorphism_bound("tree".to_string(), 1)
 }
 
-pub fn nested_iteration_bound() -> Rc<CostTerm> {
+pub fn nested_iteration_bound() -> Rc<CostBound> {
     catamorphism_bound("items".to_string(), 2)
 }
 
-pub fn linear_scan_bound() -> Rc<CostTerm> {
+pub fn linear_scan_bound() -> Rc<CostBound> {
     catamorphism_bound("xs".to_string(), 1)
 }
 
-pub fn binary_search_bound() -> Rc<CostTerm> {
+pub fn binary_search_bound() -> Rc<CostBound> {
     derive_bound("xs".to_string(), 1, Rc::new(ShrinkFactor::ProportionalShrink {
     divisor: 2,
 }), 0)
 }
 
-pub fn mergesort_bound() -> Rc<CostTerm> {
+pub fn mergesort_bound() -> Rc<CostBound> {
     derive_bound("xs".to_string(), 2, Rc::new(ShrinkFactor::ProportionalShrink {
     divisor: 2,
 }), 1)
 }
 
-pub fn karatsuba_bound() -> Rc<CostTerm> {
+pub fn karatsuba_bound() -> Rc<CostBound> {
     derive_bound("digits".to_string(), 3, Rc::new(ShrinkFactor::ProportionalShrink {
     divisor: 2,
 }), 1)
 }
 
-pub fn trial_division_bound() -> Rc<CostTerm> {
+pub fn strassen_bound() -> Rc<CostBound> {
+    derive_bound("n".to_string(), 7, Rc::new(ShrinkFactor::ProportionalShrink {
+    divisor: 2,
+}), 2)
+}
+
+pub fn trial_division_bound() -> Rc<CostBound> {
     cost_sqrt("n".to_string())
 }
 
-pub fn cube_root_bound() -> Rc<CostTerm> {
+pub fn cube_root_bound() -> Rc<CostBound> {
     cost_cbrt("n".to_string())
 }
 
-pub fn kth_root_bound(k: i64) -> Rc<CostTerm> {
+pub fn kth_root_bound(k: i64) -> Rc<CostBound> {
     cost_root("n".to_string(), k)
 }
 
-pub fn bfs_dfs_bound() -> Rc<CostTerm> {
+pub fn bfs_dfs_bound() -> Rc<CostBound> {
     cost_graph_linear("V".to_string(), "E".to_string())
 }
 
-pub fn dijkstra_bound() -> Rc<CostTerm> {
-    Rc::new(CostTerm::CostProduct {
-    factors: Rc::new(vec![cost_graph_linear("V".to_string(), "E".to_string()), cost_log("V".to_string())]),
+pub fn dijkstra_bound() -> Rc<CostBound> {
+    Rc::new(CostBound::SumOfProductsBound {
+    terms: Rc::new(vec![Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+    param: "V".to_string(),
+    exponent: Rc::new(PolynomialExponent::IntegerExp {
+    value: 1,
+}),
+}), Rc::new(AtomicCost::LogCost {
+    param: "V".to_string(),
+})]), Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+    param: "E".to_string(),
+    exponent: Rc::new(PolynomialExponent::IntegerExp {
+    value: 1,
+}),
+}), Rc::new(AtomicCost::LogCost {
+    param: "V".to_string(),
+})])]),
 })
 }
 
-pub fn bellman_ford_bound() -> Rc<CostTerm> {
-    Rc::new(CostTerm::CostProduct {
-    factors: Rc::new(vec![cost_linear("V".to_string()), cost_linear("E".to_string())]),
+pub fn bellman_ford_bound() -> Rc<CostBound> {
+    Rc::new(CostBound::ProductBound {
+    factors: Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+    param: "V".to_string(),
+    exponent: Rc::new(PolynomialExponent::IntegerExp {
+    value: 1,
+}),
+}), Rc::new(AtomicCost::PolyCost {
+    param: "E".to_string(),
+    exponent: Rc::new(PolynomialExponent::IntegerExp {
+    value: 1,
+}),
+})]),
 })
 }
 
-pub fn floyd_warshall_bound() -> Rc<CostTerm> {
+pub fn floyd_warshall_bound() -> Rc<CostBound> {
     cost_poly("V".to_string(), 3)
 }

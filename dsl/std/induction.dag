@@ -54,7 +54,7 @@
 module std.induction
 
 import std.termination {
-  DescentEvidence, Strict, NonIncreasing,
+  DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   RankingDimension, TreeSize
 }
 import std.computation {
@@ -66,30 +66,25 @@ import std.computation {
 // RecursionShape — how a field references its parent type
 // =========================================================================
 
-// The .dag type system has three ways a field can reference its parent
+// The .dag type system has these ways a field can reference its parent
 // type. These correspond to positions in the signature functor of the
 // initial algebra (Lambek 1968):
 //
-//   DirectRecursion:   F(X) = ... × X × ...
-//     The field type IS the parent type.
-//     Example: type MyList<T> = Cons { tail: MyList<T> }
+//   DirectRecursion:     F(X) = ... × X × ...
+//   ListRecursion:       F(X) = ... × List(X) × ...   (free monoid functor)
+//   OptionalRecursion:   F(X) = ... × (1 + X) × ...   (maybe functor)
+//   SetRecursion:        F(X) = ... × Set(X) × ...    (powerset functor)
+//   MapValueRecursion:   F(X) = ... × Map(K, X) × ... (partial function functor)
 //
-//   ListRecursion:     F(X) = ... × List(X) × ...
-//     The field is a list of the parent type (free monoid functor).
-//     Example: type Node { children: List<Node> }
-//
-//   OptionalRecursion: F(X) = ... × (1 + X) × ...
-//     The field is an optional parent type (maybe functor).
-//     Example: type Node { body: Node? }
-//
-// These three forms exhaust the recursive positions possible in .dag.
-// Adding a new container type to the language (e.g., Set<T>) would add
-// one variant here.
+// These enumerate the container types in the .dag language. Adding a new
+// container type to the language adds one variant here.
 
 type RecursionShape
   = DirectRecursion       // field_type == parent_type
   | ListRecursion         // field_type == List<parent_type>
   | OptionalRecursion     // field_type == parent_type?
+  | SetRecursion          // field_type == Set<parent_type>
+  | MapValueRecursion     // field_type == Map<K, parent_type>
 
 
 // =========================================================================
@@ -110,13 +105,6 @@ type RecursionShape
 //
 // For type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }:
 //   InductiveField { type_name: "MyList", variant_name: "Cons", field_name: "tail", shape: DirectRecursion }
-//   (Nil produces no InductiveField — it's a base case)
-//   (head: T produces no InductiveField — T is a type parameter, not the parent type)
-//
-// This extends RecursiveVariantFieldWitness (04_env.dag) with the shape
-// classification. The existing witness captures variant_name and field_name;
-// InductiveField adds the structural information needed to derive a
-// RankingDimension.
 
 type InductiveField {
   type_name: String
@@ -127,21 +115,12 @@ type InductiveField {
 
 
 // =========================================================================
-// InductiveField → RankingDimension (size measure derivation)
+// InductiveField → RankingDimension
 // =========================================================================
 
 // Every inductive type has a natural size measure: the number of
-// constructors in a value. This is the unique homomorphism from the
-// initial algebra to (ℕ, +, 0) — the "catamorphism to size."
-//
-// All three recursion shapes produce TreeSize because they all measure
-// structural depth:
-//   - DirectRecursion: sub-term has strictly fewer constructors
-//   - ListRecursion: each list element is a strict sub-tree
-//   - OptionalRecursion: inner value (when present) is a strict sub-tree
-//
-// ListLength is a DIFFERENT dimension — it measures a list parameter
-// shrinking (skip/tail), not tree descent through recursive fields.
+// constructors in a value. All recursion shapes produce TreeSize
+// because they all measure structural depth.
 
 fn inductive_field_to_dimension(field: InductiveField, param: String) -> RankingDimension {
   TreeSize { param: param }
@@ -149,165 +128,151 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 
 
 // =========================================================================
+// ShrinkFactor — rate of decrease per recursive step
+// =========================================================================
+
+// HOW MUCH an argument decreases per recursive step. Distinguishes
+// O(n) from O(log n).
+//
+//   UnitShrink:         n → n-1 → ... → 0            (O(n) steps)
+//   ConstantShrink:     n → n-k → ... → 0            (O(n/k) = O(n) steps)
+//   ProportionalShrink: n → n/d → n/d² → ... → 1     (O(log_d(n)) steps)
+
+type ShrinkFactor
+  = UnitShrink
+  | ConstantShrink { amount: Int }
+  | ProportionalShrink { divisor: Int }
+
+
+// =========================================================================
 // SubValueRelation — call-site descent evidence
 // =========================================================================
 
-// At each self-call site in a recursive function, each argument either:
-//   - Is obtained by deconstructing the parameter through a recursive
-//     field (StrictSubValue) — provably smaller by the sub-term relation
-//   - Is an element from iterating over a list-recursive field
-//     (IteratedSubValue) — each element is a strict sub-tree
-//   - Cannot be proven smaller (PreservedValue) — no descent evidence
+// At each self-call site, each argument either:
+//   - Is obtained by deconstructing through a recursive field (StrictSubValue)
+//   - Is an element from iterating over a recursive list field (IteratedSubValue)
+//   - Is the same value, no descent (PreservedValue)
+//   - Cannot be classified by the analyzer (SubValueUnknown — fail-closed)
 //
-// These are edges in the size-change graph (Lee, Jones, Ben-Amram 2001).
-// The size-change principle: if every infinite call sequence would
-// require an infinite descent on a well-founded ordering, the program
-// terminates.
-//
-// The pipeline produces SubValueRelation values at self-call sites.
-// The analyzer reads them — it never pattern-matches AST to derive them.
+// SubValueUnknown is categorically different from PreservedValue:
+//   PreservedValue = the argument IS the parameter (no descent, bounded by Forever)
+//   SubValueUnknown = the analyzer cannot determine the relationship (hard error)
 
 type SubValueRelation
   = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
-  | IteratedSubValue { field: InductiveField }  // element from fold/map over recursive list field
-  | PreservedValue                              // no descent proven
+  | IteratedSubValue { field: InductiveField }
+  | PreservedValue
+  | SubValueUnknown
 
 
 // =========================================================================
-// SubValueRelation → DescentEvidence (bridge to termination.dag)
+// SubValueRelation → DescentEvidence
 // =========================================================================
 
 fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
   match relation {
     StrictSubValue { field: _, factor: _ } => Strict
-    IteratedSubValue { field: _ }          => Strict   // each element is a strict sub-tree
+    IteratedSubValue { field: _ }          => Strict
     PreservedValue                         => NonIncreasing
+    SubValueUnknown                        => DescentUnknown
   }
 }
 
 
 // =========================================================================
-// SubValueRelation → CallPattern (bridge to computation.dag)
+// SubValueRelation → CallPattern
 // =========================================================================
+
+// IteratedSubValue maps to ChildAccessorCall (not FoldBodyCall) because
+// each element of a fold over recursive children IS a strict sub-value.
+// FoldBodyCall in computation.dag carries NonIncreasing evidence, which
+// would contradict the Strict evidence from sub_value_to_evidence.
 
 fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern {
   match relation {
-    StrictSubValue { field: _, factor: _ } => ChildAccessorCall { accessor: "structural" }
-    IteratedSubValue { field: _ }          => FoldBodyCall
+    StrictSubValue { field: f, factor: _ } => ChildAccessorCall { accessor: f.field_name }
+    IteratedSubValue { field: f }          => ChildAccessorCall { accessor: f.field_name }
     PreservedValue                         => SameArgumentCall
+    SubValueUnknown                        => SameArgumentCall
   }
 }
 
 
 // =========================================================================
-// ShrinkFactor — rate of decrease per recursive step
+// PolynomialExponent — exact representation of asymptotic exponents
 // =========================================================================
 
-// SubValueRelation says WHETHER an argument decreases. ShrinkFactor says
-// BY HOW MUCH. This is the quantitative dimension that distinguishes
-// O(n) from O(log n).
+// Polynomial exponents in complexity bounds. Three forms:
+//   IntegerExp: n^k for integer k (O(n), O(n²), O(n³))
+//   FractionExp: n^(1/k) for positive root k (O(√n), O(∛n))
+//   LogBasedExp: n^(log_b(a)) for exact divide-and-conquer bounds
+//     (Karatsuba: n^(log_2(3)), Strassen: n^(log_2(7)))
 //
-// The three forms correspond to different well-founded orderings on ℕ:
-//   UnitShrink:         n → n-1 → n-2 → ... → 0       (O(n) steps)
-//   ConstantShrink:     n → n-k → n-2k → ... → 0      (O(n/k) = O(n) steps)
-//   ProportionalShrink: n → n/d → n/d² → ... → 1      (O(log_d(n)) steps)
-//
-// These emerge from how the sub-value is obtained:
-//   - Structural field projection: UnitShrink (one constructor removed)
-//   - skip(k): ConstantShrink { k }
-//   - take(n/2), split-in-half: ProportionalShrink { divisor: 2 }
-//
-// MATHEMATICAL GROUNDING:
-//   The number of steps to reach the base case under each ordering:
-//   - UnitShrink: |{n, n-1, ..., 1}| = n
-//   - ConstantShrink(k): |{n, n-k, ..., r}| = ⌈n/k⌉
-//   - ProportionalShrink(d): |{n, n/d, n/d², ..., 1}| = ⌈log_d(n)⌉
+// FractionExp uses `root` (not denominator): the k-th root of n.
+// root is always positive by construction — you don't take the 0th root.
+// LogBasedExp represents the exponent structurally rather than
+// approximating as a rational — no precision loss.
 
-type ShrinkFactor
-  = UnitShrink                          // decrease by 1 per step
-  | ConstantShrink { amount: Int }      // decrease by constant k per step
-  | ProportionalShrink { divisor: Int } // decrease by factor d per step
+type PolynomialExponent
+  = IntegerExp { value: Int }
+  | FractionExp { numerator: Int, root: Int }
+  | LogBasedExp { base: Int, argument: Int }
 
 
 // =========================================================================
-// Rational — exact fractional exponents
+// AtomicCost — one indivisible cost factor on a single parameter
 // =========================================================================
 
-// Rational numbers for polynomial exponents. Enables O(n^(1/3)), O(n^(3/2)),
-// O(n^(log_2(7))) ≈ O(n^(2807/1000)), etc.
-//
-// Invariant: denominator > 0. Reduced form not required — { p: 2, q: 4 }
-// and { p: 1, q: 2 } are both valid representations of 1/2.
+// A cost factor tied to a single size parameter. These are the atoms
+// from which composite bounds are built.
 
-type Rational { p: Int, q: Int }
-
-fn rational(p: Int, q: Int) -> Rational { Rational { p: p, q: q } }
-fn integer(n: Int) -> Rational { Rational { p: n, q: 1 } }
-
-// Compare two rationals: a/b vs c/d ↔ a*d vs c*b (when b,d > 0)
-fn rational_less(a: Rational, b: Rational) -> Bool { a.p * b.q < b.p * a.q }
-fn rational_equal(a: Rational, b: Rational) -> Bool { a.p * b.q == b.p * a.q }
+type AtomicCost
+  = PolyCost { param: String, exponent: PolynomialExponent }  // O(n^e)
+  | LogCost { param: String }                                  // O(log n)
 
 
 // =========================================================================
-// CostTerm — compositional asymptotic bound (Big-O)
+// CostBound — non-recursive asymptotic bound (Big-O)
 // =========================================================================
 
-// The output of complexity analysis: the asymptotic growth rate of a
-// function's cost as a function of input size parameters.
+// The output of complexity analysis. Flat (non-recursive) to respect
+// the bounded kernel invariant — Node is the only recursive type.
 //
-// Knuth (1976): f(n) = O(g(n)) iff ∃c,n₀ : ∀n≥n₀ : f(n) ≤ c·g(n)
+// Composite bounds are represented in sum-of-products normal form:
+//   O((V+E) · log V) = SumOfProductsBound { [[Poly(V,1), Log(V)], [Poly(E,1), Log(V)]] }
 //
-// CostTerm is a term algebra for asymptotic bounds. It supports:
-//   - Single-parameter polynomial: O(n^(p/q)) for any rational p/q
-//   - Logarithmic: O(log n)
-//   - Products: O(f · g) — e.g., O(n log n), O((V+E) log V)
-//   - Sums: O(f + g) — e.g., O(V + E) (multi-parameter)
-//   - Composed: arbitrary combinations of the above
-//
-// MATHEMATICAL GROUNDING:
-//   CostTerm forms a commutative semiring under (Sum, Product) with
-//   identity elements (CostOne for Product, CostOne for Sum since
-//   O(1 + f) = O(f)). This is a sub-algebra of the tropical semiring
-//   (max, +) used in asymptotic analysis.
-//
-// WHY COMPOSITIONAL (not an enum of named classes):
-//   An enumerated AsymptoticBound (Constant | Linear | Quadratic | ...)
-//   can't express O(n^(1/3)), O(V+E), O(n^(log_2(7))), or O((V+E)·log V).
-//   The compositional structure lets any bound emerge from the algebra.
-//   Named classes (O(n log n), O(n²)) are derived by simplification,
-//   not by enumeration.
-//
-// Every .dag program is bounded (decidability invariant). Exponential
-// is unreachable — .dag has no unbounded branching. BoundedForever
-// (2^63-1 iterations) is the maximum for explicit repeat() loops.
+// This can represent any polynomial-logarithmic cost without recursion.
 
-type CostTerm
-  = CostOne                                     // O(1) — constant
-  | CostPoly { param: String, exponent: Rational }  // O(n^(p/q))
-  | CostLog { param: String }                   // O(log n) — base irrelevant (constant factor)
-  | CostProduct { factors: List<CostTerm> }     // O(f₁ · f₂ · ... · fₖ)
-  | CostSum { terms: List<CostTerm> }           // O(f₁ + f₂ + ... + fₖ) = O(max(f₁,...,fₖ))
-  | CostForever                                 // O(2^63-1) — repeat(max_int)
+type CostBound
+  = ConstantBound                                // O(1)
+  | AtomicBound { cost: AtomicCost }             // O(n^k) or O(log n)
+  | ProductBound { factors: List<AtomicCost> }   // O(f1 · f2 · ...)
+  | SumOfProductsBound { terms: List<List<AtomicCost>> }  // O(Σ(Π fi))
+  | ForeverBound                                 // O(2^63-1) — repeat(max_int)
+  | ErrorBound                                   // fail-closed: invalid/unresolvable
 
 
 // =========================================================================
-// Named bound constructors — convenience for common classes
+// Named bound constructors
 // =========================================================================
 
-fn cost_constant() -> CostTerm { CostOne }
-fn cost_linear(param: String) -> CostTerm { CostPoly { param: param, exponent: integer(n: 1) } }
-fn cost_quadratic(param: String) -> CostTerm { CostPoly { param: param, exponent: integer(n: 2) } }
-fn cost_root(param: String, k: Int) -> CostTerm { CostPoly { param: param, exponent: rational(p: 1, q: k) } }
-fn cost_sqrt(param: String) -> CostTerm { cost_root(param: param, k: 2) }
-fn cost_cbrt(param: String) -> CostTerm { cost_root(param: param, k: 3) }
-fn cost_log(param: String) -> CostTerm { CostLog { param: param } }
-fn cost_nlogn(param: String) -> CostTerm { CostProduct { factors: [cost_linear(param: param), cost_log(param: param)] } }
-fn cost_poly(param: String, degree: Int) -> CostTerm { CostPoly { param: param, exponent: integer(n: degree) } }
+fn cost_constant() -> CostBound { ConstantBound }
+fn cost_linear(param: String) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: IntegerExp { value: 1 } } } }
+fn cost_poly(param: String, degree: Int) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: IntegerExp { value: degree } } } }
+fn cost_root(param: String, k: Int) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: FractionExp { numerator: 1, root: k } } } }
+fn cost_sqrt(param: String) -> CostBound { cost_root(param: param, k: 2) }
+fn cost_cbrt(param: String) -> CostBound { cost_root(param: param, k: 3) }
+fn cost_log(param: String) -> CostBound { AtomicBound { cost: LogCost { param: param } } }
 
-// Multi-parameter: O(V + E) for graph algorithms
-fn cost_graph_linear(v_param: String, e_param: String) -> CostTerm {
-  CostSum { terms: [cost_linear(param: v_param), cost_linear(param: e_param)] }
+fn cost_nlogn(param: String) -> CostBound {
+  ProductBound { factors: [PolyCost { param: param, exponent: IntegerExp { value: 1 } }, LogCost { param: param }] }
+}
+
+fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
+  SumOfProductsBound { terms: [
+    [PolyCost { param: v_param, exponent: IntegerExp { value: 1 } }],
+    [PolyCost { param: e_param, exponent: IntegerExp { value: 1 } }]
+  ] }
 }
 
 
@@ -315,75 +280,56 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostTerm {
 // RecurrenceForm — structure of a divide-and-conquer recurrence
 // =========================================================================
 
-// A RecurrenceForm captures the structure T(n) = a·T(n/b) + O(n^d)
-// that arises from divide-and-conquer algorithms.
-//
-// Parameters (Bentley, Haken, Saxe 1980):
-//   a: branching factor — number of recursive sub-problems
-//   b: division factor — each sub-problem is n/b of the original
-//   d: exponent of per-level work — non-recursive cost is O(n^d)
-//
-// Examples:
-//   Binary search:   a=1, b=2, d=0 → O(log n)
-//   Mergesort:       a=2, b=2, d=1 → O(n log n)
-//   Karatsuba mult:  a=3, b=2, d=1 → O(n^1.585)
-//   Strassen matrix: a=7, b=2, d=2 → O(n^2.807)
-//   Tree traversal:  NOT a recurrence — it's a catamorphism (all children)
+// T(n) = a·T(n/b) + O(n^d)
+//   a: branching factor (self-calls per execution path)
+//   b: division factor (each sub-problem is n/b of the original)
+//   d: exponent of per-level non-recursive work
 
 type RecurrenceForm {
-  param: String    // the size parameter name
-  branches: Int    // a: number of self-calls per execution path
-  divisor: Int     // b: input size divided by this at each level
-  work_exponent: Int  // d: per-level non-recursive cost exponent
+  param: String
+  branches: Int
+  divisor: Int
+  work_exponent: Int
 }
 
 
 // =========================================================================
-// Master theorem — recurrence → CostTerm
+// Master theorem — recurrence → CostBound
 // =========================================================================
 
-// CLRS Theorem 4.1 (Master theorem for divide-and-conquer recurrences):
-//
-//   T(n) = a·T(n/b) + Θ(n^d)
-//
-//   Case 1: d < log_b(a) → T(n) = Θ(n^(log_b(a)))
-//     Sub-problem work dominates.
-//     Example: Strassen (a=7, b=2, d=2): log_2(7)≈2.81 > 2 → O(n^2.81)
-//     Example: Karatsuba (a=3, b=2, d=1): log_2(3)≈1.585 > 1 → O(n^1.585)
-//
-//   Case 2: d = log_b(a) → T(n) = Θ(n^d · log n)
-//     Sub-problem and per-level work balance.
-//     Example: Mergesort (a=2, b=2, d=1): log_2(2)=1 → O(n log n)
-//
-//   Case 3: d > log_b(a) → T(n) = Θ(n^d)
-//     Per-level work dominates.
-//     Example: Binary search (a=1, b=2, d=0): log_2(1)=0 → O(log n)
-//
-// The comparison uses integer arithmetic: compare a vs b^d.
-//   a < b^d → Case 3
-//   a = b^d → Case 2
-//   a > b^d → Case 1
-
-fn int_pow(base: Int, exp: Int) -> Int {
-  if exp == 0 { 1 }
+// Compute ⌈log_b(a)⌉: smallest integer k such that b^k >= a.
+// Bounded: iterates at most a times (a >= 1, b >= 2, so b^a >> a).
+fn int_pow_bounded(base: Int, exp: Int) -> Int {
+  if exp <= 0 { 1 }
   else {
-    let prev = int_pow(base: base, exp: exp - 1)
+    let prev = int_pow_bounded(base: base, exp: exp - 1)
     base * prev
   }
 }
 
-fn master_theorem(form: RecurrenceForm) -> CostTerm {
-  let n = form.param
+fn ceil_log(base: Int, argument: Int) -> Int {
+  // Find smallest k where base^k >= argument
+  ceil_log_iter(base: base, argument: argument, k: 0, power: 1)
+}
+
+fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int {
+  if power >= argument { k }
+  else { ceil_log_iter(base: base, argument: argument, k: k + 1, power: power * base) }
+}
+
+fn master_theorem(form: RecurrenceForm) -> CostBound {
   let a = form.branches
   let b = form.divisor
   let d = form.work_exponent
-  if a < 1 || b < 2 { CostOne }
+  let n = form.param
+  // Fail-closed: invalid inputs produce ErrorBound, not fabricated O(1)
+  if a < 1 || b < 2 { ErrorBound }
   else {
-    let b_to_d = int_pow(base: b, exp: d)
+    let b_to_d = int_pow_bounded(base: b, exp: d)
     if a < b_to_d {
       // Case 3: per-level work dominates → O(n^d)
       match d {
-        0 => CostOne
+        0 => ConstantBound
         _ => cost_poly(param: n, degree: d)
       }
     } else {
@@ -391,18 +337,12 @@ fn master_theorem(form: RecurrenceForm) -> CostTerm {
         // Case 2: balanced → O(n^d · log n)
         match d {
           0 => cost_log(param: n)
-          _ => CostProduct { factors: [cost_poly(param: n, degree: d), cost_log(param: n)] }
+          _ => ProductBound { factors: [PolyCost { param: n, exponent: IntegerExp { value: d } }, LogCost { param: n }] }
         }
       } else {
         // Case 1: sub-problem work dominates → O(n^(log_b(a)))
-        // log_b(a) is generally irrational. We can't compute it exactly
-        // with integers, but we CAN represent it structurally: the
-        // exponent IS log_b(a), which we approximate as the rational
-        // ceiling. For common cases:
-        //   a=3, b=2 → log_2(3) ≈ 1585/1000 (Karatsuba)
-        //   a=7, b=2 → log_2(7) ≈ 2807/1000 (Strassen)
-        // Conservative: use d+1 as integer upper bound.
-        CostPoly { param: n, exponent: integer(n: d + 1) }
+        // Exact representation via LogBasedExp — no approximation
+        AtomicBound { cost: PolyCost { param: n, exponent: LogBasedExp { base: b, argument: a } } }
       }
     }
   }
@@ -410,44 +350,38 @@ fn master_theorem(form: RecurrenceForm) -> CostTerm {
 
 
 // =========================================================================
-// Structural recursion → CostTerm (catamorphism)
+// Structural recursion → CostBound (catamorphism)
 // =========================================================================
 
-// Structural recursion (catamorphism) visits every sub-term exactly once.
-// O(n) for single traversal, O(n^k) for k-nested traversals.
-// NOT a divide-and-conquer recurrence — processes ALL children.
+// Visits every sub-term exactly once. O(n^k) for k-nested traversals.
 
-fn catamorphism_bound(param: String, nesting_depth: Int) -> CostTerm {
+fn catamorphism_bound(param: String, nesting_depth: Int) -> CostBound {
   match nesting_depth {
-    0 => CostOne
+    0 => ConstantBound
     _ => cost_poly(param: param, degree: nesting_depth)
   }
 }
 
 
 // =========================================================================
-// ShrinkFactor → step count
+// Combined derivation: descent facts → CostBound
 // =========================================================================
 
-fn shrink_to_steps(param: String, factor: ShrinkFactor) -> CostTerm {
+fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponent: Int) -> CostBound {
   match factor {
-    UnitShrink                        => cost_linear(param: param)
-    ConstantShrink { amount: _ }      => cost_linear(param: param)
-    ProportionalShrink { divisor: _ } => cost_log(param: param)
-  }
-}
-
-
-// =========================================================================
-// Combined derivation: descent facts → cost term
-// =========================================================================
-
-fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponent: Int) -> CostTerm {
-  match factor {
+    // Structural recursion: each step removes one constructor
     UnitShrink =>
-      catamorphism_bound(param: param, nesting_depth: 1)
+      if branches <= 1 { cost_linear(param: param) }
+      else {
+        // Multi-branch with unit shrink: T(n) = k·T(n-1) + O(1) = O(k^n).
+        // In .dag, bounded by repeat(Forever).
+        ForeverBound
+      }
+    // Constant shrink: similar to unit but with larger steps
     ConstantShrink { amount: _ } =>
-      catamorphism_bound(param: param, nesting_depth: 1)
+      if branches <= 1 { cost_linear(param: param) }
+      else { ForeverBound }
+    // Proportional shrink: divide-and-conquer → Master theorem
     ProportionalShrink { divisor: d } =>
       master_theorem(form: RecurrenceForm { param: param, branches: branches, divisor: d, work_exponent: work_exponent })
   }
@@ -458,87 +392,67 @@ fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponen
 // Algorithm complexity specifications
 // =========================================================================
 
-// Each function derives the expected complexity for a known algorithm
-// from its structural facts. These serve as verification targets:
-// when the pipeline integration lands, the automatically derived bound
-// should match.
-
 // --- Structural recursion (catamorphisms) ---
 
-// Tree traversal: visit every node. O(n).
-fn tree_traversal_bound() -> CostTerm {
+fn tree_traversal_bound() -> CostBound {
   catamorphism_bound(param: "tree", nesting_depth: 1)
 }
 
-// Nested iteration: items |> map(item => items |> filter(...)). O(n²).
-fn nested_iteration_bound() -> CostTerm {
+fn nested_iteration_bound() -> CostBound {
   catamorphism_bound(param: "items", nesting_depth: 2)
 }
 
-// Linear scan: single fold. O(n).
-fn linear_scan_bound() -> CostTerm {
+fn linear_scan_bound() -> CostBound {
   catamorphism_bound(param: "xs", nesting_depth: 1)
 }
 
 // --- Divide-and-conquer (Master theorem) ---
 
-// Binary search: 1 branch, halving, O(1) work. O(log n).
-fn binary_search_bound() -> CostTerm {
+fn binary_search_bound() -> CostBound {
   derive_bound(param: "xs", branches: 1, factor: ProportionalShrink { divisor: 2 }, work_exponent: 0)
 }
 
-// Mergesort: 2 branches, halving, O(n) merge. O(n log n).
-fn mergesort_bound() -> CostTerm {
+fn mergesort_bound() -> CostBound {
   derive_bound(param: "xs", branches: 2, factor: ProportionalShrink { divisor: 2 }, work_exponent: 1)
 }
 
-// Karatsuba multiplication: 3 branches, halving, O(n) work. O(n^1.585).
-// (Conservative: reported as O(n²) due to integer ceiling of log_2(3))
-fn karatsuba_bound() -> CostTerm {
+// Karatsuba: a=3, b=2, d=1 → O(n^(log_2(3))) ≈ O(n^1.585) — exact via LogBasedExp
+fn karatsuba_bound() -> CostBound {
   derive_bound(param: "digits", branches: 3, factor: ProportionalShrink { divisor: 2 }, work_exponent: 1)
+}
+
+// Strassen: a=7, b=2, d=2 → O(n^(log_2(7))) ≈ O(n^2.807) — exact via LogBasedExp
+fn strassen_bound() -> CostBound {
+  derive_bound(param: "n", branches: 7, factor: ProportionalShrink { divisor: 2 }, work_exponent: 2)
 }
 
 // --- Root complexity ---
 
-// Trial division primality: loop d from 2 to √n. O(√n).
-fn trial_division_bound() -> CostTerm {
-  cost_sqrt(param: "n")
-}
-
-// Cube-root bounded iteration. O(∛n).
-fn cube_root_bound() -> CostTerm {
-  cost_cbrt(param: "n")
-}
-
-// k-th root bounded iteration. O(n^(1/k)).
-fn kth_root_bound(k: Int) -> CostTerm {
-  cost_root(param: "n", k: k)
-}
+fn trial_division_bound() -> CostBound { cost_sqrt(param: "n") }
+fn cube_root_bound() -> CostBound { cost_cbrt(param: "n") }
+fn kth_root_bound(k: Int) -> CostBound { cost_root(param: "n", k: k) }
 
 // --- Graph algorithms (multi-parameter) ---
 
-// BFS / DFS: visit every vertex and edge once. O(V + E).
-fn bfs_dfs_bound() -> CostTerm {
+fn bfs_dfs_bound() -> CostBound {
   cost_graph_linear(v_param: "V", e_param: "E")
 }
 
-// Dijkstra with binary heap: O((V + E) · log V).
-fn dijkstra_bound() -> CostTerm {
-  CostProduct { factors: [
-    cost_graph_linear(v_param: "V", e_param: "E"),
-    cost_log(param: "V")
+fn dijkstra_bound() -> CostBound {
+  // O((V+E) · log V) in sum-of-products: O(V·log V + E·log V)
+  SumOfProductsBound { terms: [
+    [PolyCost { param: "V", exponent: IntegerExp { value: 1 } }, LogCost { param: "V" }],
+    [PolyCost { param: "E", exponent: IntegerExp { value: 1 } }, LogCost { param: "V" }]
   ] }
 }
 
-// Bellman-Ford: relax all edges V-1 times. O(V · E).
-fn bellman_ford_bound() -> CostTerm {
-  CostProduct { factors: [
-    cost_linear(param: "V"),
-    cost_linear(param: "E")
+fn bellman_ford_bound() -> CostBound {
+  ProductBound { factors: [
+    PolyCost { param: "V", exponent: IntegerExp { value: 1 } },
+    PolyCost { param: "E", exponent: IntegerExp { value: 1 } }
   ] }
 }
 
-// Floyd-Warshall: triple-nested over vertices. O(V³).
-fn floyd_warshall_bound() -> CostTerm {
+fn floyd_warshall_bound() -> CostBound {
   cost_poly(param: "V", degree: 3)
 }
