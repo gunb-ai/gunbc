@@ -7,6 +7,7 @@
 module v2.compiler.infer_env
 
 import v2.std.core { Node, NewlineIndex, source_text_at, authored_name_at }
+import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion }
 
 // =========================================================================
 // Types
@@ -16,18 +17,13 @@ type TypeEnv {
   bindings: Map<String, TypeBinding>
   recursive_types: List<String>
   recursive_type_set: Map<String, Bool>
-  recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>
+  inductive_fields: Map<String, List<InductiveField>>
   source_index: NewlineIndex?
 }
 
 type TypeBinding {
   name: String
   resolved: Node
-}
-
-type RecursiveVariantFieldWitness {
-  variant_name: String
-  field_name: String
 }
 
 // =========================================================================
@@ -64,32 +60,32 @@ fn is_recursive_type_for(env: TypeEnv, node: Node) -> Bool {
   is_recursive_type(env: env, name: node.name)
 }
 
-fn recursive_variant_field_witnesses(env: TypeEnv, type_name: String) -> List<RecursiveVariantFieldWitness> {
-  match map_get(env.recursive_variant_fields, type_name) {
-    Some { value: witnesses } => witnesses
+fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<InductiveField> {
+  match map_get(env.inductive_fields, type_name) {
+    Some { value: fields } => fields
     None => []
   }
 }
 
-fn is_recursive_variant_field(env: TypeEnv, type_name: String, variant_name: String, field_name: String) -> Bool {
-  recursive_variant_field_witnesses(env: env, type_name: type_name)
-    |> any(witness => witness.variant_name == variant_name && witness.field_name == field_name)
+fn is_inductive_field(env: TypeEnv, type_name: String, variant_name: String, field_name: String) -> Bool {
+  inductive_fields_for(env: env, type_name: type_name)
+    |> any(f => f.variant_name == variant_name && f.field_name == field_name)
 }
 
-fn put_recursive_variant_field_witness(fields: Map<String, List<RecursiveVariantFieldWitness>>, type_name: String, variant_name: String, field_name: String) -> Map<String, List<RecursiveVariantFieldWitness>> {
+fn put_inductive_field(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape) -> Map<String, List<InductiveField>> {
   let existing = match map_get(fields, type_name) {
-    Some { value: witnesses } => witnesses
+    Some { value: fs } => fs
     None => []
   }
-  map_insert(fields, type_name, concat(existing, [RecursiveVariantFieldWitness { variant_name: variant_name, field_name: field_name }]))
+  map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape }]))
 }
 
-fn merge_recursive_variant_fields(left: Map<String, List<RecursiveVariantFieldWitness>>, right: Map<String, List<RecursiveVariantFieldWitness>>) -> Map<String, List<RecursiveVariantFieldWitness>> {
+fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
   right |> map_keys |> fold(init: left, f: (acc, type_name) =>
     match map_get(right, type_name) {
       Some { value: incoming } =>
         let existing = match map_get(acc, type_name) {
-          Some { value: witnesses } => witnesses
+          Some { value: fs } => fs
           None => []
         }
         map_insert(acc, type_name, concat(existing, incoming))
@@ -102,9 +98,9 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
   let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
-  let merged_recursive_variant_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_recursive_variant_fields(left: acc, right: env.recursive_variant_fields))
+  let merged_inductive_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
   let source_index = fold(envs, init: none, f: (acc, env) =>
     if env.source_index != none { env.source_index } else { acc }
   )
-  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, recursive_variant_fields: merged_recursive_variant_fields, source_index: source_index }
+  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_index: source_index }
 }

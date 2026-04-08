@@ -909,7 +909,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       }),
       recursive_types: e.recursive_types,
       recursive_type_set: e.recursive_type_set,
-      recursive_variant_fields: e.recursive_variant_fields,
+      inductive_fields: e.inductive_fields,
       source_index: e.source_index
     }
   )

@@ -97,9 +97,9 @@ import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
   is_recursive_type, lookup_type, lookup_type_for, merge_envs,
-  RecursiveVariantFieldWitness,
-  put_recursive_variant_field_witness, merge_recursive_variant_fields
+  put_inductive_field, merge_inductive_fields
 }
+import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
   NodeResolveResult, ItemResult
@@ -378,27 +378,67 @@ fn nominal_type_binding(name: String) -> TypeBinding {
   TypeBinding { name: name, resolved: nominal_leaf_type(name: name) }
 }
 
-fn collect_item_recursive_variant_fields(item: Node, recursive_type_set: Map<String, Bool>) -> Map<String, List<RecursiveVariantFieldWitness>> {
-  match item.connective {
-    Disj =>
-      if map_get(recursive_type_set, item.name) == none { empty_map() }
-      else {
-        item.children |> fold(init: empty_map(), f: (variant_acc, variant_node) =>
-          variant_node.children |> fold(init: variant_acc, f: (field_acc, field_node) =>
-            let field_type_name = field_node_type_expr(n: field_node).name
-            if field_type_name == item.name {
-              put_recursive_variant_field_witness(fields: field_acc, type_name: item.name, variant_name: variant_node.name, field_name: field_node.name)
-            } else { field_acc }
-          )
-        )
+// Classify a field's recursive relationship to its parent type.
+// Returns the RecursionShape if the field references the parent type, or none.
+//
+// Three forms of recursion in .dag's type system (Lambek 1968):
+//   DirectRecursion:   field_type == parent_type (e.g., Cons.tail: MyList<T>)
+//   ListRecursion:     field_type == List<parent_type> (e.g., Node.children: List<Node>)
+//   OptionalRecursion: field_type == parent_type? (e.g., Node.body: Node?)
+fn classify_field_recursion(field_node: Node, parent_name: String) -> RecursionShape? {
+  let type_expr = field_node_type_expr(n: field_node)
+  let field_type_name = type_expr.name
+  if field_type_name == parent_name {
+    // Direct or Optional: check cardinality
+    match field_node.return_cardinality {
+      CardOptional => Some { value: OptionalRecursion }
+      _ => Some { value: DirectRecursion }
+    }
+  } else {
+    // Check for List<parent_type>
+    if field_type_name == "List" {
+      match type_expr.children |> first {
+        Some { value: elem_type } =>
+          if elem_type.name == parent_name { Some { value: ListRecursion } }
+          else { none }
+        None => none
       }
-    _ => empty_map()
+    } else { none }
   }
 }
 
-fn build_item_recursive_variant_fields(items: List<Node>, recursive_type_set: Map<String, Bool>) -> Map<String, List<RecursiveVariantFieldWitness>> {
+// Collect InductiveFields for the fields of a single variant or record.
+fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_name: String, acc: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
+  fields |> fold(init: acc, f: (field_acc, field_node) =>
+    match classify_field_recursion(field_node: field_node, parent_name: parent_name) {
+      Some { value: shape } =>
+        put_inductive_field(fields: field_acc, type_name: parent_name, variant_name: variant_name, field_name: field_node.name, shape: shape)
+      None => field_acc
+    }
+  )
+}
+
+// Collect InductiveFields from a type item (handles both Disj and Conj).
+fn collect_item_inductive_fields(item: Node, recursive_type_set: Map<String, Bool>) -> Map<String, List<InductiveField>> {
+  if map_get(recursive_type_set, item.name) == none { empty_map() }
+  else {
+    match item.connective {
+      // Sum type (enum): each child is a variant with its own fields
+      Disj =>
+        item.children |> fold(init: empty_map(), f: (variant_acc, variant_node) =>
+          collect_fields_inductive(fields: variant_node.children, parent_name: item.name, variant_name: variant_node.name, acc: variant_acc)
+        )
+      // Product type (record): fields are direct children
+      Conj =>
+        collect_fields_inductive(fields: item.children, parent_name: item.name, variant_name: "", acc: empty_map())
+      _ => empty_map()
+    }
+  }
+}
+
+fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Map<String, Bool>) -> Map<String, List<InductiveField>> {
   items |> fold(init: empty_map(), f: (acc, item) =>
-    merge_recursive_variant_fields(left: acc, right: collect_item_recursive_variant_fields(item: item, recursive_type_set: recursive_type_set))
+    merge_inductive_fields(left: acc, right: collect_item_inductive_fields(item: item, recursive_type_set: recursive_type_set))
   )
 }
 
@@ -2245,7 +2285,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let some_variant = Node { name: "Some", span: zero_span, ident_span: Some { value: zero_span }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, ident_span: Some { value: zero_span }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
-  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: source_index }
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_index: source_index }
 
   // Collect imported type bindings from parent modules.
   // For type resolution to work on imported types (e.g., FileClassification
@@ -2291,8 +2331,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   )
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
-  let import_recursive_variant_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_recursive_variant_fields(left: acc, right: env.recursive_variant_fields))
-  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, recursive_variant_fields: import_recursive_variant_fields, source_index: source_index }
+  let import_inductive_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
+  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_index: source_index }
   let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_module.value.span }, module_name: module.module.name)] })
 
   // Collect local type definitions from module items.
@@ -2362,7 +2402,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Compute local name set BEFORE merging param bindings (local_bindings consumed by map_merge).
   let local_name_set = fold(local_bindings |> map_keys, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let all_local_bindings = map_merge(local_bindings, param_bindings)
-  let pre_local_env = TypeEnv { bindings: all_local_bindings, recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: source_index }
+  let pre_local_env = TypeEnv { bindings: all_local_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_index: source_index }
 
   // Merge in shadowing order: kernel < imports < local.
   let merged = merge_envs(envs: [kernel, import_env, pre_local_env])
@@ -2378,9 +2418,9 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Build recursive variant fields AFTER cycle detection so the structural
   // cycle_map gates which types are considered recursive, replacing the
   // raw-name identity check with a structurally validated one.
-  let local_recursive_variant_fields = build_item_recursive_variant_fields(items: module_items(n: module.module), recursive_type_set: cycle_map)
-  let merged_recursive_variant_fields = merge_recursive_variant_fields(left: merged.recursive_variant_fields, right: local_recursive_variant_fields)
-  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, recursive_variant_fields: merged_recursive_variant_fields, source_index: source_index }
+  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_map)
+  let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
+  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, inductive_fields: merged_inductive_fields, source_index: source_index }
   // Resolve only LOCAL type bindings. Imported bindings are already resolved.
   // (local_name_set computed above, before param_bindings merge.)
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module.module.name, local_names: local_name_set, deps_map: all_deps_map)
@@ -2390,7 +2430,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     bindings: resolved_env_out.bindings,
     recursive_types: resolved_env_out.recursive_types,
     recursive_type_set: resolved_env_out.recursive_type_set,
-    recursive_variant_fields: resolved_env_out.recursive_variant_fields,
+    inductive_fields: resolved_env_out.inductive_fields,
     source_index: resolved_env_out.source_index
   }
   BuildTypeEnvResult {
@@ -2414,7 +2454,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let some_variant = Node { name: "Some", span: zero_span, ident_span: Some { value: zero_span }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, ident_span: Some { value: zero_span }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
-  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: source_index }
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_index: source_index }
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
   // Mirror the same bootstrap bridge in the unresolved path.
   let std_types_parent_env = if module.module.name != "std.types" && imports_std_types == false {
@@ -2447,8 +2487,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   )
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
-  let import_recursive_variant_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_recursive_variant_fields(left: acc, right: env.recursive_variant_fields))
-  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, recursive_variant_fields: import_recursive_variant_fields, source_index: source_index }
+  let import_inductive_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
+  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_index: source_index }
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
     let has_structure = item.connective != NoConnective
     if has_structure {
@@ -2466,16 +2506,16 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
       acc
     }
   )
-  let pre_local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: source_index }
+  let pre_local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_index: source_index }
   let merged = merge_envs(envs: [kernel, import_env, pre_local_env])
   let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, node_type_deps(n: b.resolved))
   )
   let cycle_set = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: merged.bindings)
   let cycle_map = fold(cycle_set, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
-  let local_recursive_variant_fields = build_item_recursive_variant_fields(items: module_items(n: module.module), recursive_type_set: cycle_map)
-  let merged_recursive_variant_fields = merge_recursive_variant_fields(left: merged.recursive_variant_fields, right: local_recursive_variant_fields)
-  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, recursive_variant_fields: merged_recursive_variant_fields, source_index: source_index }
+  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_map)
+  let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
+  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, inductive_fields: merged_inductive_fields, source_index: source_index }
   BuildTypeEnvResult { env: unresolved_env, diagnostics: [] }
 }
 
@@ -2861,7 +2901,7 @@ fn topo_resolve_types(
       }
     )
     return EnvResolveResult {
-      env: TypeEnv { bindings: stuck_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, recursive_variant_fields: env.recursive_variant_fields, source_index: env.source_index },
+      env: TypeEnv { bindings: stuck_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_index: env.source_index },
       diagnostics: concat(diagnostics, stuck_accum.diagnostics)
     }
   }
@@ -2886,7 +2926,7 @@ fn topo_resolve_types(
 
   topo_resolve_types(
     remaining: next_remaining,
-    env: TypeEnv { bindings: ready_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, recursive_variant_fields: env.recursive_variant_fields, source_index: env.source_index },
+    env: TypeEnv { bindings: ready_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_index: env.source_index },
     module_name: module_name,
     diagnostics: concat(diagnostics, ready_accum.diagnostics),
     local_names: local_names,

@@ -1552,7 +1552,7 @@ let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: S
 })),
     recursive_types: e.recursive_types,
     recursive_type_set: e.recursive_type_set,
-    recursive_variant_fields: e.recursive_variant_fields,
+    inductive_fields: e.inductive_fields,
     source_index: e.source_index,
 }) });
 let param_results = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(resolve_param(p.clone(), env.clone(), module_name.clone())); } __result });
