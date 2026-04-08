@@ -80,7 +80,7 @@ pub fn python_callable() -> Rc<CallableRepr> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum PythonTypeKind {
     DynamicType,
     AnnotatedType,

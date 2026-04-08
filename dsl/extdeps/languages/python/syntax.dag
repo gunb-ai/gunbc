@@ -1,0 +1,35 @@
+// Python syntax specification.
+//
+// Operator semantics for Python emission. The emitter reads operator
+// symbols from this spec — no hardcoded Python syntax in the compiler.
+//
+// Ref: Python Reference §6 "Expressions"
+// https://docs.python.org/3/reference/expressions.html
+
+module extdeps.languages.python.syntax
+
+import std.syntax {
+  OperatorSpec,
+  BinOp, Add, Sub, Mul, Div, Mod,
+  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce
+}
+
+// Python operator precedence (emission-relevant subset).
+// Python uses word operators for boolean (and, or) and // for integer div.
+// Ref: Python Reference §6.17 "Operator precedence"
+
+data python_operators: List<OperatorSpec> = [
+  OperatorSpec { symbol: "or", left_bp: 5, right_bp: 6, binop: Or },
+  OperatorSpec { symbol: "and", left_bp: 7, right_bp: 8, binop: And },
+  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: Eq },
+  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: Ne },
+  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: Lt },
+  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: Gt },
+  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: Le },
+  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: Ge },
+  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add },
+  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub },
+  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul },
+  OperatorSpec { symbol: "//", left_bp: 15, right_bp: 16, binop: Div },
+  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod }
+]

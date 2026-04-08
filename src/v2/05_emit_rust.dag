@@ -210,14 +210,14 @@ fn rust_enum_derives_copy_text() -> String {
 fn rust_serde_tag_attr() -> String {
   match serialization_for_target(target: Rust).tag_attribute {
     Some { value: attr } => attr
-    None => "#[serde(tag = \"_variant\")]"
+    None => ""
   }
 }
 
 fn rust_serde_rename_template_text() -> String {
   match serialization_for_target(target: Rust).rename_attribute_template {
     Some { value: template } => template
-    None => "#[serde(rename = \"{0}\")]"
+    None => ""
   }
 }
 
@@ -238,7 +238,7 @@ fn rust_test_name(projection: TestProjection) -> String {
 fn rust_async_test_decorator() -> String {
   match test_conventions_for_target(target: Rust).async_decorator {
     Some { value: decorator } => decorator
-    None => "#[tokio::test]"
+    None => ""
   }
 }
 

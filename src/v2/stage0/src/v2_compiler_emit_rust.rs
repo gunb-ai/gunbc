@@ -168,14 +168,14 @@ pub fn rust_enum_derives_copy_text() -> String {
 pub fn rust_serde_tag_attr() -> String {
     match serialization_for_target(RenderTarget::Rust).tag_attribute.clone() {
     Some(attr) => attr.clone(),
-    None => "#[serde(tag = \"_variant\")]".to_string(),
+    None => "".to_string(),
 }
 }
 
 pub fn rust_serde_rename_template_text() -> String {
     match serialization_for_target(RenderTarget::Rust).rename_attribute_template.clone() {
     Some(template) => template.clone(),
-    None => "#[serde(rename = \"{0}\")]".to_string(),
+    None => "".to_string(),
 }
 }
 
@@ -198,7 +198,7 @@ pub fn rust_test_name(projection: Rc<TestProjection>) -> String {
 pub fn rust_async_test_decorator() -> String {
     match test_conventions_for_target(RenderTarget::Rust).async_decorator.clone() {
     Some(decorator) => decorator.clone(),
-    None => "#[tokio::test]".to_string(),
+    None => "".to_string(),
 }
 }
 

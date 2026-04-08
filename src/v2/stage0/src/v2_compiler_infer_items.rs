@@ -58,7 +58,7 @@ pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo};
 use ItemKind::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ItemKind {
     FnItem,
     FuncItem,

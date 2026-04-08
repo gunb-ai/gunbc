@@ -260,7 +260,7 @@ pub struct BindingPower {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ExpectedToken {
     ExpectKeyword {
         text: String,
@@ -580,7 +580,7 @@ pub struct IntLitResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ParserHelperIdentity {
     ParserHelperSkipNewlines,
     ParserHelperSkipContinuationNewlines,
@@ -588,7 +588,7 @@ pub enum ParserHelperIdentity {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ParserCallIdentity {
     ParserCallHelper {
         helper: ParserHelperIdentity,
@@ -599,7 +599,7 @@ pub enum ParserCallIdentity {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ParserResultWitness {
     ParserWitnessAdvance,
     ParserWitnessExpect,

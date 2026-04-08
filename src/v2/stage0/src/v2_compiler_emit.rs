@@ -67,7 +67,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
@@ -110,7 +110,7 @@ pub struct TcoReassignInput {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum BackendCapability {
     CapServiceEmit,
     CapAsyncTransport,
@@ -817,22 +817,7 @@ emit_string_literal(s.clone(), suffix)
 }
 
 pub fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
-    match op {
-    BinOp::Add => "+".to_string(),
-    BinOp::Sub => "-".to_string(),
-    BinOp::Mul => "*".to_string(),
-    BinOp::Div => emit_keyword("div".to_string(), target),
-    BinOp::Mod => "%".to_string(),
-    BinOp::Eq => "==".to_string(),
-    BinOp::Ne => "!=".to_string(),
-    BinOp::Lt => "<".to_string(),
-    BinOp::Gt => ">".to_string(),
-    BinOp::Le => "<=".to_string(),
-    BinOp::Ge => ">=".to_string(),
-    BinOp::And => emit_keyword("and".to_string(), target),
-    BinOp::Or => emit_keyword("or".to_string(), target),
-    BinOp::NullCoalesce => "??".to_string(),
-}
+    binop_symbol(target, op)
 }
 
 pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
@@ -1349,7 +1334,7 @@ pub fn is_resource_def_item(item: Rc<Node>) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ExprCategory {
     ExprCatLeaf,
     ExprCatCompound,
@@ -1388,7 +1373,7 @@ pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum FuncBodyShape {
     FuncBodyLet {
         name: String,
@@ -1425,7 +1410,7 @@ Rc::new(FuncBodyShape::FuncBodyLet {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TcoExprShape {
     TcoCall {
         func: String,

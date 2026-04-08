@@ -57,7 +57,7 @@ use IterationPrimitive::*;
 use IterationDimension::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum SizeBound {
     CollectionSize {
         param: String,
@@ -75,7 +75,7 @@ pub enum SizeBound {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CallPattern {
     ChildAccessorCall {
         accessor: String,
@@ -105,7 +105,7 @@ pub struct LoweringTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum IterationPrimitive {
     Fold,
     Descend,
@@ -191,7 +191,7 @@ pub fn constant_bound_value(bound: Rc<SizeBound>) -> i64 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum IterationDimension {
     TreeDescent,
     CollectionFold,

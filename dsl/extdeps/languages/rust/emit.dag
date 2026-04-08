@@ -116,9 +116,10 @@ data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq,
 data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
 // Copy variant: simple enums (all-unit variants).
 data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"
-data rust_serde_tag: String = ""
-// {0} = field key name
-data rust_serde_rename_template: String = ""
+// Ref: serde docs — #[serde(tag = "...")] for internally tagged enums
+data rust_serde_tag: String = "#[serde(tag = \"_variant\")]"
+// {0} = field key name. Ref: serde docs — #[serde(rename = "...")]
+data rust_serde_rename_template: String = "#[serde(rename = \"\{0\}\")]"
 
 // -- Project scaffold ----------------------------------------------------
 // Ref: Cargo Reference (doc.rust-lang.org/cargo/reference)

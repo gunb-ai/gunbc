@@ -192,7 +192,7 @@ pub fn rust_enum_derives_copy() -> String {
 pub fn rust_serde_tag() -> String {
     thread_local! {
         static CACHED: String = {
-            "".to_string()
+            "#[serde(tag = \"_variant\")]".to_string()
         };
     }
     CACHED.with(|c| c.clone())
@@ -201,7 +201,7 @@ pub fn rust_serde_tag() -> String {
 pub fn rust_serde_rename_template() -> String {
     thread_local! {
         static CACHED: String = {
-            "".to_string()
+            "#[serde(rename = \"{0}\")]".to_string()
         };
     }
     CACHED.with(|c| c.clone())

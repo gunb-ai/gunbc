@@ -232,7 +232,7 @@ Rc::new(Node {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum AliasKind {
     AliasParameterized,
     AliasLeaf,

@@ -53,6 +53,10 @@ use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge,
 use crate::v2_std_core::LiteralValue::*;
 pub use crate::std_syntax::{ItemForm, OperatorSpec, SyntaxSpec, BodyKind};
 use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
+pub use crate::extdeps_languages_rust_syntax::{rust_operators};
+pub use crate::extdeps_languages_python_syntax::{python_operators};
+pub use crate::extdeps_languages_go_syntax::{go_operators};
+pub use crate::extdeps_languages_dag_syntax::{dag_operators};
 pub use crate::extdeps_languages_rust_emit::{rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_string_types, rust_method_templates};
 pub use crate::extdeps_languages_python_emit::{python_keywords, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates, python_string_types};
 pub use crate::extdeps_languages_go_emit::{go_keywords, go_reserved, go_reserved_escape_suffix, go_manifest_file, go_method_templates, go_string_types};
@@ -61,7 +65,7 @@ use TestNameStyle::*;
 use ImportTrigger::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ReservedWordStrategy {
     PrefixEscape {
         prefix: String,
@@ -99,7 +103,7 @@ pub struct SerializationSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TestNameStyle {
     SnakeCaseTestNames,
     PascalCaseTestNames,
@@ -116,7 +120,7 @@ pub struct TestConventions {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ImportTrigger {
     TypeUsageTrigger {
         type_name: String,
@@ -522,6 +526,29 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
     None => key.clone(),
 },
     RenderTarget::Dag => key.clone(),
+}
+}
+
+pub fn target_operators(target: RenderTarget) -> Rc<Vec<Rc<OperatorSpec>>> {
+    match target {
+    RenderTarget::Rust => rust_operators(),
+    RenderTarget::Python => python_operators(),
+    RenderTarget::Go => go_operators(),
+    RenderTarget::Dag => dag_operators(),
+}
+}
+
+pub fn binop_symbol(target: RenderTarget, op: BinOp) -> String {
+    {
+        let ops = target_operators(target);
+let matching = Rc::new({ let mut __result = Vec::new(); for spec in ops.iter().cloned() { if match spec.binop.clone() {
+    Some(b) => (b.clone() == op.clone()),
+    None => false,
+} { __result.push(spec); } } __result });
+match matching.first().cloned() {
+    Some(spec) => spec.symbol.clone(),
+    None => "??".to_string(),
+}
 }
 }
 

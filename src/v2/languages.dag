@@ -21,6 +21,11 @@ import std.syntax {
   ServiceBody, ResourceBody
 }
 
+import extdeps.languages.rust.syntax { rust_operators }
+import extdeps.languages.python.syntax { python_operators }
+import extdeps.languages.go.syntax { go_operators }
+import extdeps.languages.dag.syntax { dag_operators }
+
 import extdeps.languages.rust.emit {
   rust_keywords, rust_container_templates,
   rust_reserved, rust_reserved_escape_prefix,
@@ -482,6 +487,29 @@ fn target_keyword(target: RenderTarget, key: String) -> String {
     Go => match lookup(go_keywords, key: key) { Some { value: kw } => kw  None => key }
     Python => match lookup(python_keywords, key: key) { Some { value: kw } => kw  None => key }
     Dag => key
+  }
+}
+
+fn target_operators(target: RenderTarget) -> List<OperatorSpec> {
+  match target {
+    Rust => rust_operators
+    Python => python_operators
+    Go => go_operators
+    Dag => dag_operators
+  }
+}
+
+// Look up the target language's symbol for a BinOp.
+// Reads from per-language OperatorSpec in extdeps/languages/*/syntax.dag.
+fn binop_symbol(target: RenderTarget, op: BinOp) -> String {
+  let ops = target_operators(target: target)
+  let matching = ops |> filter(spec => match spec.binop {
+    Some { value: b } => b == op
+    None => false
+  })
+  match matching |> first {
+    Some { value: spec } => spec.symbol
+    None => "??"
   }
 }
 

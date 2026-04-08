@@ -83,7 +83,7 @@ import v2.compiler.languages {
   ContainerUsageTrigger, AsyncUsageTrigger,
   language_spec_for_target, is_string_like,
   test_conventions_for_target,
-  target_keyword,
+  target_keyword, binop_symbol,
   wrap_shared_type
 }
 
@@ -849,12 +849,10 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   }
 }
 
+// Operator symbol lookup — reads from per-language OperatorSpec in
+// extdeps/languages/*/syntax.dag. No hardcoded operator syntax.
 fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
-  match op {
-    Add => "+"  Sub => "-"  Mul => "*"  Div => emit_keyword(key: "div", target: target)  Mod => "%"
-    Eq => "=="  Ne => "!="  Lt => "<"  Gt => ">"  Le => "<="  Ge => ">="
-    And => emit_keyword(key: "and", target: target)  Or => emit_keyword(key: "or", target: target)  NullCoalesce => "??"
-  }
+  binop_symbol(target: target, op: op)
 }
 
 fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {

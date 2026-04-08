@@ -168,7 +168,7 @@ pub fn apply_inhabitant_template2(template: String, first: String, second: Strin
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CoercionAssertion {
     CheckpointAssertion {
         target: RenderTarget,
