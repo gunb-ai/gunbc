@@ -127,16 +127,16 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
 }
 }
 
-pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Rc<CallPattern> {
+pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<CallPattern>> {
     match (*relation).clone() {
-    SubValueRelation::StrictSubValue { field: f, .. } => Rc::new(CallPattern::ChildAccessorCall {
+    SubValueRelation::StrictSubValue { field: f, .. } => Some(Rc::new(CallPattern::ChildAccessorCall {
     accessor: f.field_name.clone(),
-}),
-    SubValueRelation::IteratedSubValue { field: f, .. } => Rc::new(CallPattern::ChildAccessorCall {
+})),
+    SubValueRelation::IteratedSubValue { field: f, .. } => Some(Rc::new(CallPattern::ChildAccessorCall {
     accessor: f.field_name.clone(),
-}),
-    SubValueRelation::PreservedValue => Rc::new(CallPattern::SameArgumentCall),
-    SubValueRelation::SubValueUnknown => Rc::new(CallPattern::SameArgumentCall),
+})),
+    SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),
+    SubValueRelation::SubValueUnknown => None,
 }
 }
 
@@ -220,15 +220,19 @@ pub fn cost_poly(param: String, degree: i64) -> Rc<CostBound> {
 }
 
 pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
-    Rc::new(CostBound::AtomicBound {
+    if (k.clone() <= 0) {
+        Rc::new(CostBound::ErrorBound)
+} else {
+        Rc::new(CostBound::AtomicBound {
     cost: Rc::new(AtomicCost::PolyCost {
     param: param,
     exponent: Rc::new(PolynomialExponent::FractionExp {
     numerator: 1,
-    root: k,
+    root: k.clone(),
 }),
 }),
 })
+}
 }
 
 pub fn cost_sqrt(param: String) -> Rc<CostBound> {

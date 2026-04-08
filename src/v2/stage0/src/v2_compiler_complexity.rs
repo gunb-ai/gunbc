@@ -58,6 +58,11 @@ use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, Arithmeti
 pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension, type_iteration_dimension};
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
 use crate::std_computation::IterationDimension::{TreeDescent, CollectionFold, ArithmeticRepeat};
+pub use crate::std_induction::{SubValueRelation, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, catamorphism_bound};
+use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
+use crate::std_induction::CostBound::{ConstantBound, AtomicBound, ForeverBound, ErrorBound};
+use crate::std_induction::AtomicCost::{PolyCost};
+use crate::std_induction::PolynomialExponent::{IntegerExp};
 pub use crate::v2_std_core::{Node, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_value, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_call_func, expr_var_name, field_access_base, field_access_field, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprBinOp, ExprUnaryOp, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda};
 use crate::v2_std_core::BinOp::{Sub, Div};
@@ -3624,15 +3629,24 @@ pub struct ComplexityViolation {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StructuralBoundResult {
+    pub func_name: String,
+    pub param: String,
+    pub bound: Rc<CostBound>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexityReport {
     pub function_classes: Rc<HashMap<String, String>>,
     pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
+    pub structural_bounds: Rc<Vec<Rc<StructuralBoundResult>>>,
 }
 
 pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport {
     function_classes: v2_rt::rc_empty_map::<String>(),
     violations: Rc::new(vec![]),
+    structural_bounds: Rc::new(vec![]),
 })
 }
 
@@ -4657,6 +4671,75 @@ Rc::new(SummaryResult {
 }
 }
 
+pub fn collect_self_call_evidence(body: Rc<Node>, fn_name: String) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*body.expr_data.clone()).clone() {
+    ExprData::ExprCall { descent_evidence: de, .. } => {
+            let callee = expr_call_func(body.clone());
+let own = if (callee.as_str() == fn_name.clone().as_str()) {
+                match de.clone() {
+    Some(evidence) => Rc::new(vec![evidence.clone()]),
+    None => Rc::new(vec![]),
+}
+} else {
+                Rc::new(vec![])
+};
+let from_children = body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_self_call_evidence(child.clone(), fn_name.clone())));
+v2_rt::concat(own, from_children)
+},
+    _ => body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_self_call_evidence(child.clone(), fn_name.clone()))),
+}
+    })
+}
+
+pub fn merge_param_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> DescentEvidence {
+    all_calls.iter().cloned().fold(DescentEvidence::Strict, |acc: DescentEvidence, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence.clone().get(param_index.clone() as usize).cloned() {
+    Some(rel) => merge_evidence(acc.clone(), sub_value_to_evidence(rel.clone())),
+    None => acc.clone(),
+})
+}
+
+pub fn is_catamorphism_param(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> bool {
+    { let mut __all = true; for call_evidence in all_calls.iter().cloned() { if !(match call_evidence.clone().get(param_index.clone() as usize).cloned() {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
+    _ => false,
+},
+    None => true,
+}) { __all = false; break; } } __all }
+}
+
+pub fn analyze_structural_bounds(func_entries: Rc<Vec<Rc<FuncEntry>>>) -> Rc<Vec<Rc<StructuralBoundResult>>> {
+    func_entries.iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<StructuralBoundResult>>>, entry: Rc<FuncEntry>| {
+        let all_calls = collect_self_call_evidence(entry.body.clone(), entry.name.clone());
+if ((all_calls.clone().len() as i64) == 0) {
+            acc.clone()
+} else {
+            {
+                let param_results = Rc::new(entry.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(Rc::new(vec![]), |pacc: _, pair: (i64, Rc<Node>)| {
+                    let param_index = pair.0.clone();
+let param_node = pair.1.clone();
+let evidence = merge_param_evidence(all_calls.clone(), param_index.clone());
+match evidence.clone() {
+    DescentEvidence::Strict => {
+                        let param_name = param_node_name(param_node.clone());
+let bound = catamorphism_bound(param_name.clone(), 1);
+v2_rt::concat(pacc.clone(), Rc::new(vec![Rc::new(StructuralBoundResult {
+    func_name: entry.name.clone(),
+    param: param_name.clone(),
+    bound: bound.clone(),
+})]))
+},
+    _ => pacc.clone(),
+}
+});
+v2_rt::concat(acc.clone(), param_results.clone())
+}
+}
+})
+}
+
 pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>, recursion_ctx: RecursionContext) -> Rc<ComplexityReport> {
     {
         let func_index = func_entries.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FuncEntry>>(), |acc: Rc<HashMap<String, Rc<FuncEntry>>>, entry: Rc<FuncEntry>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), entry.clone()));
@@ -4756,9 +4839,11 @@ Rc::new(TopoBuildAcc {
 },
     None => acc.clone(),
 });
+let structural_bounds = analyze_structural_bounds(func_entries.clone());
 Rc::new(ComplexityReport {
     function_classes: result.classes.clone(),
     violations: result.violations.clone(),
+    structural_bounds: structural_bounds,
 })
 }
 }

@@ -371,7 +371,7 @@ if (field_type_name.clone().as_str() == parent_name.clone().as_str()) {
     Some(a) => a.clone(),
     None => 0,
 };
-let value_index = if (arity.clone() == 2) {
+let value_index = if (arity == 2) {
                         1
 } else {
                         0
@@ -381,8 +381,10 @@ let value_type = match type_expr.children.clone().get(value_index as usize).clon
     None => "".to_string(),
 };
 if (value_type.as_str() == parent_name.clone().as_str()) {
-                        match arity.clone() {
-    2 => Some(RecursionShape::MapValueRecursion),
+                        match field_type_name.clone().as_str() {
+    "Set" => Some(RecursionShape::SetRecursion),
+    "NonEmptySet" => Some(RecursionShape::SetRecursion),
+    "Map" => Some(RecursionShape::MapValueRecursion),
     _ => Some(RecursionShape::ListRecursion),
 }
 } else {
