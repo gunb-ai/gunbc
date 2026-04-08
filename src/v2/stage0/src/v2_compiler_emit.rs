@@ -1614,11 +1614,16 @@ let t = if_then_branch(frame.expr.clone());
 let e = if_else_branch(frame.expr.clone());
 let cond_str = recurse_expr(c, frame.scope.clone(), frame.depth.clone());
 let then_str = recurse_tco(t, frame.scope.clone(), (frame.depth.clone() + 1));
+let else_prefix = if syntax.significant_whitespace.clone() {
+                make_indent(frame.depth.clone())
+} else {
+                "".to_string()
+};
 match e {
     Some(eb) => {
                 let else_str = recurse_tco(eb.clone(), frame.scope.clone(), (frame.depth.clone() + 1));
 if syntax.significant_whitespace.clone() {
-                    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), syntax.block_open.clone()), make_indent((frame.depth.clone() + 1))), then_str), "\n".to_string()), syntax.else_clause.clone()), make_indent((frame.depth.clone() + 1))), else_str)
+                    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), syntax.block_open.clone()), make_indent((frame.depth.clone() + 1))), then_str), "\n".to_string()), else_prefix), syntax.else_clause.clone()), make_indent((frame.depth.clone() + 1))), else_str)
 } else {
                     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), syntax.block_open.clone()), make_indent((frame.depth.clone() + 1))), then_str), "\n".to_string()), syntax.else_clause.clone()), make_indent((frame.depth.clone() + 1))), else_str), "\n".to_string()), syntax.block_close.clone())
 }

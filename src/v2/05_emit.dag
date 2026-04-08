@@ -1556,13 +1556,17 @@ fn shared_tco_if(
       let e = if_else_branch(texpr: frame.expr)
       let cond_str = recurse_expr(c, frame.scope, frame.depth)
       let then_str = recurse_tco(t, frame.scope, frame.depth + 1)
+      // else_clause rendering needs depth authority: Python's "else:\n"
+      // must be indented to match the "if" keyword at frame.depth.
+      // Brace languages emit "} else {\n" which closes the previous block.
+      let else_prefix = if syntax.significant_whitespace { make_indent(level: frame.depth) } else { "" }
       match e {
         Some { value: eb } =>
           let else_str = recurse_tco(eb, frame.scope, frame.depth + 1)
           if syntax.significant_whitespace {
             concat("if ", cond_str, syntax.block_open,
               make_indent(level: frame.depth + 1), then_str, "\n",
-              syntax.else_clause,
+              else_prefix, syntax.else_clause,
               make_indent(level: frame.depth + 1), else_str)
           } else {
             concat("if ", cond_str, syntax.block_open,
