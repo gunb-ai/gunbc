@@ -975,3 +975,63 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<Algeb
     AlgebraProfile::PartialFunctionProfile => partial_function_templates(),
 }
 }
+
+pub fn template_has_element(t: Rc<AlgebraTypeTemplate>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*t).clone() {
+    AlgebraTypeTemplate::ReceiverElement => true,
+    AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => template_has_element(inner.clone()),
+    AlgebraTypeTemplate::ListOf { element: inner, .. } => template_has_element(inner.clone()),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => template_has_element(inner.clone()),
+    AlgebraTypeTemplate::TupleOf { first: a, second: b, .. } => (template_has_element(a.clone()) || template_has_element(b.clone())),
+    AlgebraTypeTemplate::CallableOf { params: ps, return_type: rt, .. } => ({ let mut __found = false; for p in ps.clone().iter().cloned() { if template_has_element(p.clone()) { __found = true; break; } } __found } || template_has_element(rt.clone())),
+    _ => false,
+}
+    })
+}
+
+pub fn template_has_key(t: Rc<AlgebraTypeTemplate>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*t).clone() {
+    AlgebraTypeTemplate::ReceiverKey => true,
+    AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => template_has_key(inner.clone()),
+    AlgebraTypeTemplate::ListOf { element: inner, .. } => template_has_key(inner.clone()),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => template_has_key(inner.clone()),
+    AlgebraTypeTemplate::TupleOf { first: a, second: b, .. } => (template_has_key(a.clone()) || template_has_key(b.clone())),
+    AlgebraTypeTemplate::CallableOf { params: ps, return_type: rt, .. } => ({ let mut __found = false; for p in ps.clone().iter().cloned() { if template_has_key(p.clone()) { __found = true; break; } } __found } || template_has_key(rt.clone())),
+    _ => false,
+}
+    })
+}
+
+pub fn template_has_value(t: Rc<AlgebraTypeTemplate>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*t).clone() {
+    AlgebraTypeTemplate::ReceiverValue => true,
+    AlgebraTypeTemplate::ReceiverCollectionOf { element: inner, .. } => template_has_value(inner.clone()),
+    AlgebraTypeTemplate::ListOf { element: inner, .. } => template_has_value(inner.clone()),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => template_has_value(inner.clone()),
+    AlgebraTypeTemplate::TupleOf { first: a, second: b, .. } => (template_has_value(a.clone()) || template_has_value(b.clone())),
+    AlgebraTypeTemplate::CallableOf { params: ps, return_type: rt, .. } => ({ let mut __found = false; for p in ps.clone().iter().cloned() { if template_has_value(p.clone()) { __found = true; break; } } __found } || template_has_value(rt.clone())),
+    _ => false,
+}
+    })
+}
+
+pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
+    {
+        let templates = algebra_templates_for_profile(profile);
+let has_key = { let mut __found = false; for t in templates.clone().iter().cloned() { if ({ let mut __found = false; for p in t.param_types.clone().iter().cloned() { if template_has_key(p.clone()) { __found = true; break; } } __found } || template_has_key(t.return_type.clone())) { __found = true; break; } } __found };
+let has_value = { let mut __found = false; for t in templates.clone().iter().cloned() { if ({ let mut __found = false; for p in t.param_types.clone().iter().cloned() { if template_has_value(p.clone()) { __found = true; break; } } __found } || template_has_value(t.return_type.clone())) { __found = true; break; } } __found };
+let has_element = { let mut __found = false; for t in templates.clone().iter().cloned() { if ({ let mut __found = false; for p in t.param_types.clone().iter().cloned() { if template_has_element(p.clone()) { __found = true; break; } } __found } || template_has_element(t.return_type.clone())) { __found = true; break; } } __found };
+if (has_key && has_value) {
+            Rc::new(vec!["K".to_string(), "V".to_string()])
+} else {
+            if has_element {
+                Rc::new(vec!["T".to_string()])
+} else {
+                Rc::new(vec![])
+}
+}
+}
+}
