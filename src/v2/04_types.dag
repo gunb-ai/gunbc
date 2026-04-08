@@ -9,7 +9,7 @@
 
 module v2.compiler.infer_types
 
-import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name }
+import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_param_name_required }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -121,8 +121,8 @@ fn is_fully_resolved(n: Node) -> Bool {
 }
 
 fn bare_map_node() -> Node {
-  let key_id = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
-  let val_id = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+  let key_id = container_param_name_required(kind_name: "Map", index: 0)
+  let val_id = container_param_name_required(kind_name: "Map", index: 1)
   let key_node = type_variable_node(id: key_id)
   let val_node = type_variable_node(id: val_id)
   Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
@@ -357,8 +357,8 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
                 Some { value: v } => v
                 None => type_variable_node(id: "V")
               }
-              let key_name = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
-              let val_name = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+              let key_name = container_param_name_required(kind_name: "Map", index: 0)
+              let val_name = container_param_name_required(kind_name: "Map", index: 1)
               Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
                 Node { name: key_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
                 Node { name: val_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: val } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -383,7 +383,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         None =>
           match map_get(subst, "__element__") {
             Some { value: elem } => elem
-            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 0) { Some { value: pn } => pn  None => "__MISSING_PARAM__" })
+            None => type_variable_node(id: container_param_name_required(kind_name: receiver.name, index: 0))
           }
       }
     ReceiverKey =>
@@ -392,7 +392,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         None =>
           match map_get(subst, "__key__") {
             Some { value: key } => key
-            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 0) { Some { value: pn } => pn  None => "__MISSING_PARAM__" })
+            None => type_variable_node(id: container_param_name_required(kind_name: receiver.name, index: 0))
           }
       }
     ReceiverValue =>
@@ -401,7 +401,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         None =>
           match map_get(subst, "__value__") {
             Some { value: val } => val
-            None => type_variable_node(id: match container_param_name(kind_name: receiver.name, index: 1) { Some { value: pn } => pn  None => "__MISSING_PARAM__" })
+            None => type_variable_node(id: container_param_name_required(kind_name: receiver.name, index: 1))
           }
       }
     NamedTemplate { name: n } => nominal_type_ref(name: n)

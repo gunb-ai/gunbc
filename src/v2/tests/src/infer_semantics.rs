@@ -60,8 +60,8 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
 }
 
 fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
-    let key_name = container_param_name("Map".to_string(), 0).unwrap_or("__MISSING_PARAM__".to_string());
-    let val_name = container_param_name("Map".to_string(), 1).unwrap_or("__MISSING_PARAM__".to_string());
+    let key_name = container_param_name("Map".to_string(), 0).unwrap_or("Map".to_string());
+    let val_name = container_param_name("Map".to_string(), 1).unwrap_or("Map".to_string());
     let sp = make_span(0, 0);
     Rc::new(Node {
         name: "Map".to_string(),

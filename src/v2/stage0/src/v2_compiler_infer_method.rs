@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_types::{SourceSpan, container_param_name};
+pub use crate::std_types::{SourceSpan, container_param_name_required};
 pub use crate::v2_std_core::{Node, make_span, with_optional_cardinality, unit_type, bool_type, string_type, int_type, InferredNode, Connective, Cardinality, ExprData};
 use crate::v2_std_core::InferredNode::{TypeVariable, Resolved};
 use crate::v2_std_core::Connective::{NoConnective};
@@ -79,14 +79,8 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 
 pub fn map_of_type_variables() -> Rc<Node> {
     {
-        let key_name = match container_param_name("Map".to_string(), 0) {
-    Some(n) => n.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-};
-let val_name = match container_param_name("Map".to_string(), 1) {
-    Some(n) => n.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-};
+        let key_name = container_param_name_required("Map".to_string(), 0);
+let val_name = container_param_name_required("Map".to_string(), 1);
 let key = type_variable_node("map_key".to_string());
 let value = type_variable_node("map_value".to_string());
 Rc::new(Node {
@@ -153,10 +147,7 @@ Rc::new(Node {
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
     {
-        let param_name = match container_param_name("List".to_string(), 0) {
-    Some(n) => n.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-};
+        let param_name = container_param_name_required("List".to_string(), 0);
 Rc::new(Node {
     name: "List".to_string(),
     span: make_span(0, 0),
@@ -201,10 +192,7 @@ Rc::new(Node {
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
     {
-        let param_name = match container_param_name("List".to_string(), 0) {
-    Some(n) => n.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-};
+        let param_name = container_param_name_required("List".to_string(), 0);
 Rc::new(Node {
     name: "List".to_string(),
     span: make_span(0, 0),

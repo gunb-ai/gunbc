@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_types::{SourceSpan, is_container_type, container_expected_arity, container_param_name};
+pub use crate::std_types::{SourceSpan, is_container_type, container_expected_arity, container_param_name, container_param_name_required};
 pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, ContainerSource, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile};
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ContainerOf, OptionalOf, TupleOf, AlgebraTypeVariable};
@@ -153,14 +153,8 @@ if under_param {
 
 pub fn bare_map_node() -> Rc<Node> {
     {
-        let key_id = match container_param_name("Map".to_string(), 0) {
-    Some(n) => n.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-};
-let val_id = match container_param_name("Map".to_string(), 1) {
-    Some(n) => n.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-};
+        let key_id = container_param_name_required("Map".to_string(), 0);
+let val_id = container_param_name_required("Map".to_string(), 1);
 let key_node = type_variable_node(key_id.clone());
 let val_node = type_variable_node(val_id.clone());
 Rc::new(Node {
@@ -636,14 +630,8 @@ if (arity.clone() == Some(2)) {
     Some(v) => v.clone(),
     None => type_variable_node("V".to_string()),
 };
-let key_name = match container_param_name("Map".to_string(), 0) {
-    Some(n) => n.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-};
-let val_name = match container_param_name("Map".to_string(), 1) {
-    Some(n) => n.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-};
+let key_name = container_param_name_required("Map".to_string(), 0);
+let val_name = container_param_name_required("Map".to_string(), 1);
 Rc::new(Node {
     name: "Map".to_string(),
     span: make_span(0, 0),
@@ -769,30 +757,21 @@ Rc::new(Node {
     Some(child) => child_type_node(child.clone()),
     None => match v2_rt::map_get(&subst, "__element__".to_string()) {
     Some(elem) => elem.clone(),
-    None => type_variable_node(match container_param_name(receiver.name.clone(), 0) {
-    Some(pn) => pn.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-}),
+    None => type_variable_node(container_param_name_required(receiver.name.clone(), 0)),
 },
 },
     AlgebraTypeTemplate::ReceiverKey => match receiver.children.clone().first().cloned() {
     Some(child) => child_type_node(child.clone()),
     None => match v2_rt::map_get(&subst, "__key__".to_string()) {
     Some(key) => key.clone(),
-    None => type_variable_node(match container_param_name(receiver.name.clone(), 0) {
-    Some(pn) => pn.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-}),
+    None => type_variable_node(container_param_name_required(receiver.name.clone(), 0)),
 },
 },
     AlgebraTypeTemplate::ReceiverValue => match receiver.children.clone().get(1 as usize).cloned() {
     Some(child) => child_type_node(child.clone()),
     None => match v2_rt::map_get(&subst, "__value__".to_string()) {
     Some(val) => val,
-    None => type_variable_node(match container_param_name(receiver.name.clone(), 1) {
-    Some(pn) => pn.clone(),
-    None => "__MISSING_PARAM__".to_string(),
-}),
+    None => type_variable_node(container_param_name_required(receiver.name.clone(), 1)),
 },
 },
     AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(n.clone()),

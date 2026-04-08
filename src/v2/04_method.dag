@@ -9,7 +9,7 @@
 
 module v2.compiler.infer_method
 
-import std.types { SourceSpan, container_param_name }
+import std.types { SourceSpan, container_param_name_required }
 import v2.std.core {
   Node, TypeVariable, Resolved,
   NoConnective,
@@ -33,8 +33,8 @@ fn type_variable_node(id: String) -> Node {
 }
 
 fn map_of_type_variables() -> Node {
-  let key_name = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
-  let val_name = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+  let key_name = container_param_name_required(kind_name: "Map", index: 0)
+  let val_name = container_param_name_required(kind_name: "Map", index: 1)
   let key = type_variable_node(id: "map_key")
   let value = type_variable_node(id: "map_value")
   Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
@@ -44,7 +44,7 @@ fn map_of_type_variables() -> Node {
 }
 
 fn list_of_type_variable(id: String) -> Node {
-  let param_name = match container_param_name(kind_name: "List", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+  let param_name = container_param_name_required(kind_name: "List", index: 0)
   Node {
     name: "List", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) },
     children: [
@@ -57,7 +57,7 @@ fn list_of_type_variable(id: String) -> Node {
 }
 
 fn list_of_element(element: Node) -> Node {
-  let param_name = match container_param_name(kind_name: "List", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+  let param_name = container_param_name_required(kind_name: "List", index: 0)
   Node {
     name: "List", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) },
     children: [
