@@ -34,7 +34,11 @@ import extdeps.languages.rust.emit {
   rust_serde_tag, rust_serde_rename_template,
   rust_source_extension, rust_source_dir, rust_visibility,
   rust_string_types,
-  rust_method_templates
+  rust_method_templates,
+  rust_func_keyword, rust_async_prefix, rust_struct_keyword,
+  rust_enum_keyword, rust_type_alias_keyword,
+  rust_param_separator, rust_return_arrow,
+  rust_param_type_order, rust_string_literal_suffix
 }
 
 import extdeps.languages.python.emit {
@@ -43,7 +47,11 @@ import extdeps.languages.python.emit {
   python_derive_attribute, python_default_value,
   python_source_extension, python_module_init,
   python_method_templates,
-  python_string_types
+  python_string_types,
+  python_func_keyword, python_async_prefix, python_struct_keyword,
+  python_enum_keyword, python_type_alias_keyword,
+  python_param_separator, python_return_arrow,
+  python_param_type_order, python_string_literal_suffix
 }
 
 import extdeps.languages.go.emit {
@@ -51,7 +59,11 @@ import extdeps.languages.go.emit {
   go_reserved, go_reserved_escape_suffix,
   go_manifest_file,
   go_method_templates,
-  go_string_types
+  go_string_types,
+  go_func_keyword, go_async_prefix, go_struct_keyword,
+  go_enum_keyword, go_type_alias_keyword,
+  go_param_separator, go_return_arrow,
+  go_param_type_order, go_string_literal_suffix
 }
 
 type ReservedWordStrategy
@@ -196,6 +208,20 @@ type TcoSyntax {
   temp_assign_op: String      // " = " (Rust/Python), " := " (Go)
 }
 
+// Item definition facts — individual tokens the emitter composes.
+// Not templates: each field is one language fact.
+type ItemKeywords {
+  func_keyword: String          // "fn" / "def" / "func"
+  async_prefix: String          // "async " / "async " / ""
+  struct_keyword: String        // "struct" / "class" / "struct"
+  enum_keyword: String          // "enum" / "class" / "type"
+  type_alias_keyword: String    // "type" / "" / "type"
+  param_separator: String       // ", " (universal so far)
+  return_arrow: String          // " -> " / " -> " / " "
+  param_type_order: String      // "name_colon_type" / "name_space_type"
+  string_literal_suffix: String // ".to_string()" / "" / ""
+}
+
 type LanguageSpec {
   target_name: String
   reserved_words: ReservedWords
@@ -210,6 +236,7 @@ type LanguageSpec {
   service_fields: ServiceFieldTemplates
   block_syntax: BlockSyntax
   tco: TcoSyntax
+  items: ItemKeywords
 }
 
 // =========================================================================
@@ -298,6 +325,14 @@ fn rust_spec() -> LanguageSpec {
       temp_var_prefix: "__tco_",
       temp_decl_prefix: "let ",
       temp_assign_op: " = "
+    },
+    items: ItemKeywords {
+      func_keyword: rust_func_keyword, async_prefix: rust_async_prefix,
+      struct_keyword: rust_struct_keyword, enum_keyword: rust_enum_keyword,
+      type_alias_keyword: rust_type_alias_keyword,
+      param_separator: rust_param_separator, return_arrow: rust_return_arrow,
+      param_type_order: rust_param_type_order,
+      string_literal_suffix: rust_string_literal_suffix
     }
   }
 }
@@ -383,6 +418,14 @@ fn python_spec() -> LanguageSpec {
       temp_var_prefix: "__tco_",
       temp_decl_prefix: "",
       temp_assign_op: " = "
+    },
+    items: ItemKeywords {
+      func_keyword: python_func_keyword, async_prefix: python_async_prefix,
+      struct_keyword: python_struct_keyword, enum_keyword: python_enum_keyword,
+      type_alias_keyword: python_type_alias_keyword,
+      param_separator: python_param_separator, return_arrow: python_return_arrow,
+      param_type_order: python_param_type_order,
+      string_literal_suffix: python_string_literal_suffix
     }
   }
 }
@@ -468,6 +511,14 @@ fn go_spec() -> LanguageSpec {
       temp_var_prefix: "tco",
       temp_decl_prefix: "",
       temp_assign_op: " := "
+    },
+    items: ItemKeywords {
+      func_keyword: go_func_keyword, async_prefix: go_async_prefix,
+      struct_keyword: go_struct_keyword, enum_keyword: go_enum_keyword,
+      type_alias_keyword: go_type_alias_keyword,
+      param_separator: go_param_separator, return_arrow: go_return_arrow,
+      param_type_order: go_param_type_order,
+      string_literal_suffix: go_string_literal_suffix
     }
   }
 }

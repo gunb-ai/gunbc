@@ -65,6 +65,18 @@ data python_derive_attribute: String = "@dataclass"
 // Mirrors python_serialization.default_value from std.languages.
 data python_default_value: String = "None"
 
+// -- Item definition facts ------------------------------------------------
+// Ref: Python Reference §8 "Compound statements"
+data python_func_keyword: String = "def"
+data python_async_prefix: String = "async "
+data python_struct_keyword: String = "class"
+data python_enum_keyword: String = "class"
+data python_type_alias_keyword: String = ""
+data python_param_separator: String = ", "
+data python_return_arrow: String = " -> "
+data python_param_type_order: String = "name_colon_type"
+data python_string_literal_suffix: String = ""
+
 // -- Project scaffold ----------------------------------------------------
 // Ref: Python packaging conventions
 // Mirrors python_scaffold from std.languages.

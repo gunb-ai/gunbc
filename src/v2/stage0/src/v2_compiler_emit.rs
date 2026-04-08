@@ -799,10 +799,7 @@ pub fn emit_keyword(key: String, target: RenderTarget) -> String {
 pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
     match (*value).clone() {
     LiteralValue::LitStr { value: s, .. } => {
-        let suffix = match target {
-    RenderTarget::Rust => ".to_string()".to_string(),
-    _ => "".to_string(),
-};
+        let suffix = language_spec(target).items.clone().string_literal_suffix.clone();
 emit_string_literal(s.clone(), suffix)
 },
     LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),

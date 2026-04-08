@@ -137,6 +137,87 @@ pub fn python_default_value() -> String {
     CACHED.with(|c| c.clone())
 }
 
+pub fn python_func_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "def".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_async_prefix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "async ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_struct_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "class".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_enum_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "class".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_type_alias_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_param_separator() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ", ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_return_arrow() -> String {
+    thread_local! {
+        static CACHED: String = {
+            " -> ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_param_type_order() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "name_colon_type".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_string_literal_suffix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn python_source_extension() -> String {
     thread_local! {
         static CACHED: String = {

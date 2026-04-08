@@ -121,6 +121,19 @@ data rust_serde_tag: String = "#[serde(tag = \"_variant\")]"
 // {0} = field key name. Ref: serde docs — #[serde(rename = "...")]
 data rust_serde_rename_template: String = "#[serde(rename = \"\{0\}\")]"
 
+// -- Item definition facts ------------------------------------------------
+// Ref: Rust Reference §6 "Items"
+// Each fact is a single language-specific token the emitter composes.
+data rust_func_keyword: String = "fn"
+data rust_async_prefix: String = "async "
+data rust_struct_keyword: String = "struct"
+data rust_enum_keyword: String = "enum"
+data rust_type_alias_keyword: String = "type"
+data rust_param_separator: String = ", "
+data rust_return_arrow: String = " -> "
+data rust_param_type_order: String = "name_colon_type"
+data rust_string_literal_suffix: String = ".to_string()"
+
 // -- Project scaffold ----------------------------------------------------
 // Ref: Cargo Reference (doc.rust-lang.org/cargo/reference)
 // Mirrors rust_scaffold from std.languages.

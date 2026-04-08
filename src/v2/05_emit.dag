@@ -840,7 +840,7 @@ fn emit_keyword(key: String, target: RenderTarget) -> String {
 fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   match value {
     LitStr { value: s } =>
-      let suffix = match target { Rust => ".to_string()"  _ => "" }
+      let suffix = language_spec(target: target).items.string_literal_suffix
       emit_string_literal(s: s, suffix: suffix)
     LitInt { value: i } => to_string(value: i)
     LitFloat { value: f } => f
