@@ -232,7 +232,7 @@ Rc::new(Node {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
+
 pub enum AliasKind {
     AliasParameterized,
     AliasLeaf,
@@ -1008,7 +1008,7 @@ let child_results = Rc::new({ let mut __result = Vec::new(); for c in transport.
 let resolved_children = Rc::new({ let mut __result = Vec::new(); for cr in child_results.clone().iter().cloned() { __result.push(cr.expr.clone()); } __result });
 let child_diags = Rc::new({ let mut __result = Vec::new(); for cr in child_results.clone().iter().cloned() { __result.extend((*cr.diagnostics.clone()).iter().cloned()); } __result });
 Rc::new(TransportResolveResult {
-    transport: make_transport_node(resolved_props, resolved_children, transport.span.clone()),
+    transport: make_transport_node(resolved_props, resolved_children, transport.body.clone(), transport.span.clone()),
     diagnostics: v2_rt::concat(prop_diags, child_diags),
 })
 }
