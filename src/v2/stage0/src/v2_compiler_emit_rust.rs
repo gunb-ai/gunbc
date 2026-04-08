@@ -354,7 +354,7 @@ items.iter().cloned().fold(Rc::new(OwnershipBuildResult {
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     fold_eligible_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
 }), |acc: Rc<OwnershipBuildResult>, item: Rc<Node>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
-            let proof = analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap());
+            let proof = analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), None);
 Rc::new(OwnershipBuildResult {
     ownership_index: v2_rt::rc_map_insert(acc.ownership_index, item.name.clone(), build_movable_set(proof.clone())),
     fold_eligible_index: v2_rt::rc_map_insert(acc.fold_eligible_index, item.name.clone(), build_fold_eligible_set(proof.clone())),

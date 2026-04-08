@@ -398,7 +398,7 @@ fn build_fold_eligible_set(proof: OwnershipProof) -> Map<String, Bool> {
 fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
   let items = modules |> flat_map(m => m.items |> filter(item => item.body != None))
   items |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map() }, f: (acc, item) =>
-    let proof = analyze_ownership(func_name: item.name, params: item.params, body: item.body.value)
+    let proof = analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: none)
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, item.name, build_movable_set(proof: proof)),
       fold_eligible_index: map_insert(acc.fold_eligible_index, item.name, build_fold_eligible_set(proof: proof))
