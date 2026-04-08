@@ -357,7 +357,10 @@ pub fn nominal_type_binding(name: String) -> Rc<TypeBinding> {
 
 pub fn classify_field_recursion(field_node: Rc<Node>, parent_name: String) -> Option<RecursionShape> {
     {
-        let type_expr = field_node_type_expr(field_node.clone());
+        let type_expr = match field_node.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+    _ => field_node_type_expr(field_node.clone()),
+};
 let field_type_name = type_expr.name.clone();
 if (field_type_name.clone().as_str() == parent_name.clone().as_str()) {
             match field_node.return_cardinality.clone() {
@@ -2275,18 +2278,26 @@ let annotated_arms = Rc::new({ let mut __result = Vec::new(); for arm_node in ma
     MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => {
                         let ind_fields = inductive_fields_for(ctx.type_env.clone(), scrut_type.clone());
 bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| {
-                            let fb_name = field_binding_name(fb.clone());
-let matching = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.clone().iter().cloned() { if ((f.variant_name.clone().as_str() == vname.clone().as_str()) && (f.field_name.clone().as_str() == fb_name.clone().as_str())) { __result.push(f); } } __result }).first().cloned();
+                            let field_name = field_binding_name(fb.clone());
+let bind_name = match (*field_binding_pattern(fb.clone())).clone() {
+    MatchPattern::Bind { name: bname, .. } => bname.clone(),
+    _ => "".to_string(),
+};
+let matching = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.clone().iter().cloned() { if ((f.variant_name.clone().as_str() == vname.clone().as_str()) && (f.field_name.clone().as_str() == field_name.clone().as_str())) { __result.push(f); } } __result }).first().cloned();
 match matching.clone() {
-    Some(ind_field) => Rc::new(DescentContext {
+    Some(ind_field) => if (bind_name.clone().as_str() != "".to_string().as_str()) {
+                                Rc::new(DescentContext {
     fn_name: c.fn_name.clone(),
     param_names: c.param_names.clone(),
     type_env: c.type_env.clone(),
-    sub_value_vars: v2_rt::rc_map_insert(c.sub_value_vars.clone(), fb_name.clone(), Rc::new(SubValueRelation::StrictSubValue {
+    sub_value_vars: v2_rt::rc_map_insert(c.sub_value_vars.clone(), bind_name.clone(), Rc::new(SubValueRelation::StrictSubValue {
     field: ind_field.clone(),
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
-}),
+})
+} else {
+                                c.clone()
+},
     None => c.clone(),
 }
 })
@@ -2346,11 +2357,21 @@ map_children(body.clone(), |child| annotate_descent(child.clone(), inner_ctx.clo
     })
 }
 
+pub fn resolved_type_name(n: Rc<Node>) -> String {
+    match n.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => rt.name.clone(),
+    _ => match n.children.clone().first().cloned() {
+    Some(c) => c.name.clone(),
+    None => "".to_string(),
+},
+}
+}
+
 pub fn annotate_descent_evidence(body: Rc<Node>, fn_name: String, params: Rc<Vec<Rc<Node>>>, type_env: Rc<TypeEnv>) -> Rc<Node> {
     {
         let param_name_map = params.iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
             let pname = param_node_name(p.clone());
-let ptype = param_node_type_expr(p.clone()).name.clone();
+let ptype = resolved_type_name(p.clone());
 v2_rt::rc_map_insert(acc.clone(), pname.clone(), ptype.clone())
 });
 let ctx = Rc::new(DescentContext {

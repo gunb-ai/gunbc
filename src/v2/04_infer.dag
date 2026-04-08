@@ -386,7 +386,11 @@ fn nominal_type_binding(name: String) -> TypeBinding {
 // Returns the RecursionShape if the field references the parent type, or none.
 // Dispatches on container identity (List/Set/Map), not arity.
 fn classify_field_recursion(field_node: Node, parent_name: String) -> RecursionShape? {
-  let type_expr = field_node_type_expr(n: field_node)
+  // After field_to_child_node, type info is in inferred (not children).
+  let type_expr = match field_node.inferred {
+    Some { value: Resolved { node: rt } } => rt
+    _ => field_node_type_expr(n: field_node)
+  }
   let field_type_name = type_expr.name
   if field_type_name == parent_name {
     // Direct or Optional: check cardinality
@@ -2226,14 +2230,21 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
               let ind_fields = inductive_fields_for(env: ctx.type_env, type_name: scrut_type)
               bindings |> fold(init: ctx, f: (c, fb) =>
-                let fb_name = field_binding_name(n: fb)
-                let matching = ind_fields |> filter(f => f.variant_name == vname && f.field_name == fb_name) |> first
+                let field_name = field_binding_name(n: fb)
+                // The BINDING variable name (what's in scope), not the field name
+                let bind_name = match field_binding_pattern(n: fb) {
+                  Bind { name: bname } => bname
+                  _ => ""
+                }
+                let matching = ind_fields |> filter(f => f.variant_name == vname && f.field_name == field_name) |> first
                 match matching {
                   Some { value: ind_field } =>
-                    DescentContext {
-                      fn_name: c.fn_name, param_names: c.param_names, type_env: c.type_env,
-                      sub_value_vars: map_insert(c.sub_value_vars, fb_name, StrictSubValue { field: ind_field, factor: UnitShrink })
-                    }
+                    if bind_name != "" {
+                      DescentContext {
+                        fn_name: c.fn_name, param_names: c.param_names, type_env: c.type_env,
+                        sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink })
+                      }
+                    } else { c }
                   None => c
                 }
               )
@@ -2286,11 +2297,24 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
   }
 }
 
+// Extract type name from a node that may have its type in `inferred` (post
+// field_to_child_node) or in `children` (raw parsed form).
+fn resolved_type_name(n: Node) -> String {
+  match n.inferred {
+    Some { value: Resolved { node: rt } } => rt.name
+    _ =>
+      match n.children |> first {
+        Some { value: c } => c.name
+        None => ""
+      }
+  }
+}
+
 // Top-level: annotate a self-recursive function body with descent evidence.
 fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv) -> Node {
   let param_name_map = params |> fold(init: empty_map(), f: (acc, p) =>
     let pname = param_node_name(n: p)
-    let ptype = param_node_type_expr(n: p).name
+    let ptype = resolved_type_name(n: p)
     map_insert(acc, pname, ptype)
   )
   let ctx = DescentContext {
