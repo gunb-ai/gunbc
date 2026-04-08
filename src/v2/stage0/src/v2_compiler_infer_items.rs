@@ -119,20 +119,20 @@ if is_product {
                         if (rt.ident_span.clone() == None) {
                             Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
                                 let child_type = child_type_node(child.clone());
-make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone())
+make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone(), span.clone())
 }); } __result })
 } else {
-                            Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())])
+                            Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), span.clone())])
 }
 } else {
-                        Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())])
+                        Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), span.clone())])
 }
 }
 } else {
                 if ((rt.connective.clone() == Connective::Conj) && ((rt.children.clone().len() as i64) == 0)) {
                     Rc::new(vec![])
 } else {
-                    Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())])
+                    Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), span.clone())])
 }
 }
 },

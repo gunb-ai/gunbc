@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan, container_param_name};
-pub use crate::v2_std_core::{Node, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, NodeType, rt_node, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, is_kernel_type, is_container_type, leaf_node, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, default_ident_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, NodeType, rt_node, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, is_kernel_type, is_container_type, leaf_node, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, default_ident_span, CompilerDiagnostic};
 use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, ArityMismatch, UnresolvedType};
@@ -164,7 +164,7 @@ if has_structure {
 }
 }
 
-pub fn substitute_type_slots(n: Rc<Node>, slot_bindings: Rc<HashMap<String, Rc<Node>>>, decl_name: String) -> Rc<Node> {
+pub fn substitute_type_slots(n: Rc<Node>, slot_bindings: Rc<HashMap<String, Rc<Node>>>, decl_name: String, source_index: Option<Rc<NewlineIndex>>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let is_slot = (((((n.children.clone().len() as i64) == 0) && (n.connective.clone() == Connective::NoConnective)) && (n.body.clone() == None)) && (n.inferred.clone() == None));
@@ -175,9 +175,9 @@ if is_slot {
 }
 } else {
                 {
-                    let new_children = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(if (child.name.clone().as_str() == decl_name.clone().as_str()) {
+                    let new_children = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(if (authored_name_at(source_index.clone(), child.clone()).as_str() == decl_name.clone().as_str()) {
                         {
-                            let substituted_args = Rc::new({ let mut __result = Vec::new(); for arg in child.children.clone().iter().cloned() { __result.push(substitute_type_slots(arg.clone(), slot_bindings.clone(), decl_name.clone())); } __result });
+                            let substituted_args = Rc::new({ let mut __result = Vec::new(); for arg in child.children.clone().iter().cloned() { __result.push(substitute_type_slots(arg.clone(), slot_bindings.clone(), decl_name.clone(), source_index.clone())); } __result });
 Rc::new(Node {
     name: child.name.clone(),
     span: child.span.clone(),
@@ -199,11 +199,11 @@ Rc::new(Node {
 })
 }
 } else {
-                        substitute_type_slots(child.clone(), slot_bindings.clone(), decl_name.clone())
+                        substitute_type_slots(child.clone(), slot_bindings.clone(), decl_name.clone(), source_index.clone())
 }); } __result });
 let new_inferred = match n.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => Some(Rc::new(InferredNode::Resolved {
-    node: substitute_type_slots(rt.clone(), slot_bindings.clone(), decl_name.clone()),
+    node: substitute_type_slots(rt.clone(), slot_bindings.clone(), decl_name.clone(), source_index.clone()),
 })),
     _ => n.inferred.clone(),
 };
@@ -533,7 +533,7 @@ let is_parameterized_alias = (((decl.inferred.clone() != None) && ((decl.childre
 if is_parameterized_alias {
                             {
                                 let alias_target = match (*rt_node(decl.clone())).clone() {
-    NodeType::Typed { node: target, .. } => substitute_type_slots(target.clone(), slot_bindings.clone(), type_name.clone()),
+    NodeType::Typed { node: target, .. } => substitute_type_slots(target.clone(), slot_bindings.clone(), type_name.clone(), env.source_index.clone()),
     NodeType::InferError { .. } => n.clone(),
     NodeType::InferVariable { .. } => n.clone(),
     NodeType::Untyped => n.clone(),
@@ -566,7 +566,7 @@ Rc::new(NodeResolveResult {
 }
 } else {
                             {
-                                let substituted_children = Rc::new({ let mut __result = Vec::new(); for child in decl.children.clone().iter().cloned() { __result.push(substitute_type_slots(child.clone(), slot_bindings.clone(), type_name.clone())); } __result });
+                                let substituted_children = Rc::new({ let mut __result = Vec::new(); for child in decl.children.clone().iter().cloned() { __result.push(substitute_type_slots(child.clone(), slot_bindings.clone(), type_name.clone(), env.source_index.clone())); } __result });
 let is_recursive = is_recursive_type(env.clone(), type_name.clone());
 let result = Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
@@ -875,7 +875,7 @@ Rc::new(FieldResult {
     field: make_field_node(field_node_name(field.clone()), type_resolved, field_node_cardinality(field.clone()), match default_resolved.clone() {
     Some(result) => Some(result.expr.clone()),
     None => None,
-}, field_node_from_key(field.clone()), field.span.clone()),
+}, field_node_from_key(field.clone()), field.span.clone(), field.span.clone()),
     diagnostics: v2_rt::concat(type_diags, default_diags),
 })
 }
@@ -898,7 +898,7 @@ Rc::new(ParamResult {
     param: make_param_node(param_node_name(param.clone()), type_resolved, match default_resolved.clone() {
     Some(result) => Some(result.expr.clone()),
     None => None,
-}, param.span.clone()),
+}, param.span.clone(), param.span.clone()),
     diagnostics: v2_rt::concat(type_diags, default_diags),
 })
 }
@@ -934,7 +934,7 @@ pub fn resolve_field_init(field_init: Rc<Node>, env: Rc<TypeEnv>, module_name: S
 let value_expr = value_result.expr.clone();
 let value_diags = value_result.diagnostics.clone();
 Rc::new(FieldInitResolveResult {
-    field_init: make_field_init_node(field_init_node_name(field_init.clone()), value_expr, field_init.span.clone()),
+    field_init: make_field_init_node(field_init_node_name(field_init.clone()), value_expr, field_init.span.clone(), field_init.span.clone()),
     diagnostics: value_diags,
 })
 }
@@ -997,7 +997,7 @@ pub fn resolve_transport_binding(transport: Rc<Node>, env: Rc<TypeEnv>, module_n
             let prop_results = Rc::new({ let mut __result = Vec::new(); for p in transport.properties.clone().iter().cloned() { __result.push({
                 let val_result = resolve_expr_types(field_init_node_value(p.clone()), env.clone(), module_name.clone());
 Rc::new(FieldInitResolveResult {
-    field_init: make_field_init_node(field_init_node_name(p.clone()), val_result.expr.clone(), p.span.clone()),
+    field_init: make_field_init_node(field_init_node_name(p.clone()), val_result.expr.clone(), p.span.clone(), p.span.clone()),
     diagnostics: val_result.diagnostics.clone(),
 })
 }); } __result });
@@ -1289,7 +1289,7 @@ Rc::new(ExprResolveResult {
     None => fi_node.clone(),
 };
 let vr = resolve_expr_types(val.clone(), env.clone(), module_name.clone());
-make_field_init_node(fi_node.name.clone(), vr.expr.clone(), fi_node.span.clone())
+make_field_init_node(fi_node.name.clone(), vr.expr.clone(), fi_node.span.clone(), fi_node.span.clone())
 }); } __result });
 let all_diags = Rc::new({ let mut __result = Vec::new(); for fi_node in texpr.children.clone().iter().cloned() { __result.extend((*{
                 let val = match fi_node.children.clone().first().cloned() {

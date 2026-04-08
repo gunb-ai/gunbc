@@ -50,7 +50,7 @@ pub use crate::std_types::{SourceSpan, is_container_type, container_expected_ari
 pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile};
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf, AlgebraTypeVariable};
-pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, rt_node, has_inferred, is_compiler_error, NodeType, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, ExprData};
+pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, authored_name_at, NewlineIndex, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, rt_node, has_inferred, is_compiler_error, NodeType, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, ExprData};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral};
@@ -96,6 +96,13 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
         rt_type(ch.clone())
 } else {
         ch.clone()
+}
+}
+
+pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
+    match n.children.clone().get(index as usize).cloned() {
+    Some(ch) => Some(child_type_node(ch.clone())),
+    None => None,
 }
 }
 
@@ -352,7 +359,7 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
 
 pub fn algebra_method_field(name: String, param_types: Rc<Vec<Rc<Node>>>, return_type: Rc<Node>) -> Rc<Node> {
     {
-        let params = Rc::new({ let mut __result = Vec::new(); for t in param_types.iter().cloned() { __result.push(make_param_node("_".to_string(), t.clone(), None, no_span())); } __result });
+        let params = Rc::new({ let mut __result = Vec::new(); for t in param_types.iter().cloned() { __result.push(make_param_node("_".to_string(), t.clone(), None, no_span(), no_span())); } __result });
 Rc::new(Node {
     name: name.clone(),
     span: no_span(),
@@ -633,7 +640,7 @@ map_node(key.clone(), val)
     AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => tuple_node(apply_type_substitution(ft.clone(), subst.clone(), receiver.clone()), apply_type_substitution(st.clone(), subst.clone(), receiver.clone())),
     AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => {
             let param_nodes = Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(apply_type_substitution(tp.clone(), subst.clone(), receiver.clone())); } __result });
-callable_node(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node("_".to_string(), pn.clone(), None, no_span())); } __result }), apply_type_substitution(r.clone(), subst.clone(), receiver.clone()))
+callable_node(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node("_".to_string(), pn.clone(), None, no_span(), no_span())); } __result }), apply_type_substitution(r.clone(), subst.clone(), receiver.clone()))
 },
 }
     })
@@ -1247,7 +1254,7 @@ pub fn binop_algebra_field(op: BinOp) -> String {
 }
 }
 
-pub fn infer_binop_type_node(op: BinOp, left_type: Rc<Node>) -> Rc<Node> {
+pub fn infer_binop_type_node(op: BinOp, left_type: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Node> {
     match op.clone() {
     BinOp::Eq => bool_type(),
     BinOp::Ne => bool_type(),
@@ -1263,7 +1270,7 @@ pub fn infer_binop_type_node(op: BinOp, left_type: Rc<Node>) -> Rc<Node> {
 let is_product = (left_type.connective.clone() == Connective::Conj);
 if is_product {
             {
-                let matching = Rc::new({ let mut __result = Vec::new(); for c in left_type.children.clone().iter().cloned() { if (c.name.clone().as_str() == field_name.clone().as_str()) { __result.push(c); } } __result });
+                let matching = Rc::new({ let mut __result = Vec::new(); for c in left_type.children.clone().iter().cloned() { if (authored_name_at(source_index.clone(), c.clone()).as_str() == field_name.clone().as_str()) { __result.push(c); } } __result });
 match matching.first().cloned() {
     Some(field) => match field.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => if ((rt.params.clone().len() as i64) > 0) {

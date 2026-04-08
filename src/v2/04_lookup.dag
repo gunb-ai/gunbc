@@ -88,14 +88,14 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? 
 // Field lookup
 // =========================================================================
 
-fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
+fn lookup_field_type_node(n: Node, field_name: String, source_index: NewlineIndex?) -> Node? {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     let inner = with_required_cardinality(n: n)
     if field_name == "value" {
       Some { value: inner }
     } else {
-      match lookup_field_type_node(n: inner, field_name: field_name) {
+      match lookup_field_type_node(n: inner, field_name: field_name, source_index: source_index) {
         Some { value: inner_result } => Some { value: with_optional_cardinality(n: inner_result) }
         None => none
       }
@@ -105,26 +105,26 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
     if has_structure {
       let is_product = n.connective == Conj
       if is_product {
-        match find_child_named(n: n, name: field_name, source_index: none) {
+        match find_child_named(n: n, name: field_name, source_index: source_index) {
           Some { value: field_child } =>
             Some { value: child_type_node(ch: field_child) }
           None => none
         }
       } else {
-        lookup_coproduct_common_field_node(variants: n.children, field_name: field_name)
+        lookup_coproduct_common_field_node(variants: n.children, field_name: field_name, source_index: source_index)
       }
     } else { none }
   }
 }
 
-fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) -> Node? {
+fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, source_index: NewlineIndex?) -> Node? {
   let found_in_all = variants |> all(v =>
-    has_child_named(n: v, name: field_name, source_index: none)
+    has_child_named(n: v, name: field_name, source_index: source_index)
   )
   let first_field = if found_in_all {
     match variants |> first {
       Some { value: first_variant } =>
-        find_child_named(n: first_variant, name: field_name, source_index: none)
+        find_child_named(n: first_variant, name: field_name, source_index: source_index)
       None => none
     }
   } else { none }
@@ -235,9 +235,9 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
     } else {
       let is_product = resolved.connective == Conj
       if is_product {
-        map_get(build_struct_field_summaries(children: resolved.children), field)
+        map_get(build_struct_field_summaries(children: resolved.children, source_index: env.source_index), field)
       } else {
-        map_get(build_enum_field_summaries(variants: resolved.children), field)
+        map_get(build_enum_field_summaries(variants: resolved.children, source_index: env.source_index), field)
       }
     }
   }
@@ -258,8 +258,8 @@ type MethodFieldResult {
   algebra_template: AlgebraFieldTemplate?
 }
 
-fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldResult? {
-  let matching = product.children |> filter(c => authored_name_at(source_index: none, node: c) == method_name)
+fn lookup_field_in_product(product: Node, method_name: String, source_index: NewlineIndex?) -> MethodFieldResult? {
+  let matching = product.children |> filter(c => authored_name_at(source_index: source_index, node: c) == method_name)
   match matching |> first {
     Some { value: field } =>
       match field.inferred {
@@ -278,11 +278,11 @@ fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldRes
   }
 }
 
-fn lookup_structural_method(receiver_type: Node, method_name: String) -> MethodFieldResult? {
+fn lookup_structural_method(receiver_type: Node, method_name: String, source_index: NewlineIndex?) -> MethodFieldResult? {
   // First: check the receiver's own structural fields (Conj product).
   let is_product = receiver_type.connective == Conj
   if is_product {
-    let direct = lookup_field_in_product(product: receiver_type, method_name: method_name)
+    let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_index: source_index)
     match direct {
       Some { value: _ } => direct
       None => none
@@ -295,7 +295,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> MethodF
     // so that type nodes in the graph stay as bare leaves.
     let enriched = enrich_kernel_type(name: receiver_type.name, base: receiver_type)
     if enriched.connective == Conj && enriched.children |> count > 0 {
-      let base_result = lookup_field_in_product(product: enriched, method_name: method_name)
+      let base_result = lookup_field_in_product(product: enriched, method_name: method_name, source_index: source_index)
       // Enrich with size_effect/cost_shape from the EXACT profile for this receiver type.
       // Scoped to receiver_type.name → no global scan, no method name collisions.
       match base_result {
@@ -320,13 +320,13 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> MethodF
   }
 }
 
-fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>) -> KnownMethodResolution {
+fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>, source_index: NewlineIndex?) -> KnownMethodResolution {
   // Tier 0: Structural field lookup for ALL types (including collections).
   // The algebra registry (enrich_kernel_type) provides fields for kernel
   // types; user-defined types have their own structural children.
   // Return types from the algebra field are passed through unsubstituted —
   // Phase C structural resolution handles TypeVariable resolution at the call site.
-  let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name)
+  let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_index: source_index)
   match tier0_result {
     Some { value: mfr } =>
       let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template }

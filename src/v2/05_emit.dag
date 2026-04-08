@@ -883,8 +883,8 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 // Go/Python callers pass no shared_types; Rust uses render_rust_type in 05_emit_rust.dag.
 // =========================================================================
 
-fn emit_node_type(n: Node, target: RenderTarget) -> String {
-  render_node_type(n: n, target: target, shared_types: empty_map())
+fn emit_node_type(n: Node, target: RenderTarget, source_index: NewlineIndex?) -> String {
+  render_node_type(n: n, target: target, shared_types: empty_map(), source_index: source_index)
 }
 
 // =========================================================================
@@ -895,7 +895,7 @@ fn emit_node_type(n: Node, target: RenderTarget) -> String {
 // pipeline (build_type_rendering -> render_type).
 // =========================================================================
 
-fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Bool>) -> String {
+fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
 
@@ -913,10 +913,10 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   let is_arrow = n.connective == Arrow
   if is_arrow {
     let repr = target_callable(target: target)
-    let param_strs = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types))
+    let param_strs = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_index: source_index))
     let param_str = param_strs |> join(separator: repr.param_separator)
     let ret_str = match n.inferred {
-      Some { value: Resolved { node: rt } } => render_node_type(n: rt, target: target, shared_types: shared_types)
+      Some { value: Resolved { node: rt } } => render_node_type(n: rt, target: target, shared_types: shared_types, source_index: source_index)
       _ => match target {
         Go => ""
         Python => "None"
@@ -936,7 +936,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   // Optional wrapping
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
-    let inner_str = render_node_type(n: with_required_cardinality(n: n), target: target, shared_types: shared_types)
+    let inner_str = render_node_type(n: with_required_cardinality(n: n), target: target, shared_types: shared_types, source_index: source_index)
     let opt_str = emit_container(kind: "optional", inner: inner_str, target: target)
     return opt_str
   }
@@ -963,21 +963,21 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     // Refined: unwrap to base type
     if n.type_annotation != none {
       let refined_str = match n.children |> first {
-        Some { value: base } => render_node_type(n: base, target: target, shared_types: shared_types)
+        Some { value: base } => render_node_type(n: base, target: target, shared_types: shared_types, source_index: source_index)
         None => coerce_primitive_type(target: target, dag_name: "Refined")
       }
       return refined_str
     }
     // Positional product (tuple): Conj with children named "first"/"second".
     // Structural check — no name == "Tuple" needed.
-    let is_pair = n.children |> count == 2 && (match n.children |> first { Some { value: c0 } => authored_name_at(source_index: none, node: c0) == "first"  None => false }) && (match n.children |> skip(1) |> first { Some { value: c1 } => authored_name_at(source_index: none, node: c1) == "second"  None => false })
+    let is_pair = n.children |> count == 2 && (match n.children |> first { Some { value: c0 } => authored_name_at(source_index: source_index, node: c0) == "first"  None => false }) && (match n.children |> skip(1) |> first { Some { value: c1 } => authored_name_at(source_index: source_index, node: c1) == "second"  None => false })
     if is_pair {
       let first_child = match n.children |> first {
-        Some { value: c } => if c.inferred != none { render_node_type(n: rt_type(n: c), target: target, shared_types: shared_types) } else { render_node_type(n: c, target: target, shared_types: shared_types) }
+        Some { value: c } => if c.inferred != none { render_node_type(n: rt_type(n: c), target: target, shared_types: shared_types, source_index: source_index) } else { render_node_type(n: c, target: target, shared_types: shared_types, source_index: source_index) }
         None => "_"
       }
       let second_child = match n.children |> skip(1) |> first {
-        Some { value: c } => if c.inferred != none { render_node_type(n: rt_type(n: c), target: target, shared_types: shared_types) } else { render_node_type(n: c, target: target, shared_types: shared_types) }
+        Some { value: c } => if c.inferred != none { render_node_type(n: rt_type(n: c), target: target, shared_types: shared_types, source_index: source_index) } else { render_node_type(n: c, target: target, shared_types: shared_types, source_index: source_index) }
         None => "_"
       }
       let tuple_str = render_tuple_parts(parts: [first_child, second_child], target: target)
@@ -1002,7 +1002,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     }
     // Anonymous product
     let parts = n.children |> map(child =>
-      render_node_type(n: rt_type(n: child), target: target, shared_types: shared_types)
+      render_node_type(n: rt_type(n: child), target: target, shared_types: shared_types, source_index: source_index)
     )
     let anon_str = render_tuple_parts(parts: parts, target: target)
     return anon_str
@@ -1020,7 +1020,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
       emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
     } else if has_container_template && param_count == 1 {
       let inner = match n.params |> first {
-        Some { value: p } => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types)
+        Some { value: p } => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_index: source_index)
         None => "_"
       }
       emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
@@ -1038,11 +1038,11 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   let is_map = node_is_keyed_collection(n: n)
   if is_map {
     let k = match n.children |> first {
-      Some { value: kn } => render_node_type(n: child_type_node(ch: kn), target: target, shared_types: shared_types)
+      Some { value: kn } => render_node_type(n: child_type_node(ch: kn), target: target, shared_types: shared_types, source_index: source_index)
       None => "_"
     }
     let v = match n.children |> skip(1) |> first {
-      Some { value: vn } => render_node_type(n: child_type_node(ch: vn), target: target, shared_types: shared_types)
+      Some { value: vn } => render_node_type(n: child_type_node(ch: vn), target: target, shared_types: shared_types, source_index: source_index)
       None => "_"
     }
     let base = emit_map_type(key_type: k, val_type: v, target: target)
@@ -1051,7 +1051,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   }
   if n.children |> count == 1 {
     let child_str = match n.children |> first {
-      Some { value: child } => render_node_type(n: child_type_node(ch: child), target: target, shared_types: shared_types)
+      Some { value: child } => render_node_type(n: child_type_node(ch: child), target: target, shared_types: shared_types, source_index: source_index)
       None => "_"
     }
     let is_container = node_is_collection(n: n)
@@ -1068,7 +1068,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     return single_str
   }
   // Multi-child leaf: Tuple or generic type
-  let child_strs = n.children |> map(c => render_node_type(n: child_type_node(ch: c), target: target, shared_types: shared_types))
+  let child_strs = n.children |> map(c => render_node_type(n: child_type_node(ch: c), target: target, shared_types: shared_types, source_index: source_index))
   if n.name == tuple_type_name {
     let multi_tuple_str = render_tuple_parts(parts: child_strs, target: target)
     return multi_tuple_str
@@ -1694,9 +1694,9 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 }
 
 // Shared ExprCast — target-parameterized, recurse for sub-expression.
-fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, source_index: NewlineIndex?) -> String {
   let expr_str = recurse(expr)
-  let ty_str = emit_node_type(n: cast_target_node, target: target)
+  let ty_str = emit_node_type(n: cast_target_node, target: target, source_index: source_index)
   concat(ty_str, "(", expr_str, ")")
 }
 

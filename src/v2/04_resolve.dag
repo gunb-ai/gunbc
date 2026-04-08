@@ -160,7 +160,7 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   }
 }
 
-fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: String) -> Node {
+fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_index: NewlineIndex?) -> Node {
   let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
   if is_slot {
     match map_get(slot_bindings, n.name) {
@@ -170,11 +170,11 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
   } else {
     // Don't recurse into self-references (recursive types like MyList<T> in tail)
     let new_children = n.children |> map(child =>
-      if authored_name_at(source_index: none, node: child) == decl_name {
+      if authored_name_at(source_index: source_index, node: child) == decl_name {
         // Self-reference in recursive type (e.g., MyList<T> in tail).
         // Substitute slots in the type args but don't expand the self-reference.
         let substituted_args = child.children |> map(arg =>
-          substitute_type_slots(n: arg, slot_bindings: slot_bindings, decl_name: decl_name)
+          substitute_type_slots(n: arg, slot_bindings: slot_bindings, decl_name: decl_name, source_index: source_index)
         )
         Node {
           name: child.name, span: child.span, ident_span: child.ident_span, children: substituted_args,
@@ -186,13 +186,13 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
           has_non_tail_self_call: child.has_non_tail_self_call, match_pattern: child.match_pattern, expr_data: child.expr_data
         }
       } else {
-        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: decl_name)
+        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: decl_name, source_index: source_index)
       }
     )
     // Also substitute inside inferred (field-style wrappers carry types in inferred)
     let new_inferred = match n.inferred {
       Some { value: Resolved { node: rt } } =>
-        Some { value: Resolved { node: substitute_type_slots(n: rt, slot_bindings: slot_bindings, decl_name: decl_name) } }
+        Some { value: Resolved { node: substitute_type_slots(n: rt, slot_bindings: slot_bindings, decl_name: decl_name, source_index: source_index) } }
       _ => n.inferred
     }
     Node {
@@ -364,7 +364,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       // slots (element → Int), then resolve the result to expand the
       // structural definition.
       let alias_target = match rt_node(n: decl) {
-        Typed { node: target } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: type_name)
+        Typed { node: target } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: type_name, source_index: env.source_index)
         InferError { message: _, span: _ } => n
         InferVariable { id: _ } => n
         Untyped => n
@@ -375,7 +375,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, arg_diags, target_result.diagnostics) }
     } else {
       let substituted_children = decl.children |> map(child =>
-        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: type_name)
+        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: type_name, source_index: env.source_index)
       )
       let is_recursive = is_recursive_type(env: env, name: type_name)
       let result = NodeResolveResult {
