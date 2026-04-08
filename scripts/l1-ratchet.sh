@@ -71,39 +71,19 @@ echo "  Bridge Debt (has deletion point)"
 echo "  --------------------------------"
 echo "  CollectionKind:                $collection_kind_count"
 
-# Ratchet: L1 violations must not exceed this value.
-# 2026-03-28: 51→64 (enrich_kernel_type adds name checks for algebra
-# field population of scalars + collections; deletion target once types
-# are loaded from .dag declarations via FF-9)
-# 2026-03-29: 64→66 (D3 ExprData String dissolution + D1 dissolution)
-# 2026-03-29: 66→69 (merge from main: LintModel + FF-9 additions)
-# 2026-03-30: 70→21 (data-table enrichment, structural access checks,
-# and nominal/callable constructor consolidation)
-# 2026-04-02: 22→24 (Bootstrap C: pattern_subject uses n.name=="Dynamic"/"Error",
-# infer uses exp.name=="Map" — documented D6 debt)
-# 2026-04-03: 24→32 (Bootstrap C: n_is_special Callable/Dynamic/Error in resolve,
-# n.name=="List" in access, hardcoded True/False in patterns — tracked for M4)
-# 2026-04-04: 31→30 (fix: CallableOf reuses existing callable_node, no net increase)
-# 2026-04-05: 30→31 (TLC-1 zero-arg callable dispatch adds rt.name=="Callable" check)
-# 2026-04-05: 31→33 (has_fn_fields: arity check→callable predicate, 2 new rt.name=="Callable" sites)
-# 2026-04-06: 33→32 (TLC-1: ExprVar→ExprCall normalization dissolves is_zero_arg_callable_ref)
-# 2026-04-06: 32→36 (Phase C infrastructure: has_type_variable, template_return_has_variables, unify/apply/build match on AlgebraTypeTemplate)
-# 2026-04-06: 36→37 (Phase C bare-container enrichment: is_container_type+arity in apply_type_substitution)
-# 2026-04-06: 37→36 (M4: Arrow connective dissolves n.name=="Callable" in render_node_type)
-# 2026-04-06: 36→34 (M4: dissolve remaining 3 Callable name checks — emit_info, resolve)
-# 2026-04-06: 34→31 (M4: dissolve 3 Tuple name checks — structural is_pair + tuple_type_name constant)
-# 2026-04-06: 31→28 (M4: dissolve Dynamic/Error sentinel name checks — structural CompilerError check)
-# 2026-04-06: 28→27 (M4: dissolve List positional-access check — ordered_element_collections data fact)
-L1_RATCHET=0
+# L1 gate: type constructors and name comparisons must be 0.
+# Constructor functions (container_node, tuple_node, callable_node, etc.)
+# and type-name string comparisons were dissolved in PR #352.
+# This is now a hard gate — any reintroduction is a regression.
 
 if [[ "${1:-}" == "--check" ]]; then
-    if (( l1_total > L1_RATCHET )); then
+    if (( l1_total > 0 )); then
         echo ""
-        echo "FAIL: L1 ratchet exceeded ($l1_total > $L1_RATCHET)"
-        echo "Lower the ratchet or fix violations before committing."
+        echo "FAIL: L1 gate violated ($l1_total > 0)"
+        echo "Type constructors and name comparisons must stay at 0."
         exit 1
     else
         echo ""
-        echo "OK: L1 $l1_total <= $L1_RATCHET ratchet"
+        echo "OK: L1 gate clean ($l1_total == 0)"
     fi
 fi

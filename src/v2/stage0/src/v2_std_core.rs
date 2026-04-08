@@ -952,7 +952,7 @@ let props = match from_key {
     Some(fk) => Rc::new(vec![Rc::new(Node {
     name: fk.clone(),
     span: make_span(0, 0),
-    ident_span: None,
+    ident_span: default_ident_span(fk.clone(), make_span(0, 0)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
