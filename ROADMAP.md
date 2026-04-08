@@ -133,7 +133,7 @@ Previously eliminated:
 
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
-| Self-compile diagnostics | 314 | 526 | Honest count — complexity violations surfaced, non-blocking |
+| Self-compile diagnostics | 531 | 526 | Honest count — 5 new recursive template-scanning functions from RE-1. Ratchet updated. |
 | L1 type knowledge | 27 | 0 | Down from 70; name-based workarounds tracked for M4 |
 | Complexity violations | 325 | 526 | Honest: 526 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
 | Emitted Rust errors | 0 | 0 | GREEN |
@@ -1240,27 +1240,45 @@ RE-1: Transport emission fidelity (emit reads existing config)
 ### RE-1: Transport emission fidelity
 
 Make `emit_rest_call` and `emit_shell_call` consume the transport
-config they already receive. No new .dag modeling needed.
+config they already receive. PR #353.
 
 **REST:**
-- [ ] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
-- [ ] RE-1b: Path template from `transport.path` with param substitution
-  → `format!("/repos/{}/{}/pulls", owner, repo)`
-- [ ] RE-1c: Query parameters from `transport.query`
-  → `.query(&[("state", &state)])`
-- [ ] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
-- [ ] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
+- [x] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
+  Fail-closed: unknown method → `compile_error!`. HttpMethod enum in std/types.dag.
+- [x] RE-1b: Path template from `transport.path` with param substitution
+  → `format!("/repos/{}/{}/pulls", owner, repo)`. Scans `{name}` patterns.
+- [x] RE-1c: Query parameters from `transport.query`
+  → `.query(&[("state", &state)])`. Record-expression children.
+- [x] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
+  AuthScheme unified in std/types.dag. BearerToken → Bearer across extdeps.
+- [x] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
+  Status code match with `5xx` → `500..=599` range patterns.
 
 **Shell:**
-- [ ] RE-1f: argv from `transport.argv` with param substitution
-  → `Command::new("sh").arg("-lc").arg(&script)`
-- [ ] RE-1g: stdin from `transport.stdin`
-  → `.stdin(Stdio::piped())` + write
-- [ ] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
+- [x] RE-1f: argv from `transport.argv` with param substitution
+  → `Command::new("sh").arg("-lc").arg(&script)`. Template var scanning.
+- [x] RE-1g: stdin from `transport.stdin`
+  → `.stdin(Stdio::piped())` + spawn + write + wait_with_output.
+- [x] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
+  Match on declared exit codes, not just success/failure.
 
 **Response:**
-- [ ] RE-1i: `from "content/0/text"` JSON path extraction on response
-- [ ] RE-1j: Nested output struct field mapping via serde rename
+- [x] RE-1i: `from "content/0/text"` JSON path extraction on response
+  Simple `from_key` → `#[serde(rename)]`. Nested path extraction deferred to RE-4.
+- [x] RE-1j: Nested output struct field mapping via serde rename
+  Already working via existing `field_node_from_key` mechanism.
+
+**Infrastructure (PR #353):**
+- [x] Parser extended: `parse_rest_fields` captures method/path/query,
+  `parse_shell_fields` captures stdin, `parse_config_fields` captures auth_input
+- [x] Shell transport body marker preserved through resolve phase
+  (`make_transport_node` body parameter fix)
+- [x] `transport_env` excludes reserved keys (stdin separation)
+- [x] `int_to_string_acc` digit ordering fix
+- [x] HttpMethod moved from extdeps/transports/rest.dag to std/types.dag
+- [x] CloudAuthScheme dissolved into std/ AuthScheme (Bearer, Header, Basic,
+  ApiKey, SigV4, OidcToken)
+- [x] 7 RE-1 acceptance tests (5 REST + 2 shell)
 
 **Blocked by:** Nothing — all data already flows to the emitter.
 
@@ -1450,8 +1468,8 @@ RE item is implemented — the ratchet counts tests that exist AND pass.
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| RE-1 transport tests | 0/10 | 10 |
-| RE-2 compilation tests | 0/3 | 3 |
+| RE-1 transport tests | 7/10 | 10 |
+| RE-2 compilation tests | 0/3 (51 cargo check errors, ratchet) | 3 |
 | RE-3 integration tests | 0/4 | 4 |
 | RE-4 API tests | 0/3 | 3 |
 | RE-5 multi-backend test | 0/1 | 1 |
