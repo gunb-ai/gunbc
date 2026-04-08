@@ -12,7 +12,7 @@ module v2.compiler.infer_emit_info
 
 import v2.std.core {
   Node,
-  authored_name_at, NewlineIndex, find_child_named, has_child_named,
+  NewlineIndex, find_child_named, has_child_named,
   InferredNode, Resolved, TypeVariable,
   FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue,
@@ -213,23 +213,20 @@ fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
   else { PlainValue }
 }
 
-fn is_pair_children(children: List<Node>, source_index: NewlineIndex?) -> Bool {
+// Positional tuple detection: a 2-child product whose children have
+// synthetic (zero-length, file="") ident_spans — distinguishes
+// compiler-synthesized positional fields from user-authored fields.
+fn is_pair_children(children: List<Node>) -> Bool {
   if children |> count != 2 { false }
   else {
-    match children |> first {
-      Some { value: c0 } =>
-        match children |> skip(1) |> first {
-          Some { value: c1 } => authored_name_at(source_index: source_index, node: c0) == "first" && authored_name_at(source_index: source_index, node: c1) == "second"
-          None => false
-        }
-      None => false
-    }
+    let all_synthetic = children |> all(c =>
+      match c.ident_span {
+        Some { value: s } => s.file == "" && s.start == s.end
+        None => false
+      }
+    )
+    all_synthetic
   }
-}
-
-fn pair_access_style(field_name: String) -> FieldAccessStyle {
-  if field_name == "first" { TupleFirst }
-  else { TupleSecond }
 }
 
 // =========================================================================
@@ -237,12 +234,14 @@ fn pair_access_style(field_name: String) -> FieldAccessStyle {
 // =========================================================================
 
 fn build_struct_field_summaries(children: List<Node>, source_index: NewlineIndex?) -> Map<String, FieldSummary> {
-  let is_pair = is_pair_children(children: children, source_index: source_index)
-  fold(children, init: empty_map(), f: (acc, child) =>
+  let is_pair = is_pair_children(children: children)
+  fold(children |> enumerate, init: empty_map(), f: (acc, pair) =>
+    let idx = pair.first
+    let child = pair.second
     if child.inferred == none {
       acc
     } else {
-      let style = if is_pair { pair_access_style(field_name: child.name) } else { StoredField }
+      let style = if is_pair { if idx == 0 { TupleFirst } else { TupleSecond } } else { StoredField }
       map_insert(acc, child.name, FieldSummary {
         access_style: style,
         value_shape: field_value_shape_from_type_node(type_node: child_type_node(ch: child))

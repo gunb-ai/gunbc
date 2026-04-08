@@ -608,6 +608,13 @@ pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<Sourc
 }
 }
 
+pub fn node_name_span(n: Rc<Node>) -> Rc<SourceSpan> {
+    match n.ident_span.clone() {
+    Some(s) => s.clone(),
+    None => n.span.clone(),
+}
+}
+
 pub fn make_expr_node(expr_data: Rc<ExprData>, children: Rc<Vec<Rc<Node>>>, inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: "".to_string(),

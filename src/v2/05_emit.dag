@@ -21,7 +21,7 @@ import v2.std.core {
   Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
   param_node_name, param_node_type_expr, param_node_default_value,
-  authored_name_at, NewlineIndex,
+  NewlineIndex,
   expr_var_name_at, expr_call_func_at, let_binding_name_at,
   ExprData, NoExprData,
   VarBindingKind,
@@ -968,9 +968,10 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
       }
       return refined_str
     }
-    // Positional product (tuple): Conj with children named "first"/"second".
-    // Structural check — no name == "Tuple" needed.
-    let is_pair = n.children |> count == 2 && (match n.children |> first { Some { value: c0 } => authored_name_at(source_index: source_index, node: c0) == "first"  None => false }) && (match n.children |> skip(1) |> first { Some { value: c1 } => authored_name_at(source_index: source_index, node: c1) == "second"  None => false })
+    // Positional product (tuple): 2-child Conj with synthetic ident_spans.
+    // Compiler-synthesized positional fields have zero-length file="" spans;
+    // user-authored fields have real ident_spans from source.
+    let is_pair = n.children |> count == 2 && n.children |> all(c => match c.ident_span { Some { value: s } => s.file == "" && s.start == s.end  None => false })
     if is_pair {
       let first_child = match n.children |> first {
         Some { value: c } => if c.inferred != none { render_node_type(n: rt_type(n: c), target: target, shared_types: shared_types, source_index: source_index) } else { render_node_type(n: c, target: target, shared_types: shared_types, source_index: source_index) }

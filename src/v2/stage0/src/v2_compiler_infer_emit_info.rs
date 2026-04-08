@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, find_child_named, has_child_named, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, with_required_cardinality, Connective, param_node_name, Cardinality};
+pub use crate::v2_std_core::{Node, NewlineIndex, find_child_named, has_child_named, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, with_required_cardinality, Connective, param_node_name, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, TupleFirst, TupleSecond};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
@@ -191,44 +191,44 @@ if is_optional {
 }
 }
 
-pub fn is_pair_children(children: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+pub fn is_pair_children(children: Rc<Vec<Rc<Node>>>) -> bool {
     if ((children.clone().len() as i64) != 2) {
         false
 } else {
-        match children.clone().first().cloned() {
-    Some(c0) => match children.clone().get(1 as usize).cloned() {
-    Some(c1) => ((authored_name_at(source_index.clone(), c0.clone()).as_str() == "first".to_string().as_str()) && (authored_name_at(source_index.clone(), c1.clone()).as_str() == "second".to_string().as_str())),
+        {
+            let all_synthetic = { let mut __all = true; for c in children.clone().iter().cloned() { if !(match c.ident_span.clone() {
+    Some(s) => ((s.file.clone().as_str() == "".to_string().as_str()) && (s.start.clone() == s.end.clone())),
     None => false,
-},
-    None => false,
+}) { __all = false; break; } } __all };
+all_synthetic
 }
-}
-}
-
-pub fn pair_access_style(field_name: String) -> FieldAccessStyle {
-    if (field_name.as_str() == "first".to_string().as_str()) {
-        FieldAccessStyle::TupleFirst
-} else {
-        FieldAccessStyle::TupleSecond
 }
 }
 
 pub fn build_struct_field_summaries(children: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<HashMap<String, Rc<FieldSummary>>> {
     {
-        let is_pair = is_pair_children(children.clone(), source_index);
-children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc: Rc<HashMap<String, Rc<FieldSummary>>>, child: Rc<Node>| if (child.inferred.clone() == None) {
-            acc.clone()
+        let is_pair = is_pair_children(children.clone());
+Rc::new(children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc: Rc<HashMap<String, Rc<FieldSummary>>>, pair: (i64, Rc<Node>)| {
+            let idx = pair.0.clone();
+let child = pair.1.clone();
+if (child.inferred.clone() == None) {
+                acc.clone()
 } else {
-            {
-                let style = if is_pair.clone() {
-                    pair_access_style(child.name.clone())
+                {
+                    let style = if is_pair.clone() {
+                        if (idx.clone() == 0) {
+                            FieldAccessStyle::TupleFirst
 } else {
-                    FieldAccessStyle::StoredField
+                            FieldAccessStyle::TupleSecond
+}
+} else {
+                        FieldAccessStyle::StoredField
 };
 v2_rt::rc_map_insert(acc.clone(), child.name.clone(), Rc::new(FieldSummary {
     access_style: style.clone(),
     value_shape: field_value_shape_from_type_node(child_type_node(child.clone())),
 }))
+}
 }
 })
 }

@@ -431,6 +431,12 @@ fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
   if name == "" { none } else { Some { value: span } }
 }
 
+// Extract the identifier span from a node, falling back to the node span.
+// Use this when you need a SourceSpan (not optional) for the identifier.
+fn node_name_span(n: Node) -> SourceSpan {
+  match n.ident_span { Some { value: s } => s  None => n.span }
+}
+
 // Construct a Node carrying expression data (P5.11 dissolved form).
 // Children are passed explicitly — ExprData is pure operator metadata.
 fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {

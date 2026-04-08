@@ -73,7 +73,7 @@ import v2.std.core {
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   is_container_type, container_expected_arity,
-  default_ident_span
+  default_ident_span, node_name_span
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
@@ -1987,7 +1987,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let ar_typed = ar.typed
     let ar_diags = ar.diagnostics
     FieldInferResult {
-      typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: fi.span),
+      typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
       diagnostics: ar_diags
     }
