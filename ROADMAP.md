@@ -143,6 +143,7 @@ Stabilization rules:
 - CI gate: `check-stage0-freshness.sh` (regenerate → diff → empty).
 - Stage0 generated `.rs` files use `-merge` in `.gitattributes` (no line-level merge).
 - CX gate disabled in both stage0 and `compile.dag` — emission not blocked by complexity violations. Re-enable when CX violations reach 0.
+- CLI exit code filters complexity diagnostics: `main.rs` exits non-zero only for hard errors (non-`ComplexityUnknown`). Without this filter, the 522 pre-existing complexity violations make the freshness gate fatal. Remove the filter when CX reaches 0 (same gate as CX-E).
 
 ## Reviewer Root Cause Analysis (2026-04-03)
 
@@ -249,7 +250,7 @@ BRIDGE count (already 0), but would improve inference for edge cases
 where expected type is available but not threaded (e.g., nested
 `empty_map()` in complex expressions).
 
-### Unified container child encoding (PR #339, in progress)
+### Unified container child encoding (PR #339, merged)
 
 **Root cause:** Container type nodes (List, Map, Set) encode their type
 parameters as bare children (child IS the type, `inferred: none`), while
@@ -270,15 +271,24 @@ transition).
 - [x] `container_node`, `map_node`, `bare_map_node` produce field-style children
 - [x] `child_type_node` bridge helper (handles both bare and field-style)
 - [x] `container_param_name` returns `String?` (fail-closed, no fabricated default)
-- [~] Consumer updates: major readers updated to `child_type_node` — lookup,
+- [x] Consumer updates: major readers updated to `child_type_node` — lookup,
   items, patterns, emit_info, emit, emit_rust, access, infer, resolve.
-  Remaining readers still use raw `rt_type` in emit/emit_go/emit_python
-  sites and algebra template paths. These work post-resolve (Resolved
-  wrappers guarantee correct extraction) but bypass the bridge.
 - [x] All 314 tests pass, 0 self-compile diagnostics, L1 ratchet unchanged
-- [ ] Endgame: all post-resolve readers use `child_type_node`, hardcoded
-  "T"/"K"/"V" replaced by data table reads, wrapper construction via
-  single helper (not inline Node literals)
+
+**Completed (PR #340) — data-table reads + boundary-contract dissolution:**
+- [x] Hardcoded `"T"`/`"K"`/`"V"` replaced by `container_param_name()` data
+  table reads in `map_node`, `bare_map_node`, `list_of_type_variable`,
+  `list_of_element`, `apply_type_substitution`, `resolve_node_bounded`
+- [x] `rt_type` dissolved — 105 call sites migrated to two boundary-contract
+  accessors: `decl_resolved_type` (54 Strict sites) and `emit_guarded_type`
+  (48 Guarded sites). `rt_type` deleted. Non-Resolved branches return
+  `error_type` (CompilerError propagates), not `unit_type` (no fabrication).
+- [x] `container_param_name` `None` branches return `"__MISSING_PARAM__"`
+  error marker (not fabricated `"T"`/`"K"`/`"V"` — visibly wrong if reached)
+- [x] `child_type_node` updated to use `decl_resolved_type`
+- [x] `is_fully_resolved`, `algebra_child_or_placeholder`, `for_each_element_type_node`,
+  `apply_type_substitution` migrated from `rt_type` to `child_type_node`/`decl_resolved_type`
+- [x] 316 tests pass, L1 ratchet 27 (unchanged), stage0 fresh
 
 **Completed (bootstrap convergence):**
 - [x] `substitute_type_slots` recurses into `inferred` on field-style
@@ -290,37 +300,80 @@ transition).
   function deleted
 - [x] `__EMIT_BUG_ANONYMOUS_FIELD__` removed — dead code
 
-**Modeling gaps exposed by edge-case analysis (next PR):**
+**Cross-talk analysis (PR #340 investigation):**
 
-Three reviewer-flagged edge cases share a common root: the `inferred`
-field carries implicit invariants that should be structural facts.
+Eight Node fields serve multiple semantic roles, forcing consumers to
+disambiguate by checking other fields. This is the same shape as the
+`inferred` problem — two producers writing to the same channel with
+different guarantees — but `inferred` is the only one causing active
+information loss.
 
-1. **`inferred` has multiple semantic roles with different error contracts.**
-   On expressions: can be CompilerError/TypeVariable/Untyped (all meaningful).
-   On struct field children: should always be Resolved.
-   On container wrapper children: should always be Resolved.
-   These roles use the same `InferredNode?` type, so `rt_type` treats them
-   all with the same Unit fallback — correct for emission, wrong for type
-   reasoning where errors should propagate or be impossible by construction.
+| Field | Roles | Cross-talk? | Status |
+|-------|-------|-------------|--------|
+| `inferred` | declaration type vs expression type | YES (different error contracts) | Bridge accessors (PR #340). Structural fix: next |
+| `name` | identifier, type name, field name, method name (~7 roles) | YES (same guarantee, different semantics) | M4 dissolution target (PR #341) |
+| `children` | struct fields, container params, if/match/call layouts (~12) | YES (layout-dependent) | ChildRole metadata table exists |
+| `params` | function parameters vs type parameters | YES | Connective disambiguates |
+| `return_cardinality` | field cardinality vs function return cardinality | YES | accessor naming exists |
+| `properties` | transport config, module markers, operation modifiers | YES | transport-specific accessors |
+| `body` | function body vs none-for-external | No (same contract) | — |
+| `match_pattern` | match arm pattern vs field binding pattern | YES | — |
 
-2. **`rt_type` is one function for multiple operations.**
-   "Extract for emission" (Unit fallback OK) vs "extract for type reasoning"
-   (error = bug, not fallback) vs "extract parameter binding" (always
-   Resolved by construction). A typed model would have separate accessors
-   with different error semantics.
+### Structural boundary types (next — dissolves bridge accessors)
 
-3. **Pre-resolve vs post-resolve is a convention, not a structural fact.**
-   "Post-resolve children use field-style encoding" is enforced by
-   producer convention. `child_type_node` exists as a bridge because
-   the structure doesn't distinguish resolved from unresolved nodes.
-   If resolve's output were structurally marked, consumers wouldn't need
-   the bridge — the wrong question would be unaskable.
+**Root cause:** `decl_resolved_type`/`emit_guarded_type` are bridge
+accessors that read from the same `inferred: InferredNode?` field and
+handle error branches that shouldn't exist for their respective roles.
+The accessors document the contract but don't enforce it structurally.
+The fix is coproduct boundary types consumed directly by downstream code.
 
-**Direction:** These are instances of the same CM pattern — implicit
-pipeline-stage invariants that should be structural facts on the Node.
-Candidate modeling: `inferred` role (expression/field/parameter)
-distinguishable from Node structure, or resolve-boundary marking that
-makes pre/post-resolve structurally distinct.
+**Design:** Two producers write to `inferred` with different guarantees:
+- **Resolve** (declarations): always `Resolved` — error is a compiler bug
+- **Infer** (expressions): any variant — error is a user code problem
+
+These are static, compile-time producers. The fix is not "track who set
+it" but "make the producers produce structurally distinct things so the
+wrong question is unaskable."
+
+**Approach — coproduct boundary carriers:**
+
+Model the resolve→infer→emit boundary as real coproduct types that
+consumers pattern-match directly. No bridge accessors, no error branches
+on impossible states.
+
+- [ ] **BND-1: Declaration-child boundary type.** A declaration child
+  (struct field, container param) carries its type as a coproduct that
+  can only be `Resolved`. Consumers extract via pattern match — no error
+  branches needed because the type can't represent errors. The
+  `decl_resolved_type` accessor dissolves (no bridge needed when the
+  structure IS the authority).
+
+- [ ] **BND-2: Emit-ready boundary type.** Emit receives a coproduct
+  like `Ready { node: Node } | BoundaryError { diagnostic: String }`.
+  Consumers pattern-match: `Ready` → render, `BoundaryError` → emit
+  `compile_error!()`. The `emit_guarded_type` accessor dissolves.
+  `error_type` fallback dissolves — errors are structural, not sentinel
+  nodes.
+
+- [ ] **BND-3: `std/boundary.dag` re-lands WITH consumers.** The
+  boundary vocabulary lands alongside BND-1/BND-2 as the authority
+  consumed by the coproduct types. Not speculative vocabulary — lands
+  end-to-end with a real downstream consumer.
+
+- [ ] **BND-4: `container_param_name` `None` branches dissolve.** T/K/V
+  parameter names derive from the declaration's own type parameters
+  (Tier 2.5: algebra declarations). `container_param_name` string-keyed
+  lookup dissolves — the declaration IS the authority for its parameter
+  names. `__MISSING_PARAM__` markers dissolve.
+
+**Dependency:** BND-1 and BND-2 can land independently. BND-3 lands
+with whichever is first. BND-4 requires Tier 2.5 (algebra-derived
+type parameter names) — independent of BND-1/BND-2.
+
+**Acceptance:** `decl_resolved_type` and `emit_guarded_type` deleted.
+Consumers pattern-match on coproduct boundary types directly. No bridge
+accessors, no error branches on impossible states, no `__MISSING_PARAM__`
+markers.
 
 ### Acceptance
 
@@ -1372,8 +1425,13 @@ distinction as structural data.
 - [ ] **BP-1b: Bootstrap cycle.** Model the self-compile cycle: stage0
   as bootstrap seed, the fixed-point condition (pass N == pass N+1),
   and the two-pass rule (required when emitter changes its own output).
-  Hand-maintained files (2) enumerated as source artifacts distinct
-  from generated artifacts.
+  **Stopgap: automate two-pass detection in `regenerate-stage0.sh`.**
+  When the emitter changes its own output (e.g., main.rs template),
+  pass 1 produces a binary that differs from the committed one. The
+  script should detect this (pass-1 output != committed stage0), rebuild
+  from pass-1 output, and run pass 2 automatically. Currently this
+  requires manual hand-patching to break the cycle — fragile and
+  error-prone (PR #341 CI failure was caused by this).
 - [ ] **BP-1c: `.gitattributes` generation.** Files the pipeline model
   marks as "generated" get `-merge` in `.gitattributes`. The
   `.gitattributes` file is a derived artifact from the pipeline model,
