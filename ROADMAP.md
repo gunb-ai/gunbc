@@ -23,26 +23,60 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 
 ## Critical Path
 
-```
-            ┌─ Lane 1: M2 (boundary sufficiency) ──┐
-M1 COMPLETE─┤                                       ├→ M4 (structural identity)
-Bootstrap D ┼─ Lane 2: CG (codegen correctness) ───┘       └→ M5 → M6 → M7
-  COMPLETE  ├─ Lane 3: CX (164 → 0)
-            ├─ Lane 4: LS (language spec modeling) ─→ CG-3 parameterized emission
-            ├─ Lane 5: RE (real-program emission) ──→ review.dag → agent workflows
-            └─ PERF (continuous — parallel to all lanes)
-            CM: cross-cutting design lens (informs all lanes) → src/v2/CM.md
+Six mutually exclusive lanes. Each lane owns distinct files — two
+lanes never modify the same file. All run in parallel from bootstrap.
 
-Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
-Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, ownership, languages
-Lane 3 owns: complexity, dsl/std/
-Lane 4 owns: dsl/extdeps/languages/{rust,go,python}/ — spec-sourced data
-Lane 5 owns: 05_emit_rust.dag transport emission, dsl/gunbc/tools/, dsl/extdeps/{llm,github,shell}/
-CM informs how Lanes 1-3 approach work; does not own files separately
-PERF owns: performance ratchets, bootstrap convergence tests, timing budgets
-M4 follows Lanes 1+2 (needs structural facts + clean render path)
-LS follows CG-3 (needs parameterized emission to consume spec data)
-RE follows CG (needs correct emission) — parallel to M4, CX, LS
+```
+            ┌─ Lane A: Inference (M2, M4-L1) ────────────────────────┐
+            │                                                         │
+M1 COMPLETE─┼─ Lane B: Emission (CG, LS, RE-1, KF-6) ───────────────┤
+Bootstrap D │                                                         ├→ M4-L2
+  COMPLETE  ├─ Lane C: Complexity (CX, KF-1, KF-2) ──────────────────┤  (Node.name
+            │                                                         │  deletion —
+            ├─ Lane D: DSL Modeling (RE workflow, BC-1..4, services) ──┤  cross-cutting
+            │                                                         │  final phase)
+            ├─ Lane E: Testing (KF-3, KF-4, M3) ─────────────────────┘
+            │
+            └─ PERF (continuous — parallel to all lanes)
+```
+
+### Lane file ownership (mutually exclusive)
+
+| Lane | Owns | Never touches |
+|------|------|--------------|
+| **A: Inference** | 00_core, 02_parse, 04_resolve, 04_infer, 04_types, 04_patterns, 04_lookup, 04_items, 04_access, 04_service | 05_emit*, complexity, dsl/, tests/ |
+| **B: Emission** | 05_emit, 05_emit_rust, 05_emit_go, 05_emit_python, 04_emit_info, dsl/extdeps/languages/*, dsl/extdeps/transports/* | 04_infer, 04_types, complexity, dsl/std/, tests/ |
+| **C: Complexity** | complexity.dag, docs/cx-*, docs/cost-* | 04_*, 05_*, dsl/, tests/ |
+| **D: DSL Modeling** | dsl/std/, dsl/extdeps/{llm,github,shell,cron,cloud,git}/, dsl/gunbc/, dsl/tools/, dsl/config/ | src/v2/*.dag (compiler sources) |
+| **E: Testing** | src/v2/tests/, scripts/, docs/testing-*, std/verification.dag, compiler_tests_rust.dag, coercion.dag (test extraction) | 04_*, 05_emit*, complexity |
+| **PERF** | performance ratchets only — reads all, writes none | (monitoring, not modification) |
+
+### What each lane delivers
+
+| Lane | Tracks | KF | Release gates |
+|------|--------|-----|--------------|
+| A | M2 (BND-1..4), M4-L1 (declaration algebra, Tier 2.5/2.6/3) | — | Gate 1 (M2, M4) |
+| B | CG (TLC-4, P1-B), LS (spec data), RE-1 (transport fidelity), KF-6 (Verilog) | KF-6 | Gates 1 (CG,LS,RE), 3 (parity), 4 (hardware) |
+| C | CX-NEXT (526→0), KF-1 (complexity proof), KF-2 (reject suboptimal) | KF-1, KF-2 | Gates 1 (CX), 4 (complexity) |
+| D | RE-2..5 (review.dag, gist.dag), BC-1..4, service extdep models | — | Gates 1 (RE), 5 (business cases) |
+| E | M3 (test generation), KF-3 (witnesses), KF-4 (cross-language) | KF-3, KF-4 | Gates 3 (parity), 6 (test gen) |
+
+### Cross-lane dependencies (minimal)
+
+Lane D reads from Lane A (resolved types) and Lane B (emitted code)
+but never writes to their files. Lane E reads from all lanes (to
+test them) but never writes to their files. The only true cross-lane
+gate is M4-L2 (Node.name deletion) which touches all files — it runs
+as a final coordinated phase after Lanes A+B reach their acceptance
+criteria.
+
+### Dependency-gated phases
+
+```
+Phase 1 (now):  Lanes A, B, C, D, E all run in parallel
+Phase 2:        M4-L2 (Node.name deletion) — after Lanes A+B done
+Phase 3:        Gate 2 (structural debt) — after M4-L2
+Phase 4:        Gate 7 (demo polish) — after all other gates
 ```
 
 ---
@@ -164,7 +198,7 @@ a missing codegen authority (CG) — never a standalone emitter patch.
 Four named architectural problems. Each has one root cause and one
 definition of done. Lanes 1–3 run in parallel; M4 follows.
 
-## M2: Boundary Sufficiency (Lane 1)
+## M2: Boundary Sufficiency (Lane A)
 
 **Root cause:** The resolution→emit boundary does not carry enough
 structure. Emit compensates with heuristics. Every remaining workaround
@@ -386,7 +420,7 @@ Ownership and clone correctness tracked under CG lane.
 
 ---
 
-## CG: Codegen Correctness + Optimality (Lane 2)
+## CG: Codegen Correctness + Optimality (Lane B)
 
 **Root cause:** Codegen decisions (type rendering, sharing, ownership,
 clone, expression semantics) are scattered across emitter heuristics
@@ -705,7 +739,7 @@ expected threading in good shape (remaining gap: bidirectional inference).
 - Dynamic/Error: need structural markers for "unresolved/error type"
 - List positional indexing: needs "supports positional access" algebra fact
 
-### Lane 1: Declaration-driven algebra
+### M4 Lane 1: Declaration-driven algebra (Lane A)
 
 Goal: compiler reads type/algebra facts from `.dag` declarations
 instead of hardcoding them.
@@ -728,7 +762,7 @@ instead of hardcoding them.
   - [ ] CollectionKind bridge dissolves when method algebras land
   - [ ] 27 type constructor sites → 0
 
-### Lane 2: Node.name deletion (D6)
+### M4 Lane 2: Node.name deletion (D6) — Phase 2, cross-cutting
 
 Goal: delete `Node.name` field. Rendering uses `source_text_at`,
 resolve uses structural identity.
@@ -751,7 +785,7 @@ then deleted. `Node.name` field deleted.
 
 ---
 
-## CX: Complexity Analyzer (Lane 3)
+## CX: Complexity Analyzer (Lane C)
 
 **Status:** Down from 315 → 164 (main) → 76 after PR #318 → 526 honest (PR #336).
 Phase 1-2 complete (RecursionPattern deleted, all classifiers return LoweringTarget).
@@ -1096,7 +1130,7 @@ heuristic). All documented at code sites and in the triage doc.
 
 ---
 
-## RE: Real-Program Rust Emission (Lane 4)
+## RE: Real-Program Rust Emission (Lane B + D)
 
 **Goal:** Compile real .dag programs to fully executable Rust. First
 target: `gunbc/tools/review.dag` — a PR review agent using GitHub API,
@@ -1377,9 +1411,9 @@ modeling gaps.
 
 | Lane | CM diagnosis | Highest-leverage fix |
 |------|-------------|---------------------|
-| M2 (Lane 1) | `ExprLet` erases expected type → bare_map_node chain → 5+ downstream fallbacks | Propagate expected through ExprLet; normalize ExprVar→ExprCall for nullary |
-| CG (Lane 2) | 39 heuristic sites, all "existing authority not surfaced" | Surface connective through TypeRendering; surface AlgebraFieldTemplate to emit |
-| CX (Lane 3) | 4 analyzer heuristics = 4 missing std/ facts | Model operation size contracts in std/computation.dag |
+| M2 (Lane A) | `ExprLet` erases expected type → bare_map_node chain → 5+ downstream fallbacks | Propagate expected through ExprLet; normalize ExprVar→ExprCall for nullary |
+| CG (Lane B) | 39 heuristic sites, all "existing authority not surfaced" | Surface connective through TypeRendering; surface AlgebraFieldTemplate to emit |
+| CX (Lane C) | 4 analyzer heuristics = 4 missing std/ facts | Model operation size contracts in std/computation.dag |
 | M4 | CM provides endgame rationale: structural fields ARE identity, names are rendering sugar | Surface structural fields; delete Node.name |
 
 **Unowned files (~42 heuristic sites in 04_resolve, 04_access, coercion, 00_core):**
