@@ -1855,6 +1855,14 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 // Cast syntax and validity derive from CastSyntax in extdeps/languages/*/types.dag.
 // Rust: `expr as type` (valid for numeric targets only, per Rust Reference §8.2.4).
 // Python/Go: `type(expr)` (constructor call, always valid).
+// Shared ExprCast — data-driven, target-parameterized.
+// Cast syntax and validity derive from CastRule in extdeps/languages/*/types.dag.
+//
+// KNOWN VIOLATION (tracked): cast legality is checked here in emit, but the
+// "emission is translation" invariant says emit should only render pre-validated
+// constructs. The fix: .dag defines its own cast rules, infer validates against
+// them, and emit renders unconditionally. Blocked on: .dag-level cast rule
+// definitions (not yet modeled) and infer-phase cast validation.
 fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, source_index: NewlineIndex?) -> String {
   let expr_str = recurse(expr)
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_index: source_index)
@@ -1868,6 +1876,8 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
   } else {
+    // Unreachable in normal operation: all .dag casts are numeric and every
+    // target declares numeric cast rules. If reached, a CastRule is missing.
     emit_error_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
   }
 }

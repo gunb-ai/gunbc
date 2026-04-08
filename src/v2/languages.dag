@@ -214,6 +214,13 @@ type TcoSyntax {
 
 // Item definition facts — individual tokens the emitter composes.
 // Not templates: each field is one language fact.
+//
+// RELATION TO SyntaxSpec: SyntaxSpec.ItemForm.keyword is the PARSING
+// keyword (what to recognize). ItemKeywords.*_keyword is the EMISSION
+// keyword (what to produce). For same-language compilation (Rust→Rust)
+// these are identical. For cross-language (.dag→Rust) they differ
+// (parse "fn", emit "fn"/"def"/"func"). When each target language has
+// a full SyntaxSpec, ItemKeywords should derive from it (single authority).
 type ItemKeywords {
   func_keyword: String          // "fn" / "def" / "func"
   async_prefix: String          // "async " / "async " / ""
@@ -575,6 +582,9 @@ fn binop_symbol(target: RenderTarget, op: BinOp) -> String {
   })
   match matching |> first {
     Some { value: spec } => spec.symbol
+    // Fail-closed: invalid syntax in all targets → generated code won't compile.
+    // Every BinOp variant is covered by all three language specs. A miss here
+    // means a new BinOp was added without updating extdeps/languages/*/syntax.dag.
     None => "<<MISSING_BINOP>>"
   }
 }
