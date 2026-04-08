@@ -1425,8 +1425,13 @@ distinction as structural data.
 - [ ] **BP-1b: Bootstrap cycle.** Model the self-compile cycle: stage0
   as bootstrap seed, the fixed-point condition (pass N == pass N+1),
   and the two-pass rule (required when emitter changes its own output).
-  Hand-maintained files (2) enumerated as source artifacts distinct
-  from generated artifacts.
+  **Stopgap: automate two-pass detection in `regenerate-stage0.sh`.**
+  When the emitter changes its own output (e.g., main.rs template),
+  pass 1 produces a binary that differs from the committed one. The
+  script should detect this (pass-1 output != committed stage0), rebuild
+  from pass-1 output, and run pass 2 automatically. Currently this
+  requires manual hand-patching to break the cycle — fragile and
+  error-prone (PR #341 CI failure was caused by this).
 - [ ] **BP-1c: `.gitattributes` generation.** Files the pipeline model
   marks as "generated" get `-merge` in `.gitattributes`. The
   `.gitattributes` file is a derived artifact from the pipeline model,
