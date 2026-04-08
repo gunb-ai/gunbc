@@ -70,9 +70,9 @@ $STAGE0_CMD compile \
     --source-root "$ROOT/dsl" \
     --output-dir "$PASS2_DIR"
 
-if ! diff -r "$PASS2_DIR/src" "$STAGE0_DIR/src" > /dev/null 2>&1; then
+if ! diff -r "$PASS2_DIR" "$OUTPUT_DIR" > /dev/null 2>&1; then
     echo "=== FIXED POINT FAILURE: pass 2 output differs from pass 1 ==="
-    diff -r "$PASS2_DIR/src" "$STAGE0_DIR/src" | head -50
+    diff -r "$PASS2_DIR" "$OUTPUT_DIR" | head -50
     rm -rf "$PASS2_DIR"
     rm -rf "$OUTPUT_DIR"
     exit 1

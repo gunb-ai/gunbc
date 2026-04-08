@@ -172,11 +172,8 @@ Clean-repo workflow:
 1. `cargo check -p v2-compiler`
 2. `cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored --nocapture`
 3. `cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored --nocapture`
-4. Run `./scripts/regenerate-stage0.sh`
+4. Run `./scripts/regenerate-stage0.sh` (includes two-pass fixed-point check)
 5. Require `git diff --exit-code src/v2/stage0`
-6. **Self-hosting check:** `./scripts/regenerate-stage0.sh` a second time
-   (pass N+1 must compile). Without this, codegen regressions hide behind
-   the one-pass "compiles from main's binary" check.
 
 Stabilization rules:
 - No manual `src/v2/stage0/` edits once regeneration is green.
