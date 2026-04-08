@@ -21,6 +21,12 @@
 //   - Well-founded induction: Floyd (1967), Turing (1949)
 //     Every inductive type has a natural well-founded ordering: the
 //     sub-term relation. The size measure (constructor count) maps to ℕ.
+//   - Master theorem: Bentley, Haken, Saxe (1980); CLRS Theorem 4.1
+//     For recurrences T(n) = a·T(n/b) + O(n^d), the asymptotic bound
+//     is determined by comparing log_b(a) with d.
+//   - Asymptotic notation: Knuth (1976) "Big Omicron and big Omega"
+//     O(f(n)) denotes the class of functions bounded above by c·f(n)
+//     for sufficiently large n.
 //
 // RELATIONSHIP TO std/termination.dag:
 //   termination.dag defines DescentEvidence and RankingDimension as
@@ -162,7 +168,7 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 // The analyzer reads them — it never pattern-matches AST to derive them.
 
 type SubValueRelation
-  = StrictSubValue { field: InductiveField }    // obtained via recursive field projection
+  = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
   | IteratedSubValue { field: InductiveField }  // element from fold/map over recursive list field
   | PreservedValue                              // no descent proven
 
@@ -173,9 +179,9 @@ type SubValueRelation
 
 fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
   match relation {
-    StrictSubValue { field: _ }   => Strict
-    IteratedSubValue { field: _ } => Strict   // each element is a strict sub-tree
-    PreservedValue                => NonIncreasing
+    StrictSubValue { field: _, factor: _ } => Strict
+    IteratedSubValue { field: _ }          => Strict   // each element is a strict sub-tree
+    PreservedValue                         => NonIncreasing
   }
 }
 
@@ -186,8 +192,288 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
 
 fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern {
   match relation {
-    StrictSubValue { field: _ }   => ChildAccessorCall { accessor: "structural" }
-    IteratedSubValue { field: _ } => FoldBodyCall
-    PreservedValue                => SameArgumentCall
+    StrictSubValue { field: _, factor: _ } => ChildAccessorCall { accessor: "structural" }
+    IteratedSubValue { field: _ }          => FoldBodyCall
+    PreservedValue                         => SameArgumentCall
   }
+}
+
+
+// =========================================================================
+// ShrinkFactor — rate of decrease per recursive step
+// =========================================================================
+
+// SubValueRelation says WHETHER an argument decreases. ShrinkFactor says
+// BY HOW MUCH. This is the quantitative dimension that distinguishes
+// O(n) from O(log n).
+//
+// The three forms correspond to different well-founded orderings on ℕ:
+//   UnitShrink:         n → n-1 → n-2 → ... → 0       (O(n) steps)
+//   ConstantShrink:     n → n-k → n-2k → ... → 0      (O(n/k) = O(n) steps)
+//   ProportionalShrink: n → n/d → n/d² → ... → 1      (O(log_d(n)) steps)
+//
+// These emerge from how the sub-value is obtained:
+//   - Structural field projection: UnitShrink (one constructor removed)
+//   - skip(k): ConstantShrink { k }
+//   - take(n/2), split-in-half: ProportionalShrink { divisor: 2 }
+//
+// MATHEMATICAL GROUNDING:
+//   The number of steps to reach the base case under each ordering:
+//   - UnitShrink: |{n, n-1, ..., 1}| = n
+//   - ConstantShrink(k): |{n, n-k, ..., r}| = ⌈n/k⌉
+//   - ProportionalShrink(d): |{n, n/d, n/d², ..., 1}| = ⌈log_d(n)⌉
+
+type ShrinkFactor
+  = UnitShrink                          // decrease by 1 per step
+  | ConstantShrink { amount: Int }      // decrease by constant k per step
+  | ProportionalShrink { divisor: Int } // decrease by factor d per step
+
+
+// =========================================================================
+// AsymptoticBound — complexity class (Big-O)
+// =========================================================================
+
+// The output of complexity analysis: the asymptotic growth rate of a
+// function's cost as a function of input size.
+//
+// Knuth (1976): f(n) = O(g(n)) iff ∃c,n₀ : ∀n≥n₀ : f(n) ≤ c·g(n)
+//
+// Every .dag program is bounded (decidability invariant). The hierarchy
+// of bounds reachable in .dag:
+//
+//   Constant < Logarithmic < Linear < Linearithmic < Polynomial(k) < Forever
+//
+// Exponential is unreachable — .dag has no unbounded branching. Forever
+// (2^63-1 iterations) is the maximum for explicit repeat() loops.
+//
+// Note: these are classes, not exact bounds. Logarithmic means O(log n)
+// for any base (bases differ by a constant factor). Polynomial { degree: 2 }
+// means O(n²), etc.
+
+type AsymptoticBound
+  = Constant                          // O(1) — no input dependence
+  | Logarithmic                       // O(log n) — binary search, balanced tree lookup
+  | SquareRoot                        // O(√n) — trial division, some number theory
+  | Linear                            // O(n) — single traversal, catamorphism
+  | Linearithmic                      // O(n log n) — mergesort, optimal comparison sort
+  | Polynomial { degree: Int }        // O(n^k) — nested iteration (k=2 for O(n²))
+  | BoundedForever                    // O(Forever) — repeat(max_int), server loops
+
+
+// =========================================================================
+// RecurrenceForm — structure of a divide-and-conquer recurrence
+// =========================================================================
+
+// A RecurrenceForm captures the structure T(n) = a·T(n/b) + O(n^d)
+// that arises from divide-and-conquer algorithms.
+//
+// Parameters (Bentley, Haken, Saxe 1980):
+//   a: branching factor — number of recursive sub-problems
+//   b: division factor — each sub-problem is n/b of the original
+//   d: exponent of per-level work — non-recursive cost is O(n^d)
+//
+// Examples:
+//   Binary search:   a=1, b=2, d=0 → O(log n)
+//   Mergesort:       a=2, b=2, d=1 → O(n log n)
+//   Karatsuba mult:  a=3, b=2, d=1 → O(n^1.585)
+//   Strassen matrix: a=7, b=2, d=2 → O(n^2.807)
+//   Tree traversal:  NOT a recurrence — it's a catamorphism (all children)
+
+type RecurrenceForm {
+  branches: Int    // a: number of self-calls per execution path
+  divisor: Int     // b: input size divided by this at each level
+  work_exponent: Int  // d: per-level non-recursive cost exponent
+}
+
+
+// =========================================================================
+// Master theorem — recurrence → asymptotic bound
+// =========================================================================
+
+// CLRS Theorem 4.1 (Master theorem for divide-and-conquer recurrences):
+//
+//   T(n) = a·T(n/b) + Θ(n^d)
+//
+//   Case 1: d < log_b(a) → T(n) = Θ(n^(log_b(a)))
+//     Sub-problem work dominates. More branching than per-level work.
+//     Example: Strassen (a=7, b=2, d=2): log_2(7)≈2.81 > 2 → O(n^2.81)
+//
+//   Case 2: d = log_b(a) → T(n) = Θ(n^d · log n)
+//     Sub-problem work and per-level work balance.
+//     Example: Mergesort (a=2, b=2, d=1): log_2(2)=1 = 1 → O(n log n)
+//
+//   Case 3: d > log_b(a) → T(n) = Θ(n^d)
+//     Per-level work dominates. Branching is amortized.
+//     Example: Binary search (a=1, b=2, d=0): log_2(1)=0 = 0 → O(log n)
+//     (Special: when d=0 and a=1, case 2 gives O(log n))
+//
+// The comparison log_b(a) vs d determines which case applies.
+// Since log_b(a) = ln(a)/ln(b), the comparison is a*ln(b) vs d*ln(b),
+// which simplifies to: compare a vs b^d (both integers).
+//
+// Integer comparison: a vs b^d
+//   a < b^d → Case 3: per-level work dominates
+//   a = b^d → Case 2: balanced (log factor appears)
+//   a > b^d → Case 1: sub-problem work dominates
+
+fn int_pow(base: Int, exp: Int) -> Int {
+  if exp == 0 { 1 }
+  else {
+    let prev = int_pow(base: base, exp: exp - 1)
+    base * prev
+  }
+}
+
+fn master_theorem(form: RecurrenceForm) -> AsymptoticBound {
+  let a = form.branches
+  let b = form.divisor
+  let d = form.work_exponent
+  // Guard: Master theorem requires a ≥ 1 and b ≥ 2
+  if a < 1 || b < 2 { Constant }
+  else {
+    let b_to_d = int_pow(base: b, exp: d)
+    if a < b_to_d {
+      // Case 3: per-level work dominates → O(n^d)
+      match d {
+        0 => Constant
+        1 => Linear
+        _ => Polynomial { degree: d }
+      }
+    } else {
+      if a == b_to_d {
+        // Case 2: balanced → O(n^d · log n)
+        match d {
+          0 => Logarithmic
+          1 => Linearithmic
+          _ => Polynomial { degree: d + 1 } // conservative: n^d · log n ≤ n^(d+1)
+        }
+      } else {
+        // Case 1: sub-problem work dominates → O(n^(log_b(a)))
+        // Since log_b(a) > d, and we can't compute exact logs with integers,
+        // we report the tightest integer bound: Polynomial { degree: d + 1 }
+        // (conservative: actual bound is n^(log_b(a)) which may be fractional)
+        Polynomial { degree: d + 1 }
+      }
+    }
+  }
+}
+
+
+// =========================================================================
+// Structural recursion → AsymptoticBound (non-divide-and-conquer)
+// =========================================================================
+
+// Structural recursion (catamorphism) visits every sub-term exactly once.
+// The cost is proportional to the size of the input structure.
+//
+// This is NOT a divide-and-conquer recurrence — the function processes
+// ALL children, not a subset. The cost is Σ (cost per node) over all
+// nodes = O(n) when per-node cost is O(1).
+//
+// When per-node cost is O(k) for some inner operation, the total is O(n·k).
+// Nested catamorphisms produce O(n²), O(n³), etc.
+
+fn catamorphism_bound(nesting_depth: Int) -> AsymptoticBound {
+  match nesting_depth {
+    0 => Constant
+    1 => Linear
+    _ => Polynomial { degree: nesting_depth }
+  }
+}
+
+
+// =========================================================================
+// ShrinkFactor → step count bound
+// =========================================================================
+
+// The number of recursive steps before reaching the base case.
+// Combined with branching factor, this produces the recurrence form.
+
+fn shrink_to_steps(factor: ShrinkFactor) -> AsymptoticBound {
+  match factor {
+    UnitShrink               => Linear       // n steps
+    ConstantShrink { amount: _ } => Linear   // n/k steps = O(n)
+    ProportionalShrink { divisor: _ } => Logarithmic  // log_d(n) steps
+  }
+}
+
+
+// =========================================================================
+// Combined derivation: descent facts → complexity bound
+// =========================================================================
+
+// Given a self-recursive function's structural facts, derive the
+// asymptotic bound. Two cases:
+//
+// 1. Catamorphism (visit all sub-terms): bound = O(n^depth) where
+//    depth is the nesting level of structural recursion.
+//
+// 2. Divide-and-conquer (recurse on a portion): construct a
+//    RecurrenceForm and apply the Master theorem.
+
+fn derive_bound(branches: Int, factor: ShrinkFactor, work_exponent: Int) -> AsymptoticBound {
+  match factor {
+    // Structural recursion: all children visited → catamorphism
+    UnitShrink =>
+      if branches <= 1 { Linear }
+      else { catamorphism_bound(nesting_depth: 1) }
+    // Constant shrink: O(n) steps regardless of step size
+    ConstantShrink { amount: _ } =>
+      if branches <= 1 { Linear }
+      else { Polynomial { degree: 2 } }  // conservative for branching
+    // Proportional shrink: divide-and-conquer → Master theorem
+    ProportionalShrink { divisor: d } =>
+      master_theorem(form: RecurrenceForm { branches: branches, divisor: d, work_exponent: work_exponent })
+  }
+}
+
+
+// =========================================================================
+// Algorithm signatures — known complexity classes for verification
+// =========================================================================
+
+// Each entry declares: given these structural facts about a function,
+// the derived bound should be this. These serve as specification tests
+// for the complexity derivation pipeline.
+//
+// When the pipeline integration lands, each of these should match the
+// automatically derived bound for the corresponding algorithm pattern.
+
+// Tree traversal: visit every node once.
+// Type: Node { children: List<Node> }
+// Pattern: node.children |> fold(child => self(child))
+// Facts: UnitShrink (each child is one constructor smaller), all children
+// Expected: O(n) — catamorphism, single nesting level
+fn tree_traversal_bound() -> AsymptoticBound {
+  derive_bound(branches: 1, factor: UnitShrink, work_exponent: 0)
+}
+
+// Binary search: recurse on one half.
+// Pattern: if target < mid { self(left_half) } else { self(right_half) }
+// Facts: ProportionalShrink{2}, 1 branch per path, O(1) per level
+// Expected: O(log n)
+fn binary_search_bound() -> AsymptoticBound {
+  derive_bound(branches: 1, factor: ProportionalShrink { divisor: 2 }, work_exponent: 0)
+}
+
+// Mergesort: recurse on both halves, linear merge.
+// Pattern: merge(self(left_half), self(right_half))
+// Facts: ProportionalShrink{2}, 2 branches per path, O(n) per level
+// Expected: O(n log n)
+fn mergesort_bound() -> AsymptoticBound {
+  derive_bound(branches: 2, factor: ProportionalShrink { divisor: 2 }, work_exponent: 1)
+}
+
+// Nested iteration: items |> map(item => items |> filter(other => ...))
+// Facts: two nested linear traversals
+// Expected: O(n²) — catamorphism nesting depth 2
+fn nested_iteration_bound() -> AsymptoticBound {
+  catamorphism_bound(nesting_depth: 2)
+}
+
+// Linear scan: single fold over a list.
+// Facts: UnitShrink, 1 branch, O(1) per element
+// Expected: O(n)
+fn linear_scan_bound() -> AsymptoticBound {
+  derive_bound(branches: 1, factor: UnitShrink, work_exponent: 0)
 }
