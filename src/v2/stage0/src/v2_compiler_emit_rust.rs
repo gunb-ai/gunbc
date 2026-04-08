@@ -65,7 +65,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, HigherOrderMethodSpec, rust_higher_order_methods};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_string_like};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_string_like};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_compiler_tests_rust::{compiler_tests_source};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy};
@@ -147,6 +147,10 @@ pub fn rust_source_ext() -> String {
 
 pub fn rust_visibility_prefix() -> String {
     top_level_visibility_for_target(RenderTarget::Rust)
+}
+
+pub fn rust_items() -> Rc<ItemKeywords> {
+    language_spec(RenderTarget::Rust).items.clone()
 }
 
 pub fn rust_struct_derives_text() -> String {
@@ -656,7 +660,7 @@ if is_type_def_item(item.clone()) {
             emit_type_def_from_connective(item.clone(), emit_info.recursive_type_set.clone(), shared_types, env.clone(), emit_info.clone())
 } else {
             if is_type_alias_item(item.clone()) {
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "type ".to_string()), item_text.clone()), " = ".to_string()), render_rust_type(resolved_type(item.clone()), shared_types, env.source_index.clone())), ";".to_string())
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), rust_items().type_alias_keyword.clone()), " ".to_string()), item_text.clone()), " = ".to_string()), render_rust_type(resolved_type(item.clone()), shared_types, env.source_index.clone())), ";".to_string())
 } else {
                 if is_type_decl_item(item.clone()) {
                     "".to_string()
@@ -781,12 +785,12 @@ let derives = if has_fn_fields {
 }
 };
 if ((children.clone().len() as i64) == 0) {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_visibility_prefix()), "struct ".to_string()), name.clone()), type_params), ";".to_string())
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " ".to_string()), name.clone()), type_params), ";".to_string())
 } else {
             {
                 let field_lines = Rc::new({ let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_struct_field_from_child(child.clone(), recursive_types.clone(), shared_types.clone(), env.clone())); } __result });
 let fields_str = field_lines.join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_visibility_prefix()), "struct ".to_string()), name.clone()), type_params), " {\n".to_string()), fields_str), "\n}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " ".to_string()), name.clone()), type_params), " {\n".to_string()), fields_str), "\n}".to_string())
 }
 }
 }
@@ -850,7 +854,7 @@ pub fn emit_enum_from_children(name: String, type_params: String, children: Rc<V
         let derives = enum_derives(children.clone());
 let variant_lines = Rc::new({ let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_variant_from_child(child.clone(), recursive_types.clone(), shared_types.clone(), env.clone())); } __result });
 let variants_str = variant_lines.join(&"\n".to_string());
-let enum_def = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_serde_tag_attr()), "\n".to_string()), rust_visibility_prefix()), "enum ".to_string()), name.clone()), type_params.clone()), " {\n".to_string()), variants_str), "\n}".to_string());
+let enum_def = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_serde_tag_attr()), "\n".to_string()), rust_visibility_prefix()), rust_items().enum_keyword.clone()), " ".to_string()), name.clone()), type_params.clone()), " {\n".to_string()), variants_str), "\n}".to_string());
 let accessor_impl = emit_enum_shared_accessors(name.clone(), type_params.clone(), children.clone(), recursive_types.clone(), shared_types.clone(), env.clone());
 if (accessor_impl.clone().as_str() == "".to_string().as_str()) {
             enum_def
@@ -960,7 +964,8 @@ if use_tco.clone() {
             {
                 let tco_params_str = emit_tco_params(params.clone(), shared_types.clone(), si.clone());
 let body_str = emit_typed_tco_body(body.clone(), name.clone(), params.clone(), registry.clone(), body_scope, (depth.clone() + 1), shared_types.clone(), emit_info);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), emit_ident(name.clone(), RenderTarget::Rust)), "(".to_string()), tco_params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
+let kw = rust_items().func_keyword.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), emit_ident(name.clone(), RenderTarget::Rust)), "(".to_string()), tco_params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
 }
 } else {
             emit_fn_def_non_tco(name.clone(), params_str, ret_str, body.clone(), registry.clone(), body_scope, depth.clone(), shared_types.clone(), emit_info, needs_stacker)
@@ -972,12 +977,14 @@ pub fn emit_fn_def_non_tco(name: String, params_str: String, ret_str: String, bo
     if needs_stacker {
         {
             let body_str = emit_typed_expr(body, registry, scope, (depth.clone() + 2), shared_types, emit_info, 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), emit_ident(name, RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n".to_string()), make_indent((depth.clone() + 2))), body_str), "\n".to_string()), make_indent((depth.clone() + 1))), "})\n}".to_string())
+let kw = rust_items().func_keyword.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), emit_ident(name, RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n".to_string()), make_indent((depth.clone() + 2))), body_str), "\n".to_string()), make_indent((depth.clone() + 1))), "})\n}".to_string())
 }
 } else {
         {
             let body_str = emit_typed_expr(body, registry, scope, (depth.clone() + 1), shared_types, emit_info, 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), emit_ident(name, RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
+let kw = rust_items().func_keyword.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), emit_ident(name, RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
 }
 }
 }
@@ -995,7 +1002,8 @@ let body_scope = build_params_scope(scope.clone(), params.clone());
 let si = scope.type_env.clone().source_index.clone();
 let body_scope = uses.clone().iter().cloned().fold(body_scope, |s: Rc<InferScope>, u: Rc<Node>| extend_scope(s.clone(), resource_use_name_at(u.clone(), si.clone()), resource_use_resource(u.clone())));
 let body_str = emit_func_body(body, registry.clone(), body_scope, (depth.clone() + 1), shared_types.clone(), emit_info);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "async fn ".to_string()), emit_ident(name.clone(), RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
+let items = rust_items();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), items.async_prefix.clone()), items.func_keyword.clone()), " ".to_string()), emit_ident(name.clone(), RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
 }
 }
 
@@ -4049,7 +4057,8 @@ let mock_props = Rc::new({ let mut __result = Vec::new(); for p in op_node.prope
 let dry_run_body = emit_dry_run_branch_from_props(op_text.clone(), resolved_type(op_node.clone()), mock_props, registry.clone());
 let body = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if self.dry_run.is_dry_run() {\n".to_string(), make_indent((depth.clone() + 2))), dry_run_body), "\n".to_string()), "} else {\n".to_string()), make_indent((depth.clone() + 2))), real_body), "\n".to_string()), "}".to_string());
 let modifier_doc = emit_modifier_doc_from_props(op_node.properties.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(modifier_doc, rust_visibility_prefix()), "async fn ".to_string()), emit_ident(op_text.clone(), RenderTarget::Rust)), "(".to_string()), all_params), ") -> Result<".to_string()), ret_type), ", Box<dyn std::error::Error>> {\n".to_string()), make_indent((depth.clone() + 1))), body), "\n}".to_string())
+let items = rust_items();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(modifier_doc, rust_visibility_prefix()), items.async_prefix.clone()), items.func_keyword.clone()), " ".to_string()), emit_ident(op_text.clone(), RenderTarget::Rust)), "(".to_string()), all_params), ") -> Result<".to_string()), ret_type), ", Box<dyn std::error::Error>> {\n".to_string()), make_indent((depth.clone() + 1))), body), "\n}".to_string())
 }
 }
 
@@ -4212,7 +4221,8 @@ let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
             v2_rt::concat("&self, ".to_string(), params_str.clone())
 };
 let ret = render_rust_type(resolved_type(cap_node.clone()), shared_types.clone(), env.source_index.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async fn ".to_string(), emit_ident(authored_name(env.clone(), cap_node.clone()), RenderTarget::Rust)), "(".to_string()), all_params), ") -> Result<".to_string()), ret), ", Box<dyn std::error::Error>>;".to_string())
+let items = rust_items();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(items.async_prefix.clone(), items.func_keyword.clone()), " ".to_string()), emit_ident(authored_name(env.clone(), cap_node.clone()), RenderTarget::Rust)), "(".to_string()), all_params), ") -> Result<".to_string()), ret), ", Box<dyn std::error::Error>>;".to_string())
 }
 }
 
@@ -4235,12 +4245,14 @@ let needs_rc = v2_rt::map_contains_key(&shared_types, type_node.name.clone());
 if is_simple_type_node(type_node.clone()) {
             {
                 let val_str = emit_typed_expr(value, registry, scope.clone(), depth, shared_types.clone(), emit_info, 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " { ".to_string()), val_str), " }".to_string())
+let kw = rust_items().func_keyword.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " { ".to_string()), val_str), " }".to_string())
 }
 } else {
             {
                 let body = emit_data_def_body(type_node.clone(), value, registry, scope.clone(), depth, shared_types.clone(), emit_info, needs_rc);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " {\n".to_string()), "    thread_local! {\n".to_string()), "        static CACHED: ".to_string()), ty_str.clone()), " = {\n".to_string()), body), "\n".to_string()), "        };\n".to_string()), "    }\n".to_string()), "    CACHED.with(|c| c.clone())\n".to_string()), "}".to_string())
+let kw = rust_items().func_keyword.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " {\n".to_string()), "    thread_local! {\n".to_string()), "        static CACHED: ".to_string()), ty_str.clone()), " = {\n".to_string()), body), "\n".to_string()), "        };\n".to_string()), "    }\n".to_string()), "    CACHED.with(|c| c.clone())\n".to_string()), "}".to_string())
 }
 }
 }

@@ -70,7 +70,7 @@ import extdeps.languages.rust.emit {
 }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
-  TestConventions,
+  TestConventions, ItemKeywords,
   test_conventions_for_target, top_level_visibility_for_target,
   sharing_for_target,
   is_string_like
@@ -189,6 +189,10 @@ fn rust_source_ext() -> String {
 
 fn rust_visibility_prefix() -> String {
   top_level_visibility_for_target(target: Rust)
+}
+
+fn rust_items() -> ItemKeywords {
+  language_spec(target: Rust).items
 }
 
 fn rust_struct_derives_text() -> String {
@@ -755,7 +759,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   if is_type_def_item(item: item) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info)
   } else if is_type_alias_item(item: item) {
-    concat(rust_visibility_prefix(), "type ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_index: env.source_index), ";")
+    concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_index: env.source_index), ";")
   } else if is_type_decl_item(item: item) {
     ""
   } else if is_function_item(item: item) {
@@ -864,11 +868,11 @@ fn emit_struct_from_children(name: String, type_params: String, children: List<N
     rust_struct_derives_copy_text()
   }
   if children |> count == 0 {
-    concat(derives, "\n", rust_visibility_prefix(), "struct ", name, type_params, ";")
+    concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
   } else {
     let field_lines = children |> map(child => emit_struct_field_from_child(child: child, recursive_types: recursive_types, shared_types: shared_types, env: env))
     let fields_str = field_lines |> join(separator: "\n")
-    concat(derives, "\n", rust_visibility_prefix(), "struct ", name, type_params, " {\n", fields_str, "\n}")
+    concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
   }
 }
 
@@ -926,7 +930,7 @@ fn emit_enum_from_children(name: String, type_params: String, children: List<Nod
   let derives = enum_derives(children: children)
   let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, shared_types: shared_types, env: env))
   let variants_str = variant_lines |> join(separator: "\n")
-  let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), "enum ", name, type_params, " {\n", variants_str, "\n}")
+  let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   // Generate accessor methods for shared fields (fields present in ALL variants).
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env)
   if accessor_impl == "" { enum_def }
@@ -1042,7 +1046,8 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   if use_tco {
     let tco_params_str = emit_tco_params(params: params, shared_types: shared_types, source_index: si)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
-    concat(rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", tco_params_str, ")", ret_str, " {\n",
+    let kw = rust_items().func_keyword
+    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), "(", tco_params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
     emit_fn_def_non_tco(name: name, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_stacker: needs_stacker)
@@ -1053,13 +1058,15 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
 fn emit_fn_def_non_tco(name: String, params_str: String, ret_str: String, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, needs_stacker: Bool) -> String {
   if needs_stacker {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    concat(rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
+    let kw = rust_items().func_keyword
+    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n",
       make_indent(level: depth + 2), body_str, "\n",
       make_indent(level: depth + 1), "})\n}")
   } else {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    concat(rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
+    let kw = rust_items().func_keyword
+    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), body_str, "\n}")
   }
 }
@@ -1092,7 +1099,8 @@ fn emit_func_def(
     extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: si), resolved: resource_use_resource(n: u))
   )
   let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
-  concat(rust_visibility_prefix(), "async fn ", emit_ident(name: name, target: Rust),
+  let items = rust_items()
+  concat(rust_visibility_prefix(), items.async_prefix, items.func_keyword, " ", emit_ident(name: name, target: Rust),
     "(", params_str, ")", ret_str, " {\n",
     make_indent(level: depth + 1),body_str, "\n}")
 }
@@ -3805,7 +3813,8 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     make_indent(level: depth + 2),real_body, "\n",
     "}")
   let modifier_doc = emit_modifier_doc_from_props(properties: op_node.properties)
-  concat(modifier_doc, rust_visibility_prefix(), "async fn ", emit_ident(name: op_text, target: Rust),
+  let items = rust_items()
+  concat(modifier_doc, rust_visibility_prefix(), items.async_prefix, items.func_keyword, " ", emit_ident(name: op_text, target: Rust),
     "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
     make_indent(level: depth + 1),body, "\n}")
 }
@@ -3965,7 +3974,8 @@ fn emit_capability_method(cap_node: Node, shared_types: Map<String, Bool>, env: 
     concat("&self, ", params_str)
   }
   let ret = render_rust_type(n: resolved_type(n: cap_node), shared_types: shared_types, source_index: env.source_index)
-  concat("async fn ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
+  let items = rust_items()
+  concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
 // =========================================================================
@@ -3994,12 +4004,14 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   if is_simple_type_node(n: type_node) {
     // Copy types (Int, Bool, Float) — inline, no caching
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
+    let kw = rust_items().func_keyword
+    concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
   } else {
     // Non-Copy data defs get thread_local caching.
     // Avoids O(n) reconstruction on every call (maps, records, JSON deser).
     let body = emit_data_def_body(type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
-    concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
+    let kw = rust_items().func_keyword
+    concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " {\n",
       "    thread_local! {\n",
       "        static CACHED: ", ty_str, " = {\n",
       body, "\n",
