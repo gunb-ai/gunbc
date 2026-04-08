@@ -1991,63 +1991,158 @@ cross_language_equivalence_full_suite
   Assert: outputs match (modulo documented divergences)
 ```
 
-## KF-5: Decidability Certificate
+## KF-5: Decidable High-Level Language
 
-**What:** Every .dag program comes with a machine-checkable proof
-that it terminates. Not "probably terminates" — provably terminates
-for all inputs, by construction.
+**What:** .dag is one of the only decidable languages suitable for
+real backend and frontend development. Every program provably
+terminates. Not "probably" — provably, by construction.
 
-**Why it doesn't exist:** The halting problem is undecidable for
-Turing-complete languages. .dag is sub-Turing: no unbounded `while`,
-no general recursion. All iteration is fold (structural descent),
-descend (with proof witness), or repeat (with explicit fuel). The
-compiler can prove termination because the language makes non-
-termination unrepresentable.
+**Why this matters:** Most decidable languages are academic
+(Agda, Coq) or domain-specific (SQL, regex). They prove properties
+but you wouldn't write a web service in them. Most practical
+languages (Rust, Go, Python, TypeScript) are Turing-complete — the
+halting problem is undecidable, so the compiler fundamentally cannot
+prove termination, bound complexity, or guarantee resource usage.
 
-**Status:** The language property is DONE — .dag programs can't
-diverge by construction. What's missing is surfacing this as a
-user-visible certificate.
+.dag sits in the gap: decidable AND practical. You write API
+services, data pipelines, agent workflows, CLI tools — the same
+things you'd write in Python or Go — but the compiler can prove
+things about your code that are literally impossible in those
+languages. KF-1 (complexity), KF-2 (optimality), KF-3 (test
+generation), and KF-6 (hardware) all follow from this property.
+
+**How:** Three bounded iteration primitives replace unbounded loops:
+- `fold` — structural descent over a collection (size decreases)
+- `descend` — recursive with proof witness (tree shrinks)
+- `repeat` — bounded by explicit fuel (counter decreases)
+
+No `while(true)`. No general recursion. No `goto`. The compiler
+can prove termination because the language makes non-termination
+unrepresentable. This is not a restriction that limits what you can
+write — it's a restriction that eliminates an entire class of bugs.
+
+**Status:** DONE — this is a language property, not a feature to
+build. The work is communicating it clearly and ensuring KF-1
+(complexity proof) lands so the decidability is visible in every
+compile.
+
+**Acceptance:** The landing page explains: ".dag is a decidable
+language. Every program provably terminates. The compiler proves
+O(n) vs O(n²) for every function — something that is mathematically
+impossible in Python, Go, or Rust."
+
+## KF-6: Hardware Compilation Target (Verilog/SPICE)
+
+**What:** Compile .dag programs to Verilog (digital circuits) and
+SPICE (analog circuit netlists). The same source that compiles to a
+Rust web service also compiles to an FPGA bitstream.
+
+**Why it's possible:** .dag's decidability is exactly the property
+that makes hardware synthesis viable. Turing-complete languages
+can't compile to circuits because you can't synthesize unbounded
+loops into fixed hardware. .dag's programs have:
+- Known iteration bounds → circuit pipeline depth
+- No dynamic allocation → fixed-size hardware
+- Proven complexity → timing budget derivable from cost bound
+- Products → parallel wires, coproducts → muxes, functions →
+  combinational logic blocks
+
+**Why it matters for the demo:** This is the most visceral proof
+that decidability enables capabilities impossible in other languages.
+"Here's a data pipeline. It compiles to a Rust binary. The same
+source also compiles to a circuit you can run on an FPGA." Even if
+the hardware target is basic at release, supporting it demonstrates
+the architectural thesis.
+
+**LLM leverage angle:** LLMs can write .dag code, which compiles to
+Rust/Go/Python/Verilog — verified multi-target output from one
+source. An LLM writing Verilog directly produces unverified HDL.
+An LLM writing .dag produces code the compiler can prove correct,
+bounded, and optimal before synthesis. This is a concrete use case
+for agent workflows generating hardware descriptions.
+
+**Example:**
+```dag
+// A simple FIR filter — compiles to Rust AND Verilog
+fn fir_filter(
+  samples: List<Float>,
+  coefficients: List<Float>
+) -> List<Float> {
+  samples |> map(i =>
+    coefficients |> fold(acc: 0.0, coeff =>
+      acc + coeff * samples[i]
+    )
+  )
+}
+// Rust target: fn fir_filter(...) -> Vec<f64> { ... }
+// Verilog target: module fir_filter(clk, samples, coefficients, out);
+//   Compiler knows: fold is 4 cycles (|coefficients| = 4),
+//   map is |samples| cycles, total pipeline depth = 4 × N
+```
+
+**Status:** NOT STARTED. Requires new RenderTarget + LanguageSpec.
 
 **Remaining work:**
-- [ ] KF-5a: Termination certificate in test receipt — for each
-  function, the receipt includes the bound (O(n), O(n²), etc.)
-  and the structural proof witness (fold over list, descent on tree)
-- [ ] KF-5b: Human-readable proof summary — "this function terminates
-  because it folds over `items` (size decreases by 1 per step)"
-- [ ] KF-5c: Machine-checkable proof format — exportable proof that
-  an external verifier can check independently
+- [ ] KF-6a: `RenderTarget::Verilog` variant in `artifact.dag`
+- [ ] KF-6b: Verilog `LanguageSpec` — type mappings (Int→reg[63:0],
+  Bool→wire, List<T>→memory array), operator semantics (+ → add
+  module), block syntax (always @, module/endmodule)
+- [ ] KF-6c: Verilog coercion data in
+  `dsl/extdeps/languages/verilog/types.dag` — TypeCheckpoint +
+  InhabitantDecl for hardware primitives
+- [ ] KF-6d: Clock/pipeline inference — derive clock cycles from
+  complexity bound (O(n) → n-cycle pipeline, O(1) → combinational)
+- [ ] KF-6e: SPICE netlist target — analog circuit description from
+  arithmetic operations (adders, multipliers, filters)
+- [ ] KF-6f: Basic emitter — `05_emit_verilog.dag` (or folded into
+  parameterized homomorphism if P1-B lands first)
+- [ ] KF-6g: End-to-end test: compile a .dag program to Verilog,
+  run through Icarus Verilog simulation, verify output matches
+  Rust execution
 
-**Maps to:** KF-1 (complexity = bound + proof). The decidability
-certificate is the bound + the witness that produces it.
+**Maps to:** LS lane (LanguageSpec), CG-3 (parameterized emission),
+P1-B (3→1 homomorphism → 4→1 with Verilog).
 
 **Acceptance:**
 ```
-every_function_has_termination_proof
-  Run: compile any .dag program
-  Assert: every function in ComplexityReport has a non-Unknown bound
-  Assert: bound includes proof witness type (Fold, Descend, Repeat, Const)
+verilog_basic_arithmetic
+  Input: fn add(a: Int, b: Int) -> Int { a + b }
+  Assert: emitted Verilog contains `module add(` and `assign out = a + b`
+
+verilog_pipeline_from_fold
+  Input: fn sum(xs: List<Int>) -> Int { xs |> fold(acc: 0, x => acc + x) }
+  Assert: emitted Verilog has N-stage pipeline (N = list bound)
+  Assert: pipeline depth matches complexity bound
+
+verilog_matches_rust_output
+  Run: compile fir_filter.dag to Rust and Verilog
+  Run: execute Rust version, simulate Verilog version (Icarus/Verilator)
+  Assert: outputs match for same input data
 ```
 
 ## KF summary and dependency chain
 
 ```
-KF-1 (complexity proof) ←── CX lane (same work)
-  └→ KF-2 (reject suboptimal) ←── new: equivalence catalog + cost ordering
-KF-3 (test generation) ←── M3 + verification.dag
-  └→ KF-4 (cross-language proof) ←── KF-3 + LanguageSpec completion
-KF-5 (decidability cert) ←── KF-1 (bound IS the certificate)
+KF-5 (decidability) ─── language property, DONE
+  ├→ KF-1 (complexity proof) ←── CX lane
+  │    └→ KF-2 (reject suboptimal) ←── equivalence catalog
+  ├→ KF-6 (hardware target) ←── LanguageSpec + coercion data
+  └→ KF-3 (test generation) ←── M3 + verification.dag
+       └→ KF-4 (cross-language proof) ←── differential testing
 ```
 
-KF-1 and KF-3 are independent entry points. KF-2 requires KF-1.
-KF-4 requires KF-3. KF-5 is a projection of KF-1.
+Decidability (KF-5) is the root property that enables everything
+else. KF-1, KF-3, and KF-6 are independent entry points. KF-2
+requires KF-1. KF-4 requires KF-3.
 
 | Feature | Effort | Impact | Priority |
 |---------|--------|--------|----------|
-| KF-1: Complexity proof | Medium (3 fixes, CX lane) | High — table stakes for the thesis | P0 |
+| KF-5: Decidable language | DONE (communication only) | Foundational — the thesis | P0 |
+| KF-1: Complexity proof | Medium (3 fixes, CX lane) | High — table stakes | P0 |
 | KF-2: Reject suboptimal | Medium (catalog + analysis) | Very high — the "wow" demo | P1 |
 | KF-3: Test generation | Large (witness gen + synthesis) | High — eliminates manual tests | P1 |
+| KF-6: Hardware target | Large (new LanguageSpec + emitter) | Very high — visceral demo | P1 |
 | KF-4: Cross-language proof | Large (oracle + divergence catalog) | Medium — impressive but niche | P2 |
-| KF-5: Decidability cert | Small (projection of KF-1) | High — unique value prop | P0 |
 
 ---
 
@@ -2132,9 +2227,10 @@ language_parity_expression_equivalence
   Assert: outputs match (modulo language-specific formatting)
 ```
 
-## Gate 4: Complexity Fully Proven + Suboptimality Rejection
+## Gate 4: Complexity + Suboptimality + Hardware (KF-1, KF-2, KF-6)
 
-KF-1 (complexity proof) and KF-2 (reject suboptimal) must both ship.
+KF-1 (complexity proof), KF-2 (reject suboptimal), and KF-6
+(hardware target) must all ship.
 
 | Criterion | Test |
 |-----------|------|
@@ -2144,7 +2240,7 @@ KF-1 (complexity proof) and KF-2 (reject suboptimal) must both ship.
 | Gate blocking | CX gate re-enabled (CX-E), complexity failures = compile failures |
 | Self-compile proves itself | The compiler's own 1600 functions all have proven bounds |
 | Suboptimal rejection | Equivalence catalog in `std/optimization.dag` with at least 5 pattern→replacement rules |
-| Decidability certificate | Every function's bound + proof witness in test receipt |
+| Verilog target | Basic arithmetic + fold pipeline compiles to valid Verilog |
 
 **Acceptance tests:**
 ```
@@ -2162,9 +2258,9 @@ suboptimal_filter_count_rejected
   Input: fn f(xs: List<Int>) -> Bool { xs |> filter(x => x > 0) |> count > 0 }
   Assert: compile error with suggestion to use any()
 
-decidability_certificate_in_receipt
-  Run: compile any .dag program
-  Assert: test receipt includes bound + witness for every function
+verilog_basic_emission
+  Input: fn add(a: Int, b: Int) -> Int { a + b }
+  Assert: emitted Verilog compiles with Icarus Verilog (iverilog)
 ```
 
 ## Gate 5: Business Cases
@@ -2293,17 +2389,18 @@ polish depends on stable features.
 | 1. Active lanes | IN PROGRESS | All lane ratchets green |
 | 2. Structural debt | 1,115 → 0 | `structural-debt-count.sh` = 0 |
 | 3. Language parity (KF-4) | PARTIAL | 3-target `full_dsl_compiles` + cross-language equivalence |
-| 4. Complexity + suboptimality (KF-1, KF-2) | 526 → 0 | `CostUnknown` deleted + equivalence catalog ships |
+| 4. Complexity + suboptimality + hardware (KF-1, KF-2, KF-6) | 526 → 0 | `CostUnknown` deleted + catalog ships + Verilog emits |
 | 5. Business cases | 0/4 | BC-1..4 acceptance met |
 | 6. Test generation (KF-3) | NOT STARTED | Generated tests all pass |
-| 7. Demo polish (KF-5) | NOT STARTED | 5-minute onboarding + decidability certificates |
+| 7. Demo polish (KF-5) | NOT STARTED | 5-minute onboarding, decidability front-and-center |
 
 ## Killer feature ratchet
 
 | Feature | Status | Gate |
 |---------|--------|------|
+| KF-5: Decidable high-level language | DONE (language property) | Landing page explains it |
 | KF-1: Complexity proof on every compile | 526 unknown → 0 | CostUnknown deleted |
 | KF-2: Reject suboptimal algorithms | NOT STARTED | 5+ rules in equivalence catalog |
 | KF-3: Test generation from types | Level 0 done | Levels 4-6 implemented |
 | KF-4: Cross-language equivalence proof | NOT STARTED | Differential test suite green |
-| KF-5: Decidability certificate | Language property done | Surfaced in test receipt |
+| KF-6: Hardware target (Verilog/SPICE) | NOT STARTED | Basic arithmetic emits valid Verilog |
