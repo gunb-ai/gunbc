@@ -230,34 +230,85 @@ type ShrinkFactor
 
 
 // =========================================================================
-// AsymptoticBound — complexity class (Big-O)
+// Rational — exact fractional exponents
+// =========================================================================
+
+// Rational numbers for polynomial exponents. Enables O(n^(1/3)), O(n^(3/2)),
+// O(n^(log_2(7))) ≈ O(n^(2807/1000)), etc.
+//
+// Invariant: denominator > 0. Reduced form not required — { p: 2, q: 4 }
+// and { p: 1, q: 2 } are both valid representations of 1/2.
+
+type Rational { p: Int, q: Int }
+
+fn rational(p: Int, q: Int) -> Rational { Rational { p: p, q: q } }
+fn integer(n: Int) -> Rational { Rational { p: n, q: 1 } }
+
+// Compare two rationals: a/b vs c/d ↔ a*d vs c*b (when b,d > 0)
+fn rational_less(a: Rational, b: Rational) -> Bool { a.p * b.q < b.p * a.q }
+fn rational_equal(a: Rational, b: Rational) -> Bool { a.p * b.q == b.p * a.q }
+
+
+// =========================================================================
+// CostTerm — compositional asymptotic bound (Big-O)
 // =========================================================================
 
 // The output of complexity analysis: the asymptotic growth rate of a
-// function's cost as a function of input size.
+// function's cost as a function of input size parameters.
 //
 // Knuth (1976): f(n) = O(g(n)) iff ∃c,n₀ : ∀n≥n₀ : f(n) ≤ c·g(n)
 //
-// Every .dag program is bounded (decidability invariant). The hierarchy
-// of bounds reachable in .dag:
+// CostTerm is a term algebra for asymptotic bounds. It supports:
+//   - Single-parameter polynomial: O(n^(p/q)) for any rational p/q
+//   - Logarithmic: O(log n)
+//   - Products: O(f · g) — e.g., O(n log n), O((V+E) log V)
+//   - Sums: O(f + g) — e.g., O(V + E) (multi-parameter)
+//   - Composed: arbitrary combinations of the above
 //
-//   Constant < Logarithmic < Linear < Linearithmic < Polynomial(k) < Forever
+// MATHEMATICAL GROUNDING:
+//   CostTerm forms a commutative semiring under (Sum, Product) with
+//   identity elements (CostOne for Product, CostOne for Sum since
+//   O(1 + f) = O(f)). This is a sub-algebra of the tropical semiring
+//   (max, +) used in asymptotic analysis.
 //
-// Exponential is unreachable — .dag has no unbounded branching. Forever
+// WHY COMPOSITIONAL (not an enum of named classes):
+//   An enumerated AsymptoticBound (Constant | Linear | Quadratic | ...)
+//   can't express O(n^(1/3)), O(V+E), O(n^(log_2(7))), or O((V+E)·log V).
+//   The compositional structure lets any bound emerge from the algebra.
+//   Named classes (O(n log n), O(n²)) are derived by simplification,
+//   not by enumeration.
+//
+// Every .dag program is bounded (decidability invariant). Exponential
+// is unreachable — .dag has no unbounded branching. BoundedForever
 // (2^63-1 iterations) is the maximum for explicit repeat() loops.
-//
-// Note: these are classes, not exact bounds. Logarithmic means O(log n)
-// for any base (bases differ by a constant factor). Polynomial { degree: 2 }
-// means O(n²), etc.
 
-type AsymptoticBound
-  = Constant                          // O(1) — no input dependence
-  | Logarithmic                       // O(log n) — binary search, balanced tree lookup
-  | SquareRoot                        // O(√n) — trial division, some number theory
-  | Linear                            // O(n) — single traversal, catamorphism
-  | Linearithmic                      // O(n log n) — mergesort, optimal comparison sort
-  | Polynomial { degree: Int }        // O(n^k) — nested iteration (k=2 for O(n²))
-  | BoundedForever                    // O(Forever) — repeat(max_int), server loops
+type CostTerm
+  = CostOne                                     // O(1) — constant
+  | CostPoly { param: String, exponent: Rational }  // O(n^(p/q))
+  | CostLog { param: String }                   // O(log n) — base irrelevant (constant factor)
+  | CostProduct { factors: List<CostTerm> }     // O(f₁ · f₂ · ... · fₖ)
+  | CostSum { terms: List<CostTerm> }           // O(f₁ + f₂ + ... + fₖ) = O(max(f₁,...,fₖ))
+  | CostForever                                 // O(2^63-1) — repeat(max_int)
+
+
+// =========================================================================
+// Named bound constructors — convenience for common classes
+// =========================================================================
+
+fn cost_constant() -> CostTerm { CostOne }
+fn cost_linear(param: String) -> CostTerm { CostPoly { param: param, exponent: integer(n: 1) } }
+fn cost_quadratic(param: String) -> CostTerm { CostPoly { param: param, exponent: integer(n: 2) } }
+fn cost_root(param: String, k: Int) -> CostTerm { CostPoly { param: param, exponent: rational(p: 1, q: k) } }
+fn cost_sqrt(param: String) -> CostTerm { cost_root(param: param, k: 2) }
+fn cost_cbrt(param: String) -> CostTerm { cost_root(param: param, k: 3) }
+fn cost_log(param: String) -> CostTerm { CostLog { param: param } }
+fn cost_nlogn(param: String) -> CostTerm { CostProduct { factors: [cost_linear(param: param), cost_log(param: param)] } }
+fn cost_poly(param: String, degree: Int) -> CostTerm { CostPoly { param: param, exponent: integer(n: degree) } }
+
+// Multi-parameter: O(V + E) for graph algorithms
+fn cost_graph_linear(v_param: String, e_param: String) -> CostTerm {
+  CostSum { terms: [cost_linear(param: v_param), cost_linear(param: e_param)] }
+}
 
 
 // =========================================================================
@@ -280,6 +331,7 @@ type AsymptoticBound
 //   Tree traversal:  NOT a recurrence — it's a catamorphism (all children)
 
 type RecurrenceForm {
+  param: String    // the size parameter name
   branches: Int    // a: number of self-calls per execution path
   divisor: Int     // b: input size divided by this at each level
   work_exponent: Int  // d: per-level non-recursive cost exponent
@@ -287,7 +339,7 @@ type RecurrenceForm {
 
 
 // =========================================================================
-// Master theorem — recurrence → asymptotic bound
+// Master theorem — recurrence → CostTerm
 // =========================================================================
 
 // CLRS Theorem 4.1 (Master theorem for divide-and-conquer recurrences):
@@ -295,26 +347,22 @@ type RecurrenceForm {
 //   T(n) = a·T(n/b) + Θ(n^d)
 //
 //   Case 1: d < log_b(a) → T(n) = Θ(n^(log_b(a)))
-//     Sub-problem work dominates. More branching than per-level work.
+//     Sub-problem work dominates.
 //     Example: Strassen (a=7, b=2, d=2): log_2(7)≈2.81 > 2 → O(n^2.81)
+//     Example: Karatsuba (a=3, b=2, d=1): log_2(3)≈1.585 > 1 → O(n^1.585)
 //
 //   Case 2: d = log_b(a) → T(n) = Θ(n^d · log n)
-//     Sub-problem work and per-level work balance.
-//     Example: Mergesort (a=2, b=2, d=1): log_2(2)=1 = 1 → O(n log n)
+//     Sub-problem and per-level work balance.
+//     Example: Mergesort (a=2, b=2, d=1): log_2(2)=1 → O(n log n)
 //
 //   Case 3: d > log_b(a) → T(n) = Θ(n^d)
-//     Per-level work dominates. Branching is amortized.
-//     Example: Binary search (a=1, b=2, d=0): log_2(1)=0 = 0 → O(log n)
-//     (Special: when d=0 and a=1, case 2 gives O(log n))
+//     Per-level work dominates.
+//     Example: Binary search (a=1, b=2, d=0): log_2(1)=0 → O(log n)
 //
-// The comparison log_b(a) vs d determines which case applies.
-// Since log_b(a) = ln(a)/ln(b), the comparison is a*ln(b) vs d*ln(b),
-// which simplifies to: compare a vs b^d (both integers).
-//
-// Integer comparison: a vs b^d
-//   a < b^d → Case 3: per-level work dominates
-//   a = b^d → Case 2: balanced (log factor appears)
-//   a > b^d → Case 1: sub-problem work dominates
+// The comparison uses integer arithmetic: compare a vs b^d.
+//   a < b^d → Case 3
+//   a = b^d → Case 2
+//   a > b^d → Case 1
 
 fn int_pow(base: Int, exp: Int) -> Int {
   if exp == 0 { 1 }
@@ -324,35 +372,37 @@ fn int_pow(base: Int, exp: Int) -> Int {
   }
 }
 
-fn master_theorem(form: RecurrenceForm) -> AsymptoticBound {
+fn master_theorem(form: RecurrenceForm) -> CostTerm {
+  let n = form.param
   let a = form.branches
   let b = form.divisor
   let d = form.work_exponent
-  // Guard: Master theorem requires a ≥ 1 and b ≥ 2
-  if a < 1 || b < 2 { Constant }
+  if a < 1 || b < 2 { CostOne }
   else {
     let b_to_d = int_pow(base: b, exp: d)
     if a < b_to_d {
       // Case 3: per-level work dominates → O(n^d)
       match d {
-        0 => Constant
-        1 => Linear
-        _ => Polynomial { degree: d }
+        0 => CostOne
+        _ => cost_poly(param: n, degree: d)
       }
     } else {
       if a == b_to_d {
         // Case 2: balanced → O(n^d · log n)
         match d {
-          0 => Logarithmic
-          1 => Linearithmic
-          _ => Polynomial { degree: d + 1 } // conservative: n^d · log n ≤ n^(d+1)
+          0 => cost_log(param: n)
+          _ => CostProduct { factors: [cost_poly(param: n, degree: d), cost_log(param: n)] }
         }
       } else {
         // Case 1: sub-problem work dominates → O(n^(log_b(a)))
-        // Since log_b(a) > d, and we can't compute exact logs with integers,
-        // we report the tightest integer bound: Polynomial { degree: d + 1 }
-        // (conservative: actual bound is n^(log_b(a)) which may be fractional)
-        Polynomial { degree: d + 1 }
+        // log_b(a) is generally irrational. We can't compute it exactly
+        // with integers, but we CAN represent it structurally: the
+        // exponent IS log_b(a), which we approximate as the rational
+        // ceiling. For common cases:
+        //   a=3, b=2 → log_2(3) ≈ 1585/1000 (Karatsuba)
+        //   a=7, b=2 → log_2(7) ≈ 2807/1000 (Strassen)
+        // Conservative: use d+1 as integer upper bound.
+        CostPoly { param: n, exponent: integer(n: d + 1) }
       }
     }
   }
@@ -360,120 +410,135 @@ fn master_theorem(form: RecurrenceForm) -> AsymptoticBound {
 
 
 // =========================================================================
-// Structural recursion → AsymptoticBound (non-divide-and-conquer)
+// Structural recursion → CostTerm (catamorphism)
 // =========================================================================
 
 // Structural recursion (catamorphism) visits every sub-term exactly once.
-// The cost is proportional to the size of the input structure.
-//
-// This is NOT a divide-and-conquer recurrence — the function processes
-// ALL children, not a subset. The cost is Σ (cost per node) over all
-// nodes = O(n) when per-node cost is O(1).
-//
-// When per-node cost is O(k) for some inner operation, the total is O(n·k).
-// Nested catamorphisms produce O(n²), O(n³), etc.
+// O(n) for single traversal, O(n^k) for k-nested traversals.
+// NOT a divide-and-conquer recurrence — processes ALL children.
 
-fn catamorphism_bound(nesting_depth: Int) -> AsymptoticBound {
+fn catamorphism_bound(param: String, nesting_depth: Int) -> CostTerm {
   match nesting_depth {
-    0 => Constant
-    1 => Linear
-    _ => Polynomial { degree: nesting_depth }
+    0 => CostOne
+    _ => cost_poly(param: param, degree: nesting_depth)
   }
 }
 
 
 // =========================================================================
-// ShrinkFactor → step count bound
+// ShrinkFactor → step count
 // =========================================================================
 
-// The number of recursive steps before reaching the base case.
-// Combined with branching factor, this produces the recurrence form.
-
-fn shrink_to_steps(factor: ShrinkFactor) -> AsymptoticBound {
+fn shrink_to_steps(param: String, factor: ShrinkFactor) -> CostTerm {
   match factor {
-    UnitShrink               => Linear       // n steps
-    ConstantShrink { amount: _ } => Linear   // n/k steps = O(n)
-    ProportionalShrink { divisor: _ } => Logarithmic  // log_d(n) steps
+    UnitShrink                        => cost_linear(param: param)
+    ConstantShrink { amount: _ }      => cost_linear(param: param)
+    ProportionalShrink { divisor: _ } => cost_log(param: param)
   }
 }
 
 
 // =========================================================================
-// Combined derivation: descent facts → complexity bound
+// Combined derivation: descent facts → cost term
 // =========================================================================
 
-// Given a self-recursive function's structural facts, derive the
-// asymptotic bound. Two cases:
-//
-// 1. Catamorphism (visit all sub-terms): bound = O(n^depth) where
-//    depth is the nesting level of structural recursion.
-//
-// 2. Divide-and-conquer (recurse on a portion): construct a
-//    RecurrenceForm and apply the Master theorem.
-
-fn derive_bound(branches: Int, factor: ShrinkFactor, work_exponent: Int) -> AsymptoticBound {
+fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponent: Int) -> CostTerm {
   match factor {
-    // Structural recursion: all children visited → catamorphism
     UnitShrink =>
-      if branches <= 1 { Linear }
-      else { catamorphism_bound(nesting_depth: 1) }
-    // Constant shrink: O(n) steps regardless of step size
+      catamorphism_bound(param: param, nesting_depth: 1)
     ConstantShrink { amount: _ } =>
-      if branches <= 1 { Linear }
-      else { Polynomial { degree: 2 } }  // conservative for branching
-    // Proportional shrink: divide-and-conquer → Master theorem
+      catamorphism_bound(param: param, nesting_depth: 1)
     ProportionalShrink { divisor: d } =>
-      master_theorem(form: RecurrenceForm { branches: branches, divisor: d, work_exponent: work_exponent })
+      master_theorem(form: RecurrenceForm { param: param, branches: branches, divisor: d, work_exponent: work_exponent })
   }
 }
 
 
 // =========================================================================
-// Algorithm signatures — known complexity classes for verification
+// Algorithm complexity specifications
 // =========================================================================
 
-// Each entry declares: given these structural facts about a function,
-// the derived bound should be this. These serve as specification tests
-// for the complexity derivation pipeline.
-//
-// When the pipeline integration lands, each of these should match the
-// automatically derived bound for the corresponding algorithm pattern.
+// Each function derives the expected complexity for a known algorithm
+// from its structural facts. These serve as verification targets:
+// when the pipeline integration lands, the automatically derived bound
+// should match.
 
-// Tree traversal: visit every node once.
-// Type: Node { children: List<Node> }
-// Pattern: node.children |> fold(child => self(child))
-// Facts: UnitShrink (each child is one constructor smaller), all children
-// Expected: O(n) — catamorphism, single nesting level
-fn tree_traversal_bound() -> AsymptoticBound {
-  derive_bound(branches: 1, factor: UnitShrink, work_exponent: 0)
+// --- Structural recursion (catamorphisms) ---
+
+// Tree traversal: visit every node. O(n).
+fn tree_traversal_bound() -> CostTerm {
+  catamorphism_bound(param: "tree", nesting_depth: 1)
 }
 
-// Binary search: recurse on one half.
-// Pattern: if target < mid { self(left_half) } else { self(right_half) }
-// Facts: ProportionalShrink{2}, 1 branch per path, O(1) per level
-// Expected: O(log n)
-fn binary_search_bound() -> AsymptoticBound {
-  derive_bound(branches: 1, factor: ProportionalShrink { divisor: 2 }, work_exponent: 0)
+// Nested iteration: items |> map(item => items |> filter(...)). O(n²).
+fn nested_iteration_bound() -> CostTerm {
+  catamorphism_bound(param: "items", nesting_depth: 2)
 }
 
-// Mergesort: recurse on both halves, linear merge.
-// Pattern: merge(self(left_half), self(right_half))
-// Facts: ProportionalShrink{2}, 2 branches per path, O(n) per level
-// Expected: O(n log n)
-fn mergesort_bound() -> AsymptoticBound {
-  derive_bound(branches: 2, factor: ProportionalShrink { divisor: 2 }, work_exponent: 1)
+// Linear scan: single fold. O(n).
+fn linear_scan_bound() -> CostTerm {
+  catamorphism_bound(param: "xs", nesting_depth: 1)
 }
 
-// Nested iteration: items |> map(item => items |> filter(other => ...))
-// Facts: two nested linear traversals
-// Expected: O(n²) — catamorphism nesting depth 2
-fn nested_iteration_bound() -> AsymptoticBound {
-  catamorphism_bound(nesting_depth: 2)
+// --- Divide-and-conquer (Master theorem) ---
+
+// Binary search: 1 branch, halving, O(1) work. O(log n).
+fn binary_search_bound() -> CostTerm {
+  derive_bound(param: "xs", branches: 1, factor: ProportionalShrink { divisor: 2 }, work_exponent: 0)
 }
 
-// Linear scan: single fold over a list.
-// Facts: UnitShrink, 1 branch, O(1) per element
-// Expected: O(n)
-fn linear_scan_bound() -> AsymptoticBound {
-  derive_bound(branches: 1, factor: UnitShrink, work_exponent: 0)
+// Mergesort: 2 branches, halving, O(n) merge. O(n log n).
+fn mergesort_bound() -> CostTerm {
+  derive_bound(param: "xs", branches: 2, factor: ProportionalShrink { divisor: 2 }, work_exponent: 1)
+}
+
+// Karatsuba multiplication: 3 branches, halving, O(n) work. O(n^1.585).
+// (Conservative: reported as O(n²) due to integer ceiling of log_2(3))
+fn karatsuba_bound() -> CostTerm {
+  derive_bound(param: "digits", branches: 3, factor: ProportionalShrink { divisor: 2 }, work_exponent: 1)
+}
+
+// --- Root complexity ---
+
+// Trial division primality: loop d from 2 to √n. O(√n).
+fn trial_division_bound() -> CostTerm {
+  cost_sqrt(param: "n")
+}
+
+// Cube-root bounded iteration. O(∛n).
+fn cube_root_bound() -> CostTerm {
+  cost_cbrt(param: "n")
+}
+
+// k-th root bounded iteration. O(n^(1/k)).
+fn kth_root_bound(k: Int) -> CostTerm {
+  cost_root(param: "n", k: k)
+}
+
+// --- Graph algorithms (multi-parameter) ---
+
+// BFS / DFS: visit every vertex and edge once. O(V + E).
+fn bfs_dfs_bound() -> CostTerm {
+  cost_graph_linear(v_param: "V", e_param: "E")
+}
+
+// Dijkstra with binary heap: O((V + E) · log V).
+fn dijkstra_bound() -> CostTerm {
+  CostProduct { factors: [
+    cost_graph_linear(v_param: "V", e_param: "E"),
+    cost_log(param: "V")
+  ] }
+}
+
+// Bellman-Ford: relax all edges V-1 times. O(V · E).
+fn bellman_ford_bound() -> CostTerm {
+  CostProduct { factors: [
+    cost_linear(param: "V"),
+    cost_linear(param: "E")
+  ] }
+}
+
+// Floyd-Warshall: triple-nested over vertices. O(V³).
+fn floyd_warshall_bound() -> CostTerm {
+  cost_poly(param: "V", degree: 3)
 }
