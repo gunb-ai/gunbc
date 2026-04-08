@@ -74,8 +74,14 @@ pub struct CallableRepr {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CastRule {
+    pub from_type: String,
+    pub to_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
     pub template: String,
-    pub valid_targets: Rc<Vec<String>>,
+    pub cast_rules: Rc<Vec<Rc<CastRule>>>,
     pub fail_open: bool,
 }

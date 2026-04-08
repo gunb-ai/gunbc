@@ -96,8 +96,15 @@ type CallableRepr {
 //   valid_targets  — target types valid for casting (empty if fail_open)
 //   fail_open      — true = all casts syntactically valid (Python/Go),
 //                    false = check valid_targets (Rust)
+// CastRule: one valid (source, target) pair for type casting.
+// Ref: Rust Reference §8.2.4 — cast validity is a relation, not a set.
+type CastRule {
+  from_type: String
+  to_type: String
+}
+
 type CastSyntax {
   template: String
-  valid_targets: List<String>
+  cast_rules: List<CastRule>
   fail_open: Bool
 }

@@ -287,7 +287,7 @@ pub fn type_checker_strict() -> String {
 pub fn python_cast_syntax() -> Rc<CastSyntax> {
     thread_local! {
         static CACHED: Rc<CastSyntax> = {
-            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "valid_targets": [], "fail_open": true}))
+            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "cast_rules": [], "fail_open": true}))
                 .expect("valid data definition")
         };
     }

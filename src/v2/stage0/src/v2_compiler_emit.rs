@@ -1882,10 +1882,10 @@ let src_ty = match expr.inferred.clone().as_deref().cloned() {
 if ((src_ty.clone().as_str() != "".to_string().as_str()) && (src_ty.clone().as_str() == ty_str.clone().as_str())) {
             expr_str
 } else {
-            if can_cast(target.clone(), ty_str.clone()) {
+            if can_cast(target.clone(), src_ty.clone(), ty_str.clone()) {
                 render_cast(expr_str, ty_str.clone(), target.clone())
 } else {
-                v2_rt::concat(v2_rt::concat("compile_error!(\"unsupported cast to ".to_string(), ty_str.clone()), "\")".to_string())
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("compile_error!(\"unsupported cast from ".to_string(), src_ty.clone()), " to ".to_string()), ty_str.clone()), "\")".to_string())
 }
 }
 }

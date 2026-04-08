@@ -157,6 +157,6 @@ data type_checker_strict: String = "mypy --strict"
 // construct; the target language's runtime validates.
 data python_cast_syntax: CastSyntax = {
   template: "\{type\}(\{expr\})",
-  valid_targets: [],
+  cast_rules: [],
   fail_open: true
 }

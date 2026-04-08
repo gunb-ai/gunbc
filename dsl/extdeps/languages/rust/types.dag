@@ -22,7 +22,7 @@
 module extdeps.languages.rust.types
 
 import std.coercion {
-  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax
+  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, CastRule
 }
 
 
@@ -221,14 +221,28 @@ data integer_types: List<String> = [
 data float_types: List<String> = ["f32", "f64"]
 
 // Cast syntax: Rust uses `expr as type` for numeric casts.
-// Rust Reference §8.2.4: valid targets are integer and float types.
-// Bool is a valid SOURCE for integer casts but not a valid TARGET.
+// Rust Reference §8.2.4 — cast validity is a (source, target) relation.
+// Valid pairs for .dag types (mapped to Rust target types):
+//   i64 → i64, f64         (Int → Int, Float)
+//   f64 → i64, f64         (Float → Int, Float)
+//   bool → i64             (Bool → Int)
+// Invalid:
+//   bool → f64             (Bool → Float: not allowed)
+//   i64 → bool             (Int → Bool: not allowed)
+//   f64 → bool             (Float → Bool: not allowed)
 data rust_cast_syntax: CastSyntax = {
   template: "\{expr\} as \{type\}",
-  valid_targets: [
-    "i8", "i16", "i32", "i64", "i128", "isize",
-    "u8", "u16", "u32", "u64", "u128", "usize",
-    "f32", "f64"
+  cast_rules: [
+    // Integer ↔ Integer
+    { from_type: "i64", to_type: "i64" },
+    // Integer → Float
+    { from_type: "i64", to_type: "f64" },
+    // Float → Integer
+    { from_type: "f64", to_type: "i64" },
+    // Float ↔ Float
+    { from_type: "f64", to_type: "f64" },
+    // Bool → Integer (bool as i64 = 0 or 1)
+    { from_type: "bool", to_type: "i64" }
   ],
   fail_open: false
 }

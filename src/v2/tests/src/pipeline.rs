@@ -4301,12 +4301,16 @@ fn zero_arg_callable_resolves_and_renders() {
 #[test]
 fn bool_is_not_valid_as_cast_target() {
     // Rust does not allow `expr as bool` — only bool→integer is valid.
-    // Cast validity is now data-driven via CastSyntax in extdeps/languages/rust/types.dag.
+    // Cast validity is a (source, target) relation from extdeps/languages/rust/types.dag.
     use v2_compiler::v2_compiler_coercion::can_cast;
     use v2_compiler::v2_compiler_artifact::RenderTarget;
 
-    assert!(!can_cast(RenderTarget::Rust, "bool".to_string()),
-        "bool must not be a valid as-cast target — expr as bool is invalid Rust");
+    // Int → Bool: invalid (Rust Reference §8.2.4)
+    assert!(!can_cast(RenderTarget::Rust, "i64".to_string(), "bool".to_string()),
+        "i64 as bool is invalid Rust");
+    // Float → Bool: invalid
+    assert!(!can_cast(RenderTarget::Rust, "f64".to_string(), "bool".to_string()),
+        "f64 as bool is invalid Rust");
 }
 
 #[test]
@@ -4314,8 +4318,47 @@ fn int_and_float_are_valid_as_cast_targets() {
     use v2_compiler::v2_compiler_coercion::can_cast;
     use v2_compiler::v2_compiler_artifact::RenderTarget;
 
-    assert!(can_cast(RenderTarget::Rust, "i64".to_string()), "i64 should be a valid as-cast target");
-    assert!(can_cast(RenderTarget::Rust, "f64".to_string()), "f64 should be a valid as-cast target");
+    // Int → Float: valid
+    assert!(can_cast(RenderTarget::Rust, "i64".to_string(), "f64".to_string()),
+        "i64 as f64 should be valid");
+    // Float → Int: valid
+    assert!(can_cast(RenderTarget::Rust, "f64".to_string(), "i64".to_string()),
+        "f64 as i64 should be valid");
+    // Int → Int: valid (identity)
+    assert!(can_cast(RenderTarget::Rust, "i64".to_string(), "i64".to_string()),
+        "i64 as i64 should be valid");
+}
+
+#[test]
+fn bool_to_int_is_valid_cast() {
+    // Bool → Int is valid in Rust: `true as i64` = 1, `false as i64` = 0
+    use v2_compiler::v2_compiler_coercion::can_cast;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+
+    assert!(can_cast(RenderTarget::Rust, "bool".to_string(), "i64".to_string()),
+        "bool as i64 should be valid (Rust Reference §8.2.4)");
+}
+
+#[test]
+fn bool_to_float_is_invalid_cast() {
+    // Bool → Float is NOT valid in Rust (must go through Int first)
+    use v2_compiler::v2_compiler_coercion::can_cast;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+
+    assert!(!can_cast(RenderTarget::Rust, "bool".to_string(), "f64".to_string()),
+        "bool as f64 is invalid Rust — must cast bool→i64→f64");
+}
+
+#[test]
+fn python_casts_are_always_valid() {
+    // Python fail_open=true: constructor casts always syntactically valid
+    use v2_compiler::v2_compiler_coercion::can_cast;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+
+    assert!(can_cast(RenderTarget::Python, "str".to_string(), "int".to_string()),
+        "Python str→int should be valid (fail_open)");
+    assert!(can_cast(RenderTarget::Python, "bool".to_string(), "float".to_string()),
+        "Python bool→float should be valid (fail_open)");
 }
 
 // ── ExprLet expected-type propagation regression tests ────────────────
