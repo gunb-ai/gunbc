@@ -189,18 +189,137 @@ reading (1) and (2).
 
 ---
 
+## Roadmap to launch gate
+
+### Existing foundation
+
+| Asset | Lines | Role |
+|-------|-------|------|
+| `std/termination.dag` | 275 | DescentEvidence, RankingDimension, TerminationProof, DescentSource — well-designed, keep |
+| `std/iteration.dag` | 163 | fold/descend/repeat conceptual model — keep |
+| `std/computation.dag` | 369 | CallPattern → LoweringTarget — keep |
+| Pipeline facts | — | `is_self_recursive`, `AlgebraMethodSemantics` already produced by inference |
+| `complexity.dag` | 4965 | Heuristic analyzer — replace, not extend |
+| `00_core.dag` tables | — | `node_field_roles`, `expr_child_roles`, `function_size_effects` — dissolve into type-derived facts |
+
+### CX-L1: Type-level recursive field detection
+
+**Where:** Resolve (type processing).
+
+**What:** When resolving a type declaration, detect fields whose type
+references the containing type (directly or through List/Optional/Map).
+Annotate each such field with its recursion dimension.
+
+| Field pattern | Dimension |
+|---------------|-----------|
+| `children: List<Self>` | TreeSize |
+| `left: Self`, `right: Self` | TreeSize |
+| `tail: List<T>` (T is param) | ListLength |
+| `body: Self?` | TreeSize |
+
+**Output:** Per-type metadata — which fields are recursion carriers
+and their dimension. This is derived from the type definition, not
+hand-maintained.
+
+**Dissolves:** `node_field_roles`, `expr_child_roles` (for descent
+purposes), `function_size_effects`.
+
+### CX-L2: Descent witness production in inference
+
+**Where:** Inference (after method semantics are assigned).
+
+**What:** For each self-recursive function, track sub-value
+relationships from parameters through expressions. When a self-call
+argument is a provable sub-value of a parameter on a recursive
+dimension, annotate it with `Strict` evidence.
+
+Standard patterns to recognize (strict descent):
+```
+// Direct iteration over recursive field
+param.children |> fold(init: ..., f: (child, acc) => self(child))
+
+// Child accessor extraction
+let child = accessor(param)    // accessor projects from children
+self(child)
+
+// Match on recursive field
+match param.body { Some { value: inner } => self(inner) }
+
+// Arithmetic decrease
+self(n: n - 1)
+```
+
+**Key property:** the witness is produced by the pipeline, not
+discovered by the analyzer. Adding a new accessor or field requires
+zero changes to the analysis — the type declaration IS the authority.
+
+**Output:** Each self-call site annotated with descent evidence per
+parameter. Stored on the IR (design TBD: new field on Node, on
+ExprData, or in a side table).
+
+### CX-L3: Bound computation and reporting
+
+**Where:** New, small analysis pass after inference.
+
+**What:** For each self-recursive function:
+1. Read descent witnesses from CX-L2
+2. If all self-calls have `Strict` evidence on some dimension →
+   bound = that dimension's measure
+3. If not → bound = Forever (honest "couldn't prove with strict descent")
+4. Report as user-facing diagnostic: `info: f is O(n) in tree_size`
+
+**Forever factoring (P3):** For functions with Forever bounds
+containing input-dependent sub-computation, factor out the Forever
+and report the per-iteration scalability separately.
+
+**Size:** This pass should be small — hundreds of lines. It reads
+annotations, it doesn't pattern-match AST. The complexity is in
+CX-L2 (producing witnesses), not here (consuming them).
+
+### CX-L4: Cost composition (aspirational)
+
+For functions calling other functions, compose their bounds:
+- `f` calls `g` where `g` is `O(n)` → f's cost includes g's bound
+- Nested: `fold` body calls recursive function → multiply bounds
+- Report: `f is O(n × m)` for nested iteration
+
+### CX-L5: Suboptimality detection (aspirational)
+
+Hand-curated equivalence catalog: pattern → cheaper alternative.
+Even 3-5 rules would be a compelling demo.
+
+| Pattern | Suggestion | Why |
+|---------|------------|-----|
+| `xs \|> filter(p) \|> count > 0` | `xs \|> any(p)` | O(n) → O(k), short-circuits |
+| `xs \|> map(f) \|> filter(p)` | `xs \|> filter_map(f, p)` | One pass instead of two |
+| `xs \|> sort \|> first` | `xs \|> min` | O(n log n) → O(n) |
+
+This does not need to be architecturally complete — a small catalog
+is valuable. The catalog lives in `std/` as structural data, not as
+analyzer heuristics.
+
+### Launch gate = CX-L1 + CX-L2 + CX-L3
+
+The hard gate is phases 1-3. User-written functions using standard
+recursion patterns get proven complexity bounds via type-derived
+strict descent. The existing `complexity.dag` (4965 lines) continues
+to run non-blocking for internal compiler metrics — it is not on the
+launch path.
+
+---
+
 ## Current state (reference)
 
-524 violations. 46 direct self-recursive, 185 composed (callers of
-direct unknowns). Full triage in `cx-violation-triage.md`.
+524 violations in the compiler's own code (internal debt, not
+user-facing). 46 direct self-recursive, 185 composed. Full triage
+in `cx-violation-triage.md`.
 
-The existing analyzer infrastructure partially works:
-- CX-C (line 2683-2706 in complexity.dag) enters iteration lambdas
-  when the receiver is structural children — handles simple cases
-  like `node.children |> map(ch => self(ch))`
-- Breaks down when: accessors aren't registered, field access chains
-  are complex, condition-dependent termination (with_required_cardinality)
+The existing `complexity.dag` analyzer partially works but is built
+on heuristic pattern-matching that grows with each new code pattern.
+It is not the launch architecture — CX-L1/L2/L3 above replace it
+for user-facing analysis.
 
-Migration plan in `cx-computation-model.md` describes 4 phases of
-incremental cleanup. That plan is operational (how to get there), not
-architectural (what "there" looks like). This doc is the architecture.
+Migration plan in `cx-computation-model.md` describes incremental
+cleanup of the existing analyzer. That plan is operational (how to
+get there), not architectural (what "there" looks like). This doc
+is the architecture.
