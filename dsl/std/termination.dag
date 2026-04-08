@@ -33,6 +33,9 @@
 module std.termination
 
 import std.algebra { Ordering }
+// NOTE: is_valid_proof lives in std.graph (graph algorithm needs SCC
+// primitives). Cannot re-export here (circular: termination → graph →
+// termination). Consumers import from std.graph directly.
 
 // =========================================================================
 // Descent evidence: what happens to a ranking dimension at one call edge
@@ -218,20 +221,9 @@ type ProofEdge {
 }
 
 // Verify a termination proof: every cycle must have lexicographic descent.
-// DECLARATION ONLY — this function defines the concept. The actual
-// implementation lives in complexity.dag as proof_has_non_descending_cycle.
-// When complexity.dag imports from std.termination (post-bootstrap), this
-// becomes the single authority and proof_has_non_descending_cycle delegates here.
-fn is_valid_proof(proof: TerminationProof, edges: List<ProofEdge>) -> Bool {
-  // For every cycle in the call graph formed by edges,
-  // the product of evidence along the cycle must be
-  // lexicographically decreasing (at least one Strict
-  // in the highest non-NonIncreasing dimension).
-  //
-  // Algorithm: check that the NonIncreasing-only subgraph
-  // (edges where ALL dimensions are NonIncreasing) has no cycles.
-  false // fail-closed: not yet wired as consumer (bootstrap constraint)
-}
+// Implementation lives in std.graph (which imports ProofEdge from here).
+// Declared here for conceptual ownership; re-exported via std.graph.
+// See std.graph.is_valid_proof for the algorithm.
 
 // =========================================================================
 // Cost composition from iteration primitives

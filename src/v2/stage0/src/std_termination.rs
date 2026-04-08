@@ -140,7 +140,3 @@ pub struct ProofEdge {
     pub callee: String,
     pub evidence: Rc<Vec<DescentEvidence>>,
 }
-
-pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
-    false
-}

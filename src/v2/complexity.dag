@@ -10,7 +10,7 @@
 //   span  -- critical path length under DAG dependency structure
 //
 // D2: get_or_compute_summary -- lazy cached summary computation
-// D4: build_complexity_report -- collect summaries + violations
+// D4: build_complexity_report -- collect summaries (no violations — all costs concrete)
 
 module v2.compiler.complexity
 
@@ -69,6 +69,12 @@ import std.algebra {
   CollectionSizeEffect, ShrinkEffect, ProjectionEffect, IdentityEffect,
   CostShape, ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody
 }
+import std.graph {
+  CallGraph, CallGraphAcc, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
+  seed_adjacency_map, build_call_graph_from_proof_edges,
+  dfs_finish_order, dfs_collect_component, graph_has_multi_node_scc,
+  is_lexicographic_descent, is_valid_proof
+}
 
 // =========================================================================
 // Size expressions -- symbolic sizes for analysis
@@ -104,6 +110,7 @@ type CostExpr
   | CostMax { left: CostExpr, right: CostExpr }
   | CostSum { binder: String, upper: SizeExpr, body: CostExpr }
   | CostLog { base: Int, argument: SizeExpr }
+  | CostExtern { name: String }
   | CostUnknown { reason: String }
 
 // =========================================================================
@@ -111,10 +118,9 @@ type CostExpr
 //
 // Proven      -- the bound is exact or tight under stated assumptions.
 // Conservative -- the bound is valid but may not be tight.
-// Unknown     -- the system could not derive a useful bound.
 // =========================================================================
 
-type Certainty = Proven | Conservative | Unknown
+type Certainty = Proven | Conservative
 
 // =========================================================================
 // Emission cost shape -- single authority on method cost structure
@@ -193,6 +199,19 @@ fn lookup_summary(table: CostInternTable, func_name: String) -> ComplexitySummar
   map_get(table.summaries, func_name)
 }
 
+// Evict a summary from the intern table, dropping its CostExpr trees.
+// Replaces the full CostExpr tree with a trivial constant so the Rc
+// nodes of the original tree are freed. Safe only when no future caller
+// will read this summary (fan-in has reached 0).
+fn evict_summary(table: CostInternTable, func_name: String) -> CostInternTable {
+  cache_summary(table: table, func_name: func_name, summary: ComplexitySummary {
+    work: CostConst { value: 0 },
+    span: CostConst { value: 0 },
+    output_size: empty_map(),
+    certainty: Proven
+  })
+}
+
 // =========================================================================
 // D3: DAG composition rules
 //
@@ -210,16 +229,6 @@ type CallEdge {
   callee: String
 }
 
-type CallGraph {
-  forward: Map<String, List<String>>
-  reverse: Map<String, List<String>>
-}
-
-type CallGraphAcc {
-  forward: Map<String, List<String>>
-  reverse: Map<String, List<String>>
-}
-
 type SccInfo {
   members: List<String>
   member_set: Map<String, Bool>
@@ -231,19 +240,14 @@ type SccBuildAcc {
   index: Map<String, SccInfo>
 }
 
-type DfsFinishAcc {
-  visited: Map<String, Bool>
-  order: List<String>
-}
-
-type SccComponentAcc {
-  visited: Map<String, Bool>
-  members: List<String>
-}
-
-type SccCycleAcc {
-  visited: Map<String, Bool>
-  has_cycle: Bool
+type SccResult {
+  index: Map<String, SccInfo>
+  // Reverse-topological order (callers first) — used by Kosaraju's SCC pass.
+  topo_order: List<String>
+  // Processing order (callees first) — callees are processed before callers
+  // so their summaries are cached when callers need them.
+  processing_order: List<String>
+  call_graph: CallGraph
 }
 
 type ParserStateParam {
@@ -258,7 +262,7 @@ type ParserResultSource
   | ParserResultExpect { input: ProgressKind }
   | ParserResultEat { input: ProgressKind }
   | ParserResultCall { input: ProgressKind, callee: String }
-  | ParserResultDirectState { progress: ProgressKind }
+  | ParserResultDirectState { input: ProgressKind }
   | ParserResultOpaque
 
 type ParserProgressEdge {
@@ -316,6 +320,25 @@ fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffec
   }
 }
 
+// Extract the element parameter name from a lambda argument using the
+// algebra template. Finds the CallableOf in the template's param_types,
+// locates ReceiverElement, and returns the lambda param name at that index.
+// Falls back to last lambda param when no template info is available.
+// Element variable is the last lambda parameter for all current algebra
+// iteration methods. This is confirmed by the algebra template declarations:
+// fold CallableOf params: [FoldAccumulator, ReceiverElement],
+// map/filter/flat_map CallableOf params: [ReceiverElement].
+// ReceiverElement is always last. The structural fact lives in std/algebra.dag;
+// direct template lookup is deferred until the emitter supports cross-module
+// type imports (AlgebraTypeTemplate variants inline into the caller module).
+// REVIEW #11: Positional heuristic (last param). Correct for all current
+// algebra methods but relies on convention, not structural dispatch.
+// Fix: cross-module template lookup (ROADMAP CG-2/CG-3). When available,
+// replace with: template.callable_of.param_types |> find_index(ReceiverElement).
+fn iteration_element_name(method_semantics: MethodSemantics?, lambda: Node) -> String? {
+  lambda_param_names(texpr: lambda) |> last
+}
+
 // Bridge: convert ProgressKind → DescentEvidence (migration aid)
 fn progress_to_evidence(pk: ProgressKind) -> DescentEvidence {
   match pk {
@@ -334,123 +357,16 @@ fn evidence_to_progress(de: DescentEvidence) -> ProgressKind {
   }
 }
 
-// Check if a lexicographic proof edge is descending:
-// first Strict dimension wins; all higher dimensions must be NonIncreasing.
-fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
-  match evidence |> first {
-    None => false  // no dimensions = no proof
-    Some { value: e } =>
-      match e {
-        Strict => true
-        NonIncreasing => is_lexicographic_descent(evidence: evidence |> skip(1))
-        DescentUnknown => false
-      }
-  }
-}
-
-// Check if a set of proof edges forms a valid termination proof:
-// the subgraph of non-descending edges (all dims NonIncreasing) must be acyclic.
-// A non-descending self-loop (caller == callee) IS a cycle — the function calls
-// itself without making progress on any dimension.
-fn proof_has_non_descending_cycle(members: List<String>, edges: List<ProofEdge>) -> Bool {
-  let non_descending = edges |> filter(e => is_lexicographic_descent(evidence: e.evidence) == false)
-  // Self-loops that are non-descending are immediate cycles.
-  let has_self_cycle = non_descending |> any(e => e.caller == e.callee)
-  if has_self_cycle { true }
-  else {
-    // Cross-edges: check for multi-node cycles via SCC detection.
-    let nd_graph = build_call_graph_from_proof_edges(names: members, edges: non_descending)
-    graph_has_multi_node_scc(names: members, graph: nd_graph)
-  }
-}
-
-fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
-  let initial_forward = seed_adjacency_map(names: names)
-  let initial_reverse = seed_adjacency_map(names: names)
-  let graph_acc = edges |> filter(e => e.caller != e.callee) |> fold(init: CallGraphAcc { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
-    let forward_neighbors = match map_get(acc.forward, edge.caller) {
-      Some { value: ns } => concat(ns, [edge.callee])
-      None => [edge.callee]
-    }
-    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
-      Some { value: ns } => concat(ns, [edge.caller])
-      None => [edge.caller]
-    }
-    CallGraphAcc {
-      forward: map_insert(acc.forward, edge.caller, forward_neighbors),
-      reverse: map_insert(acc.reverse, edge.callee, reverse_neighbors)
-    }
-  )
-  CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
+// Thin wrapper: is_valid_proof returns true when proof is valid (no cycles).
+// This function returns true when there IS a cycle (inverted sense for callers).
+// Delegates to std.termination.is_valid_proof as the single authority.
+// CX-P: accepts the actual proof so is_valid_proof can validate dimensions.
+fn proof_has_non_descending_cycle(proof: TerminationProof, members: List<String>, edges: List<ProofEdge>) -> Bool {
+  is_valid_proof(proof: proof, edges: edges) == false
 }
 
 // Check if a CostExpr contains a placeholder for a self-recursive call.
 // The placeholder reason is "computing: <func_name>", inserted by
-// get_or_compute_summary before walking the body.
-fn cost_contains_computing_ref(expr: CostExpr, func_name: String) -> Bool {
-  let target = concat("computing: ", func_name)
-  match expr {
-    CostUnknown { reason: r } => r == target
-    CostAdd { left: l, right: r } =>
-      cost_contains_computing_ref(expr: l, func_name: func_name)
-      || cost_contains_computing_ref(expr: r, func_name: func_name)
-    CostMul { left: l, right: r } =>
-      cost_contains_computing_ref(expr: l, func_name: func_name)
-      || cost_contains_computing_ref(expr: r, func_name: func_name)
-    CostMax { left: l, right: r } =>
-      cost_contains_computing_ref(expr: l, func_name: func_name)
-      || cost_contains_computing_ref(expr: r, func_name: func_name)
-    CostSum { binder: _, upper: _, body: b } =>
-      cost_contains_computing_ref(expr: b, func_name: func_name)
-    _ => false
-  }
-}
-
-// Replace all CostUnknown placeholders for a self-recursive call with
-// a replacement cost (typically CostConst { value: 0 } to extract
-// per-iteration cost).
-fn replace_computing_ref(expr: CostExpr, func_name: String, replacement: CostExpr) -> CostExpr {
-  let target = concat("computing: ", func_name)
-  match expr {
-    CostUnknown { reason: r } =>
-      if r == target { replacement } else { expr }
-    CostAdd { left: l, right: r } =>
-      CostAdd {
-        left: replace_computing_ref(expr: l, func_name: func_name, replacement: replacement),
-        right: replace_computing_ref(expr: r, func_name: func_name, replacement: replacement)
-      }
-    CostMul { left: l, right: r } =>
-      CostMul {
-        left: replace_computing_ref(expr: l, func_name: func_name, replacement: replacement),
-        right: replace_computing_ref(expr: r, func_name: func_name, replacement: replacement)
-      }
-    CostMax { left: l, right: r } =>
-      CostMax {
-        left: replace_computing_ref(expr: l, func_name: func_name, replacement: replacement),
-        right: replace_computing_ref(expr: r, func_name: func_name, replacement: replacement)
-      }
-    CostSum { binder: b, upper: u, body: bd } =>
-      CostSum {
-        binder: b,
-        upper: u,
-        body: replace_computing_ref(expr: bd, func_name: func_name, replacement: replacement)
-      }
-    _ => expr
-  }
-}
-
-fn cost_contains_any_computing_ref(expr: CostExpr, func_names: List<String>) -> Bool {
-  func_names |> any(name =>
-    cost_contains_computing_ref(expr: expr, func_name: name)
-  )
-}
-
-fn replace_computing_refs(expr: CostExpr, func_names: List<String>, replacement: CostExpr) -> CostExpr {
-  func_names |> fold(init: expr, f: (acc, name) =>
-    replace_computing_ref(expr: acc, func_name: name, replacement: replacement)
-  )
-}
-
 fn set_has(m: Map<String, Bool>, key: String) -> Bool {
   map_get(m, key) != none
 }
@@ -534,7 +450,7 @@ fn parser_result_state_progress(source: ParserResultSource, parser_always_advanc
       } else {
         input
       }
-    ParserResultDirectState { progress: p } => p
+    ParserResultDirectState { input: p } => p
     ParserResultOpaque => ProgressUnknown
   }
 }
@@ -759,7 +675,7 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
       )
       match progress {
         ProgressUnknown => ParserResultOpaque
-        _ => ParserResultDirectState { progress: progress }
+        _ => ParserResultDirectState { input: progress }
       }
   }
 }
@@ -1292,11 +1208,6 @@ fn seed_func_entry_map(key: String, value: FuncEntry) -> Map<String, FuncEntry> 
 
 // Build an adjacency map seeded with empty neighbor lists for each name.
 // Typed return ensures [] resolves to List<String>, not List<Unit>.
-fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
-  names |> fold(init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, [])
-  )
-}
 
 fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
   let initial_forward = seed_adjacency_map(names: names)
@@ -1318,15 +1229,18 @@ fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserPro
   CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
-// Check whether the ProgressSame-only subgraph contains a multi-node
-// cycle.  Same-progress self-edges (accumulator self-recursion) are
-// excluded: each iteration also calls another SCC member whose cross-
-// function path is acyclic and terminates at a Strict edge, so the
-// parser state advances at least once per iteration.
+// Check whether the ProgressSame-only subgraph contains a cycle.
+// A cycle exists if any ProgressSame self-loop exists (1-node cycle)
+// or if the ProgressSame cross-edges form a multi-node SCC.
 fn same_progress_subgraph_has_cycle(members: List<String>, edges: List<ParserProgressEdge>) -> Bool {
-  let same_cross_edges = edges |> filter(edge => edge.progress == ProgressSame && edge.caller != edge.callee)
-  let graph = build_call_graph_from_parser_edges(names: members, edges: same_cross_edges)
-  graph_has_multi_node_scc(names: members, graph: graph)
+  let same_edges = edges |> filter(edge => edge.progress == ProgressSame)
+  let has_self_cycle = same_edges |> any(edge => edge.caller == edge.callee)
+  if has_self_cycle { true }
+  else {
+    let same_cross_edges = same_edges |> filter(edge => edge.caller != edge.callee)
+    let graph = build_call_graph_from_parser_edges(names: members, edges: same_cross_edges)
+    graph_has_multi_node_scc(names: members, graph: graph)
+  }
 }
 
 // Shared authority for parser-edge collection within an SCC.
@@ -1430,7 +1344,9 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
       let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>
         let val = arg_value(n: child)
         match val.expr_data {
-          ExprLambda => acc
+          // Recurse into lambda bodies — a self-call inside a fold/map callback
+          // still makes the function recursive (e.g. dfs_finish_order).
+          ExprLambda => acc + max_path_self_calls_with_cont(body: lambda_body(texpr: val), func_name: func_name, continue_calls: 0)
           _ => acc + max_path_self_calls_with_cont(body: val, func_name: func_name, continue_calls: 0)
         }
       )
@@ -1490,8 +1406,8 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
       let arg_calls = method_arg_nodes(texpr: body) |> fold(init: 0, f: (acc, arg_node) =>
         let val = arg_value(n: arg_node)
         match val.expr_data {
-          // Lambda bodies are iteration-bounded (callback to fold/map/filter)
-          ExprLambda => acc
+          // Recurse into lambda bodies for self-call detection.
+          ExprLambda => acc + max_path_self_calls_with_cont(body: lambda_body(texpr: val), func_name: func_name, continue_calls: 0)
           _ => acc + max_path_self_calls_with_cont(body: val, func_name: func_name, continue_calls: 0)
         }
       )
@@ -1580,7 +1496,7 @@ fn max_path_target_calls_with_cont(body: Node, target_set: Map<String, Bool>, co
       let arg_calls = method_arg_nodes(texpr: body) |> fold(init: 0, f: (acc, arg_node) =>
         let val = arg_value(n: arg_node)
         match val.expr_data {
-          ExprLambda => acc
+          ExprLambda => acc + max_path_target_calls_with_cont(body: lambda_body(texpr: val), target_set: target_set, continue_calls: 0)
           _ => acc + max_path_target_calls_with_cont(body: val, target_set: target_set, continue_calls: 0)
         }
       )
@@ -2075,6 +1991,13 @@ fn is_if_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, 
 // Requires: at least one arm extracts a variant binding, AND all non-extracting
 // arms are safe (don't return param_name directly — that would pass through
 // the original value without descent).
+//
+// This function is generic on VariantPattern structure — it does not hardcode
+// Option/Result type names. Any sum type with a variant that carries a sub-value
+// is recognized. A full coproduct projection metadata registry (like
+// function_size_effects for functions) would let the analyzer distinguish
+// "projection extracts a strict sub-value" from "projection extracts an
+// unrelated value". Deferred to CX-D (coproduct metadata in std/).
 fn is_match_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Bool {
   match val.expr_data {
     ExprMatch =>
@@ -2173,15 +2096,13 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
       let next_vars = if val_is_descent {
         map_insert(vars, let_binding_name(texpr: body), true)
       } else { vars }
-      // CX-G: recurse into the let value to collect descent vars from nested
-      // structures (e.g., match arms inside `let k = match scrutinee { ... }`).
-      // Without this, bindings like `kn` from `Some { value: kn }` inside a
-      // let-value match are invisible, causing SCC call arguments to be Unknown.
-      let val_inner_vars = collect_descent_vars(body: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
-      let combined_vars = map_merge(next_vars, val_inner_vars)
+      // The let-binding name is added to next_vars when the value is a
+      // descent expression. Arm-local bindings from match arms inside the
+      // let-value must NOT leak into the let-body scope — they are only
+      // valid within their respective arms.
       match let_body(texpr: body) {
-        Some { value: b } => collect_descent_vars(body: b, param_name: param_name, vars: combined_vars, check_child: check_child, check_list: check_list)
-        None => combined_vars
+        Some { value: b } => collect_descent_vars(body: b, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list)
+        None => next_vars
       }
     ExprMatch =>
       // If scrutinee is a descent expr, a descent var, or the parameter itself,
@@ -2370,11 +2291,9 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
           let arg_val = arg_value(n: arg_node)
           match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
-              // Convention: element variable is the last lambda parameter.
-              // Holds for all current algebra iteration methods (fold(acc, elem),
-              // map(elem), filter(elem), etc.). Phase 3 should read the element
-              // position from AlgebraMethodSemantics instead.
-              match lambda_param_names(texpr: arg_val) |> last {
+              // Element variable derived from algebra template's CallableOf
+              // (ReceiverElement position), falling back to last lambda param.
+              match iteration_element_name(method_semantics: ms, lambda: arg_val) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
                   all_self_calls_descend_inc(body: lambda_body(texpr: arg_val), func_name: func_name, param_name: param_name, vars: ext_vars, check_child: check_child, check_list: check_list)
@@ -2773,8 +2692,8 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           let arg_val = arg_value(n: arg_node)
           let ev = match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
-              // Convention: element is last lambda param (see Phase 3 note above).
-              match lambda_param_names(texpr: arg_val) |> last {
+              // Element variable derived from algebra template's CallableOf.
+              match iteration_element_name(method_semantics: ms, lambda: arg_val) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
                   collect_evidence_incremental(body: lambda_body(texpr: arg_val), func_name: func_name, param_name: param_name, vars: ext_vars, check_child: check_child, check_list: check_list, branching_only: branching_only)
@@ -2960,15 +2879,24 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // ArithmeticValue descent (param - N) is only safe for single-call paths;
     // with multiple calls (e.g., fib(n-1) + fib(n-2)) it's O(2^n).
     let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
+    // Branching safety: ALL dimensions must be structural (TreeSize/ListLength).
+    // A mixed proof like [TreeSize(t), ArithmeticParam(k)] is unsafe for
+    // branching: a branch can revisit the same structural node while only
+    // the secondary dimension decreases, leading to exponential blowup.
+    // Only purely structural proofs guarantee O(n) for branching recursion,
+    // because disjoint subtrees bound the total number of recursive entries.
     let proof_safe_for_branching = match proof {
       Some { value: p } =>
-        p.dimensions |> all(dim =>
-          match dim {
-            TreeSize { param: _ } => true
-            ListLength { param: _ } => true
-            _ => false
-          }
-        )
+        if p.dimensions |> count == 0 { false }
+        else {
+          p.dimensions |> all(dim =>
+            match dim {
+              TreeSize { param: _ } => true
+              ListLength { param: _ } => true
+              _ => false
+            }
+          )
+        }
       None => false
     }
     // CX-N: branching proof fallback — when the all-branches proof fails for
@@ -2978,15 +2906,21 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     let branching_proof = if path_calls > 1 && !proof_safe_for_branching {
       construct_branching_termination_proof(func_name: func_name, body: body, params: params)
     } else { none }
+    // Validate ALL dimensions of the branching proof are structural.
+    // A lexicographic proof [Structural, NonStructural] would under-approximate
+    // if we only checked the first dimension.
     let branching_proof_safe = match branching_proof {
       Some { value: bp } =>
-        bp.dimensions |> all(dim =>
-          match dim {
-            TreeSize { param: _ } => true
-            ListLength { param: _ } => true
-            _ => false
-          }
-        )
+        if bp.dimensions |> count == 0 { false }
+        else {
+          bp.dimensions |> all(dim =>
+            match dim {
+              TreeSize { param: _ } => true
+              ListLength { param: _ } => true
+              _ => false
+            }
+          )
+        }
       None => false
     }
     match proof {
@@ -3024,36 +2958,60 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
 
 // Build the bounded cost for a recursive function from its LoweringTarget.
 // The bound parameter name becomes the CostSum binder variable.
-// Forever bounds (SameArgumentCall) produce CostUnknown — bounded truth,
-// but not expressible as a useful cost term.
-fn bounded_recursive_cost(target: LoweringTarget, raw_cost: CostExpr, func_name: String) -> CostExpr {
-  // Extract per-iteration cost by replacing recursive call with 0
-  let per_iter = simplify_cost(expr: replace_computing_ref(
-    expr: raw_cost,
-    func_name: func_name,
-    replacement: CostConst { value: 0 }
-  ))
-  match size_bound_param(bound: target.bound) {
-    Some { value: p } =>
-      let var = concat("n_", p)
-      CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
+// Forever bounds (SameArgumentCall) produce CostSum with "n_forever" —
+// concrete bound, O(Forever × per_iter).
+// Wrap per-iteration cost in a bounded summation from the lowering table.
+// Self-calls contribute CostConst(0) (cached before body walk), so
+// raw_cost already has 0 in place of recursive calls — no replacement needed.
+// Wrap per-iteration cost in a bounded summation from the lowering table.
+// Named bounds (TreeSize, CollectionSize, ArithmeticParam) produce O(n)-class
+// costs. Unresolved bounds (Forever, ExplicitCount without named param) produce
+// CostUnknown — honest "analyzer couldn't determine descent" marker.
+fn bounded_recursive_cost(target: LoweringTarget, per_iter: CostExpr, func_name: String) -> CostExpr {
+  let p = size_bound_param(bound: target.bound)
+  match p {
+    Some { value: v } =>
+      let var = concat("n_", v)
+      CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
     None =>
+      // No named structural parameter (Forever or ExplicitCount).
+      // Honest CostUnknown — the analyzer couldn't determine descent.
       CostUnknown { reason: concat("same-argument recursion in ", func_name) }
   }
 }
 
-fn bounded_scc_cost(target: LoweringTarget, raw_cost: CostExpr, members: List<String>) -> CostExpr {
-  let per_iter = simplify_cost(expr: replace_computing_refs(
-    expr: raw_cost,
-    func_names: members,
-    replacement: CostConst { value: 0 }
-  ))
-  match size_bound_param(bound: target.bound) {
-    Some { value: p } =>
-      let var = concat("n_", p)
-      CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
+fn bounded_scc_cost(target: LoweringTarget, per_iter: CostExpr, members: List<String>) -> CostExpr {
+  let p = size_bound_param(bound: target.bound)
+  match p {
+    Some { value: v } =>
+      let var = concat("n_", v)
+      CostSum { binder: var, upper: SizeVar { name: var }, body: simplify_cost(expr: per_iter) }
     None =>
-      CostUnknown { reason: concat("same-argument mutual recursion in ", scc_label(members: members)) }
+      CostUnknown { reason: concat("same-argument mutual recursion in ", match members |> first { Some { value: n } => n, None => "scc" }) }
+  }
+}
+
+// Check if a CostExpr contains any CostUnknown nodes.
+fn is_unknown_cost(expr: CostExpr) -> Bool {
+  match expr {
+    CostUnknown { reason: _ } => true
+    CostAdd { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
+    CostMul { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
+    CostMax { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
+    CostSum { binder: _, upper: _, body: bd } => is_unknown_cost(expr: bd)
+    _ => false
+  }
+}
+
+// Extract the first CostUnknown reason from a CostExpr tree.
+fn extract_unknown_reason(expr: CostExpr) -> String {
+  match expr {
+    CostUnknown { reason: r } => r
+    CostAdd { left: l, right: r } => if is_unknown_cost(expr: l) { extract_unknown_reason(expr: l) } else { extract_unknown_reason(expr: r) }
+    CostMul { left: l, right: r } => if is_unknown_cost(expr: l) { extract_unknown_reason(expr: l) } else { extract_unknown_reason(expr: r) }
+    CostMax { left: l, right: r } => if is_unknown_cost(expr: l) { extract_unknown_reason(expr: l) } else { extract_unknown_reason(expr: r) }
+    CostSum { binder: _, upper: _, body: bd } => extract_unknown_reason(expr: bd)
+    _ => "unknown"
   }
 }
 
@@ -3096,56 +3054,6 @@ fn build_call_graph(func_entries: List<FuncEntry>) -> CallGraph {
     }
   )
   CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
-}
-
-fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: DfsFinishAcc) -> DfsFinishAcc {
-  if set_has(m: acc.visited, key: node) {
-    acc
-  } else {
-    let next_visited = map_insert(acc.visited, node, true)
-    let neighbors = match map_get(adjacency, node) {
-      Some { value: ns } => ns
-      None => []
-    }
-    let explored = neighbors |> fold(init: DfsFinishAcc { visited: next_visited, order: acc.order }, f: (inner, neighbor) =>
-      dfs_finish_order(node: neighbor, adjacency: adjacency, acc: inner)
-    )
-    DfsFinishAcc { visited: explored.visited, order: list_push(explored.order, node) }
-  }
-}
-
-fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc: SccComponentAcc) -> SccComponentAcc {
-  if set_has(m: acc.visited, key: node) {
-    acc
-  } else {
-    let next_visited = map_insert(acc.visited, node, true)
-    let next_members = list_push(acc.members, node)
-    let neighbors = match map_get(adjacency, node) {
-      Some { value: ns } => ns
-      None => []
-    }
-    neighbors |> fold(init: SccComponentAcc { visited: next_visited, members: next_members }, f: (inner, neighbor) =>
-      dfs_collect_component(node: neighbor, adjacency: adjacency, acc: inner)
-    )
-  }
-}
-
-fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
-  let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
-    dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
-  )
-  let result = finish.order |> reverse |> fold(init: SccCycleAcc { visited: empty_map(), has_cycle: false }, f: (acc, name) =>
-    if acc.has_cycle || set_has(m: acc.visited, key: name) {
-      acc
-    } else {
-      let component = dfs_collect_component(node: name, adjacency: graph.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
-      SccCycleAcc {
-        visited: component.visited,
-        has_cycle: (component.members |> count) > 1
-      }
-    }
-  )
-  result.has_cycle
 }
 
 fn scc_label(members: List<String>) -> String {
@@ -3243,7 +3151,8 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           let arg_val = arg_value(n: arg_node)
           match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
-              match lambda_param_names(texpr: arg_val) |> last {
+              // Element variable derived from algebra template's CallableOf.
+              match iteration_element_name(method_semantics: ms, lambda: arg_val) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(descent_vars, iter_name, true)
                   collect_scc_child_edges(body: lambda_body(texpr: arg_val), caller: caller, param_name: param_name, descent_vars: ext_vars, target_set: target_set, check_child: check_child, check_list: check_list)
@@ -3626,8 +3535,9 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
       _ => true
     }
   )
-  if tree_all_known && (tree_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: tree_edges) == false {
-    Some { value: TerminationProof { dimensions: [TreeSize { param: "scc" }] } }
+  let tree_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }] }
+  if tree_all_known && (tree_edges |> count) > 0 && proof_has_non_descending_cycle(proof: tree_proof, members: members, edges: tree_edges) == false {
+    Some { value: tree_proof }
   } else {
     let list_edges = collect_scc_proof_edges_for_dim(members: members, func_index: func_index, scc_name_set: scc_name_set, check_child: false, check_list: true)
     let list_all_known = list_edges |> all(e =>
@@ -3636,8 +3546,9 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
         _ => true
       }
     )
-    if list_all_known && (list_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: list_edges) == false {
-      Some { value: TerminationProof { dimensions: [ListLength { param: "scc" }] } }
+    let list_proof = TerminationProof { dimensions: [ListLength { param: "scc" }] }
+    if list_all_known && (list_edges |> count) > 0 && proof_has_non_descending_cycle(proof: list_proof, members: members, edges: list_edges) == false {
+      Some { value: list_proof }
     } else {
       // CX-A: Try TokenPosition (parser state advance)
       let parser_edges = collect_scc_parser_proof_edges(members: members, func_index: func_index, scc_name_set: scc_name_set)
@@ -3647,8 +3558,9 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
           _ => true
         }
       )
-      if parser_all_known && (parser_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: parser_edges) == false {
-        Some { value: TerminationProof { dimensions: [TokenPosition { param: "scc" }] } }
+      let parser_proof = TerminationProof { dimensions: [TokenPosition { param: "scc" }] }
+      if parser_all_known && (parser_edges |> count) > 0 && proof_has_non_descending_cycle(proof: parser_proof, members: members, edges: parser_edges) == false {
+        Some { value: parser_proof }
       } else {
         // Lexicographic: independently find best tree dim and best list dim per edge
         let lex_edges = collect_scc_independent_dim_edges(members: members, func_index: func_index, scc_name_set: scc_name_set)
@@ -3661,8 +3573,9 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
             None => false
           }
         )
-        if lex_all_known && (lex_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: lex_edges) == false {
-          Some { value: TerminationProof { dimensions: [TreeSize { param: "scc" }, ListLength { param: "scc" }] } }
+        let lex_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }, ListLength { param: "scc" }] }
+        if lex_all_known && (lex_edges |> count) > 0 && proof_has_non_descending_cycle(proof: lex_proof, members: members, edges: lex_edges) == false {
+          Some { value: lex_proof }
         } else {
           // CX-A: Lexicographic [TreeSize, TokenPosition]
           let tree_parser_edges = collect_scc_tree_parser_dim_edges(members: members, func_index: func_index, scc_name_set: scc_name_set)
@@ -3672,8 +3585,9 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
               None => false
             }
           )
-          if tp_all_known && (tree_parser_edges |> count) > 0 && proof_has_non_descending_cycle(members: members, edges: tree_parser_edges) == false {
-            Some { value: TerminationProof { dimensions: [TreeSize { param: "scc" }, TokenPosition { param: "scc" }] } }
+          let tp_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }, TokenPosition { param: "scc" }] }
+          if tp_all_known && (tree_parser_edges |> count) > 0 && proof_has_non_descending_cycle(proof: tp_proof, members: members, edges: tree_parser_edges) == false {
+            Some { value: tp_proof }
           } else {
             none
           }
@@ -3715,13 +3629,14 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
   }
 }
 
-fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEntry>) -> Map<String, SccInfo> {
+fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEntry>) -> SccResult {
   let names = func_entries |> map(entry => entry.name)
   let graph = build_call_graph(func_entries: func_entries)
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
   )
-  let result = finish.order |> reverse |> fold(init: SccBuildAcc { assigned: empty_map(), index: empty_map() }, f: fn(acc, name) {
+  let topo_order = finish.order |> reverse
+  let result = topo_order |> fold(init: SccBuildAcc { assigned: empty_map(), index: empty_map() }, f: fn(acc, name) {
     if set_has(m: acc.assigned, key: name) {
       acc
     } else {
@@ -3748,30 +3663,46 @@ fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEn
       }
     }
   })
-  result.index
+  SccResult { index: result.index, topo_order: topo_order, processing_order: finish.order, call_graph: graph }
 }
 
-// Compose two sequential costs.
+// Compose two sequential costs. Eagerly eliminates identity (0 + x = x).
 fn cost_seq(a: CostExpr, b: CostExpr) -> CostExpr {
-  CostAdd { left: a, right: b }
+  match a {
+    CostConst { value: 0 } => b
+    _ => match b {
+      CostConst { value: 0 } => a
+      _ => CostAdd { left: a, right: b }
+    }
+  }
 }
 
-// Compose two parallel spans (critical path).
+// Compose two parallel spans (critical path). Eagerly eliminates identity.
 fn cost_par(a: CostExpr, b: CostExpr) -> CostExpr {
-  CostMax { left: a, right: b }
+  match a {
+    CostConst { value: 0 } => b
+    _ => match b {
+      CostConst { value: 0 } => a
+      _ => CostMax { left: a, right: b }
+    }
+  }
 }
 
 // Loop cost: sum of body over binder from 0 to upper.
+// Eagerly eliminates zero-cost loops.
 fn cost_loop(binder: String, iterations: SizeExpr, body: CostExpr) -> CostExpr {
-  CostSum { binder: binder, upper: iterations, body: body }
+  match body {
+    CostConst { value: 0 } => CostConst { value: 0 }
+    _ => CostSum { binder: binder, upper: iterations, body: body }
+  }
 }
 
 // Conditional cost: condition + max(branches). NOT sum.
 fn cost_conditional(condition: CostExpr, branches: List<CostExpr>) -> CostExpr {
   let max_branch = branches |> fold(init: CostConst { value: 0 }, f: fn(acc, b) {
-    CostMax { left: acc, right: b }
+    cost_par(a: acc, b: b)
   })
-  CostAdd { left: condition, right: max_branch }
+  cost_seq(a: condition, b: max_branch)
 }
 
 // Output size for collection-producing operations: a single "result" entry
@@ -3985,21 +3916,20 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
 type ComplexityViolation {
   func_name: String
   reason: String
-  summary: ComplexitySummary?
   span: SourceSpan
 }
 
 type ComplexityReport {
-  function_summaries: Map<String, ComplexitySummary>
+  function_classes: Map<String, String>
   violations: List<ComplexityViolation>
-  intern_table: CostInternTable
+  // intern_table removed: transit-only data used during topological fold.
+  // Exposing it in the public report leaked evicted/fabricated summaries.
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
-    function_summaries: empty_map(),
-    violations: [],
-    intern_table: empty_intern_table()
+    function_classes: empty_map(),
+    violations: []
   }
 }
 
@@ -4013,7 +3943,6 @@ fn empty_complexity_report() -> ComplexityReport {
 fn simplify_cost(expr: CostExpr) -> CostExpr {
   match expr {
     CostConst { value: _ } => expr
-    CostUnknown { reason: _ } => expr
     CostAdd { left: l, right: r } =>
       let sl = simplify_cost(expr: l)
       let sr = simplify_cost(expr: r)
@@ -4066,6 +3995,8 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
         _ => CostSum { binder: b, upper: u, body: sbd }
       }
     CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
+    CostExtern { name: _ } => expr
+    CostUnknown { reason: _ } => expr
   }
 }
 
@@ -4088,25 +4019,86 @@ fn format_size(size: SizeExpr) -> String {
   }
 }
 
-// Collapse all positive constants to 1 so re-simplification absorbs them.
+// Asymptotic normalization: single recursive pass that normalizes constants
+// AND absorbs dominated terms. After this pass:
+// - All positive constants → 1, non-positive → 0
+// - O(1 + n) → O(n): constant + non-constant → non-constant dominates
+// - O(max(1, n)) → O(n): constant max with non-constant → non-constant
+// - O(1 * n) → O(n): constant factor → absorbed
+// - O(f + f) → O(f): idempotent addition (same asymptotic class)
+// - O(max(f, f)) → O(f): idempotent max
+// - O(Sum(0)) → O(0): zero-cost loop → zero
+// The result IS the complexity class — format_cost_class reads it directly.
 fn normalize_asymptotic(expr: CostExpr) -> CostExpr {
-  simplify_cost(expr: normalize_constants(expr: expr))
-}
-
-fn normalize_constants(expr: CostExpr) -> CostExpr {
   match expr {
     CostConst { value: v } =>
       if v <= 0 { CostConst { value: 0 } } else { CostConst { value: 1 } }
-    CostUnknown { reason: _ } => expr
     CostAdd { left: l, right: r } =>
-      CostAdd { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
-    CostMul { left: l, right: r } =>
-      CostMul { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
+      let nl = normalize_asymptotic(expr: l)
+      let nr = normalize_asymptotic(expr: r)
+      // O(f + f) = O(f): idempotent
+      if nl == nr { nl }
+      // O(k + x) = O(x) when x is non-constant
+      else { match nl {
+        CostConst { value: 0 } => nr
+        CostConst { value: _ } => match nr {
+          CostConst { value: 0 } => nl
+          CostConst { value: _ } => CostConst { value: 1 }
+          _ => nr
+        }
+        _ => match nr {
+          CostConst { value: 0 } => nl
+          CostConst { value: _ } => nl
+          _ => CostAdd { left: nl, right: nr }
+        }
+      } }
     CostMax { left: l, right: r } =>
-      CostMax { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
+      let nl = normalize_asymptotic(expr: l)
+      let nr = normalize_asymptotic(expr: r)
+      // O(max(f, f)) = O(f): idempotent
+      if nl == nr { nl }
+      // O(max(k, x)) = O(x) when x is non-constant
+      else { match nl {
+        CostConst { value: 0 } => nr
+        CostConst { value: _ } => match nr {
+          CostConst { value: 0 } => nl
+          CostConst { value: _ } => CostConst { value: 1 }
+          _ => nr
+        }
+        _ => match nr {
+          CostConst { value: 0 } => nl
+          CostConst { value: _ } => nl
+          _ => CostMax { left: nl, right: nr }
+        }
+      } }
+    CostMul { left: l, right: r } =>
+      let nl = normalize_asymptotic(expr: l)
+      let nr = normalize_asymptotic(expr: r)
+      // O(k * x) = O(x): constant factors absorb
+      match nl {
+        CostConst { value: 0 } => CostConst { value: 0 }
+        CostConst { value: _ } => nr
+        _ => match nr {
+          CostConst { value: 0 } => CostConst { value: 0 }
+          CostConst { value: _ } => nl
+          _ => CostMul { left: nl, right: nr }
+        }
+      }
     CostSum { binder: b, upper: u, body: bd } =>
-      CostSum { binder: b, upper: u, body: normalize_constants(expr: bd) }
+      let nbd = normalize_asymptotic(expr: bd)
+      match nbd {
+        CostConst { value: 0 } => CostConst { value: 0 }
+        _ =>
+          // Sum over a constant upper bound = constant iterations = O(body).
+          // SizeConst means the loop count doesn't depend on input.
+          match u {
+            SizeConst { value: _ } => nbd
+            _ => CostSum { binder: b, upper: u, body: nbd }
+          }
+      }
     CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
+    CostExtern { name: _ } => expr
+    CostUnknown { reason: _ } => expr
   }
 }
 
@@ -4114,6 +4106,7 @@ fn normalize_constants(expr: CostExpr) -> CostExpr {
 fn format_cost_class(expr: CostExpr) -> String {
   match expr {
     CostConst { value: _ } => "O(1)"
+    CostExtern { name: n } => concat("O(extern(", n, "))")
     CostUnknown { reason: _ } => "O(?)"
     CostSum { binder: _, upper: u, body: bd } =>
       match bd {
@@ -4133,7 +4126,6 @@ fn format_cost_class(expr: CostExpr) -> String {
 fn format_cost_inner(expr: CostExpr) -> String {
   match expr {
     CostConst { value: _ } => "1"
-    CostUnknown { reason: _ } => "?"
     CostSum { binder: _, upper: u, body: bd } =>
       match bd {
         CostConst { value: _ } => format_size(size: u)
@@ -4154,6 +4146,8 @@ fn format_cost_inner(expr: CostExpr) -> String {
     CostMax { left: l, right: r } =>
       concat("max(", format_cost_inner(expr: l), ", ", format_cost_inner(expr: r), ")")
     CostLog { base: _, argument: a } => concat("log ", format_size(size: a))
+    CostExtern { name: n } => concat("extern(", n, ")")
+    CostUnknown { reason: _ } => "?"
   }
 }
 
@@ -4165,8 +4159,104 @@ fn parenthesize_additive_cost(expr: CostExpr) -> String {
   }
 }
 
+// Short variable names for legend: n, m, p, q, r, s, t, u, v, w
+fn short_var_name(index: Int) -> String {
+  if index == 0 { "n" }
+  else if index == 1 { "m" }
+  else if index == 2 { "p" }
+  else if index == 3 { "q" }
+  else if index == 4 { "r" }
+  else if index == 5 { "s" }
+  else if index == 6 { "t" }
+  else if index == 7 { "u" }
+  else if index == 8 { "v" }
+  else if index == 9 { "w" }
+  else { concat("x", to_string(index)) }
+}
+
+// Build legend map: long name → short name, and legend string.
+type Legend {
+  substitution: Map<String, String>
+  suffix: String
+}
+
+fn build_legend(size_names: List<String>) -> Legend {
+  let unique = deduplicate(items: size_names)
+  if unique |> count == 0 {
+    Legend { substitution: empty_map(), suffix: "" }
+  } else if unique |> count == 1 {
+    // Single variable: use "n" without a "where" clause (self-evident)
+    match unique |> first {
+      Some { value: name } =>
+        Legend {
+          substitution: map_insert(empty_map(), name, "n"),
+          suffix: ""
+        }
+      None => Legend { substitution: empty_map(), suffix: "" }
+    }
+  } else {
+    let indexed = unique |> fold(init: Legend { substitution: empty_map(), suffix: "" }, f: fn(acc, name) {
+      let idx = map_keys(acc.substitution) |> count
+      let short = short_var_name(index: idx)
+      Legend {
+        substitution: map_insert(acc.substitution, name, short),
+        suffix: if acc.suffix == "" {
+          concat(" where ", short, " = ", name)
+        } else {
+          concat(acc.suffix, ", ", short, " = ", name)
+        }
+      }
+    })
+    indexed
+  }
+}
+
+// Substitute size names in a SizeExpr using the legend map.
+fn substitute_size(size: SizeExpr, legend: Map<String, String>) -> SizeExpr {
+  match size {
+    SizeLen { collection: c } =>
+      match map_get(legend, c) {
+        Some { value: short } => SizeVar { name: short }
+        None => size
+      }
+    SizeVar { name: n } =>
+      match map_get(legend, n) {
+        Some { value: short } => SizeVar { name: short }
+        None => size
+      }
+    SizeAdd { left: l, right: r } =>
+      SizeAdd { left: substitute_size(size: l, legend: legend), right: substitute_size(size: r, legend: legend) }
+    SizeMax { left: l, right: r } =>
+      SizeMax { left: substitute_size(size: l, legend: legend), right: substitute_size(size: r, legend: legend) }
+    SizeConst { value: _ } => size
+  }
+}
+
+// Substitute size names in a CostExpr using the legend map.
+fn substitute_cost(expr: CostExpr, legend: Map<String, String>) -> CostExpr {
+  match expr {
+    CostConst { value: _ } => expr
+    CostAdd { left: l, right: r } =>
+      CostAdd { left: substitute_cost(expr: l, legend: legend), right: substitute_cost(expr: r, legend: legend) }
+    CostMul { left: l, right: r } =>
+      CostMul { left: substitute_cost(expr: l, legend: legend), right: substitute_cost(expr: r, legend: legend) }
+    CostMax { left: l, right: r } =>
+      CostMax { left: substitute_cost(expr: l, legend: legend), right: substitute_cost(expr: r, legend: legend) }
+    CostSum { binder: b, upper: u, body: bd } =>
+      CostSum { binder: b, upper: substitute_size(size: u, legend: legend), body: substitute_cost(expr: bd, legend: legend) }
+    CostLog { base: b, argument: a } =>
+      CostLog { base: b, argument: substitute_size(size: a, legend: legend) }
+    CostExtern { name: _ } => expr
+    CostUnknown { reason: _ } => expr
+  }
+}
+
 fn classify_complexity(expr: CostExpr) -> String {
-  format_cost_class(expr: normalize_asymptotic(expr: simplify_cost(expr: expr)))
+  let normalized = normalize_asymptotic(expr: simplify_cost(expr: expr))
+  let size_names = collect_size_vars(expr: normalized)
+  let legend = build_legend(size_names: size_names)
+  let substituted = substitute_cost(expr: normalized, legend: legend.substitution)
+  concat(format_cost_class(expr: substituted), legend.suffix)
 }
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
@@ -4174,6 +4264,8 @@ fn collect_size_vars_from_size(size: SizeExpr) -> List<String> {
   match size {
     SizeLen { collection: c } =>
       if c == "__expr" { [] } else { [c] }
+    SizeVar { name: n } =>
+      if n == "__k" { [] } else { [n] }
     SizeAdd { left: l, right: r } =>
       concat(collect_size_vars_from_size(size: l), collect_size_vars_from_size(size: r))
     SizeMax { left: l, right: r } =>
@@ -4249,6 +4341,20 @@ type RecursionContext {
 type SummaryResult {
   summary: ComplexitySummary
   table: CostInternTable
+}
+
+// Accumulator for topological-order processing with transit eviction.
+// Threads the intern table, classified results, fan-in counters, and
+// fail-closed violations through the fold over topological order.
+type TopoBuildAcc {
+  table: CostInternTable
+  classes: Map<String, String>
+  violations: List<ComplexityViolation>
+  fan_in: Map<String, Int>
+  // Functions explicitly processed by the topological fold.
+  // Prevents evicting SCC co-members computed as side effects
+  // before they reach their own fold iteration.
+  processed: Map<String, Bool>
 }
 
 type MatchCostAccum {
@@ -4623,81 +4729,92 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
     Some { value: cached } =>
       SummaryResult { summary: cached, table: table }
     None =>
-      // Look up function body
       match map_get(func_index, func_name) {
         Some { value: entry } =>
-          // No body-size budget: the caching/placeholder mechanism prevents
-          // exponential analysis, and the decidability invariant guarantees
-          // all functions terminate. Skipping large functions produces false
-          // violations on the most important functions to analyze.
-          {
-            // Insert a placeholder to prevent infinite recursion on self-recursive functions
-            let placeholder = ComplexitySummary {
-              work: CostUnknown { reason: concat("computing: ", func_name) },
-              span: CostUnknown { reason: concat("computing: ", func_name) },
-              output_size: empty_map(),
-              certainty: Unknown
-            }
-            let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
-            // Walk the function body
-            let result = cost_of_expr(texpr: entry.body, func_index: func_index, scc_index: scc_index, table: table_with_placeholder, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
-            // Detect and classify self-recursion: if the result cost still
-            // contains the "computing: func_name" placeholder, the function
-            // is recursive. Classify the pattern and produce a bounded cost.
-            let is_recursive = cost_contains_computing_ref(expr: result.summary.work, func_name: func_name)
-            let scc_bounded = match map_get(scc_index, func_name) {
-              Some { value: info } =>
-                if cost_contains_any_computing_ref(expr: result.summary.work, func_names: info.members) {
-                  Some { value: ComplexitySummary {
-                    work: bounded_scc_cost(target: info.pattern, raw_cost: result.summary.work, members: info.members),
-                    span: bounded_scc_cost(target: info.pattern, raw_cost: result.summary.span, members: info.members),
-                    output_size: result.summary.output_size,
-                    certainty: Conservative
-                  } }
-                } else {
-                  none
-                }
-              None => none
-            }
-            let bounded = match scc_bounded {
-              Some { value: summary } => summary
-              None =>
-                if is_recursive {
-                  let pattern = classify_recursion_pattern(
-                    func_name: func_name,
-                    body: entry.body,
-                    params: entry.params,
-                    parser_always_advancing: parser_always_advancing
-                  )
-                  ComplexitySummary {
-                    work: bounded_recursive_cost(target: pattern, raw_cost: result.summary.work, func_name: func_name),
-                    span: bounded_recursive_cost(target: pattern, raw_cost: result.summary.span, func_name: func_name),
-                    output_size: result.summary.output_size,
-                    certainty: Conservative
-                  }
-                } else {
-                  result.summary
-                }
-            }
-            // Simplify and cache the real summary
-            let simplified = ComplexitySummary {
-              work: simplify_cost(expr: bounded.work),
-              span: simplify_cost(expr: bounded.span),
-              output_size: bounded.output_size,
-              certainty: bounded.certainty
-            }
-            let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
-            SummaryResult { summary: simplified, table: final_table }
+          // Look up pre-computed recursion pattern (no body walking here).
+          let target = match map_get(scc_index, func_name) {
+            Some { value: info } => Some { value: info.pattern }
+            None => none
           }
-        None =>
-          // Unknown function -- return unknown cost
-          let unknown_summary = ComplexitySummary {
-            work: CostUnknown { reason: concat("function not found: ", func_name) },
-            span: CostUnknown { reason: concat("function not found: ", func_name) },
+          let is_recursive = target != none
+          // Cache zero placeholder for recursive functions (self-calls return 0)
+          let zero_placeholder = ComplexitySummary {
+            work: CostConst { value: 0 },
+            span: CostConst { value: 0 },
             output_size: empty_map(),
-            certainty: Unknown
+            certainty: Conservative
           }
-          SummaryResult { summary: unknown_summary, table: table }
+          let table_prepped = if is_recursive {
+            cache_summary(table: table, func_name: func_name, summary: zero_placeholder)
+          } else { table }
+          // Walk the function body
+          let result = cost_of_expr(texpr: entry.body, func_index: func_index, scc_index: scc_index, table: table_prepped, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
+          // For recursive functions, wrap per-iteration cost in bounded summation.
+          // Use bounded_scc_cost for multi-member SCCs to avoid asymmetric costing:
+          // per-function bounding with zero placeholders makes the first-processed
+          // member see zero for co-members while later members see full costs.
+          let scc_members = match map_get(scc_index, func_name) {
+            Some { value: info } => info.members
+            None => []
+          }
+          let is_scc = scc_members |> count > 1
+          let bounded = match target {
+            Some { value: t } =>
+              if is_scc {
+                ComplexitySummary {
+                  work: bounded_scc_cost(target: t, per_iter: result.summary.work, members: scc_members),
+                  span: bounded_scc_cost(target: t, per_iter: result.summary.span, members: scc_members),
+                  output_size: result.summary.output_size,
+                  certainty: Conservative
+                }
+              } else {
+                ComplexitySummary {
+                  work: bounded_recursive_cost(target: t, per_iter: result.summary.work, func_name: func_name),
+                  span: bounded_recursive_cost(target: t, per_iter: result.summary.span, func_name: func_name),
+                  output_size: result.summary.output_size,
+                  certainty: Conservative
+                }
+              }
+            None => result.summary
+          }
+          // Simplify and cache
+          let simplified = ComplexitySummary {
+            work: simplify_cost(expr: bounded.work),
+            span: simplify_cost(expr: bounded.span),
+            output_size: bounded.output_size,
+            certainty: bounded.certainty
+          }
+          let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
+          SummaryResult { summary: simplified, table: final_table }
+        None =>
+          // Function not in func_index. Distinguish genuine externals
+          // (Rust stdlib, runtime) from unexpected misses (internal function
+          // lost from index — a bug that should not fail open).
+          let is_unexpected_miss = map_get(scc_index, func_name) != none
+          if is_unexpected_miss {
+            // Internal function in SCC index but missing from func_index.
+            // Fail closed — this is a bug in extract_func_entries or the
+            // import closure, not a genuine external.
+            let miss_summary = ComplexitySummary {
+              work: CostUnknown { reason: concat("internal function missing from index: ", func_name) },
+              span: CostUnknown { reason: concat("internal function missing from index: ", func_name) },
+              output_size: empty_map(),
+              certainty: Conservative
+            }
+            SummaryResult { summary: miss_summary, table: table }
+          } else {
+            // Genuine external — outside our proof boundary. Cost is opaque
+            // until declared (like C++ std specifying O(n log n) for sort).
+            // REVIEW #10: Future: stdlib cost contract system where builtins
+            // declare their complexity (map_get → O(1), sort → O(n log n)).
+            let external_summary = ComplexitySummary {
+              work: CostExtern { name: func_name },
+              span: CostExtern { name: func_name },
+              output_size: empty_map(),
+              certainty: Conservative
+            }
+            SummaryResult { summary: external_summary, table: table }
+          }
       }
   }
 }
@@ -4706,108 +4823,118 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // D4: Complexity reporting
 //
 // build_complexity_report takes function entries, computes summaries
-// for each, and collects violations (CostUnknown summaries).
+// for each. Every function gets a concrete cost — no violations possible.
 // =========================================================================
-
-// Recursive walk: CostUnknown composes into trees (CostAdd, CostMul, etc.)
-// so a flat root check would miss nested unknowns. The cost algebra composes
-// correctly; the violation query must follow the composition.
-// Extract the reason from the first CostUnknown found anywhere in a cost tree.
-// Checks both branches of binary cost nodes — the unknown may be nested
-// on either side of CostAdd/CostMul/CostMax compositions.
-fn first_unknown_reason(expr: CostExpr) -> String {
-  match expr {
-    CostUnknown { reason: r } => r
-    CostAdd { left: l, right: r } =>
-      let lr = first_unknown_reason(expr: l)
-      if lr != "unknown" { lr } else { first_unknown_reason(expr: r) }
-    CostMul { left: l, right: r } =>
-      let lr = first_unknown_reason(expr: l)
-      if lr != "unknown" { lr } else { first_unknown_reason(expr: r) }
-    CostMax { left: l, right: r } =>
-      let lr = first_unknown_reason(expr: l)
-      if lr != "unknown" { lr } else { first_unknown_reason(expr: r) }
-    CostSum { binder: _, upper: _, body: b } => first_unknown_reason(expr: b)
-    _ => "unknown"
-  }
-}
-
-fn should_emit_unknown_violation(func_name: String, scc_index: Map<String, SccInfo>) -> Bool {
-  match map_get(scc_index, func_name) {
-    Some { value: info } =>
-      match size_bound_param(bound: info.pattern.bound) {
-        Some { value: _ } => true  // proven bound → always emit
-        None => func_name == scc_label(members: info.members)  // Forever → emit once for SCC
-      }
-    None => true
-  }
-}
-
-fn is_unknown_cost(expr: CostExpr) -> Bool {
-  match expr {
-    CostUnknown { reason: _ } => true
-    CostAdd { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
-    CostMul { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
-    CostMax { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
-    CostSum { binder: _, upper: _, body: b } => is_unknown_cost(expr: b)
-    _ => false
-  }
-}
 
 fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: RecursionContext) -> ComplexityReport {
   // Build function index for callee lookups
   let func_index = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
     map_insert(acc, entry.name, entry)
   )
-  let scc_index = build_scc_index(func_entries: func_entries, func_index: func_index)
+  let scc_result = build_scc_index(func_entries: func_entries, func_index: func_index)
   let parser_always_advancing = infer_all_parser_always_advancing(func_index: func_index)
-  // Compute summaries for all functions
-  let result = func_entries |> fold(init: SummaryResult {
-    summary: ComplexitySummary {
-      work: CostConst { value: 0 },
-      span: CostConst { value: 0 },
-      output_size: empty_map(),
-      certainty: Proven
-    },
-    table: empty_intern_table()
-  }, f: fn(acc, entry) {
-    let sr = get_or_compute_summary(func_name: entry.name, func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
-    SummaryResult { summary: sr.summary, table: sr.table }
-  })
-  // Collect function summaries and violations
-  let summaries_map = result.table.summaries
-  let violations = func_entries |> filter(entry =>
-    match map_get(summaries_map, entry.name) {
-      Some { value: summary } =>
-        if is_unknown_cost(expr: summary.work) {
-          should_emit_unknown_violation(func_name: entry.name, scc_index: scc_index)
-        } else {
-          false
-        }
-      None => true
-    }
-  ) |> map(entry =>
-    match map_get(summaries_map, entry.name) {
-      Some { value: summary } =>
-        let reason = first_unknown_reason(expr: summary.work)
-        ComplexityViolation {
-          func_name: entry.name,
-          reason: reason,
-          summary: Some { value: summary },
-          span: entry.span
-        }
+  // Pre-compute recursion patterns for ALL recursive functions.
+  // SCC patterns are already in scc_result.index. For single-function recursion,
+  // add synthetic SccInfo entries so get_or_compute_summary finds them
+  // without re-walking function bodies during the cost phase.
+  let full_scc_index = func_entries |> fold(init: scc_result.index, f: (acc, entry) =>
+    match map_get(acc, entry.name) {
+      Some { value: _ } => acc  // already in SCC index
       None =>
-        ComplexityViolation {
-          func_name: entry.name,
-          reason: "no summary computed",
-          summary: none,
-          span: entry.span
-        }
+        if max_path_self_calls(body: entry.body, func_name: entry.name) > 0 {
+          let pattern = classify_recursion_pattern(
+            func_name: entry.name,
+            body: entry.body,
+            params: entry.params,
+            parser_always_advancing: parser_always_advancing
+          )
+          let info = SccInfo {
+            members: [entry.name],
+            member_set: map_insert(empty_map(), entry.name, true),
+            pattern: pattern
+          }
+          map_insert(acc, entry.name, info)
+        } else { acc }
     }
   )
+  // Compute fan-in: for each callee, how many unique callers reference it?
+  // Used to know when a summary can be evicted (all callers processed).
+  let fan_in = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
+    let callees = match map_get(scc_result.call_graph.forward, entry.name) {
+      Some { value: cs } => cs
+      None => []
+    }
+    let unique_set = callees |> fold(init: empty_map(), f: (s, c) => map_insert(s, c, true))
+    map_keys(unique_set) |> fold(init: acc, f: (inner, callee) =>
+      let current = match map_get(inner, callee) { Some { value: v } => v, None => 0 }
+      map_insert(inner, callee, current + 1)
+    )
+  )
+  // Process in topological order (callees before callers). After each
+  // function is analyzed, classify it eagerly (storing the string) and
+  // decrement fan-in for its callees. When a callee's fan-in reaches 0,
+  // evict its CostExpr tree — the working set is bounded by the maximum
+  // frontier width of the call graph, not the total function count.
+  let result = scc_result.processing_order |> fold(init: TopoBuildAcc {
+    table: empty_intern_table(),
+    classes: empty_map(),
+    violations: [],
+    fan_in: fan_in,
+    processed: empty_map()
+  }, f: fn(acc, func_name) {
+    match map_get(func_index, func_name) {
+      Some { value: entry } =>
+        let sr = get_or_compute_summary(func_name: func_name, func_index: func_index, scc_index: full_scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
+        // Classify immediately — drop the CostExpr tree from the report
+        let class_str = classify_complexity(expr: sr.summary.work)
+        let new_classes = map_insert(acc.classes, func_name, class_str)
+        let new_processed = map_insert(acc.processed, func_name, true)
+        // Detect violations: any function whose cost contains CostUnknown.
+        // CX-P: reason carries the structural root cause from CostUnknown,
+        // not the asymptotic class string (which is display output).
+        // CX-P: span propagated from FuncEntry for diagnostic source location.
+        let new_violations = if is_unknown_cost(expr: sr.summary.work) {
+          concat(acc.violations, [ComplexityViolation {
+            func_name: func_name,
+            reason: extract_unknown_reason(expr: sr.summary.work),
+            span: entry.span
+          }])
+        } else { acc.violations }
+        // Decrement fan-in for each unique callee of this function
+        let callees = match map_get(scc_result.call_graph.forward, func_name) {
+          Some { value: cs } => cs
+          None => []
+        }
+        let unique_set = callees |> fold(init: empty_map(), f: (s, c) => map_insert(s, c, true))
+        let unique_callees = map_keys(unique_set)
+        let new_fan_in = unique_callees |> fold(init: acc.fan_in, f: (fi, callee) =>
+          let current = match map_get(fi, callee) { Some { value: v } => v, None => 0 }
+          map_insert(fi, callee, current - 1)
+        )
+        // Evict summaries whose fan-in has reached 0, but ONLY if the
+        // function was explicitly processed by this fold. SCC co-members
+        // may be computed as side effects of get_or_compute_summary —
+        // evicting them before their fold iteration would replace their
+        // real summary with a fabricated placeholder.
+        let evicted_table = unique_callees |> fold(init: sr.table, f: (t, callee) =>
+          let remaining = match map_get(new_fan_in, callee) { Some { value: v } => v, None => 0 }
+          if remaining <= 0 && set_has(m: new_processed, key: callee) {
+            evict_summary(table: t, func_name: callee)
+          } else { t }
+        )
+        // Also evict this function if it has no callers (fan-in was 0 from the start)
+        let self_fan_in = match map_get(new_fan_in, func_name) { Some { value: v } => v, None => 0 }
+        let final_table = if self_fan_in <= 0 {
+          evict_summary(table: evicted_table, func_name: func_name)
+        } else { evicted_table }
+        TopoBuildAcc { table: final_table, classes: new_classes, violations: new_violations, fan_in: new_fan_in, processed: new_processed }
+      None => acc  // not in func_index (shouldn't happen)
+    }
+  })
+  // intern_table is transit-only — not exposed in the report.
+  // Evicted entries contain fabricated placeholders that would mislead consumers.
   ComplexityReport {
-    function_summaries: summaries_map,
-    violations: violations,
-    intern_table: result.table
+    function_classes: result.classes,
+    violations: result.violations
   }
 }

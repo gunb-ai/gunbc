@@ -2036,7 +2036,7 @@ match form {
     item: Rc::new(Node {
     name: "<unknown>".to_string(),
     span: current_span(tokens.clone(), s.clone()),
-    ident_span: Some(current_span(tokens.clone(), s.clone())),
+    ident_span: None,
     children: Rc::new(vec![]),
     params: Rc::new(vec![]),
     inferred: None,
@@ -2880,28 +2880,9 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let predicate_node = Rc::new(Node {
-    name: "".to_string(),
-    span: start_span.clone(),
-    ident_span: None,
-    children: r.predicates.clone(),
-    connective: Connective::Conj,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
 let refined = Rc::new(Node {
-    name: "".to_string(),
-    span: start_span.clone(),
+    name: "Refined".to_string(),
+    span: start_span,
     ident_span: None,
     children: Rc::new(vec![base_te.clone()]),
     connective: Connective::Conj,
@@ -2911,8 +2892,8 @@ let refined = Rc::new(Node {
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: Some(predicate_node),
+    properties: r.predicates.clone(),
+    type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
@@ -3536,7 +3517,7 @@ if has_err(ret.err.clone()) {
 let te = Rc::new(Node {
     name: "Callable".to_string(),
     span: start_span.clone(),
-    ident_span: Some(start_span.clone()),
+    ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::Arrow,
     params: params_result.params.clone(),
@@ -6305,58 +6286,60 @@ pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn node_to_name_str(n: Rc<Node>) -> String {
-    {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-if is_optional {
-            v2_rt::concat("Optional_".to_string(), node_to_name_str_inner(with_required_cardinality(n.clone())))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        {
+            let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+let effective_n = if is_optional.clone() {
+                with_required_cardinality(n.clone())
 } else {
-            node_to_name_str_inner(n.clone())
-}
-}
-}
-
-pub fn node_to_name_str_inner(n: Rc<Node>) -> String {
-    {
-        let is_keyed_container = (is_container_type(n.name.clone()) && ((n.children.clone().len() as i64) == 2));
+                n.clone()
+};
+let opt_prefix = if is_optional.clone() {
+                "Optional_".to_string()
+} else {
+                "".to_string()
+};
+let is_keyed_container = (is_container_type(effective_n.name.clone()) && ((effective_n.children.clone().len() as i64) == 2));
 if is_keyed_container {
-            match n.children.clone().last().cloned() {
-    Some(ch) => v2_rt::concat(v2_rt::concat(n.name.clone(), "_".to_string()), node_to_name_str(ch.clone())),
-    None => n.name.clone(),
+                match effective_n.children.clone().last().cloned() {
+    Some(ch) => v2_rt::concat(v2_rt::concat(v2_rt::concat(opt_prefix, effective_n.name.clone()), "_".to_string()), node_to_name_str(ch.clone())),
+    None => v2_rt::concat(opt_prefix, effective_n.name.clone()),
 }
 } else {
-            if (n.type_annotation.clone() != None) {
-                match n.children.clone().first().cloned() {
-    Some(ch) => node_to_name_str(ch.clone()),
-    None => n.name.clone(),
+                if (effective_n.name.clone().as_str() == "Refined".to_string().as_str()) {
+                    match effective_n.children.clone().first().cloned() {
+    Some(ch) => v2_rt::concat(opt_prefix, node_to_name_str(ch.clone())),
+    None => v2_rt::concat(opt_prefix, effective_n.name.clone()),
 }
 } else {
-                if is_container_type(n.name.clone()) {
-                    match n.children.clone().first().cloned() {
-    Some(ch) => v2_rt::concat("List_".to_string(), node_to_name_str(ch.clone())),
-    None => n.name.clone(),
+                    if is_container_type(effective_n.name.clone()) {
+                        match effective_n.children.clone().first().cloned() {
+    Some(ch) => v2_rt::concat(v2_rt::concat(opt_prefix, "List_".to_string()), node_to_name_str(ch.clone())),
+    None => v2_rt::concat(opt_prefix, effective_n.name.clone()),
 }
 } else {
-                    if (n.ident_span.clone() == None) {
-                        {
-                            let is_conj = (n.connective.clone() == Connective::Conj);
-let is_disj = (n.connective.clone() == Connective::Disj);
+                        if (effective_n.name.clone().as_str() == "".to_string().as_str()) {
+                            {
+                                let is_conj = (effective_n.connective.clone() == Connective::Conj);
+let is_disj = (effective_n.connective.clone() == Connective::Disj);
 if is_conj {
-                                "Record".to_string()
+                                    v2_rt::concat(opt_prefix, "Record".to_string())
 } else {
-                                if is_disj {
-                                    "Union".to_string()
+                                    if is_disj {
+                                        v2_rt::concat(opt_prefix, "Union".to_string())
 } else {
-                                    n.name.clone()
+                                        v2_rt::concat(opt_prefix, effective_n.name.clone())
 }
 }
 }
 } else {
-                        n.name.clone()
+                            v2_rt::concat(opt_prefix, effective_n.name.clone())
 }
 }
 }
 }
 }
+    })
 }
 
 pub fn parse_exit_entries(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> Rc<ExitEntriesResult> {

@@ -46,7 +46,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-use crate::std_iteration::*;
 pub use crate::std_termination::{DescentEvidence, RankingDimension};
 use crate::std_termination::DescentEvidence::*;
 use crate::std_termination::RankingDimension::*;
@@ -172,6 +171,22 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
     SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
     SizeBound::ExplicitCount { .. } => None,
     SizeBound::Forever => None,
+}
+}
+
+pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
+    match (*bound).clone() {
+    SizeBound::ExplicitCount { .. } => true,
+    SizeBound::Forever => true,
+    _ => false,
+}
+}
+
+pub fn constant_bound_value(bound: Rc<SizeBound>) -> i64 {
+    match (*bound).clone() {
+    SizeBound::ExplicitCount { n: count, .. } => count.clone(),
+    SizeBound::Forever => 1,
+    _ => 0,
 }
 }
 

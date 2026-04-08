@@ -461,6 +461,11 @@ pub enum CompilerDiagnostic {
         message: String,
         span: Rc<SourceSpan>,
     },
+    ComplexityUnknown {
+        func_name: String,
+        reason: String,
+        span: Rc<SourceSpan>,
+    },
     OwnershipViolation {
         binding: String,
         fn_name: String,
@@ -490,6 +495,7 @@ impl CompilerDiagnostic {
             CompilerDiagnostic::MissingAnnotation { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::ParseError { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::InternalError { span: __val, .. } => __val.clone(),
+            CompilerDiagnostic::ComplexityUnknown { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::OwnershipViolation { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::VariantCollision { span: __val, .. } => __val.clone(),
         }
@@ -522,6 +528,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
     CompilerDiagnostic::MissingAnnotation { span: s, .. } => s.clone(),
     CompilerDiagnostic::ParseError { span: s, .. } => s.clone(),
     CompilerDiagnostic::InternalError { span: s, .. } => s.clone(),
+    CompilerDiagnostic::ComplexityUnknown { span: s, .. } => s.clone(),
     CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
     CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
 }
@@ -542,6 +549,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MissingAnnotation { fn_name: f, what: w, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("function '".to_string(), f.clone()), "' requires ".to_string()), w.clone()), " annotation".to_string()),
     CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
     CompilerDiagnostic::InternalError { message: m, .. } => m.clone(),
+    CompilerDiagnostic::ComplexityUnknown { func_name: f, reason: r, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat("complexity: ".to_string(), f.clone()), ": ".to_string()), r.clone()),
     CompilerDiagnostic::OwnershipViolation { binding: b, fn_name: f, consumers: c, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("ownership: binding '".to_string(), b.clone()), "' in '".to_string()), f.clone()), "' has ".to_string()), (c.clone()).to_string()), " consumers".to_string()),
     CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
 }
@@ -1169,7 +1177,7 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
 }
 
 pub fn arg_name(n: Rc<Node>) -> Option<String> {
-    if (n.ident_span.clone() == None) {
+    if (n.name.clone().as_str() == "".to_string().as_str()) {
         None
 } else {
         Some(n.name.clone())
@@ -1402,7 +1410,7 @@ pub fn block_stmts(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn record_lit_type_name(texpr: Rc<Node>) -> Option<String> {
-    if (texpr.ident_span.clone() == None) {
+    if (texpr.name.clone().as_str() == "".to_string().as_str()) {
         None
 } else {
         Some(texpr.name.clone())
@@ -1465,11 +1473,47 @@ pub fn transport_auth_scheme_key() -> String {
     CACHED.with(|c| c.clone())
 }
 
-pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn transport_kind_rest() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "rest".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn transport_kind_shell() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "shell".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn transport_kind_file() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "file".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn transport_kind_local() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "local".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn make_transport_node(name: String, properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
-    name: "".to_string(),
-    span: span,
-    ident_span: None,
+    name: name.clone(),
+    span: span.clone(),
+    ident_span: default_ident_span(name.clone(), span.clone()),
     children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1488,25 +1532,25 @@ pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<No
 }
 
 pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node(Rc::new(vec![]), Rc::new(vec![]), span)
+    make_transport_node(transport_kind_local(), Rc::new(vec![]), Rc::new(vec![]), span)
 }
 
 pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let url_field = make_field_init_node(transport_url_key(), base_url, make_span(0, 0));
 let props = v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), auth_props), headers);
-make_transport_node(props, Rc::new(vec![]), span)
+make_transport_node(transport_kind_rest(), props, Rc::new(vec![]), span)
 }
 }
 
 pub fn shell_transport_node(argv: Rc<Vec<Rc<Node>>>, env: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node(env, argv, span)
+    make_transport_node(transport_kind_shell(), env, argv, span)
 }
 
 pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let path_field = make_field_init_node(transport_path_key(), base_path, make_span(0, 0));
-make_transport_node(Rc::new(vec![path_field]), Rc::new(vec![]), span)
+make_transport_node(transport_kind_file(), Rc::new(vec![path_field]), Rc::new(vec![]), span)
 }
 }
 
@@ -1527,28 +1571,24 @@ pub fn find_property_string(props: Rc<Vec<Rc<Node>>>, prop_name: String) -> Opti
 }
 }
 
-pub fn transport_base_path(t: Rc<Node>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_path_key())
-}
-
-pub fn transport_has_argv(t: Rc<Node>) -> bool {
-    ((t.children.clone().len() as i64) > 0)
-}
-
 pub fn is_rest_transport(t: Rc<Node>) -> bool {
-    (transport_base_url(t) != None)
+    (t.name.clone().as_str() == transport_kind_rest().as_str())
 }
 
 pub fn is_shell_transport(t: Rc<Node>) -> bool {
-    transport_has_argv(t)
+    (t.name.clone().as_str() == transport_kind_shell().as_str())
 }
 
 pub fn is_file_transport(t: Rc<Node>) -> bool {
-    (transport_base_path(t) != None)
+    (t.name.clone().as_str() == transport_kind_file().as_str())
 }
 
 pub fn is_local_transport(t: Rc<Node>) -> bool {
-    ((!is_rest_transport(t.clone()) && !is_shell_transport(t.clone())) && !is_file_transport(t.clone()))
+    (t.name.clone().as_str() == transport_kind_local().as_str())
+}
+
+pub fn is_transport_kind(t: Rc<Node>, kind: String) -> bool {
+    (t.name.clone().as_str() == kind.as_str())
 }
 
 pub fn field_init_operation_modifier(field_init: Rc<Node>) -> Option<OperationModifier> {
@@ -1747,19 +1787,25 @@ pub fn service_config_retry(n: Rc<Node>) -> Option<Rc<Node>> {
 }
 
 pub fn module_node(name: String, imports: Rc<Vec<Rc<Node>>>, items: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
-    Rc::new(Node {
+    {
+        let marker = make_field_init_node("__is_module".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
+    value: Rc::new(LiteralValue::LitStr {
+    value: "true".to_string(),
+}),
+}), Rc::new(vec![]), None, make_span(0, 0)), make_span(0, 0));
+Rc::new(Node {
     name: name.clone(),
     span: span.clone(),
     ident_span: default_ident_span(name.clone(), span.clone()),
-    children: items,
+    children: v2_rt::concat(imports, items),
     connective: Connective::NoConnective,
-    params: imports,
+    params: Rc::new(vec![]),
     inferred: None,
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: Rc::new(vec![]),
+    properties: Rc::new(vec![marker]),
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -1767,9 +1813,25 @@ pub fn module_node(name: String, imports: Rc<Vec<Rc<Node>>>, items: Rc<Vec<Rc<No
     expr_data: Rc::new(ExprData::NoExprData),
 })
 }
+}
 
 pub fn import_node(module_path: String, is_all: bool, specific_names: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
-    Rc::new(Node {
+    {
+        let import_prop = make_field_init_node("__is_import".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
+    value: Rc::new(LiteralValue::LitStr {
+    value: "true".to_string(),
+}),
+}), Rc::new(vec![]), None, make_span(0, 0)), make_span(0, 0));
+let all_prop = if is_all {
+            Rc::new(vec![make_field_init_node("__import_all".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
+    value: Rc::new(LiteralValue::LitStr {
+    value: "true".to_string(),
+}),
+}), Rc::new(vec![]), None, make_span(0, 0)), make_span(0, 0))])
+} else {
+            Rc::new(vec![])
+};
+Rc::new(Node {
     name: module_path.clone(),
     span: span.clone(),
     ident_span: default_ident_span(module_path.clone(), span.clone()),
@@ -1781,7 +1843,7 @@ pub fn import_node(module_path: String, is_all: bool, specific_names: Rc<Vec<Rc<
     uses: Rc::new(vec![]),
     body: None,
     transport: None,
-    properties: Rc::new(vec![]),
+    properties: v2_rt::concat(Rc::new(vec![import_prop]), all_prop),
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -1789,9 +1851,18 @@ pub fn import_node(module_path: String, is_all: bool, specific_names: Rc<Vec<Rc<
     expr_data: Rc::new(ExprData::NoExprData),
 })
 }
+}
+
+pub fn is_module_node(n: Rc<Node>) -> bool {
+    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone().as_str() == "__is_module".to_string().as_str()) { __found = true; break; } } __found }
+}
+
+pub fn is_import_node(n: Rc<Node>) -> bool {
+    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone().as_str() == "__is_import".to_string().as_str()) { __found = true; break; } } __found }
+}
 
 pub fn import_is_all(n: Rc<Node>) -> bool {
-    ((n.children.clone().len() as i64) == 0)
+    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone().as_str() == "__import_all".to_string().as_str()) { __found = true; break; } } __found }
 }
 
 pub fn import_specific_names(n: Rc<Node>) -> Rc<Vec<String>> {
@@ -1799,18 +1870,22 @@ pub fn import_specific_names(n: Rc<Node>) -> Rc<Vec<String>> {
 }
 
 pub fn module_imports(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    n.params.clone()
+    Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if is_import_node(c.clone()) { __result.push(c); } } __result })
 }
 
 pub fn module_items(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    n.children.clone()
+    Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if (is_import_node(c.clone()) == false) { __result.push(c); } } __result })
+}
+
+pub fn is_token_node(n: Rc<Node>) -> bool {
+    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone().as_str() == "__is_token".to_string().as_str()) { __found = true; break; } } __found }
 }
 
 pub fn leaf_node(name: String) -> Rc<Node> {
     Rc::new(Node {
-    name: name.clone(),
+    name: name,
     span: make_span(0, 0),
-    ident_span: default_ident_span(name.clone(), make_span(0, 0)),
+    ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1856,7 +1931,7 @@ pub fn unit_type() -> Rc<Node> {
             Rc::new(Node {
     name: "Unit".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
@@ -1883,7 +1958,7 @@ pub fn bool_type() -> Rc<Node> {
             Rc::new(Node {
     name: "Bool".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1910,7 +1985,7 @@ pub fn string_type() -> Rc<Node> {
             Rc::new(Node {
     name: "String".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1937,7 +2012,7 @@ pub fn int_type() -> Rc<Node> {
             Rc::new(Node {
     name: "Int".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1964,7 +2039,7 @@ pub fn float_type() -> Rc<Node> {
             Rc::new(Node {
     name: "Float".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1991,7 +2066,7 @@ pub fn none_type() -> Rc<Node> {
             Rc::new(Node {
     name: "None".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: None,
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),

@@ -357,23 +357,34 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
     let source = read_v2_file("src/v2/complexity.dag");
     let stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_complexity.rs");
 
+    // Graph types/functions moved to dsl/std/graph.dag (PR #336 follow-up).
+    // Check they exist in the graph module's stage0 mirror instead.
+    let graph_stage0 = read_v2_file("src/v2/stage0/src/std_graph.rs");
+    for needle in [
+        "pub struct CallGraphAcc",
+        "pub struct DfsFinishAcc",
+        "pub struct SccComponentAcc",
+        "pub fn dfs_finish_order(",
+        "pub fn dfs_collect_component(",
+    ] {
+        assert_live_contains(
+            &graph_stage0,
+            needle,
+            &format!("stage0 std_graph should contain {needle}")
+        );
+    }
+
     for needle in [
         "fn max_path_self_calls(",
         "fn max_path_self_calls_with_cont(",
         "fn max_path_self_calls_block(",
-        "type CallGraphAcc {",
-        "type DfsFinishAcc {",
-        "type SccComponentAcc {",
         "fn build_scc_measure_params(",
-        "fn dfs_finish_order(",
-        "fn dfs_collect_component(",
         "fn normalize_asymptotic(",
-        "fn normalize_constants(",
+        // normalize_constants merged into normalize_asymptotic (single-pass)
         "fn format_cost_class(",
         "fn format_cost_inner(",
         "fn parenthesize_additive_cost(",
         "fn classify_complexity(",
-        "fn is_unknown_cost(",
         "ExprReturn",
     ] {
         assert_live_contains(
@@ -387,19 +398,13 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn max_path_self_calls(",
         "pub fn max_path_self_calls_with_cont(",
         "pub fn max_path_self_calls_block(",
-        "pub struct CallGraphAcc",
-        "pub struct DfsFinishAcc",
-        "pub struct SccComponentAcc",
         "pub fn build_scc_measure_params(",
-        "pub fn dfs_finish_order(",
-        "pub fn dfs_collect_component(",
         "pub fn normalize_asymptotic(",
-        "pub fn normalize_constants(",
+        // normalize_constants merged into normalize_asymptotic (single-pass)
         "pub fn format_cost_class(",
         "pub fn format_cost_inner(",
         "pub fn parenthesize_additive_cost(",
         "pub fn classify_complexity(",
-        "pub fn is_unknown_cost(",
         "ExprData::ExprReturn",
     ] {
         assert_live_contains(
@@ -620,10 +625,12 @@ fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
     // diagnostics. Complexity gate is bypassed until CX lane rewrites the
     // analyzer (variant-field → container-child descent model). Re-enable
     // when CX-5 lands and violations reach 0.
+    // Type errors block emission. Complexity violations are surfaced but
+    // non-blocking (analyzer limitations ratchet down over time).
     assert_live_contains(
         &source,
-        "let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
-        "src/v2/compile.dag should gate emission on infer diagnostics (complexity bypassed pending CX rewrite)",
+        "let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
+        "src/v2/compile.dag should gate emission on type errors",
     );
     assert_live_not_contains(
         &source,
