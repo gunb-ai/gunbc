@@ -1,0 +1,193 @@
+// std/induction.dag -- Inductive type structure and structural recursion.
+//
+// Every .dag type with recursive fields is an inductive type. Its
+// structure contains all the information needed for termination proofs
+// and complexity bounds. This file models the type-level facts from
+// which complexity analysis is DERIVED — no heuristic pattern-matching,
+// no hand-maintained accessor tables.
+//
+// EXTERNAL AUTHORITY:
+//   - Initial algebras of endofunctors: Lambek (1968)
+//     An inductive type is the initial algebra of its signature functor.
+//     The type definition IS the functor; the constructors are the algebra.
+//   - Catamorphisms: Meijer, Fokkinga, Paterson (1991) "Bananas" paper
+//     Every initial algebra has a unique fold (catamorphism). A function
+//     that recurses only on sub-terms of its inductive argument IS a
+//     catamorphism. Termination is guaranteed by well-foundedness.
+//   - Size-change termination: Lee, Jones, Ben-Amram (2001)
+//     Termination is decidable when each call either strictly decreases
+//     or preserves a well-founded measure. SubValueRelation models the
+//     size-change graph edges.
+//   - Well-founded induction: Floyd (1967), Turing (1949)
+//     Every inductive type has a natural well-founded ordering: the
+//     sub-term relation. The size measure (constructor count) maps to ℕ.
+//
+// RELATIONSHIP TO std/termination.dag:
+//   termination.dag defines DescentEvidence and RankingDimension as
+//   abstract proof components. This file defines the TYPE-LEVEL facts
+//   that PRODUCE ranking dimensions and descent evidence. A
+//   RankingDimension is a consequence of an InductiveField; a
+//   DescentEvidence is a consequence of a SubValueRelation.
+//
+// RELATIONSHIP TO std/computation.dag:
+//   computation.dag defines CallPattern → LoweringTarget. This file's
+//   SubValueRelation produces the CallPattern for a self-call.
+//
+// RELATIONSHIP TO std/iteration.dag:
+//   iteration.dag defines descend (tree catamorphism) and fold (list
+//   catamorphism). This file proves WHICH recursive functions are
+//   catamorphisms — i.e., which functions structurally recurse on
+//   sub-terms of an inductive type.
+//
+// DESIGN PRINCIPLE (P1 from cx-design.md):
+//   Descent is a TYPE-LEVEL fact. The type definition `children: List<Node>`
+//   IS the descent fact. The complexity analyzer should never need to know
+//   about specific accessor functions. It reads from the type that certain
+//   fields carry recursive sub-structure.
+
+module std.induction
+
+import std.termination {
+  DescentEvidence, Strict, NonIncreasing,
+  RankingDimension, TreeSize
+}
+import std.computation {
+  CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall
+}
+
+
+// =========================================================================
+// RecursionShape — how a field references its parent type
+// =========================================================================
+
+// The .dag type system has three ways a field can reference its parent
+// type. These correspond to positions in the signature functor of the
+// initial algebra (Lambek 1968):
+//
+//   DirectRecursion:   F(X) = ... × X × ...
+//     The field type IS the parent type.
+//     Example: type MyList<T> = Cons { tail: MyList<T> }
+//
+//   ListRecursion:     F(X) = ... × List(X) × ...
+//     The field is a list of the parent type (free monoid functor).
+//     Example: type Node { children: List<Node> }
+//
+//   OptionalRecursion: F(X) = ... × (1 + X) × ...
+//     The field is an optional parent type (maybe functor).
+//     Example: type Node { body: Node? }
+//
+// These three forms exhaust the recursive positions possible in .dag.
+// Adding a new container type to the language (e.g., Set<T>) would add
+// one variant here.
+
+type RecursionShape
+  = DirectRecursion       // field_type == parent_type
+  | ListRecursion         // field_type == List<parent_type>
+  | OptionalRecursion     // field_type == parent_type?
+
+
+// =========================================================================
+// InductiveField — one recursive position in a type definition
+// =========================================================================
+
+// An InductiveField is one position in the signature functor of an
+// inductive type. It records:
+//   - WHICH type is inductive (type_name)
+//   - WHICH constructor contains the recursion (variant_name, "" for records)
+//   - WHICH field carries the recursive reference (field_name)
+//   - HOW the reference is wrapped (shape)
+//
+// For type Node { children: List<Node>, body: Node?, name: String }:
+//   InductiveField { type_name: "Node", variant_name: "", field_name: "children", shape: ListRecursion }
+//   InductiveField { type_name: "Node", variant_name: "", field_name: "body", shape: OptionalRecursion }
+//   (name: String produces no InductiveField — it's not recursive)
+//
+// For type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }:
+//   InductiveField { type_name: "MyList", variant_name: "Cons", field_name: "tail", shape: DirectRecursion }
+//   (Nil produces no InductiveField — it's a base case)
+//   (head: T produces no InductiveField — T is a type parameter, not the parent type)
+//
+// This extends RecursiveVariantFieldWitness (04_env.dag) with the shape
+// classification. The existing witness captures variant_name and field_name;
+// InductiveField adds the structural information needed to derive a
+// RankingDimension.
+
+type InductiveField {
+  type_name: String
+  variant_name: String
+  field_name: String
+  shape: RecursionShape
+}
+
+
+// =========================================================================
+// InductiveField → RankingDimension (size measure derivation)
+// =========================================================================
+
+// Every inductive type has a natural size measure: the number of
+// constructors in a value. This is the unique homomorphism from the
+// initial algebra to (ℕ, +, 0) — the "catamorphism to size."
+//
+// All three recursion shapes produce TreeSize because they all measure
+// structural depth:
+//   - DirectRecursion: sub-term has strictly fewer constructors
+//   - ListRecursion: each list element is a strict sub-tree
+//   - OptionalRecursion: inner value (when present) is a strict sub-tree
+//
+// ListLength is a DIFFERENT dimension — it measures a list parameter
+// shrinking (skip/tail), not tree descent through recursive fields.
+
+fn inductive_field_to_dimension(field: InductiveField, param: String) -> RankingDimension {
+  TreeSize { param: param }
+}
+
+
+// =========================================================================
+// SubValueRelation — call-site descent evidence
+// =========================================================================
+
+// At each self-call site in a recursive function, each argument either:
+//   - Is obtained by deconstructing the parameter through a recursive
+//     field (StrictSubValue) — provably smaller by the sub-term relation
+//   - Is an element from iterating over a list-recursive field
+//     (IteratedSubValue) — each element is a strict sub-tree
+//   - Cannot be proven smaller (PreservedValue) — no descent evidence
+//
+// These are edges in the size-change graph (Lee, Jones, Ben-Amram 2001).
+// The size-change principle: if every infinite call sequence would
+// require an infinite descent on a well-founded ordering, the program
+// terminates.
+//
+// The pipeline produces SubValueRelation values at self-call sites.
+// The analyzer reads them — it never pattern-matches AST to derive them.
+
+type SubValueRelation
+  = StrictSubValue { field: InductiveField }    // obtained via recursive field projection
+  | IteratedSubValue { field: InductiveField }  // element from fold/map over recursive list field
+  | PreservedValue                              // no descent proven
+
+
+// =========================================================================
+// SubValueRelation → DescentEvidence (bridge to termination.dag)
+// =========================================================================
+
+fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
+  match relation {
+    StrictSubValue { field: _ }   => Strict
+    IteratedSubValue { field: _ } => Strict   // each element is a strict sub-tree
+    PreservedValue                => NonIncreasing
+  }
+}
+
+
+// =========================================================================
+// SubValueRelation → CallPattern (bridge to computation.dag)
+// =========================================================================
+
+fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern {
+  match relation {
+    StrictSubValue { field: _ }   => ChildAccessorCall { accessor: "structural" }
+    IteratedSubValue { field: _ } => FoldBodyCall
+    PreservedValue                => SameArgumentCall
+  }
+}
