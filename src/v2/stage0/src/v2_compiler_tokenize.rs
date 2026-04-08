@@ -393,7 +393,7 @@ Rc::new(ScanResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum StringScanResult {
     ClosedString {
         content: String,

@@ -13,7 +13,7 @@ use RankingDimension::*;
 use DescentSource::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum DescentEvidence {
     Strict,
     NonIncreasing,
@@ -37,7 +37,7 @@ pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum RankingDimension {
     TreeSize {
         param: String,
@@ -68,7 +68,7 @@ impl RankingDimension {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum DescentSource {
     ChildAccessor {
         accessor: String,

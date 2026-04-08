@@ -152,13 +152,121 @@ pub fn rust_enum_derives_copy() -> String {
 pub fn rust_serde_tag() -> String {
     thread_local! {
         static CACHED: String = {
-            "".to_string()
+            "#[serde(tag = \"_variant\")]".to_string()
         };
     }
     CACHED.with(|c| c.clone())
 }
 
 pub fn rust_serde_rename_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "#[serde(rename = \"{0}\")]".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_func_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "fn".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_async_prefix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "async ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_struct_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "struct".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_enum_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "enum".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_type_alias_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "type".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_param_separator() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ", ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_return_arrow() -> String {
+    thread_local! {
+        static CACHED: String = {
+            " -> ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_param_type_sep() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ": ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_string_literal_suffix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ".to_string()".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_module_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "mod".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_import_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "use".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_import_from_keyword() -> String {
     thread_local! {
         static CACHED: String = {
             "".to_string()

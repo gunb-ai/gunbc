@@ -27,7 +27,7 @@ pub struct NodeLookupResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum NodeLookupStatus {
     LookupResolved {
         node: Rc<Node>,
@@ -44,7 +44,7 @@ impl NodeLookupStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum PatternSubject {
     PatternResolved {
         node: Rc<Node>,

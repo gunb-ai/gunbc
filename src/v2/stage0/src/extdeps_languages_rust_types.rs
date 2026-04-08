@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr};
+pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax};
 use OwnershipKind::*;
 use SmartPointerKind::*;
 
@@ -68,7 +68,7 @@ pub fn rust_callable() -> Rc<CallableRepr> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum OwnershipKind {
     Owned,
     SharedRef,
@@ -99,7 +99,7 @@ pub fn mut_ref_prefix() -> String {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum SmartPointerKind {
     BoxPtr,
     RcPtr,
@@ -178,10 +178,11 @@ pub fn float_types() -> Rc<Vec<String>> {
     CACHED.with(|c| c.clone())
 }
 
-pub fn numeric_cast_template() -> String {
+pub fn rust_cast_syntax() -> Rc<CastSyntax> {
     thread_local! {
-        static CACHED: String = {
-            "{expr} as {type}".to_string()
+        static CACHED: Rc<CastSyntax> = {
+            serde_json::from_value(serde_json::json!({"template": "{expr} as {type}", "valid_targets": ["i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64"], "fail_open": false}))
+                .expect("valid data definition")
         };
     }
     CACHED.with(|c| c.clone())

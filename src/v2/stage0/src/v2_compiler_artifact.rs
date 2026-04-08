@@ -13,7 +13,7 @@ use BoundaryKind::*;
 use PartitionRule::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum RenderTarget {
     Rust,
     Python,
@@ -22,7 +22,7 @@ pub enum RenderTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ArtifactKind {
     ServiceBinary,
     Library,
@@ -40,7 +40,7 @@ pub struct Artifact {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum BoundaryKind {
     DirectCall,
     HttpJson,
@@ -64,7 +64,7 @@ pub struct ArtifactPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum PartitionRule {
     Explicit {
         artifacts: Rc<Vec<Rc<Artifact>>>,

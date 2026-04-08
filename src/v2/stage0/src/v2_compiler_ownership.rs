@@ -15,7 +15,7 @@ use EdgeKind::*;
 use OwnershipDecision::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum EdgeKind {
     Consumed,
     Read,
@@ -51,7 +51,7 @@ pub fn binding_fan_out(usage: Rc<BindingUsage>) -> i64 {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum OwnershipDecision {
     SoleOwner {
         binding: String,

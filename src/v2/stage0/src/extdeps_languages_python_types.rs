@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr};
+pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax};
 use PythonTypeKind::*;
 
 pub fn python_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
@@ -40,7 +40,7 @@ pub fn python_callable() -> Rc<CallableRepr> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum PythonTypeKind {
     DynamicType,
     AnnotatedType,
@@ -239,6 +239,16 @@ pub fn type_checker_strict() -> String {
     thread_local! {
         static CACHED: String = {
             "mypy --strict".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn python_cast_syntax() -> Rc<CastSyntax> {
+    thread_local! {
+        static CACHED: Rc<CastSyntax> = {
+            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "valid_targets": [], "fail_open": true}))
+                .expect("valid data definition")
         };
     }
     CACHED.with(|c| c.clone())

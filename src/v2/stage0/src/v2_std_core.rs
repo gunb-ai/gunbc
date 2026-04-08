@@ -40,7 +40,7 @@ pub struct Token {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TokenShape {
     ShKeyword,
     ShLBrace,
@@ -87,7 +87,7 @@ pub enum TokenShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Connective {
     Conj,
     Disj,
@@ -96,14 +96,14 @@ pub enum Connective {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Cardinality {
     Required,
     CardOptional,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum FieldAccessStyle {
     StoredField,
     EnumAccessor,
@@ -113,7 +113,7 @@ pub enum FieldAccessStyle {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum FieldValueShape {
     PlainValue,
     OptionalValue,
@@ -126,7 +126,7 @@ pub struct FieldSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum InferredNode {
     Resolved {
         node: Rc<Node>,
@@ -161,7 +161,7 @@ pub fn has_inferred(n: Rc<Node>) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum VarBindingKind {
     LocalValueBinding,
     FunctionValueBinding,
@@ -182,7 +182,7 @@ impl VarBindingKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CallSemantics {
     PlainCallSemantics,
     LookupCallSemantics,
@@ -194,7 +194,7 @@ pub struct LambdaSemantics {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum MethodSemantics {
     PlainMethodSemantics,
     AlgebraMethodSemantics {
@@ -211,7 +211,7 @@ pub enum MethodSemantics {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ExprErrorKind {
     ParseRecoveryError,
     SemanticExprError,
@@ -219,7 +219,7 @@ pub enum ExprErrorKind {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ExprData {
     NoExprData,
     ExprLiteral {
@@ -267,7 +267,7 @@ pub enum ExprData {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum MatchPattern {
     Bind {
         name: String,
@@ -284,14 +284,14 @@ pub enum MatchPattern {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum UnaryOpKind {
     Not,
     Neg,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum StringPart {
     Text {
         value: String,
@@ -302,7 +302,7 @@ pub enum StringPart {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum OperationModifier {
     Idempotent,
     Readonly,
@@ -322,7 +322,7 @@ pub struct TextFile {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CompilerDiagnostic {
     UnresolvedImport {
         module_path: String,
@@ -1039,7 +1039,7 @@ pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRo
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum NodeFieldRole {
     ChildrenListField,
     SubValueField,
@@ -1077,7 +1077,7 @@ pub fn is_sub_value_field(field_name: String) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum FunctionSizeEffect {
     TreeSizePreserving,
     TreeSizeReducing,

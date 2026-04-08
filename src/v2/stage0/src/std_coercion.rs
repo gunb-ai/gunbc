@@ -32,3 +32,10 @@ pub struct CallableRepr {
     pub return_separator: String,
     pub import_path: Option<String>,
 }
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CastSyntax {
+    pub template: String,
+    pub valid_targets: Rc<Vec<String>>,
+    pub fail_open: bool,
+}

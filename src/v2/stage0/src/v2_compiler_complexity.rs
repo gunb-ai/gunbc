@@ -36,7 +36,7 @@ use ProgressKind::*;
 use ParserResultSource::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum SizeExpr {
     SizeConst {
         value: i64,
@@ -58,7 +58,7 @@ pub enum SizeExpr {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CostExpr {
     CostConst {
         value: i64,
@@ -93,7 +93,7 @@ pub enum CostExpr {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Certainty {
     Proven,
     Conservative,
@@ -175,7 +175,7 @@ pub struct ParserStateParam {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ProgressKind {
     ProgressUnknown,
     ProgressSame,
@@ -183,7 +183,7 @@ pub enum ProgressKind {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ParserResultSource {
     ParserResultAdvance {
         input: ProgressKind,
