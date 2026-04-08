@@ -1070,6 +1070,7 @@ vr.diagnostics.clone()
 Rc::new(ExprResolveResult {
     expr: make_named_expr_node(expr_call_func(texpr.clone()), Rc::new(ExprData::ExprCall {
     call_semantics: cs.clone(),
+    descent_evidence: None,
 }), resolved_children, texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: all_diags,
 })

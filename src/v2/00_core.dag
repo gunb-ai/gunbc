@@ -23,6 +23,7 @@ import std.syntax {
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
+import std.induction { SubValueRelation }
 
 // =========================================================================
 // Tokens
@@ -195,7 +196,7 @@ type ExprData
   | ExprError { kind: ExprErrorKind, message: String }
   | ExprVar { binding_kind: VarBindingKind? }
   | ExprFieldAccess { summary: FieldSummary? }
-  | ExprCall { call_semantics: CallSemantics? }
+  | ExprCall { call_semantics: CallSemantics?, descent_evidence: List<SubValueRelation>? }
   | ExprMethodCall { method_semantics: MethodSemantics? }
   | ExprMatch
   | ExprIf
@@ -984,6 +985,13 @@ fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
 fn expr_call_func(texpr: Node) -> String { texpr.name }
 fn expr_call_func_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
+fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
+  match texpr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: de } => de
+    _ => none
+  }
+}
+
 // -- ExprMethodCall (D3: method dissolved into Node.name) --
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
 fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
@@ -1218,7 +1226,7 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
 
 fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
   match texpr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       if expr_call_func(texpr: texpr) == fn_name { true }
       else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name)) }
     _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name))
@@ -1227,7 +1235,7 @@ fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
 
 fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> Bool {
   match texpr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       if expr_call_func(texpr: texpr) == fn_name {
         if in_tail == false { true }
         else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false)) }

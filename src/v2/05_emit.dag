@@ -1316,7 +1316,7 @@ fn classify_expr(texpr: Node) -> ExprCategory {
     ExprError { kind: _, message: _ } => ExprCatLeaf
     ExprVar { binding_kind: _ } => ExprCatLeaf
     ExprFieldAccess { summary: _ } => ExprCatCompound
-    ExprCall { call_semantics: _ } => ExprCatCompound
+    ExprCall { call_semantics: _, descent_evidence: _ } => ExprCatCompound
     ExprMethodCall { method_semantics: _ } => ExprCatCompound
     ExprRecordLit { parent_enum: _ } => ExprCatCompound
     ExprListLit => ExprCatCompound
@@ -1367,7 +1367,7 @@ type TcoExprShape
 
 fn classify_tco_expr(texpr: Node, source_index: NewlineIndex?) -> TcoExprShape {
   match texpr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       TcoCall { func: expr_call_func_at(texpr: texpr, source_index: source_index), args: texpr.children }
     ExprIf =>
       let c = if_condition(texpr: texpr)
@@ -1468,7 +1468,7 @@ fn emit_shared_tco_expr(
 ) -> String {
   let si = frame.scope.type_env.source_index
   match frame.expr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       if expr_call_func_at(texpr: frame.expr, source_index: si) == fn_name {
         emit_self_call_reassign(TcoReassignInput { args: frame.expr.children, scope: frame.scope, depth: frame.depth })
       } else {
@@ -1532,7 +1532,7 @@ fn shared_tco_non_self_call(
   recurse_call: fn(String, List<Node>, InferScope, Int) -> String
 ) -> String {
   match frame.expr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: frame.expr, source_index: frame.scope.type_env.source_index)
       let call_str = recurse_call(f, frame.expr.children, frame.scope, frame.depth)
       concat(spec.tco.break_return, " ", call_str)
@@ -1661,7 +1661,7 @@ fn shared_tco_reassign(
 
 fn is_tco_candidate(texpr: Node, func_name: String, source_index: NewlineIndex?) -> Bool {
   match texpr.expr_data {
-    ExprCall { call_semantics: _ } => expr_call_func_at(texpr: texpr, source_index: source_index) == func_name
+    ExprCall { call_semantics: _, descent_evidence: _ } => expr_call_func_at(texpr: texpr, source_index: source_index) == func_name
     ExprReturn =>
       is_tco_candidate(texpr: return_value(texpr: texpr), func_name: func_name, source_index: source_index)
     ExprIf =>
@@ -1937,7 +1937,7 @@ fn emit_shared_expr(
       emit_var(texpr)
     ExprFieldAccess { summary: _ } =>
       emit_field_access(texpr)
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       emit_call(texpr)
     ExprMethodCall { method_semantics: _ } =>
       emit_method_call(texpr)

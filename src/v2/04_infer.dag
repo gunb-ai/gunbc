@@ -901,7 +901,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               if (fsig.params |> count) == 0 {
                 ok_infer(texpr: make_named_expr_node(
                   name: name,
-                  expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+                  expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
                   children: [],
                   inferred: Some { value: Resolved { node: fsig.inferred } },
                   span: span
@@ -1008,7 +1008,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       }
       }
 
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let func_name = expr_call_func(texpr: texpr)
       let span = texpr.span
       // Children are already arg nodes
@@ -1074,7 +1074,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         }
         InferResult {
           typed: make_named_expr_node(
-            name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+            name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
             children: typed_arg_nodes,
             inferred: Some { value: Resolved { node: resolved_type } },
             span: span
@@ -1188,7 +1188,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
           InferResult {
             typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
               children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: empty_map_type } },
               span: span
@@ -1246,7 +1246,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
           InferResult {
             typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: call_semantics },
+              name: func_name, expr_data: ExprCall { call_semantics: call_semantics, descent_evidence: none },
               children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: bt } },
               span: span
@@ -1269,7 +1269,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             let resolved_type = callable_inferred(n: callable_type)
             InferResult {
               typed: make_named_expr_node(
-                name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+                name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
                 children: typed_arg_nodes,
                 inferred: Some { value: Resolved { node: resolved_type } },
                 span: span
@@ -1293,7 +1293,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
           InferResult {
             typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
               children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: resolved_type } },
               span: span

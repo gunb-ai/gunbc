@@ -684,7 +684,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         None => ExprResolveResult { expr: texpr, diagnostics: [] }
       }
       ExprResolveResult { expr: map_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
-    ExprCall { call_semantics: cs } =>
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
       // children: arg nodes
       let resolved_children = texpr.children |> map(arg_node =>
         let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
@@ -696,7 +696,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
         vr.diagnostics
       )
-      ExprResolveResult { expr: make_named_expr_node(name: expr_call_func(texpr: texpr), expr_data: ExprCall { call_semantics: cs }, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+      ExprResolveResult { expr: make_named_expr_node(name: expr_call_func(texpr: texpr), expr_data: ExprCall { call_semantics: cs, descent_evidence: none }, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
     ExprMethodCall { method_semantics: ms } =>
       // children: [receiver, arg0, arg1, ...]
       let resolved_children = texpr.children |> enumerate |> map(pair =>

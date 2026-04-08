@@ -865,7 +865,7 @@ fn parser_helper_identity(callee: String) -> ParserHelperIdentity? {
 
 fn parser_passthrough_state_expr(expr: Node) -> Node? {
   match expr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       match parser_helper_identity(callee: expr_call_func(texpr: expr)) {
         Some { value: ParserHelperSkipNewlines } =>
           parser_helper_state_arg_expr(call_node: expr)
@@ -884,7 +884,7 @@ fn parser_passthrough_state_expr(expr: Node) -> Node? {
 
 fn parser_result_witness(expr: Node) -> ParserResultWitness {
   match expr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       match expr_call_func(texpr: expr) {
         "advance" => ParserWitnessAdvance
         "expect" => ParserWitnessExpect
@@ -3988,9 +3988,9 @@ fn make_call_expr(lhs: Node, args: List<Node>, span: SourceSpan) -> Node {
   // Use lhs.span so ident_span points to the function/method name,
   // not the opening paren. Required for authored_name_at recovery.
   match lhs.expr_data {
-    ExprVar { binding_kind: _ } => make_named_expr_node(name: expr_var_name(texpr: lhs), expr_data: ExprCall { call_semantics: none }, children: args, inferred: none, span: lhs.span)
+    ExprVar { binding_kind: _ } => make_named_expr_node(name: expr_var_name(texpr: lhs), expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span)
     ExprFieldAccess { summary: _ } => make_named_expr_node(name: field_access_field(texpr: lhs), expr_data: ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span)
-    _ => make_named_expr_node(name: "<expr>", expr_data: ExprCall { call_semantics: none }, children: args, inferred: none, span: lhs.span)
+    _ => make_named_expr_node(name: "<expr>", expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span)
   }
 }
 
