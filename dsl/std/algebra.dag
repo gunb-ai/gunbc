@@ -528,53 +528,19 @@ fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTe
   }
 }
 
-// Check if a template tree contains a specific receiver role.
-fn template_has_element(t: AlgebraTypeTemplate) -> Bool {
-  match t {
-    ReceiverElement => true
-    ReceiverCollectionOf { element: inner } => template_has_element(t: inner)
-    ListOf { element: inner } => template_has_element(t: inner)
-    OptionalOf { inner: inner } => template_has_element(t: inner)
-    TupleOf { first: a, second: b } => template_has_element(t: a) || template_has_element(t: b)
-    CallableOf { params: ps, return_type: rt } => ps |> any(p => template_has_element(t: p)) || template_has_element(t: rt)
-    _ => false
-  }
-}
-
-fn template_has_key(t: AlgebraTypeTemplate) -> Bool {
-  match t {
-    ReceiverKey => true
-    ReceiverCollectionOf { element: inner } => template_has_key(t: inner)
-    ListOf { element: inner } => template_has_key(t: inner)
-    OptionalOf { inner: inner } => template_has_key(t: inner)
-    TupleOf { first: a, second: b } => template_has_key(t: a) || template_has_key(t: b)
-    CallableOf { params: ps, return_type: rt } => ps |> any(p => template_has_key(t: p)) || template_has_key(t: rt)
-    _ => false
-  }
-}
-
-fn template_has_value(t: AlgebraTypeTemplate) -> Bool {
-  match t {
-    ReceiverValue => true
-    ReceiverCollectionOf { element: inner } => template_has_value(t: inner)
-    ListOf { element: inner } => template_has_value(t: inner)
-    OptionalOf { inner: inner } => template_has_value(t: inner)
-    TupleOf { first: a, second: b } => template_has_value(t: a) || template_has_value(t: b)
-    CallableOf { params: ps, return_type: rt } => ps |> any(p => template_has_value(t: p)) || template_has_value(t: rt)
-    _ => false
-  }
-}
-
-// Derive type parameter names from an algebra profile's templates.
-// Element collections (FreeMonoid) → ["T"], keyed collections (PartialFunction) → ["K", "V"].
-// Scalar profiles (Ring, Field, Lattice, FreeMonoid scalar) → [].
+// Type parameter roles for each algebra profile. Declared once here;
+// container_param_name in std/types.dag reads this as the single authority
+// for parameter names. Templates use ReceiverElement/ReceiverKey/ReceiverValue
+// which correspond to these declared roles.
 fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
-  let templates = algebra_templates_for_profile(profile: profile)
-  let has_key = templates |> any(t => t.param_types |> any(p => template_has_key(t: p)) || template_has_key(t: t.return_type))
-  let has_value = templates |> any(t => t.param_types |> any(p => template_has_value(t: p)) || template_has_value(t: t.return_type))
-  let has_element = templates |> any(t => t.param_types |> any(p => template_has_element(t: p)) || template_has_element(t: t.return_type))
-  if has_key && has_value { ["K", "V"] }
-  else if has_element { ["T"] }
-  else { [] }
+  match profile {
+    OrderedRingProfile => []
+    ApproximateFieldProfile => []
+    BooleanAlgebraProfile => []
+    BooleanAlgebraCollectionProfile => ["T"]
+    FreeMonoidScalarProfile => []
+    FreeMonoidCollectionProfile => ["T"]
+    PartialFunctionProfile => ["K", "V"]
+  }
 }
 
