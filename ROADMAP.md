@@ -23,23 +23,60 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 
 ## Critical Path
 
-```
-            ┌─ Lane 1: M2 (boundary sufficiency) ──┐
-M1 COMPLETE─┤                                       ├→ M4 (structural identity)
-Bootstrap D ┼─ Lane 2: CG (codegen correctness) ───┘       └→ M5 → M6 → M7
-  COMPLETE  ├─ Lane 3: CX (164 → 0)
-            ├─ Lane 4: LS (language spec modeling) ─→ CG-3 parameterized emission
-            └─ PERF (continuous — parallel to all lanes)
-            CM: cross-cutting design lens (informs all lanes) → src/v2/CM.md
+Six mutually exclusive lanes. Each lane owns distinct files — two
+lanes never modify the same file. All run in parallel from bootstrap.
 
-Lane 1 owns: 04_infer, 04_types, 02_parse, 04_method
-Lane 2 owns: 05_emit, 05_emit_rust, 04_emit_info, ownership, languages
-Lane 3 owns: complexity, dsl/std/
-Lane 4 owns: dsl/extdeps/languages/{rust,go,python}/ — spec-sourced data
-CM informs how Lanes 1-3 approach work; does not own files separately
-PERF owns: performance ratchets, bootstrap convergence tests, timing budgets
-M4 follows Lanes 1+2 (needs structural facts + clean render path)
-LS follows CG-3 (needs parameterized emission to consume spec data)
+```
+            ┌─ Lane A: Inference (M2, M4-L1) ────────────────────────┐
+            │                                                         │
+M1 COMPLETE─┼─ Lane B: Emission (CG, LS, RE-1, KF-6) ───────────────┤
+Bootstrap D │                                                         ├→ M4-L2
+  COMPLETE  ├─ Lane C: Complexity (CX, KF-1, KF-2) ──────────────────┤  (Node.name
+            │                                                         │  deletion —
+            ├─ Lane D: DSL Modeling (RE workflow, BC-1..4, services) ──┤  cross-cutting
+            │                                                         │  final phase)
+            ├─ Lane E: Testing (KF-3, KF-4, M3) ─────────────────────┘
+            │
+            └─ PERF (continuous — parallel to all lanes)
+```
+
+### Lane file ownership (mutually exclusive)
+
+| Lane | Owns | Never touches |
+|------|------|--------------|
+| **A: Inference** | 00_core, 02_parse, 04_resolve, 04_infer, 04_types, 04_patterns, 04_lookup, 04_items, 04_access, 04_service | 05_emit*, complexity, dsl/, tests/ |
+| **B: Emission** | 05_emit, 05_emit_rust, 05_emit_go, 05_emit_python, 04_emit_info, dsl/extdeps/languages/*, dsl/extdeps/transports/* | 04_infer, 04_types, complexity, dsl/std/, tests/ |
+| **C: Complexity** | complexity.dag, docs/cx-*, docs/cost-* | 04_*, 05_*, dsl/, tests/ |
+| **D: DSL Modeling** | dsl/std/, dsl/extdeps/{llm,github,shell,cron,cloud,git}/, dsl/gunbc/, dsl/tools/, dsl/config/ | src/v2/*.dag (compiler sources) |
+| **E: Testing** | src/v2/tests/, scripts/, docs/testing-*, std/verification.dag, compiler_tests_rust.dag, coercion.dag (test extraction) | 04_*, 05_emit*, complexity |
+| **PERF** | performance ratchets only — reads all, writes none | (monitoring, not modification) |
+
+### What each lane delivers
+
+| Lane | Tracks | KF | Release gates |
+|------|--------|-----|--------------|
+| A | M2 (BND-1..4), M4-L1 (declaration algebra, Tier 2.5/2.6/3) | — | Gate 1 (M2, M4) |
+| B | CG (TLC-4, P1-B), LS (spec data), RE-1 (transport fidelity), KF-6 (Verilog) | KF-6 | Gates 1 (CG,LS,RE), 3 (parity), 4 (hardware) |
+| C | CX-NEXT (526→0), KF-1 (complexity proof), KF-2 (reject suboptimal) | KF-1, KF-2 | Gates 1 (CX), 4 (complexity) |
+| D | RE-2..5 (review.dag, gist.dag), BC-1..4, service extdep models | — | Gates 1 (RE), 5 (business cases) |
+| E | M3 (test generation), KF-3 (witnesses), KF-4 (cross-language) | KF-3, KF-4 | Gates 3 (parity), 6 (test gen) |
+
+### Cross-lane dependencies (minimal)
+
+Lane D reads from Lane A (resolved types) and Lane B (emitted code)
+but never writes to their files. Lane E reads from all lanes (to
+test them) but never writes to their files. The only true cross-lane
+gate is M4-L2 (Node.name deletion) which touches all files — it runs
+as a final coordinated phase after Lanes A+B reach their acceptance
+criteria.
+
+### Dependency-gated phases
+
+```
+Phase 1 (now):  Lanes A, B, C, D, E all run in parallel
+Phase 2:        M4-L2 (Node.name deletion) — after Lanes A+B done
+Phase 3:        Gate 2 (structural debt) — after M4-L2
+Phase 4:        Gate 7 (demo polish) — after all other gates
 ```
 
 ---
@@ -161,7 +198,7 @@ a missing codegen authority (CG) — never a standalone emitter patch.
 Four named architectural problems. Each has one root cause and one
 definition of done. Lanes 1–3 run in parallel; M4 follows.
 
-## M2: Boundary Sufficiency (Lane 1)
+## M2: Boundary Sufficiency (Lane A)
 
 **Root cause:** The resolution→emit boundary does not carry enough
 structure. Emit compensates with heuristics. Every remaining workaround
@@ -383,7 +420,7 @@ Ownership and clone correctness tracked under CG lane.
 
 ---
 
-## CG: Codegen Correctness + Optimality (Lane 2)
+## CG: Codegen Correctness + Optimality (Lane B)
 
 **Root cause:** Codegen decisions (type rendering, sharing, ownership,
 clone, expression semantics) are scattered across emitter heuristics
@@ -702,7 +739,7 @@ expected threading in good shape (remaining gap: bidirectional inference).
 - Dynamic/Error: need structural markers for "unresolved/error type"
 - List positional indexing: needs "supports positional access" algebra fact
 
-### Lane 1: Declaration-driven algebra
+### M4 Lane 1: Declaration-driven algebra (Lane A)
 
 Goal: compiler reads type/algebra facts from `.dag` declarations
 instead of hardcoding them.
@@ -725,7 +762,7 @@ instead of hardcoding them.
   - [ ] CollectionKind bridge dissolves when method algebras land
   - [ ] 27 type constructor sites → 0
 
-### Lane 2: Node.name deletion (D6)
+### M4 Lane 2: Node.name deletion (D6) — Phase 2, cross-cutting
 
 Goal: delete `Node.name` field. Rendering uses `source_text_at`,
 resolve uses structural identity.
@@ -748,7 +785,7 @@ then deleted. `Node.name` field deleted.
 
 ---
 
-## CX: Complexity Analyzer (Lane 3)
+## CX: Complexity Analyzer (Lane C)
 
 **Status:** Down from 315 → 164 (main) → 76 after PR #318 → 526 honest (PR #336).
 Phase 1-2 complete (RecursionPattern deleted, all classifiers return LoweringTarget).
@@ -1093,34 +1130,267 @@ heuristic). All documented at code sites and in the triage doc.
 
 ---
 
-## RE: Real-Program Rust Emission (Lane 4)
+## RE: Real-Program Rust Emission (Lane B + D)
 
-**Goal:** Compile real .dag programs to fully executable Rust. Target:
-workflows in `../ctrl/` (Python scripts managing colima, cargo, etc.)
-reimplemented in .dag and compiled to Rust binaries.
+**Goal:** Compile real .dag programs to fully executable Rust. First
+target: `gunbc/tools/review.dag` — a PR review agent using GitHub API,
+LLM CLI backends, shell commands, and cron scheduling. This exercises
+the full service/transport/workflow stack and serves as a stress test
+for agent/LLM workflow patterns.
 
-**Status:** Emission produces compilable Rust for the compiler's own
-modules (self-compile). Real programs require:
+**Status:** More infrastructure exists than this section previously
+documented. The pipeline already handles:
+- `func` → `async fn` with `.await?` on effectful calls
+- Service struct generation with config fields
+- Service instance threading as extra function args
+- String interpolation → `format!()`
+- CLI entrypoint with clap (subcommand per `func`)
+- `Cargo.toml` with reqwest/tokio/serde when `has_services`
+- Dry-run mode with mock_response data
+- REST, shell, and file transport call scaffolding
 
-**RE-1: Service/transport emission**
-- REST calls, file I/O, process spawning — currently emit stubs
-- Need: runtime bridge implementations for each service type
-- Blocked on: E0 structural emission (feedback_e0_structural_emission)
+The gap: transport call bodies are scaffold-level — they don't consume
+the detailed config (path templates, argv, HTTP method, query params)
+already flowing to the emitter. The modeling is done; emission needs
+to read what it already receives.
 
-**RE-2: Workflow execution model**
-- Sequential steps with error propagation
-- CLI argument parsing (already emitted via clap)
-- Environment variable access, config file reading
+**First target: `review.dag`** — chosen because it's a stateless CLI
+tool calling REST APIs and shell commands, which maps cleanly to .dag's
+service model. The extdeps are already modeled:
+- `extdeps/github/pulls.dag` (List, Get, Diff, CreateReview, ListReviews)
+- `extdeps/llm/cli.dag` (Codex, Claude, Gemini via shell transport)
+- `extdeps/shell.dag` (Exec.Run — `sh -lc {script}`)
+- `extdeps/cron.dag` (Tab.Upsert — idempotent cron schedule)
 
-**RE-3: Missing language features for real programs**
-- String interpolation in emitted Rust
-- Error handling / Result propagation
-- Async service calls (tokio runtime)
+### Dependency chain
 
-**RE-4: End-to-end validation**
-- Pick one ctrl/ workflow, implement in .dag, compile to Rust, run
-- Measure: does the compiled binary do what the Python script does?
-- Gate: no hand-maintained Rust outside stage0
+```
+RE-1: Transport emission fidelity (emit reads existing config)
+  ├→ RE-2: review.dag compiles (dry-run)
+  │    └→ RE-3: review.dag passes live integration
+  └→ RE-4: Anthropic REST API end-to-end
+       └→ RE-5: Multi-backend agent (CLI + REST switchable)
+```
+
+### RE-1: Transport emission fidelity
+
+Make `emit_rest_call` and `emit_shell_call` consume the transport
+config they already receive. No new .dag modeling needed.
+
+**REST:**
+- [ ] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
+- [ ] RE-1b: Path template from `transport.path` with param substitution
+  → `format!("/repos/{}/{}/pulls", owner, repo)`
+- [ ] RE-1c: Query parameters from `transport.query`
+  → `.query(&[("state", &state)])`
+- [ ] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
+- [ ] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
+
+**Shell:**
+- [ ] RE-1f: argv from `transport.argv` with param substitution
+  → `Command::new("sh").arg("-lc").arg(&script)`
+- [ ] RE-1g: stdin from `transport.stdin`
+  → `.stdin(Stdio::piped())` + write
+- [ ] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
+
+**Response:**
+- [ ] RE-1i: `from "content/0/text"` JSON path extraction on response
+- [ ] RE-1j: Nested output struct field mapping via serde rename
+
+**Blocked by:** Nothing — all data already flows to the emitter.
+
+**Acceptance tests** (add to `v2-compiler-tests`):
+
+```
+# RE-1a: HTTP method
+rest_emit_uses_transport_method
+  Input:  service with `transport rest { method: GET, path: "/items" }`
+  Assert: emitted Rust contains `client.get(` not `client.post(`
+
+# RE-1b: Path template
+rest_emit_substitutes_path_template
+  Input:  service with `path: "/repos/{owner}/{repo}/pulls"`
+  Assert: emitted Rust contains `format!("/repos/{}/{}/pulls", owner, repo)`
+
+# RE-1c: Query params
+rest_emit_includes_query_params
+  Input:  service with `query: { state: state, per_page: per_page }`
+  Assert: emitted Rust contains `.query(` with both params
+
+# RE-1d: Auth scheme
+rest_emit_uses_auth_scheme
+  Input:  service with `auth: Header("x-api-key"), auth_input: api_key`
+  Assert: emitted Rust contains `.header("x-api-key", ...)` not `Authorization`
+
+# RE-1e: Response code mapping
+rest_emit_maps_response_codes
+  Input:  service with `response { 200 => Data, 401 => ErrorShape }`
+  Assert: emitted Rust checks status code and deserializes accordingly
+
+# RE-1f: Shell argv
+shell_emit_uses_transport_argv
+  Input:  service with `transport shell { argv: ["sh", "-lc", "{script}"] }`
+  Assert: emitted Rust contains `Command::new("sh")` and `.arg("-lc")`
+
+# RE-1g: Shell stdin
+shell_emit_pipes_stdin
+  Input:  service with `transport shell { argv: [...], stdin: prompt }`
+  Assert: emitted Rust contains `Stdio::piped` and write to stdin
+
+# RE-1h: Exit code
+shell_emit_checks_exit_code
+  Input:  service with `exit { 0 => Unit, nonzero => String }`
+  Assert: emitted Rust checks `output.status.success()`
+
+# RE-1i: JSON path extraction (general mechanism)
+rest_output_from_clause_extracts_path
+  Input:  operation with `output { value: String from "data/items/0/name" }`
+  Assert: emitted Rust uses serde_json pointer or index chain to extract
+
+# RE-1j: Nested output field mapping
+rest_output_struct_uses_serde_rename
+  Input:  operation with output fields whose JSON names differ from Rust names
+  Assert: emitted struct has `#[serde(rename = "...")]` attributes
+```
+
+### RE-2: review.dag dry-run compilation
+
+Compile `review.dag` + its imports to a binary that runs with
+`--dry-run`, returning mock responses.
+
+- [ ] RE-2a: Async for-each — detect FuncItem body, emit `.await?`
+  in collection loop body
+- [ ] RE-2b: Cross-module service resolution — review.dag imports
+  from 4 modules (FF-9 handles this; verify it works for dsl/ tree)
+- [ ] RE-2c: Conditional guard — review.dag's `already_done` check
+  needs to short-circuit (`if`/`return` or restructured nesting)
+- [ ] RE-2d: End-to-end compilation gate
+
+**Blocked by:** RE-1
+
+**Acceptance tests:**
+
+```
+# RE-2a: Async for-each
+async_for_each_awaits_func_body
+  Input:  `func f() -> Int { ... }` called inside `for x in items { f() }`
+  Assert: emitted Rust contains `.await?` inside the for loop body
+
+# RE-2d: End-to-end (ignored, CI gate)
+review_dag_compiles_to_rust
+  Run: compile dsl/gunbc/tools/review.dag + imports to Rust
+  Assert: 0 hard diagnostics
+  Assert: emitted files include main.rs with `review-pr` subcommand
+  Assert: emitted Cargo.toml includes reqwest + tokio
+
+# RE-2d: Emitted Rust compiles (ignored, CI gate)
+review_dag_emitted_rust_builds
+  Run: compile review.dag → write to /tmp → cargo check
+  Assert: cargo check exits 0
+  Note: same pattern as bootstrap_stage0_to_stage1
+```
+
+### RE-3: review.dag live integration
+
+Make the compiled binary work against real GitHub + LLM CLI.
+
+- [ ] RE-3a: Auth token injection — `auth_token` from env var
+  (`GITHUB_TOKEN`) or secret manager
+- [ ] RE-3b: REST response deserialization — emitted struct fields
+  match GitHub API JSON shape (serde attrs: `#[serde(rename)]`)
+- [ ] RE-3c: Shell stdout capture for multi-line LLM output
+- [ ] RE-3d: Cron upsert produces valid crontab entry
+
+**Blocked by:** RE-2
+
+**Acceptance tests:**
+
+```
+# RE-3a: Auth from env
+service_auth_reads_env_var
+  Input:  service with `auth_input: api_key` + func param `api_key: Secret`
+  Assert: emitted CLI reads --api-key or GITHUB_TOKEN env var
+
+# RE-3d: Cron emission
+cron_upsert_emits_valid_crontab
+  Input:  service call `cron.Tab.Upsert(tag: "x", schedule: "*/10 * * * *", ...)`
+  Assert: emitted Rust writes crontab entry with tag-based dedup
+
+# Integration (manual gate, not CI):
+review_agent_dry_run_prints_mock_json
+  Run: `./review-agent review-pr --owner gunb-ai --repo gunbc --pr-number 342 --dry-run`
+  Assert: prints JSON with `{ "reviewed": true, "comment_url": "..." }`
+
+review_agent_live_posts_review
+  Run: `./review-agent review-pr --owner gunb-ai --repo gunbc --pr-number <N>`
+  Assert: GitHub PR has new review comment
+  Gate: manual — requires GITHUB_TOKEN + LLM CLI installed
+```
+
+### RE-4: Anthropic REST API end-to-end
+
+Compile a .dag program calling `llm.Anthropic.Messages(...)` directly
+via REST (not CLI wrapper). Exercises JSON body construction, response
+path extraction, API versioning headers.
+
+- [ ] RE-4a: JSON request body from input fields
+  → `serde_json::json!({ "model": model, "messages": messages, ... })`
+- [ ] RE-4b: `from "content/0/text"` path extraction on response JSON
+- [ ] RE-4c: API version header from `current_api_version` data
+- [ ] RE-4d: Secret handling — `api_key: Secret` → `x-api-key` header
+
+**Blocked by:** RE-1
+
+**Acceptance tests:**
+
+```
+# RE-4b: Anthropic response shape (uses RE-1i general mechanism)
+anthropic_response_extracts_content_text
+  Input:  `llm.Anthropic.Messages(...)` operation with `from "content/0/text"`
+  Assert: emitted Rust extracts nested `content[0].text` from API response
+
+# RE-4c: Custom headers
+rest_emit_includes_api_version_header
+  Input:  service with custom header config
+  Assert: emitted Rust includes `.header("anthropic-version", "2023-06-01")`
+
+# Integration (manual):
+anthropic_messages_returns_response
+  Run: .dag program sends prompt to Claude API, prints response text
+  Assert: non-empty response string, valid token counts
+  Gate: requires ANTHROPIC_API_KEY
+```
+
+### RE-5: Multi-backend agent (future)
+
+A single .dag workflow that switches between CLI and REST backends
+via config. Exercises backend-agnostic service dispatch.
+
+**Blocked by:** RE-3, RE-4
+
+**Acceptance test:**
+
+```
+multi_backend_review_agent
+  Run: same workflow with --backend codex (CLI) and --backend anthropic (REST)
+  Assert: both produce review output (different shape, same semantic result)
+  Gate: requires both API keys + CLI tools
+```
+
+### RE ratchet
+
+Track progress via a single ratchet: how many of the acceptance tests
+above are green. Tests are to be added to `v2-compiler-tests` as each
+RE item is implemented — the ratchet counts tests that exist AND pass.
+
+| Metric | Current | Target |
+|--------|---------|--------|
+| RE-1 transport tests | 0/10 | 10 |
+| RE-2 compilation tests | 0/3 | 3 |
+| RE-3 integration tests | 0/4 | 4 |
+| RE-4 API tests | 0/3 | 3 |
+| RE-5 multi-backend test | 0/1 | 1 |
+| Total | 0/21 | 21 |
 
 **Depends on:** CG (codegen correctness) for reliable emission.
 Parallel to CX (complexity doesn't block emission).
@@ -1142,9 +1412,9 @@ modeling gaps.
 
 | Lane | CM diagnosis | Highest-leverage fix |
 |------|-------------|---------------------|
-| M2 (Lane 1) | `ExprLet` erases expected type → bare_map_node chain → 5+ downstream fallbacks | Propagate expected through ExprLet; normalize ExprVar→ExprCall for nullary |
-| CG (Lane 2) | 39 heuristic sites, all "existing authority not surfaced" | Surface connective through TypeRendering; surface AlgebraFieldTemplate to emit |
-| CX (Lane 3) | 4 analyzer heuristics = 4 missing std/ facts | Model operation size contracts in std/computation.dag |
+| M2 (Lane A) | `ExprLet` erases expected type → bare_map_node chain → 5+ downstream fallbacks | Propagate expected through ExprLet; normalize ExprVar→ExprCall for nullary |
+| CG (Lane B) | 39 heuristic sites, all "existing authority not surfaced" | Surface connective through TypeRendering; surface AlgebraFieldTemplate to emit |
+| CX (Lane C) | 4 analyzer heuristics = 4 missing std/ facts | Model operation size contracts in std/computation.dag |
 | M4 | CM provides endgame rationale: structural fields ARE identity, names are rendering sugar | Surface structural fields; delete Node.name |
 
 **Unowned files (~42 heuristic sites in 04_resolve, 04_access, coercion, 00_core):**
@@ -1499,3 +1769,675 @@ everywhere — CLI, tests, and CI.
 - **Post-Rust path**: .dag → native code (LLVM/Cranelift) directly,
   no Rust intermediate. Optional — Rust/Go as intermediates may
   suffice indefinitely.
+
+---
+
+# Killer Features (KF)
+
+These are capabilities that do not exist in any production system
+today. They are the reason to use gunbc over writing Rust/Go/Python
+directly. Each is grounded in the same structural property: .dag
+programs are decidable, Node-bounded, and finite — so the compiler
+can prove things that are undecidable in general-purpose languages.
+
+## KF-1: Complexity Proof on Every Compile
+
+**What:** Every function gets a proven asymptotic bound at compile
+time. Not a lint. Not an optional analysis. A structural proof that
+`find_duplicates` is O(n²) and `merge_sorted` is O(n).
+
+**Why it doesn't exist:** General-purpose languages have undecidable
+control flow (unbounded while, general recursion). .dag's three
+iteration primitives (fold/descend/repeat) make the bound derivable
+by construction.
+
+**Example:**
+```dag
+fn find_duplicates(items: List<String>) -> List<String> {
+  items |> filter(item =>
+    items |> any(other => other == item)
+  )
+}
+// Compiler: complexity: find_duplicates is O(n²)
+//   filter(O(n)) × any(O(n)) = O(n × n)
+```
+
+**Status:** Partially working. The analyzer computes CostExpr for
+all 1600 compiler functions. 526 get CostUnknown because descent
+evidence doesn't propagate through Node trees and parser SCCs.
+When the 3 structural fixes land (CX-NEXT), every function has a
+proven bound and CostUnknown is deleted from the type system.
+
+**Remaining work:**
+- [ ] KF-1a: Node tree descent recognition (~230 direct violations)
+- [ ] KF-1b: Parser SCC TokenPosition threading (~73 direct)
+- [ ] KF-1c: Graph DFS worklist (2 direct, ~10 composed)
+- [ ] KF-1d: Delete `CostUnknown` variant from CostExpr
+- [ ] KF-1e: Re-enable CX gate as blocking (CX-E)
+
+**Maps to:** CX lane (CX-NEXT). Same work, different framing — CX
+frames it as "analyzer improvement," KF-1 frames it as "every program
+gets a complexity certificate."
+
+**Acceptance:**
+```
+every_function_has_complexity_bound
+  Run: compile any .dag program
+  Assert: ComplexityReport has 0 CostUnknown entries
+  Assert: every function_class is one of O(1), O(n), O(n²), O(n log n), etc.
+  Assert: CostUnknown variant does not exist in CostExpr enum
+```
+
+## KF-2: Reject Suboptimal Algorithms
+
+**What:** The compiler refuses to compile code when a provably
+cheaper equivalent exists. Not a suggestion — a compile error.
+
+**Why it doesn't exist:** Requires (a) a decidable cost algebra with
+ordering, (b) a catalog of equivalent operations with different costs,
+and (c) the ability to compare implementations structurally. General-
+purpose languages can't do (a) because cost is undecidable. .dag can
+because all operations have declared CostShape.
+
+**Example:**
+```dag
+fn has_match(items: List<String>, target: String) -> Bool {
+  items |> filter(item => item == target) |> count > 0
+}
+// Compiler ERROR: suboptimal: filter(p).count() > 0 is O(n) allocation
+//   + O(n) count. Use any(p) for O(n) with O(1) allocation.
+//   Suggested: items |> any(item => item == target)
+```
+
+More examples:
+```dag
+// ERROR: sort then take first → O(n log n). Use min() → O(n).
+items |> sort_by(x => x.score) |> first
+
+// ERROR: map then filter → intermediate allocation.
+// Use filter_map (single pass, no intermediate list).
+items |> map(transform) |> filter(predicate)
+
+// ERROR: nested any() is O(n²). Use Set lookup for O(n).
+items |> filter(item => others |> any(o => o.id == item.id))
+```
+
+**Status:** NOT BUILT. The infrastructure is close:
+- CostShape per method: declared in `std/algebra.dag` (done)
+- CostExpr composition: `cost_seq`/`cost_mul` (done)
+- Missing: cost ordering, call-site pattern detection, violation type
+
+**Remaining work:**
+- [ ] KF-2a: Cost ordering — `cost_dominates(a, b) -> Bool` on CostExpr
+- [ ] KF-2b: Equivalence catalog — declare `(pattern, replacement, proof)`
+  triples in `std/optimization.dag`. Pattern: structural method chain.
+  Replacement: cheaper equivalent. Proof: `cost_dominates(replacement, pattern)`.
+- [ ] KF-2c: Call-site analysis — detect method chain patterns in inferred
+  AST, look up equivalence catalog, compare costs
+- [ ] KF-2d: `SuboptimalCost` violation type in ComplexityViolation
+- [ ] KF-2e: Diagnostic with suggestion — show original cost, replacement
+  cost, and the equivalent code
+
+**Maps to:** Exploratory direction "cost comparator." KF-2 makes it
+concrete with an equivalence catalog and call-site analysis.
+
+**Acceptance:**
+```
+reject_filter_count_when_any_exists
+  Input: fn f(xs: List<Int>) -> Bool { xs |> filter(x => x > 0) |> count > 0 }
+  Assert: compile ERROR with suggestion to use any()
+
+reject_sort_first_when_min_exists
+  Input: fn f(xs: List<Int>) -> Int { xs |> sort_by(x => x) |> first }
+  Assert: compile ERROR with suggestion to use min()
+
+accept_optimal_code
+  Input: fn f(xs: List<Int>) -> Bool { xs |> any(x => x > 0) }
+  Assert: compiles with no suboptimality warning
+```
+
+## KF-3: Automated Test Generation from Types
+
+**What:** The compiler generates tests from type definitions. Add a
+type → tests appear. No hand-written test code for structural
+properties.
+
+**Why it doesn't exist:** Requires (a) a finite, enumerable type
+algebra, (b) canonical witness generation per type form, and (c) the
+compiler itself as the test oracle. General-purpose languages have
+open type systems (user-defined classes, traits, generics) that make
+exhaustive enumeration impossible. .dag's types are compositional
+products/coproducts over a finite kernel.
+
+**Example:** Defining a type automatically generates:
+```dag
+type Shape
+  = Circle { radius: Float }
+  | Rect { width: Float, height: Float }
+  | Triangle { a: Float, b: Float, c: Float }
+```
+The compiler generates:
+1. **Witness tests:** One canonical value per variant (Circle{0.0},
+   Rect{0.0, 0.0}, Triangle{0.0, 0.0, 0.0})
+2. **Round-trip tests:** serialize → deserialize = identity, per target
+3. **Emission tests:** each variant compiles to valid Rust/Go/Python
+4. **Pattern exhaustiveness:** match on Shape covers all 3 variants
+5. **Algebra law tests:** if Shape has algebra methods, test monoid/
+   lattice laws with generated witnesses
+
+**Status:** Level 0 done (coercion data → test assertions, ~48 tests
+auto-generated). Levels 4-6 designed in `docs/testing-strategy.md` but
+not implemented.
+
+**Remaining work:**
+- [ ] KF-3a: Witness generator — one canonical value per type form
+  (primitive→zero, product→all fields, coproduct→each variant,
+  optional→Some+None, collection→[]+[witness])
+- [ ] KF-3b: Emission algebra enumerator — enumerate all
+  `(NodeKind × TypeForm × Cardinality)` triples from .dag type defs
+- [ ] KF-3c: Program synthesizer — one minimal .dag program per
+  emission algebra element
+- [ ] KF-3d: Cross-target compilation — synthesized programs compile
+  to all 3 targets with 0 errors
+- [ ] KF-3e: Algebra law tests — for types with algebraic structure,
+  generate identity/associativity/commutativity checks from
+  `std/algebra.dag` declarations
+- [ ] KF-3f: Test receipt — `TestReceipt` from `std/verification.dag`
+  as CI authority: what was proven, tested, generated, unknown
+
+**Maps to:** Gate 6 (test generation), M3 (deferred milestone).
+
+**Acceptance:**
+```
+new_type_generates_witness_tests
+  Input: add `type Color = Red | Green | Blue` to a .dag file
+  Assert: test suite grows by 3 witness tests (one per variant)
+  Assert: no hand-written test code for Color
+
+emission_algebra_coverage
+  Run: enumerate all (NodeKind × TypeForm) pairs
+  Assert: synthesized program exists for each
+  Assert: all compile to Rust, Go, Python with 0 errors
+
+algebra_law_tests_generated
+  Input: type with Monoid algebra (e.g., List with concat)
+  Assert: identity law test generated: concat([], x) == x
+  Assert: associativity test: concat(concat(a,b), c) == concat(a, concat(b,c))
+```
+
+## KF-4: Cross-Language Equivalence Proof
+
+**What:** Compile one .dag source to Rust, Go, and Python. The
+compiler proves all three compute the same result for all inputs
+by structural induction on Node depth.
+
+**Why it doesn't exist:** No system compiles to 3+ targets with a
+structural proof that outputs are equivalent. Transpilers (e.g.,
+Haxe, Kotlin Multiplatform) compile to multiple targets but provide
+no equivalence guarantee — bugs are found by running tests, not by
+construction.
+
+**Example:**
+```dag
+fn fibonacci(n: Int) -> Int {
+  match n {
+    0 => 0
+    1 => 1
+    _ => fibonacci(n: n - 1) + fibonacci(n: n - 2)
+  }
+}
+// Compiler proves: fibonacci(10) in Rust == Go == Python
+// by structural induction: base cases are literals (identical),
+// inductive step preserves + semantics across all targets
+// (IntegerArithmetic in LanguageSpec has identical semantics).
+```
+
+**Status:** Not started. The foundation exists:
+- Rust backend compiles the full DSL tree (`full_dsl_compiles`).
+  Go and Python backends exist and emit code, but are not yet
+  gated by `full_dsl_compiles` (Rust-only currently)
+- Coercion data maps .dag types to target types per language
+- LanguageSpec declares per-target semantics
+
+Missing: 3-target `full_dsl_compiles`, differential testing
+infrastructure, semantic equivalence assertions, shared test oracle.
+
+**Remaining work:**
+- [ ] KF-4a: Shared test oracle — given a .dag function + inputs,
+  compile to all 3 targets, run each, compare outputs
+- [ ] KF-4b: Semantic equivalence assertions — declare which
+  LanguageSpec properties preserve equivalence (integer overflow,
+  float precision, string encoding)
+- [ ] KF-4c: Divergence catalog — document where targets intentionally
+  differ (e.g., Rust panics on overflow, Python has arbitrary-precision
+  ints) and how .dag handles it (coercion or explicit constraint)
+- [ ] KF-4d: CI gate — differential test suite runs on every PR
+
+**Maps to:** Gate 3 (language parity), P1-B (3→1 homomorphism).
+
+**Acceptance:**
+```
+cross_language_equivalence_fibonacci
+  Run: compile fibonacci.dag to Rust, Go, Python
+  Run: execute each with input n=20
+  Assert: all three return 6765
+
+cross_language_equivalence_full_suite
+  Run: compile all .dag example programs to 3 targets
+  Run: execute each with shared inputs
+  Assert: outputs match (modulo documented divergences)
+```
+
+## KF-5: Decidable High-Level Language
+
+**What:** .dag is one of the only decidable languages suitable for
+real backend and frontend development. Every program provably
+terminates. Not "probably" — provably, by construction.
+
+**Why this matters:** Most decidable languages are academic
+(Agda, Coq) or domain-specific (SQL, regex). They prove properties
+but you wouldn't write a web service in them. Most practical
+languages (Rust, Go, Python, TypeScript) are Turing-complete — the
+halting problem is undecidable, so the compiler fundamentally cannot
+prove termination, bound complexity, or guarantee resource usage.
+
+.dag sits in the gap: decidable AND practical. You write API
+services, data pipelines, agent workflows, CLI tools — the same
+things you'd write in Python or Go — but the compiler can prove
+things about your code that are literally impossible in those
+languages. KF-1 (complexity), KF-2 (optimality), KF-3 (test
+generation), and KF-6 (hardware) all follow from this property.
+
+**How:** Three bounded iteration primitives replace unbounded loops:
+- `fold` — structural descent over a collection (size decreases)
+- `descend` — recursive with proof witness (tree shrinks)
+- `repeat` — bounded by explicit fuel (counter decreases)
+
+No `while(true)`. No general recursion. No `goto`. The compiler
+can prove termination because the language makes non-termination
+unrepresentable. This is not a restriction that limits what you can
+write — it's a restriction that eliminates an entire class of bugs.
+
+**Status:** DONE — this is a language property, not a feature to
+build. The work is communicating it clearly and ensuring KF-1
+(complexity proof) lands so the decidability is visible in every
+compile.
+
+**Acceptance:** The landing page explains: ".dag is a decidable
+language. Every program provably terminates. The compiler proves
+O(n) vs O(n²) for every function — something that is mathematically
+impossible in Python, Go, or Rust."
+
+## KF-6: Hardware Compilation Target (Verilog/SPICE)
+
+**What:** Compile .dag programs to Verilog (digital circuits) and
+SPICE (analog circuit netlists). The same source that compiles to a
+Rust web service also compiles to an FPGA bitstream.
+
+**Why it's possible:** .dag's decidability is exactly the property
+that makes hardware synthesis viable. Turing-complete languages
+can't compile to circuits because you can't synthesize unbounded
+loops into fixed hardware. .dag's programs have:
+- Known iteration bounds → circuit pipeline depth
+- No dynamic allocation → fixed-size hardware
+- Proven complexity → timing budget derivable from cost bound
+- Products → parallel wires, coproducts → muxes, functions →
+  combinational logic blocks
+
+**Why it matters for the demo:** This is the most visceral proof
+that decidability enables capabilities impossible in other languages.
+"Here's a data pipeline. It compiles to a Rust binary. The same
+source also compiles to a circuit you can run on an FPGA." Even if
+the hardware target is basic at release, supporting it demonstrates
+the architectural thesis.
+
+**LLM leverage angle:** LLMs can write .dag code, which compiles to
+Rust/Go/Python/Verilog — verified multi-target output from one
+source. An LLM writing Verilog directly produces unverified HDL.
+An LLM writing .dag produces code the compiler can prove correct,
+bounded, and optimal before synthesis. This is a concrete use case
+for agent workflows generating hardware descriptions.
+
+**Example:**
+```dag
+// A simple FIR filter — compiles to Rust AND Verilog
+fn fir_filter(
+  samples: List<Float>,
+  coefficients: List<Float>
+) -> List<Float> {
+  samples |> map(i =>
+    coefficients |> fold(acc: 0.0, coeff =>
+      acc + coeff * samples[i]
+    )
+  )
+}
+// Rust target: fn fir_filter(...) -> Vec<f64> { ... }
+// Verilog target: module fir_filter(clk, samples, coefficients, out);
+//   Compiler knows: fold is 4 cycles (|coefficients| = 4),
+//   map is |samples| cycles, total pipeline depth = 4 × N
+```
+
+**Status:** NOT STARTED. Requires new RenderTarget + LanguageSpec.
+
+**Remaining work:**
+- [ ] KF-6a: `RenderTarget::Verilog` variant in `artifact.dag`
+- [ ] KF-6b: Verilog `LanguageSpec` — type mappings (Int→reg[63:0],
+  Bool→wire, List<T>→memory array), operator semantics (+ → add
+  module), block syntax (always @, module/endmodule)
+- [ ] KF-6c: Verilog coercion data in
+  `dsl/extdeps/languages/verilog/types.dag` — TypeCheckpoint +
+  InhabitantDecl for hardware primitives
+- [ ] KF-6d: Clock/pipeline inference — derive clock cycles from
+  complexity bound (O(n) → n-cycle pipeline, O(1) → combinational)
+- [ ] KF-6e: SPICE netlist target — analog circuit description from
+  arithmetic operations (adders, multipliers, filters)
+- [ ] KF-6f: Basic emitter — `05_emit_verilog.dag` (or folded into
+  parameterized homomorphism if P1-B lands first)
+- [ ] KF-6g: End-to-end test: compile a .dag program to Verilog,
+  run through Icarus Verilog simulation, verify output matches
+  Rust execution
+
+**Maps to:** LS lane (LanguageSpec), CG-3 (parameterized emission),
+P1-B (3→1 homomorphism → 4→1 with Verilog).
+
+**Acceptance:**
+```
+verilog_basic_arithmetic
+  Input: fn add(a: Int, b: Int) -> Int { a + b }
+  Assert: emitted Verilog contains `module add(` and `assign out = a + b`
+
+verilog_pipeline_from_fold
+  Input: fn sum(xs: List<Int>) -> Int { xs |> fold(acc: 0, x => acc + x) }
+  Assert: emitted Verilog has N-stage pipeline (N = list bound)
+  Assert: pipeline depth matches complexity bound
+
+verilog_matches_rust_output
+  Run: compile fir_filter.dag to Rust and Verilog
+  Run: execute Rust version, simulate Verilog version (Icarus/Verilator)
+  Assert: outputs match for same input data
+```
+
+## KF summary and dependency chain
+
+```
+KF-5 (decidability) ─── language property, DONE
+  ├→ KF-1 (complexity proof) ←── CX lane
+  │    └→ KF-2 (reject suboptimal) ←── equivalence catalog
+  ├→ KF-6 (hardware target) ←── LanguageSpec + coercion data
+  └→ KF-3 (test generation) ←── M3 + verification.dag
+       └→ KF-4 (cross-language proof) ←── differential testing
+```
+
+Decidability (KF-5) is the root property that enables everything
+else. KF-1, KF-3, and KF-6 are independent entry points. KF-2
+requires KF-1. KF-4 requires KF-3.
+
+| Feature | Effort | Impact | Priority |
+|---------|--------|--------|----------|
+| KF-5: Decidable language | DONE (communication only) | Foundational — the thesis | P0 |
+| KF-1: Complexity proof | Medium (3 fixes, CX lane) | High — table stakes | P0 |
+| KF-2: Reject suboptimal | Medium (catalog + analysis) | Very high — the "wow" demo | P1 |
+| KF-3: Test generation | Large (witness gen + synthesis) | High — eliminates manual tests | P1 |
+| KF-6: Hardware target | Large (new LanguageSpec + emitter) | Very high — visceral demo | P1 |
+| KF-4: Cross-language proof | Large (oracle + divergence catalog) | Medium — impressive but niche | P2 |
+
+---
+
+# Public Release Gate
+
+**Goal:** Ship gunbc as a public, demonstrable system. Every item
+below is a non-negotiable gate — the release is the conjunction of
+all of them. No partial credit.
+
+## Gate 1: All Active Lanes Complete
+
+Every Layer 2 root-cause track reaches its acceptance criteria.
+
+| Lane | Gate condition | Current | Ratchet |
+|------|---------------|---------|---------|
+| M2 | No fabricated types, no BRIDGE, BND-1..4 landed | 0 real BRIDGEs (4 emitter template strings remain), BND open | `full_dsl_compiles` 0 diagnostics |
+| CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_stage0_to_stage1` 0 errors |
+| M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=37 | `l1-ratchet.sh --check` |
+| CX | 0 violations, gate blocking, no heuristic classifiers | 526 violations (non-blocking) | `strict_compile_diagnostic_count` = 0 CX |
+| LS | All emitter decisions from spec-referenced data | Not started | No inline target-language knowledge in emitter |
+| RE | review.dag compiles and runs (RE ratchet 21/21) | 0/21 | RE ratchet table |
+| PERF | No test >2s, self-compile <30s, no OOM | ~6.5s, OOM fixed | `performance_ratchet` |
+
+**Acceptance test:**
+```
+release_gate_all_lanes
+  Run: all CI gates green simultaneously
+  Assert: l1-ratchet=0, CX violations=0, RE=21/21,
+          bootstrap fresh, full_dsl 0 diags, perf <30s
+```
+
+## Gate 2: Structural Debt = 0
+
+The Structural Debt Scoreboard reaches 0 across all categories.
+
+| Category | Current | Gate |
+|----------|---------|------|
+| Map<String,...> semantic keys | 537 | 0 |
+| Positional projections | 298 | 0 |
+| Fail-open fallbacks | 239 | 0 |
+| Heuristic name matching | 37 | 0 |
+| Manual recursion | ~27 | 0 |
+| String-prefix dispatch | 4 | 0 |
+| Total | ~1,115 | 0 |
+
+Dissolves via M4 (~800), CX (~27), LS (~262). Not independent
+work — completing the lanes IS the debt elimination.
+
+**Acceptance test:**
+```
+structural_debt_zero
+  Run: scripts/structural-debt-count.sh (to be created — grep-based marker count)
+  Assert: total = 0
+```
+
+## Gate 3: Language Parity and Correctness (KF-4)
+
+All three target languages (Rust, Go, Python) produce correct,
+equivalent output for the full .dag surface area. See KF-4 for
+the cross-language equivalence proof design.
+
+| Criterion | Test |
+|-----------|------|
+| All 3 backends compile the full DSL tree | `full_dsl_compiles` with each `RenderTarget` |
+| Structural form coverage | Test generator emits one program per `(NodeKind × TypeForm × Cardinality)` triple; all 3 backends compile each |
+| Expression semantics equivalence | Shared test inputs produce semantically identical output across backends |
+| Coercion data coverage | Every `TypeCheckpoint` + `InhabitantDecl` in each language's `types.dag` has a corresponding test |
+| No backend-specific emission logic | P1-B complete: 3 backends → 1 parameterized homomorphism |
+
+**Acceptance tests:**
+```
+full_dsl_compiles_all_targets (to be added — currently Rust-only)
+  Run: compile dsl/ tree to Rust, Go, Python
+  Assert: 0 hard diagnostics for each target
+
+structural_form_coverage_all_targets
+  Run: test generator produces programs for each emission algebra element
+  Assert: all programs compile for all 3 targets
+
+language_parity_expression_equivalence
+  Run: shared expression test suite compiled to all 3 targets
+  Assert: outputs match (modulo language-specific formatting)
+```
+
+## Gate 4: Complexity + Suboptimality + Hardware (KF-1, KF-2, KF-6)
+
+KF-1 (complexity proof), KF-2 (reject suboptimal), and KF-6
+(hardware target) must all ship.
+
+| Criterion | Test |
+|-----------|------|
+| 0 CostUnknown | `CostUnknown` variant deleted from `CostExpr` |
+| 0 heuristic classifiers | No name-matching in complexity analysis |
+| All descent from structural facts | `std/termination.dag`, `std/computation.dag`, `std/algebra.dag` are the only authorities |
+| Gate blocking | CX gate re-enabled (CX-E), complexity failures = compile failures |
+| Self-compile proves itself | The compiler's own 1600 functions all have proven bounds |
+| Suboptimal rejection | Equivalence catalog in `std/optimization.dag` with at least 5 pattern→replacement rules |
+| Verilog target | Basic arithmetic + fold pipeline compiles to valid Verilog |
+
+**Acceptance tests:**
+```
+complexity_zero_violations
+  Run: cargo test strict_compile_diagnostic_count -- --ignored
+  Assert: 0 complexity diagnostics (not just 0 hard errors — 0 total CX)
+
+cost_unknown_variant_deleted
+  Assert: CostExpr enum has no CostUnknown variant (grep)
+
+no_heuristic_classifiers
+  Assert: 0 name-matching patterns in complexity.dag (grep for .name ==)
+
+suboptimal_filter_count_rejected
+  Input: fn f(xs: List<Int>) -> Bool { xs |> filter(x => x > 0) |> count > 0 }
+  Assert: compile error with suggestion to use any()
+
+verilog_basic_emission
+  Input: fn add(a: Int, b: Int) -> Int { a + b }
+  Assert: emitted Verilog compiles with Icarus Verilog (iverilog)
+```
+
+## Gate 5: Business Cases
+
+Real programs compiled from .dag to working binaries. Each
+demonstrates a distinct capability.
+
+### BC-1: PR Review Agent (review.dag)
+
+Covered by RE lane. A CLI tool that:
+- Lists open PRs via GitHub API
+- Fetches diffs and context files via shell
+- Sends to LLM (Codex/Claude/Gemini) for review
+- Posts review comments to GitHub
+- Self-schedules via cron
+
+**Acceptance:** `./review-agent review-cycle` reviews open PRs
+end-to-end. RE ratchet 21/21.
+
+### BC-2: Code Snapshot Tool (gist.dag)
+
+Already modeled in `dsl/gunbc/tools/gist.dag`. A CLI tool that:
+- Captures git diff or recent changes
+- Creates GitHub Gist with formatted markdown
+- Returns shareable URL
+
+**Acceptance tests:**
+```
+gist_dag_compiles_to_rust
+  Run: compile gist.dag + imports to Rust
+  Assert: 0 diagnostics, emitted binary has gist/gist-diff/gist-recent subcommands
+
+gist_agent_dry_run
+  Run: ./gist-agent gist --dry-run
+  Assert: prints mock gist URL
+```
+
+### BC-3: LLM API Client (anthropic.dag / openai.dag)
+
+A .dag program that calls an LLM API directly (REST, not CLI
+wrapper). Demonstrates service modeling, auth, JSON handling.
+
+**Acceptance tests:**
+```
+llm_client_compiles
+  Run: compile a .dag program using llm.Anthropic.Messages(...)
+  Assert: 0 diagnostics, emitted Rust includes reqwest + auth header
+
+llm_client_live
+  Run: send a prompt, get response
+  Assert: non-empty response text
+  Gate: manual, requires ANTHROPIC_API_KEY
+```
+
+### BC-4: Self-Hosted CI Pipeline (stretch)
+
+The compiler's own build/test/regen pipeline modeled in .dag and
+compiled to a binary that replaces the current shell scripts
+(`regenerate-stage0.sh`, `check-stage0-freshness.sh`, `l1-ratchet.sh`).
+
+**Acceptance:** Shell scripts deleted, replaced by .dag-compiled
+binary. BP-1 acceptance criteria met.
+
+## Gate 6: Automated Test Generation (M3 + KF-3)
+
+Tests are structural claims derived from .dag type definitions.
+The compiler generates tests, not humans. See KF-3 for full design.
+
+| Criterion | Test |
+|-----------|------|
+| Structural form coverage | One test per emission algebra element, auto-generated |
+| Coercion round-trip tests | Generated from `TypeCheckpoint` × `InhabitantDecl` data |
+| Algebra law tests | Generated from `std/algebra.dag` declarations |
+| Cross-language equivalence | Same .dag input → all backends → compare outputs |
+| Receipt schema | `TestReceipt` type (to be added to `std/verification.dag`) as CI authority |
+
+**Acceptance tests:**
+```
+test_generator_produces_structural_coverage
+  Run: test generator from emission algebra
+  Assert: at least one test per (NodeKind × TypeForm) pair
+
+generated_tests_all_pass
+  Run: generated test suite
+  Assert: 0 failures across all targets
+
+test_receipt_validates
+  Run: CI produces TestReceipt, validates against ratchets
+  Assert: receipt covers all structural forms
+```
+
+## Gate 7: Demo Polish
+
+The system should be demonstrable to a public audience. This means
+clean documentation, compelling examples, and one "wow" moment.
+
+| Item | What |
+|------|------|
+| Landing page / README | What gunbc is, why it exists, 30-second getting started |
+| Example gallery | 3-5 .dag programs showing types, services, compilation |
+| English-language error messages | Diagnostics readable by non-compiler-engineers |
+| "Spice" demo | One impressive demonstration — e.g., compile a .dag agent workflow, show the generated Rust, run it live against a real API, show the complexity proof |
+
+**Acceptance:** A new user can clone the repo, compile an example
+.dag program to Rust/Go/Python, and run the result — in under
+5 minutes, with no prior knowledge of the system.
+
+## Release dependency chain
+
+```
+Gate 1 (lanes) ──┬──→ Gate 2 (debt=0) ──→ Gate 7 (polish)
+                 ├──→ Gate 3 (parity)
+                 ├──→ Gate 4 (complexity)
+                 ├──→ Gate 5 (business cases)
+                 └──→ Gate 6 (test generation)
+
+Gates 2-6 can proceed in parallel once Gate 1 lanes reach
+their respective acceptance criteria. Gate 7 is last because
+polish depends on stable features.
+```
+
+## Release ratchet (master scoreboard)
+
+| Gate | Status | Acceptance |
+|------|--------|-----------|
+| 1. Active lanes | IN PROGRESS | All lane ratchets green |
+| 2. Structural debt | 1,115 → 0 | `structural-debt-count.sh` = 0 |
+| 3. Language parity (KF-4) | PARTIAL | 3-target `full_dsl_compiles` + cross-language equivalence |
+| 4. Complexity + suboptimality + hardware (KF-1, KF-2, KF-6) | 526 → 0 | `CostUnknown` deleted + catalog ships + Verilog emits |
+| 5. Business cases | 0/4 | BC-1..4 acceptance met |
+| 6. Test generation (KF-3) | NOT STARTED | Generated tests all pass |
+| 7. Demo polish (KF-5) | NOT STARTED | 5-minute onboarding, decidability front-and-center |
+
+## Killer feature ratchet
+
+| Feature | Status | Gate |
+|---------|--------|------|
+| KF-5: Decidable high-level language | DONE (language property) | Landing page explains it |
+| KF-1: Complexity proof on every compile | 526 unknown → 0 | CostUnknown deleted |
+| KF-2: Reject suboptimal algorithms | NOT STARTED | 5+ rules in equivalence catalog |
+| KF-3: Test generation from types | Level 0 done | Levels 4-6 implemented |
+| KF-4: Cross-language equivalence proof | NOT STARTED | Differential test suite green |
+| KF-6: Hardware target (Verilog/SPICE) | NOT STARTED | Basic arithmetic emits valid Verilog |
