@@ -891,7 +891,7 @@ pub fn emit_go_tco_non_self_call(frame: Rc<TcoFrame>, registry: Rc<HashMap<Strin
 }
 
 pub fn emit_go_tco_if(frame: Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
-    shared_tco_if(frame, fn_name.clone(), params.clone(), language_spec(RenderTarget::Go), |expr, scope, depth| emit_go_typed_expr(expr.clone(), registry.clone(), scope.clone(), depth.clone(), 1024), |expr, scope, depth| emit_go_typed_tco_expr(expr.clone(), fn_name.clone(), params.clone(), registry.clone(), scope.clone(), depth.clone()))
+    shared_tco_if(frame, fn_name.clone(), params.clone(), RenderTarget::Go, language_spec(RenderTarget::Go), |expr, scope, depth| emit_go_typed_expr(expr.clone(), registry.clone(), scope.clone(), depth.clone(), 1024), |expr, scope, depth| emit_go_typed_tco_expr(expr.clone(), fn_name.clone(), params.clone(), registry.clone(), scope.clone(), depth.clone()))
 }
 
 pub fn emit_go_tco_match(frame: Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {

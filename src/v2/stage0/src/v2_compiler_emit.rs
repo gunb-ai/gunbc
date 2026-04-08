@@ -1604,7 +1604,7 @@ v2_rt::concat(v2_rt::concat(spec.tco.clone().break_return.clone(), " ".to_string
 }
 }
 
-pub fn shared_tco_if(frame: Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<Node>>>, spec: Rc<LanguageSpec>, recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone, recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone) -> String {
+pub fn shared_tco_if(frame: Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<Node>>>, target: RenderTarget, spec: Rc<LanguageSpec>, recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone, recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone) -> String {
     {
         let syntax = spec.block_syntax.clone();
 match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -1630,7 +1630,7 @@ if syntax.significant_whitespace.clone() {
 },
 }
 },
-    _ => emit_error_expr("shared_tco_if expected ExprIf".to_string(), RenderTarget::Rust),
+    _ => emit_error_expr("shared_tco_if expected ExprIf".to_string(), target),
 }
 }
 }

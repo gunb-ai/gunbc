@@ -929,6 +929,7 @@ fn emit_py_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, registry
     frame: frame,
     fn_name: fn_name,
     params: params,
+    target: Python,
     spec: language_spec(target: Python),
     recurse_expr: (expr, scope, depth) => emit_py_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, fuel: 1024),
     recurse_tco: (expr, scope, depth) => emit_py_typed_tco_expr(texpr: expr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth))

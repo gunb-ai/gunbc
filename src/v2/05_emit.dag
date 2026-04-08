@@ -1543,6 +1543,7 @@ fn shared_tco_if(
   frame: TcoFrame,
   fn_name: String,
   params: List<Node>,
+  target: RenderTarget,
   spec: LanguageSpec,
   recurse_expr: fn(Node, InferScope, Int) -> String,
   recurse_tco: fn(Node, InferScope, Int) -> String
@@ -1580,7 +1581,7 @@ fn shared_tco_if(
               syntax.block_close)
           }
       }
-    _ => emit_error_expr(message: "shared_tco_if expected ExprIf", target: Rust)
+    _ => emit_error_expr(message: "shared_tco_if expected ExprIf", target: target)
   }
 }
 
@@ -1636,6 +1637,10 @@ fn shared_tco_block(
   }
 }
 
+// line_prefix is "" for all backends: shared TCO handlers return un-indented
+// content, and the dispatch layer (shared_tco_body / emit_shared_tco_expr)
+// handles first-line indentation. This is a property of the shared dispatch
+// contract, not a per-language rendering decision.
 fn shared_tco_reassign(
   ordered_args: List<String>,
   param_names: List<String>,
