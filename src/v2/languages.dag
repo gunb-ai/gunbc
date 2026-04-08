@@ -175,6 +175,11 @@ type BlockSyntax {
   arm_separator: String         // "," (Rust) or "\n" (Go/Python)
   stmt_terminator: String       // ";" (Rust) or "" (Go/Python)
   significant_whitespace: Bool  // true (Python) or false (Go/Rust)
+  arm_header_depth_offset: Int  // Python: 1 (case indented under match), Go/Rust: 0
+  arm_body_depth_offset: Int    // Python: 2 (body under case under match), Go/Rust: 1
+  if_else_expr_template: String? // Python: ternary "({1}) if ({0}) else ({2})", Go/Rust: none (IIFE/block)
+  func_return_suffix: String    // Go: ", nil" (error return), Python/Rust: ""
+  empty_return: String          // Go: "return struct{}{}, nil", Python: "return None", Rust: ""
 }
 
 type TcoSyntax {
@@ -276,7 +281,10 @@ fn rust_spec() -> LanguageSpec {
       else_clause: "\} else \{\n",
       match_keyword: "match ", case_keyword: "",
       arm_separator: ",", stmt_terminator: ";",
-      significant_whitespace: false
+      significant_whitespace: false,
+      arm_header_depth_offset: 0, arm_body_depth_offset: 1,
+      if_else_expr_template: none,
+      func_return_suffix: "", empty_return: ""
     },
     tco: TcoSyntax {
       loop_keyword: "loop",
@@ -358,7 +366,10 @@ fn python_spec() -> LanguageSpec {
       else_clause: "else:\n",
       match_keyword: "match ", case_keyword: "case ",
       arm_separator: "\n", stmt_terminator: "",
-      significant_whitespace: true
+      significant_whitespace: true,
+      arm_header_depth_offset: 1, arm_body_depth_offset: 2,
+      if_else_expr_template: Some { value: "(\{then\}) if (\{cond\}) else (\{else\})" },
+      func_return_suffix: "", empty_return: "return None"
     },
     tco: TcoSyntax {
       loop_keyword: "while True",
@@ -440,7 +451,10 @@ fn go_spec() -> LanguageSpec {
       else_clause: "\} else \{\n",
       match_keyword: "switch ", case_keyword: "case ",
       arm_separator: "\n", stmt_terminator: "",
-      significant_whitespace: false
+      significant_whitespace: false,
+      arm_header_depth_offset: 0, arm_body_depth_offset: 1,
+      if_else_expr_template: none,
+      func_return_suffix: ", nil", empty_return: "return struct\{\}\{\}, nil"
     },
     tco: TcoSyntax {
       loop_keyword: "for",

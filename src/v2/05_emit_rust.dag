@@ -78,14 +78,14 @@ import v2.compiler.languages {
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
 import v2.compiler.coercion { coerce_primitive_type, is_copy }
-import extdeps.languages.rust.types { integer_types, float_types }
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import v2.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
-  node_is_keyed_collection, node_is_element_collection, node_is_collection
+  node_is_keyed_collection, node_is_element_collection, node_is_collection,
+  is_product_type, is_coproduct_type, is_unit_like
 }
 import v2.compiler.infer_method {
 }
@@ -114,7 +114,7 @@ import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared,
   emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body,
   module_emit_scope,
   scope_after_expr,
@@ -567,7 +567,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // RC1: For enums defined in this module, add `use EnumName::*;` so
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
-    |> filter(item => is_type_def_item(item: item) && item.connective == Disj)
+    |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
     |> map(item => concat("use ", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
@@ -838,7 +838,7 @@ fn emit_type_params(params: List<Node>, source_index: NewlineIndex?) -> String {
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let type_params = emit_type_params(params: item.params, source_index: env.source_index)
   let item_text = authored_name(env: env, node: item)
-  let is_product = item.connective == Conj
+  let is_product = is_product_type(n: item)
   if is_product {
     emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   } else {
@@ -878,7 +878,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
   // Fix self-referential Conj types: when a field's resolved type is a full
   // type definition (Conj with many children), render Name<Params> from the
   // TypeEnv's binding params instead of letting the Conj renderer emit bare name.
-  let ty = if rt_child.connective == Conj && rt_child.ident_span != none && rt_child.children |> count > 2 {
+  let ty = if is_product_type(n: rt_child) && rt_child.ident_span != none && rt_child.children |> count > 2 {
     match map_get(env.bindings, rt_child.name) {
       Some { value: binding } =>
         if binding.resolved.params |> count > 0 {
@@ -1235,7 +1235,7 @@ fn needs_reference_node(n: Node) -> Bool {
     true
   } else {
     let is_copy = is_rust_value_type(n: n)
-      || (n.connective == Conj && n.children |> count == 0)
+      || (is_product_type(n: n) && n.children |> count == 0)
     is_copy == false
   }
 }
@@ -1660,8 +1660,8 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_t
       None => inferred_node
     }
   } else { inferred_node }
-  let is_product = n.connective == Conj
-  let is_coproduct = n.connective == Disj
+  let is_product = is_product_type(n: n)
+  let is_coproduct = is_coproduct_type(n: n)
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if n.name == "__EmitTypeCacheMiss" { type_name }
     else if n_is_error { type_name }
@@ -1676,20 +1676,6 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_t
     }
 }
 
-// is_primitive_numeric_node: checks whether target type is a valid `as` target.
-// Rust `as` casts: numeric→numeric, bool→integer, u8→char. The TARGET must
-// be an integer or float type. bool is only valid as a SOURCE (bool→integer),
-// not as a target (integer→bool is invalid). Unit is Copy but not castable.
-// Ref: https://doc.rust-lang.org/reference/expressions/operator-expr.html
-fn is_primitive_numeric_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  let rust_type = coerce_primitive_type(target: Rust, dag_name: normed.name)
-  if rust_type == normed.name { false }
-  else {
-    integer_types |> any(t => t == rust_type)
-    || float_types |> any(t => t == rust_type)
-  }
-}
 fn is_simple_type_node(n: Node) -> Bool { is_rust_value_type(n: n) }
 
 // =========================================================================
@@ -1859,7 +1845,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
   // translated to the flattened representation.
   let base_is_anon_record = match base.inferred {
     Some { value: Resolved { node: bt } } =>
-      let is_product = bt.connective == Conj
+      let is_product = is_product_type(n: bt)
       if is_product && bt.ident_span == none { true } else { false }
     _ => false
   }
@@ -1914,8 +1900,8 @@ fn type_needs_rc(type_node: Node) -> Bool {
 
 fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
   let normed = normalize_access_type_node(n: type_node)
-  let is_product = normed.connective == Conj
-  let is_coproduct = normed.connective == Disj
+  let is_product = is_product_type(n: normed)
+  let is_coproduct = is_coproduct_type(n: normed)
   if is_product {
     true
   } else if is_coproduct {
@@ -2109,9 +2095,12 @@ fn emit_rust_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 fn emit_rust_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprCast =>
-      let e = cast_expr(texpr: expr)
-      let t = cast_target(texpr: expr)
-      emit_typed_cast(expr: e, target: t, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      emit_typed_cast_shared(
+        expr: cast_expr(texpr: expr),
+        cast_target_node: cast_target(texpr: expr),
+        target: Rust,
+        recurse: child => emit_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
+        source_index: scope.type_env.source_index)
     _ => emit_error_expr(message: "emit_rust_expr_cast expected ExprCast", target: Rust)
   }
 }
@@ -2586,7 +2575,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   }
   let acc_type_node = match fold_accumulator_type {
     Some { value: acc_type } =>
-      let acc_children_have_unit = acc_type.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.ident_span == none) || acc_type.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.ident_span == none))
+      let acc_children_have_unit = acc_type.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
       let is_under_resolved_map = node_is_keyed_collection(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit)
       let is_under_resolved_list = node_is_element_collection(n: acc_type) && acc_type.children |> count == 0
       let is_under_resolved_non_collection = !node_is_keyed_collection(n: acc_type) && !node_is_element_collection(n: acc_type) && !node_is_collection(n: acc_type)
@@ -2654,7 +2643,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   // resolution needs the real type for turbofish generation.
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_node.name)
   let lambda_acc_type_str = if is_bare_container { "_" } else { acc_type_str }
-  let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.ident_span == none))
+  let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
     Some { value: init_arg } =>
       match arg_value(n: init_arg).expr_data {
@@ -3291,7 +3280,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
   match qualified_name {
     None =>
       // Anonymous record literal: emit as bare value (single-field) or tuple (multi-field).
-      let is_product = resolved_type.connective == Conj
+      let is_product = is_product_type(n: resolved_type)
       if is_product && resolved_type.ident_span == none {
         if fields |> count == 1 {
           match fields |> first {
@@ -3469,24 +3458,6 @@ fn emit_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope: I
   let state = emit_rust_block_stmts(
     remaining: stmts, text: [], scope: scope, registry: registry, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
   concat("{\n", make_indent(level: depth + 1),(state.text |> join(separator: "\n")), "\n}")
-}
-
-fn emit_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let expr_str = emit_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let ty_str = render_rust_type(n: target, shared_types: shared_types, source_index: scope.type_env.source_index)
-  if is_primitive_numeric_node(n: target) {
-    concat(expr_str, " as ", ty_str)
-  } else {
-    let src_ty = match expr.inferred {
-      Some { value: Resolved { node: n } } => render_rust_type(n: n, shared_types: shared_types, source_index: scope.type_env.source_index)
-      _ => ""
-    }
-    if src_ty != "" && src_ty == ty_str {
-      expr_str
-    } else {
-      concat("compile_error!(\"unsupported cast to ", ty_str, "\")")
-    }
-  }
 }
 
 // =========================================================================
@@ -3915,9 +3886,9 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
 
 fn emit_shell_return(inferred: Node) -> String {
   let effective = unwrap_single_field_product(n: inferred)
-  let is_product = effective.connective == Conj
+  let is_product = is_product_type(n: effective)
   // Bool = True | False: structural check (Disj + 2 children)
-  let is_bool = effective.connective == Disj && effective.children |> count == 2
+  let is_bool = is_coproduct_type(n: effective) && effective.children |> count == 2
   if is_bool {
     "Ok(output.status.success())"
   } else {
@@ -3933,7 +3904,7 @@ fn emit_shell_return(inferred: Node) -> String {
 }
 
 fn unwrap_single_field_product(n: Node) -> Node {
-  let is_product = n.connective == Conj
+  let is_product = is_product_type(n: n)
   if is_product && n.ident_span == none && n.children |> count == 1 {
     match n.children |> first {
       Some { value: field_node } => resolved_type(n: field_node)
@@ -3944,7 +3915,7 @@ fn unwrap_single_field_product(n: Node) -> Node {
 
 fn emit_file_call(op_name: String, inferred: Node) -> String {
   let effective = unwrap_single_field_product(n: inferred)
-  let is_product = effective.connective == Conj
+  let is_product = is_product_type(n: effective)
   let parse_line = if is_product && effective.children |> count > 1 {
     "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)"
   } else {

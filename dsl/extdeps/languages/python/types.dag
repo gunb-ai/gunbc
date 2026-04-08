@@ -18,7 +18,7 @@
 module extdeps.languages.python.types
 
 import std.coercion {
-  TypeCheckpoint, InhabitantDecl, CallableRepr
+  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax
 }
 
 
@@ -149,3 +149,11 @@ data none_not_check_template: String = "\{expr\} is not None"
 data pass_statement: String = "pass"
 data type_checker: String = "mypy"
 data type_checker_strict: String = "mypy --strict"
+
+// Cast syntax: Python uses constructor calls, always syntactically valid.
+// Runtime errors are Python's business — the emitter just produces valid syntax.
+data python_cast_syntax: CastSyntax = {
+  template: "\{type\}(\{expr\})",
+  valid_targets: [],
+  fail_open: true
+}
