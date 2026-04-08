@@ -143,6 +143,7 @@ Stabilization rules:
 - CI gate: `check-stage0-freshness.sh` (regenerate → diff → empty).
 - Stage0 generated `.rs` files use `-merge` in `.gitattributes` (no line-level merge).
 - CX gate disabled in both stage0 and `compile.dag` — emission not blocked by complexity violations. Re-enable when CX violations reach 0.
+- CLI exit code filters complexity diagnostics: `main.rs` exits non-zero only for hard errors (non-`ComplexityUnknown`). Without this filter, the 522 pre-existing complexity violations make the freshness gate fatal. Remove the filter when CX reaches 0 (same gate as CX-E).
 
 ## Reviewer Root Cause Analysis (2026-04-03)
 
