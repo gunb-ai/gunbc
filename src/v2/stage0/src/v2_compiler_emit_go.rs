@@ -489,7 +489,7 @@ strs.join(&", ".to_string())
 pub fn emit_go_param(param: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let ty = emit_node_type(param_node_type_expr(param.clone()), RenderTarget::Go, source_index.clone());
-v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Go), " ".to_string()), ty)
+v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Go), language_spec(RenderTarget::Go).items.clone().param_type_sep.clone()), ty)
 }
 }
 
@@ -499,7 +499,7 @@ pub fn emit_go_inferred(inferred: Rc<Node>, source_index: Option<Rc<NewlineIndex
 if (ty.clone().as_str() == "struct{}".to_string().as_str()) {
             "".to_string()
 } else {
-            v2_rt::concat(" ".to_string(), ty.clone())
+            v2_rt::concat(language_spec(RenderTarget::Go).items.clone().return_arrow.clone(), ty.clone())
 }
 }
 }

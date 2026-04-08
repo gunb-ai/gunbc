@@ -270,10 +270,10 @@ pub fn rust_return_arrow() -> String {
     CACHED.with(|c| c.clone())
 }
 
-pub fn rust_param_type_order() -> String {
+pub fn rust_param_type_sep() -> String {
     thread_local! {
         static CACHED: String = {
-            "name_colon_type".to_string()
+            ": ".to_string()
         };
     }
     CACHED.with(|c| c.clone())

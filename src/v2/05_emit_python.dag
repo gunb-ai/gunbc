@@ -538,11 +538,11 @@ fn emit_py_params(params: List<Node>, source_index: NewlineIndex?) -> String {
 
 fn emit_py_param(param: Node, source_index: NewlineIndex?) -> String {
   let ty = emit_node_type(n: param_node_type_expr(n: param), target: Python, source_index: source_index)
-  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Python), ": ", ty)
+  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Python), language_spec(target: Python).items.param_type_sep, ty)
 }
 
 fn emit_py_inferred(inferred: Node, source_index: NewlineIndex?) -> String {
-  concat(" -> ", emit_node_type(n: inferred, target: Python, source_index: source_index))
+  concat(language_spec(target: Python).items.return_arrow, emit_node_type(n: inferred, target: Python, source_index: source_index))
 }
 fn emit_py_pattern(pattern: MatchPattern, source_index: NewlineIndex?) -> String {
   match pattern {

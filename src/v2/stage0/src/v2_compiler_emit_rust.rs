@@ -1110,12 +1110,12 @@ pub fn emit_param(param: Rc<Node>, shared_types: Rc<HashMap<String, bool>>, sour
     {
         let n = param_node_type_expr(param.clone());
 let ty = emit_rust_param_type(n, shared_types, source_index.clone());
-v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Rust), ": ".to_string()), ty)
+v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Rust), rust_items().param_type_sep.clone()), ty)
 }
 }
 
 pub fn emit_inferred(inferred: Rc<Node>, shared_types: Rc<HashMap<String, bool>>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    v2_rt::concat(" -> ".to_string(), render_rust_type(inferred, shared_types, source_index))
+    v2_rt::concat(rust_items().return_arrow.clone(), render_rust_type(inferred, shared_types, source_index))
 }
 
 pub fn needs_reference_node(n: Rc<Node>) -> bool {

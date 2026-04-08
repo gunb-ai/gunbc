@@ -74,7 +74,7 @@ data python_enum_keyword: String = "class"
 data python_type_alias_keyword: String = ""
 data python_param_separator: String = ", "
 data python_return_arrow: String = " -> "
-data python_param_type_order: String = "name_colon_type"
+data python_param_type_sep: String = ": "
 data python_string_literal_suffix: String = ""
 
 // -- Project scaffold ----------------------------------------------------

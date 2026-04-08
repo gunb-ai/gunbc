@@ -558,7 +558,7 @@ fn emit_go_params(params: List<Node>, source_index: NewlineIndex?) -> String {
 
 fn emit_go_param(param: Node, source_index: NewlineIndex?) -> String {
   let ty = emit_node_type(n: param_node_type_expr(n: param), target: Go, source_index: source_index)
-  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Go), " ", ty)
+  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Go), language_spec(target: Go).items.param_type_sep, ty)
 }
 
 fn emit_go_inferred(inferred: Node, source_index: NewlineIndex?) -> String {
@@ -566,7 +566,7 @@ fn emit_go_inferred(inferred: Node, source_index: NewlineIndex?) -> String {
   if ty == "struct{}" {
     ""
   } else {
-    concat(" ", ty)
+    concat(language_spec(target: Go).items.return_arrow, ty)
   }
 }
 fn emit_go_pattern(pattern: MatchPattern) -> String {

@@ -131,7 +131,7 @@ data rust_enum_keyword: String = "enum"
 data rust_type_alias_keyword: String = "type"
 data rust_param_separator: String = ", "
 data rust_return_arrow: String = " -> "
-data rust_param_type_order: String = "name_colon_type"
+data rust_param_type_sep: String = ": "
 data rust_string_literal_suffix: String = ".to_string()"
 
 // -- Project scaffold ----------------------------------------------------

@@ -71,7 +71,7 @@ data go_enum_keyword: String = "type"
 data go_type_alias_keyword: String = "type"
 data go_param_separator: String = ", "
 data go_return_arrow: String = " "
-data go_param_type_order: String = "name_space_type"
+data go_param_type_sep: String = " "
 data go_string_literal_suffix: String = ""
 
 // -- Project scaffold ----------------------------------------------------

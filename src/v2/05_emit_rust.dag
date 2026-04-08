@@ -1226,11 +1226,11 @@ fn emit_param(param: Node, shared_types: Map<String, Bool>, source_index: Newlin
   // All params are owned -- Rc-wrapped types are cheap to clone, and
   // the .clone() pattern in function bodies produces owned values.
   // Adding & to params creates reference/owned mismatches.
-  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), ": ", ty)
+  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_inferred(inferred: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
-  concat(" -> ", render_rust_type(n: inferred, shared_types: shared_types, source_index: source_index))
+  concat(rust_items().return_arrow, render_rust_type(n: inferred, shared_types: shared_types, source_index: source_index))
 }
 
 // Determine if a type should be passed by reference (Node-based).
