@@ -1380,7 +1380,8 @@ multi_backend_review_agent
 ### RE ratchet
 
 Track progress via a single ratchet: how many of the acceptance tests
-above are green.
+above are green. Tests are to be added to `v2-compiler-tests` as each
+RE item is implemented — the ratchet counts tests that exist AND pass.
 
 | Metric | Current | Target |
 |--------|---------|--------|
@@ -1992,12 +1993,14 @@ fn fibonacci(n: Int) -> Int {
 ```
 
 **Status:** Not started. The foundation exists:
-- 3 backends compile the full DSL tree (full_dsl_compiles)
+- Rust backend compiles the full DSL tree (`full_dsl_compiles`).
+  Go and Python backends exist and emit code, but are not yet
+  gated by `full_dsl_compiles` (Rust-only currently)
 - Coercion data maps .dag types to target types per language
 - LanguageSpec declares per-target semantics
 
-Missing: differential testing infrastructure, semantic equivalence
-assertions, shared test oracle.
+Missing: 3-target `full_dsl_compiles`, differential testing
+infrastructure, semantic equivalence assertions, shared test oracle.
 
 **Remaining work:**
 - [ ] KF-4a: Shared test oracle — given a .dag function + inputs,
@@ -2192,13 +2195,13 @@ Every Layer 2 root-cause track reaches its acceptance criteria.
 
 | Lane | Gate condition | Current | Ratchet |
 |------|---------------|---------|---------|
-| M2 | No fabricated types, no BRIDGE, BND-1..4 landed | BRIDGEs=0, BND open | `full_dsl_compiles` 0 diagnostics |
+| M2 | No fabricated types, no BRIDGE, BND-1..4 landed | 0 real BRIDGEs (4 emitter template strings remain), BND open | `full_dsl_compiles` 0 diagnostics |
 | CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_stage0_to_stage1` 0 errors |
 | M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=37 | `l1-ratchet.sh --check` |
 | CX | 0 violations, gate blocking, no heuristic classifiers | 526 violations (non-blocking) | `strict_compile_diagnostic_count` = 0 CX |
 | LS | All emitter decisions from spec-referenced data | Not started | No inline target-language knowledge in emitter |
 | RE | review.dag compiles and runs (RE ratchet 21/21) | 0/21 | RE ratchet table |
-| PERF | No test >2s, self-compile <30s, no OOM | ~4.8s, OOM fixed | `performance_ratchet` |
+| PERF | No test >2s, self-compile <30s, no OOM | ~6.5s, OOM fixed | `performance_ratchet` |
 
 **Acceptance test:**
 ```
@@ -2228,7 +2231,7 @@ work — completing the lanes IS the debt elimination.
 **Acceptance test:**
 ```
 structural_debt_zero
-  Run: scripts/structural-debt-count.sh (grep-based marker count)
+  Run: scripts/structural-debt-count.sh (to be created — grep-based marker count)
   Assert: total = 0
 ```
 
@@ -2248,7 +2251,7 @@ the cross-language equivalence proof design.
 
 **Acceptance tests:**
 ```
-full_dsl_compiles_all_targets
+full_dsl_compiles_all_targets (to be added — currently Rust-only)
   Run: compile dsl/ tree to Rust, Go, Python
   Assert: 0 hard diagnostics for each target
 
@@ -2369,7 +2372,7 @@ The compiler generates tests, not humans. See KF-3 for full design.
 | Coercion round-trip tests | Generated from `TypeCheckpoint` × `InhabitantDecl` data |
 | Algebra law tests | Generated from `std/algebra.dag` declarations |
 | Cross-language equivalence | Same .dag input → all backends → compare outputs |
-| Receipt schema | `TestReceipt` type in `std/verification.dag` as CI authority |
+| Receipt schema | `TestReceipt` type (to be added to `std/verification.dag`) as CI authority |
 
 **Acceptance tests:**
 ```
