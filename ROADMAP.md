@@ -185,30 +185,12 @@ Stabilization rules:
 - CX gate disabled in both stage0 and `compile.dag` — emission not blocked by complexity violations. Re-enable when CX violations reach 0.
 - CLI exit code filters complexity diagnostics: `main.rs` exits non-zero only for hard errors (non-`ComplexityUnknown`). Without this filter, the 522 pre-existing complexity violations make the freshness gate fatal. Remove the filter when CX reaches 0 (same gate as CX-E).
 
-### Self-Hosting Gap (discovered 2026-04-08)
+### Self-Hosting Gap (discovered 2026-04-08, fixed PR #346)
 
-**Problem:** `bootstrap_stage0_to_stage1` returns early when complexity
-violations block emission, so it never validates the generated Rust.
-`bootstrap_fixed_point` (the two-pass self-hosting test) is `#[ignore]`
-and not a CI gate. This allowed a codegen regression (variant
-misclassification from mixed name authorities in emit) to ship
-undetected across multiple commits.
-
-**Root causes:**
-1. The complexity violations (526) provide an escape hatch for the
-   bootstrap gate — emission succeeds but validation is skipped.
-2. `bootstrap_fixed_point` is marked expensive (~20s for 2 release
-   builds + 2 compiles) but this is well within CI budget.
-3. The one-pass regen workflow (`git checkout origin/main -- stage0/`
-   then regen) masks self-hosting failures because main's binary
-   generates correct code even when the branch's binary wouldn't.
-
-**Fix priority (P0 — blocks all codegen-touching work):**
-- [x] Un-ignore `bootstrap_fixed_point` in CI. The ~20s cost is
-  acceptable. Self-hosting regressions are silent and cumulative.
-- [x] Remove the complexity early-return from `bootstrap_stage0_to_stage1`
-  so it always validates generated Rust, even with CX violations.
-- [x] Add two-pass regen to the clean-repo workflow (step 6 above).
+`bootstrap_fixed_point` is now a CI gate (~90s). Complexity early-return
+removed from `bootstrap_stage0_to_stage1`. Two-pass regen in
+`regenerate-stage0.sh`. `bootstrap_stage0_to_stage1` subsumed by
+fixed-point in CI.
 
 ## Reviewer Root Cause Analysis (2026-04-03)
 

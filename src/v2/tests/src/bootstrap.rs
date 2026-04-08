@@ -387,9 +387,9 @@ fn bootstrap_fixed_point() {
         "stage1 build failed:\n{}",
         String::from_utf8_lossy(&build1.stderr)
     );
-    // Stage1 emits crate name "v2_compiled" (see 05_emit_rust.dag emit_cargo_toml),
-    // so the binary is v2_compiled, not v2-compiler.
-    let stage1_bin = stage1_dir.join("target/release/v2_compiled");
+    // Self-compile includes v2.compiler.compile, so emit_cargo_toml picks
+    // crate_name "v2_compiler" (see 05_emit_rust.dag line 452).
+    let stage1_bin = stage1_dir.join("target/release/v2_compiler");
 
     // Stage1 -> stage2
     let stage2_dir = std::env::temp_dir().join("v2-fp-stage2");
