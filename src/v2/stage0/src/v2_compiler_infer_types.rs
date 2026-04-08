@@ -50,7 +50,7 @@ pub use crate::std_types::{SourceSpan, is_container_type, container_expected_ari
 pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, AlgebraFieldTemplate, kernel_algebra_profile, algebra_templates_for_profile};
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf, AlgebraTypeVariable};
-pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, find_child_named, NewlineIndex, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, rt_node, has_inferred, is_compiler_error, NodeType, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, ExprData};
+pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, find_child_named, NewlineIndex, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, has_inferred, is_compiler_error, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, ExprData};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral};
@@ -58,7 +58,6 @@ use crate::v2_std_core::ExprErrorKind::{SemanticExprError};
 use crate::v2_std_core::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull};
 use crate::v2_std_core::BinOp::{Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
-use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
@@ -91,9 +90,16 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 })
 }
 
+pub fn resolved_type(n: Rc<Node>) -> Rc<Node> {
+    match n.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+    _ => error_type(),
+}
+}
+
 pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
     if (ch.inferred.clone() != None) {
-        resolved_type_or_error(ch.clone())
+        resolved_type(ch.clone())
 } else {
         ch.clone()
 }
@@ -103,15 +109,6 @@ pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
     match n.children.clone().get(index as usize).cloned() {
     Some(ch) => Some(child_type_node(ch.clone())),
     None => None,
-}
-}
-
-pub fn resolved_type_or_error(n: Rc<Node>) -> Rc<Node> {
-    match (*rt_node(n)).clone() {
-    NodeType::Typed { node: rt, .. } => rt.clone(),
-    NodeType::InferError { .. } => unit_type(),
-    NodeType::InferVariable { .. } => unit_type(),
-    NodeType::Untyped => unit_type(),
 }
 }
 
@@ -764,15 +761,9 @@ pub fn node_type_shape(n: Rc<Node>) -> String {
             let __is_leaf = (((n.connective.clone() == Connective::NoConnective) && ((n.children.clone().len() as i64) == 0)) && ((n.properties.clone().len() as i64) == 0));
 if __is_leaf {
                 {
-                    let __is_named_ref = if (n.inferred.clone() == None) {
-                        false
-} else {
-                        match (*rt_node(n.clone())).clone() {
-    NodeType::Typed { node: rt, .. } => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (rt.name.clone().as_str() != "None".to_string().as_str())) && (is_kernel_type(rt.name.clone()) == false)),
-    NodeType::InferError { .. } => false,
-    NodeType::InferVariable { .. } => false,
-    NodeType::Untyped => false,
-}
+                    let __is_named_ref = match n.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (rt.name.clone().as_str() != "None".to_string().as_str())) && (is_kernel_type(rt.name.clone()) == false)),
+    _ => false,
 };
 if __is_named_ref {
                         v2_rt::concat(v2_rt::concat("Named(".to_string(), n.name.clone()), ")".to_string())
@@ -1155,40 +1146,32 @@ if n_is_type_var {
 let __is_named_ref = if (n.inferred.clone() == None) {
                 false
 } else {
-                match (*rt_node(n.clone())).clone() {
-    NodeType::Typed { node: rt, .. } => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (rt.name.clone().as_str() != "None".to_string().as_str())) && (is_kernel_type(rt.name.clone()) == false)),
-    NodeType::InferError { .. } => false,
-    NodeType::InferVariable { .. } => false,
-    NodeType::Untyped => false,
+                match n.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (rt.name.clone().as_str() != "None".to_string().as_str())) && (is_kernel_type(rt.name.clone()) == false)),
+    _ => false,
 }
 };
 let has_structure = (n.connective.clone() != Connective::NoConnective);
 if __is_named_ref {
-                match (*rt_node(n.clone())).clone() {
-    NodeType::Typed { node: rt, .. } => Rc::new(vec![rt.name.clone()]),
-    NodeType::InferError { .. } => Rc::new(vec![]),
-    NodeType::InferVariable { .. } => Rc::new(vec![]),
-    NodeType::Untyped => Rc::new(vec![]),
+                match n.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => Rc::new(vec![rt.name.clone()]),
+    _ => Rc::new(vec![]),
 }
 } else {
                 if has_structure {
-                    Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*if (child.inferred.clone() != None) {
-                        match (*rt_node(child.clone())).clone() {
-    NodeType::Typed { node: rt, .. } => node_type_deps(rt.clone()),
-    NodeType::InferError { .. } => Rc::new(vec![]),
-    NodeType::InferVariable { .. } => Rc::new(vec![]),
-    NodeType::Untyped => Rc::new(vec![]),
-}
-} else {
+                    Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*match child.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => node_type_deps(rt.clone()),
+    _ => if (child.inferred.clone() == None) {
                         node_type_deps(child.clone())
+} else {
+                        Rc::new(vec![])
+},
 }).iter().cloned()); } __result })
 } else {
                     if (n.inferred.clone() != None) {
-                        match (*rt_node(n.clone())).clone() {
-    NodeType::Typed { node: rt, .. } => node_type_deps(rt.clone()),
-    NodeType::InferError { .. } => Rc::new(vec![]),
-    NodeType::InferVariable { .. } => Rc::new(vec![]),
-    NodeType::Untyped => Rc::new(vec![]),
+                        match n.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => node_type_deps(rt.clone()),
+    _ => Rc::new(vec![]),
 }
 } else {
                         if ((n.children.clone().len() as i64) > 0) {

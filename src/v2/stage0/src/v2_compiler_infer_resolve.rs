@@ -47,8 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan, container_param_name};
-pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, NodeType, rt_node, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, is_kernel_type, is_container_type, leaf_node, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, default_ident_span, node_name_span, CompilerDiagnostic};
-use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
+pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, is_kernel_type, is_container_type, leaf_node, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, default_ident_span, node_name_span, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, ArityMismatch, UnresolvedType};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -57,7 +56,7 @@ use crate::v2_std_core::MatchPattern::{Wildcard};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::ExprErrorKind::{SemanticExprError};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
-pub use crate::v2_compiler_infer_types::{resolved_type_or_error, child_type_node, node_is_keyed_collection};
+pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, node_is_keyed_collection};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for};
 use AliasKind::*;
 
@@ -326,7 +325,7 @@ Rc::new(NodeResolveResult {
 })
 } else {
                                     {
-                                        let child_rt = resolved_type_or_error(child.clone());
+                                        let child_rt = resolved_type(child.clone());
 let rt_result = resolve_node_bounded(child_rt.clone(), env.clone(), module_name.clone(), (depth.clone() + 1));
 let rt_resolved = rt_result.resolved.clone();
 let rt_diags = rt_result.diagnostics.clone();
@@ -406,7 +405,7 @@ Rc::new(NodeResolveResult {
 })
 } else {
                                             {
-                                                let field_rt = resolved_type_or_error(field_child.clone());
+                                                let field_rt = resolved_type(field_child.clone());
 let is_self_ref = ((field_rt.name.clone().as_str() == n.name.clone().as_str()) && ((field_rt.children.clone().len() as i64) > 0));
 let rt_result = if is_self_ref.clone() {
                                                     Rc::new(NodeResolveResult {
@@ -532,11 +531,9 @@ match Rc::new({ let mut __result = Vec::new(); for p in Rc::new({ let mut __resu
 let is_parameterized_alias = (((decl.inferred.clone() != None) && ((decl.children.clone().len() as i64) == 0)) && (decl.connective.clone() == Connective::NoConnective));
 if is_parameterized_alias {
                             {
-                                let alias_target = match (*rt_node(decl.clone())).clone() {
-    NodeType::Typed { node: target, .. } => substitute_type_slots(target.clone(), slot_bindings.clone(), type_name.clone(), env.source_index.clone()),
-    NodeType::InferError { .. } => n.clone(),
-    NodeType::InferVariable { .. } => n.clone(),
-    NodeType::Untyped => n.clone(),
+                                let alias_target = match decl.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: target, .. }) => substitute_type_slots(target.clone(), slot_bindings.clone(), type_name.clone(), env.source_index.clone()),
+    _ => n.clone(),
 };
 let target_result = resolve_node_bounded(alias_target, env.clone(), module_name.clone(), (depth.clone() + 1));
 let is_recursive = is_recursive_type(env.clone(), type_name.clone());
@@ -776,11 +773,9 @@ Rc::new(NodeResolveResult {
                                         match lookup_type_for(env.clone(), n.clone()) {
     Some(resolved) => {
                                             let structurally_resolved = if (((resolved.connective.clone() == Connective::NoConnective) && ((resolved.children.clone().len() as i64) == 0)) && (resolved.inferred.clone() != None)) {
-                                                match (*rt_node(resolved.clone())).clone() {
-    NodeType::Typed { node: target, .. } => target.clone(),
-    NodeType::InferError { .. } => resolved.clone(),
-    NodeType::InferVariable { .. } => resolved.clone(),
-    NodeType::Untyped => resolved.clone(),
+                                                match resolved.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
+    _ => resolved.clone(),
 }
 } else {
                                                 resolved.clone()

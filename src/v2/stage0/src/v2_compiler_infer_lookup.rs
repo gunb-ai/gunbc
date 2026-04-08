@@ -46,9 +46,8 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, param_node_type_expr, authored_name_at, NewlineIndex, find_child_named, has_child_named, InferredNode, NodeType, Cardinality, MethodSemantics, FieldAccessStyle, FieldValueShape, FieldSummary, with_optional_cardinality, with_required_cardinality, Connective};
+pub use crate::v2_std_core::{Node, param_node_type_expr, authored_name_at, NewlineIndex, find_child_named, has_child_named, InferredNode, Cardinality, MethodSemantics, FieldAccessStyle, FieldValueShape, FieldSummary, with_optional_cardinality, with_required_cardinality, Connective};
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
-use crate::v2_std_core::NodeType::{Typed, InferError, InferVariable, Untyped};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::FieldAccessStyle::{OptionalUnwrap};
@@ -58,7 +57,7 @@ pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTempla
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverCollectionOf, ListOf};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
-pub use crate::v2_compiler_infer_types::{child_type_node, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, rt_node, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{child_type_node, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -172,15 +171,13 @@ if (normed.inferred.clone() != None) {
 } else {
                                 v2_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
 };
-match (*rt_node(normed.clone())).clone() {
-    NodeType::Typed { node: target, .. } => if ((((target.name.clone().as_str() == normed.name.clone().as_str()) && (target.inferred.clone() == None)) && (target.connective.clone() == Connective::NoConnective)) && ((target.children.clone().len() as i64) == 0)) {
+match normed.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: target, .. }) => if ((((target.name.clone().as_str() == normed.name.clone().as_str()) && (target.inferred.clone() == None)) && (target.connective.clone() == Connective::NoConnective)) && ((target.children.clone().len() as i64) == 0)) {
                                 normed.clone()
 } else {
                                 resolve_scrutinee_type_node_seen(env.clone(), target.clone(), next_seen)
 },
-    NodeType::InferError { .. } => normed.clone(),
-    NodeType::InferVariable { .. } => normed.clone(),
-    NodeType::Untyped => normed.clone(),
+    _ => normed.clone(),
 }
 }
 } else {

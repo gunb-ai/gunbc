@@ -19,7 +19,6 @@ module v2.compiler.parse
 import v2.std.core {
   module_node, import_node,
   Node, InferredNode, Resolved, CompilerError, TypeVariable,
-  NodeType, Typed, InferError, InferVariable, Untyped, rt_node,
   Connective, Conj, Disj, NoConnective, Arrow, is_container_type,
   Cardinality, Required, CardOptional,
   make_param_node, param_node_name, param_node_type_expr, param_node_default_value,
@@ -931,11 +930,9 @@ fn is_conj_with_children(n: Node) -> Bool {
 // Typed: use resolved type. All other states: propagate error_type (fail-closed).
 // Note: node_inferred_to_outputs gate ensures only Typed children reach here.
 fn child_inferred_or_empty(ch: Node) -> Node {
-  match rt_node(n: ch) {
-    Typed { node: rt } => rt
-    InferError { message: _, span: _ } => error_type
-    InferVariable { id: _ } => error_type
-    Untyped => error_type
+  match ch.inferred {
+    Some { value: Resolved { node: rt } } => rt
+    _ => error_type
   }
 }
 
@@ -944,7 +941,7 @@ fn child_inferred_or_empty(ch: Node) -> Node {
 // Otherwise -> Conj with children extracts fields, scalar wraps as single "value" field.
 fn node_inferred_to_outputs(rt: Node) -> List<Node> {
   if is_conj_with_children(n: rt) {
-    let all_children_typed = rt.children |> all(ch => match rt_node(n: ch) { Typed { node: _ } => true  _ => false })
+    let all_children_typed = rt.children |> all(ch => match ch.inferred { Some { value: Resolved { node: _ } } => true  _ => false })
     if all_children_typed {
       rt.children
         |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span, name_span: node_name_span(n: ch)))

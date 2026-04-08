@@ -6,12 +6,12 @@ use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, container_node, resolved_type_or_error, is_fully_resolved, map_node, node_is_keyed_collection,
+    bare_map_node, container_node, resolved_type, is_fully_resolved, map_node, node_is_keyed_collection,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::{
     leaf_node, make_arm_node, with_optional_cardinality, Cardinality, Connective, ExprData,
-    InferredNode, MatchPattern, Node, NodeType, SourceSpan,
+    InferredNode, MatchPattern, Node, SourceSpan,
 };
 
 fn zero_span() -> Rc<SourceSpan> {
@@ -119,10 +119,10 @@ fn valid_map_index_preserves_optional_value_type() {
 #[test]
 fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
     let subject =
-        v2_compiler_infer_patterns::pattern_subject_from_node_type(Rc::new(NodeType::InferError {
+        v2_compiler_infer_patterns::pattern_subject_from_inferred(Some(Rc::new(InferredNode::CompilerError {
             message: "upstream failure".to_string(),
             span: zero_span(),
-        }));
+        })));
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
@@ -458,7 +458,7 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
     assert_eq!(result.result_type.children.len(), 1, "keys result should have one child");
     // Children are now field-style wrappers — extract type from inferred
     let elem_child = &result.result_type.children[0];
-    let elem_type = resolved_type_or_error(elem_child.clone());
+    let elem_type = resolved_type(elem_child.clone());
     assert_eq!(
         elem_type.name, "String",
         "keys on Map<String,Int> should return List<String>"

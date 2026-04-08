@@ -32,8 +32,7 @@ import v2.std.core {
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   is_kernel_type,
   BinOp, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
-  InferredNode, Resolved, CompilerError, TypeVariable, rt_node, has_inferred, is_compiler_error,
-  NodeType, Typed, InferError, InferVariable, Untyped,
+  InferredNode, Resolved, CompilerError, TypeVariable, has_inferred, is_compiler_error,
   leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
@@ -58,13 +57,25 @@ fn type_variable_node(id: String) -> Node {
 // Node constructors
 // =========================================================================
 
+// Extract the resolved type Node from n.inferred. Fail-closed: returns
+// error_type for any non-Resolved state. Use this at declaration and
+// post-inference sites where Resolved is the expected invariant.
+// Dissolution target: consumers that need variant-specific behavior
+// should match InferredNode? directly instead of calling this.
+fn resolved_type(n: Node) -> Node {
+  match n.inferred {
+    Some { value: Resolved { node: rt } } => rt
+    _ => error_type
+  }
+}
+
 // Extract the type from a child node. Handles both field-style encoding
-// (inferred set → extract via resolved_type_or_error) and bare encoding
-// from parser (inferred none → child IS the type). This is the
-// normalization bridge; once all producers use field-style, this
-// simplifies to resolved_type_or_error.
+// (inferred set → extract via resolved_type) and bare encoding from
+// parser (inferred none → child IS the type). This is the normalization
+// bridge; once all producers use field-style, this simplifies to
+// resolved_type.
 fn child_type_node(ch: Node) -> Node {
-  if ch.inferred != none { resolved_type_or_error(n: ch) } else { ch }
+  if ch.inferred != none { resolved_type(n: ch) } else { ch }
 }
 
 // Positional child type access — get the type of the nth child (0-indexed).
@@ -72,27 +83,6 @@ fn child_type_at(n: Node, index: Int) -> Node? {
   match n.children |> skip(index) |> first {
     Some { value: ch } => Some { value: child_type_node(ch: ch) }
     None => none
-  }
-}
-
-// Basic node/cardinality helpers
-// moved to 00_core.dag (C1 — timeless node vocabulary).
-
-// =========================================================================
-// Extract the resolved type Node from n.inferred. Returns error_type
-// (CompilerError sentinel) for non-Resolved states — errors propagate
-// visibly through the pipeline, never fabricating a valid type.
-//
-// This accessor is a dissolution target: consumers that can accept
-// InferredNode? directly should do so instead of extracting the inner
-// Node. The 9 re-wrap sites in 04_infer.dag have already been dissolved
-// to pass n.inferred through directly.
-fn resolved_type_or_error(n: Node) -> Node {
-  match rt_node(n: n) {
-    Typed { node: rt } => rt
-    InferError { message: _, span: _ } => unit_type
-    InferVariable { id: _ } => unit_type
-    Untyped => unit_type
   }
 }
 
@@ -514,17 +504,12 @@ fn normalize_access_type_node(n: Node) -> Node {
 fn node_type_shape(n: Node) -> String {
   let __is_leaf = n.connective == NoConnective && n.children |> count == 0 && n.properties |> count == 0
   if __is_leaf {
-    let __is_named_ref = if n.inferred == none { false }
-    else {
-      match rt_node(n: n) {
-        Typed { node: rt } =>
-          rt.connective == NoConnective && rt.children |> count == 0
-            && rt.ident_span != none && rt.name != "None"
-            && is_kernel_type(name: rt.name) == false
-        InferError { message: _, span: _ } => false
-        InferVariable { id: _ } => false
-        Untyped => false
-      }
+    let __is_named_ref = match n.inferred {
+      Some { value: Resolved { node: rt } } =>
+        rt.connective == NoConnective && rt.children |> count == 0
+          && rt.ident_span != none && rt.name != "None"
+          && is_kernel_type(name: rt.name) == false
+      _ => false
     }
     if __is_named_ref {
       concat("Named(", n.name, ")")
@@ -777,29 +762,26 @@ fn node_type_deps(n: Node) -> List<String> {
   if n_is_type_var { return [] }
   let __is_named_ref = if n.inferred == none { false }
   else {
-    match rt_node(n: n) {
-      Typed { node: rt } =>
+    match n.inferred {
+      Some { value: Resolved { node: rt } } =>
         rt.connective == NoConnective && rt.children |> count == 0
           && rt.ident_span != none && rt.name != "None"
           && is_kernel_type(name: rt.name) == false
-      InferError { message: _, span: _ } => false
-      InferVariable { id: _ } => false
-      Untyped => false
+      _ => false
     }
   }
   let has_structure = n.connective != NoConnective
   if __is_named_ref {
-    match rt_node(n: n) { Typed { node: rt } => [rt.name]  InferError { message: _, span: _ } => []  InferVariable { id: _ } => []  Untyped => [] }
+    match n.inferred { Some { value: Resolved { node: rt } } => [rt.name]  _ => [] }
   } else if has_structure {
     flat_map(n.children, child =>
-      if child.inferred != none {
-        match rt_node(n: child) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  InferVariable { id: _ } => []  Untyped => [] }
-      } else {
-        node_type_deps(n: child)
+      match child.inferred {
+        Some { value: Resolved { node: rt } } => node_type_deps(n: rt)
+        _ => if child.inferred == none { node_type_deps(n: child) } else { [] }
       }
     )
   } else if n.inferred != none {
-    match rt_node(n: n) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  InferVariable { id: _ } => []  Untyped => [] }
+    match n.inferred { Some { value: Resolved { node: rt } } => node_type_deps(n: rt)  _ => [] }
   } else if n.children |> count > 0 {
     // Parameterized type reference (e.g., MyList<T>): the node name IS a
     // dependency (MyList) AND the children (type args like T) may also be.

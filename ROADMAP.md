@@ -88,7 +88,7 @@ Phase 4:        Gate 7 (demo polish) — after all other gates
 | Stage | Status | Gate | Notes |
 |-------|--------|------|-------|
 | **A** | GREEN | 0 diagnostics | PR #264 |
-| **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_stage0_to_stage1` still `#[ignore]` |
+| **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_fixed_point` CI gate (PR #346) |
 | **C** | GREEN | regen binary self-compiles | PR #308. 1 perf-only bootstrap patch: `dag_syntax_spec` cache |
 | **D** | GREEN | `regenerate-stage0.sh && git diff --exit-code` | PR #308. Freshness gate blocking in CI. `render_node_type` fuses Node → String directly (TypeRendering dissolved PR #331) |
 
@@ -172,11 +172,8 @@ Clean-repo workflow:
 1. `cargo check -p v2-compiler`
 2. `cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored --nocapture`
 3. `cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored --nocapture`
-4. Run `./scripts/regenerate-stage0.sh`
+4. Run `./scripts/regenerate-stage0.sh` (includes two-pass fixed-point check)
 5. Require `git diff --exit-code src/v2/stage0`
-6. **Self-hosting check:** `./scripts/regenerate-stage0.sh` a second time
-   (pass N+1 must compile). Without this, codegen regressions hide behind
-   the one-pass "compiles from main's binary" check.
 
 Stabilization rules:
 - No manual `src/v2/stage0/` edits once regeneration is green.
@@ -185,30 +182,12 @@ Stabilization rules:
 - CX gate disabled in both stage0 and `compile.dag` — emission not blocked by complexity violations. Re-enable when CX violations reach 0.
 - CLI exit code filters complexity diagnostics: `main.rs` exits non-zero only for hard errors (non-`ComplexityUnknown`). Without this filter, the 522 pre-existing complexity violations make the freshness gate fatal. Remove the filter when CX reaches 0 (same gate as CX-E).
 
-### Self-Hosting Gap (discovered 2026-04-08)
+### Self-Hosting Gap (discovered 2026-04-08, fixed PR #346)
 
-**Problem:** `bootstrap_stage0_to_stage1` returns early when complexity
-violations block emission, so it never validates the generated Rust.
-`bootstrap_fixed_point` (the two-pass self-hosting test) is `#[ignore]`
-and not a CI gate. This allowed a codegen regression (variant
-misclassification from mixed name authorities in emit) to ship
-undetected across multiple commits.
-
-**Root causes:**
-1. The complexity violations (526) provide an escape hatch for the
-   bootstrap gate — emission succeeds but validation is skipped.
-2. `bootstrap_fixed_point` is marked expensive (~20s for 2 release
-   builds + 2 compiles) but this is well within CI budget.
-3. The one-pass regen workflow (`git checkout origin/main -- stage0/`
-   then regen) masks self-hosting failures because main's binary
-   generates correct code even when the branch's binary wouldn't.
-
-**Fix priority (P0 — blocks all codegen-touching work):**
-- [ ] Un-ignore `bootstrap_fixed_point` in CI. The ~20s cost is
-  acceptable. Self-hosting regressions are silent and cumulative.
-- [ ] Remove the complexity early-return from `bootstrap_stage0_to_stage1`
-  so it always validates generated Rust, even with CX violations.
-- [ ] Add two-pass regen to the clean-repo workflow (step 6 above).
+`bootstrap_fixed_point` is now a CI gate (~90s). Complexity early-return
+removed from `bootstrap_stage0_to_stage1`. Two-pass regen in
+`regenerate-stage0.sh`. `bootstrap_stage0_to_stage1` subsumed by
+fixed-point in CI.
 
 ## Reviewer Root Cause Analysis (2026-04-03)
 
@@ -406,39 +385,60 @@ Model the resolve→infer→emit boundary as real coproduct types that
 consumers pattern-match directly. No bridge accessors, no error branches
 on impossible states.
 
-- [ ] **BND-1: Declaration-child boundary type.** A declaration child
-  (struct field, container param) carries its type as a coproduct that
-  can only be `Resolved`. Consumers extract via pattern match — no error
-  branches needed because the type can't represent errors. The
-  `decl_resolved_type` accessor dissolves (no bridge needed when the
-  structure IS the authority).
+- [~] **BND-1: Declaration-child boundary type.** Bridge accessors
+  dissolved: `resolved_type_or_error` (101 sites) deleted, `rt_node`
+  and `NodeType` deleted. Consumers use fail-closed `resolved_type`
+  (returns `error_type`, not `unit_type`) or direct `InferredNode?`
+  matches (PR #347). Remaining: `resolved_type` is still a bridge
+  accessor — endstate is direct consumer pattern-matching on a
+  declaration-only carrier that structurally can't represent errors.
 
-- [ ] **BND-2: Emit-ready boundary type.** Emit receives a coproduct
-  like `Ready { node: Node } | BoundaryError { diagnostic: String }`.
-  Consumers pattern-match: `Ready` → render, `BoundaryError` → emit
-  `compile_error!()`. The `emit_guarded_type` accessor dissolves.
-  `error_type` fallback dissolves — errors are structural, not sentinel
-  nodes.
+- [~] **BND-2: Emit-ready boundary type.** Same infrastructure as
+  BND-1 — emit sites use `resolved_type` (fail-closed). Remaining:
+  emit should receive a carrier that structurally can't be error-typed,
+  enforced by a gate at the infer→emit boundary.
 
-- [ ] **BND-3: `std/boundary.dag` re-lands WITH consumers.** The
-  boundary vocabulary lands alongside BND-1/BND-2 as the authority
-  consumed by the coproduct types. Not speculative vocabulary — lands
-  end-to-end with a real downstream consumer.
+- [x] **BND-3: Boundary vocabulary in `00_core.dag`.** `InferredNode`
+  is the boundary type. No standalone `std/boundary.dag` needed — the
+  compiler is the only consumer. Can extract to `std/` if a second
+  consumer appears.
 
-- [ ] **BND-4: `container_param_name` `None` branches dissolve.** T/K/V
-  parameter names derive from the declaration's own type parameters
-  (Tier 2.5: algebra declarations). `container_param_name` string-keyed
-  lookup dissolves — the declaration IS the authority for its parameter
-  names. `__MISSING_PARAM__` markers dissolve.
+- [~] **BND-4: `container_param_name` derives from algebra.** T/K/V
+  parameter names now derive from `algebra_type_param_names` declared
+  per-profile in `std/algebra.dag` (PR #347). Hardcoded
+  `container_type_param_names` table deleted. `container_param_name`
+  string-keyed lookup still exists (reads algebra instead of table).
+  `__MISSING_PARAM__` branches remain as fail-closed sentinels —
+  dissolve when compiler can prove all container types have profiles.
 
 **Dependency:** BND-1 and BND-2 can land independently. BND-3 lands
 with whichever is first. BND-4 requires Tier 2.5 (algebra-derived
 type parameter names) — independent of BND-1/BND-2.
 
-**Acceptance:** `decl_resolved_type` and `emit_guarded_type` deleted.
-Consumers pattern-match on coproduct boundary types directly. No bridge
-accessors, no error branches on impossible states, no `__MISSING_PARAM__`
-markers.
+**Progress (PR #347):** `resolved_type_or_error`, `rt_node`, `NodeType`
+deleted. Fabrication eliminated (`unit_type` → `error_type`). Hardcoded
+`container_type_param_names` table deleted (derives from algebra).
+Type parameter roles declared directly per-profile (no template scanning).
+Net -201 lines.
+
+**Current state:** `resolved_type` is the explicit boundary contract —
+a 4-line fail-closed accessor that returns `error_type` for non-Resolved.
+The `_ => error_type` branches are compiler-bug paths (resolve guarantees
+Resolved for declarations, infer guarantees Resolved for successful
+expressions). This is not fabrication — `error_type` carries
+`CompilerError` in its `inferred` field and propagates visibly.
+
+**Design direction — `Node<I>` parameterization (deferred):**
+Recursive generics work in the language (tested: `MyList<T> = Nil | Cons { head: T, tail: MyList<T> }`).
+`Node<I>` could parameterize the `inferred` field type. Challenge:
+a single Node tree is heterogeneous (declaration children have
+`Resolved`, expression children have `InferredNode`), so uniform `I`
+doesn't capture the per-node invariant. Would require either per-field
+parameterization or separate declaration/expression subtrees. Worth
+exploring when Node generics or per-stage IR becomes practical.
+
+**Acceptance:** No fabrication (done). `resolved_type` is the boundary
+API. Further structural enforcement deferred to `Node<I>` exploration.
 
 ### Acceptance
 
@@ -1055,8 +1055,8 @@ lanes — any lane can introduce a regression.
 | What | Where | Status |
 |------|-------|--------|
 | Self-compile time ratchet | `bootstrap::performance_ratchet` | `#[ignore]`, CI gate, 30s budget (~4.8s actual) |
-| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, CI gate, ratchet 0 — **validation skipped when CX blocks emission** |
-| Bootstrap fixed-point | `bootstrap::bootstrap_fixed_point` | `#[ignore]`, NOT a CI gate — **P0: must un-ignore** |
+| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, not in CI — subsumed by fixed-point |
+| Bootstrap fixed-point | `bootstrap::bootstrap_fixed_point` | `#[ignore]`, CI gate (~60s) — subsumes stage0→stage1 |
 | Full DSL compile | `pipeline::full_dsl_compiles` | `#[ignore]`, GREEN |
 | Stage0 freshness gate | `scripts/check-stage0-freshness.sh` | CI blocking |
 | Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, ratchet 325 |
@@ -1065,12 +1065,10 @@ lanes — any lane can introduce a regression.
 
 - **PERF-1**: ~~Un-ignore `performance_ratchet` in CI.~~ DONE (PR #326).
   30s budget, ~4.8s actual. CI gate catches O(n²) regressions.
-- **PERF-2**: `bootstrap_stage0_to_stage1` enabled in CI (PR #326).
-  When emission succeeds, gates emitted-Rust correctness (0 cargo check
-  errors). Returns early without validation when complexity violations
-  block emission — not yet an unconditional gate. Convergence proof
-  (pass-1 = pass-2) remains in `bootstrap_fixed_point` (`#[ignore]`,
-  not yet a CI gate — expensive: two full builds + two compiles).
+- **PERF-2**: `bootstrap_fixed_point` enabled in CI (PR #346).
+  Two-pass self-hosting gate: builds stage1, uses it to produce stage2,
+  diffs for idempotence. Subsumes `bootstrap_stage0_to_stage1`.
+  Complexity early-return removed — test is unconditional.
 - **PERF-3**: Self-compile complexity analysis. 526 honest violations
   (CostUnknown restored). OOM resolved by lambda recursion detection fix
   (PR #336). Complexity analysis re-enabled in compile.dag (non-blocking).
@@ -1145,7 +1143,7 @@ Over-retention:
 
 ### Acceptance
 
-`performance_ratchet` and `bootstrap_stage0_to_stage1` running in CI.
+`performance_ratchet` and `bootstrap_fixed_point` running in CI.
 No test >2s without justification. Self-compile time tracked per-PR.
 Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
@@ -2259,7 +2257,7 @@ Every Layer 2 root-cause track reaches its acceptance criteria.
 | Lane | Gate condition | Current | Ratchet |
 |------|---------------|---------|---------|
 | M2 | No fabricated types, no BRIDGE, BND-1..4 landed | 0 real BRIDGEs (4 emitter template strings remain), BND open | `full_dsl_compiles` 0 diagnostics |
-| CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_stage0_to_stage1` 0 errors |
+| CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_fixed_point` passes |
 | M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=37 | `l1-ratchet.sh --check` |
 | CX | User code gets proven bounds via type-derived strict descent (see CX launch gate below) | 524 violations in compiler code (non-blocking, internal debt) | User-facing: bounds on standard patterns. Internal: `strict_compile_diagnostic_count` tracked but not blocking |
 | LS | All emitter decisions from spec-referenced data | Not started | No inline target-language knowledge in emitter |
