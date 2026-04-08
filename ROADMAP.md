@@ -1218,6 +1218,39 @@ layers that introduced unused or lossy fact tables.
 
 ---
 
+# Structural Debt Scoreboard
+
+**Goal: 0 structural debt.** The codebase is <20 compiler .dag files —
+elimination is tractable.
+
+**Current (2026-04-07): ~1,115 markers across 54 files.**
+
+| Category | Count | Upstream cause | Dissolves when |
+|----------|-------|---------------|----------------|
+| Map<String,...> semantic keys | 537 | M4: no structural identity | M4 lands (structural refs replace string keys) |
+| Positional projections (\|> first/last) | 298 | No list constructors | Cons/Nil or named projections in std/ |
+| Fail-open fallbacks (_ => "") | 239 | No fail-closed strategy | M4 + exhaustive match enforcement |
+| Heuristic name matching (.name == "X") | 37 | Dispatch on string literals | M4 + variant-based dispatch |
+| Manual recursion (no bounded witness) | ~27 | No fold/repeat primitive | I1/I2 (repeat primitive) |
+| String-prefix diagnostic dispatch | 4 | Fixed for CX (variant), emitted code remains | Full diagnostic variant coverage |
+
+**Concentration:** emit_rust (262), complexity (202), infer (80), parse (68).
+The top 5 files account for ~60% of all debt.
+
+**Root cause correlation:** M4 (structural identity) is the upstream cause
+of ~70% of debt. Map<String,...> keys (537) force fail-open lookups (239)
+which force heuristic name matching (37). Fix M4 → ~800 markers dissolve.
+
+**Emit dissolution path:** emit_rust's 262 markers are symptoms of
+encoding language-specific decisions as imperative code. The correct
+architecture: language specs in `dsl/extdeps/languages/` declare type
+mappings, ownership rules, formatting conventions as structural facts.
+A generic emitter reads those facts. Per-language emit files dissolve
+into the spec declarations (P1-B: 3 backends → 1 parameterized
+homomorphism, ~2,500 lines eliminated).
+
+---
+
 # Layer 3: Deferred
 
 ## P1: Modeling Consolidation
