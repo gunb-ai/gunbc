@@ -1002,11 +1002,45 @@ CX-D (model facts in std/)
   **Blocked-by: CX-A, CX-B, CX-C** (0 violations required).
   **Current: 526 violations (non-blocking gate). See CX-NEXT.**
 
-### Acceptance
+### Acceptance (endgame — Gate 4)
 
 0 violations without suppression. CX gate blocking. Node is the only
 recursive type consumed by complexity analysis. All descent evidence
 reads structural facts — no heuristic name-matching in the analyzer.
+
+### CX Launch Gate (public release)
+
+**Goal:** User-written .dag functions get proven complexity bounds.
+Built on type-derived strict descent (not heuristic pattern-matching).
+Informational — reports bounds, does not block compilation.
+
+**Hard gate:**
+- Strict descent on standard patterns: tree walks (`Node.children`),
+  list consumption (`List |> fold/map`), arithmetic decrease (`n - 1`)
+- Descent derived from type declarations, not hand-maintained tables
+- Bounds reported as user-facing diagnostics (`info: f is O(n) in tree_size`)
+- Architecture consistent with `docs/cx-design.md` (P1-P6)
+
+**Aspirational (not blocking launch):**
+- Suboptimality rejection: small hand-curated equivalence catalog
+  (e.g., `filter |> count > 0` → error, suggest `any()`)
+- Compiler self-analysis: 524 internal violations → 0
+- CostUnknown variant deleted
+
+**What this does NOT require:**
+- Proving the compiler's own 1600 functions (internal debt, not user-facing)
+- Exotic patterns: worklists, condition-dependent, parser SCCs
+- Global descent (strict descent is sufficient for launch)
+- The full Gate 4 architecture
+
+**Acceptance test:**
+```
+cx_launch_user_code_bounds
+  Input: .dag program with tree-recursive, list-fold, and arithmetic functions
+  Assert: each function gets a proven bound in diagnostics
+  Assert: no heuristic pattern-matching in the analysis path
+  Assert: descent facts derived from type declarations
+```
 
 ---
 
@@ -2227,7 +2261,7 @@ Every Layer 2 root-cause track reaches its acceptance criteria.
 | M2 | No fabricated types, no BRIDGE, BND-1..4 landed | 0 real BRIDGEs (4 emitter template strings remain), BND open | `full_dsl_compiles` 0 diagnostics |
 | CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_stage0_to_stage1` 0 errors |
 | M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=37 | `l1-ratchet.sh --check` |
-| CX | 0 violations, gate blocking, no heuristic classifiers | 526 violations (non-blocking) | `strict_compile_diagnostic_count` = 0 CX |
+| CX | User code gets proven bounds via type-derived strict descent (see CX launch gate below) | 524 violations in compiler code (non-blocking, internal debt) | User-facing: bounds on standard patterns. Internal: `strict_compile_diagnostic_count` tracked but not blocking |
 | LS | All emitter decisions from spec-referenced data | Not started | No inline target-language knowledge in emitter |
 | RE | review.dag compiles and runs (RE ratchet 21/21) | 0/21 | RE ratchet table |
 | PERF | No test >2s, self-compile <30s, no OOM | ~6.5s, OOM fixed | `performance_ratchet` |
@@ -2236,7 +2270,7 @@ Every Layer 2 root-cause track reaches its acceptance criteria.
 ```
 release_gate_all_lanes
   Run: all CI gates green simultaneously
-  Assert: l1-ratchet=0, CX violations=0, RE=21/21,
+  Assert: l1-ratchet=0, CX launch gate green, RE=21/21,
           bootstrap fresh, full_dsl 0 diags, perf <30s
 ```
 
