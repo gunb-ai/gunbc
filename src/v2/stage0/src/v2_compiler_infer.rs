@@ -70,7 +70,7 @@ pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_built
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, merge_inductive_fields};
 pub use crate::std_induction::{InductiveField, RecursionShape};
-use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion};
+use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
 pub use crate::v2_compiler_infer_resolve::{resolve_node, resolve_item_types, NodeResolveResult, ItemResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult, resolve_func_sigs};
 pub use crate::v2_compiler_infer_emit_info::{TypeRepr, TypeSummary, EmitGraphInfo, EmitInfoBuildState, empty_emit_graph_info, lookup_emit_type_summary, build_struct_field_summaries, build_enum_field_summaries, add_emit_item_summary, derive_variant_to_enum};
@@ -363,14 +363,29 @@ if (field_type_name.clone().as_str() == parent_name.clone().as_str()) {
     _ => Some(RecursionShape::DirectRecursion),
 }
 } else {
-            if (field_type_name.clone().as_str() == "List".to_string().as_str()) {
-                match type_expr.children.clone().first().cloned() {
-    Some(elem_type) => if (elem_type.name.clone().as_str() == parent_name.clone().as_str()) {
-                    Some(RecursionShape::ListRecursion)
+            if is_container_type(field_type_name.clone()) {
+                {
+                    let arity = match container_expected_arity(field_type_name.clone()) {
+    Some(a) => a.clone(),
+    None => 0,
+};
+let value_index = if (arity.clone() == 2) {
+                        1
 } else {
-                    None
-},
-    None => None,
+                        0
+};
+let value_type = match type_expr.children.clone().get(value_index as usize).cloned() {
+    Some(t) => t.name.clone(),
+    None => "".to_string(),
+};
+if (value_type.as_str() == parent_name.clone().as_str()) {
+                        match arity.clone() {
+    2 => Some(RecursionShape::MapValueRecursion),
+    _ => Some(RecursionShape::ListRecursion),
+}
+} else {
+                        None
+}
 }
 } else {
                 None

@@ -99,7 +99,7 @@ import v2.compiler.infer_env {
   is_recursive_type, lookup_type, lookup_type_for, merge_envs,
   put_inductive_field, merge_inductive_fields
 }
-import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion }
+import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
   NodeResolveResult, ItemResult
@@ -395,14 +395,25 @@ fn classify_field_recursion(field_node: Node, parent_name: String) -> RecursionS
       _ => Some { value: DirectRecursion }
     }
   } else {
-    // Check for List<parent_type>
-    if field_type_name == "List" {
-      match type_expr.children |> first {
-        Some { value: elem_type } =>
-          if elem_type.name == parent_name { Some { value: ListRecursion } }
-          else { none }
-        None => none
+    // Container<parent_type>: dispatch on container kind via std/types.dag
+    // Arity-1 containers (List, Set): element type is first child
+    // Arity-2 containers (Map): value type is second child
+    if is_container_type(name: field_type_name) {
+      let arity = match container_expected_arity(name: field_type_name) {
+        Some { value: a } => a
+        None => 0
       }
+      let value_index = if arity == 2 { 1 } else { 0 }
+      let value_type = match type_expr.children |> skip(value_index) |> first {
+        Some { value: t } => t.name
+        None => ""
+      }
+      if value_type == parent_name {
+        match arity {
+          2 => Some { value: MapValueRecursion }
+          _ => Some { value: ListRecursion }
+        }
+      } else { none }
     } else { none }
   }
 }
