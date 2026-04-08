@@ -406,10 +406,14 @@ on impossible states.
 - [~] **BND-4: `container_param_name` derives from algebra.** T/K/V
   parameter names now derive from `algebra_type_param_names` declared
   per-profile in `std/algebra.dag` (PR #347). Hardcoded
-  `container_type_param_names` table deleted. `container_param_name`
-  string-keyed lookup still exists (reads algebra instead of table).
-  `__MISSING_PARAM__` branches remain as fail-closed sentinels —
-  dissolve when compiler can prove all container types have profiles.
+  `container_type_param_names` table deleted. `__MISSING_PARAM__`
+  sentinels dissolved — `container_param_name_required` (non-optional)
+  centralizes the fallback in `std/types.dag` (PR #352). Remaining:
+  `container_param_name_required` falls back to `kind_name` when no
+  profile exists. Dissolves with Tier 3 (FF-9): when the compiler
+  reads type declarations at resolve time, param names come from the
+  declaration itself — the string→profile→names lookup chain and its
+  fallback become unnecessary.
 
 **Dependency:** BND-1 and BND-2 can land independently. BND-3 lands
 with whichever is first. BND-4 requires Tier 2.5 (algebra-derived
