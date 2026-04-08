@@ -88,7 +88,7 @@ Phase 4:        Gate 7 (demo polish) — after all other gates
 | Stage | Status | Gate | Notes |
 |-------|--------|------|-------|
 | **A** | GREEN | 0 diagnostics | PR #264 |
-| **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_stage0_to_stage1` still `#[ignore]` |
+| **B** | GREEN | 0 emitted-Rust errors | PR #307. `bootstrap_fixed_point` CI gate (PR #346) |
 | **C** | GREEN | regen binary self-compiles | PR #308. 1 perf-only bootstrap patch: `dag_syntax_spec` cache |
 | **D** | GREEN | `regenerate-stage0.sh && git diff --exit-code` | PR #308. Freshness gate blocking in CI. `render_node_type` fuses Node → String directly (TypeRendering dissolved PR #331) |
 
@@ -172,11 +172,8 @@ Clean-repo workflow:
 1. `cargo check -p v2-compiler`
 2. `cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored --nocapture`
 3. `cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored --nocapture`
-4. Run `./scripts/regenerate-stage0.sh`
+4. Run `./scripts/regenerate-stage0.sh` (includes two-pass fixed-point check)
 5. Require `git diff --exit-code src/v2/stage0`
-6. **Self-hosting check:** `./scripts/regenerate-stage0.sh` a second time
-   (pass N+1 must compile). Without this, codegen regressions hide behind
-   the one-pass "compiles from main's binary" check.
 
 Stabilization rules:
 - No manual `src/v2/stage0/` edits once regeneration is green.
@@ -185,30 +182,12 @@ Stabilization rules:
 - CX gate disabled in both stage0 and `compile.dag` — emission not blocked by complexity violations. Re-enable when CX violations reach 0.
 - CLI exit code filters complexity diagnostics: `main.rs` exits non-zero only for hard errors (non-`ComplexityUnknown`). Without this filter, the 522 pre-existing complexity violations make the freshness gate fatal. Remove the filter when CX reaches 0 (same gate as CX-E).
 
-### Self-Hosting Gap (discovered 2026-04-08)
+### Self-Hosting Gap (discovered 2026-04-08, fixed PR #346)
 
-**Problem:** `bootstrap_stage0_to_stage1` returns early when complexity
-violations block emission, so it never validates the generated Rust.
-`bootstrap_fixed_point` (the two-pass self-hosting test) is `#[ignore]`
-and not a CI gate. This allowed a codegen regression (variant
-misclassification from mixed name authorities in emit) to ship
-undetected across multiple commits.
-
-**Root causes:**
-1. The complexity violations (526) provide an escape hatch for the
-   bootstrap gate — emission succeeds but validation is skipped.
-2. `bootstrap_fixed_point` is marked expensive (~20s for 2 release
-   builds + 2 compiles) but this is well within CI budget.
-3. The one-pass regen workflow (`git checkout origin/main -- stage0/`
-   then regen) masks self-hosting failures because main's binary
-   generates correct code even when the branch's binary wouldn't.
-
-**Fix priority (P0 — blocks all codegen-touching work):**
-- [ ] Un-ignore `bootstrap_fixed_point` in CI. The ~20s cost is
-  acceptable. Self-hosting regressions are silent and cumulative.
-- [ ] Remove the complexity early-return from `bootstrap_stage0_to_stage1`
-  so it always validates generated Rust, even with CX violations.
-- [ ] Add two-pass regen to the clean-repo workflow (step 6 above).
+`bootstrap_fixed_point` is now a CI gate (~90s). Complexity early-return
+removed from `bootstrap_stage0_to_stage1`. Two-pass regen in
+`regenerate-stage0.sh`. `bootstrap_stage0_to_stage1` subsumed by
+fixed-point in CI.
 
 ## Reviewer Root Cause Analysis (2026-04-03)
 
@@ -1021,8 +1000,8 @@ lanes — any lane can introduce a regression.
 | What | Where | Status |
 |------|-------|--------|
 | Self-compile time ratchet | `bootstrap::performance_ratchet` | `#[ignore]`, CI gate, 30s budget (~4.8s actual) |
-| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, CI gate, ratchet 0 — **validation skipped when CX blocks emission** |
-| Bootstrap fixed-point | `bootstrap::bootstrap_fixed_point` | `#[ignore]`, NOT a CI gate — **P0: must un-ignore** |
+| Bootstrap stage0→stage1 | `bootstrap::bootstrap_stage0_to_stage1` | `#[ignore]`, not in CI — subsumed by fixed-point |
+| Bootstrap fixed-point | `bootstrap::bootstrap_fixed_point` | `#[ignore]`, CI gate (~60s) — subsumes stage0→stage1 |
 | Full DSL compile | `pipeline::full_dsl_compiles` | `#[ignore]`, GREEN |
 | Stage0 freshness gate | `scripts/check-stage0-freshness.sh` | CI blocking |
 | Diagnostic ratchet | `strict_compile_diagnostic_count` | `#[ignore]`, ratchet 325 |
@@ -1031,12 +1010,10 @@ lanes — any lane can introduce a regression.
 
 - **PERF-1**: ~~Un-ignore `performance_ratchet` in CI.~~ DONE (PR #326).
   30s budget, ~4.8s actual. CI gate catches O(n²) regressions.
-- **PERF-2**: `bootstrap_stage0_to_stage1` enabled in CI (PR #326).
-  When emission succeeds, gates emitted-Rust correctness (0 cargo check
-  errors). Returns early without validation when complexity violations
-  block emission — not yet an unconditional gate. Convergence proof
-  (pass-1 = pass-2) remains in `bootstrap_fixed_point` (`#[ignore]`,
-  not yet a CI gate — expensive: two full builds + two compiles).
+- **PERF-2**: `bootstrap_fixed_point` enabled in CI (PR #346).
+  Two-pass self-hosting gate: builds stage1, uses it to produce stage2,
+  diffs for idempotence. Subsumes `bootstrap_stage0_to_stage1`.
+  Complexity early-return removed — test is unconditional.
 - **PERF-3**: Self-compile complexity analysis. 526 honest violations
   (CostUnknown restored). OOM resolved by lambda recursion detection fix
   (PR #336). Complexity analysis re-enabled in compile.dag (non-blocking).
@@ -1111,7 +1088,7 @@ Over-retention:
 
 ### Acceptance
 
-`performance_ratchet` and `bootstrap_stage0_to_stage1` running in CI.
+`performance_ratchet` and `bootstrap_fixed_point` running in CI.
 No test >2s without justification. Self-compile time tracked per-PR.
 Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
@@ -2225,7 +2202,7 @@ Every Layer 2 root-cause track reaches its acceptance criteria.
 | Lane | Gate condition | Current | Ratchet |
 |------|---------------|---------|---------|
 | M2 | No fabricated types, no BRIDGE, BND-1..4 landed | 0 real BRIDGEs (4 emitter template strings remain), BND open | `full_dsl_compiles` 0 diagnostics |
-| CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_stage0_to_stage1` 0 errors |
+| CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_fixed_point` passes |
 | M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=37 | `l1-ratchet.sh --check` |
 | CX | 0 violations, gate blocking, no heuristic classifiers | 526 violations (non-blocking) | `strict_compile_diagnostic_count` = 0 CX |
 | LS | All emitter decisions from spec-referenced data | Not started | No inline target-language knowledge in emitter |
