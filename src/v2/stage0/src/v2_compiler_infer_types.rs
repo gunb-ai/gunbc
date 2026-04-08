@@ -552,9 +552,19 @@ match concrete.children.clone().get(1 as usize).cloned() {
             v2_rt::rc_map_insert(subst.clone(), "__element__".to_string(), concrete.clone())
 },
     AlgebraTypeTemplate::CallableOf { return_type: ret_template, .. } => unify_template(ret_template.clone(), concrete.clone(), receiver.clone(), subst.clone()),
-    AlgebraTypeTemplate::ContainerOf { element: elem_template, .. } => match concrete.children.clone().first().cloned() {
+    AlgebraTypeTemplate::ContainerOf { source: src, element: elem_template, .. } => {
+            let expected_name = match (*src.clone()).clone() {
+    ContainerSource::SameAsReceiver => receiver.name.clone(),
+    ContainerSource::Named { name: n, .. } => n.clone(),
+};
+if (concrete.name.clone().as_str() != expected_name.as_str()) {
+                subst.clone()
+} else {
+                match concrete.children.clone().first().cloned() {
     Some(child) => unify_template(elem_template.clone(), child_type_node(child.clone()), receiver.clone(), subst.clone()),
     None => subst.clone(),
+}
+}
 },
     AlgebraTypeTemplate::OptionalOf { inner: inner_template, .. } => match concrete.children.clone().first().cloned() {
     Some(child) => unify_template(inner_template.clone(), child_type_node(child.clone()), receiver.clone(), subst.clone()),

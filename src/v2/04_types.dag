@@ -283,10 +283,16 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
       // already the lambda's return type (extracted by rt_type). Unify
       // the template's return_type directly against the concrete value.
       unify_template(template: ret_template, concrete: concrete, receiver: receiver, subst: subst)
-    ContainerOf { source: _, element: elem_template } =>
-      match concrete.children |> first {
-        Some { value: child } => unify_template(template: elem_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst)
-        None => subst
+    ContainerOf { source: src, element: elem_template } =>
+      // Enforce container source: SameAsReceiver requires same carrier,
+      // Named requires the specific carrier name.
+      let expected_name = match src { SameAsReceiver => receiver.name  Named { name: n } => n }
+      if concrete.name != expected_name { subst }
+      else {
+        match concrete.children |> first {
+          Some { value: child } => unify_template(template: elem_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst)
+          None => subst
+        }
       }
     OptionalOf { inner: inner_template } =>
       match concrete.children |> first {
