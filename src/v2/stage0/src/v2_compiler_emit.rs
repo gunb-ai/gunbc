@@ -1885,7 +1885,7 @@ if ((src_ty.clone().as_str() != "".to_string().as_str()) && (src_ty.clone().as_s
             if can_cast(target.clone(), src_ty.clone(), ty_str.clone()) {
                 render_cast(expr_str, ty_str.clone(), target.clone())
 } else {
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("compile_error!(\"unsupported cast from ".to_string(), src_ty.clone()), " to ".to_string()), ty_str.clone()), "\")".to_string())
+                emit_error_expr(v2_rt::concat(v2_rt::concat(v2_rt::concat("unsupported cast from ".to_string(), src_ty.clone()), " to ".to_string()), ty_str.clone()), target.clone())
 }
 }
 }

@@ -104,7 +104,6 @@ pub fn target_cast_syntax(target: RenderTarget) -> Rc<CastSyntax> {
     RenderTarget::Dag => Rc::new(CastSyntax {
     template: "{expr}".to_string(),
     cast_rules: Rc::new(vec![]),
-    fail_open: true,
 }),
 }
 }
@@ -112,11 +111,7 @@ pub fn target_cast_syntax(target: RenderTarget) -> Rc<CastSyntax> {
 pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> bool {
     {
         let syntax = target_cast_syntax(target);
-if syntax.fail_open.clone() {
-            true
-} else {
-            { let mut __found = false; for r in syntax.cast_rules.clone().iter().cloned() { if ((r.from_type.clone().as_str() == source_type.clone().as_str()) && (r.to_type.clone().as_str() == target_type.clone().as_str())) { __found = true; break; } } __found }
-}
+{ let mut __found = false; for r in syntax.cast_rules.clone().iter().cloned() { if ((r.from_type.clone().as_str() == source_type.clone().as_str()) && (r.to_type.clone().as_str() == target_type.clone().as_str())) { __found = true; break; } } __found }
 }
 }
 

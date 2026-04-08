@@ -610,7 +610,7 @@ let matching = Rc::new({ let mut __result = Vec::new(); for spec in ops.iter().c
 } { __result.push(spec); } } __result });
 match matching.first().cloned() {
     Some(spec) => spec.symbol.clone(),
-    None => "__MISSING_BINOP__".to_string(),
+    None => "<<MISSING_BINOP>>".to_string(),
 }
 }
 }

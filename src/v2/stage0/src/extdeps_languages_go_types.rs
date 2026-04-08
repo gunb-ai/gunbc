@@ -182,7 +182,7 @@ pub fn type_conversion_template() -> String {
 pub fn go_cast_syntax() -> Rc<CastSyntax> {
     thread_local! {
         static CACHED: Rc<CastSyntax> = {
-            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "cast_rules": [], "fail_open": true}))
+            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "cast_rules": [{"from_type": "int64", "to_type": "int64"}, {"from_type": "int64", "to_type": "float64"}, {"from_type": "float64", "to_type": "int64"}, {"from_type": "float64", "to_type": "float64"}, {"from_type": "string", "to_type": "[]byte"}, {"from_type": "[]byte", "to_type": "string"}]}))
                 .expect("valid data definition")
         };
     }

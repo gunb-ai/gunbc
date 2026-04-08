@@ -221,7 +221,7 @@ pub fn float_types() -> Rc<Vec<String>> {
 pub fn rust_cast_syntax() -> Rc<CastSyntax> {
     thread_local! {
         static CACHED: Rc<CastSyntax> = {
-            serde_json::from_value(serde_json::json!({"template": "{expr} as {type}", "cast_rules": [{"from_type": "i64", "to_type": "i64"}, {"from_type": "i64", "to_type": "f64"}, {"from_type": "f64", "to_type": "i64"}, {"from_type": "f64", "to_type": "f64"}, {"from_type": "bool", "to_type": "i64"}], "fail_open": false}))
+            serde_json::from_value(serde_json::json!({"template": "{expr} as {type}", "cast_rules": [{"from_type": "i64", "to_type": "i64"}, {"from_type": "i64", "to_type": "f64"}, {"from_type": "f64", "to_type": "i64"}, {"from_type": "f64", "to_type": "f64"}, {"from_type": "bool", "to_type": "i64"}]}))
                 .expect("valid data definition")
         };
     }

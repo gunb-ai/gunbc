@@ -83,5 +83,4 @@ pub struct CastRule {
 pub struct CastSyntax {
     pub template: String,
     pub cast_rules: Rc<Vec<Rc<CastRule>>>,
-    pub fail_open: bool,
 }

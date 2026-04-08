@@ -155,8 +155,24 @@ data type_checker_strict: String = "mypy --strict"
 // always syntactically valid. Invalid casts (e.g., int("hello")) produce
 // runtime errors, not syntax errors. The emitter faithfully renders the
 // construct; the target language's runtime validates.
+// Python constructor casts: int(x), float(x), bool(x), str(x).
+// All numeric conversions are syntactically valid in Python.
+// Runtime validates (e.g., int("hello") raises ValueError).
 data python_cast_syntax: CastSyntax = {
   template: "\{type\}(\{expr\})",
-  cast_rules: [],
-  fail_open: true
+  cast_rules: [
+    { from_type: "int", to_type: "int" },
+    { from_type: "int", to_type: "float" },
+    { from_type: "int", to_type: "bool" },
+    { from_type: "int", to_type: "str" },
+    { from_type: "float", to_type: "int" },
+    { from_type: "float", to_type: "float" },
+    { from_type: "float", to_type: "bool" },
+    { from_type: "float", to_type: "str" },
+    { from_type: "bool", to_type: "int" },
+    { from_type: "bool", to_type: "float" },
+    { from_type: "bool", to_type: "str" },
+    { from_type: "str", to_type: "int" },
+    { from_type: "str", to_type: "float" }
+  ]
 }

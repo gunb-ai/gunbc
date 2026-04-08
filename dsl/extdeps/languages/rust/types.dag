@@ -243,8 +243,7 @@ data rust_cast_syntax: CastSyntax = {
     { from_type: "f64", to_type: "f64" },
     // Bool → Integer (bool as i64 = 0 or 1)
     { from_type: "bool", to_type: "i64" }
-  ],
-  fail_open: false
+  ]
 }
 
 data serde_enum_tag_attribute: String = "#[serde(tag = \"_variant\")]"

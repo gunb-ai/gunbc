@@ -86,14 +86,13 @@ fn target_cast_syntax(target: RenderTarget) -> CastSyntax {
     Rust => rust_cast_syntax
     Python => python_cast_syntax
     Go => go_cast_syntax
-    Dag => CastSyntax { template: "\{expr\}", cast_rules: [], fail_open: true }
+    Dag => CastSyntax { template: "\{expr\}", cast_rules: [] }
   }
 }
 
 fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> Bool {
   let syntax = target_cast_syntax(target: target)
-  if syntax.fail_open { true }
-  else { syntax.cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type) }
+  syntax.cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
 }
 
 fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {

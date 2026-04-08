@@ -106,5 +106,4 @@ type CastRule {
 type CastSyntax {
   template: String
   cast_rules: List<CastRule>
-  fail_open: Bool
 }

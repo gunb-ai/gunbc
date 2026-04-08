@@ -4350,15 +4350,18 @@ fn bool_to_float_is_invalid_cast() {
 }
 
 #[test]
-fn python_casts_are_always_valid() {
-    // Python fail_open=true: constructor casts always syntactically valid
+fn python_casts_use_explicit_rules() {
+    // Python cast rules: all numeric constructor casts are explicitly declared.
     use v2_compiler::v2_compiler_coercion::can_cast;
     use v2_compiler::v2_compiler_artifact::RenderTarget;
 
     assert!(can_cast(RenderTarget::Python, "str".to_string(), "int".to_string()),
-        "Python str→int should be valid (fail_open)");
+        "Python str→int should be valid");
     assert!(can_cast(RenderTarget::Python, "bool".to_string(), "float".to_string()),
-        "Python bool→float should be valid (fail_open)");
+        "Python bool→float should be valid");
+    // Undeclared pair: not valid
+    assert!(!can_cast(RenderTarget::Python, "dict".to_string(), "int".to_string()),
+        "Python dict→int should not be valid (no cast rule)");
 }
 
 // ── ExprLet expected-type propagation regression tests ────────────────
