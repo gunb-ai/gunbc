@@ -384,11 +384,7 @@ fn nominal_type_binding(name: String) -> TypeBinding {
 
 // Classify a field's recursive relationship to its parent type.
 // Returns the RecursionShape if the field references the parent type, or none.
-//
-// Three forms of recursion in .dag's type system (Lambek 1968):
-//   DirectRecursion:   field_type == parent_type (e.g., Cons.tail: MyList<T>)
-//   ListRecursion:     field_type == List<parent_type> (e.g., Node.children: List<Node>)
-//   OptionalRecursion: field_type == parent_type? (e.g., Node.body: Node?)
+// Dispatches on container identity (List/Set/Map), not arity.
 fn classify_field_recursion(field_node: Node, parent_name: String) -> RecursionShape? {
   let type_expr = field_node_type_expr(n: field_node)
   let field_type_name = type_expr.name
@@ -413,8 +409,11 @@ fn classify_field_recursion(field_node: Node, parent_name: String) -> RecursionS
         None => ""
       }
       if value_type == parent_name {
-        match arity {
-          2 => Some { value: MapValueRecursion }
+        // Dispatch on container identity, not arity — Set<X> ≠ List<X>
+        match field_type_name {
+          "Set" => Some { value: SetRecursion }
+          "NonEmptySet" => Some { value: SetRecursion }
+          "Map" => Some { value: MapValueRecursion }
           _ => Some { value: ListRecursion }
         }
       } else { none }

@@ -37,6 +37,12 @@ import std.computation {
   IterationDimension, TreeDescent, CollectionFold, ArithmeticRepeat,
   type_iteration_dimension
 }
+import std.induction {
+  SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown,
+  CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
+  AtomicCost, PolyCost, PolynomialExponent, IntegerExp,
+  sub_value_to_evidence, catamorphism_bound
+}
 import v2.std.core {
   Node,
   ExprData,
@@ -3944,17 +3950,23 @@ type ComplexityViolation {
   span: SourceSpan
 }
 
+type StructuralBoundResult {
+  func_name: String
+  param: String
+  bound: CostBound
+}
+
 type ComplexityReport {
   function_classes: Map<String, String>
   violations: List<ComplexityViolation>
-  // intern_table removed: transit-only data used during topological fold.
-  // Exposing it in the public report leaked evicted/fabricated summaries.
+  structural_bounds: List<StructuralBoundResult>
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_classes: empty_map(),
-    violations: []
+    violations: [],
+    structural_bounds: []
   }
 }
 
@@ -4845,6 +4857,87 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 }
 
 // =========================================================================
+// CX-L3: Structural descent analyzer
+//
+// Reads SubValueRelation witnesses from typed ExprCall nodes.
+// Produces CostBound for self-recursive functions via the induction model.
+// NEVER pattern-matches AST — reads only descent_evidence fields.
+// =========================================================================
+
+// Collect descent_evidence from all self-call ExprCall nodes in a body.
+fn collect_self_call_evidence(body: Node, fn_name: String) -> List<List<SubValueRelation>> {
+  match body.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: de } =>
+      let callee = expr_call_func(texpr: body)
+      let own = if callee == fn_name {
+        match de {
+          Some { value: evidence } => [evidence]
+          None => []
+        }
+      } else { [] }
+      let from_children = body.children |> fold(init: [], f: (acc, child) =>
+        concat(acc, collect_self_call_evidence(body: child, fn_name: fn_name))
+      )
+      concat(own, from_children)
+    _ =>
+      body.children |> fold(init: [], f: (acc, child) =>
+        concat(acc, collect_self_call_evidence(body: child, fn_name: fn_name))
+      )
+  }
+}
+
+// Merge descent evidence for a specific parameter across all self-call sites.
+fn merge_param_evidence(all_calls: List<List<SubValueRelation>>, param_index: Int) -> DescentEvidence {
+  all_calls |> fold(init: Strict, f: (acc, call_evidence) =>
+    match call_evidence |> skip(param_index) |> first {
+      Some { value: rel } => merge_evidence(a: acc, b: sub_value_to_evidence(relation: rel))
+      None => acc
+    }
+  )
+}
+
+// Check if all self-calls descend on fields of the same parameter → catamorphism.
+fn is_catamorphism_param(all_calls: List<List<SubValueRelation>>, param_index: Int) -> Bool {
+  all_calls |> all(call_evidence =>
+    match call_evidence |> skip(param_index) |> first {
+      Some { value: rel } =>
+        match rel {
+          StrictSubValue { field: _, factor: _ } => true
+          IteratedSubValue { field: _ } => true
+          _ => false
+        }
+      None => true
+    }
+  )
+}
+
+// Analyze structural bounds for all self-recursive functions.
+// Recursion is detected from descent_evidence, not a stored flag.
+fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBoundResult> {
+  func_entries |> fold(init: [], f: (acc, entry) =>
+    let all_calls = collect_self_call_evidence(body: entry.body, fn_name: entry.name)
+    if all_calls |> count == 0 { acc }
+    else {
+      // Check each parameter for structural descent
+      let param_results = entry.params |> enumerate |> fold(init: [], f: (pacc, pair) =>
+        let param_index = pair.first
+        let param_node = pair.second
+        let evidence = merge_param_evidence(all_calls: all_calls, param_index: param_index)
+        match evidence {
+          Strict =>
+            let param_name = param_node_name(n: param_node)
+            let bound = catamorphism_bound(param: param_name, nesting_depth: 1)
+            concat(pacc, [StructuralBoundResult { func_name: entry.name, param: param_name, bound: bound }])
+          _ => pacc
+        }
+      )
+      concat(acc, param_results)
+    }
+  )
+}
+
+
+// =========================================================================
 // D4: Complexity reporting
 //
 // build_complexity_report takes function entries, computes summaries
@@ -4958,8 +5051,11 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   })
   // intern_table is transit-only — not exposed in the report.
   // Evicted entries contain fabricated placeholders that would mislead consumers.
+  // CX-L3: structural descent analysis — reads descent_evidence, not AST.
+  let structural_bounds = analyze_structural_bounds(func_entries: func_entries)
   ComplexityReport {
     function_classes: result.classes,
-    violations: result.violations
+    violations: result.violations,
+    structural_bounds: structural_bounds
   }
 }

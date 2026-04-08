@@ -198,12 +198,12 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
 // FoldBodyCall in computation.dag carries NonIncreasing evidence, which
 // would contradict the Strict evidence from sub_value_to_evidence.
 
-fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern {
+fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
   match relation {
-    StrictSubValue { field: f, factor: _ } => ChildAccessorCall { accessor: f.field_name }
-    IteratedSubValue { field: f }          => ChildAccessorCall { accessor: f.field_name }
-    PreservedValue                         => SameArgumentCall
-    SubValueUnknown                        => SameArgumentCall
+    StrictSubValue { field: f, factor: _ } => Some { value: ChildAccessorCall { accessor: f.field_name } }
+    IteratedSubValue { field: f }          => Some { value: ChildAccessorCall { accessor: f.field_name } }
+    PreservedValue                         => Some { value: SameArgumentCall }
+    SubValueUnknown                        => none
   }
 }
 
@@ -219,9 +219,9 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern {
 //     (Karatsuba: n^(log_2(3)), Strassen: n^(log_2(7)))
 //
 // FractionExp uses `root` (not denominator): the k-th root of n.
-// root is always positive by construction — you don't take the 0th root.
-// LogBasedExp represents the exponent structurally rather than
-// approximating as a rational — no precision loss.
+// Constructors (cost_root, kth_root_bound) reject root ≤ 0 → ErrorBound.
+// LogBasedExp base > 1 and argument > 0 are validated at master_theorem entry.
+// Represents the exponent structurally — no precision loss.
 
 type PolynomialExponent
   = IntegerExp { value: Int }
@@ -245,8 +245,13 @@ type AtomicCost
 // CostBound — non-recursive asymptotic bound (Big-O)
 // =========================================================================
 
-// The output of complexity analysis. Flat (non-recursive) to respect
+// The output of structural descent analysis. Flat (non-recursive) to respect
 // the bounded kernel invariant — Node is the only recursive type.
+//
+// CostBound is the authority for structurally-proven bounds derived from
+// the induction model. complexity.dag's CostExpr/SizeExpr is a transitional
+// working representation that will converge to CostBound as the sole
+// cost algebra (see CX lane in ROADMAP.md).
 //
 // Composite bounds are represented in sum-of-products normal form:
 //   O((V+E) · log V) = SumOfProductsBound { [[Poly(V,1), Log(V)], [Poly(E,1), Log(V)]] }
@@ -269,7 +274,10 @@ type CostBound
 fn cost_constant() -> CostBound { ConstantBound }
 fn cost_linear(param: String) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: IntegerExp { value: 1 } } } }
 fn cost_poly(param: String, degree: Int) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: IntegerExp { value: degree } } } }
-fn cost_root(param: String, k: Int) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: FractionExp { numerator: 1, root: k } } } }
+fn cost_root(param: String, k: Int) -> CostBound {
+  if k <= 0 { ErrorBound }
+  else { AtomicBound { cost: PolyCost { param: param, exponent: FractionExp { numerator: 1, root: k } } } }
+}
 fn cost_sqrt(param: String) -> CostBound { cost_root(param: param, k: 2) }
 fn cost_cbrt(param: String) -> CostBound { cost_root(param: param, k: 3) }
 fn cost_log(param: String) -> CostBound { AtomicBound { cost: LogCost { param: param } } }
