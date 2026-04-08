@@ -16,7 +16,7 @@ import std.algebra {
   FreeMonoidScalarProfile,
   FreeMonoidCollectionProfile, PartialFunctionProfile,
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
-  NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf, AlgebraTypeVariable,
+  NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, TupleOf, AlgebraTypeVariable,
   AlgebraFieldTemplate,
   kernel_algebra_profile,
   algebra_templates_for_profile
@@ -120,36 +120,15 @@ fn is_fully_resolved(n: Node) -> Bool {
   }
 }
 
-fn container_node(kind_name: String, element: Node) -> Node {
-  let param_name = match container_param_name(kind_name: kind_name, index: 0) { Some { value: n } => n  None => kind_name }
-  Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: kind_name, span: make_span(start: 0, end: 0)), children: [
-    Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-}
-
-// Tuples are anonymous positional products: ident_span = none marks them
-// structurally as unnamed Conj. Named Conj types have real ident_spans.
-// Children retain "first"/"second" names for summary keying.
-fn tuple_node(first: Node, second: Node) -> Node {
-  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [
-    Node { name: "first", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: "second", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-}
-
-fn map_node(key: Node, value: Node) -> Node {
-  let key_name = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
-  let val_name = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "__MISSING_PARAM__" }
-  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
-    Node { name: key_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: val_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-}
-
 fn bare_map_node() -> Node {
   let key_id = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
   let val_id = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "__MISSING_PARAM__" }
-  map_node(key: type_variable_node(id: key_id), value: type_variable_node(id: val_id))
+  let key_node = type_variable_node(id: key_id)
+  let val_node = type_variable_node(id: val_id)
+  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
+    Node { name: key_id, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: val_id, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: val_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
@@ -184,7 +163,8 @@ fn algebra_value_field(name: String, type_node: Node) -> Node {
 // from value fields, so we need real Param entries.
 fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
   let params = param_types |> map(t => make_param_node(name: "_", type_expr: t, default_value: none, span: no_span(), name_span: no_span()))
-  Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable_node(func_params: params, ret: return_type) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let callable = Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: params, inferred: Some { value: Resolved { node: return_type } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // Apply algebra fields to a base node, producing a Conj product.
@@ -220,17 +200,25 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node) -> Node {
     ReceiverValue => val_node
     NamedTemplate { name: n } => nominal_type_ref(name: n)
     AlgebraTypeVariable { id: var_id } => type_variable_node(id: var_id)
-    ReceiverCollectionOf { element: inner } => container_node(kind_name: base.name, element: instantiate_algebra_type(template: inner, base: base))
-    ListOf { element: inner } => container_node(kind_name: "List", element: instantiate_algebra_type(template: inner, base: base))
+    ContainerOf { source: src, element: inner } =>
+      let kind_name = match src { SameAsReceiver => base.name  Named { name: n } => n }
+      let param_name = match container_param_name(kind_name: kind_name, index: 0) { Some { value: n } => n  None => kind_name }
+      let elem = instantiate_algebra_type(template: inner, base: base)
+      Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: kind_name, span: make_span(start: 0, end: 0)), children: [
+        Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: elem } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     OptionalOf { inner: inner } => with_optional_cardinality(n: instantiate_algebra_type(template: inner, base: base))
-    TupleOf { first: first, second: second } => tuple_node(
-      first: instantiate_algebra_type(template: first, base: base),
-      second: instantiate_algebra_type(template: second, base: base)
-    )
-    CallableOf { params: p, return_type: r } => callable_node(
-      func_params: p |> map(tp => instantiate_algebra_type(template: tp, base: base)),
-      ret: instantiate_algebra_type(template: r, base: base)
-    )
+    TupleOf { first: first, second: second } =>
+      let first_node = instantiate_algebra_type(template: first, base: base)
+      let second_node = instantiate_algebra_type(template: second, base: base)
+      Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [
+        Node { name: "first", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+        Node { name: "second", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    CallableOf { params: p, return_type: r } =>
+      let func_params = p |> map(tp => instantiate_algebra_type(template: tp, base: base))
+      let ret = instantiate_algebra_type(template: r, base: base)
+      Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   }
 }
 
@@ -295,12 +283,7 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
       // already the lambda's return type (extracted by rt_type). Unify
       // the template's return_type directly against the concrete value.
       unify_template(template: ret_template, concrete: concrete, receiver: receiver, subst: subst)
-    ReceiverCollectionOf { element: elem_template } =>
-      match concrete.children |> first {
-        Some { value: child } => unify_template(template: elem_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst)
-        None => subst
-      }
-    ListOf { element: elem_template } =>
+    ContainerOf { source: _, element: elem_template } =>
       match concrete.children |> first {
         Some { value: child } => unify_template(template: elem_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst)
         None => subst
@@ -374,13 +357,22 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
                 Some { value: v } => v
                 None => type_variable_node(id: "V")
               }
-              map_node(key: key, value: val)
+              let key_name = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+              let val_name = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+              Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
+                Node { name: key_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+                Node { name: val_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: val } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+              ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
             None => receiver
           }
         } else if arity == Some { value: 1 } {
           // Element container (List): enrich from __element__ binding.
           match map_get(subst, "__element__") {
-            Some { value: elem } => container_node(kind_name: receiver.name, element: elem)
+            Some { value: elem } =>
+              let param_name = match container_param_name(kind_name: receiver.name, index: 0) { Some { value: n } => n  None => receiver.name }
+              Node { name: receiver.name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: receiver.name, span: make_span(start: 0, end: 0)), children: [
+                Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: elem } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+              ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
             None => receiver
           }
         } else { receiver }
@@ -413,20 +405,26 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
           }
       }
     NamedTemplate { name: n } => nominal_type_ref(name: n)
-    ReceiverCollectionOf { element: inner } =>
-      container_node(kind_name: receiver.name, element: apply_type_substitution(template: inner, subst: subst, receiver: receiver))
-    ListOf { element: inner } =>
-      container_node(kind_name: "List", element: apply_type_substitution(template: inner, subst: subst, receiver: receiver))
+    ContainerOf { source: src, element: inner } =>
+      let kind_name = match src { SameAsReceiver => receiver.name  Named { name: n } => n }
+      let param_name = match container_param_name(kind_name: kind_name, index: 0) { Some { value: n } => n  None => kind_name }
+      let elem = apply_type_substitution(template: inner, subst: subst, receiver: receiver)
+      Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: kind_name, span: make_span(start: 0, end: 0)), children: [
+        Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: elem } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     OptionalOf { inner: inner } =>
       with_optional_cardinality(n: apply_type_substitution(template: inner, subst: subst, receiver: receiver))
     TupleOf { first: ft, second: st } =>
-      tuple_node(
-        first: apply_type_substitution(template: ft, subst: subst, receiver: receiver),
-        second: apply_type_substitution(template: st, subst: subst, receiver: receiver)
-      )
+      let first_node = apply_type_substitution(template: ft, subst: subst, receiver: receiver)
+      let second_node = apply_type_substitution(template: st, subst: subst, receiver: receiver)
+      Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [
+        Node { name: "first", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+        Node { name: "second", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     CallableOf { params: p, return_type: r } =>
       let param_nodes = p |> map(tp => apply_type_substitution(template: tp, subst: subst, receiver: receiver))
-      callable_node(func_params: param_nodes |> map(pn => make_param_node(name: "_", type_expr: pn, default_value: none, span: no_span(), name_span: no_span())), ret: apply_type_substitution(template: r, subst: subst, receiver: receiver))
+      let ret = apply_type_substitution(template: r, subst: subst, receiver: receiver)
+      Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: param_nodes |> map(pn => make_param_node(name: "_", type_expr: pn, default_value: none, span: no_span(), name_span: no_span())), inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   }
 }
 
@@ -444,8 +442,7 @@ fn template_return_has_variables(template: AlgebraFieldTemplate) -> Bool {
 fn has_type_variable(t: AlgebraTypeTemplate) -> Bool {
   match t {
     AlgebraTypeVariable { id: _ } => true
-    ReceiverCollectionOf { element: inner } => has_type_variable(t: inner)
-    ListOf { element: inner } => has_type_variable(t: inner)
+    ContainerOf { source: _, element: inner } => has_type_variable(t: inner)
     OptionalOf { inner: inner } => has_type_variable(t: inner)
     TupleOf { first: f, second: s } => has_type_variable(t: f) || has_type_variable(t: s)
     CallableOf { params: _, return_type: r } => has_type_variable(t: r)
@@ -461,10 +458,6 @@ fn resolve_type_variables_from_template(template: AlgebraFieldTemplate, arg_type
     base_subst: overrides
   )
   apply_type_substitution(template: template.return_type, subst: subst, receiver: receiver_type)
-}
-
-fn callable_node(func_params: List<Node>, ret: Node) -> Node {
-  Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn callable_inferred(n: Node) -> Node {

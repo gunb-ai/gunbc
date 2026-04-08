@@ -94,7 +94,7 @@ echo "  CollectionKind:                $collection_kind_count"
 # 2026-04-06: 34→31 (M4: dissolve 3 Tuple name checks — structural is_pair + tuple_type_name constant)
 # 2026-04-06: 31→28 (M4: dissolve Dynamic/Error sentinel name checks — structural CompilerError check)
 # 2026-04-06: 28→27 (M4: dissolve List positional-access check — ordered_element_collections data fact)
-L1_RATCHET=27
+L1_RATCHET=0
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

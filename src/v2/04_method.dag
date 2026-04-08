@@ -18,9 +18,6 @@ import v2.std.core {
   make_span, with_optional_cardinality,
   unit_type, bool_type, string_type, int_type
 }
-import v2.compiler.infer_types {
-  map_node
-}
 
 // =========================================================================
 // Builtin call type inference
@@ -36,7 +33,14 @@ fn type_variable_node(id: String) -> Node {
 }
 
 fn map_of_type_variables() -> Node {
-  map_node(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value"))
+  let key_name = match container_param_name(kind_name: "Map", index: 0) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+  let val_name = match container_param_name(kind_name: "Map", index: 1) { Some { value: n } => n  None => "__MISSING_PARAM__" }
+  let key = type_variable_node(id: "map_key")
+  let value = type_variable_node(id: "map_value")
+  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
+    Node { name: key_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: val_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn list_of_type_variable(id: String) -> Node {

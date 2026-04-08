@@ -6,6 +6,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
+use v2_compiler::v2_std_core::{Node, leaf_node_with_span, make_span};
+
+fn leaf_node(name: String) -> Rc<Node> { leaf_node_with_span(name, make_span(0, 0)) }
 
 // ── Full DSL compilation (non-consensual: all files, no exceptions) ────
 
@@ -4048,7 +4051,7 @@ type Bar<K, V> {
 #[test]
 fn type_rendering_bare_list_not_map() {
     use v2_compiler::v2_compiler_emit::render_node_type;
-    use v2_compiler::v2_std_core::leaf_node;
+
 
     let list_node = leaf_node("List".to_string());
     let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
@@ -4062,7 +4065,7 @@ fn type_rendering_bare_list_not_map() {
 #[test]
 fn type_rendering_bare_map_stays_hashmap() {
     use v2_compiler::v2_compiler_emit::render_node_type;
-    use v2_compiler::v2_std_core::leaf_node;
+
 
     let map_node = leaf_node("Map".to_string());
     let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
@@ -4075,7 +4078,8 @@ fn type_rendering_bare_map_stays_hashmap() {
 #[test]
 fn type_rendering_named_conj_with_container_template() {
     use v2_compiler::v2_compiler_emit::render_node_type;
-    use v2_compiler::v2_std_core::{leaf_node, Connective};
+    use v2_compiler::v2_std_core::{leaf_node_with_span, make_span, Connective};
+    fn leaf_node(name: String) -> Rc<Node> { leaf_node_with_span(name, make_span(0, 0)) }
 
     let free_monoid_conj = Rc::new(v2_compiler::v2_std_core::Node {
         name: "FreeMonoid".to_string(),
@@ -4221,11 +4225,23 @@ fn zero_arg_callable_resolves_and_renders() {
     // Regression: removing n.name=="Callable" from resolve n_is_special could
     // break zero-arg callables if Arrow connective isn't set.
     use v2_compiler::v2_compiler_emit::render_node_type;
-    use v2_compiler::v2_compiler_infer_types::callable_node;
-    use v2_compiler::v2_std_core::leaf_node;
+    use v2_compiler::v2_std_core::{leaf_node_with_span, make_span, Connective, InferredNode};
+    fn leaf_node(name: String) -> Rc<Node> { leaf_node_with_span(name, make_span(0, 0)) }
 
     let ret_type = leaf_node("Int".to_string());
-    let callable = callable_node(Rc::new(vec![]), ret_type);
+    let sp = make_span(0, 0);
+    let callable = Rc::new(Node {
+        name: "Callable".to_string(), span: sp.clone(),
+        ident_span: Some(sp.clone()),
+        children: Rc::new(vec![]), connective: Connective::Arrow,
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::Resolved { node: ret_type.clone() })),
+        return_cardinality: v2_compiler::v2_std_core::Cardinality::Required,
+        uses: Rc::new(vec![]), body: None, transport: None,
+        properties: Rc::new(vec![]), type_annotation: None,
+        is_self_recursive: false, has_non_tail_self_call: false,
+        match_pattern: None, expr_data: Rc::new(v2_compiler::v2_std_core::ExprData::NoExprData),
+    });
     let shared_types = Rc::new(HashMap::new());
 
     let rendered = render_node_type(callable.clone(), RenderTarget::Rust, shared_types, None);
@@ -4239,7 +4255,7 @@ fn bool_is_not_valid_as_cast_target() {
     // Regression: including "bool" in is_primitive_numeric_node would
     // make emit_typed_cast generate invalid `x as bool`.
     use v2_compiler::v2_compiler_emit_rust::is_primitive_numeric_node;
-    use v2_compiler::v2_std_core::leaf_node;
+
 
     let bool_node = leaf_node("Bool".to_string());
     assert!(!is_primitive_numeric_node(bool_node),
@@ -4249,7 +4265,7 @@ fn bool_is_not_valid_as_cast_target() {
 #[test]
 fn int_and_float_are_valid_as_cast_targets() {
     use v2_compiler::v2_compiler_emit_rust::is_primitive_numeric_node;
-    use v2_compiler::v2_std_core::leaf_node;
+
 
     let int_node = leaf_node("Int".to_string());
     let float_node = leaf_node("Float".to_string());

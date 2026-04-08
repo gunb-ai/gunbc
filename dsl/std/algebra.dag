@@ -342,14 +342,17 @@ type AlgebraProfile
   | FreeMonoidCollectionProfile
   | PartialFunctionProfile
 
+type ContainerSource
+  = SameAsReceiver
+  | Named { name: String }
+
 type AlgebraTypeTemplate
   = ReceiverSelf
   | ReceiverElement
   | ReceiverKey
   | ReceiverValue
   | NamedTemplate { name: String }
-  | ReceiverCollectionOf { element: AlgebraTypeTemplate }
-  | ListOf { element: AlgebraTypeTemplate }
+  | ContainerOf { source: ContainerSource, element: AlgebraTypeTemplate }
   | OptionalOf { inner: AlgebraTypeTemplate }
   | TupleOf { first: AlgebraTypeTemplate, second: AlgebraTypeTemplate }
   | CallableOf { params: List<AlgebraTypeTemplate>, return_type: AlgebraTypeTemplate }
@@ -439,8 +442,8 @@ fn boolean_algebra_collection_templates() -> List<AlgebraFieldTemplate> {
     { name: "member", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
     { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
     { name: "filter", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ReceiverCollectionOf { element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ReceiverCollectionOf { element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ReceiverCollectionOf { element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
+    { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
+    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
     { name: "fold", param_types: [AlgebraTypeVariable { id: "FoldAccumulator" }, CallableOf { params: [AlgebraTypeVariable { id: "FoldAccumulator" }, ReceiverElement], return_type: AlgebraTypeVariable { id: "FoldAccumulator" } }], return_type: AlgebraTypeVariable { id: "FoldAccumulator" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
     { name: "any", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
     { name: "all", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
@@ -454,9 +457,9 @@ fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
     { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
     { name: "empty", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none },
-    { name: "chars", param_types: [ReceiverSelf], return_type: ListOf { element: NamedTemplate { name: "Int" } }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "split", param_types: [ReceiverSelf, ReceiverSelf], return_type: ListOf { element: ReceiverSelf }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "join", param_types: [ListOf { element: ReceiverSelf }, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
+    { name: "chars", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
+    { name: "split", param_types: [ReceiverSelf, ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
+    { name: "join", param_types: [ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
     { name: "contains", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
     { name: "starts_with", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
     { name: "ends_with", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
@@ -473,9 +476,9 @@ fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
 
 fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
   [
-    { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ReceiverCollectionOf { element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
+    { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
     { name: "filter", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ReceiverCollectionOf { element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ReceiverCollectionOf { element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
+    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
     { name: "fold", param_types: [AlgebraTypeVariable { id: "FoldAccumulator" }, CallableOf { params: [AlgebraTypeVariable { id: "FoldAccumulator" }, ReceiverElement], return_type: AlgebraTypeVariable { id: "FoldAccumulator" } }], return_type: AlgebraTypeVariable { id: "FoldAccumulator" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
     { name: "any", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
     { name: "all", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
@@ -487,7 +490,7 @@ fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
     { name: "sort_by", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeSortBody } },
     { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeConstant } },
     { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "enumerate", param_types: [ReceiverSelf], return_type: ReceiverCollectionOf { element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } }, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeIterateBody } },
+    { name: "enumerate", param_types: [ReceiverSelf], return_type: ContainerOf { source: SameAsReceiver, element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } }, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeIterateBody } },
     { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeLinearScan } },
     { name: "join", param_types: [ReceiverSelf, NamedTemplate { name: "String" }], return_type: NamedTemplate { name: "String" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
     { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
@@ -506,10 +509,10 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
     { name: "has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
     { name: "map_has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
     { name: "map_contains_key", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "keys", param_types: [ReceiverSelf], return_type: ListOf { element: ReceiverKey }, size_effect: none, cost_shape: none },
-    { name: "map_keys", param_types: [ReceiverSelf], return_type: ListOf { element: ReceiverKey }, size_effect: none, cost_shape: none },
-    { name: "values", param_types: [ReceiverSelf], return_type: ListOf { element: ReceiverValue }, size_effect: none, cost_shape: none },
-    { name: "map_values", param_types: [ReceiverSelf], return_type: ListOf { element: ReceiverValue }, size_effect: none, cost_shape: none },
+    { name: "keys", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverKey }, size_effect: none, cost_shape: none },
+    { name: "map_keys", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverKey }, size_effect: none, cost_shape: none },
+    { name: "values", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverValue }, size_effect: none, cost_shape: none },
+    { name: "map_values", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverValue }, size_effect: none, cost_shape: none },
     { name: "with", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
     { name: "contains", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none }

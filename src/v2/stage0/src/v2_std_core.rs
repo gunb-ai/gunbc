@@ -949,7 +949,25 @@ pub fn make_field_node(name: String, type_expr: Rc<Node>, cardinality: Cardinali
     None => Rc::new(vec![type_expr]),
 };
 let props = match from_key {
-    Some(fk) => Rc::new(vec![leaf_node(fk.clone())]),
+    Some(fk) => Rc::new(vec![Rc::new(Node {
+    name: fk.clone(),
+    span: make_span(0, 0),
+    ident_span: None,
+    children: Rc::new(vec![]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})]),
     None => Rc::new(vec![]),
 };
 Rc::new(Node {
@@ -1858,28 +1876,6 @@ pub fn module_imports(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 
 pub fn module_items(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     n.children.clone()
-}
-
-pub fn leaf_node(name: String) -> Rc<Node> {
-    Rc::new(Node {
-    name: name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(name.clone(), make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
 }
 
 pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
