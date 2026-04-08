@@ -144,15 +144,16 @@ fn emit_has_tco_support() {
         "05_emit_python.dag should use shared_tco_body"
     );
 
-    // TCO syntax tokens are now in LanguageSpec (languages.dag)
+    // TCO syntax tokens live in LanguageSpec spec values, not backend emitters.
+    // Match spec field assignments to avoid false positives from comments.
     let languages_source = read_v2_file("src/v2/languages.dag");
     assert!(
-        languages_source.contains("while True"),
-        "languages.dag should contain 'while True' in TcoSyntax"
+        languages_source.contains("loop_keyword: \"while True\""),
+        "languages.dag python_spec should set loop_keyword to 'while True'"
     );
     assert!(
-        languages_source.contains("continue"),
-        "languages.dag should contain 'continue' in TcoSyntax"
+        languages_source.contains("continue_str: \"continue\""),
+        "languages.dag python_spec should set continue_str to 'continue'"
     );
 
     let core_source = read_v2_file("src/v2/00_core.dag");
