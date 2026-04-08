@@ -67,7 +67,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
@@ -1571,6 +1571,122 @@ continue;
     ExprData::ExprBlock => { break emit_block(frame.clone()); },
     _ => { break emit_default_return(frame.clone()); },
 }
+}
+}
+
+pub fn shared_tco_body(inner: String, depth: i64, spec: Rc<LanguageSpec>) -> String {
+    {
+        let syntax = spec.block_syntax.clone();
+let tco = spec.tco.clone();
+if syntax.significant_whitespace.clone() {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(tco.loop_keyword.clone(), syntax.block_open.clone()), make_indent((depth + 1))), inner)
+} else {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(tco.loop_keyword.clone(), syntax.block_open.clone()), make_indent((depth + 1))), inner), "\n".to_string()), syntax.block_close.clone())
+}
+}
+}
+
+pub fn shared_tco_default_return(frame: Rc<TcoFrame>, spec: Rc<LanguageSpec>, recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone) -> String {
+    {
+        let val_str = recurse_expr(frame.expr.clone(), frame.scope.clone(), frame.depth.clone());
+v2_rt::concat(v2_rt::concat(spec.tco.clone().break_return.clone(), " ".to_string()), val_str)
+}
+}
+
+pub fn shared_tco_non_self_call(frame: Rc<TcoFrame>, target: RenderTarget, spec: Rc<LanguageSpec>, recurse_call: impl Fn(String, Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> String + Clone) -> String {
+    match (*frame.expr.clone().expr_data.clone()).clone() {
+    ExprData::ExprCall { .. } => {
+        let f = expr_call_func_at(frame.expr.clone(), frame.scope.clone().type_env.clone().source_index.clone());
+let call_str = recurse_call(f, frame.expr.clone().children.clone(), frame.scope.clone(), frame.depth.clone());
+v2_rt::concat(v2_rt::concat(spec.tco.clone().break_return.clone(), " ".to_string()), call_str)
+},
+    _ => emit_error_expr("shared_tco_non_self_call expected ExprCall".to_string(), target),
+}
+}
+
+pub fn shared_tco_if(frame: Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<Node>>>, target: RenderTarget, spec: Rc<LanguageSpec>, recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone, recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone) -> String {
+    {
+        let syntax = spec.block_syntax.clone();
+match (*frame.expr.clone().expr_data.clone()).clone() {
+    ExprData::ExprIf => {
+            let c = if_condition(frame.expr.clone());
+let t = if_then_branch(frame.expr.clone());
+let e = if_else_branch(frame.expr.clone());
+let cond_str = recurse_expr(c, frame.scope.clone(), frame.depth.clone());
+let then_str = recurse_tco(t, frame.scope.clone(), (frame.depth.clone() + 1));
+let else_prefix = if syntax.significant_whitespace.clone() {
+                make_indent(frame.depth.clone())
+} else {
+                "".to_string()
+};
+match e {
+    Some(eb) => {
+                let else_str = recurse_tco(eb.clone(), frame.scope.clone(), (frame.depth.clone() + 1));
+if syntax.significant_whitespace.clone() {
+                    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), syntax.block_open.clone()), make_indent((frame.depth.clone() + 1))), then_str), "\n".to_string()), else_prefix), syntax.else_clause.clone()), make_indent((frame.depth.clone() + 1))), else_str)
+} else {
+                    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), syntax.block_open.clone()), make_indent((frame.depth.clone() + 1))), then_str), "\n".to_string()), syntax.else_clause.clone()), make_indent((frame.depth.clone() + 1))), else_str), "\n".to_string()), syntax.block_close.clone())
+}
+},
+    None => if syntax.significant_whitespace.clone() {
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), syntax.block_open.clone()), make_indent((frame.depth.clone() + 1))), then_str)
+} else {
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), syntax.block_open.clone()), make_indent((frame.depth.clone() + 1))), then_str), "\n".to_string()), syntax.block_close.clone())
+},
+}
+},
+    _ => emit_error_expr("shared_tco_if expected ExprIf".to_string(), target),
+}
+}
+}
+
+pub fn shared_tco_let(frame: Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<Node>>>, target: RenderTarget, recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone, recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone) -> String {
+    match (*frame.expr.clone().expr_data.clone()).clone() {
+    ExprData::ExprLet => {
+        let n = let_binding_name_at(frame.expr.clone(), frame.scope.clone().type_env.clone().source_index.clone());
+let v = let_value(frame.expr.clone());
+let bd = let_body(frame.expr.clone());
+let val_str = recurse_expr(v.clone(), frame.scope.clone(), frame.depth.clone());
+let let_line = emit_let_binding(n.clone(), val_str, target);
+let next_scope = extend_scope(frame.scope.clone(), n.clone(), resolved_type(v.clone()));
+match bd {
+    Some(b) => v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), recurse_tco(b.clone(), next_scope, frame.depth.clone())),
+    None => let_line,
+}
+},
+    _ => emit_error_expr("shared_tco_let expected ExprLet".to_string(), target),
+}
+}
+
+pub fn shared_tco_block(frame: Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<Node>>>, target: RenderTarget, spec: Rc<LanguageSpec>, emit_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone, recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone) -> String {
+    match (*frame.expr.clone().expr_data.clone()).clone() {
+    ExprData::ExprBlock => {
+        let ss = frame.expr.clone().children.clone();
+if ((ss.clone().len() as i64) == 0) {
+            spec.tco.clone().break_return.clone()
+} else {
+            {
+                let init_state = emit_init_stmts(ss.clone(), frame.scope.clone(), frame.depth.clone());
+let last_str = match ss.clone().last().cloned() {
+    Some(last_expr) => recurse_tco(last_expr.clone(), init_state.scope.clone(), frame.depth.clone()),
+    None => spec.tco.clone().break_return.clone(),
+};
+if ((init_state.text.clone().len() as i64) == 0) {
+                    last_str
+} else {
+                    v2_rt::concat(v2_rt::concat(init_state.text.clone().join(&"\n".to_string()), "\n".to_string()), last_str)
+}
+}
+}
+},
+    _ => emit_error_expr("shared_tco_block expected ExprBlock".to_string(), target),
+}
+}
+
+pub fn shared_tco_reassign(ordered_args: Rc<Vec<String>>, param_names: Rc<Vec<String>>, spec: Rc<LanguageSpec>) -> String {
+    {
+        let all_lines = tco_reassign_core(ordered_args, param_names, spec.tco.clone().temp_var_prefix.clone(), spec.tco.clone().temp_decl_prefix.clone(), spec.tco.clone().temp_assign_op.clone(), spec.block_syntax.clone().stmt_terminator.clone(), spec.tco.clone().continue_str.clone(), "".to_string());
+all_lines.join(&"\n".to_string())
 }
 }
 

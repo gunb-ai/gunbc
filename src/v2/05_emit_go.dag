@@ -113,6 +113,8 @@ import v2.compiler.emit {
   is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item,
   extract_test_projections,
   is_tco_eligible, emit_shared_tco_expr,
+  shared_tco_body, shared_tco_default_return, shared_tco_non_self_call,
+  shared_tco_if, shared_tco_let, shared_tco_block, shared_tco_reassign,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls,
@@ -929,45 +931,29 @@ fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
 
 fn emit_go_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let inner = emit_go_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
-  concat(make_indent(level: depth), "for {\n", inner, "\n", make_indent(level: depth), "}")
+  shared_tco_body(inner: inner, depth: depth, spec: language_spec(target: Go))
 }
 
 fn emit_go_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -> String {
-  let prefix = make_indent(level: frame.depth)
-  match frame.expr.expr_data {
-    ExprCall { call_semantics: _ } =>
-      let f = expr_call_func_at(texpr: frame.expr, source_index: frame.scope.type_env.source_index)
-      let call_str = emit_go_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope, depth: frame.depth)
-      concat(prefix, "return ", call_str)
-    _ => concat(prefix, emit_error_expr(message: "emit_go_tco_non_self_call expected ExprCall", target: Go))
-  }
+  shared_tco_non_self_call(
+    frame: frame,
+    target: Go,
+    spec: language_spec(target: Go),
+    recurse_call: (f, args, scope, depth) => emit_go_typed_call(func: f, args: args, registry: registry, scope: scope, depth: depth))
 }
 
 fn emit_go_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
-  let prefix = make_indent(level: frame.depth)
-  match frame.expr.expr_data {
-    ExprIf =>
-      let c = if_condition(texpr: frame.expr)
-      let t = if_then_branch(texpr: frame.expr)
-      let e = if_else_branch(texpr: frame.expr)
-      let cond_str = emit_go_typed_expr(texpr: c, registry: registry, scope: frame.scope, depth: frame.depth, fuel: 1024)
-      let then_str = emit_go_typed_tco_expr(texpr: t, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth + 1)
-      match e {
-        Some { value: eb } =>
-          let else_str = emit_go_typed_tco_expr(texpr: eb, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth + 1)
-          concat(prefix, "if ", cond_str, " {\n",
-            then_str, "\n", prefix, "} else {\n",
-            else_str, "\n", prefix, "}")
-        None =>
-          concat(prefix, "if ", cond_str, " {\n",
-            then_str, "\n", prefix, "}")
-      }
-    _ => concat(prefix, emit_error_expr(message: "emit_go_tco_if expected ExprIf", target: Go))
-  }
+  shared_tco_if(
+    frame: frame,
+    fn_name: fn_name,
+    params: params,
+    target: Go,
+    spec: language_spec(target: Go),
+    recurse_expr: (expr, scope, depth) => emit_go_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, fuel: 1024),
+    recurse_tco: (expr, scope, depth) => emit_go_typed_tco_expr(texpr: expr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth))
 }
 
 fn emit_go_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
-  let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
     ExprMatch =>
       let s = match_scrutinee(texpr: frame.expr)
@@ -976,55 +962,37 @@ fn emit_go_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, regis
       let arm_strs = arm_list |> map(arm =>
         emit_go_typed_tco_switch_case(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth))
       let arms_str = arm_strs |> join(separator: "\n")
-      concat(prefix, "switch ", scrut_str, " {\n", arms_str, "\n", prefix, "}")
-    _ => concat(prefix, emit_error_expr(message: "emit_go_tco_match expected ExprMatch", target: Go))
+      concat("switch ", scrut_str, " {\n", arms_str, "\n}")
+    _ => emit_error_expr(message: "emit_go_tco_match expected ExprMatch", target: Go)
   }
 }
 
 fn emit_go_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
-  let prefix = make_indent(level: frame.depth)
-  match frame.expr.expr_data {
-    ExprLet =>
-      let n = let_binding_name_at(texpr: frame.expr, source_index: frame.scope.type_env.source_index)
-      let v = let_value(texpr: frame.expr)
-      let bd = let_body(texpr: frame.expr)
-      let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth, fuel: 1024)
-      let let_line = concat(prefix, emit_let_binding(name: n, value: val_str, target: Go))
-      let next_scope = extend_scope(scope: frame.scope, name: n, resolved: resolved_type(n: v))
-      match bd {
-        Some { value: b } =>
-          concat(let_line, "\n", emit_go_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope, depth: frame.depth))
-        None => let_line
-      }
-    _ => concat(prefix, emit_error_expr(message: "emit_go_tco_let expected ExprLet", target: Go))
-  }
+  shared_tco_let(
+    frame: frame,
+    fn_name: fn_name,
+    params: params,
+    target: Go,
+    recurse_expr: (expr, scope, depth) => emit_go_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, fuel: 1024),
+    recurse_tco: (expr, scope, depth) => emit_go_typed_tco_expr(texpr: expr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth))
 }
 
 fn emit_go_tco_block(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
-  let prefix = make_indent(level: frame.depth)
-  match frame.expr.expr_data {
-    ExprBlock =>
-      let ss = frame.expr.children
-      if ss |> count == 0 {
-        concat(prefix, "return")
-      } else {
-        let init_state = emit_go_init_block_stmts(
-          remaining: ss, text: [], scope: frame.scope, registry: registry, depth: frame.depth)
-        let last_str = match ss |> last {
-          Some { value: last_expr } =>
-            emit_go_typed_tco_expr(texpr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope, depth: frame.depth)
-          None => concat(prefix, "return")
-        }
-        if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
-      }
-    _ => concat(prefix, emit_error_expr(message: "emit_go_tco_block expected ExprBlock", target: Go))
-  }
+  shared_tco_block(
+    frame: frame,
+    fn_name: fn_name,
+    params: params,
+    target: Go,
+    spec: language_spec(target: Go),
+    emit_init_stmts: (stmts, scope, depth) => emit_go_init_block_stmts(remaining: stmts, text: [], scope: scope, registry: registry, depth: depth),
+    recurse_tco: (expr, scope, depth) => emit_go_typed_tco_expr(texpr: expr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth))
 }
 
 fn emit_go_tco_default_return(frame: TcoFrame, registry: Map<String, ItemInfo>) -> String {
-  let prefix = make_indent(level: frame.depth)
-  let val_str = emit_go_typed_expr(texpr: frame.expr, registry: registry, scope: frame.scope, depth: frame.depth, fuel: 1024)
-  concat(prefix, "return ", val_str)
+  shared_tco_default_return(
+    frame: frame,
+    spec: language_spec(target: Go),
+    recurse_expr: (expr, scope, depth) => emit_go_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, fuel: 1024))
 }
 
 fn emit_go_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -1043,20 +1011,16 @@ fn emit_go_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, regi
 fn emit_go_typed_tco_switch_case(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let pat_str = emit_go_pattern(pattern: arm_pattern(n: arm))
   let body_str = emit_go_typed_tco_expr(texpr: arm_body(n: arm), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
-  concat(make_indent(level: depth), "case ", pat_str, ":\n",
-    body_str)
+  let case_keyword = if pat_str == "_" { "default" } else { concat("case ", pat_str) }
+  concat(make_indent(level: depth), case_keyword, ":\n",
+    make_indent(level: depth + 1), body_str)
 }
 
 fn emit_go_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let ordered_args = args |> map(a => emit_go_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024))
   let si = scope.type_env.source_index
   let param_names = params |> map(p => emit_ident(name: param_node_name_at(n: p, source_index: si), target: Go))
-  let all_lines = tco_reassign_core(
-    ordered_args: ordered_args, param_names: param_names,
-    temp_var_prefix: "tco", temp_decl_prefix: "",
-    temp_assign_op: " := ", stmt_terminator: "",
-    continue_str: "continue", line_prefix: make_indent(level: depth))
-  all_lines |> join(separator: "\n")
+  shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: language_spec(target: Go))
 }
 
 // =========================================================================

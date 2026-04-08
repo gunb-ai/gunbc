@@ -134,7 +134,7 @@ Previously eliminated:
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 526 | Honest count — complexity violations surfaced, non-blocking |
-| L1 type knowledge | 37 | 0 | Down from 70; name-based workarounds tracked for M4 |
+| L1 type knowledge | 27 | 0 | Down from 70; name-based workarounds tracked for M4 |
 | Complexity violations | 325 | 526 | Honest: 526 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |

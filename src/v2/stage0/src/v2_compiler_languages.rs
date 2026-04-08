@@ -191,6 +191,16 @@ pub struct BlockSyntax {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TcoSyntax {
+    pub loop_keyword: String,
+    pub break_return: String,
+    pub continue_str: String,
+    pub temp_var_prefix: String,
+    pub temp_decl_prefix: String,
+    pub temp_assign_op: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,
@@ -204,6 +214,7 @@ pub struct LanguageSpec {
     pub method_templates: Option<Rc<HashMap<String, String>>>,
     pub service_fields: Rc<ServiceFieldTemplates>,
     pub block_syntax: Rc<BlockSyntax>,
+    pub tco: Rc<TcoSyntax>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -281,6 +292,14 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     arm_separator: ",".to_string(),
     stmt_terminator: ";".to_string(),
     significant_whitespace: false,
+}),
+    tco: Rc::new(TcoSyntax {
+    loop_keyword: "loop".to_string(),
+    break_return: "break".to_string(),
+    continue_str: "continue;".to_string(),
+    temp_var_prefix: "__tco_".to_string(),
+    temp_decl_prefix: "let ".to_string(),
+    temp_assign_op: " = ".to_string(),
 }),
 })
 }
@@ -361,6 +380,14 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     stmt_terminator: "".to_string(),
     significant_whitespace: true,
 }),
+    tco: Rc::new(TcoSyntax {
+    loop_keyword: "while True".to_string(),
+    break_return: "return".to_string(),
+    continue_str: "continue".to_string(),
+    temp_var_prefix: "__tco_".to_string(),
+    temp_decl_prefix: "".to_string(),
+    temp_assign_op: " = ".to_string(),
+}),
 })
 }
 
@@ -439,6 +466,14 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     arm_separator: "\n".to_string(),
     stmt_terminator: "".to_string(),
     significant_whitespace: false,
+}),
+    tco: Rc::new(TcoSyntax {
+    loop_keyword: "for".to_string(),
+    break_return: "return".to_string(),
+    continue_str: "continue".to_string(),
+    temp_var_prefix: "tco".to_string(),
+    temp_decl_prefix: "".to_string(),
+    temp_assign_op: " := ".to_string(),
 }),
 })
 }

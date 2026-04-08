@@ -76,6 +76,7 @@ import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
   LanguageSpec, TestConventions, ServiceFieldTemplates,
+  BlockSyntax, TcoSyntax,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
@@ -1496,6 +1497,165 @@ fn emit_shared_tco_expr(
     _ =>
       emit_default_return(frame)
   }
+}
+
+// =========================================================================
+// Shared TCO handlers — consume BlockSyntax + TcoSyntax + callbacks.
+// Go and Python wire these via emit_shared_tco_expr callbacks.
+// Rust TCO stays backend-specific (ownership analysis complexity).
+// =========================================================================
+
+fn shared_tco_body(inner: String, depth: Int, spec: LanguageSpec) -> String {
+  let syntax = spec.block_syntax
+  let tco = spec.tco
+  if syntax.significant_whitespace {
+    concat(tco.loop_keyword, syntax.block_open, make_indent(level: depth + 1), inner)
+  } else {
+    concat(tco.loop_keyword, syntax.block_open, make_indent(level: depth + 1), inner, "\n", syntax.block_close)
+  }
+}
+
+fn shared_tco_default_return(
+  frame: TcoFrame,
+  spec: LanguageSpec,
+  recurse_expr: fn(Node, InferScope, Int) -> String
+) -> String {
+  let val_str = recurse_expr(frame.expr, frame.scope, frame.depth)
+  concat(spec.tco.break_return, " ", val_str)
+}
+
+fn shared_tco_non_self_call(
+  frame: TcoFrame,
+  target: RenderTarget,
+  spec: LanguageSpec,
+  recurse_call: fn(String, List<Node>, InferScope, Int) -> String
+) -> String {
+  match frame.expr.expr_data {
+    ExprCall { call_semantics: _ } =>
+      let f = expr_call_func_at(texpr: frame.expr, source_index: frame.scope.type_env.source_index)
+      let call_str = recurse_call(f, frame.expr.children, frame.scope, frame.depth)
+      concat(spec.tco.break_return, " ", call_str)
+    _ => emit_error_expr(message: "shared_tco_non_self_call expected ExprCall", target: target)
+  }
+}
+
+fn shared_tco_if(
+  frame: TcoFrame,
+  fn_name: String,
+  params: List<Node>,
+  target: RenderTarget,
+  spec: LanguageSpec,
+  recurse_expr: fn(Node, InferScope, Int) -> String,
+  recurse_tco: fn(Node, InferScope, Int) -> String
+) -> String {
+  let syntax = spec.block_syntax
+  match frame.expr.expr_data {
+    ExprIf =>
+      let c = if_condition(texpr: frame.expr)
+      let t = if_then_branch(texpr: frame.expr)
+      let e = if_else_branch(texpr: frame.expr)
+      let cond_str = recurse_expr(c, frame.scope, frame.depth)
+      let then_str = recurse_tco(t, frame.scope, frame.depth + 1)
+      // else_clause rendering needs depth authority: Python's "else:\n"
+      // must be indented to match the "if" keyword at frame.depth.
+      // Brace languages emit "} else {\n" which closes the previous block.
+      let else_prefix = if syntax.significant_whitespace { make_indent(level: frame.depth) } else { "" }
+      match e {
+        Some { value: eb } =>
+          let else_str = recurse_tco(eb, frame.scope, frame.depth + 1)
+          if syntax.significant_whitespace {
+            concat("if ", cond_str, syntax.block_open,
+              make_indent(level: frame.depth + 1), then_str, "\n",
+              else_prefix, syntax.else_clause,
+              make_indent(level: frame.depth + 1), else_str)
+          } else {
+            concat("if ", cond_str, syntax.block_open,
+              make_indent(level: frame.depth + 1), then_str, "\n",
+              syntax.else_clause,
+              make_indent(level: frame.depth + 1), else_str, "\n",
+              syntax.block_close)
+          }
+        None =>
+          if syntax.significant_whitespace {
+            concat("if ", cond_str, syntax.block_open,
+              make_indent(level: frame.depth + 1), then_str)
+          } else {
+            concat("if ", cond_str, syntax.block_open,
+              make_indent(level: frame.depth + 1), then_str, "\n",
+              syntax.block_close)
+          }
+      }
+    _ => emit_error_expr(message: "shared_tco_if expected ExprIf", target: target)
+  }
+}
+
+fn shared_tco_let(
+  frame: TcoFrame,
+  fn_name: String,
+  params: List<Node>,
+  target: RenderTarget,
+  recurse_expr: fn(Node, InferScope, Int) -> String,
+  recurse_tco: fn(Node, InferScope, Int) -> String
+) -> String {
+  match frame.expr.expr_data {
+    ExprLet =>
+      let n = let_binding_name_at(texpr: frame.expr, source_index: frame.scope.type_env.source_index)
+      let v = let_value(texpr: frame.expr)
+      let bd = let_body(texpr: frame.expr)
+      let val_str = recurse_expr(v, frame.scope, frame.depth)
+      let let_line = emit_let_binding(name: n, value: val_str, target: target)
+      let next_scope = extend_scope(scope: frame.scope, name: n, resolved: resolved_type(n: v))
+      match bd {
+        Some { value: b } =>
+          concat(let_line, "\n", recurse_tco(b, next_scope, frame.depth))
+        None => let_line
+      }
+    _ => emit_error_expr(message: "shared_tco_let expected ExprLet", target: target)
+  }
+}
+
+fn shared_tco_block(
+  frame: TcoFrame,
+  fn_name: String,
+  params: List<Node>,
+  target: RenderTarget,
+  spec: LanguageSpec,
+  emit_init_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState,
+  recurse_tco: fn(Node, InferScope, Int) -> String
+) -> String {
+  match frame.expr.expr_data {
+    ExprBlock =>
+      let ss = frame.expr.children
+      if ss |> count == 0 {
+        spec.tco.break_return
+      } else {
+        let init_state = emit_init_stmts(ss, frame.scope, frame.depth)
+        let last_str = match ss |> last {
+          Some { value: last_expr } =>
+            recurse_tco(last_expr, init_state.scope, frame.depth)
+          None => spec.tco.break_return
+        }
+        if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
+      }
+    _ => emit_error_expr(message: "shared_tco_block expected ExprBlock", target: target)
+  }
+}
+
+// line_prefix is "" for all backends: shared TCO handlers return un-indented
+// content, and the dispatch layer (shared_tco_body / emit_shared_tco_expr)
+// handles first-line indentation. This is a property of the shared dispatch
+// contract, not a per-language rendering decision.
+fn shared_tco_reassign(
+  ordered_args: List<String>,
+  param_names: List<String>,
+  spec: LanguageSpec
+) -> String {
+  let all_lines = tco_reassign_core(
+    ordered_args: ordered_args, param_names: param_names,
+    temp_var_prefix: spec.tco.temp_var_prefix, temp_decl_prefix: spec.tco.temp_decl_prefix,
+    temp_assign_op: spec.tco.temp_assign_op, stmt_terminator: spec.block_syntax.stmt_terminator,
+    continue_str: spec.tco.continue_str, line_prefix: "")
+  all_lines |> join(separator: "\n")
 }
 
 fn is_tco_candidate(texpr: Node, func_name: String, source_index: NewlineIndex?) -> Bool {
