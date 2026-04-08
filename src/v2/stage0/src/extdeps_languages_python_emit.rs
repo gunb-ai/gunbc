@@ -209,15 +209,6 @@ pub fn python_param_type_sep() -> String {
     CACHED.with(|c| c.clone())
 }
 
-pub fn python_string_literal_suffix() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 pub fn python_module_keyword() -> String {
     thread_local! {
         static CACHED: String = {

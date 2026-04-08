@@ -40,6 +40,7 @@ type TypeCheckpoint {
   target_type: String
   default_expr: String?
   is_copy: Bool?
+  literal_suffix: String?   // Rust String: ".to_string()" (&str → String ownership)
 }
 
 // InhabitantDecl: "this target type inhabits this .dag algebra."

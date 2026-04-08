@@ -30,14 +30,14 @@ import std.coercion {
 // =========================================================================
 
 data python_type_checkpoints: List<TypeCheckpoint> = [
-  { dag_name: "Int",    target_type: "int",   default_expr: "0",      is_copy: none },
-  { dag_name: "Float",  target_type: "float", default_expr: "0.0",    is_copy: none },
-  { dag_name: "Bool",   target_type: "bool",  default_expr: "False",  is_copy: none },
-  { dag_name: "Unit",   target_type: "None",  default_expr: "None",   is_copy: none },
-  { dag_name: "String", target_type: "str",   default_expr: "\"\"",   is_copy: none },
-  { dag_name: "Bytes",  target_type: "bytes", default_expr: "b\"\"",  is_copy: none },
-  { dag_name: "Secret", target_type: "str",   default_expr: "\"\"",   is_copy: none },
-  { dag_name: "Json",   target_type: "dict",  default_expr: "{}",     is_copy: none }
+  { dag_name: "Int",    target_type: "int",   default_expr: "0",      is_copy: none, literal_suffix: none },
+  { dag_name: "Float",  target_type: "float", default_expr: "0.0",    is_copy: none, literal_suffix: none },
+  { dag_name: "Bool",   target_type: "bool",  default_expr: "False",  is_copy: none, literal_suffix: none },
+  { dag_name: "Unit",   target_type: "None",  default_expr: "None",   is_copy: none, literal_suffix: none },
+  { dag_name: "String", target_type: "str",   default_expr: "\"\"",   is_copy: none, literal_suffix: none },
+  { dag_name: "Bytes",  target_type: "bytes", default_expr: "b\"\"",  is_copy: none, literal_suffix: none },
+  { dag_name: "Secret", target_type: "str",   default_expr: "\"\"",   is_copy: none, literal_suffix: none },
+  { dag_name: "Json",   target_type: "dict",  default_expr: "{}",     is_copy: none, literal_suffix: none }
 ]
 
 

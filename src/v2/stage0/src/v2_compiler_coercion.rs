@@ -140,6 +140,16 @@ pub fn is_copy(target: RenderTarget, dag_name: String) -> Option<bool> {
 }
 }
 
+pub fn literal_suffix(target: RenderTarget, dag_name: String) -> String {
+    match lookup_checkpoint(target, dag_name) {
+    Some(cp) => match cp.literal_suffix.clone() {
+    Some(s) => s.clone(),
+    None => "".to_string(),
+},
+    None => "".to_string(),
+}
+}
+
 pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<InhabitantDecl>> {
     Rc::new({ let mut __result = Vec::new(); for inh in target_inhabitants(target).iter().cloned() { if (inh.algebra.clone().as_str() == algebra.clone().as_str()) { __result.push(inh); } } __result }).first().cloned()
 }

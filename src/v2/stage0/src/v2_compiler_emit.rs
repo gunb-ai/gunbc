@@ -59,7 +59,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
 pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
-pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name};
@@ -799,7 +799,7 @@ pub fn emit_keyword(key: String, target: RenderTarget) -> String {
 pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
     match (*value).clone() {
     LiteralValue::LitStr { value: s, .. } => {
-        let suffix = language_spec(target).items.clone().string_literal_suffix.clone();
+        let suffix = literal_suffix(target, "String".to_string());
 emit_string_literal(s.clone(), suffix)
 },
     LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),

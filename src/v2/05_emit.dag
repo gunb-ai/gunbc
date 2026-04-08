@@ -60,7 +60,7 @@ import v2.std.core {
 import v2.compiler.infer_env { TypeEnv, TypeBinding, RecursiveVariantFieldWitness }
 import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
 import std.types { is_container_type, container_to_algebra_name }
-import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast }
+import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -840,7 +840,7 @@ fn emit_keyword(key: String, target: RenderTarget) -> String {
 fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   match value {
     LitStr { value: s } =>
-      let suffix = language_spec(target: target).items.string_literal_suffix
+      let suffix = literal_suffix(target: target, dag_name: "String")
       emit_string_literal(s: s, suffix: suffix)
     LitInt { value: i } => to_string(value: i)
     LitFloat { value: f } => f

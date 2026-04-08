@@ -53,6 +53,7 @@ pub struct TypeCheckpoint {
     pub target_type: String,
     pub default_expr: Option<String>,
     pub is_copy: Option<bool>,
+    pub literal_suffix: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
