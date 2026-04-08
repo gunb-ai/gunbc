@@ -3923,7 +3923,15 @@ fn emit_rest_url_line(transport: Node, op_name: String) -> String {
         let fmt_str = fmt_segments |> join(separator: "")
         let args = parts |> flat_map(p => match p {
           Text { value: _ } => []
-          Interpolation { expr: e } => [emit_ident(name: expr_var_name(texpr: e), target: Rust)]
+          Interpolation { expr: e } => {
+            let var_name = emit_ident(name: expr_var_name(texpr: e), target: Rust)
+            let is_opt = is_optional_typed_expr(e: e)
+            if is_opt {
+              [concat(var_name, ".as_deref().unwrap_or(\"\")")]
+            } else {
+              [var_name]
+            }
+          }
         })
         if args |> count == 0 {
           concat("let url = format!(\"{}", fmt_str, "\", self.base_url);")
@@ -4097,31 +4105,37 @@ fn emit_exit_arm(prop: Node, inferred: Node) -> String {
 fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, op_node: Node) -> String {
   // RE-1f: Shell argv — reads transport children for command + args.
   let argv = transport.children
+  // Build set of optional parameter names for interpolation handling
+  let optional_params = op_node.params
+    |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
+    |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, p.name, true))
+  // RE-1g: Shell stdin — if present, use spawn + write + wait_with_output
+  let has_stdin = match transport_stdin(t: transport) {
+    Some { value: _ } => true
+    None => false
+  }
+  // stdin path needs `let mut` for spawn pattern
+  let let_kw = if has_stdin { "let mut output" } else { "let output" }
   let cmd_line = if argv |> count > 0 {
     match argv |> first {
-      Some { value: first_arg } => concat("let output = std::process::Command::new(",
-        emit_shell_argv_element(arg: first_arg), ")")
-      None => concat("let output = std::process::Command::new(\"",
+      Some { value: first_arg } => concat(let_kw, " = std::process::Command::new(",
+        emit_shell_argv_element(arg: first_arg, optional_params: optional_params), ")")
+      None => concat(let_kw, " = std::process::Command::new(\"",
         emit_ident(name: op_name, target: Rust), "\")")
     }
   } else {
-    concat("let output = std::process::Command::new(\"",
+    concat(let_kw, " = std::process::Command::new(\"",
       emit_ident(name: op_name, target: Rust), "\")")
   }
   let arg_lines = if argv |> count > 1 {
     argv |> skip(1) |> map(arg =>
-      concat("    .arg(", emit_shell_argv_element(arg: arg), ")")
+      concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params), ")")
     )
   } else { [] }
   let env_entries = transport_env(t: transport)
   let env_lines = env_entries |> map(e =>
     concat("    .env(\"", field_init_node_name(n: e), "\", ", emit_simple_expr(expr: field_init_node_value(n: e), target: Rust, source_index: none), ")")
   )
-  // RE-1g: Shell stdin — if present, use spawn + write + wait_with_output
-  let has_stdin = match transport_stdin(t: transport) {
-    Some { value: _ } => true
-    None => false
-  }
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"
   if has_stdin {
     let stdin_expr = transport_stdin(t: transport).value
@@ -4156,12 +4170,14 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
 // (Text + Interpolation parts) — no ad-hoc template scanning.
 // Bash quoting/escaping facts from extdeps/languages/bash/emit.dag
 // will be consumed here when parameter injection safety is wired.
-fn emit_shell_argv_element(arg: Node) -> String {
+fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>) -> String {
   match arg.expr_data {
     ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", escape_string_literal_body(s: s), "\"")
     ExprStringInterp => {
       // Structured interpolation: emit format! with parts
+      // Each child is either a text node (ExprLiteral) or an interp wrapper
+      // (NoExprData with the actual var expr as its first child via arg_value).
       let parts = arg.children |> map(child => match child.expr_data {
         ExprLiteral { value: LitStr { value: text } } => Text { value: text }
         _ => Interpolation { expr: arg_value(n: child) }
@@ -4173,7 +4189,19 @@ fn emit_shell_argv_element(arg: Node) -> String {
       let fmt_str = fmt_segments |> join(separator: "")
       let args = parts |> flat_map(p => match p {
         Text { value: _ } => []
-        Interpolation { expr: e } => [emit_ident(name: expr_var_name(texpr: e), target: Rust)]
+        Interpolation { expr: e } => {
+          let name = expr_var_name(texpr: e)
+          let var_name = emit_ident(name: name, target: Rust)
+          let is_opt = match map_get(optional_params, name) {
+            Some { value: _ } => true
+            None => false
+          }
+          if is_opt {
+            [concat(var_name, ".as_deref().unwrap_or(\"\")")]
+          } else {
+            [var_name]
+          }
+        }
       })
       let args_str = args |> join(separator: ", ")
       concat("&format!(\"", fmt_str, "\", ", args_str, ")")

@@ -4140,7 +4140,15 @@ let fmt_segments = Rc::new({ let mut __result = Vec::new(); for p in parts.clone
 let fmt_str = fmt_segments.join(&"".to_string());
 let args = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.extend((*match (*p.clone()).clone() {
     StringPart::Text { .. } => Rc::new(vec![]),
-    StringPart::Interpolation { expr: e, .. } => Rc::new(vec![emit_ident(expr_var_name(e.clone()), RenderTarget::Rust)]),
+    StringPart::Interpolation { expr: e, .. } => {
+            let var_name = emit_ident(expr_var_name(e.clone()), RenderTarget::Rust);
+let is_opt = is_optional_typed_expr(e.clone());
+if is_opt.clone() {
+                Rc::new(vec![v2_rt::concat(var_name.clone(), ".as_deref().unwrap_or(\"\")".to_string())])
+} else {
+                Rc::new(vec![var_name.clone()])
+}
+},
 }).iter().cloned()); } __result });
 if ((args.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat("let url = format!(\"{}".to_string(), fmt_str), "\", self.base_url);".to_string())
@@ -4322,27 +4330,33 @@ if is_success {
 pub fn emit_shell_call(op_name: String, transport: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, inferred: Rc<Node>, op_node: Rc<Node>) -> String {
     {
         let argv = transport.children.clone();
+let optional_params = Rc::new({ let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { if (param_node_type_expr(p.clone()).return_cardinality.clone() == Cardinality::CardOptional) { __result.push(p); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), p.name.clone(), true));
+let has_stdin = match transport_stdin(transport.clone()) {
+    Some(_) => true,
+    None => false,
+};
+let let_kw = if has_stdin.clone() {
+            "let mut output".to_string()
+} else {
+            "let output".to_string()
+};
 let cmd_line = if ((argv.clone().len() as i64) > 0) {
             match argv.clone().first().cloned() {
-    Some(first_arg) => v2_rt::concat(v2_rt::concat("let output = std::process::Command::new(".to_string(), emit_shell_argv_element(first_arg.clone())), ")".to_string()),
-    None => v2_rt::concat(v2_rt::concat("let output = std::process::Command::new(\"".to_string(), emit_ident(op_name, RenderTarget::Rust)), "\")".to_string()),
+    Some(first_arg) => v2_rt::concat(v2_rt::concat(v2_rt::concat(let_kw, " = std::process::Command::new(".to_string()), emit_shell_argv_element(first_arg.clone(), optional_params.clone())), ")".to_string()),
+    None => v2_rt::concat(v2_rt::concat(v2_rt::concat(let_kw, " = std::process::Command::new(\"".to_string()), emit_ident(op_name, RenderTarget::Rust)), "\")".to_string()),
 }
 } else {
-            v2_rt::concat(v2_rt::concat("let output = std::process::Command::new(\"".to_string(), emit_ident(op_name, RenderTarget::Rust)), "\")".to_string())
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(let_kw, " = std::process::Command::new(\"".to_string()), emit_ident(op_name, RenderTarget::Rust)), "\")".to_string())
 };
 let arg_lines = if ((argv.clone().len() as i64) > 1) {
-            Rc::new({ let mut __result = Vec::new(); for arg in Rc::new(argv.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat("    .arg(".to_string(), emit_shell_argv_element(arg.clone())), ")".to_string())); } __result })
+            Rc::new({ let mut __result = Vec::new(); for arg in Rc::new(argv.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat("    .arg(".to_string(), emit_shell_argv_element(arg.clone(), optional_params.clone())), ")".to_string())); } __result })
 } else {
             Rc::new(vec![])
 };
 let env_entries = transport_env(transport.clone());
 let env_lines = Rc::new({ let mut __result = Vec::new(); for e in env_entries.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    .env(\"".to_string(), field_init_node_name(e.clone())), "\", ".to_string()), emit_simple_expr(field_init_node_value(e.clone()), RenderTarget::Rust, None)), ")".to_string())); } __result });
-let has_stdin = match transport_stdin(transport.clone()) {
-    Some(_) => true,
-    None => false,
-};
 let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))".to_string();
-if has_stdin {
+if has_stdin.clone() {
             {
                 let stdin_expr = transport_stdin(transport.clone()).clone().unwrap();
 let stdin_var = match (*stdin_expr.expr_data.clone()).clone() {
@@ -4354,7 +4368,7 @@ let spawn_exec = "    .spawn()?;".to_string();
 let write_block = v2_rt::concat(v2_rt::concat("{\n    use std::io::Write;\n    if let Some(mut stdin) = output.stdin.take() {\n        stdin.write_all(".to_string(), stdin_var), ".as_bytes())?;\n    }\n}".to_string());
 let wait_line = "let output = output.wait_with_output()?;".to_string();
 let check_line = "let stdout = String::from_utf8_lossy(&output.stdout).to_string();".to_string();
-let return_line = emit_exit_code_handling(op_node, inferred);
+let return_line = emit_exit_code_handling(op_node.clone(), inferred);
 let all_lines = v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![cmd_line]), arg_lines), env_lines), Rc::new(vec![wd_line, spawn_line, spawn_exec, write_block, wait_line, check_line, return_line]));
 all_lines.join(&"\n".to_string())
 }
@@ -4362,7 +4376,7 @@ all_lines.join(&"\n".to_string())
             {
                 let output_line = "    .output()?;".to_string();
 let check_line = "let stdout = String::from_utf8_lossy(&output.stdout).to_string();".to_string();
-let return_line = emit_exit_code_handling(op_node, inferred);
+let return_line = emit_exit_code_handling(op_node.clone(), inferred);
 let all_lines = v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![cmd_line]), arg_lines), env_lines), Rc::new(vec![wd_line, output_line, check_line, return_line]));
 all_lines.join(&"\n".to_string())
 }
@@ -4370,7 +4384,7 @@ all_lines.join(&"\n".to_string())
 }
 }
 
-pub fn emit_shell_argv_element(arg: Rc<Node>) -> String {
+pub fn emit_shell_argv_element(arg: Rc<Node>, optional_params: Rc<HashMap<String, bool>>) -> String {
     match (*arg.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat("\"".to_string(), escape_string_literal_body(s.clone())), "\"".to_string()) },
     ExprData::ExprStringInterp => {
@@ -4389,7 +4403,19 @@ let fmt_segments = Rc::new({ let mut __result = Vec::new(); for p in parts.clone
 let fmt_str = fmt_segments.join(&"".to_string());
 let args = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.extend((*match (*p.clone()).clone() {
     StringPart::Text { .. } => Rc::new(vec![]),
-    StringPart::Interpolation { expr: e, .. } => Rc::new(vec![emit_ident(expr_var_name(e.clone()), RenderTarget::Rust)]),
+    StringPart::Interpolation { expr: e, .. } => {
+            let name = expr_var_name(e.clone());
+let var_name = emit_ident(name.clone(), RenderTarget::Rust);
+let is_opt = match v2_rt::map_get(&optional_params, name.clone()) {
+    Some(_) => true,
+    None => false,
+};
+if is_opt.clone() {
+                Rc::new(vec![v2_rt::concat(var_name.clone(), ".as_deref().unwrap_or(\"\")".to_string())])
+} else {
+                Rc::new(vec![var_name.clone()])
+}
+},
 }).iter().cloned()); } __result });
 let args_str = args.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("&format!(\"".to_string(), fmt_str), "\", ".to_string()), args_str), ")".to_string())

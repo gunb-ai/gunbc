@@ -4739,6 +4739,36 @@ service shell.Run {
     );
 }
 
+// ── RE-1: shell interpolation with optional params ──────────────────────
+#[test]
+fn shell_emit_optional_param_in_interp() {
+    let source = r#"module re1i
+
+service cron.Tab {
+  operation Upsert {
+    input {
+      tag: String
+      log_path: String?
+    }
+    output { success: Bool }
+    transport shell {
+      argv: ["sh", "-c", "echo {tag} >> {log_path}"]
+    }
+    mock_response {
+      0 => { success: true } "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1i.rs");
+    assert!(
+        content.contains("log_path.as_deref().unwrap_or"),
+        "RE-1i: optional param in interpolation should use unwrap_or, got:\n{content}"
+    );
+}
+
 // ── RE-2: review.dag compiles to Rust ───────────────────────────────────
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
 // This is the acceptance gate for RE-2.
