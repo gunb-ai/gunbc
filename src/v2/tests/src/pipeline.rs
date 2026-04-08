@@ -4669,15 +4669,54 @@ fn rest_emit_maps_response_codes() {
     );
 }
 
-// RE-1f/RE-1g/RE-1h: Shell transport tests deferred — inline shell service
-// definitions don't preserve the operation-level transport through the
-// resolve/infer pipeline (the body marker that identifies shell transports
-// is lost). Shell transports work when compiled via full DSL import path
-// (verified by full_dsl_compiles with dsl/extdeps/shell.dag). Once the
-// inline compilation path preserves operation transports, these tests
-// should be un-commented.
-//
-// fn shell_emit_uses_transport_argv() { ... }
-// fn shell_emit_checks_exit_code() { ... }
+#[test]
+fn shell_emit_uses_transport_argv() {
+    let source = r#"module re1f
 
-// shell_emit_checks_exit_code — see comment above about shell transport tests
+service shell.Run {
+  operation Exec {
+    input { script: String }
+    output { result: String }
+    transport shell { argv: ["sh", "-lc", "\{script\}"] }
+    mock_response {
+      0 => "done" "result"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1f.rs");
+    assert!(
+        content.contains("Command::new(\"sh\")") && content.contains(".arg(\"-lc\")"),
+        "RE-1f: expected sh -lc argv in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn shell_emit_checks_exit_code() {
+    let source = r#"module re1h
+
+service shell.Run {
+  operation Exec {
+    input { cmd: String }
+    output { result: String }
+    transport shell { argv: ["sh", "-c", "\{cmd\}"] }
+    exit {
+      0 => Unit
+      nonzero => String "command failed"
+    }
+    mock_response {
+      0 => "done" "result"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1h.rs");
+    assert!(
+        content.contains("success()"),
+        "RE-1h: expected exit code check in emitted code, got:\n{content}"
+    );
+}

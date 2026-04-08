@@ -660,7 +660,7 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
     let resolved_children = map(child_results, cr => cr.expr)
     let child_diags = flat_map(child_results, cr => cr.diagnostics)
     TransportResolveResult {
-      transport: make_transport_node(properties: resolved_props, children: resolved_children, span: transport.span),
+      transport: make_transport_node(properties: resolved_props, children: resolved_children, body: transport.body, span: transport.span),
       diagnostics: concat(prop_diags, child_diags)
     }
   }

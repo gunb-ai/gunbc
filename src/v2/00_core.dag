@@ -1062,19 +1062,19 @@ data transport_path_template_key: String = "path"
 data transport_query_key: String = "query"
 data transport_stdin_key: String = "stdin"
 
-fn make_transport_node(properties: List<Node>, children: List<Node>, span: SourceSpan) -> Node {
+fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
-    uses: [], body: none, transport: none, properties: properties,
+    uses: [], body: body, transport: none, properties: properties,
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
 
 fn local_transport_node(span: SourceSpan) -> Node {
-  make_transport_node(properties: [], children: [], span: span)
+  make_transport_node(properties: [], children: [], body: none, span: span)
 }
 
 fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, span: SourceSpan) -> Node {
@@ -1093,7 +1093,7 @@ fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Nod
     None => []
   }
   let props = concat([url_field], method_props, path_props, query_props, auth_props, headers)
-  make_transport_node(properties: props, children: [], span: span)
+  make_transport_node(properties: props, children: [], body: none, span: span)
 }
 
 fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
@@ -1117,7 +1117,7 @@ fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: S
 
 fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
-  make_transport_node(properties: [path_field], children: [], span: span)
+  make_transport_node(properties: [path_field], children: [], body: none, span: span)
 }
 
 // =========================================================================

@@ -1491,7 +1491,7 @@ pub fn transport_stdin_key() -> String {
     CACHED.with(|c| c.clone())
 }
 
-pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, body: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: "".to_string(),
     span: span,
@@ -1502,7 +1502,7 @@ pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<No
     inferred: None,
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
-    body: None,
+    body: body,
     transport: None,
     properties: properties,
     type_annotation: None,
@@ -1514,7 +1514,7 @@ pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<No
 }
 
 pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node(Rc::new(vec![]), Rc::new(vec![]), span)
+    make_transport_node(Rc::new(vec![]), Rc::new(vec![]), None, span)
 }
 
 pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, method: Option<Rc<Node>>, path: Option<Rc<Node>>, query: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
@@ -1534,7 +1534,7 @@ let query_props = match query {
     None => Rc::new(vec![]),
 };
 let props = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), method_props), path_props), query_props), auth_props), headers);
-make_transport_node(props, Rc::new(vec![]), span)
+make_transport_node(props, Rc::new(vec![]), None, span)
 }
 }
 
@@ -1590,7 +1590,7 @@ Rc::new(Node {
 pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let path_field = make_field_init_node(transport_path_key(), base_path, make_span(0, 0), make_span(0, 0));
-make_transport_node(Rc::new(vec![path_field]), Rc::new(vec![]), span)
+make_transport_node(Rc::new(vec![path_field]), Rc::new(vec![]), None, span)
 }
 }
 
