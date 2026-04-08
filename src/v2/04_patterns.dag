@@ -14,7 +14,6 @@ import v2.std.core {
   find_child_named, NewlineIndex,
   ExprData, NoExprData,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
-  NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,
   Connective, Disj, NoConnective,
   CardOptional,
@@ -87,12 +86,10 @@ fn pattern_subject_from_node(n: Node) -> PatternSubject {
   }
 }
 
-fn pattern_subject_from_node_type(n: NodeType) -> PatternSubject {
+fn pattern_subject_from_inferred(n: InferredNode?) -> PatternSubject {
   match n {
-    Typed { node: resolved } => pattern_subject_from_node(n: resolved)
-    InferError { message: _, span: _ } => PatternLookupBlocked
-    InferVariable { id: _ } => PatternLookupBlocked
-    Untyped => PatternLookupBlocked
+    Some { value: Resolved { node: resolved } } => pattern_subject_from_node(n: resolved)
+    _ => PatternLookupBlocked
   }
 }
 

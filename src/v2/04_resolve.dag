@@ -18,7 +18,6 @@ import v2.std.core {
   authored_name_at, NewlineIndex,
   make_param_node, param_node_name, param_node_type_expr, param_node_default_value,
   make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
-  NodeType, Typed, InferError, InferVariable, Untyped, rt_node,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
   InternalError, ArityMismatch, UnresolvedType,
@@ -44,7 +43,7 @@ import v2.std.core {
   default_ident_span, node_name_span
 }
 import v2.compiler.infer_types {
-  resolved_type_or_error, child_type_node, node_is_keyed_collection
+  resolved_type, child_type_node, node_is_keyed_collection
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for
@@ -265,7 +264,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           if child.inferred == none {
             NodeResolveResult { resolved: child, diagnostics: [] }
           } else {
-            let child_rt = resolved_type_or_error(n: child)
+            let child_rt = resolved_type(n: child)
             let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, depth: depth + 1)
             let rt_resolved = rt_result.resolved
             let rt_diags = rt_result.diagnostics
@@ -300,7 +299,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
             if field_child.inferred == none {
               NodeResolveResult { resolved: field_child, diagnostics: [] }
             } else {
-              let field_rt = resolved_type_or_error(n: field_child)
+              let field_rt = resolved_type(n: field_child)
               // Skip resolution for self-referencing fields in recursive types
               // (e.g., tail: MyList<T> inside MyList's Cons variant).
               // Check both parent match and is_recursive_type to catch generic
@@ -363,11 +362,9 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       // Extract the alias target (e.g., FreeMonoid<element>), substitute
       // slots (element → Int), then resolve the result to expand the
       // structural definition.
-      let alias_target = match rt_node(n: decl) {
-        Typed { node: target } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: type_name, source_index: env.source_index)
-        InferError { message: _, span: _ } => n
-        InferVariable { id: _ } => n
-        Untyped => n
+      let alias_target = match decl.inferred {
+        Some { value: Resolved { node: target } } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: type_name, source_index: env.source_index)
+        _ => n
       }
       let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1)
       let is_recursive = is_recursive_type(env: env, name: type_name)
@@ -448,11 +445,9 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // reference site may carry CardOptional (e.g. String? → String
           // in env). Without this, optionality is silently discarded.
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
-            match rt_node(n: resolved) {
-              Typed { node: target } => target
-              InferError { message: _, span: _ } => resolved
-              InferVariable { id: _ } => resolved
-              Untyped => resolved
+            match resolved.inferred {
+              Some { value: Resolved { node: target } } => target
+              _ => resolved
             }
           } else { resolved }
           let is_optional = n.return_cardinality == CardOptional
@@ -488,8 +483,8 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
       Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
       CompilerError { message: msg, span: sp } =>
         // Preserve CompilerError structurally instead of converting to
-        // leaf_node(name: "Error"). Downstream code uses rt_node() which
-        // returns InferError for CompilerError — no name check needed.
+        // leaf_node(name: "Error"). Downstream code matches InferredNode
+        // directly — no name check needed.
         NodeResolveResult {
           resolved: make_expr_error_node(kind: SemanticExprError, message: msg, span: sp),
           diagnostics: [make_error_node(diagnostic: InternalError { message: msg, span: sp }, module_name: module_name)]

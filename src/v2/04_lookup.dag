@@ -13,7 +13,6 @@ import v2.std.core {
   Node, param_node_type_expr,
   authored_name_at, NewlineIndex, find_child_named, has_child_named,
   InferredNode, Resolved, TypeVariable,
-  NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   FieldAccessStyle, OptionalUnwrap,
@@ -34,7 +33,6 @@ import v2.compiler.infer_types {
   nominal_type_ref,
   normalize_access_type_node, node_is_keyed_collection,
   method_receiver_element_node,
-  rt_node,
   emit_map_has,
   enrich_kernel_type
 }
@@ -152,16 +150,14 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
     let canonical = normed.name
     if normed.inferred != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
-      match rt_node(n: normed) {
-        Typed { node: target } =>
+      match normed.inferred {
+        Some { value: Resolved { node: target } } =>
           if target.name == normed.name && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
             normed
           } else {
             resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
           }
-        InferError { message: _, span: _ } => normed
-        InferVariable { id: _ } => normed
-        Untyped => normed
+        _ => normed
       }
     } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
       nominal_type_ref(name: normed.name)
