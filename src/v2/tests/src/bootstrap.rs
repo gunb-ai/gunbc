@@ -57,7 +57,12 @@ fn stage0_cargo_check() {
 // 2026-04-07: 526 — honest count after restoring CostUnknown for all
 //   unresolved descent patterns. See docs/cx-violation-triage.md for
 //   the 3-fix reduction path (Node tree descent, Parser SCC, Graph DFS).
-const DIAG_RATCHET: usize = 526;
+// 2026-04-08: 517 — structural_children_functions table + sub-value
+//   extractor descent in expr_contains_descent. 56 direct violations
+//   resolved by recognizing match_arm_nodes/method_arg_nodes/etc. as
+//   structural children; 7 more via field_binding_pattern sub-value
+//   extractor enabling match pattern descent propagation.
+const DIAG_RATCHET: usize = 517;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

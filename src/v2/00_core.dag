@@ -888,6 +888,34 @@ fn is_tree_size_reducing(func_name: String) -> Bool {
 }
 
 // =========================================================================
+// Structural children functions — functions that return List<Node>
+// from a Node parameter's children list.
+//
+// Declares functions where: output = param.children (or a structural
+// sub-list like param.children |> skip(N)). The complexity analyzer
+// queries this table to recognize f(node) as structural children of
+// node, equivalent to node.children for descent proof purposes.
+//
+// Adding a new accessor = one line here, zero changes to the analyzer.
+// =========================================================================
+
+data structural_children_functions: Map<String, Bool> = {
+  "match_arm_nodes": true,
+  "method_arg_nodes": true,
+  "block_stmts": true,
+  "variant_node_fields": true,
+  "module_items": true,
+  "module_imports": true
+}
+
+fn is_structural_children_function(func_name: String) -> Bool {
+  match lookup(structural_children_functions, key: func_name) {
+    Some { value: _ } => true
+    _ => false
+  }
+}
+
+// =========================================================================
 // Compositional child Node accessors (P5.11)
 //
 // Implementations of the child projections declared in expr_child_roles

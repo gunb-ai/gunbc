@@ -58,7 +58,7 @@ use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, Arithmeti
 pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension, type_iteration_dimension};
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
 use crate::std_computation::IterationDimension::{TreeDescent, CollectionFold, ArithmeticRepeat};
-pub use crate::v2_std_core::{Node, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_value, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_call_func, expr_var_name, field_access_base, field_access_field, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing};
+pub use crate::v2_std_core::{Node, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_value, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_call_func, expr_var_name, field_access_base, field_access_field, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing, is_structural_children_function};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprBinOp, ExprUnaryOp, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda};
 use crate::v2_std_core::BinOp::{Sub, Div};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
@@ -1360,6 +1360,11 @@ continue;
 } },
     _ => { break false; },
 } },
+    ExprData::ExprCall { .. } => { let callee = expr_call_func(expr.clone());
+break (is_structural_children_function(callee.clone()) && { let mut __found = false; for arg_node in expr.children.clone().iter().cloned() { if match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => (expr_var_name(arg_value(arg_node.clone())).as_str() == param_name.clone().as_str()),
+    _ => false,
+} { __found = true; break; } } __found }); },
     _ => { break false; },
 }
 }
@@ -1380,6 +1385,16 @@ let field = field_access_field(expr.clone());
     Some(CollectionSizeEffect::ShrinkEffect) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
     Some(CollectionSizeEffect::IdentityEffect) => is_structural_children(method_receiver(expr.clone()), param_name.clone(), vars.clone()),
     _ => false,
+},
+    ExprData::ExprCall { .. } => {
+            let callee = expr_call_func(expr.clone());
+(is_structural_children_function(callee) && { let mut __found = false; for arg_node in expr.children.clone().iter().cloned() { if match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                let vname = expr_var_name(arg_value(arg_node.clone()));
+((vname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), vname.clone()))
+},
+    _ => false,
+} { __found = true; break; } } __found })
 },
     _ => false,
 })
@@ -1500,6 +1515,20 @@ match method_size_effect(ms.clone()) {
     Some(CollectionSizeEffect::IdentityEffect) => expr_contains_descent(receiver, param_name.clone(), vars.clone(), check_child.clone(), check_list.clone()),
     None => false,
 }
+},
+    ExprData::ExprCall { .. } => if is_sub_value_extractor(expr.clone()) {
+                {
+                    let inner = extractor_inner_arg(expr.clone());
+match (*inner.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                        let vname = expr_var_name(inner.clone());
+((vname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), vname.clone()))
+},
+    _ => false,
+}
+}
+} else {
+                false
 },
     _ => false,
 }
@@ -1630,7 +1659,20 @@ let field = field_access_field(val.clone());
 },
     _ => false,
 };
-let val_is_descent = ((((((is_direct_descent || is_descent_var) || is_option_descent) || is_match_descent) || is_wrapped_descent) || is_extraction_descent) || is_children_list);
+let is_children_func = match (*val.expr_data.clone()).clone() {
+    ExprData::ExprCall { .. } => {
+                let callee = expr_call_func(val.clone());
+(is_structural_children_function(callee) && { let mut __found = false; for arg_node in val.children.clone().iter().cloned() { if match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                    let bname = expr_var_name(arg_value(arg_node.clone()));
+((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), bname.clone()))
+},
+    _ => false,
+} { __found = true; break; } } __found })
+},
+    _ => false,
+};
+let val_is_descent = (((((((is_direct_descent || is_descent_var) || is_option_descent) || is_match_descent) || is_wrapped_descent) || is_extraction_descent) || is_children_list) || is_children_func);
 let next_vars = if val_is_descent {
                 v2_rt::rc_map_insert(vars.clone(), let_binding_name(body.clone()), true)
 } else {
@@ -2045,7 +2087,20 @@ let field = field_access_field(val.clone());
 },
     _ => false,
 };
-let next_vars = if ((((((is_direct.clone() || is_var.clone()) || is_option.clone()) || is_match_descent.clone()) || is_wrapped.clone()) || is_extraction.clone()) || is_children_list.clone()) {
+let is_children_func = match (*val.expr_data.clone()).clone() {
+    ExprData::ExprCall { .. } => {
+                let callee = expr_call_func(val.clone());
+(is_structural_children_function(callee.clone()) && { let mut __found = false; for arg_node in val.children.clone().iter().cloned() { if match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                    let bname = expr_var_name(arg_value(arg_node.clone()));
+((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), bname.clone()))
+},
+    _ => false,
+} { __found = true; break; } } __found })
+},
+    _ => false,
+};
+let next_vars = if (((((((is_direct.clone() || is_var.clone()) || is_option.clone()) || is_match_descent.clone()) || is_wrapped.clone()) || is_extraction.clone()) || is_children_list.clone()) || is_children_func.clone()) {
                 v2_rt::rc_map_insert(vars.clone(), let_binding_name(body.clone()), true)
 } else {
                 vars.clone()
@@ -2131,7 +2186,7 @@ merge_optional_evidence(cond_ev, merge_optional_evidence(then_ev, else_ev))
 },
     ExprData::ExprCall { .. } => {
             let callee = expr_call_func(body.clone());
-let own_evidence = if (callee.as_str() == func_name.clone().as_str()) {
+let own_evidence = if (callee.clone().as_str() == func_name.clone().as_str()) {
                 {
                     let arg_evidence = body.children.clone().iter().cloned().fold(DescentEvidence::DescentUnknown, |acc: DescentEvidence, arg_node: Rc<Node>| {
                         let aname = arg_name(arg_node.clone());
@@ -2212,7 +2267,20 @@ let field = field_access_field(val.clone());
 },
     _ => false,
 };
-if ((((((is_direct.clone() || is_var.clone()) || is_option.clone()) || is_match_descent.clone()) || is_wrapped.clone()) || is_extraction.clone()) || is_children_list.clone()) {
+let is_children_func = match (*val.expr_data.clone()).clone() {
+    ExprData::ExprCall { .. } => {
+                        let callee = expr_call_func(val.clone());
+(is_structural_children_function(callee.clone()) && { let mut __found = false; for arg_node in val.children.clone().iter().cloned() { if match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                            let bname = expr_var_name(arg_value(arg_node.clone()));
+((bname.clone().as_str() == param_name.clone().as_str()) || set_has(acc.vars.clone(), bname.clone()))
+},
+    _ => false,
+} { __found = true; break; } } __found })
+},
+    _ => false,
+};
+if (((((((is_direct.clone() || is_var.clone()) || is_option.clone()) || is_match_descent.clone()) || is_wrapped.clone()) || is_extraction.clone()) || is_children_list.clone()) || is_children_func.clone()) {
                         v2_rt::rc_map_insert(acc.vars.clone(), let_binding_name(stmt.clone()), true)
 } else {
                         acc.vars.clone()

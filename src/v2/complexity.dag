@@ -60,7 +60,8 @@ import v2.std.core {
   is_child_accessor_in_model,
   lambda_param_names, lambda_body,
   is_children_list_field, is_sub_value_field,
-  is_tree_size_preserving, is_tree_size_reducing
+  is_tree_size_preserving, is_tree_size_reducing,
+  is_structural_children_function
 }
 import v2.compiler.infer_types {
   resolved_type, node_is_collection
@@ -1751,8 +1752,16 @@ fn is_children_of_param(expr: Node, param_name: String, vars: Map<String, Bool>)
         Some { value: ShrinkEffect } => is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
         _ => false
       }
-    // CX-J: skip(param.children, N) function-call form is normalized to
-    // ExprMethodCall by inference (04_infer.dag Tier 2 bridge). Dead post-inference.
+    // CX-NEXT: structural children functions (match_arm_nodes, method_arg_nodes, etc.)
+    ExprCall { call_semantics: _ } =>
+      let callee = expr_call_func(texpr: expr)
+      is_structural_children_function(func_name: callee)
+      && (expr.children |> any(arg_node =>
+        match arg_value(n: arg_node).expr_data {
+          ExprVar { binding_kind: _ } => expr_var_name(texpr: arg_value(n: arg_node)) == param_name
+          _ => false
+        }
+      ))
     _ => false
   }
 }
@@ -1778,8 +1787,18 @@ fn is_structural_children(expr: Node, param_name: String, vars: Map<String, Bool
         Some { value: IdentityEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars)
         _ => false
       }
-    // CX-J: skip(descent_var.children, N) function-call form is normalized to
-    // ExprMethodCall by inference (04_infer.dag Tier 2 bridge). Dead post-inference.
+    // CX-NEXT: structural children functions on descent vars
+    ExprCall { call_semantics: _ } =>
+      let callee = expr_call_func(texpr: expr)
+      is_structural_children_function(func_name: callee)
+      && (expr.children |> any(arg_node =>
+        match arg_value(n: arg_node).expr_data {
+          ExprVar { binding_kind: _ } =>
+            let vname = expr_var_name(texpr: arg_value(n: arg_node))
+            vname == param_name || set_has(m: vars, key: vname)
+          _ => false
+        }
+      ))
     _ => false
   }
 }
@@ -1932,6 +1951,18 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
           Some { value: IdentityEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
           None => false
         }
+      // CX-NEXT: sub-value extractor applied to param/descent var.
+      // field_binding_pattern(n: fb) extracts fb.match_pattern — a strict sub-value.
+      ExprCall { call_semantics: _ } =>
+        if is_sub_value_extractor(expr: expr) {
+          let inner = extractor_inner_arg(expr: expr)
+          match inner.expr_data {
+            ExprVar { binding_kind: _ } =>
+              let vname = expr_var_name(texpr: inner)
+              vname == param_name || set_has(m: vars, key: vname)
+            _ => false
+          }
+        } else { false }
       _ => false
     }
   }
@@ -2092,7 +2123,22 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
           }
         _ => false
       }
-      let val_is_descent = is_direct_descent || is_descent_var || is_option_descent || is_match_descent || is_wrapped_descent || is_extraction_descent || is_children_list
+      // CX-NEXT: structural children function alias (match_arm_nodes, etc.)
+      let is_children_func = match val.expr_data {
+        ExprCall { call_semantics: _ } =>
+          let callee = expr_call_func(texpr: val)
+          is_structural_children_function(func_name: callee)
+          && (val.children |> any(arg_node =>
+            match arg_value(n: arg_node).expr_data {
+              ExprVar { binding_kind: _ } =>
+                let bname = expr_var_name(texpr: arg_value(n: arg_node))
+                bname == param_name || set_has(m: vars, key: bname)
+              _ => false
+            }
+          ))
+        _ => false
+      }
+      let val_is_descent = is_direct_descent || is_descent_var || is_option_descent || is_match_descent || is_wrapped_descent || is_extraction_descent || is_children_list || is_children_func
       let next_vars = if val_is_descent {
         map_insert(vars, let_binding_name(texpr: body), true)
       } else { vars }
@@ -2532,7 +2578,22 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           }
         _ => false
       }
-      let next_vars = if is_direct || is_var || is_option || is_match_descent || is_wrapped || is_extraction || is_children_list {
+      // CX-NEXT: structural children function alias (match_arm_nodes, etc.)
+      let is_children_func = match val.expr_data {
+        ExprCall { call_semantics: _ } =>
+          let callee = expr_call_func(texpr: val)
+          is_structural_children_function(func_name: callee)
+          && (val.children |> any(arg_node =>
+            match arg_value(n: arg_node).expr_data {
+              ExprVar { binding_kind: _ } =>
+                let bname = expr_var_name(texpr: arg_value(n: arg_node))
+                bname == param_name || set_has(m: vars, key: bname)
+              _ => false
+            }
+          ))
+        _ => false
+      }
+      let next_vars = if is_direct || is_var || is_option || is_match_descent || is_wrapped || is_extraction || is_children_list || is_children_func {
         map_insert(vars, let_binding_name(texpr: body), true)
       } else { vars }
       // Check let-body with EXTENDED vars (binding now visible)
@@ -2672,7 +2733,22 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
                 }
               _ => false
             }
-            if is_direct || is_var || is_option || is_match_descent || is_wrapped || is_extraction || is_children_list {
+            // CX-NEXT: structural children function alias (match_arm_nodes, etc.)
+            let is_children_func = match val.expr_data {
+              ExprCall { call_semantics: _ } =>
+                let callee = expr_call_func(texpr: val)
+                is_structural_children_function(func_name: callee)
+                && (val.children |> any(arg_node =>
+                  match arg_value(n: arg_node).expr_data {
+                    ExprVar { binding_kind: _ } =>
+                      let bname = expr_var_name(texpr: arg_value(n: arg_node))
+                      bname == param_name || set_has(m: acc.vars, key: bname)
+                    _ => false
+                  }
+                ))
+              _ => false
+            }
+            if is_direct || is_var || is_option || is_match_descent || is_wrapped || is_extraction || is_children_list || is_children_func {
               map_insert(acc.vars, let_binding_name(texpr: stmt), true)
             } else { acc.vars }
           _ => acc.vars
