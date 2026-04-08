@@ -57,7 +57,7 @@ use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
-pub use crate::v2_compiler_infer_types::{resolved_type_or_error, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
+pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -149,7 +149,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
     module_name: tm.module.clone().name.clone(),
     service_name: item.name.clone(),
     operation_name: c.name.clone(),
-    inferred: resolved_type_or_error(c.clone()),
+    inferred: resolved_type(c.clone()),
     params: c.params.clone(),
     mock_field_inits: Rc::new({ let mut __result = Vec::new(); for p in c.properties.clone().iter().cloned() { if has_mock_prefix(p.name.clone()) { __result.push(p); } } __result }),
     source_index: tm.type_env.clone().source_index.clone(),
@@ -349,7 +349,7 @@ let has_body = ((ch.len() as i64) > 1);
 if (has_body == false) {
             {
                 let value = let_value(texpr.clone());
-extend_scope(scope.clone(), let_binding_name_at(texpr.clone(), scope.type_env.clone().source_index.clone()), resolved_type_or_error(value))
+extend_scope(scope.clone(), let_binding_name_at(texpr.clone(), scope.type_env.clone().source_index.clone()), resolved_type(value))
 }
 } else {
             scope.clone()
@@ -960,7 +960,7 @@ if is_pair {
                         {
                             let first_child = match n.children.clone().first().cloned() {
     Some(c) => if (c.inferred.clone() != None) {
-                                render_node_type(resolved_type_or_error(c.clone()), target.clone(), shared_types.clone(), source_index.clone())
+                                render_node_type(resolved_type(c.clone()), target.clone(), shared_types.clone(), source_index.clone())
 } else {
                                 render_node_type(c.clone(), target.clone(), shared_types.clone(), source_index.clone())
 },
@@ -968,7 +968,7 @@ if is_pair {
 };
 let second_child = match n.children.clone().get(1 as usize).cloned() {
     Some(c) => if (c.inferred.clone() != None) {
-                                render_node_type(resolved_type_or_error(c.clone()), target.clone(), shared_types.clone(), source_index.clone())
+                                render_node_type(resolved_type(c.clone()), target.clone(), shared_types.clone(), source_index.clone())
 } else {
                                 render_node_type(c.clone(), target.clone(), shared_types.clone(), source_index.clone())
 },
@@ -1009,7 +1009,7 @@ let conj_named_str = if shared.clone() {
 return conj_named_str
 }
 }
-let parts = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(render_node_type(resolved_type_or_error(child.clone()), target.clone(), shared_types.clone(), source_index.clone())); } __result });
+let parts = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(render_node_type(resolved_type(child.clone()), target.clone(), shared_types.clone(), source_index.clone())); } __result });
 let anon_str = render_tuple_parts(parts, target.clone());
 return anon_str
 }
@@ -1325,11 +1325,11 @@ pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
 }
 
 pub fn is_type_alias_item(item: Rc<Node>) -> bool {
-    (is_bare_leaf_item(item.clone()) && is_type_alias_return_node(resolved_type_or_error(item.clone())))
+    (is_bare_leaf_item(item.clone()) && is_type_alias_return_node(resolved_type(item.clone())))
 }
 
 pub fn is_type_decl_item(item: Rc<Node>) -> bool {
-    ((is_bare_leaf_item(item.clone()) && !is_type_alias_return_node(resolved_type_or_error(item.clone()))) || (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)))
+    ((is_bare_leaf_item(item.clone()) && !is_type_alias_return_node(resolved_type(item.clone()))) || (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)))
 }
 
 pub fn is_function_item(item: Rc<Node>) -> bool {
@@ -1643,7 +1643,7 @@ let v = let_value(frame.expr.clone());
 let bd = let_body(frame.expr.clone());
 let val_str = recurse_expr(v.clone(), frame.scope.clone(), frame.depth.clone());
 let let_line = emit_let_binding(n.clone(), val_str, target);
-let next_scope = extend_scope(frame.scope.clone(), n.clone(), resolved_type_or_error(v.clone()));
+let next_scope = extend_scope(frame.scope.clone(), n.clone(), resolved_type(v.clone()));
 match bd {
     Some(b) => v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), recurse_tco(b.clone(), next_scope, frame.depth.clone())),
     None => let_line,
@@ -1897,7 +1897,7 @@ pub fn emit_typed_index_shared(base: Rc<Node>, index: Rc<Node>, target: RenderTa
         let spec = language_spec(target.clone());
 let base_str = recurse(base.clone());
 let index_str = recurse(index);
-let base_node = normalize_access_type_node(resolved_type_or_error(base.clone()));
+let base_node = normalize_access_type_node(resolved_type(base.clone()));
 let is_map = node_is_keyed_collection(base_node.clone());
 if is_string_like(target.clone(), base_node.name.clone()) {
             apply_type_template2(spec.indexing.clone().string_index.clone(), base_str, index_str)
@@ -1917,7 +1917,7 @@ pub fn emit_typed_slice_shared(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, t
 let base_str = recurse(base.clone());
 let start_str = recurse(start);
 let end_str = recurse(end);
-let base_node = normalize_access_type_node(resolved_type_or_error(base.clone()));
+let base_node = normalize_access_type_node(resolved_type(base.clone()));
 if is_string_like(target.clone(), base_node.name.clone()) {
             match spec.indexing.clone().string_slice.clone() {
     Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),

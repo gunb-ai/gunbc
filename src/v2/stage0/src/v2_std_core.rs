@@ -59,7 +59,6 @@ use Cardinality::*;
 use FieldAccessStyle::*;
 use FieldValueShape::*;
 use InferredNode::*;
-use NodeType::*;
 use VarBindingKind::*;
 use CallSemantics::*;
 use MethodSemantics::*;
@@ -194,41 +193,6 @@ pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
     InferredNode::Resolved { .. } => false,
     InferredNode::CompilerError { .. } => true,
     InferredNode::TypeVariable { .. } => false,
-}
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
-pub enum NodeType {
-    Typed {
-        node: Rc<Node>,
-    },
-    InferError {
-        message: String,
-        span: Rc<SourceSpan>,
-    },
-    InferVariable {
-        id: String,
-    },
-    Untyped,
-}
-
-pub fn rt_node(n: Rc<Node>) -> Rc<NodeType> {
-    if (n.inferred.clone() == None) {
-        Rc::new(NodeType::Untyped)
-} else {
-        match (*n.inferred.clone().clone().unwrap()).clone() {
-    InferredNode::Resolved { node: rt, .. } => Rc::new(NodeType::Typed {
-    node: rt.clone(),
-}),
-    InferredNode::CompilerError { message: m, span: s, .. } => Rc::new(NodeType::InferError {
-    message: m.clone(),
-    span: s.clone(),
-}),
-    InferredNode::TypeVariable { id, .. } => Rc::new(NodeType::InferVariable {
-    id: id.clone(),
-}),
-}
 }
 }
 
@@ -1164,7 +1128,7 @@ pub fn function_size_effects() -> Rc<HashMap<String, FunctionSizeEffect>> {
         static CACHED: Rc<HashMap<String, FunctionSizeEffect>> = {
             let mut __m = HashMap::new();
             __m.insert("with_required_cardinality".to_string(), FunctionSizeEffect::TreeSizePreserving);
-            __m.insert("resolved_type_or_error".to_string(), FunctionSizeEffect::TreeSizeReducing);
+            __m.insert("resolved_type".to_string(), FunctionSizeEffect::TreeSizeReducing);
             __m.insert("param_node_type_expr".to_string(), FunctionSizeEffect::TreeSizeReducing);
             __m.insert("field_binding_pattern".to_string(), FunctionSizeEffect::TreeSizeReducing);
             Rc::new(__m)

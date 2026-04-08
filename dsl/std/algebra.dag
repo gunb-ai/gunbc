@@ -528,3 +528,19 @@ fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTe
   }
 }
 
+// Type parameter roles for each algebra profile. Declared once here;
+// container_param_name in std/types.dag reads this as the single authority
+// for parameter names. Templates use ReceiverElement/ReceiverKey/ReceiverValue
+// which correspond to these declared roles.
+fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
+  match profile {
+    OrderedRingProfile => []
+    ApproximateFieldProfile => []
+    BooleanAlgebraProfile => []
+    BooleanAlgebraCollectionProfile => ["T"]
+    FreeMonoidScalarProfile => []
+    FreeMonoidCollectionProfile => ["T"]
+    PartialFunctionProfile => ["K", "V"]
+  }
+}
+

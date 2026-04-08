@@ -30,7 +30,7 @@
 
 module std.types
 
-import std.algebra { FreeMonoid, PartialFunction }
+import std.algebra { FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names }
 
 // --- Primitives (Level 0: Atoms) --------------------------------------
 // Each is a single-node Identity DAG -- no validation, just a base carrier.
@@ -91,20 +91,19 @@ fn container_expected_arity(name: String) -> Int? {
   map_get(container_type_arity, name)
 }
 
-// Container type parameter names: canonical names for each positional type parameter.
-// Element collections have ["T"], keyed collections have ["K", "V"].
-data container_type_param_names: Map<String, List<String>> = {
-  "List": ["T"], "Set": ["T"], "NonEmptyList": ["T"], "NonEmptySet": ["T"],
-  "Map": ["K", "V"]
+// Container type parameter names: derived from algebra profile templates.
+// Element collections (FreeMonoid) → ["T"], keyed collections (PartialFunction) → ["K", "V"].
+fn container_param_names_for(kind_name: String) -> List<String> {
+  match map_get(kernel_algebra_profile, kind_name) {
+    Some { value: p } => algebra_type_param_names(profile: p)
+    None => []
+  }
 }
 
 fn container_param_name(kind_name: String, index: Int) -> String? {
-  match map_get(container_type_param_names, kind_name) {
-    Some { value: names } =>
-      match names |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first {
-        Some { value: name } => Some { value: name }
-        None => none
-      }
+  let names = container_param_names_for(kind_name: kind_name)
+  match names |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first {
+    Some { value: name } => Some { value: name }
     None => none
   }
 }

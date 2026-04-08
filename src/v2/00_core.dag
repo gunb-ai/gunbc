@@ -124,14 +124,7 @@ type FieldSummary {
 // P1.9 InferredNode: compiler errors are orthogonal to the node graph.
 // When inference fails, the result is structurally distinct from a type node.
 // Error and Dynamic type sentinels become CompilerError variants.
-//
-// Migration: Node.inferred will change from Node? to InferredNode?.
-// Until the atomic migration, these types and helpers are defined but not yet
-// wired into Node. The migration is one atomic commit that:
-// (1) changes Node.inferred to InferredNode?
-// (2) wraps all inferred construction in Resolved { node: ... }
-// (3) replaces all .inferred.value access with inferred_inferred_node()
-// (4) error/dynamic type predicates deleted; inline checks remain until rt_node stops fabricating sentinels
+// Consumers match InferredNode? directly — no bridge accessors needed.
 type InferredNode
   = Resolved { node: Node }
   | CompilerError { message: String, span: SourceSpan }
@@ -152,30 +145,6 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
     Resolved { node: _ } => false
     CompilerError { message: _, span: _ } => true
     TypeVariable { id: _ } => false
-  }
-}
-
-// Four-way result for extracting a Node's return type.
-// Typed: successfully resolved type node.
-// InferError: type inference failed (error already reported as diagnostic).
-// InferVariable: unresolved type variable (generics).
-// Untyped: no inferred set (statements, unprocessed nodes).
-type NodeType
-  = Typed { node: Node }
-  | InferError { message: String, span: SourceSpan }
-  | InferVariable { id: String }
-  | Untyped
-
-// Extract the type Node from a Node's inferred field.
-// Returns Typed/InferError/InferVariable/Untyped so callers can distinguish.
-fn rt_node(n: Node) -> NodeType {
-  if n.inferred == none { Untyped }
-  else {
-    match n.inferred.value {
-      Resolved { node: rt } => Typed { node: rt }
-      CompilerError { message: m, span: s } => InferError { message: m, span: s }
-      TypeVariable { id: id } => InferVariable { id: id }
-    }
   }
 }
 
@@ -899,7 +868,7 @@ type FunctionSizeEffect
 
 data function_size_effects: Map<String, FunctionSizeEffect> = {
   "with_required_cardinality": TreeSizePreserving,
-  "resolved_type_or_error": TreeSizeReducing,
+  "resolved_type": TreeSizeReducing,
   "param_node_type_expr": TreeSizeReducing,
   "field_binding_pattern": TreeSizeReducing
 }
@@ -1450,8 +1419,8 @@ data float_type: Node = Node { name: "Float", span: make_span(start: 0, end: 0),
 data none_type: Node = Node { name: "None", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 // Tuple type name — tuples are parameterized Conj products, no bare constant.
 data tuple_type_name: String = "Tuple"
-// Error sentinel — inference failed. Downstream code uses rt_node()
-// which returns InferError, so no name check on "Error" needed.
+// Error sentinel — inference failed. CompilerError in inferred field
+// propagates structurally, so no name check on "Error" needed.
 data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
 fn make_span(start: Int, end: Int) -> SourceSpan {
