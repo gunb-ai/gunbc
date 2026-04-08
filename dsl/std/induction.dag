@@ -193,10 +193,12 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
 // SubValueRelation → CallPattern
 // =========================================================================
 
-// IteratedSubValue maps to ChildAccessorCall (not FoldBodyCall) because
-// each element of a fold over recursive children IS a strict sub-value.
-// FoldBodyCall in computation.dag carries NonIncreasing evidence, which
-// would contradict the Strict evidence from sub_value_to_evidence.
+// Bridge to computation.dag's CallPattern. LOSSY: drops ShrinkFactor
+// and collapses Direct/Iterated distinction into ChildAccessorCall.
+// CX-L3 reads SubValueRelation directly and does NOT use this bridge.
+// This exists only for the computation.dag integration path and will
+// be retired when computation.dag accepts SubValueRelation natively.
+// SubValueUnknown → none (fail-closed through the bridge).
 
 fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
   match relation {

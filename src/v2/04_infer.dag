@@ -2122,9 +2122,11 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
 // Context threaded through the descent annotation walk.
 // sub_value_vars tracks which local variables are known sub-values of
 // a parameter, and what their structural relationship is.
+// M4 constraint: param_names uses String keys/values because .dag has no
+// declaration-reference type yet. Will migrate to structural refs with M4.
 type DescentContext {
   fn_name: String
-  param_names: Map<String, String>  // param_name → type_name
+  param_names: Map<String, String>  // param_name → type_name (M4: String proxy)
   type_env: TypeEnv
   sub_value_vars: Map<String, SubValueRelation>
 }

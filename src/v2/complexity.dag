@@ -4913,6 +4913,14 @@ fn is_catamorphism_param(all_calls: List<List<SubValueRelation>>, param_index: I
 
 // Analyze structural bounds for all self-recursive functions.
 // Recursion is detected from descent_evidence, not a stored flag.
+//
+// Current scope: catamorphisms only. All merged-Strict evidence →
+// catamorphism_bound(param, 1) = O(n). This is correct for structural
+// recursion where every sub-value is visited exactly once (list walk,
+// tree traversal). Divide-and-conquer (ProportionalShrink) and
+// multi-parameter recurrences require master_theorem, which is not
+// yet wired here — those patterns currently produce no bound (fail-closed
+// via NonIncreasing merge).
 fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBoundResult> {
   func_entries |> fold(init: [], f: (acc, entry) =>
     let all_calls = collect_self_call_evidence(body: entry.body, fn_name: entry.name)
