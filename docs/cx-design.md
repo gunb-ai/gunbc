@@ -50,11 +50,21 @@ reads.
 pattern-matching apparatus — should dissolve. The analyzer reads
 descent witnesses the same way it reads `method_semantics`.
 
-## P3: No rejected patterns — but Forever factors out
+## P3: Every pattern has a bound — but Forever and Unknown are distinct
 
-Every call pattern has a finite bound. `self(same_arg)` →
-`repeat(Forever)`. The analyzer computes bounds; it never rejects.
-CostUnknown means "missing fact," not "invalid program."
+Every **structurally lowerable** call pattern has a finite bound.
+`self(same_arg)` → `repeat(Forever)`. The analyzer computes bounds
+for patterns it can lower.
+
+**Fail-closed:** If the analyzer cannot classify a call pattern —
+because descent evidence is missing, not because the pattern is
+`repeat(Forever)` — compilation fails with a hard error. This is
+`Unknown`, not `Forever`. They are categorically different:
+
+- `Forever` = concrete bound for an actual repeat loop (2^63-1).
+  The code IS structurally lowerable. The bound is honest.
+- `Unknown` = the analyzer cannot prove a bound. Hard error.
+  The code may need restructuring, or the analyzer is incomplete.
 
 **However:** Forever is not "just a large O(1)." It conflates two
 orthogonal questions:
@@ -112,21 +122,18 @@ Examples of valid global descent that strict monotonicity rejects:
 some well-founded measure decreases. Individual steps may not
 decrease, as long as no infinite non-decreasing sequence exists.
 
-**Representation options:**
+**Representation options** (all must be structural, not annotations):
 1. **Lexicographic tuples** — `(cardinality_depth, tree_size)` decreases
    lexicographically even when tree_size stays flat. Already partially
    in the analyzer but not wired to condition changes.
 2. **Size-change termination** — track size relationships across ALL
    call paths automatically. If every infinite call sequence would
-   violate some well-founded ordering, done. No user annotation needed.
-3. **Explicit progress witness** — user declares `progress: cardinality`
-   on the function, compiler verifies that dimension decreases over
-   every cycle.
+   violate some well-founded ordering, done. Derived from .dag
+   structure, no user annotations.
 
 **Open question:** how to make this expressible without a math PhD.
-The user needs to say "this globally descends" and the compiler needs
-to verify it — no cheating allowed, but no unnecessary strictness
-either.
+The compiler should derive the proof from .dag structure (types, call
+patterns, field relationships) — no user-facing annotations.
 
 **Phasing:** Start with strict descent — it handles the vast majority
 of real patterns (tree walks, list consumption, parser advancement,
@@ -245,6 +252,13 @@ to ranking dimensions for complexity analysis.
 purposes), `function_size_effects` — these hand-maintained tables
 are replaced by the type-derived `RecursiveVariantFieldWitness`.
 
+**Bootstrap constraint:** `recursive_type_set` and
+`recursive_variant_fields` currently use `Map<String, ...>` with
+string keys as identity proxies. This is a known M4 constraint —
+string-keyed identity dissolves when structural identity lands.
+The CX design does not depend on string keys; it depends on the
+structural fact that recursive fields exist, which the maps carry.
+
 ### CX-L2: Descent witness production in inference
 
 **Where:** Inference (after method semantics are assigned).
@@ -274,9 +288,10 @@ self(n: n - 1)
 discovered by the analyzer. Adding a new accessor or field requires
 zero changes to the analysis — the type declaration IS the authority.
 
-**Output:** Each self-call site annotated with descent evidence per
-parameter. Stored on the IR (design TBD: new field on Node, on
-ExprData, or in a side table).
+**Output:** Each self-call site carries descent evidence per
+parameter, represented as .dag structure (design TBD: DescentEvidence
+values in a side table keyed by call site, or structural field on
+the call expression).
 
 ### CX-L3: Bound computation and reporting
 
@@ -286,12 +301,16 @@ ExprData, or in a side table).
 1. Read descent witnesses from CX-L2
 2. If all self-calls have `Strict` evidence on some dimension →
    bound = that dimension's measure
-3. If not → bound = Forever (honest "couldn't prove with strict descent")
-4. Report as user-facing diagnostic: `info: f is O(n) in tree_size`
+3. If not → hard error (Unknown — fail-closed per INVARIANTS.md).
+   `Unknown` ≠ `Forever`. Forever is a concrete bound for actual
+   repeat loops. Unknown means the analyzer cannot prove a bound —
+   the user must restructure or the analyzer is incomplete.
+4. Report proven bounds as user-facing diagnostic: `info: f is O(n) in tree_size`
 
-**Forever factoring (P3):** For functions with Forever bounds
-containing input-dependent sub-computation, factor out the Forever
-and report the per-iteration scalability separately.
+**Forever factoring (P3):** For functions with proven Forever bounds
+(actual `repeat(max_int)` loops) containing input-dependent
+sub-computation, factor out the Forever and report the per-iteration
+scalability separately.
 
 **Size:** This pass should be small — hundreds of lines. It reads
 annotations, it doesn't pattern-match AST. The complexity is in
