@@ -3193,9 +3193,77 @@ Rc::new(ProofEdge {
 }
 }
 
+pub fn collect_scc_cx_l2_tree_edges(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_name_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<ProofEdge>>> {
+    {
+        let measure_params = build_scc_measure_params(members.clone(), func_index.clone(), si.clone());
+Rc::new({ let mut __result = Vec::new(); for name in members.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&func_index, name.clone()) {
+    Some(entry) => {
+            let self_evidence = collect_self_call_evidence(entry.body.clone(), name.clone());
+let self_has_calls = ((self_evidence.clone().len() as i64) > 0);
+let self_all_structural = (self_has_calls.clone() && { let mut __all = true; for call_ev in self_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
+    _ => false,
+} { __found = true; break; } } __found }) { __all = false; break; } } __all });
+let self_edge = if self_has_calls.clone() {
+                if self_all_structural.clone() {
+                    Rc::new(vec![Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: name.clone(),
+    evidence: Rc::new(vec![DescentEvidence::Strict]),
+})])
+} else {
+                    Rc::new(vec![Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: name.clone(),
+    evidence: Rc::new(vec![DescentEvidence::DescentUnknown]),
+})])
+}
+} else {
+                Rc::new(vec![])
+};
+let cross_edge_map = entry.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |best: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                let pname = param_node_name_at(p.clone(), si.clone());
+let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v2_rt::rc_empty_map::<bool>(), true, false, si.clone());
+let param_edges = Rc::new({ let mut __result = Vec::new(); for pe in collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone()).iter().cloned() { if (pe.callee.clone().as_str() != name.clone().as_str()) { __result.push(pe); } } __result });
+let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
+pick_best_param_edges(best.clone(), param_map.clone())
+});
+let cross_edges = Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v2_rt::map_keys(&cross_edge_map)).iter().cloned() { __result.push({
+                let ev = match v2_rt::map_get(&cross_edge_map, callee.clone()) {
+    Some(e) => e.clone(),
+    None => DescentEvidence::DescentUnknown,
+};
+Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: callee.clone(),
+    evidence: Rc::new(vec![ev.clone()]),
+})
+}); } __result });
+v2_rt::concat(self_edge.clone(), cross_edges.clone())
+},
+    None => Rc::new(vec![]),
+}).iter().cloned()); } __result })
+}
+}
+
 pub fn construct_scc_termination_proof(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_name_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> Option<Rc<TerminationProof>> {
     {
-        let tree_edges = collect_scc_proof_edges_for_dim(members.clone(), func_index.clone(), scc_name_set.clone(), true, false, si.clone());
+        let cx_l2_edges = collect_scc_cx_l2_tree_edges(members.clone(), func_index.clone(), scc_name_set.clone(), si.clone());
+let cx_l2_all_known = { let mut __all = true; for e in cx_l2_edges.clone().iter().cloned() { if !(match e.evidence.clone().first().cloned() {
+    Some(DescentEvidence::DescentUnknown) => false,
+    _ => true,
+}) { __all = false; break; } } __all };
+let cx_l2_proof = Rc::new(TerminationProof {
+    dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
+    param: "scc".to_string(),
+})]),
+});
+if ((cx_l2_all_known && ((cx_l2_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(cx_l2_proof.clone(), members.clone(), cx_l2_edges.clone()) == false)) {
+            Some(cx_l2_proof.clone())
+} else {
+            {
+                let tree_edges = collect_scc_proof_edges_for_dim(members.clone(), func_index.clone(), scc_name_set.clone(), true, false, si.clone());
 let tree_all_known = { let mut __all = true; for e in tree_edges.clone().iter().cloned() { if !(match e.evidence.clone().first().cloned() {
     Some(DescentEvidence::DescentUnknown) => false,
     _ => true,
@@ -3206,10 +3274,10 @@ let tree_proof = Rc::new(TerminationProof {
 })]),
 });
 if ((tree_all_known && ((tree_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(tree_proof.clone(), members.clone(), tree_edges.clone()) == false)) {
-            Some(tree_proof.clone())
+                    Some(tree_proof.clone())
 } else {
-            {
-                let list_edges = collect_scc_proof_edges_for_dim(members.clone(), func_index.clone(), scc_name_set.clone(), false, true, si.clone());
+                    {
+                        let list_edges = collect_scc_proof_edges_for_dim(members.clone(), func_index.clone(), scc_name_set.clone(), false, true, si.clone());
 let list_all_known = { let mut __all = true; for e in list_edges.clone().iter().cloned() { if !(match e.evidence.clone().first().cloned() {
     Some(DescentEvidence::DescentUnknown) => false,
     _ => true,
@@ -3220,10 +3288,10 @@ let list_proof = Rc::new(TerminationProof {
 })]),
 });
 if ((list_all_known && ((list_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(list_proof.clone(), members.clone(), list_edges.clone()) == false)) {
-                    Some(list_proof.clone())
+                            Some(list_proof.clone())
 } else {
-                    {
-                        let parser_edges = collect_scc_parser_proof_edges(members.clone(), func_index.clone(), scc_name_set.clone(), si.clone());
+                            {
+                                let parser_edges = collect_scc_parser_proof_edges(members.clone(), func_index.clone(), scc_name_set.clone(), si.clone());
 let parser_all_known = { let mut __all = true; for e in parser_edges.clone().iter().cloned() { if !(match e.evidence.clone().first().cloned() {
     Some(DescentEvidence::DescentUnknown) => false,
     _ => true,
@@ -3234,10 +3302,10 @@ let parser_proof = Rc::new(TerminationProof {
 })]),
 });
 if ((parser_all_known && ((parser_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(parser_proof.clone(), members.clone(), parser_edges.clone()) == false)) {
-                            Some(parser_proof.clone())
+                                    Some(parser_proof.clone())
 } else {
-                            {
-                                let lex_edges = collect_scc_independent_dim_edges(members.clone(), func_index.clone(), scc_name_set.clone(), si.clone());
+                                    {
+                                        let lex_edges = collect_scc_independent_dim_edges(members.clone(), func_index.clone(), scc_name_set.clone(), si.clone());
 let lex_all_known = { let mut __all = true; for e in lex_edges.clone().iter().cloned() { if !(match e.evidence.clone().first().cloned() {
     Some(ev) => match ev.clone() {
     DescentEvidence::DescentUnknown => false,
@@ -3253,10 +3321,10 @@ let lex_proof = Rc::new(TerminationProof {
 })]),
 });
 if ((lex_all_known && ((lex_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(lex_proof.clone(), members.clone(), lex_edges.clone()) == false)) {
-                                    Some(lex_proof.clone())
+                                            Some(lex_proof.clone())
 } else {
-                                    {
-                                        let tree_parser_edges = collect_scc_tree_parser_dim_edges(members.clone(), func_index.clone(), scc_name_set.clone(), si.clone());
+                                            {
+                                                let tree_parser_edges = collect_scc_tree_parser_dim_edges(members.clone(), func_index.clone(), scc_name_set.clone(), si.clone());
 let tp_all_known = { let mut __all = true; for e in tree_parser_edges.clone().iter().cloned() { if !(match e.evidence.clone().first().cloned() {
     Some(ev) => match ev.clone() {
     DescentEvidence::DescentUnknown => false,
@@ -3272,9 +3340,11 @@ let tp_proof = Rc::new(TerminationProof {
 })]),
 });
 if ((tp_all_known && ((tree_parser_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(tp_proof.clone(), members.clone(), tree_parser_edges.clone()) == false)) {
-                                            Some(tp_proof.clone())
+                                                    Some(tp_proof.clone())
 } else {
-                                            None
+                                                    None
+}
+}
 }
 }
 }

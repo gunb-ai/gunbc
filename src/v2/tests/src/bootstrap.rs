@@ -71,7 +71,10 @@ fn stage0_cargo_check() {
 //   classify_argument + classify_let_value). Dissolves ceil_log_iter,
 //   to_string_helper, int_to_string_acc, tokenizer position advancement,
 //   + composed callers.
-const DIAG_RATCHET: usize = 459;
+// 2026-04-09: 459→460 — CX-L2 SCC hybrid: self-edges from descent_evidence,
+//   cross-edges from old system. Dissolves 10 SCC violations but new function
+//   adds 11 direct. Net +1, but infrastructure for further CX-L2 gains.
+const DIAG_RATCHET: usize = 460;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

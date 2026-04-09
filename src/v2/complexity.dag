@@ -3582,8 +3582,66 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
   }
 }
 
+// CX-L2 hybrid: self-edges from descent_evidence annotations, cross-edges from old system.
+// This uses the richer CX-L2 classification for self-calls (accessor let-bindings,
+// collection+lambda, arithmetic) while keeping the existing cross-call infrastructure.
+fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: NewlineIndex?) -> List<ProofEdge> {
+  let measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
+  members |> flat_map(name =>
+    match map_get(func_index, name) {
+      Some { value: entry } =>
+        // Self-edge: read CX-L2 descent_evidence from annotated self-calls
+        let self_evidence = collect_self_call_evidence(body: entry.body, fn_name: name)
+        let self_has_calls = self_evidence |> count > 0
+        let self_all_structural = self_has_calls && self_evidence |> all(call_ev =>
+          call_ev |> any(rel =>
+            match rel {
+              StrictSubValue { field: _, factor: _ } => true
+              IteratedSubValue { field: _ } => true
+              _ => false
+            }
+          )
+        )
+        let self_edge = if self_has_calls {
+          if self_all_structural {
+            [ProofEdge { caller: name, callee: name, evidence: [Strict] }]
+          } else {
+            [ProofEdge { caller: name, callee: name, evidence: [DescentUnknown] }]
+          }
+        } else { [] }
+        // Cross-edges: use existing old system (collect_descent_vars + collect_scc_child_edges)
+        let cross_edge_map = entry.params |> fold(init: empty_map(), f: (best, p) =>
+          let pname = param_node_name_at(n: p, source_index: si)
+          let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false, si: si)
+          let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: true, check_list: false, scc_measure_params: measure_params, si: si)
+            |> filter(pe => pe.callee != name)  // exclude self-calls (handled by CX-L2 above)
+          let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
+          pick_best_param_edges(current: best, candidate: param_map)
+        )
+        let cross_edges = map_keys(cross_edge_map) |> map(callee =>
+          let ev = match map_get(cross_edge_map, callee) { Some { value: e } => e  None => DescentUnknown }
+          ProofEdge { caller: name, callee: callee, evidence: [ev] }
+        )
+        concat(self_edge, cross_edges)
+      None => []
+    }
+  )
+}
+
 fn construct_scc_termination_proof(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: NewlineIndex?) -> TerminationProof? {
-  // Try single dimensions first
+  // CX-L2 hybrid: self-edges from descent_evidence, cross-edges from old system
+  let cx_l2_edges = collect_scc_cx_l2_tree_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
+  let cx_l2_all_known = cx_l2_edges |> all(e =>
+    match e.evidence |> first {
+      Some { value: DescentUnknown } => false
+      _ => true
+    }
+  )
+  let cx_l2_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }] }
+  if cx_l2_all_known && (cx_l2_edges |> count) > 0 && proof_has_non_descending_cycle(proof: cx_l2_proof, members: members, edges: cx_l2_edges) == false {
+    Some { value: cx_l2_proof }
+  } else {
+  // Fall through to existing proof constructors
   let tree_edges = collect_scc_proof_edges_for_dim(members: members, func_index: func_index, scc_name_set: scc_name_set, check_child: true, check_list: false, si: si)
   let tree_all_known = tree_edges |> all(e =>
     match e.evidence |> first {
@@ -3650,6 +3708,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
         }
       }
     }
+  }
   }
 }
 
