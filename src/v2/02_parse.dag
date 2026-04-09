@@ -22,16 +22,16 @@ import v2.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, is_container_type,
   Cardinality, Required, CardOptional,
   make_param_node, param_node_name, param_node_type_expr, param_node_default_value,
-  make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
-  make_variant_node, variant_node_name, variant_node_fields, leaf_node_with_span,
+  make_field_node, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
+  make_variant_node, variant_node_name, variant_node_name_at, variant_node_fields, leaf_node_with_span,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_named_expr_node, make_expr_error_node,
-  expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name,
-  make_arg_node, arg_name, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node,
+  expr_var_name, expr_var_name_at, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name,
+  make_arg_node, arg_name, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node,
   MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern,
   Bind, LitPattern, VariantPattern, Wildcard,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -809,7 +809,7 @@ fn parser_result_base_var(expr: Node) -> String? {
       match expr.children |> first {
         Some { value: base } =>
           match base.expr_data {
-            ExprVar { binding_kind: _ } => Some { value: expr_var_name(texpr: base) }
+            ExprVar { binding_kind: _ } => Some { value: expr_var_name_at(texpr: base, source_index: none) }
             _ => none
           }
         None => none
@@ -825,7 +825,7 @@ fn parser_helper_state_arg_expr(call_node: Node) -> Node? {
     } else {
       let idx = pair.first
       let arg_node = pair.second
-      let matches_state = match arg_name(n: arg_node) {
+      let matches_state = match arg_name_at(n: arg_node, source_index: none) {
         Some { value: name } => name == "state"
         None => idx == 1
       }
@@ -841,7 +841,7 @@ fn parser_helper_state_arg_expr(call_node: Node) -> Node? {
 fn parser_progress_flag_var(expr: Node) -> String? {
   match expr.expr_data {
     ExprFieldAccess =>
-      let field = field_access_field(texpr: expr)
+      let field = field_access_field_at(texpr: expr, source_index: none)
       if field == "consumed" || field == "changed" {
         parser_result_base_var(expr: expr)
       } else {
@@ -866,7 +866,7 @@ fn parser_helper_identity(callee: String) -> ParserHelperIdentity? {
 fn parser_passthrough_state_expr(expr: Node) -> Node? {
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
-      match parser_helper_identity(callee: expr_call_func(texpr: expr)) {
+      match parser_helper_identity(callee: expr_call_func_at(texpr: expr, source_index: none)) {
         Some { value: ParserHelperSkipNewlines } =>
           parser_helper_state_arg_expr(call_node: expr)
         Some { value: ParserHelperSkipContinuationNewlines } =>
@@ -885,7 +885,7 @@ fn parser_passthrough_state_expr(expr: Node) -> Node? {
 fn parser_result_witness(expr: Node) -> ParserResultWitness {
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
-      match expr_call_func(texpr: expr) {
+      match expr_call_func_at(texpr: expr, source_index: none) {
         "advance" => ParserWitnessAdvance
         "expect" => ParserWitnessExpect
         "eat" => ParserWitnessEat
@@ -1242,7 +1242,7 @@ fn field_to_child_node(field: Node) -> Node {
     Some { value: key } => [make_field_init_node(name: "from_key", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: key } }, children: [], inferred: none, span: field.span), span: field.span, name_span: no_span())]
     None => []
   }
-  Node { name: field_node_name(n: field), span: field.span, ident_span: field.ident_span,
+  Node { name: field_node_name_at(n: field, source_index: none), span: field.span, ident_span: field.ident_span,
     children: [], connective: NoConnective,
     params: [], inferred: Some { value: Resolved { node: ret_type } }, return_cardinality: field_node_cardinality(n: field),
     uses: [], body: field_node_default_value(n: field),
@@ -1253,7 +1253,7 @@ fn field_to_child_node(field: Node) -> Node {
 fn variant_to_child_node(variant: Node) -> Node {
   let fields = variant_node_fields(n: variant)
   let children = fields |> map(f => field_to_child_node(field: f))
-  Node { name: variant_node_name(n: variant), span: variant.span, ident_span: variant.ident_span,
+  Node { name: variant_node_name_at(n: variant, source_index: none), span: variant.span, ident_span: variant.ident_span,
     children: children,
     connective: if fields |> count > 0 { Conj } else { NoConnective },
     params: [], inferred: none, return_cardinality: Required,
@@ -1287,7 +1287,7 @@ fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>
   Node { name: name, span: span, ident_span: ident_span,
     children: [],
     params: inputs |> map(f => make_param_node(
-      name: field_node_name(n: f), type_expr: field_node_type_expr(n: f),
+      name: field_node_name_at(n: f, source_index: none), type_expr: field_node_type_expr(n: f),
       default_value: field_node_default_value(n: f), span: f.span, name_span: node_name_span(n: f)
     )),
     inferred: outputs_to_inferred(outputs: outputs, span: span), return_cardinality: Required,
@@ -1301,7 +1301,7 @@ fn make_capability_node(name: String, ident_span: SourceSpan?, inputs: List<Node
   Node { name: name, span: span, ident_span: ident_span,
     children: [],
     params: inputs |> map(f => make_param_node(
-      name: field_node_name(n: f), type_expr: field_node_type_expr(n: f),
+      name: field_node_name_at(n: f, source_index: none), type_expr: field_node_type_expr(n: f),
       default_value: field_node_default_value(n: f), span: f.span, name_span: node_name_span(n: f)
     )),
     inferred: outputs_to_inferred(outputs: outputs, span: span), return_cardinality: Required,
@@ -2708,7 +2708,7 @@ fn status_expr_to_str(expr: Node) -> String {
       LitStr { value: s } => s
       _ => "_"
     }
-    ExprVar { binding_kind: _ } => expr_var_name(texpr: expr)
+    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: expr, source_index: none)
     _ => "_"
   }
 }
@@ -3676,7 +3676,7 @@ fn parse_pipe_rhs(tokens: List<Token>, state: ParserState, receiver: Node, span:
   if peek_is_lparen(tokens: tokens, state: s) {
     let r2 = parse_call_args(tokens: tokens, state: s)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name(n: na), value: arg_value(n: na), span: span))), inferred: none, span: span), state: r2.state, err: none }
+    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_index: none), value: arg_value(n: na), span: span))), inferred: none, span: span), state: r2.state, err: none }
   } else {
     ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: [receiver], inferred: none, span: span), state: s, err: none }
   }
@@ -3896,7 +3896,7 @@ fn try_postfix(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: Int) 
     Some { value: ShLBrace } => {
       match lhs.expr_data {
         ExprVar { binding_kind: _ } => {
-          let n = expr_var_name(texpr: lhs)
+          let n = expr_var_name_at(texpr: lhs, source_index: none)
           if is_uppercase_start(name: n) && 14 <= min_bp {
             PostfixResult { expr: lhs, changed: false, state: state, err: none }
           } else {
@@ -3988,8 +3988,8 @@ fn make_call_expr(lhs: Node, args: List<Node>, span: SourceSpan) -> Node {
   // Use lhs.span so ident_span points to the function/method name,
   // not the opening paren. Required for authored_name_at recovery.
   match lhs.expr_data {
-    ExprVar { binding_kind: _ } => make_named_expr_node(name: expr_var_name(texpr: lhs), expr_data: ExprCall { call_semantics: none }, children: args, inferred: none, span: lhs.span)
-    ExprFieldAccess { summary: _ } => make_named_expr_node(name: field_access_field(texpr: lhs), expr_data: ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span)
+    ExprVar { binding_kind: _ } => make_named_expr_node(name: expr_var_name_at(texpr: lhs, source_index: none), expr_data: ExprCall { call_semantics: none }, children: args, inferred: none, span: lhs.span)
+    ExprFieldAccess { summary: _ } => make_named_expr_node(name: field_access_field_at(texpr: lhs, source_index: none), expr_data: ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span)
     _ => make_named_expr_node(name: "<expr>", expr_data: ExprCall { call_semantics: none }, children: args, inferred: none, span: lhs.span)
   }
 }

@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, Connective, ExprData, Cardinality, InferredNode, no_span, unit_type, expr_var_name, expr_call_func, field_access_field, field_access_base, method_receiver, param_node_type_expr};
+pub use crate::v2_std_core::{Node, Connective, ExprData, Cardinality, InferredNode, no_span, unit_type, expr_var_name, expr_var_name_at, expr_call_func, expr_call_func_at, field_access_field, field_access_field_at, field_access_base, method_receiver, param_node_type_expr};
 use crate::v2_std_core::Connective::{Conj, NoConnective};
 use crate::v2_std_core::ExprData::{NoExprData, ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar};
 use crate::v2_std_core::Cardinality::{Required};
@@ -78,7 +78,7 @@ pub struct ServiceMethodResult {
 pub fn is_typed_service_call_receiver(receiver: Rc<Node>) -> bool {
     match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
-        let f = field_access_field(receiver.clone());
+        let f = field_access_field_at(receiver.clone(), None);
 let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => match Rc::new(f.chars().map(|c| c as i64).collect::<Vec<_>>()).first().cloned() {
@@ -95,11 +95,11 @@ match (*b.expr_data.clone()).clone() {
 pub fn extract_typed_service_name(receiver: Rc<Node>) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
-        let f = field_access_field(receiver.clone());
+        let f = field_access_field_at(receiver.clone(), None);
 let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-            let ns = expr_var_name(b.clone());
+            let ns = expr_var_name_at(b.clone(), None);
 Some(v2_rt::concat(v2_rt::concat(ns, ".".to_string()), f))
 },
     _ => None,
@@ -154,7 +154,7 @@ pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> 
         {
             let this_acc = match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-                let f = expr_call_func(texpr.clone());
+                let f = expr_call_func_at(texpr.clone(), None);
 if emit_map_has(acc.seen.clone(), f.clone()) {
                     acc.clone()
 } else {

@@ -20,7 +20,7 @@ module v2.compiler.emit
 import v2.std.core {
   Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
-  param_node_name, param_node_type_expr, param_node_default_value,
+  param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value,
   NewlineIndex,
   expr_var_name_at, expr_call_func_at, let_binding_name_at,
   ExprData, NoExprData,
@@ -37,8 +37,8 @@ import v2.std.core {
   DeclaredFuncSig,
   lambda_param_names_at, record_lit_type_name,
   arm_body, arm_pattern, arm_guard,
-  arg_name, arg_value,
-  field_init_node_name, field_init_node_value,
+  arg_name, arg_name_at, arg_value,
+  field_init_node_name, field_init_node_name_at, field_init_node_value,
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
@@ -351,7 +351,7 @@ fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig?
 }
 
 fn typed_named_arg_matches(arg: Node, name: String) -> Bool {
-  let n = arg_name(n: arg)
+  let n = arg_name_at(n: arg, source_index: none)
   if n == none {
     false
   } else {
@@ -465,7 +465,7 @@ fn emit_data_value_json(value: Node, source_index: NewlineIndex?) -> String {
     }
     ExprRecordLit { parent_enum: _ } => {
       let field_strs = value.children |> map(f =>
-        concat("\"", escape_json_string(s: field_init_node_name(n: f)), "\": ", emit_data_value_json(value: field_init_node_value(n: f), source_index: source_index))
+        concat("\"", escape_json_string(s: field_init_node_name_at(n: f, source_index: none)), "\": ", emit_data_value_json(value: field_init_node_value(n: f), source_index: source_index))
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }

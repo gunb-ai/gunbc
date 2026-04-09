@@ -662,6 +662,7 @@ fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, defa
 }
 
 fn field_node_name(n: Node) -> String { n.name }
+fn field_node_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 
 fn field_node_type_expr(n: Node) -> Node {
   match n.children |> first {
@@ -700,6 +701,7 @@ fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan, name_sp
 }
 
 fn variant_node_name(n: Node) -> String { n.name }
+fn variant_node_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 fn variant_node_fields(n: Node) -> List<Node> { n.children }
 fn variant_node_span(n: Node) -> SourceSpan { n.span }
 

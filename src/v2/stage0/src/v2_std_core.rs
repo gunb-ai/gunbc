@@ -996,6 +996,10 @@ pub fn field_node_name(n: Rc<Node>) -> String {
     n.name.clone()
 }
 
+pub fn field_node_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    authored_name_at(source_index, n)
+}
+
 pub fn field_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
     Some(v) => v.clone(),
@@ -1050,6 +1054,10 @@ pub fn make_variant_node(name: String, fields: Rc<Vec<Rc<Node>>>, span: Rc<Sourc
 
 pub fn variant_node_name(n: Rc<Node>) -> String {
     n.name.clone()
+}
+
+pub fn variant_node_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    authored_name_at(source_index, n)
 }
 
 pub fn variant_node_fields(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
