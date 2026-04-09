@@ -4882,6 +4882,42 @@ service test.Api {
     );
 }
 
+// ── RE-3a: auth_source credential acquisition ──────────────────────────
+#[test]
+fn service_auth_source_reads_env_var() {
+    let source = r#"module re3a
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+    auth: Bearer
+    auth_source: EnvVar("TEST_API_TOKEN")
+  }
+  operation GetData {
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => "ok" "data"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3a.rs");
+    assert!(
+        content.contains("env::var(\"TEST_API_TOKEN\")"),
+        "RE-3a: expected env var read in constructor, got:\n{content}"
+    );
+    assert!(
+        content.contains("self.auth_token"),
+        "RE-3a: expected self.auth_token in auth header, got:\n{content}"
+    );
+}
+
 // ── RE-2: review.dag compiles to Rust ───────────────────────────────────
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
 // This is the acceptance gate for RE-2.

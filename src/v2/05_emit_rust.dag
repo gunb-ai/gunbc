@@ -45,7 +45,7 @@ import v2.std.core {
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
   transport_method, transport_path_template, transport_query, transport_stdin,
-  service_config_auth, service_config_auth_input,
+  service_config_auth, service_config_auth_input, service_config_auth_source,
   expr_has_self_call, expr_has_non_tail_self_call,
   field_access_base, field_access_field, foreach_variable, foreach_variable_at,
   expr_var_name, expr_var_name_at, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at,
@@ -3789,20 +3789,24 @@ fn emit_service_def(
   let safe_name = sanitize_service_name(name: item.name)
   let fallback_transport = service_fallback_transport(item: item)
   let op_children = item.children
-  let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children)
+  let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children, service_item: item)
   let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, shared_types: shared_types, env: env, service_item: item)
   concat(struct_def, "\n\n", impl_block)
 }
 
-fn emit_service_struct(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
+fn emit_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, service_item: Node) -> String {
   let derives = "#[derive(Debug, Clone)]"
-  let config_fields = emit_service_config_fields(fallback_transport: fallback_transport, op_children: op_children)
+  let config_fields = emit_service_config_fields(fallback_transport: fallback_transport, op_children: op_children, service_item: service_item)
   let dry_run_field = "\n    pub dry_run: crate::dry_run::DryRunMode,"
   concat(derives, "\npub struct ", name, " {\n", config_fields, dry_run_field, "\n}")
 }
 
-fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>) -> String {
+fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>, service_item: Node) -> String {
   let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+  // Service-level auth_source also requires the auth_token field
+  let has_svc_auth = match service_config_auth_source(n: service_item) { Some { value: _ } => true  None => false }
+  let fs = if has_svc_auth { ServiceFieldSet { has_rest: fs.has_rest, has_shell: fs.has_shell, has_file: fs.has_file, has_auth: true } }
+  else { fs }
   let decls = service_field_decls(fs: fs, t: language_spec(target: Rust).service_fields)
   if decls |> count == 0 { "    // No configuration needed for local binding.\n" }
   else { decls |> join(separator: "") }
@@ -3810,7 +3814,7 @@ fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>)
 
 fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, shared_types: Map<String, Bool>, env: TypeEnv, service_item: Node) -> String {
   let depth = 0
-  let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children)
+  let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children, service_item: service_item)
   let method_strs = op_children |> map(op_node =>
     emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, shared_types: shared_types, env: env, service_item: service_item)
   )
@@ -3821,8 +3825,13 @@ fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, reg
 
 // Emit a `new` constructor for a service struct that accepts DryRunMode.
 // Scans all operations to determine which transport fields to initialize.
-fn emit_service_new_method(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
+// When auth_source is present, emits credential acquisition (e.g., env var read)
+// instead of the default empty auth_token.
+fn emit_service_new_method(name: String, fallback_transport: Node, op_children: List<Node>, service_item: Node) -> String {
   let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+  let has_svc_auth = match service_config_auth_source(n: service_item) { Some { value: _ } => true  None => false }
+  let fs = if has_svc_auth { ServiceFieldSet { has_rest: fs.has_rest, has_shell: fs.has_shell, has_file: fs.has_file, has_auth: true } }
+  else { fs }
   // Find a default base_url from the service-level REST transport or from any REST op
   let base_url_default = if fs.has_rest {
     let fallback_is_rest = is_rest_transport(t: fallback_transport)
@@ -3839,6 +3848,14 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
   } else { "" }
   let ctors = service_field_ctors(fs: fs, t: language_spec(target: Rust).service_fields)
   let ctors = ctors |> map(c => apply_type_template1(template: c, arg0: base_url_default))
+  // Override auth_token initialization when auth_source is declared
+  let ctors = match service_config_auth_source(n: service_item) {
+    Some { value: src } => ctors |> map(c =>
+      if contains(c, "auth_token") { emit_auth_source_ctor(source_expr: src) }
+      else { c }
+    )
+    None => ctors
+  }
   let inits = ctors |> join(separator: "")
   concat(
     "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
@@ -3847,6 +3864,28 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
     "        dry_run,\n",
     "    }\n",
     "}")
+}
+
+// Emit auth_token constructor line from a CredentialSource expression.
+// Dispatches on expression shape: ExprCall("EnvVar", "TOKEN_NAME") → env var read.
+fn emit_auth_source_ctor(source_expr: Node) -> String {
+  match source_expr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let func_name = expr_call_func(texpr: source_expr)
+      if func_name == "EnvVar" {
+        match source_expr.children |> first {
+          Some { value: arg } => match arg_value(n: arg).expr_data {
+            ExprLiteral { value: LitStr { value: env_name } } =>
+              concat("        auth_token: std::env::var(\"", env_name, "\").unwrap_or_default(),\n")
+            _ => "        auth_token: compile_error!(\"EnvVar auth_source requires a string literal\"),\n"
+          }
+          None => "        auth_token: compile_error!(\"EnvVar auth_source requires an argument\"),\n"
+        }
+      } else {
+        concat("        auth_token: compile_error!(\"unsupported auth_source: ", func_name, "\"),\n")
+      }
+    _ => "        auth_token: compile_error!(\"auth_source must be a CredentialSource variant\"),\n"
+  }
 }
 
 // Extract modifier names from properties.
@@ -4012,10 +4051,15 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
   // Use service-level auth scheme if available
   match auth_scheme {
     Some { value: auth } => {
-      // Emit the auth input parameter as an expression (structural, not name extraction)
-      let token_param = match auth_input {
-        Some { value: ai } => emit_simple_expr(expr: ai, target: Rust, source_index: source_index)
-        None => "compile_error!(\"service config has auth but no auth_input\")"
+      // When auth_source is declared, the credential lives in self.auth_token
+      // (acquired at construction time). Otherwise, use auth_input expression.
+      let has_auth_source = match service_config_auth_source(n: service_item) { Some { value: _ } => true  None => false }
+      let token_param = if has_auth_source { "self.auth_token" }
+      else {
+        match auth_input {
+          Some { value: ai } => emit_simple_expr(expr: ai, target: Rust, source_index: source_index)
+          None => "compile_error!(\"service config has auth but no auth_input or auth_source\")"
+        }
       }
       // Structural dispatch on ExprData shape:
       // ExprVar = unit variant (Bearer, ApiKey) → bearer token auth

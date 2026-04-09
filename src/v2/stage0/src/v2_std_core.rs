@@ -1802,7 +1802,7 @@ let last_bad = match ss.clone().last().cloned() {
     })
 }
 
-pub fn service_config_properties(endpoint: Rc<Node>, auth: Option<Rc<Node>>, auth_input: Option<Rc<Node>>, rate_limit: Option<Rc<Node>>, retry: Option<Rc<Node>>) -> Rc<Vec<Rc<Node>>> {
+pub fn service_config_properties(endpoint: Rc<Node>, auth: Option<Rc<Node>>, auth_input: Option<Rc<Node>>, auth_source: Option<Rc<Node>>, rate_limit: Option<Rc<Node>>, retry: Option<Rc<Node>>) -> Rc<Vec<Rc<Node>>> {
     {
         let zero_span = make_span(0, 0);
 let ep_prop = Rc::new(vec![make_field_init_node("svc_endpoint".to_string(), endpoint, zero_span.clone(), zero_span.clone())]);
@@ -1814,6 +1814,10 @@ let auth_input_prop = match auth_input {
     Some(ai) => Rc::new(vec![make_field_init_node("svc_auth_input".to_string(), ai.clone(), zero_span.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
+let auth_source_prop = match auth_source {
+    Some(src) => Rc::new(vec![make_field_init_node("svc_auth_source".to_string(), src.clone(), zero_span.clone(), zero_span.clone())]),
+    None => Rc::new(vec![]),
+};
 let rate_prop = match rate_limit {
     Some(r) => Rc::new(vec![make_field_init_node("svc_rate_limit".to_string(), r.clone(), zero_span.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
@@ -1822,7 +1826,7 @@ let retry_prop = match retry {
     Some(r) => Rc::new(vec![make_field_init_node("svc_retry".to_string(), r.clone(), zero_span.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop, auth_prop), auth_input_prop), rate_prop), retry_prop)
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop, auth_prop), auth_input_prop), auth_source_prop), rate_prop), retry_prop)
 }
 }
 
@@ -1848,6 +1852,10 @@ pub fn service_config_retry(n: Rc<Node>) -> Option<Rc<Node>> {
 
 pub fn service_config_auth_input(n: Rc<Node>) -> Option<Rc<Node>> {
     find_property(n.properties.clone(), "svc_auth_input".to_string())
+}
+
+pub fn service_config_auth_source(n: Rc<Node>) -> Option<Rc<Node>> {
+    find_property(n.properties.clone(), "svc_auth_source".to_string())
 }
 
 pub fn module_node(name: String, imports: Rc<Vec<Rc<Node>>>, items: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {

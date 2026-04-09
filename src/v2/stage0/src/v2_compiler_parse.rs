@@ -203,6 +203,7 @@ pub struct ServiceConfig {
     pub endpoint: Rc<Node>,
     pub auth: Option<Rc<Node>>,
     pub auth_input: Option<Rc<Node>>,
+    pub auth_source: Option<Rc<Node>>,
     pub rate_limit: Option<Rc<Node>>,
     pub retry: Option<Rc<Node>>,
 }
@@ -4801,7 +4802,7 @@ let ns_prop = make_field_init_node("namespace_root".to_string(), make_expr_node(
 }),
 }), Rc::new(vec![]), None, start_span.clone()), start_span.clone(), no_span());
 let svc_props = match r.config.clone() {
-    Some(cfg) => service_config_properties(cfg.endpoint.clone(), cfg.auth.clone(), cfg.auth_input.clone(), cfg.rate_limit.clone(), cfg.retry.clone()),
+    Some(cfg) => service_config_properties(cfg.endpoint.clone(), cfg.auth.clone(), cfg.auth_input.clone(), cfg.auth_source.clone(), cfg.rate_limit.clone(), cfg.retry.clone()),
     None => Rc::new(vec![]),
 };
 let item = Rc::new(Node {
@@ -4983,10 +4984,10 @@ continue;
 }
 
 pub fn parse_service_config_block(tokens: Rc<Vec<Rc<Token>>>, state: ParserState) -> Rc<ConfigResult> {
-    parse_config_fields(tokens, state, None, None, None, None, None)
+    parse_config_fields(tokens, state, None, None, None, None, None, None)
 }
 
-pub fn parse_config_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut endpoint: Option<Rc<Node>>, mut auth: Option<Rc<Node>>, mut auth_input: Option<Rc<Node>>, mut rate_limit: Option<Rc<Node>>, mut retry: Option<Rc<Node>>) -> Rc<ConfigResult> {
+pub fn parse_config_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: ParserState, mut endpoint: Option<Rc<Node>>, mut auth: Option<Rc<Node>>, mut auth_input: Option<Rc<Node>>, mut auth_source: Option<Rc<Node>>, mut rate_limit: Option<Rc<Node>>, mut retry: Option<Rc<Node>>) -> Rc<ConfigResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
@@ -5001,6 +5002,7 @@ if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone(
 },
     auth: auth.clone(),
     auth_input: auth_input.clone(),
+    auth_source: auth_source.clone(),
     rate_limit: rate_limit.clone(),
     retry: retry.clone(),
 });
@@ -5018,6 +5020,7 @@ break Rc::new(ConfigResult {
 }), Rc::new(vec![]), None, make_span(0, 0)),
     auth: None,
     auth_input: None,
+    auth_source: None,
     rate_limit: None,
     retry: None,
 });
@@ -5060,15 +5063,17 @@ let __tco_1 = s3.clone();
 let __tco_2 = Some(r3.expr.clone());
 let __tco_3 = auth;
 let __tco_4 = auth_input;
-let __tco_5 = rate_limit;
-let __tco_6 = retry;
+let __tco_5 = auth_source;
+let __tco_6 = rate_limit;
+let __tco_7 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
 auth_input = __tco_4;
-rate_limit = __tco_5;
-retry = __tco_6;
+auth_source = __tco_5;
+rate_limit = __tco_6;
+retry = __tco_7;
 continue;
 } },
     "auth" => { {
@@ -5077,15 +5082,17 @@ let __tco_1 = s3.clone();
 let __tco_2 = endpoint;
 let __tco_3 = Some(r3.expr.clone());
 let __tco_4 = auth_input;
-let __tco_5 = rate_limit;
-let __tco_6 = retry;
+let __tco_5 = auth_source;
+let __tco_6 = rate_limit;
+let __tco_7 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
 auth_input = __tco_4;
-rate_limit = __tco_5;
-retry = __tco_6;
+auth_source = __tco_5;
+rate_limit = __tco_6;
+retry = __tco_7;
 continue;
 } },
     "auth_input" => { {
@@ -5094,15 +5101,36 @@ let __tco_1 = s3.clone();
 let __tco_2 = endpoint;
 let __tco_3 = auth;
 let __tco_4 = Some(r3.expr.clone());
-let __tco_5 = rate_limit;
-let __tco_6 = retry;
+let __tco_5 = auth_source;
+let __tco_6 = rate_limit;
+let __tco_7 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
 auth_input = __tco_4;
-rate_limit = __tco_5;
-retry = __tco_6;
+auth_source = __tco_5;
+rate_limit = __tco_6;
+retry = __tco_7;
+continue;
+} },
+    "auth_source" => { {
+                let __tco_0 = tokens;
+let __tco_1 = s3.clone();
+let __tco_2 = endpoint;
+let __tco_3 = auth;
+let __tco_4 = auth_input;
+let __tco_5 = Some(r3.expr.clone());
+let __tco_6 = rate_limit;
+let __tco_7 = retry;
+tokens = __tco_0;
+state = __tco_1;
+endpoint = __tco_2;
+auth = __tco_3;
+auth_input = __tco_4;
+auth_source = __tco_5;
+rate_limit = __tco_6;
+retry = __tco_7;
 continue;
 } },
     "rate_limit" => { {
@@ -5111,15 +5139,17 @@ let __tco_1 = s3.clone();
 let __tco_2 = endpoint;
 let __tco_3 = auth;
 let __tco_4 = auth_input;
-let __tco_5 = Some(r3.expr.clone());
-let __tco_6 = retry;
+let __tco_5 = auth_source;
+let __tco_6 = Some(r3.expr.clone());
+let __tco_7 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
 auth_input = __tco_4;
-rate_limit = __tco_5;
-retry = __tco_6;
+auth_source = __tco_5;
+rate_limit = __tco_6;
+retry = __tco_7;
 continue;
 } },
     "retry" => { {
@@ -5128,15 +5158,17 @@ let __tco_1 = s3.clone();
 let __tco_2 = endpoint;
 let __tco_3 = auth;
 let __tco_4 = auth_input;
-let __tco_5 = rate_limit;
-let __tco_6 = Some(r3.expr.clone());
+let __tco_5 = auth_source;
+let __tco_6 = rate_limit;
+let __tco_7 = Some(r3.expr.clone());
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
 auth_input = __tco_4;
-rate_limit = __tco_5;
-retry = __tco_6;
+auth_source = __tco_5;
+rate_limit = __tco_6;
+retry = __tco_7;
 continue;
 } },
     _ => { {
@@ -5145,15 +5177,17 @@ let __tco_1 = s3.clone();
 let __tco_2 = endpoint;
 let __tco_3 = auth;
 let __tco_4 = auth_input;
-let __tco_5 = rate_limit;
-let __tco_6 = retry;
+let __tco_5 = auth_source;
+let __tco_6 = rate_limit;
+let __tco_7 = retry;
 tokens = __tco_0;
 state = __tco_1;
 endpoint = __tco_2;
 auth = __tco_3;
 auth_input = __tco_4;
-rate_limit = __tco_5;
-retry = __tco_6;
+auth_source = __tco_5;
+rate_limit = __tco_6;
+retry = __tco_7;
 continue;
 } },
 }
