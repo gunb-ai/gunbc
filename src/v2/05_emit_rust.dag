@@ -280,7 +280,13 @@ fn emit_rust_init_block_stmts(remaining: List<Node>, text: List<String>,
       match rest |> first {
         None => BlockEmitState { text: text, scope: scope }
         Some { value: _ } =>
-          let line = emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          let raw_line = emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          // Bare expressions in blocks need semicolons; let bindings already include them
+          let is_let = match stmt.expr_data {
+            ExprLet => true
+            _ => false
+          }
+          let line = if is_let { raw_line } else { concat(raw_line, ";") }
           let next_scope = scope_after_expr(texpr: stmt, scope: scope)
           emit_rust_init_block_stmts(remaining: rest,
             text: list_push(text, line), scope: next_scope,

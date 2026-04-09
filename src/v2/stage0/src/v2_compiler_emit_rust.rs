@@ -209,7 +209,16 @@ match rest.clone().first().cloned() {
     text: text.clone(),
     scope: scope.clone(),
 }); },
-    Some(_) => { let line = emit_typed_expr(stmt.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
+    Some(_) => { let raw_line = emit_typed_expr(stmt.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
+let is_let = match (*stmt.expr_data.clone()).clone() {
+    ExprData::ExprLet => true,
+    _ => false,
+};
+let line = if is_let.clone() {
+            raw_line.clone()
+} else {
+            v2_rt::concat(raw_line.clone(), ";".to_string())
+};
 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
 {
             let __tco_0 = rest.clone();
