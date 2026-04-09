@@ -262,7 +262,7 @@ fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String, 
 fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node, source_index: NewlineIndex?) -> Bool {
   variants |> all(variant =>
     match find_child_named(n: variant, name: field_name, source_index: source_index) {
-      Some { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected)
+      Some { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected, source_index: source_index)
       None => false
     }
   )

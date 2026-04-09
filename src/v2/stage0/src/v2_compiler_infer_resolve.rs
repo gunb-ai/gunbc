@@ -1517,14 +1517,14 @@ Rc::new(ExprResolveResult {
     })
 }
 
-pub fn fn_type_param_names(item: Rc<Node>) -> Rc<Vec<String>> {
-    Rc::new({ let mut __result = Vec::new(); for p in Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { if (param_node_name_at(p.clone(), None).as_str() == param_node_type_expr(p.clone()).name.clone().as_str()) { __result.push(p); } } __result }).iter().cloned() { __result.push(param_node_name_at(p.clone(), None)); } __result })
+pub fn fn_type_param_names(item: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
+    Rc::new({ let mut __result = Vec::new(); for p in Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { if (param_node_name_at(p.clone(), source_index.clone()).as_str() == param_node_type_expr(p.clone()).name.clone().as_str()) { __result.push(p); } } __result }).iter().cloned() { __result.push(param_node_name_at(p.clone(), source_index.clone())); } __result })
 }
 
 pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<ItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
-            let tp_names = fn_type_param_names(item.clone());
+            let tp_names = fn_type_param_names(item.clone(), env.source_index.clone());
 let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| { let e = Rc::try_unwrap(e).unwrap_or_else(|rc| (*rc).clone()); Rc::new(TypeEnv {
     bindings: v2_rt::rc_map_insert(e.bindings, tp_name.clone(), Rc::new(TypeBinding {
     name: tp_name.clone(),

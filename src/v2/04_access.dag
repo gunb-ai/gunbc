@@ -81,8 +81,8 @@ fn keyed_collection_parts(n: Node) -> KeyedCollectionParts? {
 fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
   let normed = normalize_access_type_node(n: base_type)
   let normed_index = normalize_access_type_node(n: index_type)
-  let base_is_string = node_type_equals(left: normed, right: string_type)
-  let index_is_int = node_type_equals(left: normed_index, right: int_type)
+  let base_is_string = node_type_equals(left: normed, right: string_type, source_index: none)
+  let index_is_int = node_type_equals(left: normed_index, right: int_type, source_index: none)
   if base_is_string {
     let diags = if index_is_int { [] }
     else { [access_error(message: "string index requires an Int index", span: span, module_name: module_name)] }
@@ -90,7 +90,7 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
   } else {
     match keyed_collection_parts(n: normed) {
       Some { value: parts } =>
-        let key_diags = if node_type_equals(left: parts.key_type, right: normed_index) { [] }
+        let key_diags = if node_type_equals(left: parts.key_type, right: normed_index, source_index: none) { [] }
         else { [access_error(message: "keyed collection index key type does not match the collection key type", span: span, module_name: module_name)] }
         access_result(inferred: with_optional_cardinality(n: parts.value_type), diagnostics: key_diags, span: span, fallback_message: "invalid keyed collection index access")
       None =>
@@ -110,14 +110,14 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
 
 fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
   let normed_base = normalize_access_type_node(n: base_type)
-  let base_is_string = node_type_equals(left: normed_base, right: string_type)
+  let base_is_string = node_type_equals(left: normed_base, right: string_type, source_index: none)
   let base_diags = if base_is_string { [] }
   else { [access_error(message: "slice is only supported for String values", span: span, module_name: module_name)] }
   let normed_start = normalize_access_type_node(n: start_type)
-  let start_diags = if node_type_equals(left: normed_start, right: int_type) { [] }
+  let start_diags = if node_type_equals(left: normed_start, right: int_type, source_index: none) { [] }
   else { [access_error(message: "slice start requires an Int index", span: span, module_name: module_name)] }
   let normed_end = normalize_access_type_node(n: end_type)
-  let end_diags = if node_type_equals(left: normed_end, right: int_type) { [] }
+  let end_diags = if node_type_equals(left: normed_end, right: int_type, source_index: none) { [] }
   else { [access_error(message: "slice end requires an Int index", span: span, module_name: module_name)] }
   let all_diags = concat(base_diags, start_diags, end_diags)
   access_result(

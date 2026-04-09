@@ -340,7 +340,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               let entries = titem.children |> map(c =>
                 OpEntry { name: c.name, outputs: inferred_to_outputs(inferred: c.inferred, span: c.span), params: c.params }
               )
-              let root = namespace_root_from_properties(properties: titem.properties, name: titem.name)
+              let root = namespace_root_from_properties(properties: titem.properties, name: titem.name, source_index: env.source_index)
               InferScopeComponents {
                 func_sigs: acc.func_sigs,
                 svc_registry: map_insert(acc.svc_registry, titem.name, entries),
@@ -435,8 +435,8 @@ fn resolved_callable_type(func_params: List<Node>, ret: Node) -> Node {
 // The parser stores it as a field-init node with name "namespace_root" and value LitStr(root).
 // Falls back to the full name if the property is absent.
 // Takes properties and name separately so it works for any Node.
-fn namespace_root_from_properties(properties: List<Node>, name: String) -> String {
-  match properties |> filter(p => field_init_node_name_at(n: p, source_index: none) == "namespace_root") |> first {
+fn namespace_root_from_properties(properties: List<Node>, name: String, source_index: NewlineIndex?) -> String {
+  match properties |> filter(p => field_init_node_name_at(n: p, source_index: source_index) == "namespace_root") |> first {
     Some { value: ns_prop } => match field_init_node_value(n: ns_prop).expr_data {
       ExprLiteral { value: LitStr { value: root } } => root
       _ => name
@@ -709,8 +709,8 @@ fn method_name_is(opt: String?, expected: String) -> Bool {
 }
 
 // Check if a named arg has a specific name.
-fn arg_has_name(arg: Node, name: String) -> Bool {
-  let n = arg_name_at(n: arg, source_index: none)
+fn arg_has_name(arg: Node, name: String, source_index: NewlineIndex?) -> Bool {
+  let n = arg_name_at(n: arg, source_index: source_index)
   if n == none { false } else { n.value == name }
 }
 
@@ -720,7 +720,7 @@ fn arg_has_name(arg: Node, name: String) -> Bool {
 fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_args: Int, scope: InferScope, expected: Node?) -> ArgInferResult? {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   if is_fold && method_args |> count >= min_args {
-    let init_arg = match method_args |> filter(a => arg_has_name(arg: a, name: "init")) |> first {
+    let init_arg = match method_args |> filter(a => arg_has_name(arg: a, name: "init", source_index: scope.type_env.source_index)) |> first {
       Some { value: a } => Some { value: a }
       None => method_args |> first
     }
@@ -742,7 +742,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
     let idx = idx_pair.first
-    let is_init_arg = arg_has_name(arg: a, name: "init") || (arg_name(n: a) == none && idx == 0)
+    let is_init_arg = arg_has_name(arg: a, name: "init", source_index: scope.type_env.source_index) || (arg_name(n: a) == none && idx == 0)
     if is_fold && fold_info != none && is_init_arg {
       match fold_info {
         Some { value: fi } => fi
@@ -1406,7 +1406,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let unified_arm_type = match arm_body_types |> first {
         Some { value: first_type } =>
           arm_body_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
-            prefer_specific_type(left: acc, right: t)
+            prefer_specific_type(left: acc, right: t, source_index: scope.type_env.source_index)
           )
         None => scrut_rt
       }
@@ -1518,10 +1518,11 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let else_diags = else_result.diagnostics
           let then_rt = resolved_type(n: then_typed)
           let else_rt = resolved_type(n: else_typed)
-          let unified = prefer_specific_type(left: then_rt, right: else_rt)
+          let unified = prefer_specific_type(left: then_rt, right: else_rt, source_index: scope.type_env.source_index)
           let branch_diags = if node_type_compatible(
             left: then_rt,
-            right: else_rt
+            right: else_rt,
+            source_index: scope.type_env.source_index
           ) {
             []
           } else {
@@ -2499,9 +2500,9 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
 // (resolve_node, resolve_node_bounded, resolve_optional_node, resolve_field,
 //  resolve_param, resolve_expr_types, resolve_item_types, etc.)
 
-fn build_item_info(item: Node) -> ItemInfo {
+fn build_item_info(item: Node, source_index: NewlineIndex?) -> ItemInfo {
   let kind = item_kind(item: item)
-  let res_names = item.uses |> map(u => resource_use_name_at(n: u, source_index: none))
+  let res_names = item.uses |> map(u => resource_use_name_at(n: u, source_index: source_index))
   match kind {
     FuncItem =>
       ItemInfo {
@@ -2564,7 +2565,7 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
     []
   }
   let svc_local = if ritem.transport != none && ritem.children |> count > 0 {
-    let root = namespace_root_from_properties(properties: ritem.properties, name: ritem.name)
+    let root = namespace_root_from_properties(properties: ritem.properties, name: ritem.name, source_index: env.source_index)
     Some { value: nominal_type_binding(name: root) }
   } else {
     none
@@ -2575,7 +2576,7 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
     func_sig: func_sig,
     svc_entries: svc_entries,
     svc_local: svc_local,
-    item_info: build_item_info(item: ritem)
+    item_info: build_item_info(item: ritem, source_index: env.source_index)
   }
 }
 

@@ -890,16 +890,16 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
 // Extract function type parameter names from params. Type params are
 // structurally distinguishable: param_node_name == param_node_type_expr.name
 // (self-referential), while function params have name != type_expr.name.
-fn fn_type_param_names(item: Node) -> List<String> {
+fn fn_type_param_names(item: Node, source_index: NewlineIndex?) -> List<String> {
   item.params |> filter(p =>
-    param_node_name_at(n: p, source_index: none) == param_node_type_expr(n: p).name
-  ) |> map(p => param_node_name_at(n: p, source_index: none))
+    param_node_name_at(n: p, source_index: source_index) == param_node_type_expr(n: p).name
+  ) |> map(p => param_node_name_at(n: p, source_index: source_index))
 }
 
 fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResult {
   // Register function type params (e.g., <T, B>) as TypeVariable bindings
   // so bare references to T/B in params/body don't produce UnresolvedType.
-  let tp_names = fn_type_param_names(item: item)
+  let tp_names = fn_type_param_names(item: item, source_index: env.source_index)
   let env = fold(tp_names, init: env, f: (e, tp_name) =>
     TypeEnv {
       bindings: map_insert(e.bindings, tp_name, TypeBinding {

@@ -117,8 +117,8 @@ pub fn check_index_access_node(base_type: Rc<Node>, index_type: Rc<Node>, span: 
     {
         let normed = normalize_access_type_node(base_type);
 let normed_index = normalize_access_type_node(index_type);
-let base_is_string = node_type_equals(normed.clone(), string_type());
-let index_is_int = node_type_equals(normed_index.clone(), int_type());
+let base_is_string = node_type_equals(normed.clone(), string_type(), None);
+let index_is_int = node_type_equals(normed_index.clone(), int_type(), None);
 if base_is_string {
             {
                 let diags = if index_is_int {
@@ -131,7 +131,7 @@ access_result(string_type(), diags, span.clone(), "invalid string index access".
 } else {
             match keyed_collection_parts(normed.clone()) {
     Some(parts) => {
-                let key_diags = if node_type_equals(parts.key_type.clone(), normed_index.clone()) {
+                let key_diags = if node_type_equals(parts.key_type.clone(), normed_index.clone(), None) {
                     Rc::new(vec![])
 } else {
                     Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name)])
@@ -164,20 +164,20 @@ access_result(unit_type(), diags, span.clone(), "invalid index access".to_string
 pub fn check_slice_access_node(base_type: Rc<Node>, start_type: Rc<Node>, end_type: Rc<Node>, span: Rc<SourceSpan>, module_name: String) -> Rc<AccessCheckResultNode> {
     {
         let normed_base = normalize_access_type_node(base_type);
-let base_is_string = node_type_equals(normed_base, string_type());
+let base_is_string = node_type_equals(normed_base, string_type(), None);
 let base_diags = if base_is_string {
             Rc::new(vec![])
 } else {
             Rc::new(vec![access_error("slice is only supported for String values".to_string(), span.clone(), module_name.clone())])
 };
 let normed_start = normalize_access_type_node(start_type);
-let start_diags = if node_type_equals(normed_start, int_type()) {
+let start_diags = if node_type_equals(normed_start, int_type(), None) {
             Rc::new(vec![])
 } else {
             Rc::new(vec![access_error("slice start requires an Int index".to_string(), span.clone(), module_name.clone())])
 };
 let normed_end = normalize_access_type_node(end_type);
-let end_diags = if node_type_equals(normed_end, int_type()) {
+let end_diags = if node_type_equals(normed_end, int_type(), None) {
             Rc::new(vec![])
 } else {
             Rc::new(vec![access_error("slice end requires an Int index".to_string(), span.clone(), module_name.clone())])

@@ -241,7 +241,7 @@ pub fn enum_field_present_in_all_variants(variants: Rc<Vec<Rc<Node>>>, field_nam
 
 pub fn enum_field_type_consistent(variants: Rc<Vec<Rc<Node>>>, field_name: String, expected: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
     { let mut __all = true; for variant in variants.iter().cloned() { if !(match find_child_named(variant.clone(), field_name.clone(), source_index.clone()) {
-    Some(field_child) => node_type_equals(child_type_node(field_child.clone()), expected.clone()),
+    Some(field_child) => node_type_equals(child_type_node(field_child.clone()), expected.clone(), source_index.clone()),
     None => false,
 }) { __all = false; break; } } __all }
 }

@@ -566,7 +566,7 @@ fn node_type_shape(n: Node, source_index: NewlineIndex?) -> String {
   }
 }
 
-fn node_type_compatible(left: Node, right: Node) -> Bool {
+fn node_type_compatible(left: Node, right: Node, source_index: NewlineIndex?) -> Bool {
   // CompilerError and TypeVariable nodes are compatible with anything — prevents
   // cascade comparisons on failed inference or unresolved type variables.
   let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
@@ -582,8 +582,8 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
   else {
-    let left_is_container = node_is_element_collection(n: left, source_index: none)
-    let right_is_container = node_is_element_collection(n: right, source_index: none)
+    let left_is_container = node_is_element_collection(n: left, source_index: source_index)
+    let right_is_container = node_is_element_collection(n: right, source_index: source_index)
     if left_is_container && right_is_container {
       if left.name != right.name { false }
       else {
@@ -596,7 +596,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
                 let left_el_is_unit = is_unit_like(n: left_el)
                 let right_el_is_unit = is_unit_like(n: right_el)
                 if left_el_is_unit || right_el_is_unit { true }
-                else { node_type_compatible(left: left_el, right: right_el) }
+                else { node_type_compatible(left: left_el, right: right_el, source_index: source_index) }
               None => true
             }
           None => true
@@ -609,15 +609,15 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
       let left_inner_is_unit = is_unit_like(n: left_inner)
       let right_inner_is_unit = is_unit_like(n: right_inner)
       if left_inner_is_unit || right_inner_is_unit { true }
-      else { node_type_compatible(left: left_inner, right: right_inner) }
+      else { node_type_compatible(left: left_inner, right: right_inner, source_index: source_index) }
     }
     else if left_opt || right_opt { false }
     else { left.name == right.name }
   }
 }
 
-fn prefer_specific_type(left: Node, right: Node) -> Node {
-  let left_is_container = node_is_element_collection(n: left, source_index: none)
+fn prefer_specific_type(left: Node, right: Node, source_index: NewlineIndex?) -> Node {
+  let left_is_container = node_is_element_collection(n: left, source_index: source_index)
   let left_is_optional = left.return_cardinality == CardOptional
   let left_first_child = left.children |> first
   let left_norm_name = left.name
@@ -633,7 +633,7 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     let left_is_unit = is_unit_like(n: left)
     left_is_unit
   } else { false }
-  let right_is_container = node_is_element_collection(n: right, source_index: none)
+  let right_is_container = node_is_element_collection(n: right, source_index: source_index)
   let right_is_optional = right.return_cardinality == CardOptional
   let same_kind = if left_is_container && right_is_container {
     left_norm_name == right.name
@@ -641,11 +641,11 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     true
   } else { false }
   if same_kind && left_is_unit_inner { right }
-  else if is_fully_resolved(n: right, source_index: none) && !is_fully_resolved(n: left, source_index: none) { right }
+  else if is_fully_resolved(n: right, source_index: source_index) && !is_fully_resolved(n: left, source_index: source_index) { right }
   else { left }
 }
 
-fn node_type_equals(left: Node, right: Node) -> Bool {
+fn node_type_equals(left: Node, right: Node, source_index: NewlineIndex?) -> Bool {
   // CompilerError nodes are equal to anything — prevents cascade comparisons
   // TypeVariable nodes: two type variables are equal (both unresolved);
   // a type variable vs a concrete type is not equal.
@@ -666,14 +666,14 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
     // Optional unwrap: same tree structure with cardinality stripped.
     // Separate from node_type_equals_core so CX sees SCC edge as Same
     // (wrapper transparency) rather than dragging core's Strict to NonIncreasing.
-    node_type_equals_core(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right))
+    node_type_equals_core(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right), source_index: source_index)
   }
   else {
-    node_type_equals_core(left: left, right: right)
+    node_type_equals_core(left: left, right: right, source_index: source_index)
   }
 }
 
-fn node_type_equals_core(left: Node, right: Node) -> Bool {
+fn node_type_equals_core(left: Node, right: Node, source_index: NewlineIndex?) -> Bool {
   let left_leaf = left.connective == NoConnective && left.children |> count == 0 && left.properties |> count == 0
   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
   let left_struct = left.connective != NoConnective
@@ -688,7 +688,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
     else {
       left.children |> enumerate |> all(pair =>
         match right.children |> skip(pair.first) |> first {
-          Some { value: right_child } => node_type_equals(left: pair.second, right: right_child)
+          Some { value: right_child } => node_type_equals(left: pair.second, right: right_child, source_index: source_index)
           None => false
         }
       )
@@ -701,15 +701,15 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
     left.name == right.name
   }
   else {
-    let left_is_container = node_is_element_collection(n: left, source_index: none)
-    let right_is_container = node_is_element_collection(n: right, source_index: none)
+    let left_is_container = node_is_element_collection(n: left, source_index: source_index)
+    let right_is_container = node_is_element_collection(n: right, source_index: source_index)
     if left_is_container && right_is_container {
       if left.name != right.name { false }
       else {
         match left.children |> first {
           Some { value: left_ch } =>
             match right.children |> first {
-              Some { value: right_ch } => node_type_equals(left: child_type_node(ch: left_ch), right: child_type_node(ch: right_ch))
+              Some { value: right_ch } => node_type_equals(left: child_type_node(ch: left_ch), right: child_type_node(ch: right_ch), source_index: source_index)
               None => false
             }
           None => false
@@ -717,7 +717,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
       }
     }
     else {
-      let both_maps = node_is_keyed_collection(n: left, source_index: none) && node_is_keyed_collection(n: right, source_index: none)
+      let both_maps = node_is_keyed_collection(n: left, source_index: source_index) && node_is_keyed_collection(n: right, source_index: source_index)
       if both_maps {
         if left.children |> count == 2 && right.children |> count == 2 {
           match left.children |> first {
@@ -728,7 +728,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
                     Some { value: left_second } =>
                       match right.children |> skip(1) |> first {
                         Some { value: right_second } =>
-                          node_type_equals(left: child_type_node(ch: left_first), right: child_type_node(ch: right_first)) && node_type_equals(left: child_type_node(ch: left_second), right: child_type_node(ch: right_second))
+                          node_type_equals(left: child_type_node(ch: left_first), right: child_type_node(ch: right_first), source_index: source_index) && node_type_equals(left: child_type_node(ch: left_second), right: child_type_node(ch: right_second), source_index: source_index)
                         None => false
                       }
                     None => false
@@ -747,7 +747,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
           let params_eq = left.params |> enumerate |> all(pair =>
             match right.params |> skip(pair.first) |> first {
               Some { value: right_param } =>
-                node_type_equals(left: param_node_type_expr(n: pair.second), right: param_node_type_expr(n: right_param))
+                node_type_equals(left: param_node_type_expr(n: pair.second), right: param_node_type_expr(n: right_param), source_index: source_index)
               None => false
             }
           )
@@ -756,7 +756,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
             match left.inferred {
               Some { value: Resolved { node: left_ret } } =>
                 match right.inferred {
-                  Some { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret)
+                  Some { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret, source_index: source_index)
                   None => false
                   _ => false
                 }
@@ -836,9 +836,9 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
 // Element and unwrap utilities
 // =========================================================================
 
-fn method_receiver_element_node(receiver_type: Node) -> Node {
+fn method_receiver_element_node(receiver_type: Node, source_index: NewlineIndex?) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
-  let maybe_element = if node_is_keyed_collection(n: normed, source_index: none) {
+  let maybe_element = if node_is_keyed_collection(n: normed, source_index: source_index) {
     match normed.children |> skip(1) |> first {
       Some { value: ch } => Some { value: child_type_node(ch: ch) }
       None => none
