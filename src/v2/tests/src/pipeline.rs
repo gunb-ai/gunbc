@@ -4681,7 +4681,7 @@ fn rest_emit_includes_query_params() {
 
 #[test]
 fn rest_emit_uses_bearer_auth() {
-    let source = "module re1d\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: BearerToken\n    auth_input: token\n  }\n  operation GetData {\n    input { token: String }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n";
+    let source = "module re1d\n\nimport std.types { AuthScheme }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Bearer\n    auth_input: token\n  }\n  operation GetData {\n    input { token: String }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n";
     let result = compile_dag_target(source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/re1d.rs");
@@ -4782,6 +4782,38 @@ service cron.Tab {
     assert!(
         content.contains("log_path.as_deref().unwrap_or"),
         "RE-1i: optional param in interpolation should use unwrap_or, got:\n{content}"
+    );
+}
+
+// ── RE-1g: shell stdin emission ──────────────────────────────────────────
+#[test]
+fn shell_emit_stdin_pipes_and_writes() {
+    let source = r#"module re1g
+
+service shell.Pipe {
+  operation Send {
+    input { data: String }
+    output { result: String }
+    transport shell {
+      argv: ["cat"]
+      stdin: data
+    }
+    mock_response {
+      0 => "echoed" "result"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1g.rs");
+    assert!(
+        content.contains("Stdio::piped()") && content.contains("stdin.write_all"),
+        "RE-1g: expected stdin piping and write in emitted code, got:\n{content}"
+    );
+    assert!(
+        content.contains("stdout(std::process::Stdio::piped())"),
+        "RE-1g: expected stdout piped for output capture, got:\n{content}"
     );
 }
 

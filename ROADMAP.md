@@ -1255,14 +1255,20 @@ config they already receive. PR #353.
   → `.query(&[("state", &state)])`. Uses emit_simple_expr for structural emission.
 - [ ] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
   Dispatches on ExprData shape (ExprVar=unit, ExprCall=payload).
-  Gap: collapses all unit variants to Bearer; needs resolved variant identity.
+  Gaps: collapses all unit variants (Bearer, ApiKey, Basic) to Bearer wire
+  format; non-literal Header { name: expr } emits expr text as header name;
+  ApiKey lacks structural carrier for key location. Needs resolved variant
+  identity at the infer/emit boundary.
 - [ ] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
   Status code match works but response/exit are encoded as synthetic property
   names — emitter re-parses strings. Needs first-class ResponseCase/ExitCase nodes.
 
 **Shell:**
-- [x] RE-1f: argv from `transport.argv` with param substitution
+- [ ] RE-1f: argv from `transport.argv` with param substitution
   → `Command::new("sh").arg("-lc").arg(&script)`. ExprStringInterp structure.
+  Gap: interpolation uses raw format!() with no shell escaping. Values with
+  spaces, quotes, $(), backticks can break/inject commands. bash/emit.dag
+  quoting facts modeled but not yet consumed by the emitter.
 - [x] RE-1g: stdin from `transport.stdin`
   → `.stdin(Stdio::piped())` + stdout/stderr piped + spawn + write + wait.
 - [ ] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`

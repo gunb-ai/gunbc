@@ -4398,7 +4398,19 @@ if is_opt.clone() {
 let args_str = args.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("&format!(\"".to_string(), fmt_str), "\", ".to_string()), args_str), ")".to_string())
 },
-    ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat("&".to_string(), emit_ident(expr_var_name_at(arg.clone(), source_index.clone()), RenderTarget::Rust)), ".to_string()".to_string()),
+    ExprData::ExprVar { .. } => {
+        let var_name = emit_ident(expr_var_name_at(arg.clone(), source_index.clone()), RenderTarget::Rust);
+let name = expr_var_name_at(arg.clone(), source_index.clone());
+let is_opt = match v2_rt::map_get(&optional_params, name.clone()) {
+    Some(_) => true,
+    None => false,
+};
+if is_opt.clone() {
+            v2_rt::concat(v2_rt::concat("&".to_string(), var_name.clone()), ".as_deref().unwrap_or(\"\").to_string()".to_string())
+} else {
+            v2_rt::concat(v2_rt::concat("&".to_string(), var_name.clone()), ".to_string()".to_string())
+}
+},
     _ => emit_simple_expr(arg.clone(), RenderTarget::Rust, None),
 }
 }

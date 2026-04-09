@@ -4226,7 +4226,19 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
       let args_str = args |> join(separator: ", ")
       concat("&format!(\"", fmt_str, "\", ", args_str, ")")
     }
-    ExprVar { binding_kind: _ } => concat("&", emit_ident(name: expr_var_name_at(texpr: arg, source_index: source_index), target: Rust), ".to_string()")
+    ExprVar { binding_kind: _ } => {
+      let var_name = emit_ident(name: expr_var_name_at(texpr: arg, source_index: source_index), target: Rust)
+      let name = expr_var_name_at(texpr: arg, source_index: source_index)
+      let is_opt = match map_get(optional_params, name) {
+        Some { value: _ } => true
+        None => false
+      }
+      if is_opt {
+        concat("&", var_name, ".as_deref().unwrap_or(\"\").to_string()")
+      } else {
+        concat("&", var_name, ".to_string()")
+      }
+    }
     _ => emit_simple_expr(expr: arg, target: Rust, source_index: none)
   }
 }
