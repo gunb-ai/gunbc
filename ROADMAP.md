@@ -1377,13 +1377,13 @@ rest_output_struct_uses_serde_rename
 Compile `review.dag` + its imports to a binary that runs with
 `--dry-run`, returning mock responses.
 
-- [x] RE-2a: Async for-each — detect FuncItem body, emit `.await?`
-  in collection loop body (done in RE-1/PR #353)
-- [x] RE-2b: Cross-module service resolution — review.dag imports
-  from 4 modules (FF-9 handles this; done in RE-1/PR #353)
-- [x] RE-2c: Conditional guard — review.dag's `already_done` check
-  needs to short-circuit (done in RE-1/PR #353)
-- [x] RE-2d: End-to-end compilation gate (this PR: 0 cargo check errors)
+- [ ] RE-2a: Async for-each — detect FuncItem body, emit `.await?`
+  in collection loop body (emitter support exists; acceptance test not yet added)
+- [ ] RE-2b: Cross-module service resolution — review.dag imports
+  from 4 modules (FF-9 handles this; acceptance test not yet added)
+- [ ] RE-2c: Conditional guard — review.dag's `already_done` check
+  needs to short-circuit (acceptance test not yet added)
+- [x] RE-2d: End-to-end compilation gate (0 cargo check errors)
 
 **Blocked by:** RE-1
 
