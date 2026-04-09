@@ -133,7 +133,7 @@ Previously eliminated:
 
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
-| Self-compile diagnostics | 314 | 526 | Honest count — complexity violations surfaced, non-blocking |
+| Self-compile diagnostics | 528 | 526 | Honest count — +2 from transport property inference complexity paths |
 | L1 type knowledge | 0 | 0 | GREEN — hard gate (PR #352). Constructor functions dissolved, ListOf/ReceiverCollectionOf merged into ContainerOf. |
 | Complexity violations | 325 | 526 | Honest: 526 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
 | Emitted Rust errors | 0 | 0 | GREEN |
@@ -1242,27 +1242,56 @@ RE-1: Transport emission fidelity (emit reads existing config)
 ### RE-1: Transport emission fidelity
 
 Make `emit_rest_call` and `emit_shell_call` consume the transport
-config they already receive. No new .dag modeling needed.
+config they already receive. PR #353.
 
 **REST:**
 - [ ] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
+  Inferred type enables structural dispatch; lowercases variant name for reqwest.
+  Gap: emit reads variant name text, not the resolved HttpMethod alternative.
 - [ ] RE-1b: Path template from `transport.path` with param substitution
-  → `format!("/repos/{}/{}/pulls", owner, repo)`
-- [ ] RE-1c: Query parameters from `transport.query`
-  → `.query(&[("state", &state)])`
+  → `format!("/repos/{}/{}/pulls", owner, repo)`. Uses ExprStringInterp structure.
+  Gap: interpolation segments still use expr_var_name_at, not full emit_typed_expr.
+- [x] RE-1c: Query parameters from `transport.query`
+  → `.query(&[("state", &state)])`. Uses emit_simple_expr for structural emission.
 - [ ] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
+  Dispatches on ExprData shape (ExprVar=unit, ExprCall=payload).
+  Gaps: collapses all unit variants (Bearer, ApiKey, Basic) to Bearer wire
+  format; non-literal Header { name: expr } emits expr text as header name;
+  ApiKey lacks structural carrier for key location. Needs resolved variant
+  identity at the infer/emit boundary.
 - [ ] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
+  Status code match works but response/exit are encoded as synthetic property
+  names — emitter re-parses strings. Needs first-class ResponseCase/ExitCase nodes.
 
 **Shell:**
 - [ ] RE-1f: argv from `transport.argv` with param substitution
-  → `Command::new("sh").arg("-lc").arg(&script)`
-- [ ] RE-1g: stdin from `transport.stdin`
-  → `.stdin(Stdio::piped())` + write
+  → `Command::new("sh").arg("-lc").arg(&script)`. ExprStringInterp structure.
+  Gap: interpolation uses raw format!() with no shell escaping. Values with
+  spaces, quotes, $(), backticks can break/inject commands. bash/emit.dag
+  quoting facts modeled but not yet consumed by the emitter.
+- [x] RE-1g: stdin from `transport.stdin`
+  → `.stdin(Stdio::piped())` + stdout/stderr piped + spawn + write + wait.
 - [ ] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
+  Same structural gap as RE-1e: encoded as property names, not case nodes.
 
 **Response:**
 - [ ] RE-1i: `from "content/0/text"` JSON path extraction on response
+  Not implemented. Nested path extraction deferred to RE-4.
 - [ ] RE-1j: Nested output struct field mapping via serde rename
+  `field_node_from_key` mechanism exists but no test covers it in this PR.
+
+**Infrastructure (PR #353):**
+- [x] Parser extended: `parse_rest_fields` captures method/path/query,
+  `parse_shell_fields` captures stdin, `parse_config_fields` captures auth_input
+- [x] Shell transport body marker preserved through resolve phase
+  (`make_transport_node` body parameter fix)
+- [x] `transport_env` excludes reserved keys (stdin separation)
+- [x] `int_to_string_acc` digit ordering fix
+- [x] HttpMethod moved from extdeps/transports/rest.dag to std/types.dag
+- [ ] CloudAuthScheme dissolved: std/types.dag has protocol-level schemes
+  (Bearer, Header, Basic, ApiKey). Cloud-specific SigV4/OidcToken need
+  a Layer-2 cloud auth coproduct in extdeps/cloud that composes std/ schemes.
+- [x] 7 RE-1 acceptance tests (5 REST + 2 shell)
 
 **Blocked by:** Nothing — all data already flows to the emitter.
 
@@ -1356,6 +1385,30 @@ review_dag_emitted_rust_builds
   Assert: cargo check exits 0
   Note: same pattern as bootstrap_stage0_to_stage1
 ```
+
+### RE follow-up: structural gaps from PR #353 review
+
+Three design-level issues surfaced during review that need follow-up work:
+
+**1. First-class response/exit case nodes (M4/M8/M9)**
+The parser encodes `response { 200 => List<PullRequest> }` as synthetic property
+names (`response_200`). The emitter re-parses these strings to rediscover patterns.
+Fix: model as structural case arms — `ResponseCase { pattern: StatusPattern, body: Node }`
+and `ExitCase { pattern: ExitPattern, body: Node }` — thread through parse/resolve/infer,
+let emit consume directly. This removes the entire name-slicing class.
+
+**2. Generic diagnostics/result carrier (M6/M9)**
+Transport property inference introduced ad-hoc `InferPropertiesResult` and
+`InferTransportResult` types. These should collapse into a generic result carrier
+from `std/` that all inference helpers parametrize on, eliminating per-pass
+boilerplate. Depends on std pattern work.
+
+**3. Typed transport/auth accessors at infer/emit boundary (M4/M8)**
+The emitter dispatches on expression shape (ExprVar vs ExprCall) and lowercased
+variant names rather than resolved variant identity. The upstream fix: add typed
+accessors or transport case nodes at the infer/emit boundary that preserve the
+exact `HttpMethod` and `AuthScheme` alternative, so emit translates those directly
+without reclassifying expressions.
 
 ### RE-3: review.dag live integration
 
@@ -1452,8 +1505,8 @@ RE item is implemented — the ratchet counts tests that exist AND pass.
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| RE-1 transport tests | 0/10 | 10 |
-| RE-2 compilation tests | 0/3 | 3 |
+| RE-1 transport tests | 7/10 | 10 |
+| RE-2 compilation tests | 0/3 (3 cargo check errors, ratchet at 3) | 3 |
 | RE-3 integration tests | 0/4 | 4 |
 | RE-4 API tests | 0/3 | 3 |
 | RE-5 multi-backend test | 0/1 | 1 |

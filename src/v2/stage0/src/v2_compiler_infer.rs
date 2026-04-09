@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan, container_param_name};
 pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, has_child_named, module_node, module_imports, module_items, import_is_all, import_specific_names, make_param_node, param_node_name, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, field_access_base, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name, has_inferred, is_compiler_error, InferredNode, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name, resource_use_resource, kernel_type_set, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
@@ -1921,7 +1881,25 @@ let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type_node);
 let body_result = infer_expr(body_expr.clone(), body_scope, None);
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
-let fe_texpr = make_named_expr_node(variable.clone(), Rc::new(ExprData::ExprForEach), Rc::new(vec![coll_typed.clone(), body_typed.clone()]), body_typed.inferred.clone(), span.clone());
+let fe_texpr = Rc::new(Node {
+    name: variable.clone(),
+    span: span.clone(),
+    ident_span: texpr.ident_span.clone(),
+    children: Rc::new(vec![coll_typed.clone(), body_typed.clone()]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: body_typed.inferred.clone(),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::ExprForEach),
+});
 Rc::new(InferResult {
     typed: fe_texpr,
     diagnostics: v2_rt::concat(coll_diags, body_diags.clone()),
@@ -2167,10 +2145,97 @@ Rc::new(InferResult {
 }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct InferPropertiesResult {
+    pub props: Rc<Vec<Rc<Node>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct InferTransportResult {
+    pub transport: Option<Rc<Node>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn infer_property_values(props: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<InferPropertiesResult> {
+    {
+        let results = Rc::new({ let mut __result = Vec::new(); for p in props.iter().cloned() { __result.push({
+            let val = field_init_node_value(p.clone());
+let val_result = infer_expr(val.clone(), scope.clone(), None);
+(Rc::new(Node {
+    name: p.name.clone(),
+    span: p.span.clone(),
+    ident_span: p.ident_span.clone(),
+    children: Rc::new(vec![val_result.typed.clone()]),
+    connective: p.connective.clone(),
+    params: p.params.clone(),
+    inferred: p.inferred.clone(),
+    return_cardinality: p.return_cardinality.clone(),
+    uses: p.uses.clone(),
+    body: p.body.clone(),
+    transport: p.transport.clone(),
+    properties: p.properties.clone(),
+    type_annotation: p.type_annotation.clone(),
+    is_self_recursive: p.is_self_recursive.clone(),
+    has_non_tail_self_call: p.has_non_tail_self_call.clone(),
+    match_pattern: p.match_pattern.clone(),
+    expr_data: p.expr_data.clone(),
+}), val_result.diagnostics.clone())
+}); } __result });
+Rc::new(InferPropertiesResult {
+    props: Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.push(r.0.clone()); } __result }),
+    diagnostics: Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.1.clone()).iter().cloned()); } __result }),
+})
+}
+}
+
+pub fn infer_transport_node(transport: Option<Rc<Node>>, scope: Rc<InferScope>) -> Rc<InferTransportResult> {
+    match transport {
+    None => Rc::new(InferTransportResult {
+    transport: None,
+    diagnostics: Rc::new(vec![]),
+}),
+    Some(t) => {
+        let prop_result = infer_property_values(t.properties.clone(), scope);
+Rc::new(InferTransportResult {
+    transport: Some(Rc::new(Node {
+    name: t.name.clone(),
+    span: t.span.clone(),
+    ident_span: t.ident_span.clone(),
+    children: t.children.clone(),
+    connective: t.connective.clone(),
+    params: t.params.clone(),
+    inferred: t.inferred.clone(),
+    return_cardinality: t.return_cardinality.clone(),
+    uses: t.uses.clone(),
+    body: t.body.clone(),
+    transport: t.transport.clone(),
+    properties: prop_result.props.clone(),
+    type_annotation: t.type_annotation.clone(),
+    is_self_recursive: t.is_self_recursive.clone(),
+    has_non_tail_self_call: t.has_non_tail_self_call.clone(),
+    match_pattern: t.match_pattern.clone(),
+    expr_data: t.expr_data.clone(),
+})),
+    diagnostics: prop_result.diagnostics.clone(),
+})
+},
+}
+}
+
 pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let typed_anno = item.type_annotation.clone();
+let typed_properties = item.properties.clone();
+let transport_scope = if ((item.params.clone().len() as i64) > 0) {
+                build_params_scope(scope.clone(), item.params.clone())
+} else {
+                scope.clone()
+};
+let transport_result = infer_transport_node(item.transport.clone(), transport_scope);
+let typed_transport = transport_result.transport.clone();
+let transport_diags = transport_result.diagnostics.clone();
 if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None)) {
                 Rc::new(TypedItemResult {
     item: Rc::new(Node {
@@ -2186,15 +2251,15 @@ if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clo
     uses: item.uses.clone(),
     body: None,
     connective: item.connective.clone(),
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: Rc::new(vec![]),
+    diagnostics: transport_diags,
 })
 } else {
                 if ((item.body.clone() != None) && ((item.params.clone().len() as i64) > 0)) {
@@ -2226,15 +2291,15 @@ Rc::new(TypedItemResult {
     uses: item.uses.clone(),
     body: Some(body_typed.clone()),
     connective: Connective::NoConnective,
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: expr_has_self_call(body_typed.clone(), item.name.clone()),
     has_non_tail_self_call: expr_has_non_tail_self_call(body_typed.clone(), item.name.clone(), true),
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: body_diags,
+    diagnostics: v2_rt::concat(transport_diags, body_diags),
 })
 }
 } else {
@@ -2256,15 +2321,15 @@ Rc::new(TypedItemResult {
     uses: Rc::new(vec![]),
     body: Some(body_typed.clone()),
     connective: Connective::NoConnective,
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: body_diags,
+    diagnostics: v2_rt::concat(transport_diags, body_diags),
 })
 }
 } else {
@@ -2297,15 +2362,15 @@ Rc::new(TypedItemResult {
     uses: Rc::new(vec![]),
     body: Some(val_typed.clone()),
     connective: Connective::NoConnective,
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: val_diags,
+    diagnostics: v2_rt::concat(transport_diags, val_diags),
 })
 }
 } else {
@@ -2328,15 +2393,15 @@ Rc::new(TypedItemResult {
     uses: item.uses.clone(),
     body: None,
     connective: Connective::NoConnective,
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: Rc::new(vec![]),
+    diagnostics: transport_diags,
 })
 } else {
                                 Rc::new(TypedItemResult {
@@ -2357,15 +2422,15 @@ Rc::new(TypedItemResult {
     uses: item.uses.clone(),
     body: None,
     connective: item.connective.clone(),
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: Rc::new(vec![]),
+    diagnostics: transport_diags,
 })
 }
 }
@@ -2970,23 +3035,35 @@ match kind.clone() {
     is_self_recursive: false,
     has_non_tail_self_call: false,
 }),
-    ItemKind::FnItem => Rc::new(ItemInfo {
+    ItemKind::FnItem => {
+            let svc_names = if (item.body.clone() == None) {
+                Rc::new(vec![])
+} else {
+                collect_typed_service_calls(item.body.clone().clone().unwrap())
+};
+let effective_kind = if ((svc_names.clone().len() as i64) > 0) {
+                ItemKind::FuncItem
+} else {
+                ItemKind::FnItem
+};
+Rc::new(ItemInfo {
     name: item.name.clone(),
-    kind: kind.clone(),
-    service_names: Rc::new(vec![]),
+    kind: effective_kind,
+    service_names: svc_names.clone(),
     resource_names: res_names,
     params: item.params.clone(),
     is_self_recursive: if (item.body.clone() == None) {
-            false
+                false
 } else {
-            expr_has_self_call(item.body.clone().clone().unwrap(), item.name.clone())
+                expr_has_self_call(item.body.clone().clone().unwrap(), item.name.clone())
 },
     has_non_tail_self_call: if (item.body.clone() == None) {
-            false
+                false
 } else {
-            expr_has_non_tail_self_call(item.body.clone().clone().unwrap(), item.name.clone(), true)
+                expr_has_non_tail_self_call(item.body.clone().clone().unwrap(), item.name.clone(), true)
 },
-}),
+})
+},
     _ => Rc::new(ItemInfo {
     name: item.name.clone(),
     kind: kind.clone(),

@@ -18,7 +18,7 @@ service shell.Find {
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
     output { dirs: List<FilePath> }
     readonly
-    transport shell { argv: ["find", "\{path\}", "-maxdepth", "\{max_depth\}", "-mindepth", "\{min_depth\}", "-type", "d"] }
+    transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
     exit {
       0 => Unit
       nonzero => String "Find command failed"
@@ -31,7 +31,7 @@ service shell.Env {
     input { name: NonEmptyStr }
     output { value: String? }
     readonly
-    transport shell { argv: ["printenv", "\{name\}"] }
+    transport shell { argv: ["printenv", "{name}"] }
     exit {
       0 => Unit
       1 => Unit "Variable not set"
@@ -44,7 +44,7 @@ service shell.Which {
     input { command: NonEmptyStr }
     output { exists: Bool, path: FilePath? }
     readonly
-    transport shell { argv: ["which", "\{command\}"] }
+    transport shell { argv: ["which", "{command}"] }
     exit {
       0 => Unit "Command found"
       1 => Unit "Command not found"
@@ -56,7 +56,7 @@ service shell.Exec {
   operation Run {
     input { script: String }
     output { success: Bool, stdout: String, stderr: String }
-    transport shell { argv: ["sh", "-lc", "\{script\}"] }
+    transport shell { argv: ["sh", "-lc", "{script}"] }
     exit {
       0 => Unit
       nonzero => String "Script failed"
@@ -67,7 +67,7 @@ service shell.Exec {
     input { command: String }
     output { exists: Bool }
     readonly
-    transport shell { argv: ["sh", "-lc", "\{command\}"] }
+    transport shell { argv: ["sh", "-lc", "{command}"] }
     exit {
       0 => Unit
       nonzero => String "Command failed"

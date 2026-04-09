@@ -55,7 +55,7 @@ service cron.Tab {
     }
     output { success: Bool, stdout: String, stderr: String }
     transport shell {
-      argv: ["sh", "-c", "TAG='# tag:\{tag\}'; ENTRY='\{schedule\} \{command\} >> \{log_path\} 2>&1 $TAG'; CURRENT=$(crontab -l 2>/dev/null || true); if echo \"$CURRENT\" | grep -qF \"$TAG\"; then echo \"$CURRENT\" | sed \"/$TAG/c\\\\$ENTRY\" | crontab -; else (echo \"$CURRENT\"; echo \"$ENTRY\") | crontab -; fi"]
+      argv: ["sh", "-c", "TAG='# tag:{tag}'; ENTRY='{schedule} {command} >> {log_path} 2>&1 $TAG'; CURRENT=$(crontab -l 2>/dev/null || true); if echo \"$CURRENT\" | grep -qF \"$TAG\"; then echo \"$CURRENT\" | sed \"/$TAG/c\\\\$ENTRY\" | crontab -; else (echo \"$CURRENT\"; echo \"$ENTRY\") | crontab -; fi"]
     }
     exit {
       0 => Unit
@@ -72,7 +72,7 @@ service cron.Tab {
     }
     output { success: Bool, stdout: String, stderr: String }
     transport shell {
-      argv: ["sh", "-c", "TAG='# tag:\{tag\}'; CURRENT=$(crontab -l 2>/dev/null || true); echo \"$CURRENT\" | grep -vF \"$TAG\" | crontab -"]
+      argv: ["sh", "-c", "TAG='# tag:{tag}'; CURRENT=$(crontab -l 2>/dev/null || true); echo \"$CURRENT\" | grep -vF \"$TAG\" | crontab -"]
     }
     exit {
       0 => Unit

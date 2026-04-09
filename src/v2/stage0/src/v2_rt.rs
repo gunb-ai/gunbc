@@ -50,6 +50,10 @@ pub fn string_contains(s: &str, sub: String) -> bool {
     s.contains(&*sub)
 }
 
+pub fn contains(s: String, sub: String) -> bool { string_contains(&s, sub) }
+
+pub fn count<T>(items: Rc<Vec<T>>) -> i64 { items.len() as i64 }
+
 pub fn str_eq(a: String, b: String) -> bool { a == b }
 
 pub fn to_string(value: i64) -> String { value.to_string() }
