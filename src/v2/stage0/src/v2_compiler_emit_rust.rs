@@ -4079,8 +4079,8 @@ pub fn emit_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<Ha
 pub fn emit_rest_call(op_name: String, transport: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, service_item: Rc<Node>, op_node: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let client_init = "let client = reqwest::Client::new();".to_string();
-let url_line = emit_rest_url_line(transport.clone(), op_name, source_index);
-let http_method = emit_rest_http_method(transport.clone());
+let url_line = emit_rest_url_line(transport.clone(), op_name, source_index.clone());
+let http_method = emit_rest_http_method(transport.clone(), source_index.clone());
 let auth_line = emit_rest_auth_line(transport.clone(), service_item, http_method);
 let query_line = emit_rest_query_line(transport.clone());
 let headers = transport_headers(transport.clone());
@@ -4092,42 +4092,14 @@ all_lines.join(&"\n".to_string())
 }
 }
 
-pub fn emit_rest_http_method(transport: Rc<Node>) -> String {
+pub fn emit_rest_http_method(transport: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     match transport_method(transport) {
-    Some(m) => match (*m.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-        let name = expr_var_name(m.clone());
-if (name.clone().as_str() == "GET".to_string().as_str()) {
-            "get".to_string()
-} else {
-            if (name.clone().as_str() == "POST".to_string().as_str()) {
-                "post".to_string()
-} else {
-                if (name.clone().as_str() == "PUT".to_string().as_str()) {
-                    "put".to_string()
-} else {
-                    if (name.clone().as_str() == "PATCH".to_string().as_str()) {
-                        "patch".to_string()
-} else {
-                        if (name.clone().as_str() == "DELETE".to_string().as_str()) {
-                            "delete".to_string()
-} else {
-                            if (name.clone().as_str() == "HEAD".to_string().as_str()) {
-                                "head".to_string()
-} else {
-                                if (name.clone().as_str() == "OPTIONS".to_string().as_str()) {
-                                    "options".to_string()
-} else {
-                                    v2_rt::concat(v2_rt::concat("compile_error!(\"unsupported HTTP method: ".to_string(), name.clone()), "\"); post".to_string())
-}
-}
-}
-}
-}
-}
-}
+    Some(m) => match m.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { .. }) => {
+        let method_name = expr_var_name_at(m.clone(), source_index);
+Rc::new({ let mut __result = Vec::new(); for ch in Rc::new(method_name.chars().map(|c| c as i64).collect::<Vec<_>>()).iter().cloned() { __result.push(to_lower_char(ch.clone())); } __result }).join(&"".to_string())
 },
-    _ => "compile_error!(\"transport method must be an identifier (GET, POST, etc.)\"); post".to_string(),
+    _ => "compile_error!(\"transport method type not resolved\")".to_string(),
 },
     None => "post".to_string(),
 }
@@ -4376,7 +4348,7 @@ let stdin_var = match (*stdin_expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => emit_ident(expr_var_name(stdin_expr.clone()), RenderTarget::Rust),
     _ => emit_simple_expr(stdin_expr.clone(), RenderTarget::Rust, None),
 };
-let spawn_line = "    .stdin(std::process::Stdio::piped())".to_string();
+let spawn_line = "    .stdin(std::process::Stdio::piped())\n    .stdout(std::process::Stdio::piped())\n    .stderr(std::process::Stdio::piped())".to_string();
 let spawn_exec = "    .spawn()?;".to_string();
 let write_block = v2_rt::concat(v2_rt::concat("{\n    use std::io::Write;\n    if let Some(mut stdin) = output.stdin.take() {\n        stdin.write_all(".to_string(), stdin_var), ".as_bytes())?;\n    }\n}".to_string());
 let wait_line = "let output = output.wait_with_output()?;".to_string();
