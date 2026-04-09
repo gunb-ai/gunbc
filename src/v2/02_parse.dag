@@ -129,7 +129,7 @@ type ItemPrefixResult {
 
 // Parser-local intermediate: ServiceConfig is dissolved into Node properties at the
 // service Node construction boundary. This type exists only inside the parser.
-type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, rate_limit: Node?, retry: Node? }
+type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node? }
 type ConfigResult { config: ServiceConfig, state: ParserState, err: ErrorNode? }
 
 // Pratt parser binding power
@@ -2243,7 +2243,7 @@ fn parse_service_after_kw(tokens: List<Token>, state: ParserState, start_span: S
   // don't need to reverse-engineer it by string-splitting.
   let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let svc_props = match r.config {
-    Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, rate_limit: cfg.rate_limit, retry: cfg.retry)
+    Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit, retry: cfg.retry)
     None => []
   }
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span },
@@ -2311,10 +2311,10 @@ fn parse_service_entries(tokens: List<Token>, state: ParserState, config: Servic
 
 fn parse_service_config_block(tokens: List<Token>, state: ParserState) -> ConfigResult {
   // Parse key: value pairs for config
-  parse_config_fields(tokens: tokens, state: state, endpoint: none, auth: none, auth_input: none, rate_limit: none, retry: none)
+  parse_config_fields(tokens: tokens, state: state, endpoint: none, auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none)
 }
 
-fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?, auth: Node?, auth_input: Node?, rate_limit: Node?, retry: Node?) -> ConfigResult {
+fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> ConfigResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if peek_is_rbrace(tokens: tokens, state: s) || at_end(tokens: tokens, state: s) {
     let cfg = ServiceConfig {
@@ -2324,12 +2324,13 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
       },
       auth: auth,
       auth_input: auth_input,
+      auth_source: auth_source,
       rate_limit: rate_limit,
       retry: retry
     }
     ConfigResult { config: cfg, state: s, err: none }
   } else {
-    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), auth: none, auth_input: none, rate_limit: none, retry: none }
+    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none }
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return ConfigResult { config: dummy_cfg, state: r.state, err: r.err } }
     let fname = r.name
@@ -2342,12 +2343,13 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
     let s3 = if e.consumed { e.state } else { s2 }
 
     match fname {
-      "endpoint" => parse_config_fields(tokens: tokens, state: s3, endpoint: Some { value: r3.expr }, auth: auth, auth_input: auth_input, rate_limit: rate_limit, retry: retry)
-      "auth" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: Some { value: r3.expr }, auth_input: auth_input, rate_limit: rate_limit, retry: retry)
-      "auth_input" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: Some { value: r3.expr }, rate_limit: rate_limit, retry: retry)
-      "rate_limit" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, rate_limit: Some { value: r3.expr }, retry: retry)
-      "retry" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, rate_limit: rate_limit, retry: Some { value: r3.expr })
-      _ => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, rate_limit: rate_limit, retry: retry)
+      "endpoint" => parse_config_fields(tokens: tokens, state: s3, endpoint: Some { value: r3.expr }, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "auth" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: Some { value: r3.expr }, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "auth_input" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: Some { value: r3.expr }, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "auth_source" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: Some { value: r3.expr }, rate_limit: rate_limit, retry: retry)
+      "rate_limit" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: Some { value: r3.expr }, retry: retry)
+      "retry" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: Some { value: r3.expr })
+      _ => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
     }
   }
 }

@@ -143,10 +143,8 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
     m.items |> fold(init: reg, f: (reg2, item) =>
     match map_get(reg2, item.name) {
       Some { value: info } =>
-        let is_not_func = info.kind != FuncItem
         let has_no_body = item.body == none
-        if is_not_func { reg2 }
-        else if has_no_body { reg2 }
+        if has_no_body { reg2 }
         else {
           let called = collect_called_func_names(texpr: item.body.value, source_index: m.type_env.source_index)
           let extra = called |> flat_map(callee_name =>

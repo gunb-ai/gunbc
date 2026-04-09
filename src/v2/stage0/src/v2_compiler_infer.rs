@@ -2990,6 +2990,42 @@ Rc::new(InferPropertiesResult {
 }
 }
 
+pub fn infer_auth_source_properties(props: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<InferPropertiesResult> {
+    {
+        let results = Rc::new({ let mut __result = Vec::new(); for p in props.iter().cloned() { __result.push(if (field_init_node_name(p.clone()).as_str() == "svc_auth_source".to_string().as_str()) {
+            {
+                let val = field_init_node_value(p.clone());
+let val_result = infer_expr(val.clone(), scope.clone(), None);
+(Rc::new(Node {
+    name: p.name.clone(),
+    span: p.span.clone(),
+    ident_span: p.ident_span.clone(),
+    children: Rc::new(vec![val_result.typed.clone()]),
+    connective: p.connective.clone(),
+    params: p.params.clone(),
+    inferred: p.inferred.clone(),
+    return_cardinality: p.return_cardinality.clone(),
+    uses: p.uses.clone(),
+    body: p.body.clone(),
+    transport: p.transport.clone(),
+    properties: p.properties.clone(),
+    type_annotation: p.type_annotation.clone(),
+    is_self_recursive: p.is_self_recursive.clone(),
+    has_non_tail_self_call: p.has_non_tail_self_call.clone(),
+    match_pattern: p.match_pattern.clone(),
+    expr_data: p.expr_data.clone(),
+}), val_result.diagnostics.clone())
+}
+        } else {
+            (p.clone(), Rc::new(vec![]))
+        }); } __result });
+Rc::new(InferPropertiesResult {
+    props: Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.push(r.0.clone()); } __result }),
+    diagnostics: Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.1.clone()).iter().cloned()); } __result }),
+})
+}
+}
+
 pub fn infer_transport_node(transport: Option<Rc<Node>>, scope: Rc<InferScope>) -> Rc<InferTransportResult> {
     match transport {
     None => Rc::new(InferTransportResult {
@@ -3036,6 +3072,9 @@ let transport_scope = if ((item.params.clone().len() as i64) > 0) {
 let transport_result = infer_transport_node(item.transport.clone(), transport_scope);
 let typed_transport = transport_result.transport.clone();
 let transport_diags = transport_result.diagnostics.clone();
+let props_result = infer_auth_source_properties(item.properties.clone(), scope.clone());
+let typed_properties = props_result.props.clone();
+let props_diags = props_result.diagnostics.clone();
 if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None)) {
                 Rc::new(TypedItemResult {
     item: Rc::new(Node {
@@ -3052,14 +3091,14 @@ if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clo
     body: None,
     connective: item.connective.clone(),
     transport: typed_transport,
-    properties: item.properties.clone(),
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: transport_diags,
+    diagnostics: v2_rt::concat(transport_diags, props_diags),
 })
             } else {
                 if ((item.body.clone() != None) && ((item.params.clone().len() as i64) > 0)) {
@@ -3098,14 +3137,14 @@ Rc::new(TypedItemResult {
     body: Some(annotated_body),
     connective: Connective::NoConnective,
     transport: typed_transport,
-    properties: item.properties.clone(),
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: is_recursive.clone(),
     has_non_tail_self_call: expr_has_non_tail_self_call(body_typed.clone(), item.name.clone(), true),
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: v2_rt::concat(transport_diags, body_diags),
+    diagnostics: v2_rt::concat(v2_rt::concat(transport_diags, props_diags), body_diags),
 })
 }
                 } else {
@@ -3128,14 +3167,14 @@ Rc::new(TypedItemResult {
     body: Some(body_typed.clone()),
     connective: Connective::NoConnective,
     transport: typed_transport,
-    properties: item.properties.clone(),
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: v2_rt::concat(transport_diags, body_diags),
+    diagnostics: v2_rt::concat(v2_rt::concat(transport_diags, props_diags), body_diags),
 })
 }
                     } else {
@@ -3169,14 +3208,14 @@ Rc::new(TypedItemResult {
     body: Some(val_typed.clone()),
     connective: Connective::NoConnective,
     transport: typed_transport,
-    properties: item.properties.clone(),
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: v2_rt::concat(transport_diags, val_diags),
+    diagnostics: v2_rt::concat(v2_rt::concat(transport_diags, props_diags), val_diags),
 })
 }
                         } else {
@@ -3200,14 +3239,14 @@ Rc::new(TypedItemResult {
     body: None,
     connective: Connective::NoConnective,
     transport: typed_transport,
-    properties: item.properties.clone(),
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: transport_diags,
+    diagnostics: v2_rt::concat(transport_diags, props_diags),
 })
                             } else {
                                 Rc::new(TypedItemResult {
@@ -3229,14 +3268,14 @@ Rc::new(TypedItemResult {
     body: None,
     connective: item.connective.clone(),
     transport: typed_transport,
-    properties: item.properties.clone(),
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
-    diagnostics: transport_diags,
+    diagnostics: v2_rt::concat(transport_diags, props_diags),
 })
                             }
                         }
@@ -3845,7 +3884,11 @@ match kind.clone() {
     ItemKind::FnItem => Rc::new(ItemInfo {
     name: item.name.clone(),
     kind: kind.clone(),
-    service_names: Rc::new(vec![]),
+    service_names: if (item.body.clone() == None) {
+            Rc::new(vec![])
+        } else {
+            collect_typed_service_calls(item.body.clone().clone().unwrap(), source_index.clone())
+        },
     resource_names: res_names,
     params: item.params.clone(),
     is_self_recursive: if (item.body.clone() == None) {
