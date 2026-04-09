@@ -2104,6 +2104,22 @@ state.text.clone().join(&"\n".to_string())
 }
 }
 
+pub fn emit_algebra_method_template(method_name: String, recv_str: String, first_arg_str: String, target: RenderTarget) -> Option<String> {
+    {
+        let spec = language_spec(target);
+match spec.method_templates.clone() {
+    Some(templates) => match v2_rt::map_get(&templates, method_name) {
+    Some(tmpl) => {
+            let bindings = v2_rt::rc_map_insert(seed_bindings("recv".to_string(), recv_str), "arg".to_string(), first_arg_str);
+Some(apply_named_template(tmpl.clone(), bindings))
+},
+    None => None,
+},
+    None => None,
+}
+}
+}
+
 pub fn emit_typed_first_arg_shared(args: Rc<Vec<Rc<Node>>>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
     match args.first().cloned() {
     Some(a) => recurse(arg_value(a.clone())),

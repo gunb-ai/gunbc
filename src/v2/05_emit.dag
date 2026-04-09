@@ -2115,6 +2115,22 @@ fn emit_typed_block_join(
   state.text |> join(separator: "\n")
 }
 
+// Shared algebra method template dispatch.
+// Returns Some if a method_template matches, None if not (caller provides fallback).
+fn emit_algebra_method_template(method_name: String, recv_str: String,
+    first_arg_str: String, target: RenderTarget) -> String? {
+  let spec = language_spec(target: target)
+  match spec.method_templates {
+    Some { value: templates } => match map_get(templates, method_name) {
+      Some { value: tmpl } =>
+        let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
+        Some { value: apply_named_template(template: tmpl, bindings: bindings) }
+      None => none
+    }
+    None => none
+  }
+}
+
 // Shared typed first arg — renders first method argument or fails closed.
 fn emit_typed_first_arg_shared(args: List<Node>, target: RenderTarget, recurse: fn(Node) -> String) -> String {
   match args |> first {

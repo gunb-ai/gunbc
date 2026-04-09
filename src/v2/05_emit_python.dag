@@ -114,7 +114,8 @@ import v2.compiler.emit {
   emit_block_stmts_shared, emit_init_block_stmts_shared,
   emit_typed_let_shared, emit_param_shared, emit_params_shared,
   emit_inferred_shared, emit_typed_block_join,
-  emit_typed_first_arg_shared, emit_typed_tco_reassign_shared
+  emit_typed_first_arg_shared, emit_typed_tco_reassign_shared,
+  emit_algebra_method_template
 }
 
 // =========================================================================
@@ -686,18 +687,8 @@ fn py_bridge_method_name(method_name: String) -> String {
 fn emit_py_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
-  let spec = language_spec(target: Python)
-  match spec.method_templates {
-    Some { value: templates } => match map_get(templates, method_name) {
-      Some { value: tmpl } =>
-        let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
-        apply_named_template(template: tmpl, bindings: bindings)
-      None =>
-        let function_name = py_bridge_method_name(method_name: method_name)
-        let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024))
-        let all_args = concat([recv_str], arg_strs)
-        concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
-    }
+  match emit_algebra_method_template(method_name: method_name, recv_str: recv_str, first_arg_str: first_arg_str, target: Python) {
+    Some { value: result } => result
     None =>
       let function_name = py_bridge_method_name(method_name: method_name)
       let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024))
