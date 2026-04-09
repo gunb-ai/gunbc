@@ -4973,3 +4973,69 @@ fn sum_forest(f: Forest) -> Int {
     assert!(!forest_bounds.is_empty(), "expected structural bound for sum_forest");
     assert_eq!(forest_bounds[0].param, "f");
 }
+
+#[test]
+fn structural_bound_nested_algorithms() {
+    // Stress test: a linked list filter that calls binary search on a
+    // separate sorted list for each element. Both algorithms have
+    // independent structural bounds on different parameters.
+    //
+    // filter_by_membership: O(n) on items (catamorphism on linked list)
+    // binary_search: O(log n) on sorted (divide-and-conquer on List<Int>)
+    let source = r#"module nested_algos
+
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn binary_search(sorted: List<Int>, target: Int) -> Bool {
+  let n = sorted |> count
+  if n == 0 { false }
+  else {
+    let mid = n / 2
+    let mid_val = sorted |> skip(mid) |> first
+    match mid_val {
+      None => false
+      Some { value: v } =>
+        if v == target { true }
+        else if target < v { binary_search(sorted: sorted |> take(mid), target: target) }
+        else { binary_search(sorted: sorted |> skip(mid + 1), target: target) }
+    }
+  }
+}
+
+fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
+  match items {
+    Nil => Nil
+    Cons { head: h, tail: rest } =>
+      if binary_search(sorted: allowed, target: h) {
+        Cons { head: h, tail: filter_by_membership(items: rest, allowed: allowed) }
+      } else {
+        filter_by_membership(items: rest, allowed: allowed)
+      }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+
+    // binary_search should produce O(log n) on sorted
+    let bs_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "binary_search")
+        .collect();
+    assert!(!bs_bounds.is_empty(), "expected structural bound for binary_search");
+    assert_eq!(bs_bounds[0].param, "sorted");
+    assert_eq!(
+        *bs_bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
+                param: "sorted".to_string(),
+            }),
+        },
+        "binary_search should be O(log n) even when called from another algorithm"
+    );
+
+    // filter_by_membership should produce O(n) on items (catamorphism)
+    let filter_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "filter_by_membership")
+        .collect();
+    assert!(!filter_bounds.is_empty(), "expected structural bound for filter_by_membership");
+    assert_eq!(filter_bounds[0].param, "items");
+}
