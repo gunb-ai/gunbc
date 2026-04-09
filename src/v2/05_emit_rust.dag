@@ -2037,7 +2037,7 @@ fn emit_rust_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scop
   let si = scope.type_env.source_index
   match expr.expr_data {
     ExprFieldAccess { summary: summary } =>
-      let f = expr.name
+      let f = field_access_field_at(texpr: expr, source_index: si)
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr, source_index: scope.type_env.source_index) {
         match extract_typed_service_name(receiver: expr, source_index: scope.type_env.source_index) {

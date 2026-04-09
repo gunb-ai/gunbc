@@ -1985,7 +1985,7 @@ pub fn emit_rust_expr_field_access(expr: Rc<Node>, registry: Rc<HashMap<String, 
         let si = scope.type_env.clone().source_index.clone();
 match (*expr.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { summary, .. } => {
-            let f = expr.name.clone();
+            let f = field_access_field_at(expr.clone(), si);
 let b = field_access_base(expr.clone());
 if is_typed_service_call_receiver(expr.clone(), scope.type_env.clone().source_index.clone()) {
                 match extract_typed_service_name(expr.clone(), scope.type_env.clone().source_index.clone()) {

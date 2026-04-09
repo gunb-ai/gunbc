@@ -54,7 +54,7 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
-  field_access_base, method_receiver, expr_field_access_summary, expr_method_call_semantics,
+  field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics,
   record_lit_type_name,
   lambda_body, cast_expr, cast_target, return_value,
   foreach_variable, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
@@ -582,7 +582,8 @@ fn emit_go_expr_var(expr: Node, source_index: NewlineIndex?) -> String {
 }
 
 fn emit_go_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_expr_field_access_shared(expr: expr, target: Go, emit_field: e => emit_go_field_access(base: field_access_base(texpr: e), field: e.name, summary: expr_field_access_summary(texpr: e), registry: registry, scope: scope, depth: depth), source_index: scope.type_env.source_index)
+  let si = scope.type_env.source_index
+  emit_expr_field_access_shared(expr: expr, target: Go, emit_field: e => emit_go_field_access(base: field_access_base(texpr: e), field: field_access_field_at(texpr: e, source_index: si), summary: expr_field_access_summary(texpr: e), registry: registry, scope: scope, depth: depth), source_index: si)
 }
 
 fn emit_go_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
