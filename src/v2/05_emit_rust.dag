@@ -4026,7 +4026,7 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
         ExprVar { binding_kind: _ } =>
           // Unit variant: Bearer, ApiKey — use Authorization: Bearer header
           concat("let request = client.", http_method, "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ", token_param, "));")
-        ExprCall { call_semantics: _ } =>
+        ExprCall { call_semantics: _, descent_evidence: _ } =>
           // Payload variant: Header("x-api-key") — extract header name from constructor arg
           let header_name = match auth.children |> first {
             Some { value: arg_node } => match arg_value(n: arg_node).expr_data {

@@ -2595,8 +2595,24 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             size_aliases: inner_size_aliases
           }
       }
-      // Recurse into value and body
-      map_children(node: body, transform: child => annotate_descent(body: child, ctx: inner_ctx))
+      // Lexical scope: value initializer sees OUTER context (binding not yet in scope),
+      // body sees inner_ctx (binding available). map_children would wrongly apply
+      // inner_ctx to the value, fabricating sub_value_vars that don't exist yet.
+      let annotated_value = annotate_descent(body: val, ctx: ctx)
+      let annotated_children = match let_body(texpr: body) {
+        Some { value: body_child } => [annotated_value, annotate_descent(body: body_child, ctx: inner_ctx)]
+        None => [annotated_value]
+      }
+      Node {
+        name: body.name, span: body.span, ident_span: body.ident_span,
+        children: annotated_children, connective: body.connective, params: body.params,
+        inferred: body.inferred, return_cardinality: body.return_cardinality,
+        uses: body.uses, body: body.body, transport: body.transport,
+        properties: body.properties, type_annotation: body.type_annotation,
+        is_self_recursive: body.is_self_recursive,
+        has_non_tail_self_call: body.has_non_tail_self_call,
+        match_pattern: body.match_pattern, expr_data: body.expr_data
+      }
     // ExprBlock: thread context through sequential children so that
     // let-bindings extend context for subsequent statements.
     ExprBlock =>

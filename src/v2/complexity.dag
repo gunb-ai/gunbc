@@ -42,7 +42,7 @@ import std.induction {
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent, IntegerExp,
-  sub_value_to_evidence, sub_value_to_call_pattern, catamorphism_bound, derive_bound
+  sub_value_to_evidence, sub_value_to_call_pattern, catamorphism_bound, derive_bound,
 }
 import v2.std.core {
   Node,
@@ -2815,7 +2815,7 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
     Some { value: _ } => single_dim_proof
     None =>
       let self_set = seed_bool_map(key: func_name)
-      let func_entry = FuncEntry { name: func_name, body: body, params: params, span: body.span, si: si }
+      let func_entry = FuncEntry { name: func_name, body: body, params: params, span: body.span, is_tail_recursive: false }
       let func_index = seed_func_entry_map(key: func_name, value: func_entry)
       construct_scc_termination_proof(members: [func_name], func_index: func_index, scc_name_set: self_set, si: si)
   }
@@ -3975,10 +3975,15 @@ type ComplexityViolation {
   span: SourceSpan
 }
 
+// Structural recurrence bound — derived from recursion structure only.
+// recurrence_bound is NOT full runtime: it counts recursive invocations
+// (work_exponent=0), not per-step work. Full time = recurrence * per_step_cost.
 type StructuralBoundResult {
   func_name: String
   param: String
-  bound: CostBound
+  recurrence_bound: CostBound
+  stack_bound: CostBound
+  span: SourceSpan
 }
 
 type ComplexityReport {
@@ -4389,7 +4394,7 @@ type FuncEntry {
   body: Node
   params: List<Node>
   span: SourceSpan
-  si: NewlineIndex?
+  is_tail_recursive: Bool  // self-recursive with all self-calls in tail position → O(1) stack
 }
 
 // Module-owned recursion facts: shared authority for all functions.
@@ -5040,7 +5045,7 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBo
             match factor_opt {
               Some { value: factor } =>
                 let branches = max_path_descending(body: entry.body, fn_name: entry.name, param_index: param_index)
-                let bound = match factor {
+                let recurrence = match factor {
                   // Structural recursion: catamorphism O(n) only if each sub-value
                   // is used at most once per path (disjointness check).
                   UnitShrink =>
@@ -5063,7 +5068,18 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBo
                   ProportionalShrink { divisor: _ } =>
                     derive_bound(param: param_name, branches: branches, factor: factor, work_exponent: 0)
                 }
-                concat(pacc, [StructuralBoundResult { func_name: entry.name, param: param_name, bound: bound }])
+                // Stack bound: same derive_bound, branches=1 (depth only), work=0
+                // TCO assumption: tail-recursive functions get O(1) stack.
+                // This requires the target language to guarantee tail-call
+                // elimination (Rust loop-lowering, Python trampoline, etc.).
+                // If a target does NOT guarantee TCO, this bound is aspirational
+                // rather than proven — the emitter must enforce it.
+                let stack_bound = if entry.is_tail_recursive { ConstantBound }
+                else {
+                  // Stack depth = recursion depth (branches don't affect stack)
+                  derive_bound(param: param_name, branches: 1, factor: factor, work_exponent: 0)
+                }
+                concat(pacc, [StructuralBoundResult { func_name: entry.name, param: param_name, recurrence_bound: recurrence, stack_bound: stack_bound, span: entry.span }])
               None => pacc
             }
           _ => pacc
@@ -5074,6 +5090,11 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBo
   )
 }
 
+
+// =========================================================================
+// KF-8: Optimality gap detection — deferred.
+// Requires structural CostBound comparison (direct pattern matching on variants),
+// not the lossy Int ranking that was here before. See review comments on PR #357.
 
 // =========================================================================
 // D4: Complexity reporting

@@ -491,3 +491,10 @@ fn bellman_ford_bound() -> CostBound {
 fn floyd_warshall_bound() -> CostBound {
   cost_poly(param: "V", degree: 3)
 }
+
+
+// Cost ordering is intentionally not provided here.
+// A correct dominance relation on CostBound requires structural comparison
+// (e.g., ConstantBound < AtomicBound(LogCost) < AtomicBound(PolyCost(n^1))),
+// not a lossy Int surrogate. When the bridge (Phase 1) needs cost comparison,
+// it should pattern-match on the CostBound variants directly.

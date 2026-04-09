@@ -59,8 +59,12 @@ fn stage0_cargo_check() {
 //   the 3-fix reduction path (Node tree descent, Parser SCC, Graph DFS).
 // 2026-04-08: 526→528 — transport property inference adds 2 complexity
 //   diagnostics (infer_property_values/infer_transport_node call infer_expr).
-// 2026-04-09: 528 — merged main (transport +2, CX unification -2, net 0).
-const DIAG_RATCHET: usize = 528;
+// 2026-04-08: 528→530 — source_index threading (PR #356 merge) adds 2
+//   diagnostics from new call paths through CostUnknown functions.
+// 2026-04-09: 530→528 — merged main (CX unification -2).
+// 2026-04-09: 528→485 — ExprLet scope fix eliminates false descent evidence
+//   from let-value initializers seeing their own bindings.
+const DIAG_RATCHET: usize = 485;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
