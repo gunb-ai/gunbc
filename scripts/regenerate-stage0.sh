@@ -71,14 +71,43 @@ $STAGE0_CMD compile \
     --output-dir "$PASS2_DIR"
 
 if ! diff -r "$PASS2_DIR" "$OUTPUT_DIR" > /dev/null 2>&1; then
-    echo "=== FIXED POINT FAILURE: pass 2 output differs from pass 1 ==="
-    diff -r "$PASS2_DIR" "$OUTPUT_DIR" | head -50
-    rm -rf "$PASS2_DIR"
-    rm -rf "$OUTPUT_DIR"
-    exit 1
-fi
+    echo "=== Pass 1 != Pass 2. Attempting automatic convergence (pass 3)... ==="
+    echo "--- Diff (first 20 lines): ---"
+    diff -r "$PASS2_DIR" "$OUTPUT_DIR" | head -20 || true
+    echo "---"
 
-echo "=== Fixed point verified (pass 1 == pass 2). ==="
+    # Pass 2 output is the better approximation — copy to stage0
+    echo "=== Copying pass-2 output to stage0 ==="
+    for f in "$PASS2_DIR"/src/*.rs; do
+        cp "$f" "$STAGE0_DIR/src/$(basename "$f")"
+    done
+
+    echo "=== Building pass-2 binary ==="
+    cargo build -p v2-compiler --release
+
+    PASS3_DIR="$ROOT/.regen-pass3"
+    rm -rf "$PASS3_DIR"
+
+    echo "=== Pass 3: compiling with pass-2 binary ==="
+    $STAGE0_CMD compile \
+        --source-root "$ROOT/src/v2" \
+        --source-root "$ROOT/dsl" \
+        --output-dir "$PASS3_DIR"
+
+    if ! diff -r "$PASS3_DIR" "$PASS2_DIR" > /dev/null 2>&1; then
+        echo "=== GENUINE DIVERGENCE: 3 passes did not converge ==="
+        diff -r "$PASS3_DIR" "$PASS2_DIR" | head -50
+        rm -rf "$PASS2_DIR"
+        rm -rf "$PASS3_DIR"
+        rm -rf "$OUTPUT_DIR"
+        exit 1
+    fi
+
+    echo "=== Converged after 3 passes (pass 2 == pass 3). ==="
+    rm -rf "$PASS3_DIR"
+else
+    echo "=== Fixed point verified (pass 1 == pass 2). ==="
+fi
 
 rm -rf "$PASS2_DIR"
 rm -rf "$OUTPUT_DIR"

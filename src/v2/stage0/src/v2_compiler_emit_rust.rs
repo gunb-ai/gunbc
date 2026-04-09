@@ -65,14 +65,13 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, HigherOrderMethodSpec, rust_higher_order_methods};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_string_like};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_string_like};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_compiler_tests_rust::{compiler_tests_source};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy};
-pub use crate::extdeps_languages_rust_types::{integer_types, float_types};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
-pub use crate::v2_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection};
+pub use crate::v2_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_product_type, is_coproduct_type, is_unit_like};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem, DataItem};
@@ -81,7 +80,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope,
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 pub use crate::v2_compiler_ownership::{OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings};
 
 pub fn render_rust_type(n: Rc<Node>, shared_types: Rc<HashMap<String, bool>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     render_node_type(n, RenderTarget::Rust, shared_types, source_index)
@@ -150,6 +149,10 @@ pub fn rust_visibility_prefix() -> String {
     top_level_visibility_for_target(RenderTarget::Rust)
 }
 
+pub fn rust_items() -> Rc<ItemKeywords> {
+    language_spec(RenderTarget::Rust).items.clone()
+}
+
 pub fn rust_struct_derives_text() -> String {
     rust_struct_derives()
 }
@@ -169,14 +172,14 @@ pub fn rust_enum_derives_copy_text() -> String {
 pub fn rust_serde_tag_attr() -> String {
     match serialization_for_target(RenderTarget::Rust).tag_attribute.clone() {
     Some(attr) => attr.clone(),
-    None => "#[serde(tag = \"_variant\")]".to_string(),
+    None => "".to_string(),
 }
 }
 
 pub fn rust_serde_rename_template_text() -> String {
     match serialization_for_target(RenderTarget::Rust).rename_attribute_template.clone() {
     Some(template) => template.clone(),
-    None => "#[serde(rename = \"{0}\")]".to_string(),
+    None => "".to_string(),
 }
 }
 
@@ -199,7 +202,7 @@ pub fn rust_test_name(projection: Rc<TestProjection>) -> String {
 pub fn rust_async_test_decorator() -> String {
     match test_conventions_for_target(RenderTarget::Rust).async_decorator.clone() {
     Some(decorator) => decorator.clone(),
-    None => "#[tokio::test]".to_string(),
+    None => "".to_string(),
 }
 }
 
@@ -286,7 +289,10 @@ pub fn is_simple_disj(item: Rc<Node>) -> bool {
 }
 
 pub fn is_dag_value_type_name(name: String) -> bool {
-    (((name.clone().as_str() == "Int".to_string().as_str()) || (name.clone().as_str() == "Bool".to_string().as_str())) || (name.clone().as_str() == "Float".to_string().as_str()))
+    match is_copy(RenderTarget::Rust, name) {
+    Some(v) => v.clone(),
+    None => false,
+}
 }
 
 pub fn is_type_constant(summary: Rc<TypeSummary>, recursive_type_set: Rc<HashMap<String, bool>>) -> bool {
@@ -449,7 +455,7 @@ let ext_len = v2_rt::string_length(&rust_source_ext());
 let mod_decls = Rc::new({ let mut __result = Vec::new(); for f in all_module_files.iter().cloned() { __result.push({
             let path_len = v2_rt::string_length(&f.path.clone());
 let mod_name = v2_rt::substring(&f.path.clone(), src_prefix_len.clone(), (path_len.clone() - ext_len.clone()));
-v2_rt::concat(v2_rt::concat("pub mod ".to_string(), mod_name.clone()), ";".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), rust_items().module_keyword.clone()), " ".to_string()), mod_name.clone()), ";".to_string())
 }); } __result });
 let test_mod = if has_compiler_tests {
             "\n\n#[cfg(test)]\nmod compiler_tests;".to_string()
@@ -513,7 +519,7 @@ let extern_svc_imports = Rc::new({ let mut __result = Vec::new(); for sn in uniq
     Some(mod_file) => if (mod_file.clone().as_str() == this_mod_filename.clone().as_str()) {
             Rc::new(vec![])
 } else {
-            Rc::new(vec![v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("pub use crate::".to_string(), mod_file.clone()), "::".to_string()), sanitize_service_name(sn.clone())), ";".to_string())])
+            Rc::new(vec![v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "use crate::".to_string()), mod_file.clone()), "::".to_string()), sanitize_service_name(sn.clone())), ";".to_string())])
 },
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
@@ -522,7 +528,7 @@ let svc_imports_str = if ((extern_svc_imports.clone().len() as i64) == 0) {
 } else {
             v2_rt::concat("\n".to_string(), extern_svc_imports.clone().join(&"\n".to_string()))
 };
-let local_enum_uses = Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in typed_module.items.clone().iter().cloned() { if (is_type_def_item(item.clone()) && (item.connective.clone() == Connective::Disj)) { __result.push(item); } } __result }).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat("use ".to_string(), authored_name(scope.type_env.clone(), item.clone())), "::*;".to_string())); } __result });
+let local_enum_uses = Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in typed_module.items.clone().iter().cloned() { if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) { __result.push(item); } } __result }).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat("use ".to_string(), authored_name(scope.type_env.clone(), item.clone())), "::*;".to_string())); } __result });
 let local_uses_str = if ((local_enum_uses.clone().len() as i64) == 0) {
             "".to_string()
 } else {
@@ -599,7 +605,7 @@ let top_with_parents = unique_strings(v2_rt::concat(top_level.clone(), parent_li
 let main_line = if ((top_with_parents.clone().len() as i64) > 0) {
                                     {
                                         let names_str = Rc::new({ let mut __result = Vec::new(); for n in top_with_parents.clone().iter().cloned() { __result.push(emit_import_name(n.clone(), registry.clone())); } __result }).join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("pub use crate::".to_string(), mod_name.clone()), "::{".to_string()), names_str.clone()), "};".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "use crate::".to_string()), mod_name.clone()), "::{".to_string()), names_str.clone()), "};".to_string())
 }
 } else {
                                     "".to_string()
@@ -657,7 +663,7 @@ if is_type_def_item(item.clone()) {
             emit_type_def_from_connective(item.clone(), emit_info.recursive_type_set.clone(), shared_types, env.clone(), emit_info.clone())
 } else {
             if is_type_alias_item(item.clone()) {
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "type ".to_string()), item_text.clone()), " = ".to_string()), render_rust_type(resolved_type(item.clone()), shared_types, env.source_index.clone())), ";".to_string())
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), rust_items().type_alias_keyword.clone()), " ".to_string()), item_text.clone()), " = ".to_string()), render_rust_type(resolved_type(item.clone()), shared_types, env.source_index.clone())), ";".to_string())
 } else {
                 if is_type_decl_item(item.clone()) {
                     "".to_string()
@@ -757,7 +763,7 @@ pub fn emit_type_def_from_connective(item: Rc<Node>, recursive_types: Rc<HashMap
     {
         let type_params = emit_type_params(item.params.clone(), env.source_index.clone());
 let item_text = authored_name(env.clone(), item.clone());
-let is_product = (item.connective.clone() == Connective::Conj);
+let is_product = is_product_type(item.clone());
 if is_product {
             emit_struct_from_children(item_text, type_params, item.children.clone(), recursive_types, shared_types, env.clone(), emit_info)
 } else {
@@ -782,12 +788,12 @@ let derives = if has_fn_fields {
 }
 };
 if ((children.clone().len() as i64) == 0) {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_visibility_prefix()), "struct ".to_string()), name.clone()), type_params), ";".to_string())
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " ".to_string()), name.clone()), type_params), ";".to_string())
 } else {
             {
                 let field_lines = Rc::new({ let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_struct_field_from_child(child.clone(), recursive_types.clone(), shared_types.clone(), env.clone())); } __result });
 let fields_str = field_lines.join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_visibility_prefix()), "struct ".to_string()), name.clone()), type_params), " {\n".to_string()), fields_str), "\n}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " ".to_string()), name.clone()), type_params), " {\n".to_string()), fields_str), "\n}".to_string())
 }
 }
 }
@@ -796,7 +802,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_struct_field_from_child(child: Rc<Node>, recursive_types: Rc<HashMap<String, bool>>, shared_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
     {
         let rt_child = resolved_type(child.clone());
-let ty = if (((rt_child.connective.clone() == Connective::Conj) && (rt_child.ident_span.clone() != None)) && ((rt_child.children.clone().len() as i64) > 2)) {
+let ty = if ((is_product_type(rt_child.clone()) && (rt_child.ident_span.clone() != None)) && ((rt_child.children.clone().len() as i64) > 2)) {
             match v2_rt::map_get(&env.bindings.clone(), rt_child.name.clone()) {
     Some(binding) => if ((binding.resolved.clone().params.clone().len() as i64) > 0) {
                 {
@@ -851,7 +857,7 @@ pub fn emit_enum_from_children(name: String, type_params: String, children: Rc<V
         let derives = enum_derives(children.clone());
 let variant_lines = Rc::new({ let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_variant_from_child(child.clone(), recursive_types.clone(), shared_types.clone(), env.clone())); } __result });
 let variants_str = variant_lines.join(&"\n".to_string());
-let enum_def = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_serde_tag_attr()), "\n".to_string()), rust_visibility_prefix()), "enum ".to_string()), name.clone()), type_params.clone()), " {\n".to_string()), variants_str), "\n}".to_string());
+let enum_def = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives, "\n".to_string()), rust_serde_tag_attr()), "\n".to_string()), rust_visibility_prefix()), rust_items().enum_keyword.clone()), " ".to_string()), name.clone()), type_params.clone()), " {\n".to_string()), variants_str), "\n}".to_string());
 let accessor_impl = emit_enum_shared_accessors(name.clone(), type_params.clone(), children.clone(), recursive_types.clone(), shared_types.clone(), env.clone());
 if (accessor_impl.clone().as_str() == "".to_string().as_str()) {
             enum_def
@@ -961,7 +967,8 @@ if use_tco.clone() {
             {
                 let tco_params_str = emit_tco_params(params.clone(), shared_types.clone(), si.clone());
 let body_str = emit_typed_tco_body(body.clone(), name.clone(), params.clone(), registry.clone(), body_scope, (depth.clone() + 1), shared_types.clone(), emit_info);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), emit_ident(name.clone(), RenderTarget::Rust)), "(".to_string()), tco_params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
+let kw = rust_items().func_keyword.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), emit_ident(name.clone(), RenderTarget::Rust)), "(".to_string()), tco_params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
 }
 } else {
             emit_fn_def_non_tco(name.clone(), params_str, ret_str, body.clone(), registry.clone(), body_scope, depth.clone(), shared_types.clone(), emit_info, needs_stacker)
@@ -973,12 +980,14 @@ pub fn emit_fn_def_non_tco(name: String, params_str: String, ret_str: String, bo
     if needs_stacker {
         {
             let body_str = emit_typed_expr(body, registry, scope, (depth.clone() + 2), shared_types, emit_info, 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), emit_ident(name, RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n".to_string()), make_indent((depth.clone() + 2))), body_str), "\n".to_string()), make_indent((depth.clone() + 1))), "})\n}".to_string())
+let kw = rust_items().func_keyword.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), emit_ident(name, RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n".to_string()), make_indent((depth.clone() + 2))), body_str), "\n".to_string()), make_indent((depth.clone() + 1))), "})\n}".to_string())
 }
 } else {
         {
             let body_str = emit_typed_expr(body, registry, scope, (depth.clone() + 1), shared_types, emit_info, 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), emit_ident(name, RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
+let kw = rust_items().func_keyword.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), emit_ident(name, RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
 }
 }
 }
@@ -996,7 +1005,8 @@ let body_scope = build_params_scope(scope.clone(), params.clone());
 let si = scope.type_env.clone().source_index.clone();
 let body_scope = uses.clone().iter().cloned().fold(body_scope, |s: Rc<InferScope>, u: Rc<Node>| extend_scope(s.clone(), resource_use_name_at(u.clone(), si.clone()), resource_use_resource(u.clone())));
 let body_str = emit_func_body(body, registry.clone(), body_scope, (depth.clone() + 1), shared_types.clone(), emit_info);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "async fn ".to_string()), emit_ident(name.clone(), RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
+let items = rust_items();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), items.async_prefix.clone()), items.func_keyword.clone()), " ".to_string()), emit_ident(name.clone(), RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
 }
 }
 
@@ -1058,7 +1068,7 @@ pub fn emit_tco_param(param: Rc<Node>, shared_types: Rc<HashMap<String, bool>>, 
     {
         let n = param_node_type_expr(param.clone());
 let ty = emit_rust_param_type(n, shared_types, source_index.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat("mut ".to_string(), emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Rust)), ": ".to_string()), ty)
+v2_rt::concat(v2_rt::concat(v2_rt::concat("mut ".to_string(), emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Rust)), rust_items().param_type_sep.clone()), ty)
 }
 }
 
@@ -1103,12 +1113,12 @@ pub fn emit_param(param: Rc<Node>, shared_types: Rc<HashMap<String, bool>>, sour
     {
         let n = param_node_type_expr(param.clone());
 let ty = emit_rust_param_type(n, shared_types, source_index.clone());
-v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Rust), ": ".to_string()), ty)
+v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Rust), rust_items().param_type_sep.clone()), ty)
 }
 }
 
 pub fn emit_inferred(inferred: Rc<Node>, shared_types: Rc<HashMap<String, bool>>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    v2_rt::concat(" -> ".to_string(), render_rust_type(inferred, shared_types, source_index))
+    v2_rt::concat(rust_items().return_arrow.clone(), render_rust_type(inferred, shared_types, source_index))
 }
 
 pub fn needs_reference_node(n: Rc<Node>) -> bool {
@@ -1116,7 +1126,7 @@ pub fn needs_reference_node(n: Rc<Node>) -> bool {
         true
 } else {
         {
-            let is_copy = (is_rust_value_type(n.clone()) || ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0)));
+            let is_copy = (is_rust_value_type(n.clone()) || (is_product_type(n.clone()) && ((n.children.clone().len() as i64) == 0)));
 (is_copy == false)
 }
 }
@@ -1600,8 +1610,8 @@ let n = if ((inferred_node.type_annotation.clone() != None) && has_structure) {
 } else {
             inferred_node.clone()
 };
-let is_product = (n.connective.clone() == Connective::Conj);
-let is_coproduct = (n.connective.clone() == Connective::Disj);
+let is_product = is_product_type(n.clone());
+let is_coproduct = is_coproduct_type(n.clone());
 let n_is_error = if (n.inferred.clone() != None) {
             is_compiler_error(n.inferred.clone().clone().unwrap())
 } else {
@@ -1631,18 +1641,6 @@ if (n.name.clone().as_str() == "__EmitTypeCacheMiss".to_string().as_str()) {
 }
 }
 }
-}
-}
-}
-
-pub fn is_primitive_numeric_node(n: Rc<Node>) -> bool {
-    {
-        let normed = normalize_access_type_node(n);
-let rust_type = coerce_primitive_type(RenderTarget::Rust, normed.name.clone());
-if (rust_type.clone().as_str() == normed.name.clone().as_str()) {
-            false
-} else {
-            ({ let mut __found = false; for t in integer_types().iter().cloned() { if (t.clone().as_str() == rust_type.clone().as_str()) { __found = true; break; } } __found } || { let mut __found = false; for t in float_types().iter().cloned() { if (t.clone().as_str() == rust_type.clone().as_str()) { __found = true; break; } } __found })
 }
 }
 }
@@ -1830,7 +1828,7 @@ pub fn emit_typed_field_access(base: Rc<Node>, field: String, summary: Option<Rc
         let base_str = emit_typed_expr_base(base.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone());
 let base_is_anon_record = match base.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: bt, .. }) => {
-            let is_product = (bt.connective.clone() == Connective::Conj);
+            let is_product = is_product_type(bt.clone());
 if (is_product && (bt.ident_span.clone() == None)) {
                 true
 } else {
@@ -1895,8 +1893,8 @@ pub fn type_needs_rc(type_node: Rc<Node>) -> bool {
 pub fn type_needs_rc_seen(mut type_node: Rc<Node>, mut seen: Rc<HashMap<String, bool>>) -> bool {
     loop {
         let normed = normalize_access_type_node(type_node.clone());
-let is_product = (normed.connective.clone() == Connective::Conj);
-let is_coproduct = (normed.connective.clone() == Connective::Disj);
+let is_product = is_product_type(normed.clone());
+let is_coproduct = is_coproduct_type(normed.clone());
 if is_product.clone() {
             break true;
 } else {
@@ -2127,11 +2125,7 @@ pub fn emit_rust_expr_block(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<Item
 
 pub fn emit_rust_expr_cast(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, shared_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprCast => {
-        let e = cast_expr(expr.clone());
-let t = cast_target(expr.clone());
-emit_typed_cast(e, t, registry, scope, depth, shared_types, emit_info)
-},
+    ExprData::ExprCast => emit_typed_cast_shared(cast_expr(expr.clone()), cast_target(expr.clone()), RenderTarget::Rust, |child| emit_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024), scope.type_env.clone().source_index.clone()),
     _ => emit_error_expr("emit_rust_expr_cast expected ExprCast".to_string(), RenderTarget::Rust),
 }
 }
@@ -2653,7 +2647,7 @@ let contextual_acc_type = match result_type.as_deref().cloned() {
 };
 let acc_type_node = match fold_accumulator_type {
     Some(acc_type) => {
-            let acc_children_have_unit = ({ let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if (((c.connective.clone() == Connective::Conj) && ((c.children.clone().len() as i64) == 0)) || (c.ident_span.clone() == None)) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if (((gc.connective.clone() == Connective::Conj) && ((gc.children.clone().len() as i64) == 0)) || (gc.ident_span.clone() == None)) { __found = true; break; } } __found } { __found = true; break; } } __found });
+            let acc_children_have_unit = ({ let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if (is_unit_like(c.clone()) || (c.ident_span.clone() == None)) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if (is_unit_like(gc.clone()) || (gc.ident_span.clone() == None)) { __found = true; break; } } __found } { __found = true; break; } } __found });
 let is_under_resolved_map = (node_is_keyed_collection(acc_type.clone()) && (((acc_type.children.clone().len() as i64) == 0) || acc_children_have_unit));
 let is_under_resolved_list = (node_is_element_collection(acc_type.clone()) && ((acc_type.children.clone().len() as i64) == 0));
 let is_under_resolved_non_collection = ((!node_is_keyed_collection(acc_type.clone()) && !node_is_element_collection(acc_type.clone())) && !node_is_collection(acc_type.clone()));
@@ -2724,7 +2718,7 @@ let lambda_acc_type_str = if is_bare_container {
 } else {
             acc_type_str.clone()
 };
-let acc_has_unit_child = ({ let mut __found = false; for c in acc_type_node.children.clone().iter().cloned() { if (((c.connective.clone() == Connective::Conj) && ((c.children.clone().len() as i64) == 0)) || (c.ident_span.clone() == None)) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type_node.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if (((gc.connective.clone() == Connective::Conj) && ((gc.children.clone().len() as i64) == 0)) || (gc.ident_span.clone() == None)) { __found = true; break; } } __found } { __found = true; break; } } __found });
+let acc_has_unit_child = ({ let mut __found = false; for c in acc_type_node.children.clone().iter().cloned() { if (is_unit_like(c.clone()) || (c.ident_span.clone() == None)) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type_node.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if (is_unit_like(gc.clone()) || (gc.ident_span.clone() == None)) { __found = true; break; } } __found } { __found = true; break; } } __found });
 let init_str = match args.clone().first().cloned() {
     Some(init_arg) => match (*arg_value(init_arg.clone()).expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
@@ -3465,7 +3459,7 @@ let qualified_name = match struct_name {
 };
 match qualified_name {
     None => {
-            let is_product = (resolved_type.connective.clone() == Connective::Conj);
+            let is_product = is_product_type(resolved_type.clone());
 if (is_product && (resolved_type.ident_span.clone() == None)) {
                 if ((fields.clone().len() as i64) == 1) {
                     match fields.clone().first().cloned() {
@@ -3683,28 +3677,6 @@ pub fn emit_typed_block(stmts: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, R
     {
         let state = emit_rust_block_stmts(stmts, Rc::new(vec![]), scope, registry, (depth.clone() + 1), shared_types, emit_info);
 v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n".to_string(), make_indent((depth.clone() + 1))), state.text.clone().join(&"\n".to_string())), "\n}".to_string())
-}
-}
-
-pub fn emit_typed_cast(expr: Rc<Node>, target: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, shared_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
-    {
-        let expr_str = emit_typed_expr(expr.clone(), registry, scope.clone(), depth, shared_types.clone(), emit_info, 1024);
-let ty_str = render_rust_type(target.clone(), shared_types.clone(), scope.type_env.clone().source_index.clone());
-if is_primitive_numeric_node(target.clone()) {
-            v2_rt::concat(v2_rt::concat(expr_str, " as ".to_string()), ty_str.clone())
-} else {
-            {
-                let src_ty = match expr.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: n, .. }) => render_rust_type(n.clone(), shared_types.clone(), scope.type_env.clone().source_index.clone()),
-    _ => "".to_string(),
-};
-if ((src_ty.clone().as_str() != "".to_string().as_str()) && (src_ty.clone().as_str() == ty_str.clone().as_str())) {
-                    expr_str
-} else {
-                    v2_rt::concat(v2_rt::concat("compile_error!(\"unsupported cast to ".to_string(), ty_str.clone()), "\")".to_string())
-}
-}
-}
 }
 }
 
@@ -4073,7 +4045,7 @@ if ((names.clone().len() as i64) == 0) {
 pub fn emit_operation_method(service_name: String, transport: Rc<Node>, op_node: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, shared_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
     {
         let op_text = authored_name(env.clone(), op_node.clone());
-let input_params = Rc::new({ let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Rust), ": ".to_string()), emit_rust_param_type(param_node_type_expr(p.clone()), shared_types.clone(), env.source_index.clone()))); } __result });
+let input_params = Rc::new({ let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Rust), rust_items().param_type_sep.clone()), emit_rust_param_type(param_node_type_expr(p.clone()), shared_types.clone(), env.source_index.clone()))); } __result });
 let params_str = input_params.join(&", ".to_string());
 let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
             "&self".to_string()
@@ -4088,7 +4060,8 @@ let mock_props = Rc::new({ let mut __result = Vec::new(); for p in op_node.prope
 let dry_run_body = emit_dry_run_branch_from_props(op_text.clone(), resolved_type(op_node.clone()), mock_props, registry.clone());
 let body = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if self.dry_run.is_dry_run() {\n".to_string(), make_indent((depth.clone() + 2))), dry_run_body), "\n".to_string()), "} else {\n".to_string()), make_indent((depth.clone() + 2))), real_body), "\n".to_string()), "}".to_string());
 let modifier_doc = emit_modifier_doc_from_props(op_node.properties.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(modifier_doc, rust_visibility_prefix()), "async fn ".to_string()), emit_ident(op_text.clone(), RenderTarget::Rust)), "(".to_string()), all_params), ") -> Result<".to_string()), ret_type), ", Box<dyn std::error::Error>> {\n".to_string()), make_indent((depth.clone() + 1))), body), "\n}".to_string())
+let items = rust_items();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(modifier_doc, rust_visibility_prefix()), items.async_prefix.clone()), items.func_keyword.clone()), " ".to_string()), emit_ident(op_text.clone(), RenderTarget::Rust)), "(".to_string()), all_params), ") -> Result<".to_string()), ret_type), ", Box<dyn std::error::Error>> {\n".to_string()), make_indent((depth.clone() + 1))), body), "\n}".to_string())
 }
 }
 
@@ -4172,8 +4145,8 @@ all_lines.join(&"\n".to_string())
 pub fn emit_shell_return(inferred: Rc<Node>) -> String {
     {
         let effective = unwrap_single_field_product(inferred);
-let is_product = (effective.connective.clone() == Connective::Conj);
-let is_bool = ((effective.connective.clone() == Connective::Disj) && ((effective.children.clone().len() as i64) == 2));
+let is_product = is_product_type(effective.clone());
+let is_bool = (is_coproduct_type(effective.clone()) && ((effective.children.clone().len() as i64) == 2));
 if is_bool {
             "Ok(output.status.success())".to_string()
 } else {
@@ -4195,7 +4168,7 @@ if __eff_is_container {
 
 pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
     {
-        let is_product = (n.connective.clone() == Connective::Conj);
+        let is_product = is_product_type(n.clone());
 if ((is_product && (n.ident_span.clone() == None)) && ((n.children.clone().len() as i64) == 1)) {
             match n.children.clone().first().cloned() {
     Some(field_node) => resolved_type(field_node.clone()),
@@ -4210,7 +4183,7 @@ if ((is_product && (n.ident_span.clone() == None)) && ((n.children.clone().len()
 pub fn emit_file_call(op_name: String, inferred: Rc<Node>) -> String {
     {
         let effective = unwrap_single_field_product(inferred);
-let is_product = (effective.connective.clone() == Connective::Conj);
+let is_product = is_product_type(effective.clone());
 let parse_line = if (is_product && ((effective.children.clone().len() as i64) > 1)) {
             "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)".to_string()
 } else {
@@ -4243,7 +4216,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[async_t
 
 pub fn emit_capability_method(cap_node: Rc<Node>, shared_types: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>) -> String {
     {
-        let input_params = Rc::new({ let mut __result = Vec::new(); for p in cap_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Rust), ": ".to_string()), emit_rust_param_type(param_node_type_expr(p.clone()), shared_types.clone(), env.source_index.clone()))); } __result });
+        let input_params = Rc::new({ let mut __result = Vec::new(); for p in cap_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Rust), rust_items().param_type_sep.clone()), emit_rust_param_type(param_node_type_expr(p.clone()), shared_types.clone(), env.source_index.clone()))); } __result });
 let params_str = input_params.join(&", ".to_string());
 let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
             "&self".to_string()
@@ -4251,7 +4224,8 @@ let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
             v2_rt::concat("&self, ".to_string(), params_str.clone())
 };
 let ret = render_rust_type(resolved_type(cap_node.clone()), shared_types.clone(), env.source_index.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async fn ".to_string(), emit_ident(authored_name(env.clone(), cap_node.clone()), RenderTarget::Rust)), "(".to_string()), all_params), ") -> Result<".to_string()), ret), ", Box<dyn std::error::Error>>;".to_string())
+let items = rust_items();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(items.async_prefix.clone(), items.func_keyword.clone()), " ".to_string()), emit_ident(authored_name(env.clone(), cap_node.clone()), RenderTarget::Rust)), "(".to_string()), all_params), ") -> Result<".to_string()), ret), ", Box<dyn std::error::Error>>;".to_string())
 }
 }
 
@@ -4274,12 +4248,14 @@ let needs_rc = v2_rt::map_contains_key(&shared_types, type_node.name.clone());
 if is_simple_type_node(type_node.clone()) {
             {
                 let val_str = emit_typed_expr(value, registry, scope.clone(), depth, shared_types.clone(), emit_info, 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " { ".to_string()), val_str), " }".to_string())
+let kw = rust_items().func_keyword.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " { ".to_string()), val_str), " }".to_string())
 }
 } else {
             {
                 let body = emit_data_def_body(type_node.clone(), value, registry, scope.clone(), depth, shared_types.clone(), emit_info, needs_rc);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " {\n".to_string()), "    thread_local! {\n".to_string()), "        static CACHED: ".to_string()), ty_str.clone()), " = {\n".to_string()), body), "\n".to_string()), "        };\n".to_string()), "    }\n".to_string()), "    CACHED.with(|c| c.clone())\n".to_string()), "}".to_string())
+let kw = rust_items().func_keyword.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " {\n".to_string()), "    thread_local! {\n".to_string()), "        static CACHED: ".to_string()), ty_str.clone()), " = {\n".to_string()), body), "\n".to_string()), "        };\n".to_string()), "    }\n".to_string()), "    CACHED.with(|c| c.clone())\n".to_string()), "}".to_string())
 }
 }
 }

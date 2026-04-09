@@ -188,7 +188,7 @@ pub fn container_to_algebra_name(name: String) -> Option<String> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Bool {
     True,
     False,
@@ -316,14 +316,14 @@ pub type OidcSubjectToken = String;
 pub type WifAudience = String;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum WarningPolicy {
     DenyAll,
     Default,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CloudRuntime {
     GitHubActions,
     Metadata,
@@ -331,7 +331,7 @@ pub enum CloudRuntime {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Platform {
     Linux,
     Macos,
@@ -339,7 +339,7 @@ pub enum Platform {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TopologyNodeKind {
     Pure,
     Transport,
@@ -348,7 +348,7 @@ pub enum TopologyNodeKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum DocSourceKind {
     Template,
     Generated,
@@ -356,7 +356,7 @@ pub enum DocSourceKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum FermiDepth {
     Xs,
     S,
@@ -366,7 +366,7 @@ pub enum FermiDepth {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CredentialFlow {
     Stored {
         secret_name: String,
@@ -388,7 +388,7 @@ pub enum CredentialFlow {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Arch {
     X86_64,
     X86,
@@ -404,7 +404,7 @@ pub enum Arch {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Vendor {
     UnknownVendor,
     Pc,
@@ -413,7 +413,7 @@ pub enum Vendor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Os {
     Linux,
     Macos,
@@ -425,7 +425,7 @@ pub enum Os {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum AbiEnv {
     NoneAbi,
     Gnu,
@@ -439,7 +439,7 @@ pub enum AbiEnv {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ExecutionEnv {
     Native,
     Wsl,
@@ -463,7 +463,7 @@ pub struct RuntimePlatform {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum EntryKind {
     RegularFile,
     Directory,
@@ -473,7 +473,7 @@ pub enum EntryKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum SymlinkTarget {
     TargetFile,
     TargetDir,
@@ -481,7 +481,7 @@ pub enum SymlinkTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ContentEncoding {
     UTF8,
     ASCII,
@@ -506,7 +506,7 @@ pub struct FileClassification {
 pub type MimeType = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum AuthScheme {
     Bearer,
     Header {
@@ -714,7 +714,7 @@ pub struct CodegenTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CodegenBackend {
     Rust,
     Go,
