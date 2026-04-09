@@ -4882,3 +4882,94 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
         );
     }
 }
+
+#[test]
+fn structural_bound_composed_tree_then_search() {
+    // Composition: flatten a tree to a list, then search the list.
+    // flatten is O(n) catamorphism on tree, search is O(n) catamorphism on list.
+    // Both should independently produce structural bounds.
+    let source = r#"module compose_test
+
+type BST<T> = Leaf | Node { value: T, left: BST<T>, right: BST<T> }
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn flatten(tree: BST<Int>) -> MyList<Int> {
+  match tree {
+    Leaf => Nil
+    Node { value: v, left: l, right: r } =>
+      let left_flat = flatten(tree: l)
+      let right_flat = flatten(tree: r)
+      Cons { head: v, tail: left_flat }
+  }
+}
+
+fn list_contains(xs: MyList<Int>, target: Int) -> Bool {
+  match xs {
+    Nil => false
+    Cons { head: h, tail: rest } =>
+      if h == target { true }
+      else { list_contains(xs: rest, target: target) }
+  }
+}
+
+fn tree_contains(tree: BST<Int>, target: Int) -> Bool {
+  let flat = flatten(tree: tree)
+  list_contains(xs: flat, target: target)
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    // flatten should produce O(n) on tree
+    let flatten_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "flatten")
+        .collect();
+    assert!(!flatten_bounds.is_empty(), "expected structural bound for flatten");
+    assert_eq!(flatten_bounds[0].param, "tree");
+    // list_contains should produce O(n) on xs
+    let search_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "list_contains")
+        .collect();
+    assert!(!search_bounds.is_empty(), "expected structural bound for list_contains");
+    assert_eq!(search_bounds[0].param, "xs");
+    // tree_contains is not recursive — no structural bound expected
+    let tc_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "tree_contains")
+        .collect();
+    assert!(tc_bounds.is_empty(), "tree_contains is not recursive, should have no structural bound");
+}
+
+#[test]
+fn structural_bound_mutual_types() {
+    // Two recursive types used together: a forest is a list of trees.
+    // sum_tree is O(n) on tree; sum_forest is O(n) on forest.
+    let source = r#"module mutual_types
+
+type Tree = Leaf { value: Int } | Branch { left: Tree, right: Tree }
+
+fn sum_tree(t: Tree) -> Int {
+  match t {
+    Leaf { value: v } => v
+    Branch { left: l, right: r } => sum_tree(t: l) + sum_tree(t: r)
+  }
+}
+
+type Forest = Empty | Trees { first: Tree, rest: Forest }
+
+fn sum_forest(f: Forest) -> Int {
+  match f {
+    Empty => 0
+    Trees { first: t, rest: r } => sum_tree(t: t) + sum_forest(f: r)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let tree_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "sum_tree")
+        .collect();
+    assert!(!tree_bounds.is_empty(), "expected structural bound for sum_tree");
+    assert_eq!(tree_bounds[0].param, "t");
+    let forest_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "sum_forest")
+        .collect();
+    assert!(!forest_bounds.is_empty(), "expected structural bound for sum_forest");
+    assert_eq!(forest_bounds[0].param, "f");
+}
