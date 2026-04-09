@@ -20,7 +20,8 @@ use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::OperationModifier::{Idempotent, Readonly, Hermetic};
 use crate::v2_std_core::TokenShape::{ShKeyword, ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket, ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow, ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe, ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr, ShQuestion, ShNullCoalesce, ShPipe, ShPipeArrow, ShLitStr, ShLitInt, ShLitFloat, ShIdent, ShStrBegin, ShStrMid, ShStrEnd, ShNewline, ShEof, ShUnknown};
 use crate::v2_std_core::CompilerDiagnostic::{ParseError};
-pub use crate::v2_compiler_languages::{ItemForm, BodyKind, OperatorSpec, SyntaxSpec};
+pub use crate::v2_compiler_languages::{ItemForm, ItemFormKind, BodyKind, OperatorSpec, SyntaxSpec};
+use crate::v2_compiler_languages::ItemFormKind::{OtherForm};
 use crate::v2_compiler_languages::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
 pub use crate::extdeps_languages_dag_syntax::{dag_syntax_spec};
 use ExpectedToken::*;
@@ -4191,6 +4192,7 @@ if has_err(r.err.clone()) {
         }
 let has_uses = (kw.clone().as_str() == "func".to_string().as_str());
 let form = Rc::new(ItemForm {
+    kind: ItemFormKind::OtherForm,
     keyword: kw.clone(),
     has_type_params: false,
     has_params: true,

@@ -63,7 +63,7 @@ import v2.std.core {
 }
 
 import v2.compiler.languages {
-  ItemForm, BodyKind,
+  ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
   OperatorSpec, SyntaxSpec
@@ -2013,7 +2013,7 @@ fn parse_func_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   // All three keywords use BlockBody with has_uses varying per form
   let has_uses = kw == "func"
-  let form = ItemForm { keyword: kw, has_type_params: false, has_params: true, has_return_type: true, return_required: false, has_uses: has_uses, body_kind: BlockBody }
+  let form = ItemForm { kind: OtherForm, keyword: kw, has_type_params: false, has_params: true, has_return_type: true, return_required: false, has_uses: has_uses, body_kind: BlockBody }
   let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
   if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
   parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)

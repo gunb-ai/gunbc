@@ -11,11 +11,12 @@ use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::v2_std_core::{BinOp, LiteralValue};
 use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::v2_std_core::LiteralValue::*;
-pub use crate::std_syntax::{ItemForm, OperatorSpec, SyntaxSpec, BodyKind};
+pub use crate::std_syntax::{ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec, BodyKind};
+use crate::std_syntax::ItemFormKind::{FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm};
 use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
-pub use crate::extdeps_languages_rust_syntax::{rust_operators};
-pub use crate::extdeps_languages_python_syntax::{python_operators};
-pub use crate::extdeps_languages_go_syntax::{go_operators};
+pub use crate::extdeps_languages_rust_syntax::{rust_operators, rust_item_forms};
+pub use crate::extdeps_languages_python_syntax::{python_operators, python_item_forms};
+pub use crate::extdeps_languages_go_syntax::{go_operators, go_item_forms};
 pub use crate::extdeps_languages_dag_syntax::{dag_operators};
 pub use crate::extdeps_languages_rust_emit::{rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_string_types, rust_method_templates, rust_func_keyword, rust_async_prefix, rust_struct_keyword, rust_enum_keyword, rust_type_alias_keyword, rust_param_separator, rust_return_arrow, rust_param_type_sep, rust_module_keyword, rust_import_keyword, rust_import_from_keyword};
 pub use crate::extdeps_languages_python_emit::{python_keywords, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates, python_string_types, python_func_keyword, python_async_prefix, python_struct_keyword, python_enum_keyword, python_type_alias_keyword, python_param_separator, python_return_arrow, python_param_type_sep, python_module_keyword, python_import_keyword, python_import_from_keyword};
@@ -218,6 +219,16 @@ pub struct ItemKeywords {
     pub import_from_keyword: String,
 }
 
+pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -> String {
+    {
+        let matching = Rc::new({ let mut __result = Vec::new(); for f in forms.iter().cloned() { if (f.kind.clone() == kind.clone()) { __result.push(f); } } __result });
+match matching.first().cloned() {
+    Some(f) => f.keyword.clone(),
+    None => "".to_string(),
+}
+}
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
@@ -325,15 +336,15 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     temp_assign_op: " = ".to_string(),
 }),
     items: Rc::new(ItemKeywords {
-    func_keyword: rust_func_keyword(),
+    func_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::FuncForm),
     async_prefix: rust_async_prefix(),
-    struct_keyword: rust_struct_keyword(),
-    enum_keyword: rust_enum_keyword(),
-    type_alias_keyword: rust_type_alias_keyword(),
+    struct_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::StructForm),
+    enum_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::EnumForm),
+    type_alias_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::TypeAliasForm),
     param_separator: rust_param_separator(),
     return_arrow: rust_return_arrow(),
     param_type_sep: rust_param_type_sep(),
-    module_keyword: rust_module_keyword(),
+    module_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::ModuleForm),
     import_keyword: rust_import_keyword(),
     import_from_keyword: rust_import_from_keyword(),
 }),
@@ -432,15 +443,15 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     temp_assign_op: " = ".to_string(),
 }),
     items: Rc::new(ItemKeywords {
-    func_keyword: python_func_keyword(),
+    func_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::FuncForm),
     async_prefix: python_async_prefix(),
-    struct_keyword: python_struct_keyword(),
-    enum_keyword: python_enum_keyword(),
-    type_alias_keyword: python_type_alias_keyword(),
+    struct_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::StructForm),
+    enum_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::EnumForm),
+    type_alias_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::TypeAliasForm),
     param_separator: python_param_separator(),
     return_arrow: python_return_arrow(),
     param_type_sep: python_param_type_sep(),
-    module_keyword: python_module_keyword(),
+    module_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::ModuleForm),
     import_keyword: python_import_keyword(),
     import_from_keyword: python_import_from_keyword(),
 }),
@@ -539,15 +550,15 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     temp_assign_op: " := ".to_string(),
 }),
     items: Rc::new(ItemKeywords {
-    func_keyword: go_func_keyword(),
+    func_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::FuncForm),
     async_prefix: go_async_prefix(),
-    struct_keyword: go_struct_keyword(),
-    enum_keyword: go_enum_keyword(),
-    type_alias_keyword: go_type_alias_keyword(),
+    struct_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::StructForm),
+    enum_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::EnumForm),
+    type_alias_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::TypeAliasForm),
     param_separator: go_param_separator(),
     return_arrow: go_return_arrow(),
     param_type_sep: go_param_type_sep(),
-    module_keyword: go_module_keyword(),
+    module_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::ModuleForm),
     import_keyword: go_import_keyword(),
     import_from_keyword: go_import_from_keyword(),
 }),

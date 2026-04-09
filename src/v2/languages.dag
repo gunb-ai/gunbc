@@ -16,14 +16,15 @@ import v2.std.core {
   LiteralValue
 }
 import std.syntax {
-  ItemForm, OperatorSpec, SyntaxSpec,
+  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
+  OperatorSpec, SyntaxSpec,
   BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody
 }
 
-import extdeps.languages.rust.syntax { rust_operators }
-import extdeps.languages.python.syntax { python_operators }
-import extdeps.languages.go.syntax { go_operators }
+import extdeps.languages.rust.syntax { rust_operators, rust_item_forms }
+import extdeps.languages.python.syntax { python_operators, python_item_forms }
+import extdeps.languages.go.syntax { go_operators, go_item_forms }
 import extdeps.languages.dag.syntax { dag_operators }
 
 import extdeps.languages.rust.emit {
@@ -255,6 +256,16 @@ type ItemKeywords {
   import_from_keyword: String    // "" (Rust) / "from" (Python) / "" (Go)
 }
 
+// Look up an emission keyword by item kind from a SyntaxSpec's item_forms.
+// Returns the keyword of the first matching ItemForm, or "" if not found.
+fn item_keyword_for_kind(forms: List<ItemForm>, kind: ItemFormKind) -> String {
+  let matching = forms |> filter(f => f.kind == kind)
+  match matching |> first {
+    Some { value: f } => f.keyword
+    None => ""
+  }
+}
+
 type LanguageSpec {
   target_name: String
   reserved_words: ReservedWords
@@ -359,12 +370,14 @@ fn rust_spec() -> LanguageSpec {
       temp_assign_op: " = "
     },
     items: ItemKeywords {
-      func_keyword: rust_func_keyword, async_prefix: rust_async_prefix,
-      struct_keyword: rust_struct_keyword, enum_keyword: rust_enum_keyword,
-      type_alias_keyword: rust_type_alias_keyword,
+      func_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: FuncForm),
+      async_prefix: rust_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: TypeAliasForm),
       param_separator: rust_param_separator, return_arrow: rust_return_arrow,
       param_type_sep: rust_param_type_sep,
-      module_keyword: rust_module_keyword,
+      module_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: ModuleForm),
       import_keyword: rust_import_keyword,
       import_from_keyword: rust_import_from_keyword
     },
@@ -456,12 +469,14 @@ fn python_spec() -> LanguageSpec {
       temp_assign_op: " = "
     },
     items: ItemKeywords {
-      func_keyword: python_func_keyword, async_prefix: python_async_prefix,
-      struct_keyword: python_struct_keyword, enum_keyword: python_enum_keyword,
-      type_alias_keyword: python_type_alias_keyword,
+      func_keyword: item_keyword_for_kind(forms: python_item_forms, kind: FuncForm),
+      async_prefix: python_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: python_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: python_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: python_item_forms, kind: TypeAliasForm),
       param_separator: python_param_separator, return_arrow: python_return_arrow,
       param_type_sep: python_param_type_sep,
-      module_keyword: python_module_keyword,
+      module_keyword: item_keyword_for_kind(forms: python_item_forms, kind: ModuleForm),
       import_keyword: python_import_keyword,
       import_from_keyword: python_import_from_keyword
     },
@@ -553,12 +568,14 @@ fn go_spec() -> LanguageSpec {
       temp_assign_op: " := "
     },
     items: ItemKeywords {
-      func_keyword: go_func_keyword, async_prefix: go_async_prefix,
-      struct_keyword: go_struct_keyword, enum_keyword: go_enum_keyword,
-      type_alias_keyword: go_type_alias_keyword,
+      func_keyword: item_keyword_for_kind(forms: go_item_forms, kind: FuncForm),
+      async_prefix: go_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: go_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: go_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: go_item_forms, kind: TypeAliasForm),
       param_separator: go_param_separator, return_arrow: go_return_arrow,
       param_type_sep: go_param_type_sep,
-      module_keyword: go_module_keyword,
+      module_keyword: item_keyword_for_kind(forms: go_item_forms, kind: ModuleForm),
       import_keyword: go_import_keyword,
       import_from_keyword: go_import_from_keyword
     },

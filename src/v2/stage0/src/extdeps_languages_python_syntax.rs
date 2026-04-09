@@ -6,8 +6,64 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::std_syntax::{OperatorSpec, BinOp};
+pub use crate::std_syntax::{ItemForm, ItemFormKind, BodyKind, OperatorSpec, BinOp};
+use crate::std_syntax::ItemFormKind::{FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm};
+use crate::std_syntax::BodyKind::{BlockBody, TypeBody, NoBody};
 use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
+
+pub fn python_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<ItemForm>>> = {
+            Rc::new(vec![Rc::new(ItemForm {
+    kind: ItemFormKind::FuncForm,
+    keyword: "def".to_string(),
+    has_type_params: false,
+    has_params: true,
+    has_return_type: true,
+    return_required: false,
+    has_uses: false,
+    body_kind: BodyKind::BlockBody,
+}), Rc::new(ItemForm {
+    kind: ItemFormKind::StructForm,
+    keyword: "class".to_string(),
+    has_type_params: false,
+    has_params: false,
+    has_return_type: false,
+    return_required: false,
+    has_uses: false,
+    body_kind: BodyKind::BlockBody,
+}), Rc::new(ItemForm {
+    kind: ItemFormKind::EnumForm,
+    keyword: "class".to_string(),
+    has_type_params: false,
+    has_params: false,
+    has_return_type: false,
+    return_required: false,
+    has_uses: false,
+    body_kind: BodyKind::BlockBody,
+}), Rc::new(ItemForm {
+    kind: ItemFormKind::TypeAliasForm,
+    keyword: "".to_string(),
+    has_type_params: false,
+    has_params: false,
+    has_return_type: false,
+    return_required: false,
+    has_uses: false,
+    body_kind: BodyKind::NoBody,
+}), Rc::new(ItemForm {
+    kind: ItemFormKind::ModuleForm,
+    keyword: "".to_string(),
+    has_type_params: false,
+    has_params: false,
+    has_return_type: false,
+    return_required: false,
+    has_uses: false,
+    body_kind: BodyKind::NoBody,
+})])
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
 
 pub fn python_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     thread_local! {
