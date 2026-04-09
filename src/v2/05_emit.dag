@@ -20,9 +20,9 @@ module v2.compiler.emit
 import v2.std.core {
   Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
-  param_node_name, param_node_type_expr, param_node_default_value,
-  NewlineIndex,
-  expr_var_name_at, expr_call_func_at, let_binding_name_at,
+  param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value,
+  NewlineIndex, authored_name_at,
+  expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at,
   ExprData, NoExprData,
   VarBindingKind,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
@@ -37,8 +37,8 @@ import v2.std.core {
   DeclaredFuncSig,
   lambda_param_names_at, record_lit_type_name,
   arm_body, arm_pattern, arm_guard,
-  arg_name, arg_value,
-  field_init_node_name, field_init_node_value,
+  arg_name, arg_name_at, arg_value,
+  field_init_node_name, field_init_node_name_at, field_init_node_value,
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
@@ -164,14 +164,14 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
       |> filter(item => is_service_item(item: item))
       |> flat_map(item =>
         item.children
-          |> filter(c => c.properties |> any(p => has_mock_prefix(name: p.name)))
+          |> filter(c => c.properties |> any(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_index: tm.type_env.source_index))))
           |> map(c => TestProjection {
             module_name: tm.module.name,
             service_name: item.name,
             operation_name: c.name,
             inferred: resolved_type(n: c),
             params: c.params,
-            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: p.name)),
+            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_index: tm.type_env.source_index))),
             source_index: tm.type_env.source_index
           })
       )
@@ -182,9 +182,9 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
 // Import derivation -- pre-scan typed items to determine required imports.
 // =========================================================================
 
-fn derive_module_imports(items: List<Node>, import_rules: List<ImportRule>, target: RenderTarget) -> List<String> {
+fn derive_module_imports(items: List<Node>, import_rules: List<ImportRule>, target: RenderTarget, source_index: NewlineIndex?) -> List<String> {
   let has_async = items |> any(item => item.uses |> count > 0)
-  let type_names = collect_type_names_from_items(items: items)
+  let type_names = collect_type_names_from_items(items: items, source_index: source_index)
 
   import_rules |> filter(rule =>
     match rule.trigger {
@@ -198,13 +198,13 @@ fn derive_module_imports(items: List<Node>, import_rules: List<ImportRule>, targ
   |> filter(path => path != "")
 }
 
-fn collect_type_names_from_items(items: List<Node>) -> List<String> {
-  items |> flat_map(item => collect_type_names_from_node(n: item))
+fn collect_type_names_from_items(items: List<Node>, source_index: NewlineIndex?) -> List<String> {
+  items |> flat_map(item => collect_type_names_from_node(n: item, source_index: source_index))
 }
 
-fn collect_type_names_from_node(n: Node) -> List<String> {
-  let self_name = if n.ident_span != none { [n.name] } else { [] }
-  let child_names = n.children |> flat_map(child => collect_type_names_from_node(n: child))
+fn collect_type_names_from_node(n: Node, source_index: NewlineIndex?) -> List<String> {
+  let self_name = if n.ident_span != none { [authored_name_at(source_index: source_index, node: n)] } else { [] }
+  let child_names = n.children |> flat_map(child => collect_type_names_from_node(n: child, source_index: source_index))
   self_name |> concat(child_names)
 }
 
@@ -221,11 +221,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_index: NewlineIndex
       emit_error_expr(message: message, target: target)
     ExprVar { binding_kind: _ } => emit_ident(name: expr_var_name_at(texpr: expr, source_index: source_index), target: target)
     ExprFieldAccess { summary: _ } =>
-      // field_access_field: ExprFieldAccess.ident_span carries the '.'
-      // ExprFieldAccess: ident_span = full expression span (make_named_expr_node
-      // copies span to ident_span). Needs separate ident_span for field name
-      // before authored_name_at can work here.
-      let f = expr.name
+      let f = field_access_field_at(texpr: expr, source_index: source_index)
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
@@ -351,7 +347,7 @@ fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig?
 }
 
 fn typed_named_arg_matches(arg: Node, name: String) -> Bool {
-  let n = arg_name(n: arg)
+  let n = arg_name_at(n: arg, source_index: none)
   if n == none {
     false
   } else {
@@ -429,7 +425,7 @@ fn has_nested_records_node(n: Node) -> Bool {
       has_nested_records_node(n: with_required_cardinality(n: n))
     } else { false }
   } else {
-    let is_map = node_is_keyed_collection(n: n)
+    let is_map = node_is_keyed_collection(n: n, source_index: none)
     if is_map {
       match skip(n.children, 1) |> first {
         Some { value: val_child } => has_nested_records_node(n: child_type_node(ch: val_child))
@@ -465,7 +461,7 @@ fn emit_data_value_json(value: Node, source_index: NewlineIndex?) -> String {
     }
     ExprRecordLit { parent_enum: _ } => {
       let field_strs = value.children |> map(f =>
-        concat("\"", escape_json_string(s: field_init_node_name(n: f)), "\": ", emit_data_value_json(value: field_init_node_value(n: f), source_index: source_index))
+        concat("\"", escape_json_string(s: field_init_node_name_at(n: f, source_index: source_index)), "\": ", emit_data_value_json(value: field_init_node_value(n: f), source_index: source_index))
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
@@ -895,6 +891,7 @@ fn emit_node_type(n: Node, target: RenderTarget, source_index: NewlineIndex?) ->
 // =========================================================================
 
 fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
+  let tn = authored_name_at(source_index: source_index, node: n)
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
 
@@ -943,11 +940,11 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   // Dispatch on connective
   let is_conj = n.connective == Conj
   let is_disj = n.connective == Disj
-  let shared = emit_map_has(m: shared_types, key: n.name)
+  let shared = emit_map_has(m: shared_types, key: tn)
 
   if is_disj {
     let base = if n.ident_span != none {
-      coerce_primitive_type(target: target, dag_name: n.name)
+      coerce_primitive_type(target: target, dag_name: tn)
     } else {
       match target {
         Rust => "compile_error!(\"unresolved anonymous coproduct type reached emit\")"
@@ -984,7 +981,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     }
     // Named conjunction with container template
     if n.ident_span != none {
-      let snake = to_snake(name: n.name)
+      let snake = to_snake(name: tn)
       let has_template = match container_to_algebra_name(name: snake) { Some { value: _ } => true  None => false }
       if has_template {
         let base = if snake == "map" {
@@ -995,7 +992,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
         let conj_container_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
         return conj_container_str
       }
-      let base = coerce_primitive_type(target: target, dag_name: n.name)
+      let base = coerce_primitive_type(target: target, dag_name: tn)
       let conj_named_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
       return conj_named_str
     }
@@ -1009,24 +1006,24 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
 
   // Leaf (no connective)
   if n.children |> count == 0 {
-    let bare_is_map = is_container_type(name: n.name) && to_snake(name: n.name) == "map"
-    let bare_is_collection = is_container_type(name: n.name) && !bare_is_map
-    let has_container_template = match container_to_algebra_name(name: to_snake(name: n.name)) { Some { value: _ } => true  None => false }
+    let bare_is_map = is_container_type(name: tn) && to_snake(name: tn) == "map"
+    let bare_is_collection = is_container_type(name: tn) && !bare_is_map
+    let has_container_template = match container_to_algebra_name(name: to_snake(name: tn)) { Some { value: _ } => true  None => false }
     let param_count = n.params |> count
     let base = if bare_is_map {
       emit_map_type(key_type: "_", val_type: "_", target: target)
     } else if bare_is_collection {
-      emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
+      emit_container(kind: to_snake(name: tn), inner: "_", target: target)
     } else if has_container_template && param_count == 1 {
       let inner = match n.params |> first {
         Some { value: p } => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_index: source_index)
         None => "_"
       }
-      emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
-    } else if n.name == tuple_type_name {
+      emit_container(kind: to_snake(name: tn), inner: inner, target: target)
+    } else if tn == tuple_type_name {
       render_tuple_parts(parts: [], target: target)
     } else {
-      coerce_primitive_type(target: target, dag_name: n.name)
+      coerce_primitive_type(target: target, dag_name: tn)
     }
     let bare_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
     return bare_str
@@ -1034,7 +1031,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
 
   // Leaf with children: extract type from field-style wrappers (inferred set)
   // or use child directly (bare encoding from parser)
-  let is_map = node_is_keyed_collection(n: n)
+  let is_map = node_is_keyed_collection(n: n, source_index: source_index)
   if is_map {
     let k = match n.children |> first {
       Some { value: kn } => render_node_type(n: child_type_node(ch: kn), target: target, shared_types: shared_types, source_index: source_index)
@@ -1053,11 +1050,11 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
       Some { value: child } => render_node_type(n: child_type_node(ch: child), target: target, shared_types: shared_types, source_index: source_index)
       None => "_"
     }
-    let is_container = node_is_collection(n: n)
+    let is_container = node_is_collection(n: n, source_index: source_index)
     let base = if is_container {
-      emit_container(kind: to_snake(name: n.name), inner: child_str, target: target)
+      emit_container(kind: to_snake(name: tn), inner: child_str, target: target)
     } else {
-      let type_base = coerce_primitive_type(target: target, dag_name: n.name)
+      let type_base = coerce_primitive_type(target: target, dag_name: tn)
       match target {
         Python => concat(type_base, "[", child_str, "]")
         _ => concat(type_base, "<", child_str, ">")
@@ -1068,11 +1065,11 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   }
   // Multi-child leaf: Tuple or generic type
   let child_strs = n.children |> map(c => render_node_type(n: child_type_node(ch: c), target: target, shared_types: shared_types, source_index: source_index))
-  if n.name == tuple_type_name {
+  if tn == tuple_type_name {
     let multi_tuple_str = render_tuple_parts(parts: child_strs, target: target)
     return multi_tuple_str
   }
-  let type_base = coerce_primitive_type(target: target, dag_name: n.name)
+  let type_base = coerce_primitive_type(target: target, dag_name: tn)
   let args_joined = child_strs |> join(separator: ", ")
   let base = match target {
     Python => concat(type_base, "[", args_joined, "]")
@@ -1113,8 +1110,8 @@ fn render_tuple_parts(parts: List<String>, target: RenderTarget) -> String {
 // Check if a return type indicates a type alias (not Unit).
 // Unit is the only return type that signals "this is not an alias" —
 // bare items like `type Unit` have rt_type name "Unit".
-fn is_type_alias_return_node(n: Node) -> Bool {
-  n.name != "Unit"
+fn is_type_alias_return_node(n: Node, source_index: NewlineIndex?) -> Bool {
+  authored_name_at(source_index: source_index, node: n) != "Unit"
 }
 
 // Check if a typed node is a service item.
@@ -1259,12 +1256,12 @@ fn is_bare_leaf_item(item: Node) -> Bool {
   item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
 }
 
-fn is_type_alias_item(item: Node) -> Bool {
-  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item))
+fn is_type_alias_item(item: Node, source_index: NewlineIndex?) -> Bool {
+  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item), source_index: source_index)
 }
 
-fn is_type_decl_item(item: Node) -> Bool {
-  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item)))
+fn is_type_decl_item(item: Node, source_index: NewlineIndex?) -> Bool {
+  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_index: source_index))
   || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0)
 }
 
@@ -1873,13 +1870,13 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
 }
 
 // Shared ExprIndex — dispatches on string/map/list via LanguageSpec.indexing.
-fn emit_typed_index_shared(base: Node, index: Node, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+fn emit_typed_index_shared(base: Node, index: Node, target: RenderTarget, recurse: fn(Node) -> String, source_index: NewlineIndex?) -> String {
   let spec = language_spec(target: target)
   let base_str = recurse(base)
   let index_str = recurse(index)
   let base_node = normalize_access_type_node(n: resolved_type(n: base))
-  let is_map = node_is_keyed_collection(n: base_node)
-  if is_string_like(target: target, name: base_node.name) {
+  let is_map = node_is_keyed_collection(n: base_node, source_index: source_index)
+  if is_string_like(target: target, name: authored_name_at(source_index: source_index, node: base_node)) {
     apply_type_template2(template: spec.indexing.string_index, arg0: base_str, arg1: index_str)
   } else if is_map {
     apply_type_template2(template: spec.indexing.map_index, arg0: base_str, arg1: index_str)
@@ -1889,13 +1886,13 @@ fn emit_typed_index_shared(base: Node, index: Node, target: RenderTarget, recurs
 }
 
 // Shared ExprSlice — dispatches on string/list via LanguageSpec.indexing.
-fn emit_typed_slice_shared(base: Node, start: Node, end: Node, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+fn emit_typed_slice_shared(base: Node, start: Node, end: Node, target: RenderTarget, recurse: fn(Node) -> String, source_index: NewlineIndex?) -> String {
   let spec = language_spec(target: target)
   let base_str = recurse(base)
   let start_str = recurse(start)
   let end_str = recurse(end)
   let base_node = normalize_access_type_node(n: resolved_type(n: base))
-  if is_string_like(target: target, name: base_node.name) {
+  if is_string_like(target: target, name: authored_name_at(source_index: source_index, node: base_node)) {
     match spec.indexing.string_slice {
       Some { value: tmpl } => apply_type_template3(template: tmpl, arg0: base_str, arg1: start_str, arg2: end_str)
       None => emit_error_expr(message: "unsupported string slice for target", target: target)

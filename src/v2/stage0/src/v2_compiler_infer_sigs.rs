@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, ExprData, expr_call_func, ErrorNode, make_error_node, no_span, DeclaredFuncSig, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, ExprData, expr_call_func, expr_call_func_at, ErrorNode, make_error_node, no_span, DeclaredFuncSig, CompilerDiagnostic};
 use crate::v2_std_core::ExprData::{ExprCall};
 use crate::v2_std_core::CompilerDiagnostic::{MissingAnnotation};
 pub use crate::v2_compiler_infer_types::{emit_map_has};
@@ -55,7 +55,7 @@ pub fn collect_calls_in_expr(caller: String, texpr: Rc<Node>, local_func_set: Rc
         {
             let this_edges = match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-                let f = expr_call_func(texpr.clone());
+                let f = expr_call_func_at(texpr.clone(), None);
 if emit_map_has(local_func_set.clone(), f.clone()) {
                     Rc::new(vec![Rc::new(CallEdge {
     caller: caller.clone(),

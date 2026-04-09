@@ -20,7 +20,7 @@ import v2.std.core {
   with_required_cardinality,
   Connective, Conj, NoConnective, Arrow,
   CardOptional,
-  param_node_name
+  param_node_name, param_node_name_at
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,
@@ -262,7 +262,7 @@ fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String, 
 fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node, source_index: NewlineIndex?) -> Bool {
   variants |> all(variant =>
     match find_child_named(n: variant, name: field_name, source_index: source_index) {
-      Some { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected)
+      Some { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected, source_index: source_index)
       None => false
     }
   )
@@ -320,7 +320,7 @@ fn build_type_summary(item: Node, source_index: NewlineIndex?) -> TypeSummary? {
   if item.connective == NoConnective || item.connective == Arrow || item.transport != none {
     return none
   }
-  let gpn = item.params |> map(p => param_node_name(n: p))
+  let gpn = item.params |> map(p => param_node_name_at(n: p, source_index: source_index))
   let is_product = item.connective == Conj
   let has_fn = item.children |> any(child =>
     match child.inferred {

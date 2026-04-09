@@ -39,13 +39,14 @@ import v2.std.core {
   InferredNode, Resolved,
   Cardinality, Required,
   arg_value, arm_body,
-  field_access_base, field_access_field,
+  field_access_base,
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body, lambda_body, lambda_param_names,
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes,
   foreach_collection, foreach_body,
-  expr_var_name, expr_call_func, expr_method_name
+  expr_var_name_at, expr_call_func_at, expr_method_name_at, field_access_field_at,
+  NewlineIndex
 }
 
 // =========================================================================
@@ -183,10 +184,10 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
 //              a fold lambda body (for Threaded classification)
 // =========================================================================
 
-fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
+fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -> UsageAccum {
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
-      let n = expr_var_name(texpr: texpr)
+      let n = expr_var_name_at(texpr: texpr, source_index: si)
       if in_tail {
         record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk)
       } else {
@@ -200,15 +201,15 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       let base_node = field_access_base(texpr: texpr)
       match base_node.expr_data {
         ExprVar { binding_kind: bk } =>
-          let vn = expr_var_name(texpr: base_node)
-          let f = field_access_field(texpr: texpr)
+          let vn = expr_var_name_at(texpr: base_node, source_index: si)
+          let f = field_access_field_at(texpr: texpr, source_index: si)
           record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk)
-        _ => walk_expr(accum: accum, texpr: base_node, in_tail: false)
+        _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si)
       }
 
     ExprCall =>
       // children = [arg0_node, arg1_node, ...]. Arg names on node.name.
-      let fname = expr_call_func(texpr: texpr)
+      let fname = expr_call_func_at(texpr: texpr, source_index: si)
       if fname == "fold" {
         let init_arg = texpr.children |> filter(a => a.name == "init") |> first
         let threaded_accum = match init_arg {
@@ -216,19 +217,19 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
-                let vn = expr_var_name(texpr: ia_val)
+                let vn = expr_var_name_at(texpr: ia_val, source_index: si)
                 record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk)
-              _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false)
+              _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false, si: si)
             }
           None => accum
         }
         let non_init = texpr.children |> filter(a => a.name != "init")
         non_init |> fold(init: threaded_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false)
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
       } else {
         texpr.children |> fold(init: accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false)
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
       }
 
@@ -236,30 +237,30 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       // children = [receiver, arg0_node, arg1_node, ...].
       let recv = method_receiver(texpr: texpr)
       let mc_args = method_arg_nodes(texpr: texpr)
-      let mname = expr_method_name(texpr: texpr)
+      let mname = expr_method_name_at(texpr: texpr, source_index: si)
       if mname == "fold" {
-        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false)
+        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
         let init_arg = mc_args |> filter(a => a.name == "init") |> first
         let threaded_accum = match init_arg {
           Some { value: ia } =>
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
-                let vn = expr_var_name(texpr: ia_val)
+                let vn = expr_var_name_at(texpr: ia_val, source_index: si)
                 record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk)
-              _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false)
+              _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si)
             }
           None => recv_accum
         }
         let non_init = mc_args |> filter(a => a.name != "init")
         let walked = non_init |> fold(init: threaded_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false)
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
         UsageAccum { bindings: walked.bindings, fold_call_nodes: list_push(walked.fold_call_nodes, texpr) }
       } else {
-        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false)
+        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
         mc_args |> fold(init: recv_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false)
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
       }
 
@@ -267,28 +268,28 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       // children = [scrutinee, arm0_node, arm1_node, ...].
       let scrut = match_scrutinee(texpr: texpr)
       let arm_nodes = match_arm_nodes(texpr: texpr)
-      let s_accum = walk_expr(accum: accum, texpr: scrut, in_tail: false)
+      let s_accum = walk_expr(accum: accum, texpr: scrut, in_tail: false, si: si)
       let branch_accums = arm_nodes |> map(arm_node =>
-        walk_expr(accum: s_accum, texpr: arm_body(n: arm_node), in_tail: in_tail)
+        walk_expr(accum: s_accum, texpr: arm_body(n: arm_node), in_tail: in_tail, si: si)
       )
       merge_branch_usages(base: s_accum, branches: branch_accums)
 
     ExprIf =>
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
-      let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false)
-      let t_accum = walk_expr(accum: c_accum, texpr: t, in_tail: in_tail)
+      let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false, si: si)
+      let t_accum = walk_expr(accum: c_accum, texpr: t, in_tail: in_tail, si: si)
       let e_accum = match if_else_branch(texpr: texpr) {
-        Some { value: eb } => walk_expr(accum: c_accum, texpr: eb, in_tail: in_tail)
+        Some { value: eb } => walk_expr(accum: c_accum, texpr: eb, in_tail: in_tail, si: si)
         None => c_accum
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
     ExprLet =>
       let v = let_value(texpr: texpr)
-      let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false)
+      let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false, si: si)
       match let_body(texpr: texpr) {
-        Some { value: b } => walk_expr(accum: v_accum, texpr: b, in_tail: in_tail)
+        Some { value: b } => walk_expr(accum: v_accum, texpr: b, in_tail: in_tail, si: si)
         None => v_accum
       }
 
@@ -301,11 +302,11 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
         let init_accum = ss |> enumerate
           |> filter(p => p.first < ss_count - 1)
           |> fold(init: accum, f: (acc, p) =>
-            walk_expr(accum: acc, texpr: p.second, in_tail: false)
+            walk_expr(accum: acc, texpr: p.second, in_tail: false, si: si)
           )
         match ss |> last {
           Some { value: last_expr } =>
-            walk_expr(accum: init_accum, texpr: last_expr, in_tail: in_tail)
+            walk_expr(accum: init_accum, texpr: last_expr, in_tail: in_tail, si: si)
           None => init_accum
         }
       }
@@ -313,7 +314,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
     ExprReturn =>
       // children = [value]. Value is in tail position.
       texpr.children |> fold(init: accum, f: (acc, child) =>
-        walk_expr(accum: acc, texpr: child, in_tail: true)
+        walk_expr(accum: acc, texpr: child, in_tail: true, si: si)
       )
 
     ExprLambda { semantics: _ } =>
@@ -323,7 +324,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       // This prevents name collisions between lambda params and outer bindings
       // from incorrectly marking the outer binding as movable.
       let body = lambda_body(texpr: texpr)
-      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false)
+      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: accum, f: (acc, usage) =>
         let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none)
         record_use(accum: a1, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none)
@@ -333,9 +334,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
     ExprForEach =>
       // For-loop body executes N times — same treatment as lambda.
       let coll = foreach_collection(texpr: texpr)
-      let coll_accum = walk_expr(accum: accum, texpr: coll, in_tail: false)
+      let coll_accum = walk_expr(accum: accum, texpr: coll, in_tail: false, si: si)
       let body = foreach_body(texpr: texpr)
-      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false)
+      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: coll_accum, f: (acc, usage) =>
         let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none)
         record_use(accum: a1, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none)
@@ -347,7 +348,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
     // Cast, Index, Slice, Error, and NoExprData (wrapper nodes).
     _ =>
       texpr.children |> fold(init: accum, f: (acc, child) =>
-        walk_expr(accum: acc, texpr: child, in_tail: false)
+        walk_expr(accum: acc, texpr: child, in_tail: false, si: si)
       )
   }
 }
@@ -434,30 +435,30 @@ fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String) -> 
 }
 
 // Collect all acc.field references in a node tree (conservative: counts every access as a move).
-fn collect_acc_field_moves(node: Node, acc_name: String) -> List<String> {
+fn collect_acc_field_moves(node: Node, acc_name: String, si: NewlineIndex?) -> List<String> {
   match node.expr_data {
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: node)
       let is_direct = match base.expr_data {
-        ExprVar { binding_kind: _ } => expr_var_name(texpr: base) == acc_name
+        ExprVar { binding_kind: _ } => expr_var_name_at(texpr: base, source_index: si) == acc_name
         _ => false
       }
       if is_direct {
-        [field_access_field(texpr: node)]
+        [field_access_field_at(texpr: node, source_index: si)]
       } else {
-        node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name))
+        node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name, si: si))
       }
     _ =>
-      node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name))
+      node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name, si: si))
   }
 }
 
 // Are all acc field accesses unique (each field moved at most once)?
-fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String) -> Bool {
+fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String, si: NewlineIndex?) -> Bool {
   match lambda_node.expr_data {
     ExprLambda { semantics: _ } =>
       let body = lambda_body(texpr: lambda_node)
-      let moves = collect_acc_field_moves(node: body, acc_name: acc_name)
+      let moves = collect_acc_field_moves(node: body, acc_name: acc_name, si: si)
       let deduped = moves |> fold(init: empty_map(), f: (seen, field) => map_insert(seen, field, true))
       map_keys(deduped) |> count == moves |> count
     _ => true
@@ -465,7 +466,7 @@ fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String) -> Bool {
 }
 
 // Analyze a single fold method call node and produce a structural proof.
-fn analyze_single_fold(method_call: Node) -> FoldAccUnwrapProof {
+fn analyze_single_fold(method_call: Node, si: NewlineIndex?) -> FoldAccUnwrapProof {
   let args = method_arg_nodes(texpr: method_call)
   let init_arg_node = match args |> first {
     Some { value: a } => arg_value(n: a)
@@ -498,7 +499,7 @@ fn analyze_single_fold(method_call: Node) -> FoldAccUnwrapProof {
     _ => false
   }
   let cond_body = fold_body_constructs_acc_struct(lambda_node: fold_lambda_node, acc_type_name: acc_type_name)
-  let cond_safe = fold_body_safe_field_moves(lambda_node: fold_lambda_node, acc_name: acc_param_name)
+  let cond_safe = fold_body_safe_field_moves(lambda_node: fold_lambda_node, acc_name: acc_param_name, si: si)
   let eligible = cond_required && cond_body && cond_safe && acc_type_name != ""
   FoldAccUnwrapProof {
     acc_param_name: acc_param_name,
@@ -515,7 +516,7 @@ fn analyze_single_fold(method_call: Node) -> FoldAccUnwrapProof {
 
 // Analyze a function body and produce ownership proof for all bindings.
 // One pass over the function body AST.
-fn analyze_ownership(func_name: String, params: List<Node>, body: Node) -> OwnershipProof {
+fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: NewlineIndex?) -> OwnershipProof {
   // Seed the accumulator with parameter names so they appear in bindings.
   // binding_kind is none here; it will be set from ExprVar during the walk.
   let initial = params |> fold(init: empty_usage_accum(), f: (acc, p) =>
@@ -525,11 +526,12 @@ fn analyze_ownership(func_name: String, params: List<Node>, body: Node) -> Owner
     }
   )
   // Walk the body in tail position (the function body is the return value).
-  let result = walk_expr(accum: initial, texpr: body, in_tail: true)
+  let result = walk_expr(accum: initial, texpr: body, in_tail: true, si: si)
+
   // Build decisions from the collected usage data.
   let binding_list = result.bindings |> map_values
   let decisions = binding_list |> map(usage => make_decision(usage: usage))
-  let fold_proofs = result.fold_call_nodes |> map(n => analyze_single_fold(method_call: n))
+  let fold_proofs = result.fold_call_nodes |> map(n => analyze_single_fold(method_call: n, si: si))
   OwnershipProof {
     func_name: func_name,
     bindings: result.bindings,
