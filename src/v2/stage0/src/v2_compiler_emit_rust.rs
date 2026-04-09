@@ -4449,7 +4449,7 @@ if is_bool {
             {
                 let __eff_is_container = node_is_element_collection(effective.clone());
 if __eff_is_container {
-                    "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())".to_string()
+                    "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))".to_string()
 } else {
                     if (is_product && ((effective.children.clone().len() as i64) > 1)) {
                         "let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)".to_string()

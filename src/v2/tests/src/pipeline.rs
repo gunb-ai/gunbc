@@ -4852,14 +4852,14 @@ fn review_dag_compiles_to_rust() {
         eprintln!("  {}: {}", code, count);
     }
 
-    // Show first few error lines for diagnosis
+    // Show error lines with file:line context for diagnosis
     let error_lines: Vec<_> = check_stderr
         .lines()
-        .filter(|l| l.starts_with("error"))
-        .take(20)
+        .filter(|l| l.starts_with("error[") || l.trim_start().starts_with("--> src/"))
+        .take(30)
         .collect();
     if !error_lines.is_empty() {
-        eprintln!("RE-2 sample errors:\n{}", error_lines.join("\n"));
+        eprintln!("RE-2 errors:\n{}", error_lines.join("\n"));
     }
 
     // Cleanup
@@ -4870,7 +4870,7 @@ fn review_dag_compiles_to_rust() {
     // Categories: E0592 (13 conflicting impls), E0425 (12 not in scope),
     //   E0119 (10 conflicting trait impls), E0728 (9 await in non-async),
     //   E0428 (5 duplicate defs), syntax (5xx patterns, raw idents).
-    const RE2_ERROR_RATCHET: usize = 4;
+    const RE2_ERROR_RATCHET: usize = 3;
     assert!(
         error_count <= RE2_ERROR_RATCHET,
         "RE-2: review.dag cargo check errors {} exceeds ratchet {} (regression)",

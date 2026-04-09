@@ -4232,7 +4232,7 @@ fn emit_shell_return(inferred: Node) -> String {
   } else {
     let __eff_is_container = node_is_element_collection(n: effective)
     if __eff_is_container {
-      "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
+      "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))"
     } else if is_product && effective.children |> count > 1 {
       concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
     } else {
