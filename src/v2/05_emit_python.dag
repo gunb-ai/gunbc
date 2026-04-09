@@ -113,7 +113,8 @@ import v2.compiler.emit {
   emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared,
   emit_block_stmts_shared, emit_init_block_stmts_shared,
   emit_typed_let_shared, emit_param_shared, emit_params_shared,
-  emit_inferred_shared, emit_typed_block_join
+  emit_inferred_shared, emit_typed_block_join,
+  emit_typed_first_arg_shared, emit_typed_tco_reassign_shared
 }
 
 // =========================================================================
@@ -743,10 +744,8 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<Node>, m
 }
 
 fn emit_py_typed_first_arg(args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match args |> first {
-    Some { value: a } => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024)
-    None => "raise NotImplementedError(\"missing method argument\")"
-  }
+  emit_typed_first_arg_shared(args: args, target: Python,
+    recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024))
 }
 
 fn emit_py_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -975,10 +974,9 @@ fn emit_py_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, r
 }
 
 fn emit_py_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let ordered_args = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024))
-  let si = scope.type_env.source_index
-  let param_names = params |> map(p => emit_ident(name: param_node_name_at(n: p, source_index: si), target: Python))
-  shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: language_spec(target: Python))
+  emit_typed_tco_reassign_shared(args: args, params: params, target: Python,
+    recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024),
+    source_index: scope.type_env.source_index)
 }
 
 // =========================================================================

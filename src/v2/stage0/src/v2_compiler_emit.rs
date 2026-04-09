@@ -2104,6 +2104,21 @@ state.text.clone().join(&"\n".to_string())
 }
 }
 
+pub fn emit_typed_first_arg_shared(args: Rc<Vec<Rc<Node>>>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    match args.first().cloned() {
+    Some(a) => recurse(arg_value(a.clone())),
+    None => emit_error_expr("missing method argument".to_string(), target),
+}
+}
+
+pub fn emit_typed_tco_reassign_shared(args: Rc<Vec<Rc<Node>>>, params: Rc<Vec<Rc<Node>>>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, source_index: Option<Rc<NewlineIndex>>) -> String {
+    {
+        let ordered_args = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(recurse(arg_value(a.clone()))); } __result });
+let param_names = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), source_index.clone()), target.clone())); } __result });
+shared_tco_reassign(ordered_args, param_names, language_spec(target.clone()))
+}
+}
+
 pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> {
     v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), key, value)
 }
