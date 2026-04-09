@@ -1072,6 +1072,29 @@ data transport_path_template_key: String = "path"
 data transport_query_key: String = "query"
 data transport_stdin_key: String = "stdin"
 
+// Item keyword property — structural fact about the declaration form.
+// Stored on the item Node's properties list at parse time. Enables
+// item_kind() to distinguish func (effectful) from fn (pure) without
+// relying on the presence of use-clauses.
+data item_keyword_key: String = "item_keyword"
+
+fn item_keyword_property(n: Node) -> String? {
+  match n.properties |> filter(p => field_init_node_name(n: p) == item_keyword_key) |> first {
+    Some { value: prop } => match field_init_node_value(n: prop).expr_data {
+      ExprLiteral { value: LitStr { value: s } } => Some { value: s }
+      _ => none
+    }
+    None => none
+  }
+}
+
+fn is_effectful_item(n: Node) -> Bool {
+  match item_keyword_property(n: n) {
+    Some { value: kw } => kw == "func"
+    None => false
+  }
+}
+
 fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,

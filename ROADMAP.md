@@ -1476,20 +1476,20 @@ Make `emit_rest_call` and `emit_shell_call` consume the transport
 config they already receive. No new .dag modeling needed.
 
 **REST:**
-- [ ] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
-- [ ] RE-1b: Path template from `transport.path` with param substitution
+- [x] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
+- [x] RE-1b: Path template from `transport.path` with param substitution
   → `format!("/repos/{}/{}/pulls", owner, repo)`
-- [ ] RE-1c: Query parameters from `transport.query`
+- [x] RE-1c: Query parameters from `transport.query`
   → `.query(&[("state", &state)])`
-- [ ] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
-- [ ] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
+- [x] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
+- [x] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
 
 **Shell:**
-- [ ] RE-1f: argv from `transport.argv` with param substitution
+- [x] RE-1f: argv from `transport.argv` with param substitution
   → `Command::new("sh").arg("-lc").arg(&script)`
-- [ ] RE-1g: stdin from `transport.stdin`
+- [x] RE-1g: stdin from `transport.stdin`
   → `.stdin(Stdio::piped())` + write
-- [ ] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
+- [x] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
 
 **Response:**
 - [ ] RE-1i: `from "content/0/text"` JSON path extraction on response
@@ -1556,15 +1556,23 @@ rest_output_struct_uses_serde_rename
 Compile `review.dag` + its imports to a binary that runs with
 `--dry-run`, returning mock responses.
 
-- [ ] RE-2a: Async for-each — detect FuncItem body, emit `.await?`
-  in collection loop body (emitter support exists; acceptance test not yet added)
-- [ ] RE-2b: Cross-module service resolution — review.dag imports
-  from 4 modules (FF-9 handles this; acceptance test not yet added)
-- [ ] RE-2c: Conditional guard — review.dag's `already_done` check
-  needs to short-circuit (acceptance test not yet added)
+**Root cause (fixed):** `func` vs `fn` keyword distinction was lost at
+parse time. `item_kind()` used `uses |> count > 0` as sole FuncItem
+criterion, so `func` without explicit `use` clauses → FnItem → no
+async, no service params, no `.await?` injection. Fix: store keyword
+as structural property (`item_keyword_key`) on Node at parse time;
+`item_kind()` reads `is_effectful_item()`. 18 cargo errors → 0.
+
+- [x] RE-2a: Async for-each — `func` items now classified as FuncItem
+  via keyword property; `.await?` emitted in collection loop body
+- [x] RE-2b: Cross-module service resolution — service call detection
+  via `collect_typed_service_calls` now runs for all `func` items
+  (previously skipped when `uses` empty)
+- [x] RE-2c: Conditional guard — review.dag's `already_done` check
+  compiles correctly (bool short-circuit in emitted Rust)
 - [x] RE-2d: End-to-end compilation gate (0 cargo check errors)
 
-**Blocked by:** RE-1
+**Blocked by:** RE-1 (done)
 
 **Acceptance tests:**
 

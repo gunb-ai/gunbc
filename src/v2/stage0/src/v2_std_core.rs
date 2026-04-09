@@ -1487,6 +1487,32 @@ pub fn transport_stdin_key() -> String {
     CACHED.with(|c| c.clone())
 }
 
+pub fn item_keyword_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "item_keyword".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn item_keyword_property(n: Rc<Node>) -> Option<String> {
+    match Rc::new({ let mut __result = Vec::new(); for p in n.properties.clone().iter().cloned() { if (field_init_node_name(p.clone()).as_str() == item_keyword_key().as_str()) { __result.push(p); } } __result }).first().cloned() {
+    Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; Some(s.clone()) },
+    _ => None,
+},
+    None => None,
+}
+}
+
+pub fn is_effectful_item(n: Rc<Node>) -> bool {
+    match item_keyword_property(n) {
+    Some(kw) => (kw.clone().as_str() == "func".to_string().as_str()),
+    None => false,
+}
+}
+
 pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, body: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: "".to_string(),

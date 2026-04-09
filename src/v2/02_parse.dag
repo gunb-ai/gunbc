@@ -43,6 +43,7 @@ import v2.std.core {
   local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
   transport_url_key, transport_path_key,
   transport_method_key, transport_path_template_key, transport_query_key, transport_stdin_key,
+  item_keyword_key,
   service_config_properties,
   OperationModifier, Idempotent, Readonly, Hermetic,
   Token, TokenShape,
@@ -1210,12 +1211,12 @@ fn parse_item_by_form(tokens: List<Token>, state: ParserState, form: ItemForm) -
     ExprBody => {
       let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
-      parse_fn_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
+      parse_fn_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span, keyword: form.keyword)
     }
     BlockBody => {
       let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
-      parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
+      parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span, keyword: form.keyword)
     }
     // Non-standard prefixes: keep their own prefix logic
     ServiceBody => parse_service_after_kw(tokens: tokens, state: r.state, start_span: start_span)
@@ -1962,17 +1963,18 @@ fn parse_fn_after_kw(tokens: List<Token>, state: ParserState, start_span: Source
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let body = r.expr
 
+  let kw_prop = make_field_init_node(name: item_keyword_key, value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "fn" } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: params,
     inferred: inferred, return_cardinality: Required, uses: [],
     body: Some { value: body }, connective: NoConnective, transport: none,
-    properties: [], type_annotation: none,
+    properties: [kw_prop], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }
 
 // Body-only parser for ExprBody items. Receives prefix (name, params, inferred)
 // from parse_item_prefix. Parses the block body and assembles the Node.
-fn parse_fn_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+fn parse_fn_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan, keyword: String) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
   let type_params = prefix.type_params
@@ -1989,10 +1991,11 @@ fn parse_fn_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, star
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let body = r.expr
 
+  let kw_prop = make_field_init_node(name: item_keyword_key, value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: keyword } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: all_params,
     inferred: inferred, return_cardinality: Required, uses: [],
     body: Some { value: body }, connective: NoConnective, transport: none,
-    properties: [], type_annotation: none,
+    properties: [kw_prop], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }
@@ -2016,7 +2019,7 @@ fn parse_func_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let form = ItemForm { keyword: kw, has_type_params: false, has_params: true, has_return_type: true, return_required: false, has_uses: has_uses, body_kind: BlockBody }
   let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
   if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
-  parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
+  parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span, keyword: kw)
 }
 
 fn parse_block_item_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan, form: ItemForm) -> ItemResult {
@@ -2049,17 +2052,18 @@ fn parse_block_item_after_kw(tokens: List<Token>, state: ParserState, start_span
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let body = r.expr
 
+  let kw_prop = make_field_init_node(name: item_keyword_key, value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: form.keyword } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: params,
     inferred: inferred, return_cardinality: Required, uses: uses,
     body: Some { value: body }, connective: NoConnective, transport: none,
-    properties: [], type_annotation: none,
+    properties: [kw_prop], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }
 
 // Body-only parser for BlockBody items. Receives prefix (name, params, inferred, uses)
 // from parse_item_prefix. Parses block body and assembles the Node.
-fn parse_block_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+fn parse_block_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan, keyword: String) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
   let params = prefix.params
@@ -2071,10 +2075,11 @@ fn parse_block_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, s
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let body = r.expr
 
+  let kw_prop = make_field_init_node(name: item_keyword_key, value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: keyword } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: params,
     inferred: inferred, return_cardinality: Required, uses: uses,
     body: Some { value: body }, connective: NoConnective, transport: none,
-    properties: [], type_annotation: none,
+    properties: [kw_prop], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }
