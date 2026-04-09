@@ -552,11 +552,10 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
         let newline_indices = Rc::new({ let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push(build_newline_index(s.path.clone(), s.content.clone())); } __result });
-let parse_results = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(sources.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
-            let s = pair.1.clone();
-let tokens = tokenize(s.content.clone(), s.path.clone());
-let si = newline_indices.clone().get(pair.0.clone() as usize).cloned();
-parse(tokens.clone(), si.clone())
+let parse_results = Rc::new({ let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push({
+            let tokens = tokenize(s.content.clone(), s.path.clone());
+let si = build_newline_index(s.path.clone(), s.content.clone());
+parse(tokens.clone(), Some(si.clone()))
 }); } __result });
 let parse_diagnostics = collect_diagnostics(parse_results.clone());
 let has_parse_errors = { let mut __found = false; for p in parse_results.clone().iter().cloned() { if (p.error.clone() != None) { __found = true; break; } } __found };
@@ -564,7 +563,7 @@ if has_parse_errors {
             Rc::new(FrontendResult {
     graph: None,
     diagnostics: parse_diagnostics,
-    newline_indices: newline_indices.clone(),
+    newline_indices: newline_indices,
 })
 } else {
             {
@@ -573,7 +572,7 @@ let graph = resolve_modules(modules);
 Rc::new(FrontendResult {
     graph: Some(graph.clone()),
     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
-    newline_indices: newline_indices.clone(),
+    newline_indices: newline_indices,
 })
 }
 }

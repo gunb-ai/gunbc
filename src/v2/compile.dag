@@ -774,11 +774,10 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
 // If parse fails, graph is None and diagnostics contains only parse diagnostics.
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let newline_indices = sources |> map(s => build_newline_index(file: s.path, source: s.content))
-  let parse_results = sources |> enumerate |> map(pair =>
-    let s = pair.second
+  let parse_results = sources |> map(s =>
     let tokens = tokenize(source: s.content, file: s.path)
-    let si = newline_indices |> skip(pair.first) |> first
-    parse(tokens: tokens, source_index: si)
+    let si = build_newline_index(file: s.path, source: s.content)
+    parse(tokens: tokens, source_index: Some { value: si })
   )
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let has_parse_errors = parse_results |> any(p => p.error != None)

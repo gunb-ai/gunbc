@@ -859,13 +859,18 @@ resolve uses structural identity.
   - [x] Remove dual-si from `build_complexity_report` (FuncEntry.si only)
   - [x] Migrate ~30 direct `n.name` reads to `authored_name_at` in emit/types
   - [x] Revert `@synthetic:` ident_span — structural identity is correct path
-  - **Status:** 52 `source_index: none` remain in scope-free functions.
-    ~20 direct `n.name` reads remain. 115 Node construction sites need
-    `name:` removed for field deletion.
+  - **Status:** 1 `source_index: none` remains (empty_emit_scope struct init —
+    semantically correct). ~20 direct `n.name` reads remain. 115 Node
+    construction sites need `name:` removed for field deletion.
+- D6 progress (PR #362):
+  - [x] Add `NewlineIndex` to `ParserState` (14 parser calls)
+  - [x] Thread `source_indices` through compile.dag serialization (11 calls)
+  - [x] Thread `source_index` through mock/service/transport utilities (27 calls)
+  - [x] Thread `source_index` through sigs/service callers in 04_infer.dag
+  - [x] Thread `source_index` through complexity.dag callers (5 calls)
+  - [x] Build newline indices in `front_end_sources` before parsing
+  - [x] Add `newline_indices` to `FrontendResult` (deduplicate with compile_sources)
 - D6 open (structural work, not mechanical wiring):
-  - [ ] Add `NewlineIndex` to `ParserState` (14 parser calls)
-  - [ ] Thread `source_indices` through compile.dag serialization (11 calls)
-  - [ ] Thread `source_index` through mock/service/transport utilities (19 calls)
   - [ ] Migrate remaining `n.name` reads (resolve slot_bindings, service
     names, normalize, access `is_ordered_element_collection`)
   - [ ] `named_collection_type` fabrication — `container_param_name` gap
