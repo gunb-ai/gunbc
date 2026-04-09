@@ -4839,3 +4839,46 @@ fn depth(t: BinTree<Int>) -> Int {
         "tree depth is O(n) catamorphism"
     );
 }
+
+#[test]
+fn structural_bound_binary_search() {
+    // Divide-and-conquer: binary search on sorted list.
+    // T(n) = 1·T(n/2) + O(1) → O(log n) via master theorem (Case 2, a == b^d).
+    let source = r#"module bin_search
+
+fn binary_search(xs: List<Int>, target: Int) -> Bool {
+  let n = xs |> count
+  if n == 0 { false }
+  else {
+    let mid = n / 2
+    let mid_val = xs |> skip(mid) |> first
+    match mid_val {
+      None => false
+      Some { value: v } =>
+        if v == target { true }
+        else if target < v { binary_search(xs: xs |> take(mid), target: target) }
+        else { binary_search(xs: xs |> skip(mid + 1), target: target) }
+    }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "binary_search")
+        .collect();
+    // CX-L2 detects xs |> take(mid) where mid = count(xs) / 2 as ProportionalShrink(2).
+    // CX-L3: derive_bound(branches: 1, ProportionalShrink(2), work: 0) → master_theorem → O(log n).
+    assert!(!bounds.is_empty(), "expected structural bound for binary_search, got none");
+    {
+        assert_eq!(bounds[0].param, "xs");
+        assert_eq!(
+            *bounds[0].bound,
+            v2_compiler::std_induction::CostBound::AtomicBound {
+                cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
+                    param: "xs".to_string(),
+                }),
+            },
+            "binary search should be O(log n)"
+        );
+    }
+}

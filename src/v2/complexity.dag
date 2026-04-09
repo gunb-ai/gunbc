@@ -4946,6 +4946,56 @@ fn count_descending_calls(all_calls: List<List<SubValueRelation>>, param_index: 
   )
 }
 
+// Count the maximum number of descending self-calls on a given parameter
+// that can execute in a single path through the function body.
+// ExprIf/ExprMatch: MAX over branches. Sequential code: SUM.
+fn max_path_descending(body: Node, fn_name: String, param_index: Int) -> Int {
+  match body.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: de } =>
+      let callee = expr_call_func(texpr: body)
+      let own = if callee == fn_name {
+        match de {
+          Some { value: evidence } =>
+            match evidence |> skip(param_index) |> first {
+              Some { value: rel } =>
+                match rel {
+                  StrictSubValue { field: _, factor: _ } => 1
+                  IteratedSubValue { field: _ } => 1
+                  _ => 0
+                }
+              None => 0
+            }
+          None => 0
+        }
+      } else { 0 }
+      let from_children = body.children |> fold(init: 0, f: (acc, child) =>
+        acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index)
+      )
+      own + from_children
+    // ExprIf: MAX over then/else branches
+    ExprIf =>
+      let then_count = max_path_descending(body: if_then_branch(texpr: body), fn_name: fn_name, param_index: param_index)
+      let else_branch = if_else_branch(texpr: body)
+      let else_count = match else_branch {
+        Some { value: eb } => max_path_descending(body: eb, fn_name: fn_name, param_index: param_index)
+        None => 0
+      }
+      if then_count > else_count { then_count } else { else_count }
+    // ExprMatch: MAX over arms
+    ExprMatch =>
+      let arms = match_arm_nodes(texpr: body)
+      arms |> fold(init: 0, f: (acc, arm) =>
+        let arm_count = max_path_descending(body: arm_body(n: arm), fn_name: fn_name, param_index: param_index)
+        if arm_count > acc { arm_count } else { acc }
+      )
+    // Sequential: SUM of children
+    _ =>
+      body.children |> fold(init: 0, f: (acc, child) =>
+        acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index)
+      )
+  }
+}
+
 // Analyze structural bounds for all self-recursive functions.
 // Recursion is detected from descent_evidence, not a stored flag.
 //
@@ -4971,7 +5021,7 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBo
               ConstantShrink { amount: _ } => catamorphism_bound(param: param_name, nesting_depth: 1)
               // Divide-and-conquer: use derive_bound → master_theorem
               ProportionalShrink { divisor: _ } =>
-                let branches = count_descending_calls(all_calls: all_calls, param_index: param_index)
+                let branches = max_path_descending(body: entry.body, fn_name: entry.name, param_index: param_index)
                 derive_bound(param: param_name, branches: branches, factor: factor, work_exponent: 0)
             }
             concat(pacc, [StructuralBoundResult { func_name: entry.name, param: param_name, bound: bound }])

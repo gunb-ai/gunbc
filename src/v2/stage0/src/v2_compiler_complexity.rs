@@ -4739,6 +4739,58 @@ pub fn count_descending_calls(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>,
 })
 }
 
+pub fn max_path_descending(body: Rc<Node>, fn_name: String, param_index: i64) -> i64 {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*body.expr_data.clone()).clone() {
+    ExprData::ExprCall { descent_evidence: de, .. } => {
+            let callee = expr_call_func(body.clone());
+let own = if (callee.as_str() == fn_name.clone().as_str()) {
+                match de.clone() {
+    Some(evidence) => match evidence.clone().get(param_index.clone() as usize).cloned() {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => 1,
+    SubValueRelation::IteratedSubValue { .. } => 1,
+    _ => 0,
+},
+    None => 0,
+},
+    None => 0,
+}
+} else {
+                0
+};
+let from_children = body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| (acc.clone() + max_path_descending(child.clone(), fn_name.clone(), param_index.clone())));
+(own + from_children)
+},
+    ExprData::ExprIf => {
+            let then_count = max_path_descending(if_then_branch(body.clone()), fn_name.clone(), param_index.clone());
+let else_branch = if_else_branch(body.clone());
+let else_count = match else_branch {
+    Some(eb) => max_path_descending(eb.clone(), fn_name.clone(), param_index.clone()),
+    None => 0,
+};
+if (then_count.clone() > else_count.clone()) {
+                then_count.clone()
+} else {
+                else_count.clone()
+}
+},
+    ExprData::ExprMatch => {
+            let arms = match_arm_nodes(body.clone());
+arms.iter().cloned().fold(0, |acc: i64, arm: Rc<Node>| {
+                let arm_count = max_path_descending(arm_body(arm.clone()), fn_name.clone(), param_index.clone());
+if (arm_count.clone() > acc.clone()) {
+                    arm_count.clone()
+} else {
+                    acc.clone()
+}
+})
+},
+    _ => body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| (acc.clone() + max_path_descending(child.clone(), fn_name.clone(), param_index.clone()))),
+}
+    })
+}
+
 pub fn analyze_structural_bounds(func_entries: Rc<Vec<Rc<FuncEntry>>>) -> Rc<Vec<Rc<StructuralBoundResult>>> {
     func_entries.iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<StructuralBoundResult>>>, entry: Rc<FuncEntry>| {
         let all_calls = collect_self_call_evidence(entry.body.clone(), entry.name.clone());
@@ -4758,7 +4810,7 @@ let bound = match (*factor.clone()).clone() {
     ShrinkFactor::UnitShrink => catamorphism_bound(param_name.clone(), 1),
     ShrinkFactor::ConstantShrink { .. } => catamorphism_bound(param_name.clone(), 1),
     ShrinkFactor::ProportionalShrink { .. } => {
-                            let branches = count_descending_calls(all_calls.clone(), param_index.clone());
+                            let branches = max_path_descending(entry.body.clone(), entry.name.clone(), param_index.clone());
 derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0)
 },
 };

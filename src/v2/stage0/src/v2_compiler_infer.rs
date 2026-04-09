@@ -2286,6 +2286,36 @@ Rc::new(SubValueRelation::StrictSubValue {
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
 },
+    ExprData::ExprBinOp { .. } => {
+                                    let left = binop_left(arg_val.clone());
+match (*left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                                        let lname = expr_var_name(left.clone());
+match v2_rt::map_get(&ctx.size_aliases.clone(), lname).as_deref().cloned() {
+    Some(SizeExpr::DividedSize { param: p, divisor: d, .. }) => if (p.clone().as_str() == param_name.clone().as_str()) {
+                                            {
+                                                let synth_field = Rc::new(InductiveField {
+    type_name: param_name.clone(),
+    variant_name: "".to_string(),
+    field_name: mname.clone(),
+    shape: RecursionShape::ListRecursion,
+});
+Rc::new(SubValueRelation::StrictSubValue {
+    field: synth_field,
+    factor: Rc::new(ShrinkFactor::ProportionalShrink {
+    divisor: d.clone(),
+}),
+})
+}
+} else {
+                                            Rc::new(SubValueRelation::SubValueUnknown)
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
 },
@@ -2305,6 +2335,12 @@ Rc::new(SubValueRelation::StrictSubValue {
 },
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BlockAnnotateAcc {
+    pub ctx: Rc<DescentContext>,
+    pub children: Rc<Vec<Rc<Node>>>,
 }
 
 pub fn classify_argument(arg_expr: Rc<Node>, param_name: String, ctx: Rc<DescentContext>) -> Rc<SubValueRelation> {
@@ -2555,6 +2591,72 @@ let inner_ctx = match val_relation {
 }),
 };
 map_children(body.clone(), |child| annotate_descent(child.clone(), inner_ctx.clone()))
+},
+    ExprData::ExprBlock => {
+            let threaded = body.children.clone().iter().cloned().fold(Rc::new(BlockAnnotateAcc {
+    ctx: ctx.clone(),
+    children: Rc::new(vec![]),
+}), |acc: Rc<BlockAnnotateAcc>, child: Rc<Node>| {
+                let annotated = annotate_descent(child.clone(), acc.ctx.clone());
+let next_ctx = match (*child.expr_data.clone()).clone() {
+    ExprData::ExprLet => {
+                    let val = let_value(child.clone());
+let bname = let_binding_name(child.clone());
+let val_rel = match (*val.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                        let vname = expr_var_name(val.clone());
+v2_rt::map_get(&acc.ctx.clone().sub_value_vars.clone(), vname.clone())
+},
+    _ => None,
+};
+let sa = classify_size_expr(val.clone(), acc.ctx.clone());
+let new_sa = match sa.clone() {
+    Some(se) => v2_rt::rc_map_insert(acc.ctx.clone().size_aliases.clone(), bname.clone(), se.clone()),
+    None => acc.ctx.clone().size_aliases.clone(),
+};
+match val_rel.clone() {
+    Some(rel) => Rc::new(DescentContext {
+    fn_name: acc.ctx.clone().fn_name.clone(),
+    param_names: acc.ctx.clone().param_names.clone(),
+    type_env: acc.ctx.clone().type_env.clone(),
+    sub_value_vars: v2_rt::rc_map_insert(acc.ctx.clone().sub_value_vars.clone(), bname.clone(), rel.clone()),
+    size_aliases: new_sa.clone(),
+}),
+    None => Rc::new(DescentContext {
+    fn_name: acc.ctx.clone().fn_name.clone(),
+    param_names: acc.ctx.clone().param_names.clone(),
+    type_env: acc.ctx.clone().type_env.clone(),
+    sub_value_vars: acc.ctx.clone().sub_value_vars.clone(),
+    size_aliases: new_sa.clone(),
+}),
+}
+},
+    _ => acc.ctx.clone(),
+};
+Rc::new(BlockAnnotateAcc {
+    ctx: next_ctx.clone(),
+    children: v2_rt::concat(acc.children.clone(), Rc::new(vec![annotated.clone()])),
+})
+});
+Rc::new(Node {
+    name: body.name.clone(),
+    span: body.span.clone(),
+    ident_span: body.ident_span.clone(),
+    children: threaded.children.clone(),
+    connective: body.connective.clone(),
+    params: body.params.clone(),
+    inferred: body.inferred.clone(),
+    return_cardinality: body.return_cardinality.clone(),
+    uses: body.uses.clone(),
+    body: body.body.clone(),
+    transport: body.transport.clone(),
+    properties: body.properties.clone(),
+    type_annotation: body.type_annotation.clone(),
+    is_self_recursive: body.is_self_recursive.clone(),
+    has_non_tail_self_call: body.has_non_tail_self_call.clone(),
+    match_pattern: body.match_pattern.clone(),
+    expr_data: body.expr_data.clone(),
+})
 },
     _ => map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone())),
 }
