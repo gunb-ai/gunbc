@@ -138,7 +138,8 @@ import v2.compiler.emit {
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   extract_modifier_names,
-  seed_bindings
+  seed_bindings,
+  emit_typed_let_shared
 }
 
 fn render_rust_type(n: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
@@ -3074,14 +3075,9 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
 
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  // Type annotations disabled for bootstrap convergence (Pass A).
-  let let_line = emit_let_binding(name: name, value: val_str, target: Rust)
-  match body {
-    Some { value: bd } =>
-      let next_scope = extend_scope(scope: scope, name: name, resolved: resolved_type(n: value))
-      concat(let_line, "\n", emit_typed_expr(texpr: bd, registry: registry, scope: next_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-    None => let_line
-  }
+  emit_typed_let_shared(name: name, value_str: val_str, body: body, target: Rust,
+    recurse: (bd, sc) => emit_typed_expr(texpr: bd, registry: registry, scope: sc, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
+    scope: scope, value_node: value)
 }
 
 

@@ -20,7 +20,7 @@ module v2.compiler.emit
 import v2.std.core {
   Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
-  param_node_name, param_node_type_expr, param_node_default_value,
+  param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value,
   NewlineIndex,
   expr_var_name_at, expr_call_func_at, let_binding_name_at,
   ExprData, NoExprData,
@@ -2015,6 +2015,98 @@ fn emit_default_bin_op(texpr: Node, target: RenderTarget, recurse: fn(Node) -> S
       }
     _ => wrap_result(emit_error_expr(message: "emit_default_bin_op expected ExprBinOp", target: target))
   }
+}
+
+// =========================================================================
+// P1: Shared typed handlers — target-parameterized, callback-driven.
+//
+// These replace per-language implementations that differ only by target
+// token or recursion callback. Each language file calls these with its
+// own `target` and recursion function, eliminating duplicated structure.
+// =========================================================================
+
+// Shared block statement emitter.
+// emit_expr: renders one statement given (Node, InferScope, Int depth).
+// prepend_indent: Go prepends make_indent(depth) to each line; Py/Rust don't.
+fn emit_block_stmts_shared(
+    remaining: List<Node>, text: List<String>,
+    scope: InferScope, depth: Int,
+    prepend_indent: Bool,
+    emit_expr: fn(Node, InferScope, Int) -> String) -> BlockEmitState {
+  match remaining |> first {
+    None => BlockEmitState { text: text, scope: scope }
+    Some { value: stmt } =>
+      let raw = emit_expr(stmt, scope, depth)
+      let line = if prepend_indent { concat(make_indent(level: depth), raw) } else { raw }
+      let next_scope = scope_after_expr(texpr: stmt, scope: scope)
+      emit_block_stmts_shared(remaining: remaining |> skip(1),
+        text: list_push(text, line), scope: next_scope,
+        depth: depth, prepend_indent: prepend_indent,
+        emit_expr: emit_expr)
+  }
+}
+
+// Shared init-block statement emitter (all-but-last).
+fn emit_init_block_stmts_shared(
+    remaining: List<Node>, text: List<String>,
+    scope: InferScope, depth: Int,
+    prepend_indent: Bool,
+    emit_expr: fn(Node, InferScope, Int) -> String) -> BlockEmitState {
+  match remaining |> first {
+    None => BlockEmitState { text: text, scope: scope }
+    Some { value: stmt } =>
+      let rest = remaining |> skip(1)
+      match rest |> first {
+        None => BlockEmitState { text: text, scope: scope }
+        Some { value: _ } =>
+          let raw = emit_expr(stmt, scope, depth)
+          let line = if prepend_indent { concat(make_indent(level: depth), raw) } else { raw }
+          let next_scope = scope_after_expr(texpr: stmt, scope: scope)
+          emit_init_block_stmts_shared(remaining: rest,
+            text: list_push(text, line), scope: next_scope,
+            depth: depth, prepend_indent: prepend_indent,
+            emit_expr: emit_expr)
+      }
+  }
+}
+
+// Shared typed let — identical structure across all three backends.
+fn emit_typed_let_shared(name: String, value_str: String, body: Node?, target: RenderTarget,
+    recurse: fn(Node, InferScope) -> String, scope: InferScope, value_node: Node) -> String {
+  let let_line = emit_let_binding(name: name, value: value_str, target: target)
+  match body {
+    Some { value: bd } =>
+      let next_scope = extend_scope(scope: scope, name: name, resolved: resolved_type(n: value_node))
+      concat(let_line, "\n", recurse(bd, next_scope))
+    None => let_line
+  }
+}
+
+// Shared param rendering — for languages that use emit_node_type (Go, Python).
+fn emit_param_shared(param: Node, target: RenderTarget, source_index: NewlineIndex?) -> String {
+  let ty = emit_node_type(n: param_node_type_expr(n: param), target: target, source_index: source_index)
+  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: target), language_spec(target: target).items.param_type_sep, ty)
+}
+
+// Shared params rendering — maps emit_param_shared over param list.
+fn emit_params_shared(params: List<Node>, target: RenderTarget, source_index: NewlineIndex?) -> String {
+  let strs = params |> map(p => emit_param_shared(param: p, target: target, source_index: source_index))
+  strs |> join(separator: ", ")
+}
+
+// Shared inferred (return type) rendering.
+// Go suppresses void (Unit → "struct{}") return annotations; Python/Rust include them.
+// Go wraps this with its own void check; Python/Rust call directly.
+fn emit_inferred_shared(inferred: Node, target: RenderTarget, source_index: NewlineIndex?) -> String {
+  concat(language_spec(target: target).items.return_arrow, emit_node_type(n: inferred, target: target, source_index: source_index))
+}
+
+// Shared typed block — delegates to emit_block_stmts callback, joins with newline.
+fn emit_typed_block_join(
+    stmts: List<Node>, scope: InferScope, depth: Int,
+    emit_block_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState) -> String {
+  let state = emit_block_stmts(stmts, scope, depth)
+  state.text |> join(separator: "\n")
 }
 
 // Shared typed seed for template binding maps. Used by all backend emitters

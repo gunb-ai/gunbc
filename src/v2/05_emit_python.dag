@@ -110,7 +110,10 @@ import v2.compiler.emit {
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   seed_bindings,
   emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts,
-  emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared
+  emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared,
+  emit_block_stmts_shared, emit_init_block_stmts_shared,
+  emit_typed_let_shared, emit_param_shared, emit_params_shared,
+  emit_inferred_shared, emit_typed_block_join
 }
 
 // =========================================================================
@@ -131,33 +134,16 @@ import v2.compiler.emit {
 
 fn emit_py_block_stmts(remaining: List<Node>, text: List<String>,
     scope: InferScope, registry: Map<String, ItemInfo>, depth: Int) -> BlockEmitState {
-  match remaining |> first {
-    None => BlockEmitState { text: text, scope: scope }
-    Some { value: stmt } =>
-      let line = emit_py_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, fuel: 1024)
-      let next_scope = scope_after_expr(texpr: stmt, scope: scope)
-      emit_py_block_stmts(remaining: remaining |> skip(1),
-        text: list_push(text, line), scope: next_scope,
-        registry: registry, depth: depth)
-  }
+  emit_block_stmts_shared(remaining: remaining, text: text, scope: scope, depth: depth,
+    prepend_indent: false,
+    emit_expr: (stmt, sc, d) => emit_py_typed_expr(texpr: stmt, registry: registry, scope: sc, depth: d, fuel: 1024))
 }
 
 fn emit_py_init_block_stmts(remaining: List<Node>, text: List<String>,
     scope: InferScope, registry: Map<String, ItemInfo>, depth: Int) -> BlockEmitState {
-  match remaining |> first {
-    None => BlockEmitState { text: text, scope: scope }
-    Some { value: stmt } =>
-      let rest = remaining |> skip(1)
-      match rest |> first {
-        None => BlockEmitState { text: text, scope: scope }
-        Some { value: _ } =>
-          let line = emit_py_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, fuel: 1024)
-          let next_scope = scope_after_expr(texpr: stmt, scope: scope)
-          emit_py_init_block_stmts(remaining: rest,
-            text: list_push(text, line), scope: next_scope,
-            registry: registry, depth: depth)
-      }
-  }
+  emit_init_block_stmts_shared(remaining: remaining, text: text, scope: scope, depth: depth,
+    prepend_indent: false,
+    emit_expr: (stmt, sc, d) => emit_py_typed_expr(texpr: stmt, registry: registry, scope: sc, depth: d, fuel: 1024))
 }
 
 // =========================================================================
@@ -534,17 +520,15 @@ fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List
 // =========================================================================
 
 fn emit_py_params(params: List<Node>, source_index: NewlineIndex?) -> String {
-  let strs = params |> map(p => emit_py_param(param: p, source_index: source_index))
-  strs |> join(separator: ", ")
+  emit_params_shared(params: params, target: Python, source_index: source_index)
 }
 
 fn emit_py_param(param: Node, source_index: NewlineIndex?) -> String {
-  let ty = emit_node_type(n: param_node_type_expr(n: param), target: Python, source_index: source_index)
-  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Python), language_spec(target: Python).items.param_type_sep, ty)
+  emit_param_shared(param: param, target: Python, source_index: source_index)
 }
 
 fn emit_py_inferred(inferred: Node, source_index: NewlineIndex?) -> String {
-  concat(language_spec(target: Python).items.return_arrow, emit_node_type(n: inferred, target: Python, source_index: source_index))
+  emit_inferred_shared(inferred: inferred, target: Python, source_index: source_index)
 }
 fn emit_py_pattern(pattern: MatchPattern, source_index: NewlineIndex?) -> String {
   match pattern {
@@ -799,13 +783,9 @@ fn emit_py_typed_if(condition: Node, then_branch: Node, else_branch: Node?, regi
 
 fn emit_py_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let val_str = emit_py_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  let let_line = emit_let_binding(name: name, value: val_str, target: Python)
-  match body {
-    Some { value: bd } =>
-      let next_scope = extend_scope(scope: scope, name: name, resolved: resolved_type(n: value))
-      concat(let_line, "\n", emit_py_typed_expr(texpr: bd, registry: registry, scope: next_scope, depth: depth, fuel: 1024))
-    None => let_line
-  }
+  emit_typed_let_shared(name: name, value_str: val_str, body: body, target: Python,
+    recurse: (bd, sc) => emit_py_typed_expr(texpr: bd, registry: registry, scope: sc, depth: depth, fuel: 1024),
+    scope: scope, value_node: value)
 }
 
 fn emit_py_typed_record_lit(type_name: String?, fields: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -864,9 +844,8 @@ fn py_typed_interp_segment(part: StringPart, registry: Map<String, ItemInfo>, sc
 }
 
 fn emit_py_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let state = emit_py_block_stmts(
-    remaining: stmts, text: [], scope: scope, registry: registry, depth: depth)
-  state.text |> join(separator: "\n")
+  emit_typed_block_join(stmts: stmts, scope: scope, depth: depth,
+    emit_block_stmts: (s, sc, d) => emit_py_block_stmts(remaining: s, text: [], scope: sc, registry: registry, depth: d))
 }
 
 // =========================================================================
