@@ -167,8 +167,8 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget, source_index: Opti
     ExprData::ExprFieldAccess { .. } => {
             let f = field_access_field_at(expr.clone(), source_index.clone());
 let b = field_access_base(expr.clone());
-if is_typed_service_call_receiver(expr.clone()) {
-                match extract_typed_service_name(expr.clone()) {
+if is_typed_service_call_receiver(expr.clone(), source_index.clone()) {
+                match extract_typed_service_name(expr.clone(), source_index.clone()) {
     Some(svc_name) => service_var_name(svc_name.clone()),
     None => v2_rt::concat(v2_rt::concat(emit_simple_expr(b, target.clone(), source_index.clone()), ".".to_string()), emit_ident(f, target.clone())),
 }
@@ -331,9 +331,9 @@ pub fn lookup_func_sig_in_scope(scope: Rc<InferScope>, name: String) -> Option<R
     v2_rt::map_get(&scope.func_env.clone().signatures.clone(), name)
 }
 
-pub fn typed_named_arg_matches(arg: Rc<Node>, name: String) -> bool {
+pub fn typed_named_arg_matches(arg: Rc<Node>, name: String, source_index: Option<Rc<NewlineIndex>>) -> bool {
     {
-        let n = arg_name_at(arg, None);
+        let n = arg_name_at(arg, source_index);
 if (n.clone() == None) {
             false
         } else {
@@ -396,7 +396,7 @@ result.result.clone()
 }
 }
 
-pub fn has_nested_records_node(mut n: Rc<Node>) -> bool {
+pub fn has_nested_records_node(mut n: Rc<Node>, mut source_index: Option<Rc<NewlineIndex>>) -> bool {
     loop {
         let is_product = (n.connective.clone() == Connective::Conj);
 let is_coproduct = (n.connective.clone() == Connective::Disj);
@@ -408,19 +408,23 @@ if is_product.clone() {
 if is_optional.clone() {
                     {
                         let __tco_0 = with_required_cardinality(n);
+let __tco_1 = source_index;
 n = __tco_0;
+source_index = __tco_1;
 continue;
 }
 } else {
                     break false;
 }
 } else {
-                let is_map = node_is_keyed_collection(n.clone(), None);
+                let is_map = node_is_keyed_collection(n.clone(), source_index.clone());
 if is_map.clone() {
                     match n.children.clone().get(1 as usize).cloned() {
     Some(val_child) => { {
                         let __tco_0 = child_type_node(val_child.clone());
+let __tco_1 = source_index;
 n = __tco_0;
+source_index = __tco_1;
 continue;
 } },
     None => { break false; },
@@ -430,7 +434,9 @@ continue;
                         match n.children.clone().first().cloned() {
     Some(el) => { {
                             let __tco_0 = child_type_node(el.clone());
+let __tco_1 = source_index;
 n = __tco_0;
+source_index = __tco_1;
 continue;
 } },
     None => { break false; },
@@ -1834,9 +1840,9 @@ if (n.clone().as_str() == "none".to_string().as_str()) {
 }
 }
 
-pub fn emit_expr_field_access_shared(expr: Rc<Node>, target: RenderTarget, emit_field: impl Fn(Rc<Node>) -> String + Clone) -> String {
-    if is_typed_service_call_receiver(expr.clone()) {
-        match extract_typed_service_name(expr.clone()) {
+pub fn emit_expr_field_access_shared(expr: Rc<Node>, target: RenderTarget, emit_field: impl Fn(Rc<Node>) -> String + Clone, source_index: Option<Rc<NewlineIndex>>) -> String {
+    if is_typed_service_call_receiver(expr.clone(), source_index.clone()) {
+        match extract_typed_service_name(expr.clone(), source_index.clone()) {
     Some(svc_name) => service_var_name(svc_name.clone()),
     None => emit_field(expr.clone()),
 }

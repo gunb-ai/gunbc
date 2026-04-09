@@ -228,8 +228,8 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_index: NewlineIndex
     ExprFieldAccess { summary: _ } =>
       let f = field_access_field_at(texpr: expr, source_index: source_index)
       let b = field_access_base(texpr: expr)
-      if is_typed_service_call_receiver(receiver: expr) {
-        match extract_typed_service_name(receiver: expr) {
+      if is_typed_service_call_receiver(receiver: expr, source_index: source_index) {
+        match extract_typed_service_name(receiver: expr, source_index: source_index) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)
           None => concat(emit_simple_expr(expr: b, target: target, source_index: source_index), ".", emit_ident(name: f, target: target))
         }
@@ -351,8 +351,8 @@ fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig?
   map_get(scope.func_env.signatures, name)
 }
 
-fn typed_named_arg_matches(arg: Node, name: String) -> Bool {
-  let n = arg_name_at(n: arg, source_index: none)
+fn typed_named_arg_matches(arg: Node, name: String, source_index: NewlineIndex?) -> Bool {
+  let n = arg_name_at(n: arg, source_index: source_index)
   if n == none {
     false
   } else {
@@ -416,7 +416,7 @@ fn unique_strings(items: List<String>) -> List<String> {
 
 // Nested record detection -- for data definition edge cases.
 // Anonymous product = Conj connective with empty name.
-fn has_nested_records_node(n: Node) -> Bool {
+fn has_nested_records_node(n: Node, source_index: NewlineIndex?) -> Bool {
   let is_product = n.connective == Conj
   let is_coproduct = n.connective == Disj
   if is_product {
@@ -427,18 +427,18 @@ fn has_nested_records_node(n: Node) -> Bool {
   } else if is_coproduct {
     let is_optional = n.return_cardinality == CardOptional
     if is_optional {
-      has_nested_records_node(n: with_required_cardinality(n: n))
+      has_nested_records_node(n: with_required_cardinality(n: n), source_index: source_index)
     } else { false }
   } else {
-    let is_map = node_is_keyed_collection(n: n, source_index: none)
+    let is_map = node_is_keyed_collection(n: n, source_index: source_index)
     if is_map {
       match skip(n.children, 1) |> first {
-        Some { value: val_child } => has_nested_records_node(n: child_type_node(ch: val_child))
+        Some { value: val_child } => has_nested_records_node(n: child_type_node(ch: val_child), source_index: source_index)
         None => false
       }
     } else if n.children |> count == 1 {
       match n.children |> first {
-        Some { value: el } => has_nested_records_node(n: child_type_node(ch: el))
+        Some { value: el } => has_nested_records_node(n: child_type_node(ch: el), source_index: source_index)
         None => false
       }
     } else {
@@ -1858,9 +1858,9 @@ fn emit_expr_var_shared(expr: Node, target: RenderTarget, source_index: NewlineI
 
 // Shared ExprFieldAccess service-receiver check. Delegates to emit_field
 // for the backend-specific field access rendering.
-fn emit_expr_field_access_shared(expr: Node, target: RenderTarget, emit_field: fn(Node) -> String) -> String {
-  if is_typed_service_call_receiver(receiver: expr) {
-    match extract_typed_service_name(receiver: expr) {
+fn emit_expr_field_access_shared(expr: Node, target: RenderTarget, emit_field: fn(Node) -> String, source_index: NewlineIndex?) -> String {
+  if is_typed_service_call_receiver(receiver: expr, source_index: source_index) {
+    match extract_typed_service_name(receiver: expr, source_index: source_index) {
       Some { value: svc_name } => service_var_name(service_name: svc_name)
       None => emit_field(expr)
     }

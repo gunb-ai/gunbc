@@ -54,7 +54,7 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
-  field_access_base, method_receiver, expr_field_access_summary, expr_method_call_semantics,
+  field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics,
   record_lit_type_name,
   lambda_body, cast_expr, cast_target, return_value,
   foreach_variable, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
@@ -206,14 +206,14 @@ fn go_test_name(projection: TestProjection) -> String {
   test_function_name(projection: projection, target: Go)
 }
 
-fn go_mock_expr_uses_fmt(expr: Node) -> Bool {
-  let rendered = emit_simple_expr(expr: expr, target: Go, source_index: none)
+fn go_mock_expr_uses_fmt(expr: Node, source_index: NewlineIndex?) -> Bool {
+  let rendered = emit_simple_expr(expr: expr, target: Go, source_index: source_index)
   rendered |> split(delimiter: "fmt.Sprintf(") |> count > 1
 }
 
 fn go_test_import_block(projections: List<TestProjection>) -> String {
   let needs_fmt = projections |> any(p =>
-    p.mock_field_inits |> any(mp => go_mock_expr_uses_fmt(expr: field_init_node_value(n: mp)))
+    p.mock_field_inits |> any(mp => go_mock_expr_uses_fmt(expr: field_init_node_value(n: mp), source_index: p.source_index))
   )
   if needs_fmt {
     "import (\n\t\"fmt\"\n\t\"testing\"\n)\n\n"
@@ -259,7 +259,7 @@ fn emit_go_operation_test(projection: TestProjection, depth: Int) -> String {
   let struct_name = sanitize_service_name(name: projection.service_name)
   let indent = make_indent(level: depth + 1)
   let mock_setup = projection.mock_field_inits
-    |> map(mp => emit_go_mock_prop_setup(mock_prop: mp, depth: depth + 1))
+    |> map(mp => emit_go_mock_prop_setup(mock_prop: mp, depth: depth + 1, source_index: projection.source_index))
     |> join(separator: "\n")
   concat(
     language_spec(target: Go).items.func_keyword, " ", test_name, "(t *testing.T) {\n",
@@ -270,11 +270,11 @@ fn emit_go_operation_test(projection: TestProjection, depth: Int) -> String {
     "}")
 }
 
-fn emit_go_mock_prop_setup(mock_prop: Node, depth: Int) -> String {
+fn emit_go_mock_prop_setup(mock_prop: Node, depth: Int, source_index: NewlineIndex?) -> String {
   concat(
-    emit_ident(name: field_init_node_name_at(n: mock_prop, source_index: none), target: Go),
+    emit_ident(name: field_init_node_name_at(n: mock_prop, source_index: source_index), target: Go),
     " := ",
-    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Go, source_index: none))
+    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Go, source_index: source_index))
 }
 
 // =========================================================================
@@ -582,7 +582,8 @@ fn emit_go_expr_var(expr: Node, source_index: NewlineIndex?) -> String {
 }
 
 fn emit_go_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_expr_field_access_shared(expr: expr, target: Go, emit_field: e => emit_go_field_access(base: field_access_base(texpr: e), field: e.name, summary: expr_field_access_summary(texpr: e), registry: registry, scope: scope, depth: depth))
+  let si = scope.type_env.source_index
+  emit_expr_field_access_shared(expr: expr, target: Go, emit_field: e => emit_go_field_access(base: field_access_base(texpr: e), field: field_access_field_at(texpr: e, source_index: si), summary: expr_field_access_summary(texpr: e), registry: registry, scope: scope, depth: depth), source_index: si)
 }
 
 fn emit_go_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -726,8 +727,8 @@ fn emit_go_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
   } }
   else {
-      if is_typed_service_call_receiver(receiver: receiver) {
-        match extract_typed_service_name(receiver: receiver) {
+      if is_typed_service_call_receiver(receiver: receiver, source_index: scope.type_env.source_index) {
+        match extract_typed_service_name(receiver: receiver, source_index: scope.type_env.source_index) {
           Some { value: svc_name } =>
             let var_name = service_var_name(service_name: svc_name)
             let arg_strs = args |> map(a => emit_go_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024))
@@ -1040,20 +1041,20 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
   // After dissolution, inferred on the child node IS the output type
   let ret_type = emit_node_type(n: resolved_type(n: op_node), target: Go, source_index: env.source_index)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
-  let body = emit_go_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: 1)
+  let body = emit_go_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: 1, source_index: env.source_index)
   concat(language_spec(target: Go).items.func_keyword, " ", receiver, " ", go_export_ident(name: op_text),
     "(", params_str, ") (", ret_type, ", error) {\n",
     body, "\n}")
 }
 
-fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  if is_rest_transport(t: transport) { emit_go_rest_call(op_name: op_name, transport: transport, depth: depth) }
-  else if is_shell_transport(t: transport) { emit_go_shell_call(op_name: op_name, transport: transport, depth: depth) }
+fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, source_index: NewlineIndex?) -> String {
+  if is_rest_transport(t: transport) { emit_go_rest_call(op_name: op_name, transport: transport, depth: depth, source_index: source_index) }
+  else if is_shell_transport(t: transport) { emit_go_shell_call(op_name: op_name, transport: transport, depth: depth, source_index: source_index) }
   else if is_file_transport(t: transport) { emit_go_file_call(op_name: op_name, depth: depth) }
   else { emit_go_local_call(op_name: op_name, depth: depth) }
 }
 
-fn emit_go_rest_call(op_name: String, transport: Node, depth: Int) -> String {
+fn emit_go_rest_call(op_name: String, transport: Node, depth: Int, source_index: NewlineIndex?) -> String {
   let prefix = make_indent(level: depth)
   let url_line = concat(prefix, "url := fmt.Sprintf(\"%s/", to_snake(name: op_name), "\", c.BaseURL)")
   let body_line = concat(prefix, "reqBody := bytes.NewBuffer(nil)")
@@ -1068,7 +1069,7 @@ fn emit_go_rest_call(op_name: String, transport: Node, depth: Int) -> String {
   } else { "" }
   let hdrs = transport_headers(t: transport)
   let header_lines = hdrs |> map(h =>
-    concat(prefix, "req.Header.Set(\"", h.name, "\", ", emit_simple_expr(expr: field_init_node_value(n: h), target: Go, source_index: none), ")")
+    concat(prefix, "req.Header.Set(\"", h.name, "\", ", emit_simple_expr(expr: field_init_node_value(n: h), target: Go, source_index: source_index), ")")
   )
   let send_lines = concat(
     prefix, "resp, err := http.DefaultClient.Do(req)\n",
@@ -1087,13 +1088,13 @@ fn emit_go_rest_call(op_name: String, transport: Node, depth: Int) -> String {
   all_lines |> join(separator: "\n")
 }
 
-fn emit_go_shell_call(op_name: String, transport: Node, depth: Int) -> String {
+fn emit_go_shell_call(op_name: String, transport: Node, depth: Int, source_index: NewlineIndex?) -> String {
   let prefix = make_indent(level: depth)
   let cmd_line = concat(prefix, "cmd := exec.Command(\"", to_snake(name: op_name), "\")")
   let dir_line = concat(prefix, "cmd.Dir = c.WorkingDir")
   let envs = transport_env(t: transport)
   let env_lines = envs |> map(e =>
-    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=\" + ", emit_simple_expr(expr: field_init_node_value(n: e), target: Go, source_index: none), ")")
+    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=\" + ", emit_simple_expr(expr: field_init_node_value(n: e), target: Go, source_index: source_index), ")")
   )
   let run_lines = concat(
     prefix, "output, err := cmd.Output()\n",

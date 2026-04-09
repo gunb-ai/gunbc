@@ -3333,7 +3333,7 @@ fn build_item_info(item: Node, source_index: NewlineIndex?) -> ItemInfo {
       ItemInfo {
         name: item.name,
         kind: kind,
-        service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value) },
+        service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value, source_index: source_index) },
         resource_names: res_names,
         params: item.params,
         is_self_recursive: false,
@@ -3519,7 +3519,8 @@ fn build_module_context(contributions: List<ItemContribution>,
   let resolve_result = resolve_func_sigs(
     declared_sigs: all_declared_sigs,
     items: local.resolved_items,
-    module_name: module_name
+    module_name: module_name,
+    source_index: env.source_index
   )
   // C2.2: Optional Some/None now handled by the general variant constructor
   // mechanism (C2.1). kernel_optional is a Disj node in env.bindings, so

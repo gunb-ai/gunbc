@@ -518,7 +518,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
       }
 
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      match parser_passthrough_state_expr(expr: expr) {
+      match parser_passthrough_state_expr(expr: expr, source_index: si) {
         Some { value: state_expr } =>
           parser_state_expr_progress(
             expr: state_expr,
@@ -532,7 +532,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
 
     ExprIf =>
       let cond = if_condition(texpr: expr)
-      let then_consumed = match parser_progress_flag_var(expr: cond) {
+      let then_consumed = match parser_progress_flag_var(expr: cond, source_index: si) {
         Some { value: name } => map_insert(consumed_true_set, name, true)
         None => consumed_true_set
       }
@@ -658,7 +658,7 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
           si: si)
         None => ProgressUnknown
       }
-      match parser_result_witness(expr: expr) {
+      match parser_result_witness(expr: expr, source_index: si) {
         ParserWitnessAdvance => ParserResultAdvance { input: input_progress }
         ParserWitnessExpect => ParserResultExpect { input: input_progress }
         ParserWitnessEat => ParserResultEat { input: input_progress }
@@ -823,7 +823,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: consumed_true_set,
       si: si)
-      let then_consumed = match parser_progress_flag_var(expr: cond) {
+      let then_consumed = match parser_progress_flag_var(expr: cond, source_index: si) {
         Some { value: name } => map_insert(consumed_true_set, name, true)
         None => consumed_true_set
       }
@@ -1005,7 +1005,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
 
     ExprIf =>
       let cond = if_condition(texpr: expr)
-      let then_consumed = match parser_progress_flag_var(expr: cond) {
+      let then_consumed = match parser_progress_flag_var(expr: cond, source_index: si) {
         Some { value: name } => map_insert(consumed_true_set, name, true)
         None => consumed_true_set
       }
