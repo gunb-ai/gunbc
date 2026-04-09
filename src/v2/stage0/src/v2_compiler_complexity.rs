@@ -19,7 +19,7 @@ pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
 use crate::std_computation::IterationDimension::{TreeDescent, CollectionFold, ArithmeticRepeat};
 pub use crate::std_induction::{SubValueRelation, ShrinkFactor, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, sub_value_to_call_pattern, catamorphism_bound, derive_bound};
-use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
+use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown};
 use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
 use crate::std_induction::CostBound::{ConstantBound, AtomicBound, ForeverBound, ErrorBound};
 use crate::std_induction::AtomicCost::{PolyCost};
@@ -2440,6 +2440,7 @@ let has_evidence = ((all_evidence.clone().len() as i64) > 0);
 let all_structural = (has_evidence && { let mut __all = true; for call_ev in all_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
     SubValueRelation::IteratedSubValue { .. } => true,
+    SubValueRelation::ArithmeticDescent { .. } => true,
     _ => false,
 } { __found = true; break; } } __found }) { __all = false; break; } } __all });
 if all_structural {
@@ -3203,8 +3204,22 @@ let self_has_calls = ((self_evidence.clone().len() as i64) > 0);
 let self_all_structural = (self_has_calls.clone() && { let mut __all = true; for call_ev in self_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
     SubValueRelation::IteratedSubValue { .. } => true,
+    SubValueRelation::ArithmeticDescent { .. } => true,
     _ => false,
 } { __found = true; break; } } __found }) { __all = false; break; } } __all });
+let descending_param = match self_evidence.clone().first().cloned() {
+    Some(call_ev) => call_ev.clone().iter().cloned().fold("".to_string(), |found: String, rel: Rc<SubValueRelation>| if (found.clone().as_str() != "".to_string().as_str()) {
+                found.clone()
+} else {
+                match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::ArithmeticDescent { param: p, .. } => p.clone(),
+    _ => "".to_string(),
+}
+}),
+    None => "".to_string(),
+};
 let self_edge = if self_has_calls.clone() {
                 if self_all_structural.clone() {
                     Rc::new(vec![Rc::new(ProofEdge {
@@ -3247,6 +3262,32 @@ v2_rt::concat(self_edge.clone(), cross_edges.clone())
 }
 }
 
+pub fn scc_descending_param(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>) -> String {
+    members.iter().cloned().fold("".to_string(), |found: String, name: String| if (found.clone().as_str() != "".to_string().as_str()) {
+        found.clone()
+} else {
+        match v2_rt::map_get(&func_index, name.clone()) {
+    Some(entry) => {
+            let evidence = collect_self_call_evidence(entry.body.clone(), name.clone());
+match evidence.clone().first().cloned() {
+    Some(call_ev) => call_ev.clone().iter().cloned().fold("".to_string(), |p: String, rel: Rc<SubValueRelation>| if (p.clone().as_str() != "".to_string().as_str()) {
+                p.clone()
+} else {
+                match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::ArithmeticDescent { param: ap, .. } => ap.clone(),
+    _ => "".to_string(),
+}
+}),
+    None => "".to_string(),
+}
+},
+    None => "".to_string(),
+}
+})
+}
+
 pub fn construct_scc_termination_proof(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_name_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> Option<Rc<TerminationProof>> {
     {
         let cx_l2_edges = collect_scc_cx_l2_tree_edges(members.clone(), func_index.clone(), scc_name_set.clone(), si.clone());
@@ -3254,9 +3295,14 @@ let cx_l2_all_known = { let mut __all = true; for e in cx_l2_edges.clone().iter(
     Some(DescentEvidence::DescentUnknown) => false,
     _ => true,
 }) { __all = false; break; } } __all };
+let cx_l2_param = scc_descending_param(members.clone(), func_index.clone());
 let cx_l2_proof = Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
-    param: "scc".to_string(),
+    param: if (cx_l2_param.clone().as_str() != "".to_string().as_str()) {
+            cx_l2_param.clone()
+} else {
+            "scc".to_string()
+},
 })]),
 });
 if ((cx_l2_all_known && ((cx_l2_edges.clone().len() as i64) > 0)) && (proof_has_non_descending_cycle(cx_l2_proof.clone(), members.clone(), cx_l2_edges.clone()) == false)) {

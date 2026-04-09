@@ -172,6 +172,7 @@ type ShrinkFactor
 type SubValueRelation
   = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
   | IteratedSubValue { field: InductiveField }
+  | ArithmeticDescent { param: String, factor: ShrinkFactor }
   | PreservedValue
   | SubValueUnknown
 
@@ -182,10 +183,11 @@ type SubValueRelation
 
 fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
   match relation {
-    StrictSubValue { field: _, factor: _ } => Strict
-    IteratedSubValue { field: _ }          => Strict
-    PreservedValue                         => NonIncreasing
-    SubValueUnknown                        => DescentUnknown
+    StrictSubValue { field: _, factor: _ }   => Strict
+    IteratedSubValue { field: _ }            => Strict
+    ArithmeticDescent { param: _, factor: _ } => Strict
+    PreservedValue                           => NonIncreasing
+    SubValueUnknown                          => DescentUnknown
   }
 }
 
@@ -203,10 +205,11 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
 
 fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
   match relation {
-    StrictSubValue { field: f, factor: _ } => Some { value: ChildAccessorCall { accessor: f.field_name } }
-    IteratedSubValue { field: f }          => Some { value: ChildAccessorCall { accessor: f.field_name } }
-    PreservedValue                         => Some { value: SameArgumentCall }
-    SubValueUnknown                        => none
+    StrictSubValue { field: f, factor: _ }    => Some { value: ChildAccessorCall { accessor: f.field_name } }
+    IteratedSubValue { field: f }             => Some { value: ChildAccessorCall { accessor: f.field_name } }
+    ArithmeticDescent { param: p, factor: _ } => Some { value: ArithmeticDescentCall { op: "subtract", by: 1 } }
+    PreservedValue                            => Some { value: SameArgumentCall }
+    SubValueUnknown                           => none
   }
 }
 

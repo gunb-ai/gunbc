@@ -80,7 +80,11 @@ fn stage0_cargo_check() {
 //   +20 violations are parser/emit functions that incorrectly benefited from
 //   the unsound Add handler. Proper fix: parser position uses TokenPosition
 //   measure (std/termination.dag), not synthetic arithmetic descent.
-const DIAG_RATCHET: usize = 480;
+// 2026-04-09: 480→524 — Delete heuristic tables (list_child_accessors, ExprCall
+//   collection+lambda positional guess), replace _arith synthetic InductiveField
+//   with ArithmeticDescent variant, fix SCC parameter name. Honest increase:
+//   heuristics removed, types-in-std/ is the structural path to dissolve.
+const DIAG_RATCHET: usize = 524;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

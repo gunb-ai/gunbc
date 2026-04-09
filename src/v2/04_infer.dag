@@ -43,7 +43,7 @@ import v2.std.core {
   InternalError, VariantCollision,
   resource_use_name, resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
-  is_child_accessor_in_model, is_tree_size_reducing, is_list_child_accessor,
+  is_child_accessor_in_model, is_tree_size_reducing,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -105,8 +105,8 @@ import v2.compiler.infer_env {
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
-  SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown,
-  ShrinkFactor, UnitShrink, ProportionalShrink
+  SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
 }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
@@ -2438,40 +2438,6 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
             }
           None => none
         }
-      } else if is_list_child_accessor(name: callee) {
-        // List-returning accessor: returns a sublist of an inductive field
-        let call_args = val.children
-        match call_args |> first {
-          Some { value: first_arg } =>
-            let inner = arg_value(n: first_arg)
-            match inner.expr_data {
-              ExprVar { binding_kind: _ } =>
-                let iname = expr_var_name(texpr: inner)
-                let inner_type = match map_get(ctx.param_names, iname) {
-                  Some { value: t } => t
-                  None =>
-                    match map_get(ctx.sub_value_vars, iname) {
-                      Some { value: rel } =>
-                        match rel {
-                          StrictSubValue { field: f, factor: _ } => f.type_name
-                          IteratedSubValue { field: f } => f.type_name
-                          _ => ""
-                        }
-                      None => ""
-                    }
-                }
-                if inner_type != "" {
-                  let fields = inductive_fields_for(env: ctx.type_env, type_name: inner_type)
-                  let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
-                  match cf {
-                    Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
-                    None => none
-                  }
-                } else { none }
-              _ => none
-            }
-          None => none
-        }
       } else { none }
     // Arithmetic let-bindings: let rest = value / 10, let next = pos + 1, let smaller = n - 1
     ExprBinOp { op: op } =>
@@ -2486,8 +2452,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
                 match right.expr_data {
                   ExprLiteral { value: LitInt { value: k } } =>
                     if k > 0 {
-                      let synth_field = InductiveField { type_name: lname, variant_name: "", field_name: "_arith", shape: DirectRecursion, element_type: lname }
-                      Some { value: StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } } }
+                      Some { value: ArithmeticDescent { param: lname, factor: ConstantShrink { amount: k } } }
                     } else { none }
                   _ => none
                 }
@@ -2513,8 +2478,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
             match right.expr_data {
               ExprLiteral { value: LitInt { value: k } } =>
                 if k > 1 {
-                  let synth_field = InductiveField { type_name: left_name, variant_name: "", field_name: "_arith", shape: DirectRecursion, element_type: left_name }
-                  Some { value: StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: k } } }
+                  Some { value: ArithmeticDescent { param: left_name, factor: ProportionalShrink { divisor: k } } }
                 } else { none }
               _ => none
             }
@@ -2598,6 +2562,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             // If inner is a sub-value, the accessor result is also a sub-value
             StrictSubValue { field: _, factor: _ } => inner_rel
             IteratedSubValue { field: _ } => inner_rel
+            ArithmeticDescent { param: _, factor: _ } => inner_rel
             // Accessor applied to the parameter itself: if it's a child accessor,
             // the result is a strict sub-value (extracts from Node.children).
             PreservedValue =>
@@ -2622,10 +2587,8 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
     ExprBinOp { op: op } =>
       let left = binop_left(texpr: arg_expr)
       let right = binop_right(texpr: arg_expr)
-      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: "_arith", shape: DirectRecursion, element_type: param_name }
       match op {
         Sub =>
-          // param - k → ConstantShrink
           let left_is_param = match left.expr_data {
             ExprVar { binding_kind: _ } => expr_var_name(texpr: left) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: left)) != none
             _ => false
@@ -2633,17 +2596,15 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           if left_is_param {
             match right.expr_data {
               ExprLiteral { value: LitInt { value: k } } =>
-                if k > 0 { StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } } }
+                if k > 0 { ArithmeticDescent { param: param_name, factor: ConstantShrink { amount: k } } }
                 else { SubValueUnknown }
               _ => SubValueUnknown
             }
           } else { SubValueUnknown }
         Div =>
-          // param / k or (param - expr) / k → ProportionalShrink
           let left_is_param = match left.expr_data {
             ExprVar { binding_kind: _ } => expr_var_name(texpr: left) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: left)) != none
             ExprBinOp { op: Sub } =>
-              // (param - digit) / 10 pattern
               let inner_left = binop_left(texpr: left)
               match inner_left.expr_data {
                 ExprVar { binding_kind: _ } => expr_var_name(texpr: inner_left) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: inner_left)) != none
@@ -2654,7 +2615,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           if left_is_param {
             match right.expr_data {
               ExprLiteral { value: LitInt { value: k } } =>
-                if k > 1 { StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: k } } }
+                if k > 1 { ArithmeticDescent { param: param_name, factor: ProportionalShrink { divisor: k } } }
                 else { SubValueUnknown }
               _ => SubValueUnknown
             }
@@ -2727,72 +2688,10 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           expr_data: ExprCall { call_semantics: cs, descent_evidence: Some { value: evidence } }
         }
       } else {
-        // Non-self-call: if one argument is a collection (ListRecursion) and another
-        // is a lambda, extend the lambda's context with the element as IteratedSubValue.
-        // This is structurally the same as the ExprMethodCall iteration handler —
-        // flat_map(n.children, c => ...) and n.children |> flat_map(c => ...) are equivalent.
-        let call_args = body.children
-        // Find lambda argument and first non-lambda argument that resolves to a collection
-        let lambda_arg = call_args |> filter(a =>
-          match arg_value(n: a).expr_data { ExprLambda { semantics: _ } => true  _ => false }
-        ) |> first
-        let non_lambda_args = call_args |> filter(a =>
-          match arg_value(n: a).expr_data { ExprLambda { semantics: _ } => false  _ => true }
-        )
-        let collection_field = match non_lambda_args |> first {
-          Some { value: coll_arg } => resolve_collection_field(expr: arg_value(n: coll_arg), ctx: ctx)
-          None => none
-        }
-        match lambda_arg {
-          Some { value: la } =>
-            let lambda_node = arg_value(n: la)
-            let lparams = lambda_param_names(texpr: lambda_node)
-            let elem_name = lparams |> skip(lparams |> count - 1) |> first
-            let inner_ctx = match elem_name {
-              Some { value: en } =>
-                match collection_field {
-                  Some { value: ind_field } =>
-                    DescentContext {
-                      fn_name: ctx.fn_name,
-                      param_names: map_insert(ctx.param_names, en, ind_field.element_type),
-                      param_order: ctx.param_order, type_env: ctx.type_env,
-                      sub_value_vars: map_insert(empty_map(), en, IteratedSubValue { field: ind_field }),
-                      size_aliases: ctx.size_aliases
-                    }
-                  None =>
-                    DescentContext {
-                      fn_name: ctx.fn_name, param_names: ctx.param_names,
-                      param_order: ctx.param_order, type_env: ctx.type_env,
-                      sub_value_vars: empty_map(),
-                      size_aliases: ctx.size_aliases
-                    }
-                }
-              None => ctx
-            }
-            // Annotate: lambda args with inner (restricted) ctx, others with outer ctx
-            let annotated_children = call_args |> map(arg_node =>
-              let arg_val = arg_value(n: arg_node)
-              let is_lambda = match arg_val.expr_data { ExprLambda { semantics: _ } => true  _ => false }
-              if is_lambda {
-                make_arg_node(name: match arg_name(n: arg_node) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span, name_span: arg_node.span)
-              } else {
-                make_arg_node(name: match arg_name(n: arg_node) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: ctx), span: arg_node.span, name_span: arg_node.span)
-              }
-            )
-            Node {
-              name: body.name, span: body.span, ident_span: body.ident_span,
-              children: annotated_children, connective: body.connective, params: body.params,
-              inferred: body.inferred, return_cardinality: body.return_cardinality,
-              uses: body.uses, body: body.body, transport: body.transport,
-              properties: body.properties, type_annotation: body.type_annotation,
-              is_self_recursive: body.is_self_recursive,
-              has_non_tail_self_call: body.has_non_tail_self_call,
-              match_pattern: body.match_pattern, expr_data: body.expr_data
-            }
-          None =>
-            // No lambda argument: just recurse into children
-            map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
-        }
+        // Non-self-call: recurse into children. Iteration semantics are only
+        // recognized via ExprMethodCall (which has method_semantics from inference),
+        // not via positional argument guessing on ExprCall.
+        map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
       }
     ExprMatch =>
       // If scrutinee is a parameter or a known sub-value, extend context

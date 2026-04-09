@@ -366,6 +366,7 @@ pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
     match (*rel).clone() {
     SubValueRelation::StrictSubValue { field: f, factor: fac, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"_variant\": \"StrictSubValue\", \"field\": ".to_string(), serialize_inductive_field(f.clone())), ", \"factor\": ".to_string()), serialize_shrink_factor(fac.clone())), "}".to_string()),
     SubValueRelation::IteratedSubValue { field: f, .. } => v2_rt::concat(v2_rt::concat("{\"_variant\": \"IteratedSubValue\", \"field\": ".to_string(), serialize_inductive_field(f.clone())), "}".to_string()),
+    SubValueRelation::ArithmeticDescent { param: p, factor: fac, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"_variant\": \"ArithmeticDescent\", \"param\": ".to_string(), json_quote(p.clone())), ", \"factor\": ".to_string()), serialize_shrink_factor(fac.clone())), "}".to_string()),
     SubValueRelation::PreservedValue => "{\"_variant\": \"PreservedValue\"}".to_string(),
     SubValueRelation::SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}".to_string(),
 }

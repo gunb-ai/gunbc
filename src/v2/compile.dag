@@ -460,6 +460,8 @@ fn serialize_sub_value_relation(rel: SubValueRelation) -> String {
         ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
     IteratedSubValue { field: f } =>
       concat("{\"_variant\": \"IteratedSubValue\", \"field\": ", serialize_inductive_field(field: f), "}")
+    ArithmeticDescent { param: p, factor: fac } =>
+      concat("{\"_variant\": \"ArithmeticDescent\", \"param\": ", json_quote(s: p), ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
     PreservedValue => "{\"_variant\": \"PreservedValue\"}"
     SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}"
   }

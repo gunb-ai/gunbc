@@ -38,7 +38,7 @@ import std.computation {
   type_iteration_dimension
 }
 import std.induction {
-  SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown,
+  SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent, IntegerExp,
@@ -2895,6 +2895,7 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
         match rel {
           StrictSubValue { field: _, factor: _ } => true
           IteratedSubValue { field: _ } => true
+          ArithmeticDescent { param: _, factor: _ } => true
           _ => false
         }
       )
@@ -3598,10 +3599,27 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
             match rel {
               StrictSubValue { field: _, factor: _ } => true
               IteratedSubValue { field: _ } => true
+              ArithmeticDescent { param: _, factor: _ } => true
               _ => false
             }
           )
         )
+        // Extract the actual descending parameter name from evidence
+        let descending_param = match self_evidence |> first {
+          Some { value: call_ev } =>
+            call_ev |> fold(init: "", f: (found, rel) =>
+              if found != "" { found }
+              else {
+                match rel {
+                  StrictSubValue { field: f, factor: _ } => f.element_type
+                  IteratedSubValue { field: f } => f.element_type
+                  ArithmeticDescent { param: p, factor: _ } => p
+                  _ => ""
+                }
+              }
+            )
+          None => ""
+        }
         let self_edge = if self_has_calls {
           if self_all_structural {
             [ProofEdge { caller: name, callee: name, evidence: [Strict] }]
@@ -3628,6 +3646,35 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
   )
 }
 
+// Extract the actual descending parameter name from CX-L2 evidence for the first SCC member.
+fn scc_descending_param(members: List<String>, func_index: Map<String, FuncEntry>) -> String {
+  members |> fold(init: "", f: (found, name) =>
+    if found != "" { found }
+    else {
+      match map_get(func_index, name) {
+        Some { value: entry } =>
+          let evidence = collect_self_call_evidence(body: entry.body, fn_name: name)
+          match evidence |> first {
+            Some { value: call_ev } =>
+              call_ev |> fold(init: "", f: (p, rel) =>
+                if p != "" { p }
+                else {
+                  match rel {
+                    StrictSubValue { field: f, factor: _ } => f.element_type
+                    IteratedSubValue { field: f } => f.element_type
+                    ArithmeticDescent { param: ap, factor: _ } => ap
+                    _ => ""
+                  }
+                }
+              )
+            None => ""
+          }
+        None => ""
+      }
+    }
+  )
+}
+
 fn construct_scc_termination_proof(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: NewlineIndex?) -> TerminationProof? {
   // CX-L2 hybrid: self-edges from descent_evidence, cross-edges from old system
   let cx_l2_edges = collect_scc_cx_l2_tree_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
@@ -3637,7 +3684,8 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
       _ => true
     }
   )
-  let cx_l2_proof = TerminationProof { dimensions: [TreeSize { param: "scc" }] }
+  let cx_l2_param = scc_descending_param(members: members, func_index: func_index)
+  let cx_l2_proof = TerminationProof { dimensions: [TreeSize { param: if cx_l2_param != "" { cx_l2_param } else { "scc" } }] }
   if cx_l2_all_known && (cx_l2_edges |> count) > 0 && proof_has_non_descending_cycle(proof: cx_l2_proof, members: members, edges: cx_l2_edges) == false {
     Some { value: cx_l2_proof }
   } else {

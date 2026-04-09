@@ -7,7 +7,7 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan, container_param_name};
-pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, has_child_named, module_node, module_imports, module_items, import_is_all, import_specific_names, make_param_node, param_node_name, param_node_name_at, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, expr_var_name_at, field_access_base, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at, foreach_variable, foreach_variable_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name, arg_name_at, has_inferred, is_compiler_error, InferredNode, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name, resource_use_name_at, resource_use_resource, kernel_type_set, is_kernel_type, is_child_accessor_in_model, is_tree_size_reducing, is_list_child_accessor, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name, field_binding_name_at, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, has_child_named, module_node, module_imports, module_items, import_is_all, import_specific_names, make_param_node, param_node_name, param_node_name_at, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, expr_var_name_at, field_access_base, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at, foreach_variable, foreach_variable_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name, arg_name_at, has_inferred, is_compiler_error, InferredNode, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name, resource_use_name_at, resource_use_resource, kernel_type_set, is_kernel_type, is_child_accessor_in_model, is_tree_size_reducing, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name, field_binding_name_at, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -32,8 +32,8 @@ pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, 
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
-use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
-use crate::std_induction::ShrinkFactor::{UnitShrink, ProportionalShrink};
+use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown};
+use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
 pub use crate::v2_compiler_infer_resolve::{resolve_node, resolve_item_types, NodeResolveResult, ItemResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult, resolve_func_sigs};
 pub use crate::v2_compiler_infer_emit_info::{TypeRepr, TypeSummary, EmitGraphInfo, EmitInfoBuildState, empty_emit_graph_info, lookup_emit_type_summary, build_struct_field_summaries, build_enum_field_summaries, add_emit_item_summary, derive_variant_to_enum};
@@ -2559,54 +2559,7 @@ match cf {
 }
 }
 } else {
-            if is_list_child_accessor(callee.clone()) {
-                {
-                    let call_args = val.children.clone();
-match call_args.first().cloned() {
-    Some(first_arg) => {
-                        let inner = arg_value(first_arg.clone());
-match (*inner.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                            let iname = expr_var_name(inner.clone());
-let inner_type = match v2_rt::map_get(&ctx.param_names.clone(), iname.clone()) {
-    Some(t) => t.clone(),
-    None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), iname.clone()) {
-    Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
-    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
-    _ => "".to_string(),
-},
-    None => "".to_string(),
-},
-};
-if (inner_type.clone().as_str() != "".to_string().as_str()) {
-                                {
-                                    let fields = inductive_fields_for(ctx.type_env.clone(), inner_type.clone());
-let cf = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if match f.shape.clone() {
-    RecursionShape::ListRecursion => true,
-    _ => false,
-} { __result.push(f); } } __result }).first().cloned();
-match cf {
-    Some(ind_field) => Some(Rc::new(SubValueRelation::StrictSubValue {
-    field: ind_field.clone(),
-    factor: Rc::new(ShrinkFactor::UnitShrink),
-})),
-    None => None,
-}
-}
-} else {
-                                None
-}
-},
-    _ => None,
-}
-},
-    None => None,
-}
-}
-} else {
-                None
-}
+            None
 }
 },
     ExprData::ExprBinOp { op, .. } => {
@@ -2619,21 +2572,12 @@ match op.clone() {
 if ((v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), lname.clone()) != None)) {
                 match (*right.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
-                    {
-                        let synth_field = Rc::new(InductiveField {
-    type_name: lname.clone(),
-    variant_name: "".to_string(),
-    field_name: "_arith".to_string(),
-    shape: RecursionShape::DirectRecursion,
-    element_type: lname.clone(),
-});
-Some(Rc::new(SubValueRelation::StrictSubValue {
-    field: synth_field,
+                    Some(Rc::new(SubValueRelation::ArithmeticDescent {
+    param: lname.clone(),
     factor: Rc::new(ShrinkFactor::ConstantShrink {
     amount: k.clone(),
 }),
 }))
-}
 } else {
                     None
 } },
@@ -2674,21 +2618,12 @@ if ((v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) || (v2_rt:
 if (left_name.clone().as_str() != "".to_string().as_str()) {
                 match (*right.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 1) {
-                    {
-                        let synth_field = Rc::new(InductiveField {
-    type_name: left_name.clone(),
-    variant_name: "".to_string(),
-    field_name: "_arith".to_string(),
-    shape: RecursionShape::DirectRecursion,
-    element_type: left_name.clone(),
-});
-Some(Rc::new(SubValueRelation::StrictSubValue {
-    field: synth_field,
+                    Some(Rc::new(SubValueRelation::ArithmeticDescent {
+    param: left_name.clone(),
     factor: Rc::new(ShrinkFactor::ProportionalShrink {
     divisor: k.clone(),
 }),
 }))
-}
 } else {
                     None
 } },
@@ -2778,6 +2713,7 @@ let inner_rel = classify_argument(inner, param_name.clone(), ctx.clone());
 match (*inner_rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => inner_rel.clone(),
     SubValueRelation::IteratedSubValue { .. } => inner_rel.clone(),
+    SubValueRelation::ArithmeticDescent { .. } => inner_rel.clone(),
     SubValueRelation::PreservedValue => {
                     let callee = expr_call_func(arg_expr.clone());
 if (is_child_accessor_in_model(callee.clone()) || is_tree_size_reducing(callee.clone())) {
@@ -2810,13 +2746,6 @@ match cf {
     ExprData::ExprBinOp { op, .. } => {
             let left = binop_left(arg_expr.clone());
 let right = binop_right(arg_expr.clone());
-let synth_field = Rc::new(InductiveField {
-    type_name: param_name.clone(),
-    variant_name: "".to_string(),
-    field_name: "_arith".to_string(),
-    shape: RecursionShape::DirectRecursion,
-    element_type: param_name.clone(),
-});
 match op.clone() {
     BinOp::Sub => {
                 let left_is_param = match (*left.expr_data.clone()).clone() {
@@ -2826,8 +2755,8 @@ match op.clone() {
 if left_is_param {
                     match (*right.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
-                        Rc::new(SubValueRelation::StrictSubValue {
-    field: synth_field,
+                        Rc::new(SubValueRelation::ArithmeticDescent {
+    param: param_name.clone(),
     factor: Rc::new(ShrinkFactor::ConstantShrink {
     amount: k.clone(),
 }),
@@ -2856,8 +2785,8 @@ match (*inner_left.expr_data.clone()).clone() {
 if left_is_param {
                     match (*right.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 1) {
-                        Rc::new(SubValueRelation::StrictSubValue {
-    field: synth_field,
+                        Rc::new(SubValueRelation::ArithmeticDescent {
+    param: param_name.clone(),
     factor: Rc::new(ShrinkFactor::ProportionalShrink {
     divisor: k.clone(),
 }),
@@ -2940,89 +2869,7 @@ Rc::new(Node {
 })
 }
 } else {
-                {
-                    let call_args = body.children.clone();
-let lambda_arg = Rc::new({ let mut __result = Vec::new(); for a in call_args.clone().iter().cloned() { if match (*arg_value(a.clone()).expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => true,
-    _ => false,
-} { __result.push(a); } } __result }).first().cloned();
-let non_lambda_args = Rc::new({ let mut __result = Vec::new(); for a in call_args.clone().iter().cloned() { if match (*arg_value(a.clone()).expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => false,
-    _ => true,
-} { __result.push(a); } } __result });
-let collection_field = match non_lambda_args.first().cloned() {
-    Some(coll_arg) => resolve_collection_field(arg_value(coll_arg.clone()), ctx.clone()),
-    None => None,
-};
-match lambda_arg {
-    Some(la) => {
-                        let lambda_node = arg_value(la.clone());
-let lparams = lambda_param_names(lambda_node);
-let elem_name = lparams.clone().get(((lparams.clone().len() as i64) - 1) as usize).cloned();
-let inner_ctx = match elem_name.clone() {
-    Some(en) => match collection_field {
-    Some(ind_field) => Rc::new(DescentContext {
-    fn_name: ctx.fn_name.clone(),
-    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), en.clone(), ind_field.element_type.clone()),
-    param_order: ctx.param_order.clone(),
-    type_env: ctx.type_env.clone(),
-    sub_value_vars: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), en.clone(), Rc::new(SubValueRelation::IteratedSubValue {
-    field: ind_field.clone(),
-})),
-    size_aliases: ctx.size_aliases.clone(),
-}),
-    None => Rc::new(DescentContext {
-    fn_name: ctx.fn_name.clone(),
-    param_names: ctx.param_names.clone(),
-    param_order: ctx.param_order.clone(),
-    type_env: ctx.type_env.clone(),
-    sub_value_vars: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
-    size_aliases: ctx.size_aliases.clone(),
-}),
-},
-    None => ctx.clone(),
-};
-let annotated_children = Rc::new({ let mut __result = Vec::new(); for arg_node in call_args.clone().iter().cloned() { __result.push({
-                            let arg_val = arg_value(arg_node.clone());
-let is_lambda = match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => true,
-    _ => false,
-};
-if is_lambda.clone() {
-                                make_arg_node(match arg_name(arg_node.clone()) {
-    Some(n) => Some(n.clone()),
-    None => None,
-}, annotate_descent(arg_val.clone(), inner_ctx.clone()), arg_node.span.clone(), arg_node.span.clone())
-} else {
-                                make_arg_node(match arg_name(arg_node.clone()) {
-    Some(n) => Some(n.clone()),
-    None => None,
-}, annotate_descent(arg_val.clone(), ctx.clone()), arg_node.span.clone(), arg_node.span.clone())
-}
-}); } __result });
-Rc::new(Node {
-    name: body.name.clone(),
-    span: body.span.clone(),
-    ident_span: body.ident_span.clone(),
-    children: annotated_children,
-    connective: body.connective.clone(),
-    params: body.params.clone(),
-    inferred: body.inferred.clone(),
-    return_cardinality: body.return_cardinality.clone(),
-    uses: body.uses.clone(),
-    body: body.body.clone(),
-    transport: body.transport.clone(),
-    properties: body.properties.clone(),
-    type_annotation: body.type_annotation.clone(),
-    is_self_recursive: body.is_self_recursive.clone(),
-    has_non_tail_self_call: body.has_non_tail_self_call.clone(),
-    match_pattern: body.match_pattern.clone(),
-    expr_data: body.expr_data.clone(),
-})
-},
-    None => map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone())),
-}
-}
+                map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone()))
 }
 },
     ExprData::ExprMatch => {
