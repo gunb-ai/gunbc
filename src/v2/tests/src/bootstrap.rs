@@ -66,7 +66,8 @@ fn stage0_cargo_check() {
 //   from let-value initializers seeing their own bindings.
 // 2026-04-09: 485→487 — LS-3/5 follow-ups (ItemKeywords/SyntaxSpec merge,
 //   binop algebra move to infer) add 2 call paths through CostUnknown functions.
-const DIAG_RATCHET: usize = 487;
+// 2026-04-09: 487→488 — RE-3a infer_auth_source_properties adds 1 CostUnknown path.
+const DIAG_RATCHET: usize = 488;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
