@@ -145,7 +145,10 @@ pub fn is_copy(target: RenderTarget, dag_name: String) -> Option<bool> {
 
 pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> {
     match lookup_checkpoint(target, dag_name) {
-    Some(cp) => cp.literal_suffix.clone(),
+    Some(cp) => match cp.literal_suffix.clone() {
+    Some(s) => Some(s.clone()),
+    None => Some("".to_string()),
+},
     None => None,
 }
 }

@@ -50,7 +50,7 @@ import v2.std.core {
   is_rest_transport, is_shell_transport, is_file_transport,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
-  leaf_node, with_required_cardinality,
+  with_required_cardinality,
   tuple_type_name, find_child_named,
   Connective, Conj, Disj, NoConnective, Arrow,
 

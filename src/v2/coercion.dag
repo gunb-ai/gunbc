@@ -131,7 +131,10 @@ fn is_copy(target: RenderTarget, dag_name: String) -> Bool? {
 
 fn literal_suffix(target: RenderTarget, dag_name: String) -> String? {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
-    Some { value: cp } => cp.literal_suffix
+    Some { value: cp } => match cp.literal_suffix {
+      Some { value: s } => Some { value: s }
+      None => Some { value: "" }
+    }
     None => none
   }
 }
