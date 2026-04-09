@@ -144,6 +144,7 @@ fn list_int_index_returns_optional_element_type() {
         leaf_node("Int".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
 
     assert_eq!(result.diagnostics.len(), 0, "List<Int> indexed by Int should succeed");
@@ -159,6 +160,7 @@ fn malformed_map_index_returns_compiler_error_type() {
         leaf_node("String".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -173,6 +175,7 @@ fn invalid_slice_returns_compiler_error_type() {
         leaf_node("Int".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -189,6 +192,7 @@ fn valid_map_index_preserves_optional_value_type() {
         leaf_node("String".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
 
     assert!(result.diagnostics.is_empty());
@@ -578,7 +582,7 @@ fn keyed_collection_parts_extracts_key_and_value() {
         leaf_node("String".to_string()),
         leaf_node("Int".to_string()),
     );
-    let parts = v2_compiler_infer_access::keyed_collection_parts(m);
+    let parts = v2_compiler_infer_access::keyed_collection_parts(m, None);
     let parts = parts.expect("Map<String,Int> should decompose to keyed parts");
     assert_eq!(parts.key_type.name, "String");
     assert_eq!(parts.value_type.name, "Int");
@@ -587,7 +591,7 @@ fn keyed_collection_parts_extracts_key_and_value() {
 #[test]
 fn keyed_collection_parts_returns_none_for_element_collection() {
     let list = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let parts = v2_compiler_infer_access::keyed_collection_parts(list);
+    let parts = v2_compiler_infer_access::keyed_collection_parts(list, None);
     assert!(
         parts.is_none(),
         "List<Int> is not a keyed collection, should return None"
@@ -598,7 +602,7 @@ fn keyed_collection_parts_returns_none_for_element_collection() {
 fn keyed_collection_parts_returns_type_variables_for_bare_map() {
     // bare_map_node() now has K/V wrapper children with TypeVariable inferred
     let bare = bare_map_node();
-    let parts = v2_compiler_infer_access::keyed_collection_parts(bare);
+    let parts = v2_compiler_infer_access::keyed_collection_parts(bare, None);
     assert!(
         parts.is_some(),
         "bare Map has K/V children (TypeVariable inferred)"
@@ -660,6 +664,7 @@ fn map_index_with_correct_key_type_succeeds() {
         leaf_node("String".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
     assert!(
         result.diagnostics.is_empty(),
@@ -686,6 +691,7 @@ fn map_index_with_wrong_key_type_reports_error() {
         leaf_node("Int".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
     assert_eq!(
         result.diagnostics.len(),

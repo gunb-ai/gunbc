@@ -1845,7 +1845,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 base_type: base_type,
                 index_type: index_type,
                 span: span,
-                module_name: scope.module_name
+                module_name: scope.module_name,
+                source_index: scope.type_env.source_index
               ) }
             _ => none
           }
@@ -1895,7 +1896,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                     start_type: start_type,
                     end_type: end_type,
                     span: span,
-                    module_name: scope.module_name
+                    module_name: scope.module_name,
+                    source_index: scope.type_env.source_index
                   ) }
                 _ => none
               }

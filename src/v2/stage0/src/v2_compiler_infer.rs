@@ -1875,7 +1875,7 @@ let index_typed = index_result.typed.clone();
 let index_diags = index_result.diagnostics.clone();
 let index_check = match base_typed.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: base_type, .. }) => match index_typed.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: index_type, .. }) => Some(check_index_access_node(base_type.clone(), index_type.clone(), span.clone(), scope.module_name.clone())),
+    Some(InferredNode::Resolved { node: index_type, .. }) => Some(check_index_access_node(base_type.clone(), index_type.clone(), span.clone(), scope.module_name.clone(), scope.type_env.clone().source_index.clone())),
     _ => None,
 },
     _ => None,
@@ -1915,7 +1915,7 @@ let end_diags = end_result.diagnostics.clone();
 let slice_check = match base_typed.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: base_type, .. }) => match start_typed.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: start_type, .. }) => match end_typed.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: end_type, .. }) => Some(check_slice_access_node(base_type.clone(), start_type.clone(), end_type.clone(), span.clone(), scope.module_name.clone())),
+    Some(InferredNode::Resolved { node: end_type, .. }) => Some(check_slice_access_node(base_type.clone(), start_type.clone(), end_type.clone(), span.clone(), scope.module_name.clone(), scope.type_env.clone().source_index.clone())),
     _ => None,
 },
     _ => None,
