@@ -1409,9 +1409,9 @@ review_dag_emitted_rust_builds
   Note: same pattern as bootstrap_stage0_to_stage1
 ```
 
-### RE follow-up: structural gaps from PR #353 review
+### RE follow-up: structural gaps from PR #353/#358 review
 
-Three design-level issues surfaced during review that need follow-up work:
+Five design-level issues surfaced during review that need follow-up work:
 
 **1. First-class response/exit case nodes (M4/M8/M9)**
 The parser encodes `response { 200 => List<PullRequest> }` as synthetic property
@@ -1432,6 +1432,22 @@ variant names rather than resolved variant identity. The upstream fix: add typed
 accessors or transport case nodes at the infer/emit boundary that preserve the
 exact `HttpMethod` and `AuthScheme` alternative, so emit translates those directly
 without reclassifying expressions.
+
+**4. Resolved call-argument bindings at infer/emit boundary (M4/M8, PR #358)**
+Service-call resolution hands emit a raw argument list plus `op_params`; emit
+rebuilds order from names, which drops positional arguments out of declaration
+order. The upstream fix: surface a resolved ordered binding sequence (e.g.,
+`BoundArg { param, value, source: Provided | Default }`) from lookup/infer so
+emit consumes pre-matched parameter-argument pairs. This also removes the
+`fill_op_default_args` function entirely. Blocked by: property-node children
+are not preserved through `infer_property_values` reconstruction.
+
+**5. Typed call-site coercion at infer boundary (M1/M4/M8, PR #358)**
+Emit currently performs Rust-specific Optional (`Some(...)`) and Json
+(`serde_json::from_str(...).unwrap()`) coercion at the call boundary. This
+should be a structural call-argument normalization step before emit, so every
+backend translates uniform coercion facts rather than re-deriving them from
+cardinality and rendered type strings.
 
 ### RE-3: review.dag live integration
 
