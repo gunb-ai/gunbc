@@ -1060,6 +1060,29 @@ Infrastructure: CX-L1 (InductiveField), CX-L2 (descent_evidence with
 lambda transparency + fold context threading), CX-L3 (catamorphism +
 disjointness + master theorem), all in std/induction.dag.
 
+**Channels unified:** `classify_recursion_pattern` now reads
+`descent_evidence` first (single authority), falling back to existing
+proof constructors only for non-structural patterns (arithmetic,
+parser, worklist). No dual representation.
+
+#### Design direction: recursion scheme recognition
+
+The current bottom-up argument tracing (ExprVar? ExprFieldAccess?
+ExprCall?) is combinatorial — each syntactic form needs a special case.
+The compiler uses ~15 patterns that all reduce to "fold over a tree."
+
+**Next step:** Replace argument tracing with recursion scheme
+recognition. A function `f(n: T)` where T is inductive is a
+catamorphism if no self-call passes the original parameter or anything
+derived from a non-shrinking path. One check, not N special cases.
+
+**Concrete gaps (documented with gap_ tests):**
+- Accessor chains in scrutinee: `match get_inner(w: w) { ... }`
+- Operation-driven sub-values: `take`/`skip` as first-class shrink
+  witnesses (currently fabricated InductiveField)
+- Size expression unification: CX-L2's SizeExpr should merge with
+  complexity.dag's existing size algebra
+
 #### Hard gate: Time complexity (KF-1)
 
 - Strict descent on standard patterns: tree walks, list folds, arithmetic
