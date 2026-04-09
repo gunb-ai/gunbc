@@ -42,7 +42,8 @@ import std.induction {
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent, IntegerExp,
-  sub_value_to_evidence, catamorphism_bound, derive_bound
+  sub_value_to_evidence, catamorphism_bound, derive_bound,
+  cost_dominates, cost_linear, bound_rank
 }
 import v2.std.core {
   Node,
@@ -3956,6 +3957,7 @@ type StructuralBoundResult {
   param: String
   time_bound: CostBound
   stack_bound: CostBound
+  span: SourceSpan
 }
 
 type ComplexityReport {
@@ -5032,7 +5034,7 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBo
               // Stack depth = recursion depth (branches don't affect stack)
               derive_bound(param: param_name, branches: 1, factor: factor, work_exponent: 0)
             }
-            concat(pacc, [StructuralBoundResult { func_name: entry.name, param: param_name, time_bound: time_bound, stack_bound: stack_bound }])
+            concat(pacc, [StructuralBoundResult { func_name: entry.name, param: param_name, time_bound: time_bound, stack_bound: stack_bound, span: entry.span }])
           _ => pacc
         }
       )
@@ -5041,6 +5043,34 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBo
   )
 }
 
+
+// =========================================================================
+// KF-8: Optimality gap detection
+//
+// If a function's proven structural bound exceeds O(n) on a parameter
+// that is a collection/inductive type, the function is doing more work
+// than a single pass. This is a structural bound gap — the data
+// structure supports O(n), but the function is O(n^2) or worse.
+//
+// The baseline is cost_linear: any recursive function on an inductive
+// type should be at most O(n) per parameter. Exceeding this means
+// nested iteration, which may have a cheaper equivalent.
+// =========================================================================
+
+fn detect_optimality_gaps(structural_bounds: List<StructuralBoundResult>) -> List<ComplexityViolation> {
+  let linear_baseline = cost_linear(param: "_")
+  let baseline_rank = bound_rank(b: linear_baseline)
+  structural_bounds |> fold(init: [], f: (acc, result) =>
+    let proven_rank = bound_rank(b: result.time_bound)
+    if proven_rank > baseline_rank {
+      concat(acc, [ComplexityViolation {
+        func_name: result.func_name,
+        reason: concat("optimality: ", result.func_name, " is worse than O(n) on parameter '", result.param, "' — the data structure supports linear traversal"),
+        span: result.span
+      }])
+    } else { acc }
+  )
+}
 
 // =========================================================================
 // D4: Complexity reporting
@@ -5158,9 +5188,11 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   // Evicted entries contain fabricated placeholders that would mislead consumers.
   // CX-L3: structural descent analysis — reads descent_evidence, not AST.
   let structural_bounds = analyze_structural_bounds(func_entries: func_entries)
+  // KF-8: detect structural bound gaps (proven bound > O(n) on collection params)
+  let optimality_violations = detect_optimality_gaps(structural_bounds: structural_bounds)
   ComplexityReport {
     function_classes: result.classes,
-    violations: result.violations,
+    violations: concat(result.violations, optimality_violations),
     structural_bounds: structural_bounds
   }
 }

@@ -58,7 +58,7 @@ use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, Arithmeti
 pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension, type_iteration_dimension};
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
 use crate::std_computation::IterationDimension::{TreeDescent, CollectionFold, ArithmeticRepeat};
-pub use crate::std_induction::{SubValueRelation, ShrinkFactor, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, catamorphism_bound, derive_bound};
+pub use crate::std_induction::{SubValueRelation, ShrinkFactor, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, catamorphism_bound, derive_bound, cost_dominates, cost_linear, bound_rank};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
 use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
 use crate::std_induction::CostBound::{ConstantBound, AtomicBound, ForeverBound, ErrorBound};
@@ -3636,6 +3636,7 @@ pub struct StructuralBoundResult {
     pub param: String,
     pub time_bound: Rc<CostBound>,
     pub stack_bound: Rc<CostBound>,
+    pub span: Rc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -4827,6 +4828,7 @@ v2_rt::concat(pacc.clone(), Rc::new(vec![Rc::new(StructuralBoundResult {
     param: param_name.clone(),
     time_bound: time_bound.clone(),
     stack_bound: stack_bound.clone(),
+    span: entry.span.clone(),
 })]))
 },
     _ => pacc.clone(),
@@ -4836,6 +4838,25 @@ v2_rt::concat(acc.clone(), param_results.clone())
 }
 }
 })
+}
+
+pub fn detect_optimality_gaps(structural_bounds: Rc<Vec<Rc<StructuralBoundResult>>>) -> Rc<Vec<Rc<ComplexityViolation>>> {
+    {
+        let linear_baseline = cost_linear("_".to_string());
+let baseline_rank = bound_rank(linear_baseline);
+structural_bounds.iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<ComplexityViolation>>>, result: Rc<StructuralBoundResult>| {
+            let proven_rank = bound_rank(result.time_bound.clone());
+if (proven_rank.clone() > baseline_rank.clone()) {
+                v2_rt::concat(acc.clone(), Rc::new(vec![Rc::new(ComplexityViolation {
+    func_name: result.func_name.clone(),
+    reason: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("optimality: ".to_string(), result.func_name.clone()), " is worse than O(n) on parameter '".to_string()), result.param.clone()), "' — the data structure supports linear traversal".to_string()),
+    span: result.span.clone(),
+})]))
+} else {
+                acc.clone()
+}
+})
+}
 }
 
 pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>, recursion_ctx: RecursionContext) -> Rc<ComplexityReport> {
@@ -4938,10 +4959,11 @@ Rc::new(TopoBuildAcc {
     None => acc.clone(),
 });
 let structural_bounds = analyze_structural_bounds(func_entries.clone());
+let optimality_violations = detect_optimality_gaps(structural_bounds.clone());
 Rc::new(ComplexityReport {
     function_classes: result.classes.clone(),
-    violations: result.violations.clone(),
-    structural_bounds: structural_bounds,
+    violations: v2_rt::concat(result.violations.clone(), optimality_violations),
+    structural_bounds: structural_bounds.clone(),
 })
 }
 }
