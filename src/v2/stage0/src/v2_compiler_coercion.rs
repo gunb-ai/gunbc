@@ -181,7 +181,7 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
 let cps = target_checkpoints(target.clone());
 if ((cps.clone().len() as i64) == 0) {
             Rc::new(vec![])
-} else {
+        } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
     test_name: v2_rt::concat(v2_rt::concat("coercion_".to_string(), label), "_checkpoint_resolves_primitives".to_string()),
     assertions: Rc::new({ let mut __result = Vec::new(); for cp in cps.clone().iter().cloned() { __result.push(Rc::new(CoercionAssertion::CheckpointAssertion {
@@ -190,7 +190,7 @@ if ((cps.clone().len() as i64) == 0) {
     expected_type: cp.target_type.clone(),
 })); } __result }),
 })])
-}
+        }
 }
 }
 
@@ -211,12 +211,12 @@ let assertions = Rc::new({ let mut __result = Vec::new(); for name in inhabitant
 }).iter().cloned()); } __result });
 if ((assertions.clone().len() as i64) == 0) {
             Rc::new(vec![])
-} else {
+        } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
     test_name: v2_rt::concat(v2_rt::concat("coercion_".to_string(), label), "_inhabitant_resolves_containers".to_string()),
     assertions: assertions.clone(),
 })])
-}
+        }
 }
 }
 
@@ -233,12 +233,12 @@ let copy_assertions = Rc::new({ let mut __result = Vec::new(); for cp in cps.ite
 }).iter().cloned()); } __result });
 if ((copy_assertions.clone().len() as i64) == 0) {
             Rc::new(vec![])
-} else {
+        } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
     test_name: "coercion_is_copy_from_checkpoint".to_string(),
     assertions: copy_assertions.clone(),
 })])
-}
+        }
 }
 }
 
@@ -258,7 +258,7 @@ Rc::new(vec![Rc::new(CoercionAssertion::TemplateAssertion {
     expected: expected.clone(),
 })])
 }
-} else {
+            } else {
                 if (inh.arity.clone() == 2) {
                     {
                         let expected = apply_inhabitant_template2(inh.template.clone(), str_target.clone(), int_target.clone());
@@ -268,19 +268,19 @@ Rc::new(vec![Rc::new(CoercionAssertion::TemplateAssertion {
     expected: expected.clone(),
 })])
 }
-} else {
+                } else {
                     Rc::new(vec![])
-}
-}).iter().cloned()); } __result })
+                }
+            }).iter().cloned()); } __result })
 }).iter().cloned()); } __result });
 if ((assertions.clone().len() as i64) == 0) {
             Rc::new(vec![])
-} else {
+        } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
     test_name: "coercion_template_application".to_string(),
     assertions: assertions.clone(),
 })])
-}
+        }
 }
 }
 

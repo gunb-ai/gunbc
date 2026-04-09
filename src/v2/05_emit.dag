@@ -77,7 +77,8 @@ import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
   LanguageSpec, TestConventions, ServiceFieldTemplates,
-  BlockSyntax, TcoSyntax,
+  BlockSyntax, TcoSyntax, ExpressionSemantics,
+  IfValueForm, IfExpression, ConditionalTernary, IfStatement,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
@@ -2106,6 +2107,63 @@ fn emit_typed_let_shared(name: String, value_str: String, body: Node?, target: R
       let next_scope = extend_scope(scope: scope, name: name, resolved: resolved_type(n: value_node))
       concat(let_line, "\n", recurse(bd, next_scope))
     None => let_line
+  }
+}
+
+// Shared typed if — data-driven expression vs statement dispatch.
+// IfExpression (Rust): if/else natively produces value, branches at depth+1.
+// ConditionalTernary (Python): (then) if (cond) else (else), branches at depth.
+// IfStatement (Go): IIFE wrapper for value position, branches at depth.
+// Without else: statement form for all — significant_whitespace controls body depth.
+fn emit_typed_if_shared(
+    cond_str: String,
+    then_branch: Node,
+    else_branch: Node?,
+    depth: Int,
+    target: RenderTarget,
+    recurse: fn(Node, Int) -> String
+) -> String {
+  let spec = language_spec(target: target)
+  let es = spec.expression_semantics
+  let bs = spec.block_syntax
+  match else_branch {
+    Some { value: eb } =>
+      match es.if_value_form {
+        IfExpression => {
+          let then_str = recurse(then_branch, depth + 1)
+          let else_str = recurse(eb, depth + 1)
+          concat("if ", cond_str, bs.block_open,
+            make_indent(level: depth + 1), then_str, "\n",
+            make_indent(level: depth), bs.else_clause,
+            make_indent(level: depth + 1), else_str, "\n",
+            make_indent(level: depth), bs.block_close)
+        }
+        ConditionalTernary => {
+          let then_str = recurse(then_branch, depth)
+          let else_str = recurse(eb, depth)
+          concat("(", then_str, ") if (", cond_str, ") else (", else_str, ")")
+        }
+        IfStatement => {
+          let then_str = recurse(then_branch, depth)
+          let else_str = recurse(eb, depth)
+          concat("func() interface{} { if ", cond_str, bs.block_open,
+            make_indent(level: depth + 1), "return ", then_str, "\n",
+            make_indent(level: depth), bs.else_clause,
+            make_indent(level: depth + 1), "return ", else_str, "\n",
+            make_indent(level: depth), bs.block_close, " }()")
+        }
+      }
+    None =>
+      if bs.significant_whitespace {
+        let then_str = recurse(then_branch, depth)
+        concat("if ", cond_str, bs.block_open,
+          make_indent(level: depth + 1), then_str)
+      } else {
+        let then_str = recurse(then_branch, depth + 1)
+        concat("if ", cond_str, bs.block_open,
+          make_indent(level: depth + 1), then_str, "\n",
+          make_indent(level: depth), bs.block_close)
+      }
   }
 }
 

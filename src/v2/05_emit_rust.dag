@@ -141,7 +141,7 @@ import v2.compiler.emit {
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   extract_modifier_names,
   seed_bindings,
-  emit_typed_let_shared,
+  emit_typed_if_shared, emit_typed_let_shared,
   resolved_binop_algebra
 }
 
@@ -3123,18 +3123,9 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
 
 fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let cond_str = emit_typed_expr(texpr: condition, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let then_str = emit_typed_expr(texpr: then_branch, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  match else_branch {
-    Some { value: eb } => {
-      let else_str = emit_typed_expr(texpr: eb, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-      concat("if ", cond_str, " {\n",
-        make_indent(level: depth + 1),then_str, "\n} else {\n",
-        make_indent(level: depth + 1),else_str, "\n}")
-    }
-    None =>
-      concat("if ", cond_str, " {\n",
-        make_indent(level: depth + 1),then_str, "\n}")
-  }
+  emit_typed_if_shared(cond_str: cond_str, then_branch: then_branch, else_branch: else_branch,
+    depth: depth, target: Rust,
+    recurse: (node, d) => emit_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
 }
 
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {

@@ -30,7 +30,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, shared_tco_body, shared_tco_default_return, shared_tco_non_self_call, shared_tco_if, shared_tco_let, shared_tco_block, shared_tco_reassign, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, seed_bindings, emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts, emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared, emit_block_stmts_shared, emit_init_block_stmts_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, emit_inferred_shared, emit_typed_block_join, emit_typed_first_arg_shared, emit_typed_tco_reassign_shared, emit_algebra_method_template};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, shared_tco_body, shared_tco_default_return, shared_tco_non_self_call, shared_tco_if, shared_tco_let, shared_tco_block, shared_tco_reassign, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, seed_bindings, emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts, emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared, emit_block_stmts_shared, emit_init_block_stmts_shared, emit_typed_if_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, emit_inferred_shared, emit_typed_block_join, emit_typed_first_arg_shared, emit_typed_tco_reassign_shared, emit_algebra_method_template};
 
 pub fn emit_go_block_stmts(remaining: Rc<Vec<Rc<Node>>>, text: Rc<Vec<String>>, scope: Rc<InferScope>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64) -> Rc<BlockEmitState> {
     emit_block_stmts_shared(remaining, text, scope, depth, true, |stmt, sc, d| emit_go_typed_expr(stmt.clone(), registry.clone(), sc.clone(), d.clone(), 1024))
@@ -101,9 +101,9 @@ pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> String 
         let needs_fmt = { let mut __found = false; for p in projections.iter().cloned() { if { let mut __found = false; for mp in p.mock_field_inits.clone().iter().cloned() { if go_mock_expr_uses_fmt(field_init_node_value(mp.clone())) { __found = true; break; } } __found } { __found = true; break; } } __found };
 if needs_fmt {
             "import (\n\t\"fmt\"\n\t\"testing\"\n)\n\n".to_string()
-} else {
+        } else {
             "import \"testing\"\n\n".to_string()
-}
+        }
 }
 }
 
@@ -120,7 +120,7 @@ pub fn emit_go_test_file(module_name: String, projections: Rc<Vec<Rc<TestProject
     path: "".to_string(),
     content: "".to_string(),
 })
-} else {
+    } else {
         {
             let package_name = go_package_name(module_name.clone());
 let tests_str = Rc::new({ let mut __result = Vec::new(); for p in projections.clone().iter().cloned() { __result.push(emit_go_operation_test(p.clone(), 0)); } __result }).join(&"\n\n".to_string());
@@ -130,7 +130,7 @@ Rc::new(TextFile {
     content: content,
 })
 }
-}
+    }
 }
 
 pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> String {
@@ -156,9 +156,9 @@ let pkg_decl = v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items
 let imports_str = emit_go_imports(typed_module.items.clone(), module_imports(m.clone()));
 let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str()) {
             "".to_string()
-} else {
+        } else {
             v2_rt::concat("\n\n".to_string(), imports_str.clone())
-};
+        };
 let items_str = Rc::new({ let mut __result = Vec::new(); for item in typed_module.items.clone().iter().cloned() { __result.push(emit_go_typed_item(item.clone(), registry.clone(), scope.clone())); } __result }).join(&"\n\n".to_string());
 let filename = module_to_filename(m.name.clone());
 let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Generated by v2 compiler -- do not edit.\n".to_string(), "// Source module: ".to_string()), m.name.clone()), "\n\n".to_string()), pkg_decl), imports_section), "\n\n".to_string()), items_str), "\n".to_string());
@@ -192,12 +192,12 @@ v2_rt::concat(v2_rt::concat("\t\"generated/".to_string(), mod_name.clone()), "\"
 let all_imports = v2_rt::concat(std_imports, pkg_imports);
 if ((all_imports.clone().len() as i64) == 0) {
             "".to_string()
-} else {
+        } else {
             {
                 let imports_str = all_imports.clone().join(&"\n".to_string());
 v2_rt::concat(v2_rt::concat("import (\n".to_string(), imports_str), "\n)".to_string())
 }
-}
+        }
 }
 }
 
@@ -205,14 +205,14 @@ pub fn collect_go_std_imports(has_services: bool, has_types: bool, has_functions
     {
         let fmt_import = if ((has_types || has_functions) || has_services.clone()) {
             Rc::new(vec!["\t\"fmt\"".to_string()])
-} else {
+        } else {
             Rc::new(vec![])
-};
+        };
 let net_imports = if has_services.clone() {
             Rc::new(vec!["\t\"net/http\"".to_string(), "\t\"encoding/json\"".to_string(), "\t\"bytes\"".to_string(), "\t\"io\"".to_string()])
-} else {
+        } else {
             Rc::new(vec![])
-};
+        };
 v2_rt::concat(fmt_import, net_imports)
 }
 }
@@ -223,37 +223,37 @@ pub fn emit_go_typed_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
 let item_text = authored_name(env.clone(), item.clone());
 if is_type_def_item(item.clone()) {
             emit_go_type_def_from_connective(item.clone(), env.clone())
-} else {
+        } else {
             if is_type_alias_item(item.clone(), env.source_index.clone()) {
                 emit_go_type_alias(item_text, resolved_type(item.clone()), env.source_index.clone())
-} else {
+            } else {
                 if is_type_decl_item(item.clone(), env.source_index.clone()) {
                     "".to_string()
-} else {
+                } else {
                     if is_function_item(item.clone()) {
                         if ((item.uses.clone().len() as i64) > 0) {
                             emit_go_func_def(item_text, item.params.clone(), resolved_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry, scope.clone())
-} else {
+                        } else {
                             emit_go_fn_def(item_text, item.params.clone(), resolved_type(item.clone()), item.body.clone().clone().unwrap(), registry, scope.clone())
-}
-} else {
+                        }
+                    } else {
                         if is_data_def_item(item.clone()) {
                             emit_go_data_def(item_text, item.type_annotation.clone().clone().unwrap(), item.body.clone().clone().unwrap(), registry, scope.clone(), 0)
-} else {
+                        } else {
                             if is_service_def_item(item.clone()) {
                                 emit_go_service_def(item.clone(), registry, env.clone())
-} else {
+                            } else {
                                 if is_resource_def_item(item.clone()) {
                                     emit_go_resource_def(item.clone(), env.clone())
-} else {
+                                } else {
                                     v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " init() { panic(\"EMIT BUG: unhandled item: ".to_string()), item_text), "\") }".to_string())
-}
-}
-}
-}
-}
-}
-}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 }
 }
 
@@ -263,22 +263,22 @@ pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> Str
 let is_product = (item.connective.clone() == Connective::Conj);
 if is_product {
             emit_go_struct_from_children(item_text, item.children.clone(), env.clone())
-} else {
+        } else {
             emit_go_sum_from_children(item_text, item.children.clone(), env.clone())
-}
+        }
 }
 }
 
 pub fn emit_go_struct_from_children(name: String, children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
     if ((children.clone().len() as i64) == 0) {
         v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().type_alias_keyword.clone(), " ".to_string()), name), " ".to_string()), language_spec(RenderTarget::Go).items.clone().struct_keyword.clone()), "{}".to_string())
-} else {
+    } else {
         {
             let field_lines = Rc::new({ let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_go_struct_field_from_child(child.clone(), env.clone())); } __result });
 let fields_str = field_lines.join(&"\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().type_alias_keyword.clone(), " ".to_string()), name), " ".to_string()), language_spec(RenderTarget::Go).items.clone().struct_keyword.clone()), " {\n".to_string()), fields_str), "\n}".to_string())
 }
-}
+    }
 }
 
 pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> String {
@@ -300,7 +300,7 @@ let variant_structs = Rc::new({ let mut __result = Vec::new(); for child in chil
 let structs_str = variant_structs.join(&"\n\n".to_string());
 v2_rt::concat(v2_rt::concat(iface, "\n\n".to_string()), structs_str)
 }
-} else {
+        } else {
             {
                 let type_decl = v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().enum_keyword.clone(), " ".to_string()), name.clone()), " int".to_string());
 let variant_consts = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
@@ -308,14 +308,14 @@ let variant_consts = Rc::new({ let mut __result = Vec::new(); for pair in Rc::ne
 let child_text = authored_name(env.clone(), child.clone());
 if (pair.0.clone() == 0) {
                         v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("\t".to_string(), name.clone()), child_text.clone()), " ".to_string()), name.clone()), " = iota".to_string())
-} else {
+                    } else {
                         v2_rt::concat(v2_rt::concat("\t".to_string(), name.clone()), child_text.clone())
-}
+                    }
 }); } __result });
 let consts_str = variant_consts.join(&"\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(type_decl, "\n\nconst (\n".to_string()), consts_str), "\n)".to_string())
 }
-}
+        }
 }
 }
 
@@ -325,13 +325,13 @@ pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<Type
 let marker_method = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " (".to_string()), struct_name.clone()), ") is".to_string()), parent_name.clone()), "() {}".to_string());
 if ((child.children.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().type_alias_keyword.clone(), " ".to_string()), struct_name.clone()), " ".to_string()), language_spec(RenderTarget::Go).items.clone().struct_keyword.clone()), "{}\n\n".to_string()), marker_method)
-} else {
+        } else {
             {
                 let field_lines = Rc::new({ let mut __result = Vec::new(); for f in child.children.clone().iter().cloned() { __result.push(emit_go_struct_field_from_child(f.clone(), env.clone())); } __result });
 let fields_str = field_lines.join(&"\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().type_alias_keyword.clone(), " ".to_string()), struct_name.clone()), " ".to_string()), language_spec(RenderTarget::Go).items.clone().struct_keyword.clone()), " {\n".to_string()), fields_str), "\n}\n\n".to_string()), marker_method)
 }
-}
+        }
 }
 }
 
@@ -351,12 +351,12 @@ if use_tco {
                 let body_str = emit_go_typed_tco_body(body.clone(), name.clone(), params.clone(), registry.clone(), body_scope, 1);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " ".to_string()), go_export_ident(name.clone())), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), body_str), "\n}".to_string())
 }
-} else {
+        } else {
             {
                 let body_str = emit_go_typed_expr(body.clone(), registry.clone(), body_scope, 1, 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " ".to_string()), go_export_ident(name.clone())), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent(1)), "return ".to_string()), body_str), "\n}".to_string())
 }
-}
+        }
 }
 }
 
@@ -397,9 +397,9 @@ pub fn emit_go_param(param: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) ->
 pub fn emit_go_inferred(inferred: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     if is_unit_like(inferred.clone()) {
         "".to_string()
-} else {
+    } else {
         emit_inferred_shared(inferred.clone(), RenderTarget::Go, source_index)
-}
+    }
 }
 
 pub fn emit_go_pattern(pattern: Rc<MatchPattern>) -> String {
@@ -501,9 +501,9 @@ let extra_args = match callee {
             let is_func = (info.kind.clone() == ItemKind::FuncItem);
 if is_func {
                 Rc::new({ let mut __result = Vec::new(); for sn in info.service_names.clone().iter().cloned() { __result.push(service_var_name(sn.clone())); } __result })
-} else {
+            } else {
                 Rc::new(vec![])
-}
+            }
 },
     None => Rc::new(vec![]),
 };
@@ -572,7 +572,7 @@ emit_go_algebra_method_call(mn, receiver.clone(), args, registry.clone(), scope.
 },
     MethodSemantics::PlainMethodSemantics => emit_go_plain_method_call(receiver.clone(), method, args, registry.clone(), scope.clone(), depth.clone()),
 }
-} else {
+    } else {
         if is_typed_service_call_receiver(receiver.clone()) {
             match extract_typed_service_name(receiver.clone()) {
     Some(svc_name) => {
@@ -583,10 +583,10 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(var_name, 
 },
     None => emit_error_expr("unsupported service receiver".to_string(), RenderTarget::Go),
 }
-} else {
+        } else {
             emit_go_plain_method_call(receiver.clone(), method, args, registry.clone(), scope.clone(), depth.clone())
-}
-}
+        }
+    }
 }
 
 pub fn emit_go_typed_first_arg(args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
@@ -595,40 +595,37 @@ pub fn emit_go_typed_first_arg(args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<Str
 
 pub fn emit_go_typed_match(scrutinee: Rc<Node>, arms: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let scrut_str = emit_go_typed_expr(scrutinee, registry.clone(), scope.clone(), depth.clone(), 1024);
+        let bs = language_spec(RenderTarget::Go).block_syntax.clone();
+let scrut_str = emit_go_typed_expr(scrutinee, registry.clone(), scope.clone(), depth.clone(), 1024);
 let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arms.iter().cloned() { __result.push(emit_go_typed_switch_case(arm.clone(), registry.clone(), scope.clone(), depth.clone())); } __result });
 let arms_str = arm_strs.join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("switch ".to_string(), scrut_str), " {\n".to_string()), arms_str), "\n".to_string()), make_indent(depth.clone())), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(bs.match_keyword.clone(), scrut_str), bs.block_open.clone()), arms_str), "\n".to_string()), make_indent(depth.clone())), bs.block_close.clone())
 }
 }
 
 pub fn emit_go_typed_switch_case(arm: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let pat_str = emit_go_pattern(arm_pattern(arm.clone()));
+        let spec = language_spec(RenderTarget::Go);
+let bs = spec.block_syntax.clone();
+let es = spec.expression_semantics.clone();
+let pat_str = emit_go_pattern(arm_pattern(arm.clone()));
 let body_str = emit_go_typed_expr(arm_body(arm.clone()), registry, scope, (depth.clone() + 1), 1024);
-let case_keyword = if (pat_str.clone().as_str() == "_".to_string().as_str()) {
-            "default".to_string()
-} else {
-            v2_rt::concat("case ".to_string(), pat_str.clone())
+let case_kw = match es.wildcard_case.clone() {
+    Some(wc) => if (pat_str.clone().as_str() == "_".to_string().as_str()) {
+            wc.clone()
+        } else {
+            v2_rt::concat(bs.case_keyword.clone(), pat_str.clone())
+        },
+    None => v2_rt::concat(bs.case_keyword.clone(), pat_str.clone()),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth.clone()), case_keyword), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth.clone()), case_kw), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
 }
 }
 
 pub fn emit_go_typed_if(condition: Rc<Node>, then_branch: Rc<Node>, else_branch: Option<Rc<Node>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let cond_str = emit_go_typed_expr(condition, registry.clone(), scope.clone(), depth.clone(), 1024);
-match else_branch {
-    Some(eb) => {
-            let then_str = emit_go_typed_expr(then_branch, registry.clone(), scope.clone(), depth.clone(), 1024);
-let else_str = emit_go_typed_expr(eb.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func() interface{} { if ".to_string(), cond_str), " {\n".to_string()), make_indent((depth.clone() + 1))), "return ".to_string()), then_str), "\n".to_string()), make_indent(depth.clone())), "} else {\n".to_string()), make_indent((depth.clone() + 1))), "return ".to_string()), else_str), "\n".to_string()), make_indent(depth.clone())), "} }()".to_string())
-},
-    None => {
-            let then_str = emit_go_typed_expr(then_branch, registry.clone(), scope.clone(), (depth.clone() + 1), 1024);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), " {\n".to_string()), make_indent((depth.clone() + 1))), then_str), "\n".to_string()), make_indent(depth.clone())), "}".to_string())
-},
-}
+emit_typed_if_shared(cond_str, then_branch, else_branch, depth.clone(), RenderTarget::Go, |node, d| emit_go_typed_expr(node.clone(), registry.clone(), scope.clone(), d.clone(), 1024))
 }
 }
 
@@ -643,22 +640,22 @@ pub fn emit_go_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<Nod
     match type_name {
     None => if ((fields.clone().len() as i64) == 0) {
         "map[string]interface{}{}".to_string()
-} else {
+    } else {
         {
             let field_strs = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("\t\"".to_string(), field_init_node_name_at(f.clone(), scope.type_env.clone().source_index.clone())), "\": ".to_string()), emit_go_typed_expr(field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)), ",".to_string())); } __result });
 let fields_str = field_strs.join(&"\n".to_string());
 v2_rt::concat(v2_rt::concat("map[string]interface{}{\n".to_string(), fields_str), "\n}".to_string())
 }
-},
+    },
     Some(tn) => if ((fields.clone().len() as i64) == 0) {
         v2_rt::concat(tn.clone(), "{}".to_string())
-} else {
+    } else {
         {
             let field_strs = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(go_export_ident(field_init_node_name_at(f.clone(), scope.type_env.clone().source_index.clone())), ": ".to_string()), emit_go_typed_expr(field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), 1024))); } __result });
 let fields_str = field_strs.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(tn.clone(), "{".to_string()), fields_str), "}".to_string())
 }
-},
+    },
 }
 }
 
@@ -673,12 +670,12 @@ let fmt_str = Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone(
 let args = Rc::new({ let mut __result = Vec::new(); for a in Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.arg_expr.clone()); } __result }).iter().cloned() { if (a.clone().as_str() != "".to_string().as_str()) { __result.push(a); } } __result });
 if ((args.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat("\"".to_string(), fmt_str), "\"".to_string())
-} else {
+        } else {
             {
                 let args_str = args.clone().join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("fmt.Sprintf(\"".to_string(), fmt_str), "\", ".to_string()), args_str), ")".to_string())
 }
-}
+        }
 }
 }
 
@@ -687,9 +684,9 @@ pub fn go_typed_interp_segment(part: Rc<StringPart>, registry: Rc<HashMap<String
     StringPart::Text { value: v, .. } => {
         let escaped = if has_interpolations {
             escape_go_interp_text(v.clone())
-} else {
+        } else {
             escape_string_literal_body(v.clone())
-};
+        };
 Rc::new(InterpPart {
     format_segment: escaped,
     arg_expr: "".to_string(),
@@ -729,7 +726,7 @@ match inner {
                 let ss = body.children.clone();
 if ((ss.clone().len() as i64) == 0) {
                     v2_rt::concat(prefix, "return struct{}{}, nil".to_string())
-} else {
+                } else {
                     {
                         let init_state = emit_go_init_block_stmts(ss.clone(), Rc::new(vec![]), scope.clone(), registry.clone(), depth.clone());
 let last_stmt = ss.clone().last().cloned();
@@ -739,11 +736,11 @@ let last_str = match last_stmt {
 };
 if ((init_state.text.clone().len() as i64) == 0) {
                             last_str
-} else {
+                        } else {
                             v2_rt::concat(v2_rt::concat(init_state.text.clone().join(&"\n".to_string()), "\n".to_string()), last_str)
+                        }
 }
-}
-}
+                }
 },
     _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix, "return ".to_string()), emit_go_typed_expr(body.clone(), registry.clone(), scope.clone(), depth.clone(), 1024)), ", nil".to_string()),
 }
@@ -774,7 +771,8 @@ let arm_list = match_arm_nodes(frame.expr.clone());
 let scrut_str = emit_go_typed_expr(s, registry.clone(), frame.scope.clone(), frame.depth.clone(), 1024);
 let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arm_list.iter().cloned() { __result.push(emit_go_typed_tco_switch_case(arm.clone(), fn_name.clone(), params.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone())); } __result });
 let arms_str = arm_strs.join(&"\n".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("switch ".to_string(), scrut_str), " {\n".to_string()), arms_str), "\n}".to_string())
+let bs = language_spec(RenderTarget::Go).block_syntax.clone();
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(bs.match_keyword.clone(), scrut_str), bs.block_open.clone()), arms_str), "\n".to_string()), bs.block_close.clone())
 },
     _ => emit_error_expr("emit_go_tco_match expected ExprMatch".to_string(), RenderTarget::Go),
 }
@@ -802,14 +800,20 @@ pub fn emit_go_typed_tco_expr(texpr: Rc<Node>, fn_name: String, params: Rc<Vec<R
 
 pub fn emit_go_typed_tco_switch_case(arm: Rc<Node>, fn_name: String, params: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let pat_str = emit_go_pattern(arm_pattern(arm.clone()));
+        let spec = language_spec(RenderTarget::Go);
+let bs = spec.block_syntax.clone();
+let es = spec.expression_semantics.clone();
+let pat_str = emit_go_pattern(arm_pattern(arm.clone()));
 let body_str = emit_go_typed_tco_expr(arm_body(arm.clone()), fn_name, params, registry, scope, (depth.clone() + 1));
-let case_keyword = if (pat_str.clone().as_str() == "_".to_string().as_str()) {
-            "default".to_string()
-} else {
-            v2_rt::concat("case ".to_string(), pat_str.clone())
+let case_kw = match es.wildcard_case.clone() {
+    Some(wc) => if (pat_str.clone().as_str() == "_".to_string().as_str()) {
+            wc.clone()
+        } else {
+            v2_rt::concat(bs.case_keyword.clone(), pat_str.clone())
+        },
+    None => v2_rt::concat(bs.case_keyword.clone(), pat_str.clone()),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth.clone()), case_keyword), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth.clone()), case_kw), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
 }
 }
 
@@ -835,9 +839,9 @@ pub fn emit_go_service_struct(name: String, fallback_transport: Rc<Node>, op_chi
 let decls = service_field_decls(fs, language_spec(RenderTarget::Go).service_fields.clone());
 if ((decls.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().type_alias_keyword.clone(), " ".to_string()), name), " ".to_string()), language_spec(RenderTarget::Go).items.clone().struct_keyword.clone()), "{}".to_string())
-} else {
+        } else {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().type_alias_keyword.clone(), " ".to_string()), name), " ".to_string()), language_spec(RenderTarget::Go).items.clone().struct_keyword.clone()), " {\n".to_string()), decls.clone().join(&"\n".to_string())), "\n}".to_string())
-}
+        }
 }
 }
 
@@ -857,17 +861,17 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_go_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64) -> String {
     if is_rest_transport(transport.clone()) {
         emit_go_rest_call(op_name, transport.clone(), depth)
-} else {
+    } else {
         if is_shell_transport(transport.clone()) {
             emit_go_shell_call(op_name, transport.clone(), depth)
-} else {
+        } else {
             if is_file_transport(transport.clone()) {
                 emit_go_file_call(op_name, depth)
-} else {
+            } else {
                 emit_go_local_call(op_name, depth)
-}
-}
-}
+            }
+        }
+    }
 }
 
 pub fn emit_go_rest_call(op_name: String, transport: Rc<Node>, depth: i64) -> String {
@@ -884,17 +888,17 @@ let auth_line = if transport_has_auth(transport.clone()) {
 };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "req.Header.Set(\"".to_string()), header_name), "\", c.AuthToken)".to_string())
 }
-} else {
+        } else {
             "".to_string()
-};
+        };
 let hdrs = transport_headers(transport.clone());
 let header_lines = Rc::new({ let mut __result = Vec::new(); for h in hdrs.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "req.Header.Set(\"".to_string()), h.name.clone()), "\", ".to_string()), emit_simple_expr(field_init_node_value(h.clone()), RenderTarget::Go, None)), ")".to_string())); } __result });
 let send_lines = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "resp, err := http.DefaultClient.Do(req)\n".to_string()), "if err != nil {\n\treturn nil, fmt.Errorf(\"sending request: %w\", err)\n}\n".to_string()), "defer resp.Body.Close()\n".to_string()), "body, err := io.ReadAll(resp.Body)\n".to_string()), "if err != nil {\n\treturn nil, fmt.Errorf(\"reading response: %w\", err)\n}\n".to_string()), "var result interface{}\n".to_string()), "if err := json.Unmarshal(body, &result); err != nil {\n".to_string()), "\treturn nil, fmt.Errorf(\"decoding response: %w\", err)\n}\n".to_string()), "return result, nil".to_string());
 let all_lines = v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![url_line, body_line, req_line]), if (auth_line.clone().as_str() == "".to_string().as_str()) {
             Rc::new(vec![])
-} else {
+        } else {
             Rc::new(vec![auth_line.clone()])
-}), header_lines), Rc::new(vec![send_lines]));
+        }), header_lines), Rc::new(vec![send_lines]));
 all_lines.join(&"\n".to_string())
 }
 }
@@ -960,8 +964,8 @@ let pascal_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.iter(
 let result = pascal_parts.join(&"".to_string());
 if { let mut __found = false; for r in go_reserved().iter().cloned() { if (r.clone().as_str() == result.clone().as_str()) { __found = true; break; } } __found } {
             v2_rt::concat(result.clone(), go_reserved_escape_suffix())
-} else {
+        } else {
             result.clone()
-}
+        }
 }
 }

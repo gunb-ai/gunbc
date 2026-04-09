@@ -23,6 +23,7 @@ pub use crate::extdeps_languages_go_emit::{go_keywords, go_reserved, go_reserved
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
+use IfValueForm::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -155,6 +156,21 @@ pub struct BlockSyntax {
     pub significant_whitespace: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum IfValueForm {
+    IfExpression,
+    ConditionalTernary,
+    IfStatement,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ExpressionSemantics {
+    pub if_value_form: IfValueForm,
+    pub block_is_expression: bool,
+    pub wildcard_case: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoSyntax {
     pub loop_keyword: String,
@@ -196,6 +212,7 @@ pub struct LanguageSpec {
     pub block_syntax: Rc<BlockSyntax>,
     pub tco: Rc<TcoSyntax>,
     pub items: Rc<ItemKeywords>,
+    pub expression_semantics: Rc<ExpressionSemantics>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -295,6 +312,11 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     module_keyword: rust_module_keyword(),
     import_keyword: rust_import_keyword(),
     import_from_keyword: rust_import_from_keyword(),
+}),
+    expression_semantics: Rc::new(ExpressionSemantics {
+    if_value_form: IfValueForm::IfExpression,
+    block_is_expression: true,
+    wildcard_case: None,
 }),
 })
 }
@@ -397,6 +419,11 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     import_keyword: python_import_keyword(),
     import_from_keyword: python_import_from_keyword(),
 }),
+    expression_semantics: Rc::new(ExpressionSemantics {
+    if_value_form: IfValueForm::ConditionalTernary,
+    block_is_expression: false,
+    wildcard_case: None,
+}),
 })
 }
 
@@ -498,6 +525,11 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     import_keyword: go_import_keyword(),
     import_from_keyword: go_import_from_keyword(),
 }),
+    expression_semantics: Rc::new(ExpressionSemantics {
+    if_value_form: IfValueForm::IfStatement,
+    block_is_expression: false,
+    wildcard_case: Some("default".to_string()),
+}),
 })
 }
 
@@ -589,6 +621,10 @@ pub fn top_level_visibility_for_target(target: RenderTarget) -> String {
 
 pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
     language_spec_for_target(target).sharing.clone()
+}
+
+pub fn expression_semantics_for_target(target: RenderTarget) -> Rc<ExpressionSemantics> {
+    language_spec_for_target(target).expression_semantics.clone()
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {

@@ -198,6 +198,20 @@ type BlockSyntax {
   significant_whitespace: Bool  // true (Python) or false (Go/Rust)
 }
 
+// Expression semantics — whether control flow constructs produce values.
+// Ref: Rust Reference §8.2.15 "If expressions", Go Spec "If statements",
+// Python §6.12 "Conditional expressions".
+type IfValueForm
+  = IfExpression           // Rust: if/else natively produces value
+  | ConditionalTernary     // Python: (then) if (cond) else (else)
+  | IfStatement            // Go: if is statement, needs wrapper for value
+
+type ExpressionSemantics {
+  if_value_form: IfValueForm
+  block_is_expression: Bool     // Rust: true (last expr = value), Go/Python: false
+  wildcard_case: String?        // Go: "default", Rust/Python: none (use pattern)
+}
+
 type TcoSyntax {
   loop_keyword: String        // "loop" (Rust), "for" (Go), "while True" (Python)
   break_return: String        // "break" (Rust), "return" (Go/Python)
@@ -245,6 +259,7 @@ type LanguageSpec {
   block_syntax: BlockSyntax
   tco: TcoSyntax
   items: ItemKeywords
+  expression_semantics: ExpressionSemantics
 }
 
 // =========================================================================
@@ -341,6 +356,11 @@ fn rust_spec() -> LanguageSpec {
       module_keyword: rust_module_keyword,
       import_keyword: rust_import_keyword,
       import_from_keyword: rust_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: IfExpression,
+      block_is_expression: true,
+      wildcard_case: None
     }
   }
 }
@@ -434,6 +454,11 @@ fn python_spec() -> LanguageSpec {
       module_keyword: python_module_keyword,
       import_keyword: python_import_keyword,
       import_from_keyword: python_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: ConditionalTernary,
+      block_is_expression: false,
+      wildcard_case: None
     }
   }
 }
@@ -527,6 +552,11 @@ fn go_spec() -> LanguageSpec {
       module_keyword: go_module_keyword,
       import_keyword: go_import_keyword,
       import_from_keyword: go_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: IfStatement,
+      block_is_expression: false,
+      wildcard_case: Some { value: "default" }
     }
   }
 }
@@ -614,6 +644,10 @@ fn top_level_visibility_for_target(target: RenderTarget) -> String {
 
 fn sharing_for_target(target: RenderTarget) -> SharingStrategy {
   language_spec_for_target(target: target).sharing
+}
+
+fn expression_semantics_for_target(target: RenderTarget) -> ExpressionSemantics {
+  language_spec_for_target(target: target).expression_semantics
 }
 
 // Apply sharing wrap template to a type string.
