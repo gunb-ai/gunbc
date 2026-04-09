@@ -884,11 +884,13 @@ then deleted. `Node.name` field deleted.
 
 ## CX: Complexity Analyzer (Lane C)
 
-**Status:** 525 honest violations (non-blocking gate).
+**Status:** 528 honest violations (non-blocking gate).
 PR #354: structural induction model (std/induction.dag), CX-L1/L2/L3 pipeline,
-master theorem integration, 13 end-to-end regression tests.
+master theorem integration, disjointness check, adversarial/gap tests.
+PR #357: KF-7 stack-space bounds, TCO detection. KF-8 deferred (needs structural
+CostBound comparison, not lossy ranking).
 **Binary search proven O(log n) from source code.** Catamorphisms proven O(n).
-Next: space complexity (KF-7), optimality gate (KF-8), 525→0 violations.
+Next: heap-space bounds, optimality gate (KF-8), 528→0 violations.
 
 **Root cause:** The analyzer maintains parallel heuristic classifiers
 instead of consuming the structural facts already modeled in std/.
@@ -1162,18 +1164,24 @@ derived from a non-shrinking path. One check, not N special cases.
 
 Same SubValueRelation evidence, peer dimension alongside time:
 
-- **Stack space**: Derived from `has_non_tail_self_call` (already on Node).
-  Tail-recursive → O(1) stack. Non-tail with depth d → O(d) stack.
-  Depth from descent evidence: catamorphism → O(n), binary search → O(log n).
-- **Heap space**: Derived from output construction analysis. A function
+- **Stack space** (DONE): Derived from `has_non_tail_self_call` (already on Node).
+  Tail-recursive → O(1) stack (assumes target guarantees TCO / loop-lowering).
+  Non-tail with depth d → O(d) stack.
+  Depth from descent evidence: catamorphism → O(n), binary search → O(1) via TCO.
+- **Heap space** (TODO): Derived from output construction analysis. A function
   that builds a new list of same size → O(n) heap. A function that
   returns a scalar → O(1) heap. `ComplexitySummary.output_size` already
   tracks collection cardinalities — extend to feed into heap bound.
 
 Both dimensions use the same `CostBound` type. `StructuralBoundResult`
-extends to `{ func_name, param, time_bound: CostBound, stack_bound: CostBound }`.
+has `{ func_name, param, recurrence_bound: CostBound, stack_bound: CostBound }`.
+`recurrence_bound` counts recursive invocations (work_exponent=0), not
+per-step work — full time = recurrence * per_step_cost.
 
-#### Hard gate: Optimality checking (KF-8)
+#### Hard gate: Optimality checking (KF-8) — DEFERRED
+
+Deferred: requires structural CostBound comparison (direct pattern matching
+on variants), not the lossy Int ranking that was attempted and removed.
 
 If the compiler proves a function is O(n^2) and can determine that the
 same computation is achievable in O(n), it's a compiler error. Two parts:
@@ -1216,9 +1224,10 @@ cx_launch_time_bounds
 
 cx_launch_space_bounds
   Input: same program
-  Assert: tail-recursive → stack O(1), non-tail tree walk → stack O(n)
-  Assert: binary search → stack O(log n)
-  Assert: output-building function → heap O(n)
+  Assert: tail-recursive → stack O(1) (requires target TCO guarantee)
+  Assert: non-tail tree walk → stack O(n)
+  Assert: binary search → stack O(1) (tail-recursive with TCO)
+  Assert: output-building function → heap O(n) [TODO: heap not yet implemented]
 
 cx_launch_optimality_gate
   Input: .dag program with suboptimal patterns

@@ -2683,7 +2683,30 @@ let inner_ctx = match val_relation {
     size_aliases: inner_size_aliases,
 }),
 };
-map_children(body.clone(), |child| annotate_descent(child.clone(), inner_ctx.clone()))
+let annotated_value = annotate_descent(val.clone(), ctx.clone());
+let annotated_children = match let_body(body.clone()) {
+    Some(body_child) => Rc::new(vec![annotated_value, annotate_descent(body_child.clone(), inner_ctx.clone())]),
+    None => Rc::new(vec![annotated_value]),
+};
+Rc::new(Node {
+    name: body.name.clone(),
+    span: body.span.clone(),
+    ident_span: body.ident_span.clone(),
+    children: annotated_children,
+    connective: body.connective.clone(),
+    params: body.params.clone(),
+    inferred: body.inferred.clone(),
+    return_cardinality: body.return_cardinality.clone(),
+    uses: body.uses.clone(),
+    body: body.body.clone(),
+    transport: body.transport.clone(),
+    properties: body.properties.clone(),
+    type_annotation: body.type_annotation.clone(),
+    is_self_recursive: body.is_self_recursive.clone(),
+    has_non_tail_self_call: body.has_non_tail_self_call.clone(),
+    match_pattern: body.match_pattern.clone(),
+    expr_data: body.expr_data.clone(),
+})
 },
     ExprData::ExprBlock => {
             let threaded = body.children.clone().iter().cloned().fold(Rc::new(BlockAnnotateAcc {

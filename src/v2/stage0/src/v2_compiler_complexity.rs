@@ -3639,7 +3639,7 @@ pub struct ComplexityViolation {
 pub struct StructuralBoundResult {
     pub func_name: String,
     pub param: String,
-    pub time_bound: Rc<CostBound>,
+    pub recurrence_bound: Rc<CostBound>,
     pub stack_bound: Rc<CostBound>,
     pub span: Rc<SourceSpan>,
 }
@@ -4817,7 +4817,7 @@ let factor_opt = extract_shrink_factor(all_calls.clone(), param_index.clone());
 match factor_opt.clone() {
     Some(factor) => {
                             let branches = max_path_descending(entry.body.clone(), entry.name.clone(), param_index.clone());
-let time_bound = match (*factor.clone()).clone() {
+let recurrence = match (*factor.clone()).clone() {
     ShrinkFactor::UnitShrink => {
                                 let distinct_fields = distinct_descended_fields(all_calls.clone(), param_index.clone());
 if (branches.clone() <= distinct_fields.clone()) {
@@ -4844,7 +4844,7 @@ let stack_bound = if entry.is_tail_recursive.clone() {
 v2_rt::concat(pacc.clone(), Rc::new(vec![Rc::new(StructuralBoundResult {
     func_name: entry.name.clone(),
     param: param_name.clone(),
-    time_bound: time_bound.clone(),
+    recurrence_bound: recurrence.clone(),
     stack_bound: stack_bound.clone(),
     span: entry.span.clone(),
 })]))

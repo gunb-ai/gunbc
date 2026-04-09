@@ -4979,7 +4979,7 @@ fn len(xs: MyList<Int>) -> Int {
     assert!(!bounds.is_empty(), "expected structural bound for len, got none");
     assert_eq!(bounds[0].param, "xs");
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "xs".to_string(),
@@ -5011,7 +5011,7 @@ fn size(t: BinTree<Int>) -> Int {
     assert!(!bounds.is_empty(), "expected structural bound for size, got none");
     assert_eq!(bounds[0].param, "t");
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
@@ -5044,7 +5044,7 @@ fn count(c: Chain) -> Int {
     assert!(!bounds.is_empty(), "expected structural bound for count, got none");
     assert_eq!(bounds[0].param, "c");
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "c".to_string(),
@@ -5072,7 +5072,7 @@ fn countdown(n: Int) -> Int {
     assert!(
         bounds.is_empty(),
         "arithmetic descent on Int should produce no structural bound (got {:?})",
-        bounds.iter().map(|b| format!("{:?}", b.time_bound)).collect::<Vec<_>>()
+        bounds.iter().map(|b| format!("{:?}", b.recurrence_bound)).collect::<Vec<_>>()
     );
 }
 
@@ -5131,7 +5131,7 @@ fn sum_tree(t: Tree) -> Int {
     assert!(!bounds.is_empty(), "fold over children should produce catamorphism O(n) bound");
     assert_eq!(bounds[0].param, "t");
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
@@ -5167,7 +5167,7 @@ fn search(tree: BST<Int>, target: Int) -> Bool {
     assert!(!bounds.is_empty(), "expected structural bound for search, got none");
     assert_eq!(bounds[0].param, "tree");
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "tree".to_string(),
@@ -5201,7 +5201,7 @@ fn insert(tree: BST<Int>, val: Int) -> BST<Int> {
     assert!(!bounds.is_empty(), "expected structural bound for insert, got none");
     assert_eq!(bounds[0].param, "tree");
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "tree".to_string(),
@@ -5237,7 +5237,7 @@ fn depth(t: BinTree<Int>) -> Int {
     assert!(!bounds.is_empty(), "expected structural bound for depth, got none");
     assert_eq!(bounds[0].param, "t");
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
@@ -5280,7 +5280,7 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
     {
         assert_eq!(bounds[0].param, "xs");
         assert_eq!(
-            *bounds[0].time_bound,
+            *bounds[0].recurrence_bound,
             v2_compiler::std_induction::CostBound::AtomicBound {
                 cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
                     param: "xs".to_string(),
@@ -5431,7 +5431,7 @@ fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
     assert!(!bs_bounds.is_empty(), "expected structural bound for binary_search");
     assert_eq!(bs_bounds[0].param, "sorted");
     assert_eq!(
-        *bs_bounds[0].time_bound,
+        *bs_bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
                 param: "sorted".to_string(),
@@ -5466,7 +5466,7 @@ fn spin(x: Int) -> Int {
         .filter(|b| b.func_name == "spin")
         .collect();
     eprintln!("[adversarial] spin: {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.time_bound); }
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.recurrence_bound); }
     // spin(x: x) passes x unchanged → PreservedValue → NonIncreasing evidence.
     // merge_param_evidence → NonIncreasing (not Strict) → no structural bound.
     assert!(bounds.is_empty(), "infinite loop should produce no structural bound (fail-closed)");
@@ -5548,7 +5548,7 @@ fn walk(t: Tree) -> Int {
         .filter(|b| b.func_name == "walk")
         .collect();
     eprintln!("[adversarial] walk (growing arg): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.time_bound); }
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.recurrence_bound); }
     // The self-call passes `Branch { left: l, right: l }` — a CONSTRUCTOR,
     // not a sub-value. classify_argument sees ExprRecordLit, returns SubValueUnknown.
     assert!(bounds.is_empty(), "growing argument should produce no structural bound (fail-closed)");
@@ -5615,7 +5615,7 @@ fn quadratic_walk(t: Tree) -> Int {
         .filter(|b| b.func_name == "quadratic_walk")
         .collect();
     eprintln!("[adversarial] quadratic_walk: {} bounds", qw_bounds.len());
-    for b in &qw_bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.time_bound); }
+    for b in &qw_bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.recurrence_bound); }
     // The structural bound reports O(n) — recursion structure is catamorphism.
     // The existing cost algebra reports O(n * n) — accounts for count_left cost.
     // Both are correct views. The structural bound should compose with per-node
@@ -5633,6 +5633,40 @@ fn quadratic_walk(t: Tree) -> Int {
     );
 }
 
+
+// ── ExprLet lexical scope regression (review feedback) ──────────────────
+
+#[test]
+fn let_initializer_does_not_see_own_binding() {
+    // Regression: annotate_descent's ExprLet arm must NOT give the value
+    // initializer access to the binding being defined. Only the body should
+    // see it. If the initializer wrongly sees the binding, it could fabricate
+    // sub_value_vars evidence that doesn't exist, producing unsound bounds.
+    //
+    // Here, `let alias = xs` defines alias as a sub-value of xs. But the
+    // self-call `bad(xs: alias)` is in the VALUE of `let result = ...`,
+    // not the body. If annotate_descent applied inner_ctx to the value,
+    // alias would be visible as a descent var, producing a false O(n) bound.
+    let source = r#"module let_scope
+
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn bad(xs: MyList<Int>) -> Int {
+  let alias = xs
+  let result = bad(xs: alias)
+  result
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "bad")
+        .collect();
+    // `bad` calls itself with the same argument (alias = xs, so bad(xs: alias) = bad(xs: xs)).
+    // This is NOT a catamorphism — no structural descent. Should produce no bound.
+    assert!(bounds.is_empty(),
+        "self-call with aliased same-size argument should produce no structural bound, got: {:?}",
+        bounds.iter().map(|b| format!("{} {:?}", b.param, b.recurrence_bound)).collect::<Vec<_>>());
+}
 
 // ── KF-7: Space complexity regression tests ─────────────────────────────
 
@@ -5661,7 +5695,7 @@ fn last_elem(xs: MyList<Int>) -> Int {
     assert!(!bounds.is_empty(), "expected structural bound for last_elem");
     // Time: O(n) catamorphism
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "xs".to_string(),
@@ -5699,7 +5733,7 @@ fn size(t: BinTree<Int>) -> Int {
     assert!(!bounds.is_empty(), "expected structural bound for size");
     // Time: O(n) catamorphism
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
@@ -5749,7 +5783,7 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
     assert!(!bounds.is_empty(), "expected structural bound for binary_search");
     // Time: O(log n)
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
                 param: "xs".to_string(),
@@ -5790,12 +5824,12 @@ fn bad_split(xs: List<Int>) -> Int {
         .filter(|b| b.func_name == "bad_split")
         .collect();
     eprintln!("[adversarial] bad_split: {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
     // mid * 2 is NOT a small-constant adjustment → should not get ProportionalShrink.
     // Expect either no bound or O(n) catamorphism at most (fail-closed).
     for b in &bounds {
         assert_ne!(
-            *b.time_bound,
+            *b.recurrence_bound,
             v2_compiler::std_induction::CostBound::AtomicBound {
                 cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
                     param: "xs".to_string(),
@@ -5832,7 +5866,7 @@ fn bad_walk(t: Tree) -> Int {
         .filter(|b| b.func_name == "bad_walk")
         .collect();
     eprintln!("[adversarial] bad_walk (lambda): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
     // With transparent lambdas, the self-call bad_walk(t: l) IS visible.
     // But l is used in a fold over [1, 2] (not a collection field), so
     // the self-call gets StrictSubValue evidence for l. The fold invokes
@@ -5841,7 +5875,7 @@ fn bad_walk(t: Tree) -> Int {
     // The bound should either be absent or not O(n).
     for b in &bounds {
         assert_ne!(
-            *b.time_bound,
+            *b.recurrence_bound,
             v2_compiler::std_induction::CostBound::AtomicBound {
                 cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                     param: "t".to_string(),
@@ -5874,12 +5908,12 @@ fn dup(t: Tree) -> Int {
         .filter(|b| b.func_name == "dup")
         .collect();
     eprintln!("[adversarial] dup: {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
     // Two calls on the same child (left) → max_path=2 > distinct_fields=1.
     // Disjointness check fails → should not produce catamorphism O(n).
     for b in &bounds {
         assert_ne!(
-            *b.time_bound,
+            *b.recurrence_bound,
             v2_compiler::std_induction::CostBound::AtomicBound {
                 cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                     param: "t".to_string(),
@@ -5930,12 +5964,12 @@ fn eval(e: Expr) -> Int {
         .filter(|b| b.func_name == "eval")
         .collect();
     eprintln!("[gap] eval (match-shape-recurse): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
     // This IS a catamorphism — every arm recurses on strict sub-values.
     assert!(!bounds.is_empty(), "eval should produce structural bound");
     assert_eq!(bounds[0].param, "e");
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "e".to_string(),
@@ -5966,11 +6000,11 @@ fn sum_labels(c: Container) -> Int {
         .filter(|b| b.func_name == "sum_labels")
         .collect();
     eprintln!("[gap] sum_labels (accessor-in-fold): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
     assert!(!bounds.is_empty(), "sum_labels should produce structural bound");
     assert_eq!(bounds[0].param, "c");
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "c".to_string(),
@@ -6012,12 +6046,12 @@ fn count_items(item: Item) -> Int {
         .filter(|b| b.func_name == "count_items")
         .collect();
     eprintln!("[gap] count_items (mixed-field-recursion): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
     // Catamorphism through children (List), body (Optional), annotation (Optional).
     assert!(!bounds.is_empty(), "count_items should produce structural bound");
     assert_eq!(bounds[0].param, "item");
     assert_eq!(
-        *bounds[0].time_bound,
+        *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "item".to_string(),
@@ -6051,7 +6085,7 @@ fn depth(w: Wrapper) -> Int {
         .filter(|b| b.func_name == "depth")
         .collect();
     eprintln!("[gap] depth (accessor-chain): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
     // This IS a catamorphism — get_inner extracts the Optional sub-Wrapper,
     // match unwraps it, depth recurses. Total: visits each Wrapper once.
     // When it works: assert O(n).
@@ -6080,7 +6114,7 @@ fn dump_complexity_report() {
     let mut bounds: Vec<_> = cx.structural_bounds.iter().collect();
     bounds.sort_by(|a, b| a.func_name.cmp(&b.func_name));
     for b in &bounds {
-        eprintln!("  {:50} param={:15} time={:?} stack={:?}", b.func_name, b.param, b.time_bound, b.stack_bound);
+        eprintln!("  {:50} param={:15} time={:?} stack={:?}", b.func_name, b.param, b.recurrence_bound, b.stack_bound);
     }
 
     let mut classes: HashMap<String, Vec<String>> = HashMap::new();
