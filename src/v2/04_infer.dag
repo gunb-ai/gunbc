@@ -1717,7 +1717,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         diagnostics: concat(elem_diags, empty_list_diags)
       }
 
-    ExprBinOp { op: op } =>
+    ExprBinOp { op: op, algebra_field: _ } =>
       let span = texpr.span
       // children: [left, right]
       let left_expr = binop_left(texpr: texpr)
@@ -1728,8 +1728,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let right_result = infer_expr(texpr: right_expr, scope: scope, expected: none)
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
-      let result_type = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_index: scope.type_env.source_index)
-      let bo_texpr = make_expr_node(expr_data: ExprBinOp { op: op }, children: [left_typed, right_typed], inferred: Some { value: Resolved { node: result_type } }, span: span)
+      let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_index: scope.type_env.source_index)
+      let bo_texpr = make_expr_node(expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field }, children: [left_typed, right_typed], inferred: Some { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
         diagnostics: concat(left_diags, right_diags)
@@ -2194,11 +2194,11 @@ fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
         }
       } else { none }
     // n / 2 → DividedSize if n is a known ParamSize
-    ExprBinOp { op: _ } =>
+    ExprBinOp { op: _, algebra_field: _ } =>
       let left = binop_left(texpr: val)
       let right = binop_right(texpr: val)
       match val.expr_data {
-        ExprBinOp { op: Div } =>
+        ExprBinOp { op: Div, algebra_field: _ } =>
           match left.expr_data {
             ExprVar { binding_kind: _ } =>
               let lname = expr_var_name(texpr: left)
@@ -2250,7 +2250,7 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                         _ => SubValueUnknown
                       }
                     // mid + 1 or mid - 1: only Add/Sub with a literal integer RHS
-                    ExprBinOp { op: op } =>
+                    ExprBinOp { op: op, algebra_field: _ } =>
                       match op {
                         Add =>
                           let left = binop_left(texpr: arg_val)

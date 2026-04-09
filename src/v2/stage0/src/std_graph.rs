@@ -79,7 +79,7 @@ pub fn dfs_finish_order(node: String, adjacency: Rc<HashMap<String, Rc<Vec<Strin
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if set_has(acc.visited.clone(), node.clone()) {
             acc.clone()
-} else {
+        } else {
             {
                 let next_visited = v2_rt::rc_map_insert(acc.visited.clone(), node.clone(), true);
 let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
@@ -95,7 +95,7 @@ Rc::new(DfsFinishAcc {
     order: v2_rt::rc_list_push(explored.order.clone(), node.clone()),
 })
 }
-}
+        }
     })
 }
 
@@ -103,7 +103,7 @@ pub fn dfs_collect_component(node: String, adjacency: Rc<HashMap<String, Rc<Vec<
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if set_has(acc.visited.clone(), node.clone()) {
             acc.clone()
-} else {
+        } else {
             {
                 let next_visited = v2_rt::rc_map_insert(acc.visited.clone(), node.clone(), true);
 let next_members = v2_rt::rc_list_push(acc.members.clone(), node.clone());
@@ -116,7 +116,7 @@ neighbors.iter().cloned().fold(Rc::new(SccComponentAcc {
     members: next_members,
 }), |inner: Rc<SccComponentAcc>, neighbor: String| dfs_collect_component(neighbor.clone(), adjacency.clone(), inner.clone()))
 }
-}
+        }
     })
 }
 
@@ -131,7 +131,7 @@ let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(Rc::new(S
     has_cycle: false,
 }), |acc: Rc<SccCycleAcc>, name: String| if (acc.has_cycle.clone() || set_has(acc.visited.clone(), name.clone())) {
             acc.clone()
-} else {
+        } else {
             {
                 let component = dfs_collect_component(name.clone(), graph.reverse.clone(), Rc::new(SccComponentAcc {
     visited: acc.visited.clone(),
@@ -142,7 +142,7 @@ Rc::new(SccCycleAcc {
     has_cycle: ((component.members.clone().len() as i64) > 1),
 })
 }
-});
+        });
 result.has_cycle.clone()
 }
 }
@@ -171,12 +171,12 @@ let non_descending = Rc::new({ let mut __result = Vec::new(); for e in edges.clo
 let has_self_cycle = { let mut __found = false; for e in non_descending.clone().iter().cloned() { if (e.caller.clone().as_str() == e.callee.clone().as_str()) { __found = true; break; } } __found };
 if has_self_cycle {
             false
-} else {
+        } else {
             {
                 let members = Rc::new({ let mut __result = Vec::new(); for e in edges.clone().iter().cloned() { __result.extend((*Rc::new(vec![e.caller.clone(), e.callee.clone()])).iter().cloned()); } __result });
 let nd_graph = build_call_graph_from_proof_edges(members.clone(), non_descending.clone());
 (graph_has_multi_node_scc(members.clone(), nd_graph) == false)
 }
-}
+        }
 }
 }

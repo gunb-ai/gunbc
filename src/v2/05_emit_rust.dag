@@ -73,7 +73,7 @@ import extdeps.languages.rust.emit {
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
   TestConventions, ItemKeywords,
-  test_conventions_for_target, top_level_visibility_for_target,
+  test_conventions_for_target, visibility_for_target, KeywordVisibility,
   sharing_for_target,
   is_string_like
 }
@@ -141,8 +141,7 @@ import v2.compiler.emit {
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   extract_modifier_names,
   seed_bindings,
-  emit_typed_let_shared,
-  resolved_binop_algebra
+  emit_typed_if_shared, emit_typed_let_shared
 }
 
 fn render_rust_type(n: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
@@ -192,7 +191,12 @@ fn rust_source_ext() -> String {
 }
 
 fn rust_visibility_prefix() -> String {
-  top_level_visibility_for_target(target: Rust)
+  // M5: Rust uses KeywordVisibility. Any other variant is a data bug.
+  // Fail closed with error marker instead of fabricating "".
+  match visibility_for_target(target: Rust) {
+    KeywordVisibility { prefix: p } => p
+    _ => "__VISIBILITY_SPEC_MISMATCH__"
+  }
 }
 
 fn rust_items() -> ItemKeywords {
@@ -2189,8 +2193,8 @@ fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 
 fn emit_rust_expr_bin_op(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprBinOp { op: op } =>
-      emit_typed_bin_op(op: op, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    ExprBinOp { op: op, algebra_field: algebra } =>
+      emit_typed_bin_op(op: op, algebra_field: algebra, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_bin_op expected ExprBinOp", target: Rust)
   }
 }
@@ -3123,18 +3127,9 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
 
 fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let cond_str = emit_typed_expr(texpr: condition, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let then_str = emit_typed_expr(texpr: then_branch, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  match else_branch {
-    Some { value: eb } => {
-      let else_str = emit_typed_expr(texpr: eb, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-      concat("if ", cond_str, " {\n",
-        make_indent(level: depth + 1),then_str, "\n} else {\n",
-        make_indent(level: depth + 1),else_str, "\n}")
-    }
-    None =>
-      concat("if ", cond_str, " {\n",
-        make_indent(level: depth + 1),then_str, "\n}")
-  }
+  emit_typed_if_shared(cond_str: cond_str, then_branch: then_branch, else_branch: else_branch,
+    if_result_type: none, depth: depth, target: Rust, source_index: scope.type_env.source_index,
+    recurse: (node, d) => emit_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
 }
 
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
@@ -3452,15 +3447,13 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
 }
 
 
-fn emit_typed_bin_op(op: BinOp, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_bin_op(op: BinOp, algebra_field: String?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let l_str = emit_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let r_str = emit_typed_expr(texpr: right, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   if is_null_coalesce(op: op) {
     emit_null_coalesce(l_str: l_str, r_str: r_str, target: Rust)
   } else {
-    let left_type = resolved_type(n: left)
-    let algebra = resolved_binop_algebra(op: op, left_type: left_type, source_index: scope.type_env.source_index)
-    let op_str = emit_bin_op_symbol(op: op, target: Rust, algebra_field: algebra)
+    let op_str = emit_bin_op_symbol(op: op, target: Rust, algebra_field: algebra_field)
     if is_string_comparison(op: op, left: left, right: right) {
       // When either side is Optional<String>, use .as_deref() to get Option<&str>
       // instead of .as_str() which doesn't exist on Option<String>.

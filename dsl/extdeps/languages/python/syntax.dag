@@ -9,10 +9,32 @@
 module extdeps.languages.python.syntax
 
 import std.syntax {
+  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
+  BodyKind, BlockBody, TypeBody, NoBody,
   OperatorSpec,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce
 }
+
+// Python emission item forms — target keywords for .dag→Python compilation.
+// Ref: Python Reference §8 "Compound statements"
+data python_item_forms: List<ItemForm> = [
+  ItemForm { kind: FuncForm, keyword: "def", has_type_params: false, has_params: true,
+    has_return_type: true, return_required: false,
+    has_uses: false, body_kind: BlockBody },
+  ItemForm { kind: StructForm, keyword: "class", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: BlockBody },
+  ItemForm { kind: EnumForm, keyword: "class", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: BlockBody },
+  ItemForm { kind: TypeAliasForm, keyword: "", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: NoBody },
+  ItemForm { kind: ModuleForm, keyword: "", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: NoBody }
+]
 
 // Python operator precedence (emission-relevant subset).
 // Python uses word operators for boolean (and, or) and // for integer div.

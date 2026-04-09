@@ -534,9 +534,10 @@ fn serialize_expr_data(expr_node: Node, source_index: NewlineIndex?) -> String {
         ", \"method_semantics\": ", serialize_method_semantics(value: method_semantics, source_index: source_index),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_index: source_index))),
         "}")
-    ExprBinOp { op: op } =>
+    ExprBinOp { op: op, algebra_field: af } =>
       concat(
         "{\"kind\": \"ExprBinOp\", \"op\": ", json_quote(s: bin_op_name(value: op)),
+        ", \"algebra_field\": ", match af { Some { value: f } => json_quote(s: f)  None => "null" },
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_index: source_index))),
         "}")
     ExprUnaryOp { op: op } =>

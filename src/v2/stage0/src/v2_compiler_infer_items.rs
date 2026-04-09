@@ -66,7 +66,7 @@ pub struct ResolvedGraph {
 pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Vec<Rc<Node>>> {
     if (inferred.clone() == None) {
         Rc::new(vec![])
-} else {
+    } else {
         match (*inferred.clone().unwrap()).clone() {
     InferredNode::CompilerError { .. } => Rc::new(vec![]),
     InferredNode::TypeVariable { .. } => Rc::new(vec![]),
@@ -81,52 +81,52 @@ if is_product {
                                 let child_type = child_type_node(child.clone());
 make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone(), node_name_span(child.clone()))
 }); } __result })
-} else {
+                        } else {
                             Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
-}
-} else {
+                        }
+                    } else {
                         Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
+                    }
 }
-}
-} else {
+            } else {
                 if ((rt.connective.clone() == Connective::Conj) && ((rt.children.clone().len() as i64) == 0)) {
                     Rc::new(vec![])
-} else {
+                } else {
                     Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
-}
-}
+                }
+            }
 },
 }
-}
+    }
 }
 
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None)) {
             ItemKind::TypeItem
-} else {
+        } else {
             if (item.transport.clone() != None) {
                 ItemKind::ServiceItem
-} else {
+            } else {
                 if ((item.body.clone() != None) && ((item.uses.clone().len() as i64) > 0)) {
                     ItemKind::FuncItem
-} else {
+                } else {
                     if ((item.body.clone() != None) && ((item.params.clone().len() as i64) > 0)) {
                         ItemKind::FnItem
-} else {
+                    } else {
                         if ((item.body.clone() != None) && (item.type_annotation.clone() != None)) {
                             ItemKind::DataItem
-} else {
+                        } else {
                             if (item.body.clone() != None) {
                                 ItemKind::FnItem
-} else {
+                            } else {
                                 ItemKind::OtherItem
-}
-}
-}
-}
-}
-};
+                            }
+                        }
+                    }
+                }
+            }
+        };
 kind
 }
 }
@@ -139,8 +139,8 @@ if is_coproduct.clone() {
     name: child.name.clone(),
     resolved: item.clone(),
 })))
-} else {
+        } else {
             acc.clone()
-}
+        }
 })
 }

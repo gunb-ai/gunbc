@@ -64,7 +64,7 @@ import v2.std.core {
 }
 
 import v2.compiler.languages {
-  ItemForm, BodyKind,
+  ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
   OperatorSpec, SyntaxSpec
@@ -2015,7 +2015,7 @@ fn parse_func_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   // All three keywords use BlockBody with has_uses varying per form
   let has_uses = kw == "func"
-  let form = ItemForm { keyword: kw, has_type_params: false, has_params: true, has_return_type: true, return_required: false, has_uses: has_uses, body_kind: BlockBody }
+  let form = ItemForm { kind: OtherForm, keyword: kw, has_type_params: false, has_params: true, has_return_type: true, return_required: false, has_uses: has_uses, body_kind: BlockBody }
   let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
   if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
   parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
@@ -3636,7 +3636,7 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
               let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
               match binop_opt {
                 Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
+                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: span)
                   parse_expr_loop(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
                 }
                 None => ExprResult { expr: lhs, state: r.state, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: span) } }
@@ -4216,7 +4216,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
               let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
               match binop_opt {
                 Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
+                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: span)
                   parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
                 }
                 None => ExprResult { expr: lhs, state: r.state, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: span) } }

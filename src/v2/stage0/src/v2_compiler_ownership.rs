@@ -123,9 +123,9 @@ let existing = match v2_rt::map_get(&accum.bindings.clone(), name.clone()) {
 };
 let effective_kind = if (existing.binding_kind.clone() != None) {
             existing.binding_kind.clone()
-} else {
+        } else {
             binding_kind
-};
+        };
 let updated = Rc::new(BindingUsage {
     name: name.clone(),
     binding_kind: effective_kind,
@@ -151,9 +151,9 @@ if (branch_count.clone() > current_count.clone()) {
     bindings: v2_rt::rc_map_insert(acc.bindings.clone(), usage.name.clone(), usage.clone()),
     fold_call_nodes: acc.fold_call_nodes.clone(),
 })
-} else {
+            } else {
                 acc.clone()
-}
+            }
 }));
 let base_fold_count = (base.fold_call_nodes.clone().len() as i64);
 let branch_fold_nodes = Rc::new({ let mut __result = Vec::new(); for b in branches.clone().iter().cloned() { __result.extend((*Rc::new(b.fold_call_nodes.clone().iter().cloned().skip(base_fold_count.clone() as usize).collect::<Vec<_>>())).iter().cloned()); } __result });
@@ -171,9 +171,9 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool, si: Opti
             let n = expr_var_name_at(texpr.clone(), si.clone());
 if in_tail.clone() {
                 record_use(accum, n, EdgeKind::Consumed, "return".to_string(), bk.clone())
-} else {
+            } else {
                 record_use(accum, n, EdgeKind::Read, "read".to_string(), bk.clone())
-}
+            }
 },
     ExprData::ExprLiteral { .. } => accum,
     ExprData::ExprFieldAccess { .. } => {
@@ -208,9 +208,9 @@ record_use(accum, vn, EdgeKind::Threaded, "fold_init".to_string(), bk.clone())
 let non_init = Rc::new({ let mut __result = Vec::new(); for a in texpr.children.clone().iter().cloned() { if (a.name.clone().as_str() != "init".to_string().as_str()) { __result.push(a); } } __result });
 non_init.iter().cloned().fold(threaded_accum.clone(), |acc: Rc<UsageAccum>, a: Rc<Node>| walk_expr(acc.clone(), arg_value(a.clone()), false, si.clone()))
 }
-} else {
+            } else {
                 texpr.children.clone().iter().cloned().fold(accum, |acc: Rc<UsageAccum>, a: Rc<Node>| walk_expr(acc.clone(), arg_value(a.clone()), false, si.clone()))
-}
+            }
 },
     ExprData::ExprMethodCall { .. } => {
             let recv = method_receiver(texpr.clone());
@@ -240,12 +240,12 @@ Rc::new(UsageAccum {
     fold_call_nodes: v2_rt::rc_list_push(walked.fold_call_nodes.clone(), texpr.clone()),
 })
 }
-} else {
+            } else {
                 {
                     let recv_accum = walk_expr(accum, recv, false, si.clone());
 mc_args.clone().iter().cloned().fold(recv_accum, |acc: Rc<UsageAccum>, a: Rc<Node>| walk_expr(acc.clone(), arg_value(a.clone()), false, si.clone()))
 }
-}
+            }
 },
     ExprData::ExprMatch => {
             let scrut = match_scrutinee(texpr.clone());
@@ -278,7 +278,7 @@ match let_body(texpr.clone()) {
 let ss_count = (ss.clone().len() as i64);
 if (ss_count.clone() == 0) {
                 accum
-} else {
+            } else {
                 {
                     let init_accum = Rc::new({ let mut __result = Vec::new(); for p in Rc::new(ss.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }).iter().cloned().fold(accum, |acc: Rc<UsageAccum>, p: (i64, Rc<Node>)| walk_expr(acc.clone(), p.1.clone(), false, si.clone()));
 match ss.clone().last().cloned() {
@@ -286,7 +286,7 @@ match ss.clone().last().cloned() {
     None => init_accum,
 }
 }
-}
+            }
 },
     ExprData::ExprReturn => texpr.children.clone().iter().cloned().fold(accum, |acc: Rc<UsageAccum>, child: Rc<Node>| walk_expr(acc.clone(), child.clone(), true, si.clone())),
     ExprData::ExprLambda { .. } => {
@@ -338,7 +338,7 @@ Rc::new(OwnershipDecision::SoleOwner {
     site: site,
 })
 }
-} else {
+        } else {
             if (sc.clone() > 1) {
                 {
                     let sites = Rc::new({ let mut __result = Vec::new(); for c in Rc::new({ let mut __result = Vec::new(); for c in usage.consumers.clone().iter().cloned() { if match c.kind.clone() {
@@ -351,13 +351,13 @@ Rc::new(OwnershipDecision::SharedError {
     sites: sites,
 })
 }
-} else {
+            } else {
                 Rc::new(OwnershipDecision::Unclassified {
     binding: usage.name.clone(),
     reason: "no consumers found".to_string(),
 })
-}
-}
+            }
+        }
 }
 }
 
@@ -421,9 +421,9 @@ let is_direct = match (*base.expr_data.clone()).clone() {
 };
 if is_direct {
                 Rc::new(vec![field_access_field_at(node.clone(), si.clone())])
-} else {
+            } else {
                 Rc::new({ let mut __result = Vec::new(); for c in node.children.clone().iter().cloned() { __result.extend((*collect_acc_field_moves(c.clone(), acc_name.clone(), si.clone())).iter().cloned()); } __result })
-}
+            }
 },
     _ => Rc::new({ let mut __result = Vec::new(); for c in node.children.clone().iter().cloned() { __result.extend((*collect_acc_field_moves(c.clone(), acc_name.clone(), si.clone())).iter().cloned()); } __result }),
 }
