@@ -208,23 +208,20 @@ type IfValueForm
 
 type ExpressionSemantics {
   if_value_form: IfValueForm
-  block_is_expression: Bool     // Rust: true (last expr = value), Go/Python: false
   wildcard_case: String?        // Go: "default", Rust/Python: none (use pattern)
 }
+
+// Naming case — identifier surface form transformations.
+type NamingCase = PascalCase | SnakeCase
 
 // Visibility specification — how each language controls export/access.
 // Ref: Rust Reference §6.1 "Visibility", Go Spec "Exported identifiers",
 // PEP 8 "Naming Conventions".
-type VisibilityStrategy
-  = KeywordVisibility        // Rust: prepend keyword prefix to declarations
-  | CaseVisibility           // Go: uppercase first letter = exported
-  | ConventionVisibility     // Python: "_" prefix = private (convention only)
-
-type VisibilitySpec {
-  strategy: VisibilityStrategy
-  keyword_prefix: String        // Rust: "pub ", Go/Python: ""
-  export_transform: Bool        // Go: true (identifiers need PascalCase), Rust/Python: false
-}
+// Coproduct: each variant carries the data its renderer consumes.
+type VisibilitySpec
+  = KeywordVisibility { prefix: String }          // Rust: "pub "
+  | CaseVisibility { export_case: NamingCase }    // Go: PascalCase = exported
+  | ConventionVisibility { private_prefix: String } // Python: "_" = private
 
 type TcoSyntax {
   loop_keyword: String        // "loop" (Rust), "for" (Go), "while True" (Python)
@@ -312,11 +309,7 @@ fn rust_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: "#[tokio::test]"
     },
-    visibility: VisibilitySpec {
-      strategy: KeywordVisibility,
-      keyword_prefix: rust_visibility,
-      export_transform: false
-    },
+    visibility: KeywordVisibility { prefix: rust_visibility },
     sharing: SharingStrategy {
       needs_sharing: true,
       wrap_template: "Rc<{0}>",
@@ -377,7 +370,6 @@ fn rust_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
-      block_is_expression: true,
       wildcard_case: None
     }
   }
@@ -414,11 +406,7 @@ fn python_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: null
     },
-    visibility: VisibilitySpec {
-      strategy: ConventionVisibility,
-      keyword_prefix: "",
-      export_transform: false
-    },
+    visibility: ConventionVisibility { private_prefix: "_" },
     sharing: SharingStrategy {
       needs_sharing: false,
       wrap_template: "{0}",
@@ -479,7 +467,6 @@ fn python_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: ConditionalTernary,
-      block_is_expression: false,
       wildcard_case: None
     }
   }
@@ -516,11 +503,7 @@ fn go_spec() -> LanguageSpec {
       name_style: PascalCaseTestNames,
       async_decorator: null
     },
-    visibility: VisibilitySpec {
-      strategy: CaseVisibility,
-      keyword_prefix: "",
-      export_transform: true
-    },
+    visibility: CaseVisibility { export_case: PascalCase },
     sharing: SharingStrategy {
       needs_sharing: false,
       wrap_template: "{0}",
@@ -581,7 +564,6 @@ fn go_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfStatement,
-      block_is_expression: false,
       wildcard_case: Some { value: "default" }
     }
   }

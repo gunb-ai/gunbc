@@ -645,7 +645,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_py_typed_if(condition: Rc<Node>, then_branch: Rc<Node>, else_branch: Option<Rc<Node>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let cond_str = emit_py_typed_expr(condition, registry.clone(), scope.clone(), depth.clone(), 1024);
-emit_typed_if_shared(cond_str, then_branch, else_branch, depth.clone(), RenderTarget::Python, |node, d| emit_py_typed_expr(node.clone(), registry.clone(), scope.clone(), d.clone(), 1024))
+emit_typed_if_shared(cond_str, then_branch, else_branch, depth.clone(), RenderTarget::Python, scope.type_env.clone().source_index.clone(), |node, d| emit_py_typed_expr(node.clone(), registry.clone(), scope.clone(), d.clone(), 1024))
 }
 }
 

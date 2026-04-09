@@ -69,7 +69,7 @@ import v2.compiler.artifact { RenderTarget, Go }
 import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix }
 import v2.compiler.languages {
   scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target,
-  is_string_like
+  is_string_like, CaseVisibility
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import v2.compiler.infer_types { resolved_type, for_each_element_type_node, normalize_access_type_node, node_is_keyed_collection, is_unit_like }
@@ -122,7 +122,7 @@ import v2.compiler.emit {
   emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts,
   emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared,
   emit_block_stmts_shared, emit_init_block_stmts_shared,
-  emit_typed_if_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared,
+  emit_typed_if_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, apply_naming_case,
   emit_inferred_shared, emit_typed_block_join,
   emit_typed_first_arg_shared, emit_typed_tco_reassign_shared,
   emit_algebra_method_template
@@ -771,7 +771,7 @@ fn emit_go_typed_switch_case(arm: Node, registry: Map<String, ItemInfo>, scope: 
 fn emit_go_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let cond_str = emit_go_typed_expr(texpr: condition, registry: registry, scope: scope, depth: depth, fuel: 1024)
   emit_typed_if_shared(cond_str: cond_str, then_branch: then_branch, else_branch: else_branch,
-    depth: depth, target: Go,
+    depth: depth, target: Go, source_index: scope.type_env.source_index,
     recurse: (node, d) => emit_go_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, fuel: 1024))
 }
 
@@ -1166,20 +1166,18 @@ fn emit_go_data_def(name: String, type_node: Node, value: Node, registry: Map<St
 fn go_export_ident(name: String) -> String {
   // Go uses case-based visibility: PascalCase = exported.
   // Ref: Go Spec "Exported identifiers".
-  // Consults VisibilitySpec.export_transform — when true, converts
-  // snake_case/camelCase identifiers to PascalCase for export.
-  let vis = language_spec(target: Go).visibility
-  if vis.export_transform {
-    let parts = name |> split(delimiter: "_")
-    let pascal_parts = parts |> map(p => capitalize_first(s: p))
-    let result = pascal_parts |> join(separator: "")
-    if go_reserved |> any(r => r == result) {
-      concat(result, go_reserved_escape_suffix)
-    } else {
-      result
+  // Matches on VisibilitySpec coproduct — CaseVisibility carries
+  // the export naming case, applied via shared apply_naming_case.
+  match language_spec(target: Go).visibility {
+    CaseVisibility { export_case: ec } => {
+      let result = apply_naming_case(name: name, case_style: ec)
+      if go_reserved |> any(r => r == result) {
+        concat(result, go_reserved_escape_suffix)
+      } else {
+        result
+      }
     }
-  } else {
-    emit_ident(name: name, target: Go)
+    _ => emit_ident(name: name, target: Go)
   }
 }
 

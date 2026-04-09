@@ -28,9 +28,11 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::IfValueForm::{IfExpression, ConditionalTernary, IfStatement};
+use crate::v2_compiler_languages::VisibilitySpec::{KeywordVisibility, CaseVisibility, ConventionVisibility};
+use crate::v2_compiler_languages::NamingCase::{PascalCase, SnakeCase};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
 use BackendCapability::*;
@@ -617,6 +619,17 @@ pub fn to_pascal(name: String) -> String {
 let parts = Rc::new(snake.split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
 let pascal_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.iter().cloned() { __result.push(capitalize_first(p.clone())); } __result });
 pascal_parts.join(&"".to_string())
+}
+}
+
+pub fn apply_naming_case(name: String, case_style: NamingCase) -> String {
+    match case_style {
+    NamingCase::PascalCase => {
+        let parts = Rc::new(name.split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+let pascal_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.iter().cloned() { __result.push(capitalize_first(p.clone())); } __result });
+pascal_parts.join(&"".to_string())
+},
+    NamingCase::SnakeCase => to_snake(name),
 }
 }
 
@@ -2065,37 +2078,38 @@ v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), recurse(bd.clone(), nex
 }
 }
 
-pub fn emit_typed_if_shared(cond_str: String, then_branch: Rc<Node>, else_branch: Option<Rc<Node>>, depth: i64, target: RenderTarget, recurse: impl Fn(Rc<Node>, i64) -> String + Clone) -> String {
+pub fn emit_typed_if_shared(cond_str: String, then_branch: Rc<Node>, else_branch: Option<Rc<Node>>, depth: i64, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>, recurse: impl Fn(Rc<Node>, i64) -> String + Clone) -> String {
     {
-        let spec = language_spec(target);
+        let spec = language_spec(target.clone());
 let es = spec.expression_semantics.clone();
 let bs = spec.block_syntax.clone();
 match else_branch {
     Some(eb) => match es.if_value_form.clone() {
     IfValueForm::IfExpression => {
-            let then_str = recurse(then_branch, (depth.clone() + 1));
+            let then_str = recurse(then_branch.clone(), (depth.clone() + 1));
 let else_str = recurse(eb.clone(), (depth.clone() + 1));
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), bs.block_open.clone()), make_indent((depth.clone() + 1))), then_str), "\n".to_string()), make_indent(depth.clone())), bs.else_clause.clone()), make_indent((depth.clone() + 1))), else_str), "\n".to_string()), make_indent(depth.clone())), bs.block_close.clone())
 },
     IfValueForm::ConditionalTernary => {
-            let then_str = recurse(then_branch, depth.clone());
+            let then_str = recurse(then_branch.clone(), depth.clone());
 let else_str = recurse(eb.clone(), depth.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), then_str), ") if (".to_string()), cond_str), ") else (".to_string()), else_str), ")".to_string())
 },
     IfValueForm::IfStatement => {
-            let then_str = recurse(then_branch, depth.clone());
+            let then_str = recurse(then_branch.clone(), depth.clone());
 let else_str = recurse(eb.clone(), depth.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func() interface{} { if ".to_string(), cond_str), bs.block_open.clone()), make_indent((depth.clone() + 1))), "return ".to_string()), then_str), "\n".to_string()), make_indent(depth.clone())), bs.else_clause.clone()), make_indent((depth.clone() + 1))), "return ".to_string()), else_str), "\n".to_string()), make_indent(depth.clone())), bs.block_close.clone()), " }()".to_string())
+let result_type = emit_node_type(resolved_type(then_branch.clone()), target.clone(), source_index);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func() ".to_string(), result_type), " { if ".to_string()), cond_str), bs.block_open.clone()), make_indent((depth.clone() + 1))), "return ".to_string()), then_str), "\n".to_string()), make_indent(depth.clone())), bs.else_clause.clone()), make_indent((depth.clone() + 1))), "return ".to_string()), else_str), "\n".to_string()), make_indent(depth.clone())), bs.block_close.clone()), " }()".to_string())
 },
 },
     None => if bs.significant_whitespace.clone() {
             {
-                let then_str = recurse(then_branch, depth.clone());
+                let then_str = recurse(then_branch.clone(), depth.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), bs.block_open.clone()), make_indent((depth.clone() + 1))), then_str)
 }
         } else {
             {
-                let then_str = recurse(then_branch, (depth.clone() + 1));
+                let then_str = recurse(then_branch.clone(), (depth.clone() + 1));
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if ".to_string(), cond_str), bs.block_open.clone()), make_indent((depth.clone() + 1))), then_str), "\n".to_string()), make_indent(depth.clone())), bs.block_close.clone())
 }
         },

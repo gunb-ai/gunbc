@@ -73,7 +73,7 @@ import extdeps.languages.rust.emit {
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
   TestConventions, ItemKeywords,
-  test_conventions_for_target, visibility_for_target,
+  test_conventions_for_target, visibility_for_target, KeywordVisibility,
   sharing_for_target,
   is_string_like
 }
@@ -192,7 +192,10 @@ fn rust_source_ext() -> String {
 }
 
 fn rust_visibility_prefix() -> String {
-  visibility_for_target(target: Rust).keyword_prefix
+  match visibility_for_target(target: Rust) {
+    KeywordVisibility { prefix: p } => p
+    _ => ""
+  }
 }
 
 fn rust_items() -> ItemKeywords {
@@ -3124,7 +3127,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
 fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let cond_str = emit_typed_expr(texpr: condition, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   emit_typed_if_shared(cond_str: cond_str, then_branch: then_branch, else_branch: else_branch,
-    depth: depth, target: Rust,
+    depth: depth, target: Rust, source_index: scope.type_env.source_index,
     recurse: (node, d) => emit_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
 }
 

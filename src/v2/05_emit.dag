@@ -79,6 +79,8 @@ import v2.compiler.languages {
   LanguageSpec, TestConventions, ServiceFieldTemplates,
   BlockSyntax, TcoSyntax, ExpressionSemantics,
   IfValueForm, IfExpression, ConditionalTernary, IfStatement,
+  VisibilitySpec, KeywordVisibility, CaseVisibility, ConventionVisibility,
+  NamingCase, PascalCase, SnakeCase,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
@@ -624,6 +626,19 @@ fn to_pascal(name: String) -> String {
   let parts = snake |> split(delimiter: "_")
   let pascal_parts = parts |> map(p => capitalize_first(s: p))
   pascal_parts |> join(separator: "")
+}
+
+// Apply a naming case transformation to an identifier.
+// Used by CaseVisibility to convert identifiers for export.
+fn apply_naming_case(name: String, case_style: NamingCase) -> String {
+  match case_style {
+    PascalCase => {
+      let parts = name |> split(delimiter: "_")
+      let pascal_parts = parts |> map(p => capitalize_first(s: p))
+      pascal_parts |> join(separator: "")
+    }
+    SnakeCase => to_snake(name: name)
+  }
 }
 
 // Derive the variable name for a service: "git.Core" -> "git_core"
@@ -2121,6 +2136,7 @@ fn emit_typed_if_shared(
     else_branch: Node?,
     depth: Int,
     target: RenderTarget,
+    source_index: NewlineIndex?,
     recurse: fn(Node, Int) -> String
 ) -> String {
   let spec = language_spec(target: target)
@@ -2146,7 +2162,8 @@ fn emit_typed_if_shared(
         IfStatement => {
           let then_str = recurse(then_branch, depth)
           let else_str = recurse(eb, depth)
-          concat("func() interface{} { if ", cond_str, bs.block_open,
+          let result_type = emit_node_type(n: resolved_type(n: then_branch), target: target, source_index: source_index)
+          concat("func() ", result_type, " { if ", cond_str, bs.block_open,
             make_indent(level: depth + 1), "return ", then_str, "\n",
             make_indent(level: depth), bs.else_clause,
             make_indent(level: depth + 1), "return ", else_str, "\n",

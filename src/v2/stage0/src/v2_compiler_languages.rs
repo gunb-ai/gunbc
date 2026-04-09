@@ -24,7 +24,8 @@ use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
 use IfValueForm::*;
-use VisibilityStrategy::*;
+use NamingCase::*;
+use VisibilitySpec::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -168,23 +169,28 @@ pub enum IfValueForm {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
-    pub block_is_expression: bool,
     pub wildcard_case: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum VisibilityStrategy {
-    KeywordVisibility,
-    CaseVisibility,
-    ConventionVisibility,
+pub enum NamingCase {
+    PascalCase,
+    SnakeCase,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct VisibilitySpec {
-    pub strategy: VisibilityStrategy,
-    pub keyword_prefix: String,
-    pub export_transform: bool,
+#[serde(tag = "_variant")]
+pub enum VisibilitySpec {
+    KeywordVisibility {
+        prefix: String,
+    },
+    CaseVisibility {
+        export_case: NamingCase,
+    },
+    ConventionVisibility {
+        private_prefix: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -264,10 +270,8 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     name_style: TestNameStyle::SnakeCaseTestNames,
     async_decorator: Some("#[tokio::test]".to_string()),
 }),
-    visibility: Rc::new(VisibilitySpec {
-    strategy: VisibilityStrategy::KeywordVisibility,
-    keyword_prefix: rust_visibility(),
-    export_transform: false,
+    visibility: Rc::new(VisibilitySpec::KeywordVisibility {
+    prefix: rust_visibility(),
 }),
     sharing: Rc::new(SharingStrategy {
     needs_sharing: true,
@@ -335,7 +339,6 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
 }),
     expression_semantics: Rc::new(ExpressionSemantics {
     if_value_form: IfValueForm::IfExpression,
-    block_is_expression: true,
     wildcard_case: None,
 }),
 })
@@ -374,10 +377,8 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     name_style: TestNameStyle::SnakeCaseTestNames,
     async_decorator: None,
 }),
-    visibility: Rc::new(VisibilitySpec {
-    strategy: VisibilityStrategy::ConventionVisibility,
-    keyword_prefix: "".to_string(),
-    export_transform: false,
+    visibility: Rc::new(VisibilitySpec::ConventionVisibility {
+    private_prefix: "_".to_string(),
 }),
     sharing: Rc::new(SharingStrategy {
     needs_sharing: false,
@@ -445,7 +446,6 @@ pub fn python_spec() -> Rc<LanguageSpec> {
 }),
     expression_semantics: Rc::new(ExpressionSemantics {
     if_value_form: IfValueForm::ConditionalTernary,
-    block_is_expression: false,
     wildcard_case: None,
 }),
 })
@@ -484,10 +484,8 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     name_style: TestNameStyle::PascalCaseTestNames,
     async_decorator: None,
 }),
-    visibility: Rc::new(VisibilitySpec {
-    strategy: VisibilityStrategy::CaseVisibility,
-    keyword_prefix: "".to_string(),
-    export_transform: true,
+    visibility: Rc::new(VisibilitySpec::CaseVisibility {
+    export_case: NamingCase::PascalCase,
 }),
     sharing: Rc::new(SharingStrategy {
     needs_sharing: false,
@@ -555,7 +553,6 @@ pub fn go_spec() -> Rc<LanguageSpec> {
 }),
     expression_semantics: Rc::new(ExpressionSemantics {
     if_value_form: IfValueForm::IfStatement,
-    block_is_expression: false,
     wildcard_case: Some("default".to_string()),
 }),
 })
