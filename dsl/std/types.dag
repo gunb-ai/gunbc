@@ -469,13 +469,13 @@ type HttpMethod = GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
 
 // [AuthScheme] = {Bearer} | ({Header} x [String]) | ({Basic} x [String])
 // Sum type with payloads: tagged disjoint union.
+// Protocol-level schemes only (RFC 6750, RFC 7235, RFC 7617).
+// Provider-specific schemes (SigV4, OidcToken) compose from extdeps/cloud.
 type AuthScheme
   = Bearer
   | Header { name: String }
   | Basic { username: String }
   | ApiKey
-  | SigV4 { region: String, service: String }
-  | OidcToken { audience: String }
 
 // [AccessToken] = [Secret] x [AuthScheme] x [String?]
 //               = [Secret] x [AuthScheme] x ([String] U {none})

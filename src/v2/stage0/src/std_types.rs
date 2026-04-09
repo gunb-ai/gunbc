@@ -489,13 +489,6 @@ pub enum AuthScheme {
         username: String,
     },
     ApiKey,
-    SigV4 {
-        region: String,
-        service: String,
-    },
-    OidcToken {
-        audience: String,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

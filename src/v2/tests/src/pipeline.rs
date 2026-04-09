@@ -4882,10 +4882,9 @@ fn review_dag_compiles_to_rust() {
     let _ = std::fs::remove_dir_all(&out_dir);
 
     // RE-2 ratchet: track progress toward 0 cargo check errors.
-    // Current: 51 errors across imported modules (cron, github, llm, shell).
-    // Categories: E0592 (13 conflicting impls), E0425 (12 not in scope),
-    //   E0119 (10 conflicting trait impls), E0728 (9 await in non-async),
-    //   E0428 (5 duplicate defs), syntax (5xx patterns, raw idents).
+    // Current: 3 errors (E0308 type mismatches in shell return types).
+    // Reduced from 51 → 23 → 3 via: FuncItem detection (async+service params),
+    // for-each variable fix, runtime contains/count, Rc collection wrap.
     const RE2_ERROR_RATCHET: usize = 3;
     assert!(
         error_count <= RE2_ERROR_RATCHET,
