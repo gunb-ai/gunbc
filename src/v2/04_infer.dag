@@ -102,7 +102,7 @@ import v2.compiler.infer_env {
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown,
-  ShrinkFactor, UnitShrink
+  ShrinkFactor, UnitShrink, ProportionalShrink
 }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
@@ -2119,9 +2119,16 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
 // zero changes here.
 // =========================================================================
 
+// Track let-bound expressions that represent collection sizes.
+// Used to recognize proportional shrink: take(xs, count(xs) / 2).
+type SizeExpr
+  = ParamSize { param: String }
+  | DividedSize { param: String, divisor: Int }
+
 // Context threaded through the descent annotation walk.
 // sub_value_vars tracks which local variables are known sub-values of
 // a parameter, and what their structural relationship is.
+// size_aliases tracks variables bound to collection sizes (for ProportionalShrink).
 // M4 constraint: param_names uses String keys/values because .dag has no
 // declaration-reference type yet. Will migrate to structural refs with M4.
 type DescentContext {
@@ -2129,6 +2136,95 @@ type DescentContext {
   param_names: Map<String, String>  // param_name → type_name (M4: String proxy)
   type_env: TypeEnv
   sub_value_vars: Map<String, SubValueRelation>
+  size_aliases: Map<String, SizeExpr>
+}
+
+// Classify a let-value as a size expression for ProportionalShrink tracking.
+// Recognizes: xs |> count → ParamSize, n / 2 → DividedSize
+fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
+  match val.expr_data {
+    // xs |> count → ParamSize { param: "xs" }
+    ExprMethodCall { method_semantics: _ } =>
+      let mname = expr_method_name(texpr: val)
+      if mname == "count" {
+        let receiver = method_receiver(texpr: val)
+        match receiver.expr_data {
+          ExprVar { binding_kind: _ } =>
+            let rname = expr_var_name(texpr: receiver)
+            match map_get(ctx.param_names, rname) {
+              Some { value: _ } => Some { value: ParamSize { param: rname } }
+              None => none
+            }
+          _ => none
+        }
+      } else { none }
+    // n / 2 → DividedSize if n is a known ParamSize
+    ExprBinOp { op: _ } =>
+      let left = binop_left(texpr: val)
+      let right = binop_right(texpr: val)
+      match val.expr_data {
+        ExprBinOp { op: Div } =>
+          match left.expr_data {
+            ExprVar { binding_kind: _ } =>
+              let lname = expr_var_name(texpr: left)
+              match map_get(ctx.size_aliases, lname) {
+                Some { value: ParamSize { param: p } } =>
+                  match right.expr_data {
+                    ExprLiteral { value: LitInt { value: d } } =>
+                      if d > 0 { Some { value: DividedSize { param: p, divisor: d } } }
+                      else { none }
+                    _ => none
+                  }
+                _ => none
+              }
+            _ => none
+          }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+// Classify a method-call expression as a collection shrink.
+// Recognizes: param |> take(mid) or param |> skip(mid) where mid is a known size alias.
+fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
+  match arg_expr.expr_data {
+    ExprMethodCall { method_semantics: _ } =>
+      let mname = expr_method_name(texpr: arg_expr)
+      if mname == "take" || mname == "skip" {
+        let receiver = method_receiver(texpr: arg_expr)
+        // Check receiver is the parameter
+        match receiver.expr_data {
+          ExprVar { binding_kind: _ } =>
+            let rname = expr_var_name(texpr: receiver)
+            if rname == param_name {
+              // Check argument is a known size alias
+              let args = method_arg_nodes(texpr: arg_expr)
+              match args |> first {
+                Some { value: arg_node } =>
+                  let arg_val = arg_value(n: arg_node)
+                  match arg_val.expr_data {
+                    ExprVar { binding_kind: _ } =>
+                      let aname = expr_var_name(texpr: arg_val)
+                      match map_get(ctx.size_aliases, aname) {
+                        Some { value: DividedSize { param: p, divisor: d } } =>
+                          if p == param_name {
+                            // Synthesize an InductiveField for the list parameter
+                            let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion }
+                            StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
+                          } else { SubValueUnknown }
+                        _ => SubValueUnknown
+                      }
+                    _ => SubValueUnknown
+                  }
+                None => SubValueUnknown
+              }
+            } else { SubValueUnknown }
+          _ => SubValueUnknown
+        }
+      } else { SubValueUnknown }
+    _ => SubValueUnknown
+  }
 }
 
 // Classify one self-call argument against its corresponding parameter.
@@ -2162,6 +2258,9 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           }
         _ => SubValueUnknown
       }
+    // param |> take(mid) or param |> skip(mid) → collection shrink
+    ExprMethodCall { method_semantics: _ } =>
+      classify_collection_shrink(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
     _ => SubValueUnknown
   }
 }
@@ -2264,7 +2363,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                       if bind_name != "" {
                         DescentContext {
                           fn_name: c.fn_name, param_names: c.param_names, type_env: c.type_env,
-                          sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink })
+                          sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
+                          size_aliases: c.size_aliases
                         }
                       } else { c }
                     )
@@ -2284,7 +2384,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                         if bind_name != "" {
                           DescentContext {
                             fn_name: c.fn_name, param_names: c.param_names, type_env: c.type_env,
-                            sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink })
+                            sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
+                            size_aliases: c.size_aliases
                           }
                         } else { c }
                       None => c
@@ -2322,13 +2423,25 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           map_get(ctx.sub_value_vars, vname)
         _ => none
       }
+      // Track size aliases: let n = xs |> count → ParamSize, let mid = n / 2 → DividedSize
+      let size_alias = classify_size_expr(val: val, ctx: ctx)
+      let inner_size_aliases = match size_alias {
+        Some { value: se } => map_insert(ctx.size_aliases, binding_name, se)
+        None => ctx.size_aliases
+      }
       let inner_ctx = match val_relation {
         Some { value: rel } =>
           DescentContext {
             fn_name: ctx.fn_name, param_names: ctx.param_names, type_env: ctx.type_env,
-            sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel)
+            sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
+            size_aliases: inner_size_aliases
           }
-        None => ctx
+        None =>
+          DescentContext {
+            fn_name: ctx.fn_name, param_names: ctx.param_names, type_env: ctx.type_env,
+            sub_value_vars: ctx.sub_value_vars,
+            size_aliases: inner_size_aliases
+          }
       }
       // Recurse into value and body
       map_children(node: body, transform: child => annotate_descent(body: child, ctx: inner_ctx))
@@ -2362,7 +2475,8 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
     fn_name: fn_name,
     param_names: param_name_map,
     type_env: type_env,
-    sub_value_vars: empty_map()
+    sub_value_vars: empty_map(),
+    size_aliases: empty_map()
   }
   annotate_descent(body: body, ctx: ctx)
 }

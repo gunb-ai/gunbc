@@ -72,7 +72,7 @@ pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, 
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
-use crate::std_induction::ShrinkFactor::{UnitShrink};
+use crate::std_induction::ShrinkFactor::{UnitShrink, ProportionalShrink};
 pub use crate::v2_compiler_infer_resolve::{resolve_node, resolve_item_types, NodeResolveResult, ItemResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult, resolve_func_sigs};
 pub use crate::v2_compiler_infer_emit_info::{TypeRepr, TypeSummary, EmitGraphInfo, EmitInfoBuildState, empty_emit_graph_info, lookup_emit_type_summary, build_struct_field_summaries, build_enum_field_summaries, add_emit_item_summary, derive_variant_to_enum};
@@ -84,6 +84,7 @@ pub use crate::v2_compiler_infer_patterns::{NodeLookupResult, PatternSubject, lo
 use crate::v2_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v2_compiler_infer_lookup::{KnownMethodResolution, resolve_known_method_node, resolve_scrutinee_type_node, field_summary_for_type, lookup_field_type_node, lookup_coproduct_common_field_node, map_value_type_in_env, map_key_type_in_env, lookup_in_scope, lookup_func_sig};
 pub use crate::v2_compiler_infer_access::{AccessCheckResultNode, check_index_access_node, check_slice_access_node};
+use SizeExpr::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemContribution {
@@ -2161,11 +2162,149 @@ Rc::new(InferResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
+pub enum SizeExpr {
+    ParamSize {
+        param: String,
+    },
+    DividedSize {
+        param: String,
+        divisor: i64,
+    },
+}
+impl SizeExpr {
+    pub fn param(&self) -> String {
+        match self {
+            SizeExpr::ParamSize { param: __val, .. } => __val.clone(),
+            SizeExpr::DividedSize { param: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescentContext {
     pub fn_name: String,
     pub param_names: Rc<HashMap<String, String>>,
     pub type_env: Rc<TypeEnv>,
     pub sub_value_vars: Rc<HashMap<String, Rc<SubValueRelation>>>,
+    pub size_aliases: Rc<HashMap<String, Rc<SizeExpr>>>,
+}
+
+pub fn classify_size_expr(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<SizeExpr>> {
+    match (*val.expr_data.clone()).clone() {
+    ExprData::ExprMethodCall { .. } => {
+        let mname = expr_method_name(val.clone());
+if (mname.as_str() == "count".to_string().as_str()) {
+            {
+                let receiver = method_receiver(val.clone());
+match (*receiver.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                    let rname = expr_var_name(receiver.clone());
+match v2_rt::map_get(&ctx.param_names.clone(), rname.clone()) {
+    Some(_) => Some(Rc::new(SizeExpr::ParamSize {
+    param: rname.clone(),
+})),
+    None => None,
+}
+},
+    _ => None,
+}
+}
+} else {
+            None
+}
+},
+    ExprData::ExprBinOp { .. } => {
+        let left = binop_left(val.clone());
+let right = binop_right(val.clone());
+match (*val.expr_data.clone()).clone() {
+    ExprData::ExprBinOp { op: BinOp::Div, .. } => match (*left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+            let lname = expr_var_name(left.clone());
+match v2_rt::map_get(&ctx.size_aliases.clone(), lname).as_deref().cloned() {
+    Some(SizeExpr::ParamSize { param: p, .. }) => match (*right.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: d, .. } = value.as_ref() else { unreachable!() }; if (d.clone() > 0) {
+                Some(Rc::new(SizeExpr::DividedSize {
+    param: p.clone(),
+    divisor: d.clone(),
+}))
+} else {
+                None
+} },
+    _ => None,
+},
+    _ => None,
+}
+},
+    _ => None,
+},
+    _ => None,
+}
+},
+    _ => None,
+}
+}
+
+pub fn classify_collection_shrink(arg_expr: Rc<Node>, param_name: String, ctx: Rc<DescentContext>) -> Rc<SubValueRelation> {
+    match (*arg_expr.expr_data.clone()).clone() {
+    ExprData::ExprMethodCall { .. } => {
+        let mname = expr_method_name(arg_expr.clone());
+if ((mname.clone().as_str() == "take".to_string().as_str()) || (mname.clone().as_str() == "skip".to_string().as_str())) {
+            {
+                let receiver = method_receiver(arg_expr.clone());
+match (*receiver.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                    let rname = expr_var_name(receiver.clone());
+if (rname.as_str() == param_name.clone().as_str()) {
+                        {
+                            let args = method_arg_nodes(arg_expr.clone());
+match args.first().cloned() {
+    Some(arg_node) => {
+                                let arg_val = arg_value(arg_node.clone());
+match (*arg_val.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                                    let aname = expr_var_name(arg_val.clone());
+match v2_rt::map_get(&ctx.size_aliases.clone(), aname).as_deref().cloned() {
+    Some(SizeExpr::DividedSize { param: p, divisor: d, .. }) => if (p.clone().as_str() == param_name.clone().as_str()) {
+                                        {
+                                            let synth_field = Rc::new(InductiveField {
+    type_name: param_name.clone(),
+    variant_name: "".to_string(),
+    field_name: mname.clone(),
+    shape: RecursionShape::ListRecursion,
+});
+Rc::new(SubValueRelation::StrictSubValue {
+    field: synth_field,
+    factor: Rc::new(ShrinkFactor::ProportionalShrink {
+    divisor: d.clone(),
+}),
+})
+}
+} else {
+                                        Rc::new(SubValueRelation::SubValueUnknown)
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
+}
+} else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+}
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+}
+} else {
+            Rc::new(SubValueRelation::SubValueUnknown)
+}
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
 }
 
 pub fn classify_argument(arg_expr: Rc<Node>, param_name: String, ctx: Rc<DescentContext>) -> Rc<SubValueRelation> {
@@ -2204,6 +2343,7 @@ match matching {
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
 },
+    ExprData::ExprMethodCall { .. } => classify_collection_shrink(arg_expr.clone(), param_name, ctx.clone()),
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
 }
@@ -2316,6 +2456,7 @@ if (bind_name.clone().as_str() != "".to_string().as_str()) {
     field: ind_field.clone(),
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
+    size_aliases: c.size_aliases.clone(),
 })
 } else {
                                 c.clone()
@@ -2343,6 +2484,7 @@ match matching.clone() {
     field: ind_field.clone(),
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
+    size_aliases: c.size_aliases.clone(),
 })
 } else {
                                 c.clone()
@@ -2391,14 +2533,26 @@ v2_rt::map_get(&ctx.sub_value_vars.clone(), vname.clone())
 },
     _ => None,
 };
+let size_alias = classify_size_expr(val.clone(), ctx.clone());
+let inner_size_aliases = match size_alias {
+    Some(se) => v2_rt::rc_map_insert(ctx.size_aliases.clone(), binding_name.clone(), se.clone()),
+    None => ctx.size_aliases.clone(),
+};
 let inner_ctx = match val_relation {
     Some(rel) => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
     param_names: ctx.param_names.clone(),
     type_env: ctx.type_env.clone(),
-    sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), binding_name, rel.clone()),
+    sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), binding_name.clone(), rel.clone()),
+    size_aliases: inner_size_aliases,
 }),
-    None => ctx.clone(),
+    None => Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: ctx.param_names.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: ctx.sub_value_vars.clone(),
+    size_aliases: inner_size_aliases,
+}),
 };
 map_children(body.clone(), |child| annotate_descent(child.clone(), inner_ctx.clone()))
 },
@@ -2429,6 +2583,7 @@ let ctx = Rc::new(DescentContext {
     param_names: param_name_map,
     type_env: type_env,
     sub_value_vars: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+    size_aliases: v2_rt::rc_empty_map::<Rc<SizeExpr>>(),
 });
 annotate_descent(body, ctx)
 }
