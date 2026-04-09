@@ -1855,7 +1855,7 @@ fn diag_parser_scc_edges() {
         func_entries.iter().cloned().map(|e| (e.name.clone(), e)).collect();
     let func_index_rc = Rc::new(func_index);
 
-    let scc_result = build_scc_index(func_entries, func_index_rc.clone());
+    let scc_result = build_scc_index(func_entries, func_index_rc.clone(), None);
 
     // Find the large parser SCC (the one containing parse_type_expr)
     let scc_info = scc_result.index.get("parse_type_expr")
@@ -1869,6 +1869,7 @@ fn diag_parser_scc_edges() {
         scc_info.members.clone(),
         func_index_rc.clone(),
         Rc::new(scc_name_set),
+        None,
     );
 
     eprintln!("Total edges: {}", edges.len());
@@ -1932,17 +1933,18 @@ fn diag_parse_node_decl_env() {
     let func_index_rc = Rc::new(func_index);
 
     let pnd = func_index_rc.get("parse_node_decl").expect("parse_node_decl must exist");
-    let state_param = parser_state_param(pnd.params.clone()).expect("must have state param");
+    let state_param = parser_state_param(pnd.params.clone(), None).expect("must have state param");
 
     // Build parser_always_advancing exactly as the SCC analysis does
     let parser_always_advancing = infer_parser_always_advancing_members(
-        parser_function_names(func_index_rc.clone()),
+        parser_function_names(func_index_rc.clone(), None),
         func_index_rc.clone(),
+        None,
     );
 
     // Build scc_name_set for the parser SCC containing parse_node_decl
     use v2_compiler::v2_compiler_complexity::build_scc_index;
-    let scc_result = build_scc_index(func_entries.clone(), func_index_rc.clone());
+    let scc_result = build_scc_index(func_entries.clone(), func_index_rc.clone(), None);
     let scc_info = scc_result.index.get("parse_node_decl")
         .expect("parse_node_decl must be in SCC index");
     let scc_name_set: Rc<HashMap<String, bool>> = Rc::new(
@@ -1962,6 +1964,7 @@ fn diag_parse_node_decl_env() {
         empty_parser_progress_env(),
         parser_always_advancing.clone(),
         Rc::new(HashMap::new()),
+        None,
     );
 
     eprintln!("Edges from collect_parser_progress_edges: {}", edges.len());

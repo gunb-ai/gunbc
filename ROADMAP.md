@@ -800,11 +800,34 @@ resolve uses structural identity.
 - B3 (emit rendering): DONE
 - B4 (resolve structural identity): accessor layer done, `node.name`
   still semantic authority underneath
-- D6 open:
-  - [ ] Migrate remaining emit sites (Python ~5, Go ~5, shared ~5)
-  - [ ] Update ~256 Node constructions to drop `name:`
-  - [ ] Migrate synthetic node identity to structural
-  - [ ] Delete `Node.name` field + scrambled-name tests
+- D6 progress (PR #356):
+  - [x] Thread `si: NewlineIndex?` through complexity + ownership
+  - [x] Migrate ~90 accessor calls to `_at` variants
+  - [x] Centralize type builders in `04_types.dag`
+  - [x] Fix `ident_span` on 4 constructors (`name_span` parameter)
+  - [x] Fix ident_span through infer/resolve node reconstruction (18 sites)
+  - [x] Fix 6 name_span widening bugs (binding.span → node_name_span)
+  - [x] Wire real `source_index` through emitter (46 calls), infer (13),
+    resolve (12), access (9), ownership (2 entry points), types (18)
+  - [x] Thread `source_index` through type utilities: `is_fully_resolved`,
+    `node_type_compatible`, `node_type_equals`, `node_type_shape`,
+    `node_type_deps`, `check_index_access_node`, etc.
+  - [x] Remove dual-si from `build_complexity_report` (FuncEntry.si only)
+  - [x] Migrate ~30 direct `n.name` reads to `authored_name_at` in emit/types
+  - [x] Revert `@synthetic:` ident_span — structural identity is correct path
+  - **Status:** 52 `source_index: none` remain in scope-free functions.
+    ~20 direct `n.name` reads remain. 115 Node construction sites need
+    `name:` removed for field deletion.
+- D6 open (structural work, not mechanical wiring):
+  - [ ] Add `NewlineIndex` to `ParserState` (14 parser calls)
+  - [ ] Thread `source_indices` through compile.dag serialization (11 calls)
+  - [ ] Thread `source_index` through mock/service/transport utilities (19 calls)
+  - [ ] Migrate remaining `n.name` reads (resolve slot_bindings, service
+    names, normalize, access `is_ordered_element_collection`)
+  - [ ] `named_collection_type` fabrication — `container_param_name` gap
+  - [ ] Kernel type identity: structural checks, not name recovery
+  - [ ] Update ~115 Node constructions to drop `name:`
+  - [ ] Delete `Node.name` field + non-`_at` accessors + scrambled-name tests
 
 Lanes share only `00_core.dag` (different functions, no conflict).
 
