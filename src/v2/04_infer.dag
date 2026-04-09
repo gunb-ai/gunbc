@@ -76,7 +76,8 @@ import v2.std.core {
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
-  nominal_type_ref, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved,
+  nominal_type_ref, make_container_type, make_callable_type,
+  node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved,
   resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
   bare_map_node,
   callable_inferred,
@@ -414,14 +415,11 @@ fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> 
 }
 
 fn named_collection_type(kind_name: String, element: Node) -> Node {
-  let param_name = match container_param_name(kind_name: kind_name, index: 0) { Some { value: n } => n  None => kind_name }
-  Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: kind_name, span: make_span(start: 0, end: 0)), children: [
-    Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  make_container_type(kind_name: kind_name, element: element)
 }
 
 fn resolved_callable_type(func_params: List<Node>, ret: Node) -> Node {
-  Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  make_callable_type(func_params: func_params, ret: ret)
 }
 
 // =========================================================================

@@ -46,12 +46,13 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::std_types::{SourceSpan, container_param_name_required};
+pub use crate::std_types::{SourceSpan};
 pub use crate::v2_std_core::{Node, make_span, with_optional_cardinality, unit_type, bool_type, string_type, int_type, InferredNode, Connective, Cardinality, ExprData};
 use crate::v2_std_core::InferredNode::{TypeVariable, Resolved};
 use crate::v2_std_core::Connective::{NoConnective};
 use crate::v2_std_core::Cardinality::{Required};
 use crate::v2_std_core::ExprData::{NoExprData};
+pub use crate::v2_compiler_infer_types::{make_container_type, make_map_type};
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
@@ -78,161 +79,15 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 }
 
 pub fn map_of_type_variables() -> Rc<Node> {
-    {
-        let key_name = container_param_name_required("Map".to_string(), 0);
-let val_name = container_param_name_required("Map".to_string(), 1);
-let key = type_variable_node("map_key".to_string());
-let value = type_variable_node("map_value".to_string());
-Rc::new(Node {
-    name: "Map".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![Rc::new(Node {
-    name: key_name,
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: key,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-}), Rc::new(Node {
-    name: val_name,
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: value,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-}
+    make_map_type(type_variable_node("map_key".to_string()), type_variable_node("map_value".to_string()))
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    {
-        let param_name = container_param_name_required("List".to_string(), 0);
-Rc::new(Node {
-    name: "List".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![Rc::new(Node {
-    name: param_name,
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: type_variable_node(id),
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-}
+    make_container_type("List".to_string(), type_variable_node(id))
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    {
-        let param_name = container_param_name_required("List".to_string(), 0);
-Rc::new(Node {
-    name: "List".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![Rc::new(Node {
-    name: param_name,
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: element,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-}
+    make_container_type("List".to_string(), element)
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {

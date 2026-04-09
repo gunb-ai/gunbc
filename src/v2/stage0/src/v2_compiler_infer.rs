@@ -65,7 +65,7 @@ use crate::v2_std_core::UnaryOpKind::{Not, Neg};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport};
-pub use crate::v2_compiler_infer_types::{nominal_type_ref, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self, bare_map_node, callable_inferred, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, resolved_type, child_type_node, emit_map_has, enrich_kernel_type};
+pub use crate::v2_compiler_infer_types::{nominal_type_ref, make_container_type, make_callable_type, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self, bare_map_node, callable_inferred, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, resolved_type, child_type_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type, list_of_element};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, RecursiveVariantFieldWitness, put_recursive_variant_field_witness, merge_recursive_variant_fields};
@@ -398,75 +398,11 @@ pub fn nominal_ref_node(name: String, span: Rc<SourceSpan>, ident_span: Option<R
 }
 
 pub fn named_collection_type(kind_name: String, element: Rc<Node>) -> Rc<Node> {
-    {
-        let param_name = match container_param_name(kind_name.clone(), 0) {
-    Some(n) => n.clone(),
-    None => kind_name.clone(),
-};
-Rc::new(Node {
-    name: kind_name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(kind_name.clone(), make_span(0, 0)),
-    children: Rc::new(vec![Rc::new(Node {
-    name: param_name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(param_name.clone(), make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: element,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-}
+    make_container_type(kind_name, element)
 }
 
 pub fn resolved_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
-    name: "Callable".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::Arrow,
-    params: func_params,
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: ret,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
+    make_callable_type(func_params, ret)
 }
 
 pub fn namespace_root_from_properties(properties: Rc<Vec<Rc<Node>>>, name: String) -> String {

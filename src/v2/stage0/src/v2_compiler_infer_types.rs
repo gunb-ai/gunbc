@@ -219,6 +219,203 @@ Rc::new(Node {
 }
 }
 
+pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<Node> {
+    {
+        let param_name = container_param_name_required(kind_name.clone(), 0);
+Rc::new(Node {
+    name: kind_name.clone(),
+    span: make_span(0, 0),
+    ident_span: default_ident_span(kind_name.clone(), make_span(0, 0)),
+    children: Rc::new(vec![Rc::new(Node {
+    name: param_name.clone(),
+    span: make_span(0, 0),
+    ident_span: default_ident_span(param_name.clone(), make_span(0, 0)),
+    children: Rc::new(vec![]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: Some(Rc::new(InferredNode::Resolved {
+    node: element,
+})),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})
+}
+}
+
+pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
+    {
+        let key_name = container_param_name_required("Map".to_string(), 0);
+let val_name = container_param_name_required("Map".to_string(), 1);
+Rc::new(Node {
+    name: "Map".to_string(),
+    span: make_span(0, 0),
+    ident_span: Some(make_span(0, 0)),
+    children: Rc::new(vec![Rc::new(Node {
+    name: key_name,
+    span: make_span(0, 0),
+    ident_span: Some(make_span(0, 0)),
+    children: Rc::new(vec![]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: Some(Rc::new(InferredNode::Resolved {
+    node: key,
+})),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+}), Rc::new(Node {
+    name: val_name,
+    span: make_span(0, 0),
+    ident_span: Some(make_span(0, 0)),
+    children: Rc::new(vec![]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: Some(Rc::new(InferredNode::Resolved {
+    node: value,
+})),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})
+}
+}
+
+pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+    name: "Callable".to_string(),
+    span: make_span(0, 0),
+    ident_span: Some(make_span(0, 0)),
+    children: Rc::new(vec![]),
+    connective: Connective::Arrow,
+    params: func_params,
+    inferred: Some(Rc::new(InferredNode::Resolved {
+    node: ret,
+})),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})
+}
+
+pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+    name: "".to_string(),
+    span: make_span(0, 0),
+    ident_span: None,
+    children: Rc::new(vec![Rc::new(Node {
+    name: "first".to_string(),
+    span: make_span(0, 0),
+    ident_span: None,
+    children: Rc::new(vec![]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: Some(Rc::new(InferredNode::Resolved {
+    node: first,
+})),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+}), Rc::new(Node {
+    name: "second".to_string(),
+    span: make_span(0, 0),
+    ident_span: None,
+    children: Rc::new(vec![]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: Some(Rc::new(InferredNode::Resolved {
+    node: second,
+})),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})]),
+    connective: Connective::Conj,
+    params: Rc::new(vec![]),
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})
+}
+
 pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: name.clone(),
@@ -246,27 +443,7 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
 pub fn algebra_method_field(name: String, param_types: Rc<Vec<Rc<Node>>>, return_type: Rc<Node>) -> Rc<Node> {
     {
         let params = Rc::new({ let mut __result = Vec::new(); for t in param_types.iter().cloned() { __result.push(make_param_node("_".to_string(), t.clone(), None, no_span(), no_span())); } __result });
-let callable = Rc::new(Node {
-    name: "Callable".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::Arrow,
-    params: params,
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: return_type,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-});
+let callable = make_callable_type(params, return_type);
 Rc::new(Node {
     name: name.clone(),
     span: no_span(),
@@ -346,140 +523,11 @@ match (*template).clone() {
     ContainerSource::SameAsReceiver => base.name.clone(),
     ContainerSource::Named { name: n, .. } => n.clone(),
 };
-let param_name = match container_param_name(kind_name.clone(), 0) {
-    Some(n) => n.clone(),
-    None => kind_name.clone(),
-};
-let elem = instantiate_algebra_type(inner.clone(), base.clone());
-Rc::new(Node {
-    name: kind_name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(kind_name.clone(), make_span(0, 0)),
-    children: Rc::new(vec![Rc::new(Node {
-    name: param_name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(param_name.clone(), make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: elem,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
+make_container_type(kind_name, instantiate_algebra_type(inner.clone(), base.clone()))
 },
     AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(instantiate_algebra_type(inner.clone(), base.clone())),
-    AlgebraTypeTemplate::TupleOf { first, second, .. } => {
-                let first_node = instantiate_algebra_type(first.clone(), base.clone());
-let second_node = instantiate_algebra_type(second.clone(), base.clone());
-Rc::new(Node {
-    name: "".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
-    children: Rc::new(vec![Rc::new(Node {
-    name: "first".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: first_node,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-}), Rc::new(Node {
-    name: "second".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: second_node,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})]),
-    connective: Connective::Conj,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-},
-    AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => {
-                let func_params = Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), base.clone())); } __result });
-let ret = instantiate_algebra_type(r.clone(), base.clone());
-Rc::new(Node {
-    name: "Callable".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::Arrow,
-    params: func_params,
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: ret,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-},
+    AlgebraTypeTemplate::TupleOf { first, second, .. } => make_tuple_type(instantiate_algebra_type(first.clone(), base.clone()), instantiate_algebra_type(second.clone(), base.clone())),
+    AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => make_callable_type(Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), base.clone())); } __result }), instantiate_algebra_type(r.clone(), base.clone())),
 }
 }
     })
@@ -640,118 +688,14 @@ if (arity.clone() == Some(2)) {
     Some(v) => v.clone(),
     None => type_variable_node("V".to_string()),
 };
-let key_name = container_param_name_required("Map".to_string(), 0);
-let val_name = container_param_name_required("Map".to_string(), 1);
-Rc::new(Node {
-    name: "Map".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![Rc::new(Node {
-    name: key_name,
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: key.clone(),
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-}), Rc::new(Node {
-    name: val_name,
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: val,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
+make_map_type(key.clone(), val)
 },
     None => receiver.clone(),
 }
 } else {
                         if (arity.clone() == Some(1)) {
                             match v2_rt::map_get(&subst, "__element__".to_string()) {
-    Some(elem) => {
-                                let param_name = match container_param_name(receiver.name.clone(), 0) {
-    Some(n) => n.clone(),
-    None => receiver.name.clone(),
-};
-Rc::new(Node {
-    name: receiver.name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(receiver.name.clone(), make_span(0, 0)),
-    children: Rc::new(vec![Rc::new(Node {
-    name: param_name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(param_name.clone(), make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: elem.clone(),
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-},
+    Some(elem) => make_container_type(receiver.name.clone(), elem.clone()),
     None => receiver.clone(),
 }
 } else {
@@ -790,139 +734,13 @@ Rc::new(Node {
     ContainerSource::SameAsReceiver => receiver.name.clone(),
     ContainerSource::Named { name: n, .. } => n.clone(),
 };
-let param_name = match container_param_name(kind_name.clone(), 0) {
-    Some(n) => n.clone(),
-    None => kind_name.clone(),
-};
-let elem = apply_type_substitution(inner.clone(), subst.clone(), receiver.clone());
-Rc::new(Node {
-    name: kind_name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(kind_name.clone(), make_span(0, 0)),
-    children: Rc::new(vec![Rc::new(Node {
-    name: param_name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(param_name.clone(), make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: elem.clone(),
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
+make_container_type(kind_name, apply_type_substitution(inner.clone(), subst.clone(), receiver.clone()))
 },
     AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(apply_type_substitution(inner.clone(), subst.clone(), receiver.clone())),
-    AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => {
-            let first_node = apply_type_substitution(ft.clone(), subst.clone(), receiver.clone());
-let second_node = apply_type_substitution(st.clone(), subst.clone(), receiver.clone());
-Rc::new(Node {
-    name: "".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
-    children: Rc::new(vec![Rc::new(Node {
-    name: "first".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: first_node,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-}), Rc::new(Node {
-    name: "second".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: second_node,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})]),
-    connective: Connective::Conj,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-},
+    AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => make_tuple_type(apply_type_substitution(ft.clone(), subst.clone(), receiver.clone()), apply_type_substitution(st.clone(), subst.clone(), receiver.clone())),
     AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => {
             let param_nodes = Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(apply_type_substitution(tp.clone(), subst.clone(), receiver.clone())); } __result });
-let ret = apply_type_substitution(r.clone(), subst.clone(), receiver.clone());
-Rc::new(Node {
-    name: "Callable".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::Arrow,
-    params: Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node("_".to_string(), pn.clone(), None, no_span(), no_span())); } __result }),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: ret,
-})),
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
+make_callable_type(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node("_".to_string(), pn.clone(), None, no_span(), no_span())); } __result }), apply_type_substitution(r.clone(), subst.clone(), receiver.clone()))
 },
 }
     })
