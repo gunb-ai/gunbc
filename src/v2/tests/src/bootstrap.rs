@@ -67,7 +67,11 @@ fn stage0_cargo_check() {
 // 2026-04-09: 485→483 — CX-L2: element_type on InductiveField, match-binding
 //   type propagation, collection+lambda evidence in ExprCall, child accessor
 //   let-binding classification.
-const DIAG_RATCHET: usize = 483;
+// 2026-04-09: 483→459 — CX-L2: arithmetic descent (Sub/Div/Add in
+//   classify_argument + classify_let_value). Dissolves ceil_log_iter,
+//   to_string_helper, int_to_string_acc, tokenizer position advancement,
+//   + composed callers.
+const DIAG_RATCHET: usize = 459;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

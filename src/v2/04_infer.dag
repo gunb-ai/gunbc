@@ -2441,6 +2441,70 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
           None => none
         }
       } else { none }
+    // Arithmetic let-bindings: let rest = value / 10, let next = pos + 1, let smaller = n - 1
+    ExprBinOp { op: op } =>
+      let left = binop_left(texpr: val)
+      let right = binop_right(texpr: val)
+      match op {
+        Sub =>
+          match left.expr_data {
+            ExprVar { binding_kind: _ } =>
+              let lname = expr_var_name(texpr: left)
+              if map_get(ctx.param_names, lname) != none || map_get(ctx.sub_value_vars, lname) != none {
+                match right.expr_data {
+                  ExprLiteral { value: LitInt { value: k } } =>
+                    if k > 0 {
+                      let synth_field = InductiveField { type_name: lname, variant_name: "", field_name: "_arith", shape: DirectRecursion, element_type: lname }
+                      Some { value: StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } } }
+                    } else { none }
+                  _ => none
+                }
+              } else { none }
+            _ => none
+          }
+        Div =>
+          let left_name = match left.expr_data {
+            ExprVar { binding_kind: _ } =>
+              let lname = expr_var_name(texpr: left)
+              if map_get(ctx.param_names, lname) != none || map_get(ctx.sub_value_vars, lname) != none { lname } else { "" }
+            ExprBinOp { op: Sub } =>
+              let inner_left = binop_left(texpr: left)
+              match inner_left.expr_data {
+                ExprVar { binding_kind: _ } =>
+                  let lname = expr_var_name(texpr: inner_left)
+                  if map_get(ctx.param_names, lname) != none || map_get(ctx.sub_value_vars, lname) != none { lname } else { "" }
+                _ => ""
+              }
+            _ => ""
+          }
+          if left_name != "" {
+            match right.expr_data {
+              ExprLiteral { value: LitInt { value: k } } =>
+                if k > 1 {
+                  let synth_field = InductiveField { type_name: left_name, variant_name: "", field_name: "_arith", shape: DirectRecursion, element_type: left_name }
+                  Some { value: StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: k } } }
+                } else { none }
+              _ => none
+            }
+          } else { none }
+        Add =>
+          match left.expr_data {
+            ExprVar { binding_kind: _ } =>
+              let lname = expr_var_name(texpr: left)
+              if map_get(ctx.param_names, lname) != none {
+                match right.expr_data {
+                  ExprLiteral { value: LitInt { value: k } } =>
+                    if k > 0 {
+                      let synth_field = InductiveField { type_name: lname, variant_name: "", field_name: "_arith", shape: DirectRecursion, element_type: lname }
+                      Some { value: StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } } }
+                    } else { none }
+                  _ => none
+                }
+              } else { none }
+            _ => none
+          }
+        _ => none
+      }
     _ => none
   }
 }
@@ -2520,6 +2584,63 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
     // param |> take(mid) or param |> skip(mid) → collection shrink
     ExprMethodCall { method_semantics: _ } =>
       classify_collection_shrink(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    // Arithmetic descent: param - k, param / k, param + k (position advance on bounded domain)
+    ExprBinOp { op: op } =>
+      let left = binop_left(texpr: arg_expr)
+      let right = binop_right(texpr: arg_expr)
+      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: "_arith", shape: DirectRecursion, element_type: param_name }
+      match op {
+        Sub =>
+          // param - k → ConstantShrink
+          let left_is_param = match left.expr_data {
+            ExprVar { binding_kind: _ } => expr_var_name(texpr: left) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: left)) != none
+            _ => false
+          }
+          if left_is_param {
+            match right.expr_data {
+              ExprLiteral { value: LitInt { value: k } } =>
+                if k > 0 { StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } } }
+                else { SubValueUnknown }
+              _ => SubValueUnknown
+            }
+          } else { SubValueUnknown }
+        Div =>
+          // param / k or (param - expr) / k → ProportionalShrink
+          let left_is_param = match left.expr_data {
+            ExprVar { binding_kind: _ } => expr_var_name(texpr: left) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: left)) != none
+            ExprBinOp { op: Sub } =>
+              // (param - digit) / 10 pattern
+              let inner_left = binop_left(texpr: left)
+              match inner_left.expr_data {
+                ExprVar { binding_kind: _ } => expr_var_name(texpr: inner_left) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: inner_left)) != none
+                _ => false
+              }
+            _ => false
+          }
+          if left_is_param {
+            match right.expr_data {
+              ExprLiteral { value: LitInt { value: k } } =>
+                if k > 1 { StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: k } } }
+                else { SubValueUnknown }
+              _ => SubValueUnknown
+            }
+          } else { SubValueUnknown }
+        Add =>
+          // param + k → position advance (bounded by input length)
+          let left_is_param = match left.expr_data {
+            ExprVar { binding_kind: _ } => expr_var_name(texpr: left) == param_name
+            _ => false
+          }
+          if left_is_param {
+            match right.expr_data {
+              ExprLiteral { value: LitInt { value: k } } =>
+                if k > 0 { StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } } }
+                else { SubValueUnknown }
+              _ => SubValueUnknown
+            }
+          } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
     _ => SubValueUnknown
   }
 }

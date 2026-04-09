@@ -2525,6 +2525,130 @@ match cf {
             None
 }
 },
+    ExprData::ExprBinOp { op, .. } => {
+        let left = binop_left(val.clone());
+let right = binop_right(val.clone());
+match op.clone() {
+    BinOp::Sub => match (*left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+            let lname = expr_var_name(left.clone());
+if ((v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), lname.clone()) != None)) {
+                match (*right.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
+                    {
+                        let synth_field = Rc::new(InductiveField {
+    type_name: lname.clone(),
+    variant_name: "".to_string(),
+    field_name: "_arith".to_string(),
+    shape: RecursionShape::DirectRecursion,
+    element_type: lname.clone(),
+});
+Some(Rc::new(SubValueRelation::StrictSubValue {
+    field: synth_field,
+    factor: Rc::new(ShrinkFactor::ConstantShrink {
+    amount: k.clone(),
+}),
+}))
+}
+} else {
+                    None
+} },
+    _ => None,
+}
+} else {
+                None
+}
+},
+    _ => None,
+},
+    BinOp::Div => {
+            let left_name = match (*left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                let lname = expr_var_name(left.clone());
+if ((v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), lname.clone()) != None)) {
+                    lname.clone()
+} else {
+                    "".to_string()
+}
+},
+    ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
+                let inner_left = binop_left(left.clone());
+match (*inner_left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                    let lname = expr_var_name(inner_left.clone());
+if ((v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), lname.clone()) != None)) {
+                        lname.clone()
+} else {
+                        "".to_string()
+}
+},
+    _ => "".to_string(),
+}
+},
+    _ => "".to_string(),
+};
+if (left_name.clone().as_str() != "".to_string().as_str()) {
+                match (*right.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 1) {
+                    {
+                        let synth_field = Rc::new(InductiveField {
+    type_name: left_name.clone(),
+    variant_name: "".to_string(),
+    field_name: "_arith".to_string(),
+    shape: RecursionShape::DirectRecursion,
+    element_type: left_name.clone(),
+});
+Some(Rc::new(SubValueRelation::StrictSubValue {
+    field: synth_field,
+    factor: Rc::new(ShrinkFactor::ProportionalShrink {
+    divisor: k.clone(),
+}),
+}))
+}
+} else {
+                    None
+} },
+    _ => None,
+}
+} else {
+                None
+}
+},
+    BinOp::Add => match (*left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+            let lname = expr_var_name(left.clone());
+if (v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) {
+                match (*right.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
+                    {
+                        let synth_field = Rc::new(InductiveField {
+    type_name: lname.clone(),
+    variant_name: "".to_string(),
+    field_name: "_arith".to_string(),
+    shape: RecursionShape::DirectRecursion,
+    element_type: lname.clone(),
+});
+Some(Rc::new(SubValueRelation::StrictSubValue {
+    field: synth_field,
+    factor: Rc::new(ShrinkFactor::ConstantShrink {
+    amount: k.clone(),
+}),
+}))
+}
+} else {
+                    None
+} },
+    _ => None,
+}
+} else {
+                None
+}
+},
+    _ => None,
+},
+    _ => None,
+}
+},
     _ => None,
 }
 }
@@ -2611,6 +2735,96 @@ match cf {
 }
 },
     ExprData::ExprMethodCall { .. } => classify_collection_shrink(arg_expr.clone(), param_name.clone(), ctx.clone()),
+    ExprData::ExprBinOp { op, .. } => {
+            let left = binop_left(arg_expr.clone());
+let right = binop_right(arg_expr.clone());
+let synth_field = Rc::new(InductiveField {
+    type_name: param_name.clone(),
+    variant_name: "".to_string(),
+    field_name: "_arith".to_string(),
+    shape: RecursionShape::DirectRecursion,
+    element_type: param_name.clone(),
+});
+match op.clone() {
+    BinOp::Sub => {
+                let left_is_param = match (*left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => ((expr_var_name(left.clone()).as_str() == param_name.clone().as_str()) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), expr_var_name(left.clone())) != None)),
+    _ => false,
+};
+if left_is_param {
+                    match (*right.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
+                        Rc::new(SubValueRelation::StrictSubValue {
+    field: synth_field,
+    factor: Rc::new(ShrinkFactor::ConstantShrink {
+    amount: k.clone(),
+}),
+})
+} else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+} },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+} else {
+                    Rc::new(SubValueRelation::SubValueUnknown)
+}
+},
+    BinOp::Div => {
+                let left_is_param = match (*left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => ((expr_var_name(left.clone()).as_str() == param_name.clone().as_str()) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), expr_var_name(left.clone())) != None)),
+    ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
+                    let inner_left = binop_left(left.clone());
+match (*inner_left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => ((expr_var_name(inner_left.clone()).as_str() == param_name.clone().as_str()) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), expr_var_name(inner_left.clone())) != None)),
+    _ => false,
+}
+},
+    _ => false,
+};
+if left_is_param {
+                    match (*right.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 1) {
+                        Rc::new(SubValueRelation::StrictSubValue {
+    field: synth_field,
+    factor: Rc::new(ShrinkFactor::ProportionalShrink {
+    divisor: k.clone(),
+}),
+})
+} else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+} },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+} else {
+                    Rc::new(SubValueRelation::SubValueUnknown)
+}
+},
+    BinOp::Add => {
+                let left_is_param = match (*left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => (expr_var_name(left.clone()).as_str() == param_name.clone().as_str()),
+    _ => false,
+};
+if left_is_param {
+                    match (*right.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
+                        Rc::new(SubValueRelation::StrictSubValue {
+    field: synth_field,
+    factor: Rc::new(ShrinkFactor::ConstantShrink {
+    amount: k.clone(),
+}),
+})
+} else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+} },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+} else {
+                    Rc::new(SubValueRelation::SubValueUnknown)
+}
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
     })
