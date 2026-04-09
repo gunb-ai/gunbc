@@ -28,7 +28,8 @@ pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport
 pub use crate::v2_compiler_infer_types::{nominal_type_ref, make_container_type, make_callable_type, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self, bare_map_node, callable_inferred, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, resolved_type, child_type_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type, list_of_element};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
-pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for};
+pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for, inductive_fields_list_to_map};
+pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
@@ -316,7 +317,20 @@ pub fn nominal_type_binding(name: String) -> Rc<TypeBinding> {
 })
 }
 
-pub fn classify_field_recursion(field_node: Rc<Node>, parent_name: String) -> Option<RecursionShape> {
+pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
+    match v2_rt::map_get(&m, key) {
+    Some(_) => true,
+    None => false,
+}
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FieldRecursionResult {
+    pub shape: RecursionShape,
+    pub element_type: String,
+}
+
+pub fn classify_field_recursion(field_node: Rc<Node>, parent_name: String, recursive_type_set: Rc<HashMap<String, bool>>) -> Option<Rc<FieldRecursionResult>> {
     {
         let type_expr = match field_node.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
@@ -325,8 +339,14 @@ pub fn classify_field_recursion(field_node: Rc<Node>, parent_name: String) -> Op
 let field_type_name = type_expr.name.clone();
 if (field_type_name.clone().as_str() == parent_name.clone().as_str()) {
             match field_node.return_cardinality.clone() {
-    Cardinality::CardOptional => Some(RecursionShape::OptionalRecursion),
-    _ => Some(RecursionShape::DirectRecursion),
+    Cardinality::CardOptional => Some(Rc::new(FieldRecursionResult {
+    shape: RecursionShape::OptionalRecursion,
+    element_type: parent_name.clone(),
+})),
+    _ => Some(Rc::new(FieldRecursionResult {
+    shape: RecursionShape::DirectRecursion,
+    element_type: parent_name.clone(),
+})),
 }
 } else {
             if is_container_type(field_type_name.clone()) {
@@ -344,62 +364,79 @@ let value_type = match type_expr.children.clone().get(value_index as usize).clon
     Some(t) => t.name.clone(),
     None => "".to_string(),
 };
-if (value_type.as_str() == parent_name.clone().as_str()) {
-                        match field_type_name.clone().as_str() {
-    "List" => Some(RecursionShape::ListRecursion),
-    "NonEmptyList" => Some(RecursionShape::ListRecursion),
-    "Set" => Some(RecursionShape::SetRecursion),
-    "NonEmptySet" => Some(RecursionShape::SetRecursion),
-    "Map" => Some(RecursionShape::MapValueRecursion),
+let is_recursive_element = ((value_type.clone().as_str() == parent_name.clone().as_str()) || set_has(recursive_type_set, value_type.clone()));
+if is_recursive_element {
+                        {
+                            let elem = if (value_type.clone().as_str() == parent_name.clone().as_str()) {
+                                parent_name.clone()
+} else {
+                                value_type.clone()
+};
+match field_type_name.clone().as_str() {
+    "List" => Some(Rc::new(FieldRecursionResult {
+    shape: RecursionShape::ListRecursion,
+    element_type: elem,
+})),
+    "NonEmptyList" => Some(Rc::new(FieldRecursionResult {
+    shape: RecursionShape::ListRecursion,
+    element_type: elem,
+})),
+    "Set" => Some(Rc::new(FieldRecursionResult {
+    shape: RecursionShape::SetRecursion,
+    element_type: elem,
+})),
+    "NonEmptySet" => Some(Rc::new(FieldRecursionResult {
+    shape: RecursionShape::SetRecursion,
+    element_type: elem,
+})),
+    "Map" => Some(Rc::new(FieldRecursionResult {
+    shape: RecursionShape::MapValueRecursion,
+    element_type: elem,
+})),
     _ => None,
+}
 }
 } else {
                         None
 }
 }
 } else {
-                None
+                if set_has(recursive_type_set, field_type_name.clone()) {
+                    match field_node.return_cardinality.clone() {
+    Cardinality::CardOptional => Some(Rc::new(FieldRecursionResult {
+    shape: RecursionShape::OptionalRecursion,
+    element_type: field_type_name.clone(),
+})),
+    _ => Some(Rc::new(FieldRecursionResult {
+    shape: RecursionShape::DirectRecursion,
+    element_type: field_type_name.clone(),
+})),
+}
+} else {
+                    None
+}
 }
 }
 }
 }
 
-pub fn collect_fields_inductive(fields: Rc<Vec<Rc<Node>>>, parent_name: String, variant_name: String, acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    fields.iter().cloned().fold(acc.clone(), |field_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field_node: Rc<Node>| match classify_field_recursion(field_node.clone(), parent_name.clone()) {
-    Some(shape) => put_inductive_field(field_acc.clone(), parent_name.clone(), variant_name.clone(), field_node.name.clone(), shape.clone()),
+pub fn collect_fields_inductive(fields: Rc<Vec<Rc<Node>>>, parent_name: String, variant_name: String, recursive_type_set: Rc<HashMap<String, bool>>, acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    fields.iter().cloned().fold(acc.clone(), |field_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field_node: Rc<Node>| match classify_field_recursion(field_node.clone(), parent_name.clone(), recursive_type_set.clone()) {
+    Some(result) => put_inductive_field_cross(field_acc.clone(), parent_name.clone(), variant_name.clone(), field_node.name.clone(), result.shape.clone(), result.element_type.clone()),
     None => field_acc.clone(),
 })
 }
 
 pub fn collect_item_inductive_fields(item: Rc<Node>, recursive_type_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    if (v2_rt::map_get(&recursive_type_set, item.name.clone()) == None) {
-        v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>()
-} else {
-        match item.connective.clone() {
-    Connective::Disj => item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |variant_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, variant_node: Rc<Node>| collect_fields_inductive(variant_node.children.clone(), item.name.clone(), variant_node.name.clone(), variant_acc.clone())),
-    Connective::Conj => collect_fields_inductive(item.children.clone(), item.name.clone(), "".to_string(), v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>()),
+    match item.connective.clone() {
+    Connective::Disj => item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |variant_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, variant_node: Rc<Node>| collect_fields_inductive(variant_node.children.clone(), item.name.clone(), variant_node.name.clone(), recursive_type_set.clone(), variant_acc.clone())),
+    Connective::Conj => collect_fields_inductive(item.children.clone(), item.name.clone(), "".to_string(), recursive_type_set.clone(), v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>()),
     _ => v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(),
-}
 }
 }
 
 pub fn build_item_inductive_fields(items: Rc<Vec<Rc<Node>>>, recursive_type_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     items.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, item: Rc<Node>| merge_inductive_fields(acc.clone(), collect_item_inductive_fields(item.clone(), recursive_type_set.clone())))
-}
-
-pub fn kernel_node_inductive_fields() -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    {
-        let fields = build_item_inductive_fields(Rc::new(vec![]), v2_rt::rc_empty_map::<bool>());
-let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "children".to_string(), RecursionShape::ListRecursion);
-let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "params".to_string(), RecursionShape::ListRecursion);
-let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "uses".to_string(), RecursionShape::ListRecursion);
-let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "properties".to_string(), RecursionShape::ListRecursion);
-let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "body".to_string(), RecursionShape::OptionalRecursion);
-let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "transport".to_string(), RecursionShape::OptionalRecursion);
-let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "type_annotation".to_string(), RecursionShape::OptionalRecursion);
-let fields = put_inductive_field_cross(fields.clone(), "Node".to_string(), "".to_string(), "inferred".to_string(), RecursionShape::OptionalRecursion, "InferredNode".to_string());
-put_inductive_field(fields.clone(), "InferredNode".to_string(), "Resolved".to_string(), "node".to_string(), RecursionShape::DirectRecursion)
-}
 }
 
 pub fn nominal_ref_node(name: String, span: Rc<SourceSpan>, ident_span: Option<Rc<SourceSpan>>) -> Rc<Node> {
@@ -2661,38 +2698,7 @@ Some(Rc::new(SubValueRelation::StrictSubValue {
                 None
 }
 },
-    BinOp::Add => match (*left.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-            let lname = expr_var_name(left.clone());
-if (v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) {
-                match (*right.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
-                    {
-                        let synth_field = Rc::new(InductiveField {
-    type_name: lname.clone(),
-    variant_name: "".to_string(),
-    field_name: "_arith".to_string(),
-    shape: RecursionShape::DirectRecursion,
-    element_type: lname.clone(),
-});
-Some(Rc::new(SubValueRelation::StrictSubValue {
-    field: synth_field,
-    factor: Rc::new(ShrinkFactor::ConstantShrink {
-    amount: k.clone(),
-}),
-}))
-}
-} else {
-                    None
-} },
-    _ => None,
-}
-} else {
-                None
-}
-},
-    _ => None,
-},
+    BinOp::Add => None,
     _ => None,
 }
 },
@@ -2865,29 +2871,7 @@ if left_is_param {
                     Rc::new(SubValueRelation::SubValueUnknown)
 }
 },
-    BinOp::Add => {
-                let left_is_param = match (*left.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => (expr_var_name(left.clone()).as_str() == param_name.clone().as_str()),
-    _ => false,
-};
-if left_is_param {
-                    match (*right.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
-                        Rc::new(SubValueRelation::StrictSubValue {
-    field: synth_field,
-    factor: Rc::new(ShrinkFactor::ConstantShrink {
-    amount: k.clone(),
-}),
-})
-} else {
-                        Rc::new(SubValueRelation::SubValueUnknown)
-} },
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
-}
-} else {
-                    Rc::new(SubValueRelation::SubValueUnknown)
-}
-},
+    BinOp::Add => Rc::new(SubValueRelation::SubValueUnknown),
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
 },
@@ -3986,7 +3970,7 @@ let kernel_bindings = v2_rt::rc_map_insert(kernel_bindings.clone(), "Optional".t
     name: "Optional".to_string(),
     resolved: kernel_optional,
 }));
-let node_fields = kernel_node_inductive_fields();
+let node_fields = inductive_fields_list_to_map(compiler_inductive_fields());
 let kernel = Rc::new(TypeEnv {
     bindings: kernel_bindings.clone(),
     recursive_types: Rc::new(vec![]),

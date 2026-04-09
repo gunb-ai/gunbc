@@ -99,8 +99,10 @@ import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
   is_recursive_type, lookup_type, lookup_type_for, merge_envs,
-  put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for
+  put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
+  inductive_fields_list_to_map
 }
+import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown,
@@ -384,10 +386,23 @@ fn nominal_type_binding(name: String) -> TypeBinding {
   TypeBinding { name: name, resolved: nominal_leaf_type(name: name) }
 }
 
+// Map-as-set membership check.
+fn set_has(m: Map<String, Bool>, key: String) -> Bool {
+  match map_get(m, key) {
+    Some { value: _ } => true
+    None => false
+  }
+}
+
 // Classify a field's recursive relationship to its parent type.
 // Returns the RecursionShape if the field references the parent type, or none.
 // Dispatches on container identity (List/Set/Map), not arity.
-fn classify_field_recursion(field_node: Node, parent_name: String) -> RecursionShape? {
+type FieldRecursionResult {
+  shape: RecursionShape
+  element_type: String
+}
+
+fn classify_field_recursion(field_node: Node, parent_name: String, recursive_type_set: Map<String, Bool>) -> FieldRecursionResult? {
   // After field_to_child_node, type info is in inferred (not children).
   let type_expr = match field_node.inferred {
     Some { value: Resolved { node: rt } } => rt
@@ -395,66 +410,66 @@ fn classify_field_recursion(field_node: Node, parent_name: String) -> RecursionS
   }
   let field_type_name = type_expr.name
   if field_type_name == parent_name {
-    // Direct or Optional: check cardinality
+    // Self-referential: Direct or Optional based on cardinality
     match field_node.return_cardinality {
-      CardOptional => Some { value: OptionalRecursion }
-      _ => Some { value: DirectRecursion }
+      CardOptional => Some { value: FieldRecursionResult { shape: OptionalRecursion, element_type: parent_name } }
+      _ => Some { value: FieldRecursionResult { shape: DirectRecursion, element_type: parent_name } }
     }
-  } else {
-    // Container<parent_type>: dispatch on container kind via std/types.dag
-    // Arity-1 containers (List, Set): element type is first child
-    // Arity-2 containers (Map): value type is second child
-    if is_container_type(name: field_type_name) {
-      let arity = match container_expected_arity(name: field_type_name) {
-        Some { value: a } => a
-        None => 0
+  } else if is_container_type(name: field_type_name) {
+    // Container<T>: check if T is parent_name (self) or in recursive_type_set (cross-type)
+    let arity = match container_expected_arity(name: field_type_name) {
+      Some { value: a } => a
+      None => 0
+    }
+    let value_index = if arity == 2 { 1 } else { 0 }
+    let value_type = match type_expr.children |> skip(value_index) |> first {
+      Some { value: t } => t.name
+      None => ""
+    }
+    let is_recursive_element = value_type == parent_name || set_has(m: recursive_type_set, key: value_type)
+    if is_recursive_element {
+      let elem = if value_type == parent_name { parent_name } else { value_type }
+      match field_type_name {
+        "List" => Some { value: FieldRecursionResult { shape: ListRecursion, element_type: elem } }
+        "NonEmptyList" => Some { value: FieldRecursionResult { shape: ListRecursion, element_type: elem } }
+        "Set" => Some { value: FieldRecursionResult { shape: SetRecursion, element_type: elem } }
+        "NonEmptySet" => Some { value: FieldRecursionResult { shape: SetRecursion, element_type: elem } }
+        "Map" => Some { value: FieldRecursionResult { shape: MapValueRecursion, element_type: elem } }
+        _ => none
       }
-      let value_index = if arity == 2 { 1 } else { 0 }
-      let value_type = match type_expr.children |> skip(value_index) |> first {
-        Some { value: t } => t.name
-        None => ""
-      }
-      if value_type == parent_name {
-        // Dispatch on container identity — fail-closed for unrecognized containers
-        match field_type_name {
-          "List" => Some { value: ListRecursion }
-          "NonEmptyList" => Some { value: ListRecursion }
-          "Set" => Some { value: SetRecursion }
-          "NonEmptySet" => Some { value: SetRecursion }
-          "Map" => Some { value: MapValueRecursion }
-          _ => none
-        }
-      } else { none }
     } else { none }
-  }
+  } else if set_has(m: recursive_type_set, key: field_type_name) {
+    // Cross-type reference to another recursive type (e.g., InferredNode → Node)
+    match field_node.return_cardinality {
+      CardOptional => Some { value: FieldRecursionResult { shape: OptionalRecursion, element_type: field_type_name } }
+      _ => Some { value: FieldRecursionResult { shape: DirectRecursion, element_type: field_type_name } }
+    }
+  } else { none }
 }
 
 // Collect InductiveFields for the fields of a single variant or record.
-fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_name: String, acc: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
+fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_name: String, recursive_type_set: Map<String, Bool>, acc: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
   fields |> fold(init: acc, f: (field_acc, field_node) =>
-    match classify_field_recursion(field_node: field_node, parent_name: parent_name) {
-      Some { value: shape } =>
-        put_inductive_field(fields: field_acc, type_name: parent_name, variant_name: variant_name, field_name: field_node.name, shape: shape)
+    match classify_field_recursion(field_node: field_node, parent_name: parent_name, recursive_type_set: recursive_type_set) {
+      Some { value: result } =>
+        put_inductive_field_cross(fields: field_acc, type_name: parent_name, variant_name: variant_name, field_name: field_node.name, shape: result.shape, element_type: result.element_type)
       None => field_acc
     }
   )
 }
 
 // Collect InductiveFields from a type item (handles both Disj and Conj).
+// Detects both self-referential fields and cross-type references to other recursive types.
 fn collect_item_inductive_fields(item: Node, recursive_type_set: Map<String, Bool>) -> Map<String, List<InductiveField>> {
-  if map_get(recursive_type_set, item.name) == none { empty_map() }
-  else {
-    match item.connective {
-      // Sum type (enum): each child is a variant with its own fields
-      Disj =>
-        item.children |> fold(init: empty_map(), f: (variant_acc, variant_node) =>
-          collect_fields_inductive(fields: variant_node.children, parent_name: item.name, variant_name: variant_node.name, acc: variant_acc)
-        )
-      // Product type (record): fields are direct children
-      Conj =>
-        collect_fields_inductive(fields: item.children, parent_name: item.name, variant_name: "", acc: empty_map())
-      _ => empty_map()
-    }
+  // Cross-type: any type can have fields referencing recursive types, not just recursive types themselves
+  match item.connective {
+    Disj =>
+      item.children |> fold(init: empty_map(), f: (variant_acc, variant_node) =>
+        collect_fields_inductive(fields: variant_node.children, parent_name: item.name, variant_name: variant_node.name, recursive_type_set: recursive_type_set, acc: variant_acc)
+      )
+    Conj =>
+      collect_fields_inductive(fields: item.children, parent_name: item.name, variant_name: "", recursive_type_set: recursive_type_set, acc: empty_map())
+    _ => empty_map()
   }
 }
 
@@ -462,23 +477,6 @@ fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Map<String
   items |> fold(init: empty_map(), f: (acc, item) =>
     merge_inductive_fields(left: acc, right: collect_item_inductive_fields(item: item, recursive_type_set: recursive_type_set))
   )
-}
-
-// Kernel seed for Node's inductive fields. Uses build_item_inductive_fields
-// with empty items to get a correctly-typed empty map, then adds entries.
-fn kernel_node_inductive_fields() -> Map<String, List<InductiveField>> {
-  let fields = build_item_inductive_fields(items: [], recursive_type_set: empty_map())
-  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "children", shape: ListRecursion)
-  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "params", shape: ListRecursion)
-  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "uses", shape: ListRecursion)
-  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "properties", shape: ListRecursion)
-  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "body", shape: OptionalRecursion)
-  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "transport", shape: OptionalRecursion)
-  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "type_annotation", shape: OptionalRecursion)
-  // Cross-type: Node.inferred is InferredNode?, not Node?
-  let fields = put_inductive_field_cross(fields: fields, type_name: "Node", variant_name: "", field_name: "inferred", shape: OptionalRecursion, element_type: "InferredNode")
-  // InferredNode.Resolved.node is a Node (cross-type back-reference)
-  put_inductive_field(fields: fields, type_name: "InferredNode", variant_name: "Resolved", field_name: "node", shape: DirectRecursion)
 }
 
 fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
@@ -2522,21 +2520,10 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
             }
           } else { none }
         Add =>
-          match left.expr_data {
-            ExprVar { binding_kind: _ } =>
-              let lname = expr_var_name(texpr: left)
-              if map_get(ctx.param_names, lname) != none {
-                match right.expr_data {
-                  ExprLiteral { value: LitInt { value: k } } =>
-                    if k > 0 {
-                      let synth_field = InductiveField { type_name: lname, variant_name: "", field_name: "_arith", shape: DirectRecursion, element_type: lname }
-                      Some { value: StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } } }
-                    } else { none }
-                  _ => none
-                }
-              } else { none }
-            _ => none
-          }
+          // param + k makes value LARGER, not smaller. This is NOT descent evidence.
+          // Position advance patterns are bounded by external constraints (token length),
+          // not by self-recursion on the incremented value.
+          none
         _ => none
       }
     // Collection-preserving methods: skip/filter/take/enumerate on a known collection
@@ -2673,19 +2660,10 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             }
           } else { SubValueUnknown }
         Add =>
-          // param + k → position advance (bounded by input length)
-          let left_is_param = match left.expr_data {
-            ExprVar { binding_kind: _ } => expr_var_name(texpr: left) == param_name
-            _ => false
-          }
-          if left_is_param {
-            match right.expr_data {
-              ExprLiteral { value: LitInt { value: k } } =>
-                if k > 0 { StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } } }
-                else { SubValueUnknown }
-              _ => SubValueUnknown
-            }
-          } else { SubValueUnknown }
+          // param + k makes value LARGER, not smaller. This is NOT descent evidence.
+          // Position advance patterns (parser pos + 1) are bounded by other parameters
+          // (token length), not by self-recursion. Direct count_up(n: n + 1) is Forever.
+          SubValueUnknown
         _ => SubValueUnknown
       }
     _ => SubValueUnknown
@@ -3515,10 +3493,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let some_variant = Node { name: "Some", span: zero_span, ident_span: Some { value: zero_span }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, ident_span: Some { value: zero_span }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
-  // Node is the kernel's only recursive type. Seed its inductive fields
-  // so CX-L1 can prove tree-walk functions are O(n). Phase 1 of the
-  // Node migration path (see ROADMAP CX-NEXT).
-  let node_fields = kernel_node_inductive_fields()
+  // Compiler types' inductive fields are declared in std/node.dag.
+  // This provides the structural facts for CX-L2 to prove tree-walk
+  // functions are O(n). See ROADMAP CX-NEXT Phase 2.
+  let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: node_fields, source_index: source_index }
 
   // Collect imported type bindings from parent modules.

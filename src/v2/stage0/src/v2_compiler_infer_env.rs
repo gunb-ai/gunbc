@@ -110,6 +110,16 @@ v2_rt::rc_map_insert(acc.clone(), type_name.clone(), v2_rt::concat(existing.clon
 })
 }
 
+pub fn inductive_fields_list_to_map(fields: Rc<Vec<Rc<InductiveField>>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    fields.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
+        let existing = match v2_rt::map_get(&acc, field.type_name.clone()) {
+    Some(fs) => fs.clone(),
+    None => Rc::new(vec![]),
+};
+v2_rt::rc_map_insert(acc.clone(), field.type_name.clone(), v2_rt::concat(existing.clone(), Rc::new(vec![field.clone()])))
+})
+}
+
 pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
     {
         let merged_bindings = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.bindings.clone()));
