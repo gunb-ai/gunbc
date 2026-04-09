@@ -649,7 +649,7 @@ fn param_node_span(n: Node) -> SourceSpan { n.span }
 fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: SourceSpan, name_span: SourceSpan) -> Node {
   let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
   let props = match from_key {
-    Some { value: fk } => [leaf_node(name: fk)]
+    Some { value: fk } => [Node { name: fk, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: fk, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }]
     None => []
   }
   Node {
@@ -1459,16 +1459,11 @@ fn module_items(n: Node) -> List<Node> {
 // stages — not stage-specific concepts. Moved from 04_types.dag (C1).
 // =========================================================================
 
-fn leaf_node(name: String) -> Node {
-  Node { name: name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-}
-
 fn leaf_node_with_span(name: String, span: SourceSpan) -> Node {
   Node { name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // Kernel type constants — single-authority definitions for built-in types.
-// Use these instead of leaf_node(name: "...") for kernel types.
 // Each constant encodes the structural form once; callers reference it.
 // Unit is the terminal object (empty product: Conj + 0 children).
 // All others are bare leaves until std declarations carry richer structure.

@@ -49,7 +49,7 @@ import v2.std.core {
   lambda_body, cast_expr, cast_target, return_value,
   foreach_variable, foreach_collection, foreach_body, method_arg_nodes,
   index_base, index_expr, slice_base, slice_start, slice_end,
-  leaf_node, with_required_cardinality,
+  with_required_cardinality,
   Connective, Conj, Disj,
   CardOptional,
   is_rest_transport, is_shell_transport, is_file_transport

@@ -13,8 +13,9 @@ use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSem
 use crate::v2_std_core::FieldAccessStyle::{OptionalUnwrap};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
-pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTemplate, AlgebraTypeTemplate, kernel_algebra_profile, algebra_templates_for_profile};
-use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverCollectionOf, ListOf};
+pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTemplate, AlgebraTypeTemplate, ContainerSource, kernel_algebra_profile, algebra_templates_for_profile};
+use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ContainerOf};
+use crate::std_algebra::ContainerSource::{SameAsReceiver, Named};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
 pub use crate::v2_compiler_infer_types::{child_type_node, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, emit_map_has, enrich_kernel_type};
