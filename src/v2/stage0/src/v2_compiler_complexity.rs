@@ -2371,6 +2371,7 @@ let func_entry = Rc::new(FuncEntry {
     body: body.clone(),
     params: params.clone(),
     span: body.span.clone(),
+    is_tail_recursive: false,
 });
 let func_index = seed_func_entry_map(func_name.clone(), func_entry);
 construct_scc_termination_proof(Rc::new(vec![func_name.clone()]), func_index, self_set.clone())
@@ -3633,7 +3634,8 @@ pub struct ComplexityViolation {
 pub struct StructuralBoundResult {
     pub func_name: String,
     pub param: String,
-    pub bound: Rc<CostBound>,
+    pub time_bound: Rc<CostBound>,
+    pub stack_bound: Rc<CostBound>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -4148,6 +4150,7 @@ pub struct FuncEntry {
     pub body: Rc<Node>,
     pub params: Rc<Vec<Rc<Node>>>,
     pub span: Rc<SourceSpan>,
+    pub is_tail_recursive: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -4806,7 +4809,7 @@ match evidence.clone() {
     DescentEvidence::Strict => {
                         let param_name = param_node_name(param_node.clone());
 let factor = extract_shrink_factor(all_calls.clone(), param_index.clone());
-let bound = match (*factor.clone()).clone() {
+let time_bound = match (*factor.clone()).clone() {
     ShrinkFactor::UnitShrink => catamorphism_bound(param_name.clone(), 1),
     ShrinkFactor::ConstantShrink { .. } => catamorphism_bound(param_name.clone(), 1),
     ShrinkFactor::ProportionalShrink { .. } => {
@@ -4814,10 +4817,16 @@ let bound = match (*factor.clone()).clone() {
 derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0)
 },
 };
+let stack_bound = if entry.is_tail_recursive.clone() {
+                            Rc::new(CostBound::ConstantBound)
+} else {
+                            derive_bound(param_name.clone(), 1, factor.clone(), 0)
+};
 v2_rt::concat(pacc.clone(), Rc::new(vec![Rc::new(StructuralBoundResult {
     func_name: entry.name.clone(),
     param: param_name.clone(),
-    bound: bound.clone(),
+    time_bound: time_bound.clone(),
+    stack_bound: stack_bound.clone(),
 })]))
 },
     _ => pacc.clone(),

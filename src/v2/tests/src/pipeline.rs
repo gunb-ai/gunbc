@@ -4571,7 +4571,7 @@ fn len(xs: MyList<Int>) -> Int {
     assert!(!bounds.is_empty(), "expected structural bound for len, got none");
     assert_eq!(bounds[0].param, "xs");
     assert_eq!(
-        *bounds[0].bound,
+        *bounds[0].time_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "xs".to_string(),
@@ -4603,7 +4603,7 @@ fn size(t: BinTree<Int>) -> Int {
     assert!(!bounds.is_empty(), "expected structural bound for size, got none");
     assert_eq!(bounds[0].param, "t");
     assert_eq!(
-        *bounds[0].bound,
+        *bounds[0].time_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
@@ -4636,7 +4636,7 @@ fn count(c: Chain) -> Int {
     assert!(!bounds.is_empty(), "expected structural bound for count, got none");
     assert_eq!(bounds[0].param, "c");
     assert_eq!(
-        *bounds[0].bound,
+        *bounds[0].time_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "c".to_string(),
@@ -4664,7 +4664,7 @@ fn countdown(n: Int) -> Int {
     assert!(
         bounds.is_empty(),
         "arithmetic descent on Int should produce no structural bound (got {:?})",
-        bounds.iter().map(|b| format!("{:?}", b.bound)).collect::<Vec<_>>()
+        bounds.iter().map(|b| format!("{:?}", b.time_bound)).collect::<Vec<_>>()
     );
 }
 
@@ -4720,7 +4720,7 @@ fn sum_tree(t: Tree) -> Int {
     if !bounds.is_empty() {
         assert_eq!(bounds[0].param, "t");
         assert_eq!(
-            *bounds[0].bound,
+            *bounds[0].time_bound,
             v2_compiler::std_induction::CostBound::AtomicBound {
                 cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                     param: "t".to_string(),
@@ -4759,7 +4759,7 @@ fn search(tree: BST<Int>, target: Int) -> Bool {
     assert!(!bounds.is_empty(), "expected structural bound for search, got none");
     assert_eq!(bounds[0].param, "tree");
     assert_eq!(
-        *bounds[0].bound,
+        *bounds[0].time_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "tree".to_string(),
@@ -4793,7 +4793,7 @@ fn insert(tree: BST<Int>, val: Int) -> BST<Int> {
     assert!(!bounds.is_empty(), "expected structural bound for insert, got none");
     assert_eq!(bounds[0].param, "tree");
     assert_eq!(
-        *bounds[0].bound,
+        *bounds[0].time_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "tree".to_string(),
@@ -4829,7 +4829,7 @@ fn depth(t: BinTree<Int>) -> Int {
     assert!(!bounds.is_empty(), "expected structural bound for depth, got none");
     assert_eq!(bounds[0].param, "t");
     assert_eq!(
-        *bounds[0].bound,
+        *bounds[0].time_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
@@ -4872,7 +4872,7 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
     {
         assert_eq!(bounds[0].param, "xs");
         assert_eq!(
-            *bounds[0].bound,
+            *bounds[0].time_bound,
             v2_compiler::std_induction::CostBound::AtomicBound {
                 cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
                     param: "xs".to_string(),
@@ -5023,7 +5023,7 @@ fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
     assert!(!bs_bounds.is_empty(), "expected structural bound for binary_search");
     assert_eq!(bs_bounds[0].param, "sorted");
     assert_eq!(
-        *bs_bounds[0].bound,
+        *bs_bounds[0].time_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
                 param: "sorted".to_string(),
@@ -5058,7 +5058,7 @@ fn spin(x: Int) -> Int {
         .filter(|b| b.func_name == "spin")
         .collect();
     eprintln!("[adversarial] spin: {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.time_bound); }
     // spin(x: x) passes x unchanged → PreservedValue → NonIncreasing evidence.
     // merge_param_evidence → NonIncreasing (not Strict) → no structural bound.
     assert!(bounds.is_empty(), "infinite loop should produce no structural bound (fail-closed)");
@@ -5140,7 +5140,7 @@ fn walk(t: Tree) -> Int {
         .filter(|b| b.func_name == "walk")
         .collect();
     eprintln!("[adversarial] walk (growing arg): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.time_bound); }
     // The self-call passes `Branch { left: l, right: l }` — a CONSTRUCTOR,
     // not a sub-value. classify_argument sees ExprRecordLit, returns SubValueUnknown.
     assert!(bounds.is_empty(), "growing argument should produce no structural bound (fail-closed)");
@@ -5207,7 +5207,7 @@ fn quadratic_walk(t: Tree) -> Int {
         .filter(|b| b.func_name == "quadratic_walk")
         .collect();
     eprintln!("[adversarial] quadratic_walk: {} bounds", qw_bounds.len());
-    for b in &qw_bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    for b in &qw_bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.time_bound); }
     // The structural bound reports O(n) — recursion structure is catamorphism.
     // The existing cost algebra reports O(n * n) — accounts for count_left cost.
     // Both are correct views. The structural bound should compose with per-node
@@ -5222,5 +5222,137 @@ fn quadratic_walk(t: Tree) -> Int {
         complexity.function_classes.get("count_left").map(|s| s.as_str()),
         Some("O(n)"),
         "count_left should be O(n)"
+    );
+}
+
+// ── KF-7: Space complexity regression tests ─────────────────────────────
+
+#[test]
+fn space_bound_tail_recursive_o1_stack() {
+    // Tail-recursive list walk: the self-call IS the return value → TCO → O(1) stack.
+    let source = r#"module tail_stack
+
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn last_elem(xs: MyList<Int>) -> Int {
+  match xs {
+    Nil => 0
+    Cons { head: h, tail: rest } =>
+      match rest {
+        Nil => h
+        _ => last_elem(xs: rest)
+      }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "last_elem")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for last_elem");
+    // Time: O(n) catamorphism
+    assert_eq!(
+        *bounds[0].time_bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "xs".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "last_elem time should be O(n)"
+    );
+    // Stack: O(1) — tail-recursive, TCO applies
+    assert_eq!(
+        *bounds[0].stack_bound,
+        v2_compiler::std_induction::CostBound::ConstantBound,
+        "tail-recursive last_elem should have O(1) stack"
+    );
+}
+
+#[test]
+fn space_bound_non_tail_tree_on_stack() {
+    // Non-tail tree traversal: two recursive calls → can't TCO → O(n) stack.
+    let source = r#"module tree_stack
+
+type BinTree<T> = Leaf | Branch { left: BinTree<T>, right: BinTree<T> }
+
+fn size(t: BinTree<Int>) -> Int {
+  match t {
+    Leaf => 1
+    Branch { left: l, right: r } => size(t: l) + size(t: r)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "size")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for size");
+    // Time: O(n) catamorphism
+    assert_eq!(
+        *bounds[0].time_bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "t".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "size time should be O(n)"
+    );
+    // Stack: O(n) — non-tail (size(l) + size(r)), no TCO
+    assert_eq!(
+        *bounds[0].stack_bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "t".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "non-tail tree size should have O(n) stack"
+    );
+}
+
+#[test]
+fn space_bound_binary_search_log_stack() {
+    // Binary search: O(log n) time AND O(log n) stack (not tail-recursive due to if/else).
+    let source = r#"module bsearch_stack
+
+fn binary_search(xs: List<Int>, target: Int) -> Bool {
+  let n = xs |> count
+  if n == 0 { false }
+  else {
+    let mid = n / 2
+    let mid_val = xs |> skip(mid) |> first
+    match mid_val {
+      None => false
+      Some { value: v } =>
+        if v == target { true }
+        else if target < v { binary_search(xs: xs |> take(mid), target: target) }
+        else { binary_search(xs: xs |> skip(mid + 1), target: target) }
+    }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "binary_search")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for binary_search");
+    // Time: O(log n)
+    assert_eq!(
+        *bounds[0].time_bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
+                param: "xs".to_string(),
+            }),
+        },
+        "binary search time should be O(log n)"
+    );
+    // Stack: O(1) — binary search self-calls are in tail position (if/else branches),
+    // TCO applies, so stack depth is constant despite O(log n) recursion depth.
+    assert_eq!(
+        *bounds[0].stack_bound,
+        v2_compiler::std_induction::CostBound::ConstantBound,
+        "binary search stack should be O(1) — tail-recursive with TCO"
     );
 }

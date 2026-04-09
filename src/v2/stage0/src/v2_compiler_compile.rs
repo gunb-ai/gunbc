@@ -107,6 +107,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
     body: item.body.clone().clone().unwrap(),
     params: item.params.clone(),
     span: item.span.clone(),
+    is_tail_recursive: (item.is_self_recursive.clone() && (item.has_non_tail_self_call.clone() == false)),
 })); } __result })).iter().cloned()); } __result })
 }
 

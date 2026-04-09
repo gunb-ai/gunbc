@@ -84,7 +84,8 @@ fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
         name: item.name,
         body: item.body.value,
         params: item.params,
-        span: item.span
+        span: item.span,
+        is_tail_recursive: item.is_self_recursive && item.has_non_tail_self_call == false
       }
     )
   )
