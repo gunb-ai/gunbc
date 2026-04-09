@@ -12,7 +12,7 @@ use PythonTypeKind::*;
 pub fn python_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
-            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "int", "default_expr": "0", "is_copy": null}, {"dag_name": "Float", "target_type": "float", "default_expr": "0.0", "is_copy": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "False", "is_copy": null}, {"dag_name": "Unit", "target_type": "None", "default_expr": "None", "is_copy": null}, {"dag_name": "String", "target_type": "str", "default_expr": "\"\"", "is_copy": null}, {"dag_name": "Bytes", "target_type": "bytes", "default_expr": "b\"\"", "is_copy": null}, {"dag_name": "Secret", "target_type": "str", "default_expr": "\"\"", "is_copy": null}, {"dag_name": "Json", "target_type": "dict", "default_expr": "{}", "is_copy": null}]))
+            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "int", "default_expr": "0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Float", "target_type": "float", "default_expr": "0.0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "False", "is_copy": null, "literal_suffix": null}, {"dag_name": "Unit", "target_type": "None", "default_expr": "None", "is_copy": null, "literal_suffix": null}, {"dag_name": "String", "target_type": "str", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bytes", "target_type": "bytes", "default_expr": "b\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "str", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Json", "target_type": "dict", "default_expr": "{}", "is_copy": null, "literal_suffix": null}]))
                 .expect("valid data definition")
         };
     }
@@ -247,7 +247,7 @@ pub fn type_checker_strict() -> String {
 pub fn python_cast_syntax() -> Rc<CastSyntax> {
     thread_local! {
         static CACHED: Rc<CastSyntax> = {
-            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "valid_targets": [], "fail_open": true}))
+            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "cast_rules": [{"from_type": "int", "to_type": "int"}, {"from_type": "int", "to_type": "float"}, {"from_type": "int", "to_type": "bool"}, {"from_type": "int", "to_type": "str"}, {"from_type": "float", "to_type": "int"}, {"from_type": "float", "to_type": "float"}, {"from_type": "float", "to_type": "bool"}, {"from_type": "float", "to_type": "str"}, {"from_type": "bool", "to_type": "int"}, {"from_type": "bool", "to_type": "float"}, {"from_type": "bool", "to_type": "str"}, {"from_type": "str", "to_type": "int"}, {"from_type": "str", "to_type": "float"}]}))
                 .expect("valid data definition")
         };
     }

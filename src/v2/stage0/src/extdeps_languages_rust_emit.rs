@@ -239,15 +239,6 @@ pub fn rust_param_type_sep() -> String {
     CACHED.with(|c| c.clone())
 }
 
-pub fn rust_string_literal_suffix() -> String {
-    thread_local! {
-        static CACHED: String = {
-            ".to_string()".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 pub fn rust_module_keyword() -> String {
     thread_local! {
         static CACHED: String = {

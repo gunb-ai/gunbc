@@ -727,6 +727,11 @@ Go equivalent: type conversion rules (all numeric conversions valid,
 Which operators are valid for which types, and what syntax they produce.
 Currently scattered across emitter logic.
 
+**DONE (PR #355):** Algebra-aware dispatch. OperatorSpec gains `algebra_field: String?`.
+Python Div splits: `/` (reciprocal/Field) and `//` (quotient/Ring). OrderedRing
+gains `quotient`/`remainder`. `binop_algebra_fields` returns candidate list.
+Mod fixed from "add" to "remainder".
+
 ### LS-3: Expression syntax
 
 Statement vs expression distinction, block syntax, match exhaustiveness
@@ -741,6 +746,45 @@ The Rust Reference defines these structurally.
 
 `pub`, `pub(crate)`, Go capitalization, Python `__all__`. Currently
 hardcoded per-backend.
+
+### LS-6: Shared typed handlers (Phase 1a)
+
+**DONE (PR #355):** 10 shared functions in 05_emit.dag replace duplicated
+implementations across Go/Python/Rust: block_stmts, init_block_stmts,
+typed_let, param, params, inferred, typed_block_join, first_arg,
+tco_reassign, algebra_method_template.
+
+### LS follow-ups (tracked for future PRs)
+
+- **Cast validation → infer phase:** CastRule uses string type names in emit.
+  Fix: model cast semantics structurally, validate in infer, emit renders
+  unconditionally. (Known violation, documented.)
+- **needs_sharing flag → structural:** `SharingStrategy.needs_sharing: Bool` is
+  a global codegen switch. Fix: derive sharing need per-type from structural
+  facts (recursive types, container algebra). Phase 3d.
+- **ItemKeywords/SyntaxSpec merge:** Dual authority for declaration syntax.
+  Fix: when target languages have SyntaxSpecs, derive ItemKeywords from
+  ItemForm.keyword (single authority). Phase 2d.
+- **operation_count_contracts → behavioral:** Ratchets file/line/entry counts
+  (shape metrics). Reviewer says behavioral contracts only. Consider replacing
+  with semantic invariants (e.g., "every BinOp has an OperatorSpec").
+- **EuclideanDomain separate from OrderedRing:** quotient/remainder are
+  currently on OrderedRing, but Euclidean division is a distinct algebraic
+  concept (EuclideanDomain with a norm). Fix: factor into separate type
+  that composes with OrderedRing via Int's profile.
+- **algebra_field string identity → structural dispatch:** OperatorSpec uses
+  string field names as semantic authority. Fix: the operator selection should
+  use structural type properties (has_reciprocal vs has_quotient) rather than
+  string name matching.
+- **resolved_binop_algebra in emit → infer:** Re-deriving algebra field in
+  emit is a decision. Fix: infer resolves which algebra field Div maps to,
+  stores on the Node (extend ExprBinOp or annotate), emit reads it.
+- **Python/Go cast_syntax pair whitelist:** Models generic `type(expr)` as
+  hand-curated (from,to) pairs. Fix: make emit render `type(expr)`
+  unconditionally, move validation to infer. Same root cause as cast→infer.
+- **Emit file deletion phases:** Phase 2 (StringInterpSyntax, SumTypeStrategy,
+  imports, service rendering), Phase 3 (dispatch strategies, ownership),
+  Phase 4 (delete Py/Go), Phase 5 (delete Rust). See plan file.
 
 ### Acceptance
 

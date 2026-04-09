@@ -11,7 +11,7 @@ pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr, Cast
 pub fn go_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
-            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "int64", "default_expr": "0", "is_copy": null}, {"dag_name": "Float", "target_type": "float64", "default_expr": "0.0", "is_copy": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "false", "is_copy": null}, {"dag_name": "Unit", "target_type": "struct{}", "default_expr": "struct{}{}", "is_copy": null}, {"dag_name": "String", "target_type": "string", "default_expr": "\"\"", "is_copy": null}, {"dag_name": "Bytes", "target_type": "[]byte", "default_expr": "nil", "is_copy": null}, {"dag_name": "Secret", "target_type": "string", "default_expr": "\"\"", "is_copy": null}, {"dag_name": "Json", "target_type": "interface{}", "default_expr": "nil", "is_copy": null}]))
+            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "int64", "default_expr": "0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Float", "target_type": "float64", "default_expr": "0.0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "false", "is_copy": null, "literal_suffix": null}, {"dag_name": "Unit", "target_type": "struct{}", "default_expr": "struct{}{}", "is_copy": null, "literal_suffix": null}, {"dag_name": "String", "target_type": "string", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bytes", "target_type": "[]byte", "default_expr": "nil", "is_copy": null, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "string", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Json", "target_type": "interface{}", "default_expr": "nil", "is_copy": null, "literal_suffix": null}]))
                 .expect("valid data definition")
         };
     }
@@ -142,7 +142,7 @@ pub fn type_conversion_template() -> String {
 pub fn go_cast_syntax() -> Rc<CastSyntax> {
     thread_local! {
         static CACHED: Rc<CastSyntax> = {
-            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "valid_targets": [], "fail_open": true}))
+            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "cast_rules": [{"from_type": "int64", "to_type": "int64"}, {"from_type": "int64", "to_type": "float64"}, {"from_type": "float64", "to_type": "int64"}, {"from_type": "float64", "to_type": "float64"}, {"from_type": "string", "to_type": "[]byte"}, {"from_type": "[]byte", "to_type": "string"}]}))
                 .expect("valid data definition")
         };
     }

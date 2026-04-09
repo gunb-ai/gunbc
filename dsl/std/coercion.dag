@@ -40,6 +40,7 @@ type TypeCheckpoint {
   target_type: String
   default_expr: String?
   is_copy: Bool?
+  literal_suffix: String?   // Rust String: ".to_string()" (&str → String ownership)
 }
 
 // InhabitantDecl: "this target type inhabits this .dag algebra."
@@ -96,8 +97,14 @@ type CallableRepr {
 //   valid_targets  — target types valid for casting (empty if fail_open)
 //   fail_open      — true = all casts syntactically valid (Python/Go),
 //                    false = check valid_targets (Rust)
+// CastRule: one valid (source, target) pair for type casting.
+// Ref: Rust Reference §8.2.4 — cast validity is a relation, not a set.
+type CastRule {
+  from_type: String
+  to_type: String
+}
+
 type CastSyntax {
   template: String
-  valid_targets: List<String>
-  fail_open: Bool
+  cast_rules: List<CastRule>
 }

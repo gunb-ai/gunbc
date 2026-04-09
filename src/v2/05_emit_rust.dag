@@ -140,7 +140,9 @@ import v2.compiler.emit {
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   extract_modifier_names,
-  seed_bindings
+  seed_bindings,
+  emit_typed_let_shared,
+  resolved_binop_algebra
 }
 
 fn render_rust_type(n: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
@@ -216,14 +218,14 @@ fn rust_enum_derives_copy_text() -> String {
 fn rust_serde_tag_attr() -> String {
   match serialization_for_target(target: Rust).tag_attribute {
     Some { value: attr } => attr
-    None => ""
+    None => emit_error_expr(message: "missing serde tag_attribute for Rust", target: Rust)
   }
 }
 
 fn rust_serde_rename_template_text() -> String {
   match serialization_for_target(target: Rust).rename_attribute_template {
     Some { value: template } => template
-    None => ""
+    None => emit_error_expr(message: "missing serde rename_attribute_template for Rust", target: Rust)
   }
 }
 
@@ -244,7 +246,7 @@ fn rust_test_name(projection: TestProjection) -> String {
 fn rust_async_test_decorator() -> String {
   match test_conventions_for_target(target: Rust).async_decorator {
     Some { value: decorator } => decorator
-    None => ""
+    None => emit_error_expr(message: "missing async_decorator for Rust test conventions", target: Rust)
   }
 }
 
@@ -339,9 +341,16 @@ fn is_simple_disj(item: Node) -> Bool {
 // DAG-level value type names: fixed-width carriers that never need
 // indirection or heap allocation. Reads is_copy from TypeCheckpoint
 // in extdeps/languages/rust/types.dag — no hardcoded type names.
+// Returns: Some(true) = Copy, Some(false) = non-Copy primitive,
+// None = no checkpoint (user-defined type — caller decides).
 fn is_dag_value_type_name(name: String) -> Bool {
   match is_copy(target: Rust, dag_name: name) {
     Some { value: v } => v
+    // No TypeCheckpoint → user-defined type. These are never Copy in Rust
+    // (they have fields that may need Rc). false is structurally correct:
+    // every user-defined type goes through is_type_constant which checks
+    // field_type_map recursively. The only leaf types that can be Copy
+    // are those with explicit TypeCheckpoints.
     None => false
   }
 }
@@ -369,12 +378,17 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Map<String, Bool>)
 }
 
 // Build the shared_types map: the SINGLE authority for sharing (Rc) decisions.
-// Includes user-defined types (structs, data enums) and built-in collection
-// types. Container templates are BARE — Rc is applied here, not in templates.
-// Constant types (fixed-width carriers) skip sharing.
-fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_set: Map<String, Bool>) -> Map<String, Bool> {
+// For languages with needs_sharing=false (GC languages), returns empty map —
+// all Rc wrapping and cloning become no-ops via identity SharingStrategy templates.
+// For Rust: includes user-defined types (structs, data enums) and built-in
+// collection types. Constant types (fixed-width carriers) skip sharing.
+fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_set: Map<String, Bool>, target: RenderTarget) -> Map<String, Bool> {
+  // needs_sharing: Rust=true (ownership), Python/Go=false (GC).
+  // When false, both folds produce empty results → identity SharingStrategy
+  // templates produce no-op wrapping/cloning.
+  let sharing = sharing_for_target(target: target)
   let user_shared = map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
-    let needs_sharing = match summary.repr {
+    let needs_sharing = sharing.needs_sharing && match summary.repr {
       StructRepr => true
       EnumRepr { unit_only: unit_only } => unit_only == false
     }
@@ -384,12 +398,11 @@ fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_s
       acc
     }
   )
-  // Collection types derived from container templates: any template key whose
-  // bare type has O(n) clone cost needs Rc. "optional" and "boolean_algebra"
-  // are excluded (Option wraps an already-typed inner; bool is Copy).
+  // Collection types: any template key whose bare type has O(n) clone cost.
+  // "optional" and "boolean_algebra" excluded. GC languages: sharing.needs_sharing
+  // is false so the filter produces an empty list.
   let collection_keys = map_keys(rust_container_templates)
-    |> filter(k => k != "optional" && k != "boolean_algebra")
-  // Template keys are snake_case; type names are PascalCase.
+    |> filter(k => sharing.needs_sharing && k != "optional" && k != "boolean_algebra")
   collection_keys |> fold(init: user_shared, f: (acc, key) =>
     let pascal = to_pascal(name: key)
     map_insert(acc, pascal, true)
@@ -437,7 +450,7 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let base_info = build_emit_graph_info(modules: typed.modules)
   let ownership = build_ownership_results(modules: typed.modules)
-  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set)
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
@@ -544,7 +557,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
 // Backwards-compatible wrapper for tests that call emit_module directly.
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let base_info = build_emit_graph_info(modules: [typed_module])
-  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set)
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
@@ -3126,14 +3139,9 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
 
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  // Type annotations disabled for bootstrap convergence (Pass A).
-  let let_line = emit_let_binding(name: name, value: val_str, target: Rust)
-  match body {
-    Some { value: bd } =>
-      let next_scope = extend_scope(scope: scope, name: name, resolved: resolved_type(n: value))
-      concat(let_line, "\n", emit_typed_expr(texpr: bd, registry: registry, scope: next_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-    None => let_line
-  }
+  emit_typed_let_shared(name: name, value_str: val_str, body: body, target: Rust,
+    recurse: (bd, sc) => emit_typed_expr(texpr: bd, registry: registry, scope: sc, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
+    scope: scope, value_node: value)
 }
 
 
@@ -3450,7 +3458,9 @@ fn emit_typed_bin_op(op: BinOp, left: Node, right: Node, registry: Map<String, I
   if is_null_coalesce(op: op) {
     emit_null_coalesce(l_str: l_str, r_str: r_str, target: Rust)
   } else {
-    let op_str = emit_bin_op_symbol(op: op, target: Rust)
+    let left_type = resolved_type(n: left)
+    let algebra = resolved_binop_algebra(op: op, left_type: left_type, source_index: scope.type_env.source_index)
+    let op_str = emit_bin_op_symbol(op: op, target: Rust, algebra_field: algebra)
     if is_string_comparison(op: op, left: left, right: right) {
       // When either side is Optional<String>, use .as_deref() to get Option<&str>
       // instead of .as_str() which doesn't exist on Option<String>.

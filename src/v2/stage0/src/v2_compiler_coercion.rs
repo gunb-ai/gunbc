@@ -56,33 +56,31 @@ pub fn target_optional_template(target: RenderTarget) -> String {
 }
 }
 
-pub fn target_cast_syntax(target: RenderTarget) -> Rc<CastSyntax> {
+pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
     match target {
-    RenderTarget::Rust => rust_cast_syntax(),
-    RenderTarget::Python => python_cast_syntax(),
-    RenderTarget::Go => go_cast_syntax(),
-    RenderTarget::Dag => Rc::new(CastSyntax {
-    template: "{expr}".to_string(),
-    valid_targets: Rc::new(vec![]),
-    fail_open: true,
-}),
+    RenderTarget::Rust => Some(rust_cast_syntax()),
+    RenderTarget::Python => Some(python_cast_syntax()),
+    RenderTarget::Go => Some(go_cast_syntax()),
+    RenderTarget::Dag => None,
 }
 }
 
-pub fn can_cast(target: RenderTarget, target_type: String) -> bool {
-    {
-        let syntax = target_cast_syntax(target);
-if syntax.fail_open.clone() {
-            true
-} else {
-            { let mut __found = false; for t in syntax.valid_targets.clone().iter().cloned() { if (t.clone().as_str() == target_type.clone().as_str()) { __found = true; break; } } __found }
-}
+pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> bool {
+    match target_cast_syntax(target) {
+    Some(syntax) => { let mut __found = false; for r in syntax.cast_rules.clone().iter().cloned() { if ((r.from_type.clone().as_str() == source_type.clone().as_str()) && (r.to_type.clone().as_str() == target_type.clone().as_str())) { __found = true; break; } } __found },
+    None => false,
 }
 }
 
 pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
     {
-        let syntax = target_cast_syntax(target);
+        let syntax = match target_cast_syntax(target) {
+    Some(s) => s.clone(),
+    None => Rc::new(CastSyntax {
+    template: "{expr}".to_string(),
+    cast_rules: Rc::new(vec![]),
+}),
+};
 v2_rt::replace(v2_rt::replace(syntax.template.clone(), "{expr}".to_string(), expr_str), "{type}".to_string(), type_str)
 }
 }
@@ -101,6 +99,16 @@ pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
 pub fn is_copy(target: RenderTarget, dag_name: String) -> Option<bool> {
     match lookup_checkpoint(target, dag_name) {
     Some(cp) => cp.is_copy.clone(),
+    None => None,
+}
+}
+
+pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> {
+    match lookup_checkpoint(target, dag_name) {
+    Some(cp) => match cp.literal_suffix.clone() {
+    Some(s) => Some(s.clone()),
+    None => Some("".to_string()),
+},
     None => None,
 }
 }

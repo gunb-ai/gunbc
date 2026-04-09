@@ -162,6 +162,8 @@ type Ring<T> {
 // OrderedRing: ring with a total order compatible with addition.
 // Adds: compare(T, T) -> Ordering
 // Derived: less_than, greater_than, min, max, abs
+// Euclidean: quotient(T, T) -> T, remainder(T, T) -> T
+//   satisfying a = quotient(a,b) * b + remainder(a,b)
 type OrderedRing<T> {
   add: fn(T, T) -> T
   zero: T
@@ -169,6 +171,8 @@ type OrderedRing<T> {
   mul: fn(T, T) -> T
   one: T
   compare: fn(T, T) -> Ordering
+  quotient: fn(T, T) -> T
+  remainder: fn(T, T) -> T
 }
 
 // Field: ring where (T \ {zero}, mul, one) is an abelian group.
@@ -404,7 +408,9 @@ fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
     { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
     { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
     { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none }
+    { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none },
+    { name: "quotient", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
+    { name: "remainder", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none }
   ]
 }
 

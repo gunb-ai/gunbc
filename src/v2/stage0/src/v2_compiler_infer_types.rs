@@ -1278,22 +1278,42 @@ if is_optional {
 }
 }
 
-pub fn binop_algebra_field(op: BinOp) -> String {
+pub fn binop_algebra_fields(op: BinOp) -> Rc<Vec<String>> {
     match op {
-    BinOp::Add => "add".to_string(),
-    BinOp::Sub => "add".to_string(),
-    BinOp::Mul => "mul".to_string(),
-    BinOp::Div => "reciprocal".to_string(),
-    BinOp::Mod => "add".to_string(),
-    BinOp::Eq => "compare".to_string(),
-    BinOp::Ne => "compare".to_string(),
-    BinOp::Lt => "compare".to_string(),
-    BinOp::Gt => "compare".to_string(),
-    BinOp::Le => "compare".to_string(),
-    BinOp::Ge => "compare".to_string(),
-    BinOp::And => "meet".to_string(),
-    BinOp::Or => "join".to_string(),
-    BinOp::NullCoalesce => "".to_string(),
+    BinOp::Add => Rc::new(vec!["add".to_string()]),
+    BinOp::Sub => Rc::new(vec!["add".to_string()]),
+    BinOp::Mul => Rc::new(vec!["mul".to_string()]),
+    BinOp::Div => Rc::new(vec!["reciprocal".to_string(), "quotient".to_string()]),
+    BinOp::Mod => Rc::new(vec!["remainder".to_string()]),
+    BinOp::Eq => Rc::new(vec!["compare".to_string()]),
+    BinOp::Ne => Rc::new(vec!["compare".to_string()]),
+    BinOp::Lt => Rc::new(vec!["compare".to_string()]),
+    BinOp::Gt => Rc::new(vec!["compare".to_string()]),
+    BinOp::Le => Rc::new(vec!["compare".to_string()]),
+    BinOp::Ge => Rc::new(vec!["compare".to_string()]),
+    BinOp::And => Rc::new(vec!["meet".to_string()]),
+    BinOp::Or => Rc::new(vec!["join".to_string()]),
+    BinOp::NullCoalesce => Rc::new(vec![]),
+}
+}
+
+pub fn first_matching_algebra_field(mut n: Rc<Node>, mut candidates: Rc<Vec<String>>, mut source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
+    loop {
+        match candidates.clone().first().cloned() {
+    None => { break None; },
+    Some(name) => { match find_child_named(n.clone(), name.clone(), source_index.clone()) {
+    Some(f) => { break Some(f.clone()); },
+    None => { {
+            let __tco_0 = n;
+let __tco_1 = Rc::new(candidates.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_2 = source_index;
+n = __tco_0;
+candidates = __tco_1;
+source_index = __tco_2;
+continue;
+} },
+} },
+}
 }
 }
 
@@ -1309,10 +1329,10 @@ pub fn infer_binop_type_node(op: BinOp, left_type: Rc<Node>, source_index: Optio
     BinOp::Or => bool_type(),
     BinOp::NullCoalesce => extract_optional_inner_node(left_type.clone()),
     _ => {
-        let field_name = binop_algebra_field(op.clone());
+        let candidates = binop_algebra_fields(op.clone());
 let is_product = (left_type.connective.clone() == Connective::Conj);
 if is_product {
-            match find_child_named(left_type.clone(), field_name, source_index) {
+            match first_matching_algebra_field(left_type.clone(), candidates, source_index) {
     Some(field) => match field.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => if ((rt.params.clone().len() as i64) > 0) {
                 match rt.inferred.clone().as_deref().cloned() {

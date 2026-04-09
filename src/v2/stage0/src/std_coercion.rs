@@ -13,6 +13,7 @@ pub struct TypeCheckpoint {
     pub target_type: String,
     pub default_expr: Option<String>,
     pub is_copy: Option<bool>,
+    pub literal_suffix: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -34,8 +35,13 @@ pub struct CallableRepr {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CastRule {
+    pub from_type: String,
+    pub to_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
     pub template: String,
-    pub valid_targets: Rc<Vec<String>>,
-    pub fail_open: bool,
+    pub cast_rules: Rc<Vec<Rc<CastRule>>>,
 }
