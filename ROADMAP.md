@@ -1529,11 +1529,11 @@ RE item is implemented — the ratchet counts tests that exist AND pass.
 | Metric | Current | Target |
 |--------|---------|--------|
 | RE-1 transport tests | 7/10 | 10 |
-| RE-2 compilation tests | 3/3 (0 cargo check errors) | 3 |
+| RE-2 compilation tests | 1/3 (0 cargo check errors, 2 acceptance tests not yet added) | 3 |
 | RE-3 integration tests | 0/4 | 4 |
 | RE-4 API tests | 0/3 | 3 |
 | RE-5 multi-backend test | 0/1 | 1 |
-| Total | 0/21 | 21 |
+| Total | 8/21 | 21 |
 
 **Depends on:** CG (codegen correctness) for reliable emission.
 Parallel to CX (complexity doesn't block emission).
