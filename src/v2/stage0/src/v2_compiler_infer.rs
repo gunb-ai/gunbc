@@ -2884,10 +2884,7 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { call_semantics: cs, .. } => {
-            let callee = expr_call_func(body.clone());
-if (callee.as_str() == ctx.fn_name.clone().as_str()) {
-                {
-                    let evidence = build_call_evidence(body.clone(), ctx.clone());
+            let evidence = build_call_evidence(body.clone(), ctx.clone());
 let annotated_children = Rc::new({ let mut __result = Vec::new(); for child in body.children.clone().iter().cloned() { __result.push(annotate_descent(child.clone(), ctx.clone())); } __result });
 Rc::new(Node {
     name: body.name.clone(),
@@ -2911,10 +2908,6 @@ Rc::new(Node {
     descent_evidence: Some(evidence),
 }),
 })
-}
-} else {
-                map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone()))
-}
 },
     ExprData::ExprMatch => {
             let scrut = match_scrutinee(body.clone());

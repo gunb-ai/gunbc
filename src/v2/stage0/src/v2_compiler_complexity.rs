@@ -3205,7 +3205,7 @@ Rc::new(ProofEdge {
 
 pub fn collect_scc_cx_l2_tree_edges(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_name_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<ProofEdge>>> {
     {
-        let measure_params = build_scc_measure_params(members.clone(), func_index.clone(), si.clone());
+        let measure_params = build_scc_measure_params(members.clone(), func_index.clone(), si);
 Rc::new({ let mut __result = Vec::new(); for name in members.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
             let self_evidence = collect_self_call_evidence(entry.body.clone(), name.clone());
@@ -3269,24 +3269,22 @@ Rc::new(vec![Rc::new(ProofEdge {
 } else {
                 Rc::new(vec![])
 };
-let cross_edge_map = entry.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |best: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
-                let pname = param_node_name_at(p.clone(), si.clone());
-let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v2_rt::rc_empty_map::<bool>(), true, false, si.clone());
-let param_edges = Rc::new({ let mut __result = Vec::new(); for pe in collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone()).iter().cloned() { if (pe.callee.clone().as_str() != name.clone().as_str()) { __result.push(pe); } } __result });
-let param_map = param_edges.clone().iter().cloned().fold(v2_rt::rc_empty_map::<DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm.clone(), pe.clone()));
-pick_best_param_edges(best.clone(), param_map.clone())
-});
-let cross_edges = Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v2_rt::map_keys(&cross_edge_map)).iter().cloned() { __result.push({
-                let ev = match v2_rt::map_get(&cross_edge_map, callee.clone()) {
-    Some(e) => e.clone(),
-    None => DescentEvidence::DescentUnknown,
-};
-Rc::new(ProofEdge {
+let other_members = Rc::new({ let mut __result = Vec::new(); for m in Rc::new(v2_rt::map_keys(&scc_name_set)).iter().cloned() { if (m.clone().as_str() != name.clone().as_str()) { __result.push(m); } } __result });
+let cross_edges = Rc::new({ let mut __result = Vec::new(); for callee in other_members.clone().iter().cloned() { __result.extend((*{
+                let callee_evidence = collect_callee_evidence(entry.body.clone(), callee.clone());
+if ((callee_evidence.clone().len() as i64) > 0) {
+                    {
+                        let ev = derive_edge_evidence(callee_evidence.clone());
+Rc::new(vec![Rc::new(ProofEdge {
     caller: name.clone(),
     callee: callee.clone(),
     evidence: Rc::new(vec![ev.clone()]),
-})
-}); } __result });
+})])
+}
+} else {
+                    Rc::new(vec![])
+}
+}).iter().cloned()); } __result });
 v2_rt::concat(self_edge.clone(), cross_edges.clone())
 },
     None => Rc::new(vec![]),
@@ -4829,12 +4827,12 @@ Rc::new(SummaryResult {
 }
 }
 
-pub fn collect_self_call_evidence(body: Rc<Node>, fn_name: String) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+pub fn collect_call_evidence(body: Rc<Node>, target_set: Rc<HashMap<String, bool>>) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { descent_evidence: de, .. } => {
             let callee = expr_call_func(body.clone());
-let own = if (callee.as_str() == fn_name.clone().as_str()) {
+let own = if (v2_rt::map_get(&target_set, callee) != None) {
                 match de.clone() {
     Some(evidence) => Rc::new(vec![evidence.clone()]),
     None => Rc::new(vec![]),
@@ -4842,12 +4840,36 @@ let own = if (callee.as_str() == fn_name.clone().as_str()) {
 } else {
                 Rc::new(vec![])
 };
-let from_children = body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_self_call_evidence(child.clone(), fn_name.clone())));
+let from_children = body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_call_evidence(child.clone(), target_set.clone())));
 v2_rt::concat(own, from_children)
 },
-    _ => body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_self_call_evidence(child.clone(), fn_name.clone()))),
+    _ => body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_call_evidence(child.clone(), target_set.clone()))),
 }
     })
+}
+
+pub fn collect_self_call_evidence(body: Rc<Node>, fn_name: String) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+    collect_call_evidence(body, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<bool>(), fn_name, true))
+}
+
+pub fn collect_callee_evidence(body: Rc<Node>, callee_name: String) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+    collect_call_evidence(body, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<bool>(), callee_name, true))
+}
+
+pub fn derive_edge_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>) -> DescentEvidence {
+    all_calls.iter().cloned().fold(DescentEvidence::Strict, |worst: DescentEvidence, call_ev: Rc<Vec<Rc<SubValueRelation>>>| {
+        let call_best = call_ev.clone().iter().cloned().fold(DescentEvidence::DescentUnknown, |best: DescentEvidence, rel: Rc<SubValueRelation>| {
+            let ev = sub_value_to_evidence(rel.clone());
+match ev.clone() {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    _ => match best.clone() {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    _ => ev.clone(),
+},
+}
+});
+merge_evidence(worst.clone(), call_best.clone())
+})
 }
 
 pub fn merge_param_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> DescentEvidence {

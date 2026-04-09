@@ -2699,28 +2699,23 @@ fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRel
 fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
   match body.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
-      let callee = expr_call_func(texpr: body)
-      if callee == ctx.fn_name {
-        // Self-call: compute descent evidence for each argument
-        let evidence = build_call_evidence(call_node: body, ctx: ctx)
-        // Also annotate children (arguments may contain nested self-calls)
-        let annotated_children = body.children |> map(child => annotate_descent(body: child, ctx: ctx))
-        Node {
-          name: body.name, span: body.span, ident_span: body.ident_span,
-          children: annotated_children, connective: body.connective, params: body.params,
-          inferred: body.inferred, return_cardinality: body.return_cardinality,
-          uses: body.uses, body: body.body, transport: body.transport,
-          properties: body.properties, type_annotation: body.type_annotation,
-          is_self_recursive: body.is_self_recursive,
-          has_non_tail_self_call: body.has_non_tail_self_call,
-          match_pattern: body.match_pattern,
-          expr_data: ExprCall { call_semantics: cs, descent_evidence: Some { value: evidence } }
-        }
-      } else {
-        // Non-self-call: recurse into children. Iteration semantics are only
-        // recognized via ExprMethodCall (which has method_semantics from inference),
-        // not via positional argument guessing on ExprCall.
-        map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
+      // Annotate ALL calls with descent evidence — not just self-calls.
+      // Evidence says "this argument is a sub-value of the caller's parameter."
+      // For self-calls, this proves direct recursion terminates.
+      // For cross-calls, the SCC proof system reads this to build cross-edges.
+      // Single authority: no parallel analysis needed.
+      let evidence = build_call_evidence(call_node: body, ctx: ctx)
+      let annotated_children = body.children |> map(child => annotate_descent(body: child, ctx: ctx))
+      Node {
+        name: body.name, span: body.span, ident_span: body.ident_span,
+        children: annotated_children, connective: body.connective, params: body.params,
+        inferred: body.inferred, return_cardinality: body.return_cardinality,
+        uses: body.uses, body: body.body, transport: body.transport,
+        properties: body.properties, type_annotation: body.type_annotation,
+        is_self_recursive: body.is_self_recursive,
+        has_non_tail_self_call: body.has_non_tail_self_call,
+        match_pattern: body.match_pattern,
+        expr_data: ExprCall { call_semantics: cs, descent_evidence: Some { value: evidence } }
       }
     ExprMatch =>
       // If scrutinee is a parameter or a known sub-value, extend context
