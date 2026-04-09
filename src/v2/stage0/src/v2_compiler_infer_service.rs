@@ -147,30 +147,26 @@ pub fn expand_transitive_services_once(modules: Rc<Vec<Rc<TypedModule>>>, regist
         let all_items = Rc::new({ let mut __result = Vec::new(); for m in modules.iter().cloned() { __result.extend((*m.items.clone()).iter().cloned()); } __result });
 all_items.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| match v2_rt::map_get(&reg, item.name.clone()) {
     Some(info) => {
-            let is_not_func = (info.kind.clone() != ItemKind::FuncItem);
-let has_no_body = (item.body.clone() == None);
-if is_not_func.clone() {
+            let has_no_body = (item.body.clone() == None);
+if has_no_body.clone() {
                 reg.clone()
 } else {
-                if has_no_body.clone() {
-                    reg.clone()
-} else {
-                    {
-                        let called = collect_called_func_names(item.body.clone().clone().unwrap());
+                {
+                    let called = collect_called_func_names(item.body.clone().clone().unwrap());
 let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&reg, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone().as_str() == svc.clone().as_str()) { __found = true; break; } } __found } {
-                            svc_list.clone()
+                        svc_list.clone()
 } else {
-                            v2_rt::rc_list_push(svc_list.clone(), svc.clone())
+                        v2_rt::rc_list_push(svc_list.clone(), svc.clone())
 });
 let same_count = ((merged.clone().len() as i64) == (info.service_names.clone().len() as i64));
 if same_count.clone() {
-                            reg.clone()
+                        reg.clone()
 } else {
-                            v2_rt::rc_map_insert(reg.clone(), item.name.clone(), Rc::new(ItemInfo {
+                        v2_rt::rc_map_insert(reg.clone(), item.name.clone(), Rc::new(ItemInfo {
     name: info.name.clone(),
     kind: info.kind.clone(),
     service_names: merged.clone(),
@@ -179,7 +175,6 @@ if same_count.clone() {
     is_self_recursive: info.is_self_recursive.clone(),
     has_non_tail_self_call: info.has_non_tail_self_call.clone(),
 }))
-}
 }
 }
 }

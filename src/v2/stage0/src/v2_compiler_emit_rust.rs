@@ -482,14 +482,7 @@ let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str(
 };
 let this_mod_filename = module_to_filename(m.name.clone());
 let all_svc_names = Rc::new({ let mut __result = Vec::new(); for item in typed_module.items.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&registry, item.name.clone()) {
-    Some(info) => {
-            let is_func = (info.kind.clone() == ItemKind::FuncItem);
-if is_func.clone() {
-                info.service_names.clone()
-} else {
-                Rc::new(vec![])
-}
-},
+    Some(info) => info.service_names.clone(),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let extern_svc_imports = Rc::new({ let mut __result = Vec::new(); for sn in unique_strings(all_svc_names).iter().cloned() { __result.extend((*match v2_rt::map_get(&svc_module_map, sn.clone()) {
@@ -672,11 +665,11 @@ let fn_emit_info = Rc::new(EmitGraphInfo {
     fold_eligible_index: emit_info.fold_eligible_index.clone(),
     fold_eligible: fn_fold_eligible,
 });
-let is_func_item = match lookup_item(registry.clone(), item.name.clone()) {
-    Some(info) => (info.kind.clone() == ItemKind::FuncItem),
+let has_services = match lookup_item(registry.clone(), item.name.clone()) {
+    Some(info) => ((info.service_names.clone().len() as i64) > 0),
     None => false,
 };
-if (((item.uses.clone().len() as i64) > 0) || is_func_item) {
+if (((item.uses.clone().len() as i64) > 0) || has_services) {
                                 emit_func_def(item_text.clone(), item.params.clone(), resolved_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), shared_types, fn_emit_info)
 } else {
                                 emit_fn_def(item_text.clone(), item.params.clone(), resolved_type(item.clone()), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), shared_types, fn_emit_info)
@@ -2319,8 +2312,8 @@ v2_rt::concat("&".to_string(), base.clone())
 }); } __result });
 let extra_args = match callee.clone() {
     Some(info) => {
-            let is_func = (info.kind.clone() == ItemKind::FuncItem);
-if is_func.clone() {
+            let has_effects = (((info.service_names.clone().len() as i64) > 0) || ((info.resource_names.clone().len() as i64) > 0));
+if has_effects.clone() {
                 {
                     let resource_args = Rc::new({ let mut __result = Vec::new(); for rn in info.resource_names.clone().iter().cloned() { __result.push(v2_rt::concat("&".to_string(), emit_ident(rn.clone(), RenderTarget::Rust))); } __result });
 let service_args = Rc::new({ let mut __result = Vec::new(); for sn in info.service_names.clone().iter().cloned() { __result.push(service_var_name(sn.clone())); } __result });
@@ -2347,8 +2340,8 @@ let call_str = if ((is_rt.clone() && (func.clone().as_str() == "concat".to_strin
 };
 match callee.clone() {
     Some(info) => {
-            let is_func = (info.kind.clone() == ItemKind::FuncItem);
-if is_func.clone() {
+            let has_effects = (((info.service_names.clone().len() as i64) > 0) || ((info.resource_names.clone().len() as i64) > 0));
+if has_effects.clone() {
                 v2_rt::concat(call_str, ".await?".to_string())
 } else {
                 call_str

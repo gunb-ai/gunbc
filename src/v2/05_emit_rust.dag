@@ -587,9 +587,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let this_mod_filename = module_to_filename(name: m.name)
   let all_svc_names = typed_module.items |> flat_map(item =>
     match map_get(registry, item.name) {
-      Some { value: info } =>
-        let is_func = info.kind == FuncItem
-        if is_func { info.service_names } else { [] }
+      Some { value: info } => info.service_names
       None => []
     }
   )
@@ -824,12 +822,12 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       fold_eligible_index: emit_info.fold_eligible_index,
       fold_eligible: fn_fold_eligible
     }
-    // func items (FuncItem) are async even without explicit use clauses
-    let is_func_item = match lookup_item(registry: registry, name: item.name) {
-      Some { value: info } => info.kind == FuncItem
+    // Items with uses or service calls are emitted as async workflow functions
+    let has_services = match lookup_item(registry: registry, name: item.name) {
+      Some { value: info } => info.service_names |> count > 0
       None => false
     }
-    if item.uses |> count > 0 || is_func_item {
+    if item.uses |> count > 0 || has_services {
       emit_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
     } else {
       emit_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
@@ -2365,8 +2363,8 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   )
   let extra_args = match callee {
     Some { value: info } =>
-      let is_func = info.kind == FuncItem
-      if is_func {
+      let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0
+      if has_effects {
         let resource_args = info.resource_names |> map(rn => concat("&", emit_ident(name: rn, target: Rust)))
         let service_args = info.service_names |> map(sn => service_var_name(service_name: sn))
         concat(resource_args, service_args)
@@ -2387,8 +2385,8 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   }
   match callee {
     Some { value: info } =>
-      let is_func = info.kind == FuncItem
-      if is_func { concat(call_str, ".await?") } else { call_str }
+      let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0
+      if has_effects { concat(call_str, ".await?") } else { call_str }
     None => call_str
   }
 }

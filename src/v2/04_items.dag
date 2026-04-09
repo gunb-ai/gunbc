@@ -16,8 +16,7 @@ import v2.std.core {
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
   Connective, Conj, Disj, NoConnective,
-  node_name_span, no_span,
-  is_effectful_item
+  node_name_span, no_span
 }
 import v2.compiler.infer_types {
   child_type_node
@@ -118,7 +117,7 @@ fn item_kind(item: Node) -> ItemKind {
     TypeItem
   } else if item.transport != none {
     ServiceItem
-  } else if item.body != none && (item.uses |> count > 0 || is_effectful_item(n: item)) {
+  } else if item.body != none && item.uses |> count > 0 {
     FuncItem
   } else if item.body != none && item.params |> count > 0 {
     FnItem

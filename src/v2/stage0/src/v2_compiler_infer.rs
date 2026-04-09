@@ -3844,7 +3844,11 @@ match kind.clone() {
     ItemKind::FnItem => Rc::new(ItemInfo {
     name: item.name.clone(),
     kind: kind.clone(),
-    service_names: Rc::new(vec![]),
+    service_names: if (item.body.clone() == None) {
+            Rc::new(vec![])
+} else {
+            collect_typed_service_calls(item.body.clone().clone().unwrap())
+},
     resource_names: res_names,
     params: item.params.clone(),
     is_self_recursive: if (item.body.clone() == None) {
