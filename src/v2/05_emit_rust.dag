@@ -332,9 +332,16 @@ fn is_simple_disj(item: Node) -> Bool {
 // DAG-level value type names: fixed-width carriers that never need
 // indirection or heap allocation. Reads is_copy from TypeCheckpoint
 // in extdeps/languages/rust/types.dag — no hardcoded type names.
+// Returns: Some(true) = Copy, Some(false) = non-Copy primitive,
+// None = no checkpoint (user-defined type — caller decides).
 fn is_dag_value_type_name(name: String) -> Bool {
   match is_copy(target: Rust, dag_name: name) {
     Some { value: v } => v
+    // No TypeCheckpoint → user-defined type. These are never Copy in Rust
+    // (they have fields that may need Rc). false is structurally correct:
+    // every user-defined type goes through is_type_constant which checks
+    // field_type_map recursively. The only leaf types that can be Copy
+    // are those with explicit TypeCheckpoints.
     None => false
   }
 }

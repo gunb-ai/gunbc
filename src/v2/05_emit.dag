@@ -2097,7 +2097,7 @@ fn emit_param_shared(param: Node, target: RenderTarget, source_index: NewlineInd
 // Shared params rendering — maps emit_param_shared over param list.
 fn emit_params_shared(params: List<Node>, target: RenderTarget, source_index: NewlineIndex?) -> String {
   let strs = params |> map(p => emit_param_shared(param: p, target: target, source_index: source_index))
-  strs |> join(separator: ", ")
+  strs |> join(separator: language_spec(target: target).items.param_separator)
 }
 
 // Shared inferred (return type) rendering.

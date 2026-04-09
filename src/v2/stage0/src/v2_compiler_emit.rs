@@ -2089,7 +2089,7 @@ v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_
 pub fn emit_params_shared(params: Rc<Vec<Rc<Node>>>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let strs = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_param_shared(p.clone(), target.clone(), source_index.clone())); } __result });
-strs.join(&", ".to_string())
+strs.join(&language_spec(target.clone()).items.clone().param_separator.clone())
 }
 }
 
