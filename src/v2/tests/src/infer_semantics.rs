@@ -6,13 +6,103 @@ use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, container_node, resolved_type, is_fully_resolved, map_node, node_is_keyed_collection,
+    bare_map_node, resolved_type, is_fully_resolved, node_is_keyed_collection,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::{
-    leaf_node, make_arm_node, with_optional_cardinality, Cardinality, Connective, ExprData,
-    InferredNode, MatchPattern, Node, SourceSpan,
+    leaf_node_with_span, make_arm_node, make_span, with_optional_cardinality,
+    Cardinality, Connective, ExprData, InferredNode, MatchPattern, Node, SourceSpan,
+    default_ident_span,
 };
+use v2_compiler::std_types::container_param_name;
+
+// Test helpers: replicate deleted L1 constructor functions for test convenience.
+fn leaf_node(name: String) -> Rc<Node> {
+    leaf_node_with_span(name, make_span(0, 0))
+}
+
+fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
+    let param_name = match container_param_name(kind_name.clone(), 0) {
+        Some(n) => n, None => kind_name.clone(),
+    };
+    let sp = make_span(0, 0);
+    Rc::new(Node {
+        name: kind_name.clone(),
+        span: sp.clone(),
+        ident_span: default_ident_span(kind_name, sp.clone()),
+        children: Rc::new(vec![Rc::new(Node {
+            name: param_name.clone(),
+            span: sp.clone(),
+            ident_span: default_ident_span(param_name, sp.clone()),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: element })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None, transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false, has_non_tail_self_call: false,
+            match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+        })]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None, transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false, has_non_tail_self_call: false,
+        match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
+
+fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
+    let key_name = container_param_name("Map".to_string(), 0).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
+    let val_name = container_param_name("Map".to_string(), 1).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
+    let sp = make_span(0, 0);
+    Rc::new(Node {
+        name: "Map".to_string(),
+        span: sp.clone(),
+        ident_span: Some(sp.clone()),
+        children: Rc::new(vec![
+            Rc::new(Node {
+                name: key_name, span: sp.clone(),
+                ident_span: Some(sp.clone()),
+                children: Rc::new(vec![]), connective: Connective::NoConnective,
+                params: Rc::new(vec![]),
+                inferred: Some(Rc::new(InferredNode::Resolved { node: key })),
+                return_cardinality: Cardinality::Required, uses: Rc::new(vec![]),
+                body: None, transport: None, properties: Rc::new(vec![]),
+                type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false,
+                match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+            }),
+            Rc::new(Node {
+                name: val_name, span: sp.clone(),
+                ident_span: Some(sp.clone()),
+                children: Rc::new(vec![]), connective: Connective::NoConnective,
+                params: Rc::new(vec![]),
+                inferred: Some(Rc::new(InferredNode::Resolved { node: value })),
+                return_cardinality: Cardinality::Required, uses: Rc::new(vec![]),
+                body: None, transport: None, properties: Rc::new(vec![]),
+                type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false,
+                match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+            }),
+        ]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None, transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false, has_non_tail_self_call: false,
+        match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
 
 fn zero_span() -> Rc<SourceSpan> {
     Rc::new(SourceSpan { file: String::new(), start: 0, end: 0 })
@@ -54,6 +144,7 @@ fn list_int_index_returns_optional_element_type() {
         leaf_node("Int".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
 
     assert_eq!(result.diagnostics.len(), 0, "List<Int> indexed by Int should succeed");
@@ -69,6 +160,7 @@ fn malformed_map_index_returns_compiler_error_type() {
         leaf_node("String".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -83,6 +175,7 @@ fn invalid_slice_returns_compiler_error_type() {
         leaf_node("Int".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -99,6 +192,7 @@ fn valid_map_index_preserves_optional_value_type() {
         leaf_node("String".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
 
     assert!(result.diagnostics.is_empty());
@@ -488,7 +582,7 @@ fn keyed_collection_parts_extracts_key_and_value() {
         leaf_node("String".to_string()),
         leaf_node("Int".to_string()),
     );
-    let parts = v2_compiler_infer_access::keyed_collection_parts(m);
+    let parts = v2_compiler_infer_access::keyed_collection_parts(m, None);
     let parts = parts.expect("Map<String,Int> should decompose to keyed parts");
     assert_eq!(parts.key_type.name, "String");
     assert_eq!(parts.value_type.name, "Int");
@@ -497,7 +591,7 @@ fn keyed_collection_parts_extracts_key_and_value() {
 #[test]
 fn keyed_collection_parts_returns_none_for_element_collection() {
     let list = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let parts = v2_compiler_infer_access::keyed_collection_parts(list);
+    let parts = v2_compiler_infer_access::keyed_collection_parts(list, None);
     assert!(
         parts.is_none(),
         "List<Int> is not a keyed collection, should return None"
@@ -508,7 +602,7 @@ fn keyed_collection_parts_returns_none_for_element_collection() {
 fn keyed_collection_parts_returns_type_variables_for_bare_map() {
     // bare_map_node() now has K/V wrapper children with TypeVariable inferred
     let bare = bare_map_node();
-    let parts = v2_compiler_infer_access::keyed_collection_parts(bare);
+    let parts = v2_compiler_infer_access::keyed_collection_parts(bare, None);
     assert!(
         parts.is_some(),
         "bare Map has K/V children (TypeVariable inferred)"
@@ -521,19 +615,19 @@ fn node_is_keyed_collection_true_for_map() {
         leaf_node("String".to_string()),
         leaf_node("Bool".to_string()),
     );
-    assert!(node_is_keyed_collection(m));
+    assert!(node_is_keyed_collection(m, None));
 }
 
 #[test]
 fn node_is_keyed_collection_false_for_list() {
     let list = container_node("List".to_string(), leaf_node("Int".to_string()));
-    assert!(!node_is_keyed_collection(list));
+    assert!(!node_is_keyed_collection(list, None));
 }
 
 #[test]
 fn node_is_keyed_collection_false_for_leaf() {
     let leaf = leaf_node("String".to_string());
-    assert!(!node_is_keyed_collection(leaf));
+    assert!(!node_is_keyed_collection(leaf, None));
 }
 
 // ── is_fully_resolved ─────────────────────────────────────────────────
@@ -543,20 +637,20 @@ fn is_fully_resolved_rejects_under_parameterized_container() {
     // leaf_node("List") creates a node named "List" with 0 children.
     // container_expected_arity("List") = Some(1), so 0 < 1 → not fully resolved.
     let bare_list = leaf_node("List".to_string());
-    assert!(!is_fully_resolved(bare_list));
+    assert!(!is_fully_resolved(bare_list, None));
 }
 
 #[test]
 fn is_fully_resolved_accepts_parameterized_container() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    assert!(is_fully_resolved(list_int));
+    assert!(is_fully_resolved(list_int, None));
 }
 
 #[test]
 fn is_fully_resolved_ignores_unknown_type_names() {
     // User-defined "Widget" with 0 children → arity is None → not under-parameterized.
     let widget = leaf_node("Widget".to_string());
-    assert!(is_fully_resolved(widget));
+    assert!(is_fully_resolved(widget, None));
 }
 
 #[test]
@@ -570,6 +664,7 @@ fn map_index_with_correct_key_type_succeeds() {
         leaf_node("String".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
     assert!(
         result.diagnostics.is_empty(),
@@ -596,6 +691,7 @@ fn map_index_with_wrong_key_type_reports_error() {
         leaf_node("Int".to_string()),
         zero_span(),
         "test".to_string(),
+        None,
     );
     assert_eq!(
         result.diagnostics.len(),

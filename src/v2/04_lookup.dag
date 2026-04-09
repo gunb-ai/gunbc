@@ -25,7 +25,7 @@ import v2.std.core {
 }
 import std.algebra {
   CollectionSizeEffect, CostShape, AlgebraFieldTemplate,
-  AlgebraTypeTemplate, ReceiverSelf, ReceiverCollectionOf, ListOf,
+  AlgebraTypeTemplate, ReceiverSelf, ContainerOf, ContainerSource, SameAsReceiver, Named,
   kernel_algebra_profile, algebra_templates_for_profile
 }
 import v2.compiler.infer_types {
@@ -184,7 +184,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
-  if node_is_keyed_collection(n: map_type) && map_type.children |> count >= 2 {
+  if node_is_keyed_collection(n: map_type, source_index: env.source_index) && map_type.children |> count >= 2 {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none
@@ -198,7 +198,7 @@ fn map_key_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
-  if node_is_keyed_collection(n: map_type) && map_type.children |> count >= 1 {
+  if node_is_keyed_collection(n: map_type, source_index: env.source_index) && map_type.children |> count >= 1 {
     match map_type.children |> first {
       Some { value: key_type } => Some { value: key_type }
       None => none

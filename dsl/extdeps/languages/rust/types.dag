@@ -22,7 +22,7 @@
 module extdeps.languages.rust.types
 
 import std.coercion {
-  TypeCheckpoint, InhabitantDecl, CallableRepr
+  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax
 }
 
 
@@ -220,7 +220,18 @@ data integer_types: List<String> = [
 
 data float_types: List<String> = ["f32", "f64"]
 
-data numeric_cast_template: String = "\{expr\} as \{type\}"
+// Cast syntax: Rust uses `expr as type` for numeric casts.
+// Rust Reference §8.2.4: valid targets are integer and float types.
+// Bool is a valid SOURCE for integer casts but not a valid TARGET.
+data rust_cast_syntax: CastSyntax = {
+  template: "\{expr\} as \{type\}",
+  valid_targets: [
+    "i8", "i16", "i32", "i64", "i128", "isize",
+    "u8", "u16", "u32", "u64", "u128", "usize",
+    "f32", "f64"
+  ],
+  fail_open: false
+}
 
 data serde_enum_tag_attribute: String = "#[serde(tag = \"_variant\")]"
 data serde_rename_template: String = "#[serde(rename = \"\{key\}\")]"

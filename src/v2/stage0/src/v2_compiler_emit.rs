@@ -4,49 +4,9 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, Connective, Cardinality};
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_name_at, arg_value, field_init_node_name, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, Connective, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
@@ -60,7 +20,7 @@ pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
 pub use crate::std_induction::{InductiveField};
 pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
-pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name};
@@ -68,7 +28,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
@@ -111,7 +71,7 @@ pub struct TcoReassignInput {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum BackendCapability {
     CapServiceEmit,
     CapAsyncTransport,
@@ -146,21 +106,21 @@ pub fn has_mock_prefix(name: String) -> bool {
 }
 
 pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProjection>>> {
-    Rc::new({ let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_service_item(item.clone()) { __result.push(item); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for c in Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { if { let mut __found = false; for p in c.properties.clone().iter().cloned() { if has_mock_prefix(p.name.clone()) { __found = true; break; } } __found } { __result.push(c); } } __result }).iter().cloned() { __result.push(Rc::new(TestProjection {
+    Rc::new({ let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_service_item(item.clone()) { __result.push(item); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for c in Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { if { let mut __found = false; for p in c.properties.clone().iter().cloned() { if has_mock_prefix(field_init_node_name_at(p.clone(), tm.type_env.clone().source_index.clone())) { __found = true; break; } } __found } { __result.push(c); } } __result }).iter().cloned() { __result.push(Rc::new(TestProjection {
     module_name: tm.module.clone().name.clone(),
     service_name: item.name.clone(),
     operation_name: c.name.clone(),
     inferred: resolved_type(c.clone()),
     params: c.params.clone(),
-    mock_field_inits: Rc::new({ let mut __result = Vec::new(); for p in c.properties.clone().iter().cloned() { if has_mock_prefix(p.name.clone()) { __result.push(p); } } __result }),
+    mock_field_inits: Rc::new({ let mut __result = Vec::new(); for p in c.properties.clone().iter().cloned() { if has_mock_prefix(field_init_node_name_at(p.clone(), tm.type_env.clone().source_index.clone())) { __result.push(p); } } __result }),
     source_index: tm.type_env.clone().source_index.clone(),
 })); } __result })).iter().cloned()); } __result })).iter().cloned()); } __result })
 }
 
-pub fn derive_module_imports(items: Rc<Vec<Rc<Node>>>, import_rules: Rc<Vec<Rc<ImportRule>>>, target: RenderTarget) -> Rc<Vec<String>> {
+pub fn derive_module_imports(items: Rc<Vec<Rc<Node>>>, import_rules: Rc<Vec<Rc<ImportRule>>>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
     {
         let has_async = { let mut __found = false; for item in items.clone().iter().cloned() { if ((item.uses.clone().len() as i64) > 0) { __found = true; break; } } __found };
-let type_names = collect_type_names_from_items(items.clone());
+let type_names = collect_type_names_from_items(items.clone(), source_index);
 Rc::new({ let mut __result = Vec::new(); for path in Rc::new({ let mut __result = Vec::new(); for rule in Rc::new({ let mut __result = Vec::new(); for rule in import_rules.iter().cloned() { if match (*rule.trigger.clone()).clone() {
     ImportTrigger::TypeUsageTrigger { type_name: t, .. } => { let mut __found = false; for n in type_names.clone().iter().cloned() { if (n.clone().as_str() == t.clone().as_str()) { __found = true; break; } } __found },
     ImportTrigger::TraitImplTrigger { .. } => false,
@@ -171,19 +131,19 @@ Rc::new({ let mut __result = Vec::new(); for path in Rc::new({ let mut __result 
 }
 }
 
-pub fn collect_type_names_from_items(items: Rc<Vec<Rc<Node>>>) -> Rc<Vec<String>> {
-    Rc::new({ let mut __result = Vec::new(); for item in items.iter().cloned() { __result.extend((*collect_type_names_from_node(item.clone())).iter().cloned()); } __result })
+pub fn collect_type_names_from_items(items: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
+    Rc::new({ let mut __result = Vec::new(); for item in items.iter().cloned() { __result.extend((*collect_type_names_from_node(item.clone(), source_index.clone())).iter().cloned()); } __result })
 }
 
-pub fn collect_type_names_from_node(n: Rc<Node>) -> Rc<Vec<String>> {
+pub fn collect_type_names_from_node(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let self_name = if (n.ident_span.clone() != None) {
-                Rc::new(vec![n.name.clone()])
+                Rc::new(vec![authored_name_at(source_index.clone(), n.clone())])
 } else {
                 Rc::new(vec![])
 };
-let child_names = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*collect_type_names_from_node(child.clone())).iter().cloned()); } __result });
+let child_names = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*collect_type_names_from_node(child.clone(), source_index.clone())).iter().cloned()); } __result });
 v2_rt::concat(self_name, child_names)
 }
     })
@@ -200,17 +160,17 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget, source_index: Opti
         match (*expr.expr_data.clone()).clone() {
     ExprData::ExprLiteral { value: v, .. } => emit_literal(v.clone(), target.clone()),
     ExprData::ExprError { message, .. } => emit_error_expr(message.clone(), target.clone()),
-    ExprData::ExprVar { .. } => emit_ident(expr_var_name_at(expr.clone(), source_index), target.clone()),
+    ExprData::ExprVar { .. } => emit_ident(expr_var_name_at(expr.clone(), source_index.clone()), target.clone()),
     ExprData::ExprFieldAccess { .. } => {
-            let f = expr.name.clone();
+            let f = field_access_field_at(expr.clone(), source_index.clone());
 let b = field_access_base(expr.clone());
 if is_typed_service_call_receiver(expr.clone()) {
                 match extract_typed_service_name(expr.clone()) {
     Some(svc_name) => service_var_name(svc_name.clone()),
-    None => v2_rt::concat(v2_rt::concat(emit_simple_expr(b, target.clone(), source_index), ".".to_string()), emit_ident(f, target.clone())),
+    None => v2_rt::concat(v2_rt::concat(emit_simple_expr(b, target.clone(), source_index.clone()), ".".to_string()), emit_ident(f, target.clone())),
 }
 } else {
-                v2_rt::concat(v2_rt::concat(emit_simple_expr(b, target.clone(), source_index), ".".to_string()), emit_ident(f, target.clone()))
+                v2_rt::concat(v2_rt::concat(emit_simple_expr(b, target.clone(), source_index.clone()), ".".to_string()), emit_ident(f, target.clone()))
 }
 },
     ExprData::ExprStringInterp => {
@@ -222,7 +182,7 @@ if is_typed_service_call_receiver(expr.clone()) {
     expr: arg_value(child.clone()),
 }),
 }); } __result });
-emit_simple_string_interp(ps, target.clone(), source_index)
+emit_simple_string_interp(ps, target.clone(), source_index.clone())
 },
     _ => emit_error_expr("unsupported simple expr in test/mock binding".to_string(), target.clone()),
 }
@@ -370,7 +330,7 @@ pub fn lookup_func_sig_in_scope(scope: Rc<InferScope>, name: String) -> Option<R
 
 pub fn typed_named_arg_matches(arg: Rc<Node>, name: String) -> bool {
     {
-        let n = arg_name(arg);
+        let n = arg_name_at(arg, None);
 if (n.clone() == None) {
             false
 } else {
@@ -452,7 +412,7 @@ continue;
                     break false;
 }
 } else {
-                let is_map = node_is_keyed_collection(n.clone());
+                let is_map = node_is_keyed_collection(n.clone(), None);
 if is_map.clone() {
                     match n.children.clone().get(1 as usize).cloned() {
     Some(val_child) => { {
@@ -500,7 +460,7 @@ pub fn emit_data_value_json(value: Rc<Node>, source_index: Option<Rc<NewlineInde
 v2_rt::concat(v2_rt::concat("[".to_string(), el_strs.join(&", ".to_string())), "]".to_string())
 },
     ExprData::ExprRecordLit { .. } => {
-            let field_strs = Rc::new({ let mut __result = Vec::new(); for f in value.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(field_init_node_name(f.clone()))), "\": ".to_string()), emit_data_value_json(field_init_node_value(f.clone()), source_index.clone()))); } __result });
+            let field_strs = Rc::new({ let mut __result = Vec::new(); for f in value.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(field_init_node_name_at(f.clone(), source_index.clone()))), "\": ".to_string()), emit_data_value_json(field_init_node_value(f.clone()), source_index.clone()))); } __result });
 v2_rt::concat(v2_rt::concat("{".to_string(), field_strs.join(&", ".to_string())), "}".to_string())
 },
     ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(expr_var_name_at(value.clone(), source_index.clone()))), "\"".to_string()),
@@ -800,10 +760,7 @@ pub fn emit_keyword(key: String, target: RenderTarget) -> String {
 pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
     match (*value).clone() {
     LiteralValue::LitStr { value: s, .. } => {
-        let suffix = match target {
-    RenderTarget::Rust => ".to_string()".to_string(),
-    _ => "".to_string(),
-};
+        let suffix = language_spec(target).items.clone().string_literal_suffix.clone();
 emit_string_literal(s.clone(), suffix)
 },
     LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
@@ -818,22 +775,7 @@ emit_string_literal(s.clone(), suffix)
 }
 
 pub fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
-    match op {
-    BinOp::Add => "+".to_string(),
-    BinOp::Sub => "-".to_string(),
-    BinOp::Mul => "*".to_string(),
-    BinOp::Div => emit_keyword("div".to_string(), target),
-    BinOp::Mod => "%".to_string(),
-    BinOp::Eq => "==".to_string(),
-    BinOp::Ne => "!=".to_string(),
-    BinOp::Lt => "<".to_string(),
-    BinOp::Gt => ">".to_string(),
-    BinOp::Le => "<=".to_string(),
-    BinOp::Ge => ">=".to_string(),
-    BinOp::And => emit_keyword("and".to_string(), target),
-    BinOp::Or => emit_keyword("or".to_string(), target),
-    BinOp::NullCoalesce => "??".to_string(),
-}
+    binop_symbol(target, op)
 }
 
 pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
@@ -864,7 +806,8 @@ pub fn emit_node_type(n: Rc<Node>, target: RenderTarget, source_index: Option<Rc
 pub fn render_node_type(n: Rc<Node>, target: RenderTarget, shared_types: Rc<HashMap<String, bool>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
-            let n_is_error = if (n.inferred.clone() != None) {
+            let tn = authored_name_at(source_index.clone(), n.clone());
+let n_is_error = if (n.inferred.clone() != None) {
                 is_compiler_error(n.inferred.clone().clone().unwrap())
 } else {
                 false
@@ -926,11 +869,11 @@ return opt_str
 }
 let is_conj = (n.connective.clone() == Connective::Conj);
 let is_disj = (n.connective.clone() == Connective::Disj);
-let shared = emit_map_has(shared_types.clone(), n.name.clone());
+let shared = emit_map_has(shared_types.clone(), tn.clone());
 if is_disj {
                 {
                     let base = if (n.ident_span.clone() != None) {
-                        coerce_primitive_type(target.clone(), n.name.clone())
+                        coerce_primitive_type(target.clone(), tn.clone())
 } else {
                         match target.clone() {
     RenderTarget::Rust => "compile_error!(\"unresolved anonymous coproduct type reached emit\")".to_string(),
@@ -981,7 +924,7 @@ return tuple_str
 }
 if (n.ident_span.clone() != None) {
                         {
-                            let snake = to_snake(n.name.clone());
+                            let snake = to_snake(tn.clone());
 let has_template = match container_to_algebra_name(snake.clone()) {
     Some(_) => true,
     None => false,
@@ -1001,7 +944,7 @@ let conj_container_str = if shared.clone() {
 return conj_container_str
 }
 }
-let base = coerce_primitive_type(target.clone(), n.name.clone());
+let base = coerce_primitive_type(target.clone(), tn.clone());
 let conj_named_str = if shared.clone() {
                                 wrap_shared_type(target.clone(), base.clone())
 } else {
@@ -1017,9 +960,9 @@ return anon_str
 }
 if ((n.children.clone().len() as i64) == 0) {
                 {
-                    let bare_is_map = (is_container_type(n.name.clone()) && (to_snake(n.name.clone()).as_str() == "map".to_string().as_str()));
-let bare_is_collection = (is_container_type(n.name.clone()) && !bare_is_map.clone());
-let has_container_template = match container_to_algebra_name(to_snake(n.name.clone())) {
+                    let bare_is_map = (is_container_type(tn.clone()) && (to_snake(tn.clone()).as_str() == "map".to_string().as_str()));
+let bare_is_collection = (is_container_type(tn.clone()) && !bare_is_map.clone());
+let has_container_template = match container_to_algebra_name(to_snake(tn.clone())) {
     Some(_) => true,
     None => false,
 };
@@ -1028,7 +971,7 @@ let base = if bare_is_map.clone() {
                         emit_map_type("_".to_string(), "_".to_string(), target.clone())
 } else {
                         if bare_is_collection {
-                            emit_container(to_snake(n.name.clone()), "_".to_string(), target.clone())
+                            emit_container(to_snake(tn.clone()), "_".to_string(), target.clone())
 } else {
                             if (has_container_template && (param_count == 1)) {
                                 {
@@ -1036,13 +979,13 @@ let base = if bare_is_map.clone() {
     Some(p) => render_node_type(param_node_type_expr(p.clone()), target.clone(), shared_types.clone(), source_index.clone()),
     None => "_".to_string(),
 };
-emit_container(to_snake(n.name.clone()), inner, target.clone())
+emit_container(to_snake(tn.clone()), inner, target.clone())
 }
 } else {
-                                if (n.name.clone().as_str() == tuple_type_name().as_str()) {
+                                if (tn.clone().as_str() == tuple_type_name().as_str()) {
                                     render_tuple_parts(Rc::new(vec![]), target.clone())
 } else {
-                                    coerce_primitive_type(target.clone(), n.name.clone())
+                                    coerce_primitive_type(target.clone(), tn.clone())
 }
 }
 }
@@ -1055,7 +998,7 @@ let bare_str = if shared.clone() {
 return bare_str
 }
 }
-let is_map = node_is_keyed_collection(n.clone());
+let is_map = node_is_keyed_collection(n.clone(), source_index.clone());
 if is_map {
                 {
                     let k = match n.children.clone().first().cloned() {
@@ -1081,12 +1024,12 @@ if ((n.children.clone().len() as i64) == 1) {
     Some(child) => render_node_type(child_type_node(child.clone()), target.clone(), shared_types.clone(), source_index.clone()),
     None => "_".to_string(),
 };
-let is_container = node_is_collection(n.clone());
+let is_container = node_is_collection(n.clone(), source_index.clone());
 let base = if is_container {
-                        emit_container(to_snake(n.name.clone()), child_str, target.clone())
+                        emit_container(to_snake(tn.clone()), child_str, target.clone())
 } else {
                         {
-                            let type_base = coerce_primitive_type(target.clone(), n.name.clone());
+                            let type_base = coerce_primitive_type(target.clone(), tn.clone());
 match target.clone() {
     RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(type_base.clone(), "[".to_string()), child_str), "]".to_string()),
     _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(type_base.clone(), "<".to_string()), child_str), ">".to_string()),
@@ -1102,13 +1045,13 @@ return single_str
 }
 }
 let child_strs = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(render_node_type(child_type_node(c.clone()), target.clone(), shared_types.clone(), source_index.clone())); } __result });
-if (n.name.clone().as_str() == tuple_type_name().as_str()) {
+if (tn.clone().as_str() == tuple_type_name().as_str()) {
                 {
                     let multi_tuple_str = render_tuple_parts(child_strs.clone(), target.clone());
 return multi_tuple_str
 }
 }
-let type_base = coerce_primitive_type(target.clone(), n.name.clone());
+let type_base = coerce_primitive_type(target.clone(), tn.clone());
 let args_joined = child_strs.clone().join(&", ".to_string());
 let base = match target.clone() {
     RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(type_base.clone(), "[".to_string()), args_joined), "]".to_string()),
@@ -1152,8 +1095,8 @@ match target {
 }
 }
 
-pub fn is_type_alias_return_node(n: Rc<Node>) -> bool {
-    (n.name.clone().as_str() != "Unit".to_string().as_str())
+pub fn is_type_alias_return_node(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+    (authored_name_at(source_index, n).as_str() != "Unit".to_string().as_str())
 }
 
 pub fn is_service_item(item: Rc<Node>) -> bool {
@@ -1325,12 +1268,12 @@ pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
     (((((item.connective.clone() == Connective::NoConnective) && (item.body.clone() == None)) && ((item.params.clone().len() as i64) == 0)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0))
 }
 
-pub fn is_type_alias_item(item: Rc<Node>) -> bool {
-    (is_bare_leaf_item(item.clone()) && is_type_alias_return_node(resolved_type(item.clone())))
+pub fn is_type_alias_item(item: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+    (is_bare_leaf_item(item.clone()) && is_type_alias_return_node(resolved_type(item.clone()), source_index))
 }
 
-pub fn is_type_decl_item(item: Rc<Node>) -> bool {
-    ((is_bare_leaf_item(item.clone()) && !is_type_alias_return_node(resolved_type(item.clone()))) || (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)))
+pub fn is_type_decl_item(item: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+    ((is_bare_leaf_item(item.clone()) && !is_type_alias_return_node(resolved_type(item.clone()), source_index)) || (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None)) && (item.transport.clone() == None)) && ((item.children.clone().len() as i64) == 0)))
 }
 
 pub fn is_function_item(item: Rc<Node>) -> bool {
@@ -1350,7 +1293,7 @@ pub fn is_resource_def_item(item: Rc<Node>) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ExprCategory {
     ExprCatLeaf,
     ExprCatCompound,
@@ -1389,7 +1332,7 @@ pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum FuncBodyShape {
     FuncBodyLet {
         name: String,
@@ -1426,7 +1369,7 @@ Rc::new(FuncBodyShape::FuncBodyLet {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TcoExprShape {
     TcoCall {
         func: String,
@@ -1892,20 +1835,32 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
 
 pub fn emit_typed_cast_shared(expr: Rc<Node>, cast_target_node: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let expr_str = recurse(expr);
-let ty_str = emit_node_type(cast_target_node, target, source_index);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(ty_str, "(".to_string()), expr_str), ")".to_string())
+        let expr_str = recurse(expr.clone());
+let ty_str = emit_node_type(cast_target_node, target.clone(), source_index.clone());
+let src_ty = match expr.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: n, .. }) => emit_node_type(n.clone(), target.clone(), source_index.clone()),
+    _ => "".to_string(),
+};
+if ((src_ty.clone().as_str() != "".to_string().as_str()) && (src_ty.clone().as_str() == ty_str.clone().as_str())) {
+            expr_str
+} else {
+            if can_cast(target.clone(), ty_str.clone()) {
+                render_cast(expr_str, ty_str.clone(), target.clone())
+} else {
+                v2_rt::concat(v2_rt::concat("compile_error!(\"unsupported cast to ".to_string(), ty_str.clone()), "\")".to_string())
+}
+}
 }
 }
 
-pub fn emit_typed_index_shared(base: Rc<Node>, index: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+pub fn emit_typed_index_shared(base: Rc<Node>, index: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let spec = language_spec(target.clone());
 let base_str = recurse(base.clone());
 let index_str = recurse(index);
 let base_node = normalize_access_type_node(resolved_type(base.clone()));
-let is_map = node_is_keyed_collection(base_node.clone());
-if is_string_like(target.clone(), base_node.name.clone()) {
+let is_map = node_is_keyed_collection(base_node.clone(), source_index.clone());
+if is_string_like(target.clone(), authored_name_at(source_index.clone(), base_node.clone())) {
             apply_type_template2(spec.indexing.clone().string_index.clone(), base_str, index_str)
 } else {
             if is_map {
@@ -1917,14 +1872,14 @@ if is_string_like(target.clone(), base_node.name.clone()) {
 }
 }
 
-pub fn emit_typed_slice_shared(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+pub fn emit_typed_slice_shared(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let spec = language_spec(target.clone());
 let base_str = recurse(base.clone());
 let start_str = recurse(start);
 let end_str = recurse(end);
 let base_node = normalize_access_type_node(resolved_type(base.clone()));
-if is_string_like(target.clone(), base_node.name.clone()) {
+if is_string_like(target.clone(), authored_name_at(source_index, base_node)) {
             match spec.indexing.clone().string_slice.clone() {
     Some(tmpl) => apply_type_template3(tmpl.clone(), base_str, start_str, end_str),
     None => emit_error_expr("unsupported string slice for target".to_string(), target.clone()),

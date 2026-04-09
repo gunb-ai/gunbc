@@ -35,9 +35,9 @@ service llm.Codex {
     transport shell {
       argv: [
         "codex", "exec",
-        "-m", "\{model\}",
-        "-c", "model_reasoning_effort=\"\{reasoning_effort\}\"",
-        "-C", "\{cwd\}",
+        "-m", "{model}",
+        "-c", "model_reasoning_effort=\"{reasoning_effort}\"",
+        "-C", "{cwd}",
         "-"
       ]
       stdin: prompt
@@ -74,9 +74,9 @@ service llm.Claude {
         "claude", "-p",
         "--output-format", "text",
         "--permission-mode", "plan",
-        "--model", "\{model\}",
-        "--effort", "\{effort\}",
-        "\{prompt\}"
+        "--model", "{model}",
+        "--effort", "{effort}",
+        "{prompt}"
       ]
     }
     exit {
@@ -106,7 +106,7 @@ service llm.Gemini {
     }
     transport shell {
       argv: [
-        "gemini", "-p", "\{prompt\}",
+        "gemini", "-p", "{prompt}",
         "--output-format", "text",
         "--approval-mode", "plan"
       ]

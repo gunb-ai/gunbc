@@ -18,7 +18,7 @@ import v2.std.core {
   InferredNode, Resolved,
   no_span,
   unit_type,
-  expr_var_name, expr_call_func, field_access_field, field_access_base,
+  expr_var_name, expr_var_name_at, expr_call_func, expr_call_func_at, field_access_field, field_access_field_at, field_access_base,
   method_receiver, param_node_type_expr
 }
 import v2.compiler.infer_types {
@@ -58,7 +58,7 @@ type ServiceMethodResult {
 fn is_typed_service_call_receiver(receiver: Node) -> Bool {
   match receiver.expr_data {
     ExprFieldAccess { summary: _ } =>
-      let f = field_access_field(texpr: receiver)
+      let f = field_access_field_at(texpr: receiver, source_index: none)
       let b = field_access_base(texpr: receiver)
       match b.expr_data {
         ExprVar { binding_kind: _ } => {
@@ -77,11 +77,11 @@ fn is_typed_service_call_receiver(receiver: Node) -> Bool {
 fn extract_typed_service_name(receiver: Node) -> String? {
   match receiver.expr_data {
     ExprFieldAccess { summary: _ } =>
-      let f = field_access_field(texpr: receiver)
+      let f = field_access_field_at(texpr: receiver, source_index: none)
       let b = field_access_base(texpr: receiver)
       match b.expr_data {
         ExprVar { binding_kind: _ } =>
-          let ns = expr_var_name(texpr: b)
+          let ns = expr_var_name_at(texpr: b, source_index: none)
           Some { value: concat(ns, ".", f) }
         _ => none
       }
@@ -120,7 +120,7 @@ fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum 
   // Per-node logic: detect function calls and accumulate unique names.
   let this_acc = match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      let f = expr_call_func(texpr: texpr)
+      let f = expr_call_func_at(texpr: texpr, source_index: none)
       if emit_map_has(m: acc.seen, key: f) { acc }
       else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }
     _ => acc

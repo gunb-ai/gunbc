@@ -4,49 +4,9 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
-pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, find_child_named, has_child_named, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, with_required_cardinality, Connective, param_node_name, Cardinality};
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
+pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, find_child_named, has_child_named, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, with_required_cardinality, Connective, param_node_name, param_node_name_at, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, TupleFirst, TupleSecond};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
@@ -63,7 +23,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TypeRepr {
     StructRepr,
     EnumRepr {
@@ -241,7 +201,7 @@ pub fn enum_field_present_in_all_variants(variants: Rc<Vec<Rc<Node>>>, field_nam
 
 pub fn enum_field_type_consistent(variants: Rc<Vec<Rc<Node>>>, field_name: String, expected: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
     { let mut __all = true; for variant in variants.iter().cloned() { if !(match find_child_named(variant.clone(), field_name.clone(), source_index.clone()) {
-    Some(field_child) => node_type_equals(child_type_node(field_child.clone()), expected.clone()),
+    Some(field_child) => node_type_equals(child_type_node(field_child.clone()), expected.clone(), source_index.clone()),
     None => false,
 }) { __all = false; break; } } __all }
 }
@@ -292,7 +252,7 @@ pub fn build_type_summary(item: Rc<Node>, source_index: Option<Rc<NewlineIndex>>
         if (((item.connective.clone() == Connective::NoConnective) || (item.connective.clone() == Connective::Arrow)) || (item.transport.clone() != None)) {
             return None
 }
-let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result });
+let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name_at(p.clone(), source_index.clone())); } __result });
 let is_product = (item.connective.clone() == Connective::Conj);
 let has_fn = { let mut __found = false; for child in item.children.clone().iter().cloned() { if match child.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => (rt.connective.clone() == Connective::Arrow),

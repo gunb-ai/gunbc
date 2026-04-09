@@ -126,15 +126,15 @@ Previously eliminated:
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (316 pass, 0 fail, 44 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (0 self-compile diagnostics) |
-| L1 ratchet | `scripts/l1-ratchet.sh --check` | 37 (target: 0) |
+| L1 gate | `scripts/l1-ratchet.sh --check` | GREEN (0, hard gate — PR #352) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
 ## Ratchet Counts
 
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
-| Self-compile diagnostics | 314 | 526 | Honest count — complexity violations surfaced, non-blocking |
-| L1 type knowledge | 27 | 0 | Down from 70; name-based workarounds tracked for M4 |
+| Self-compile diagnostics | 528 | 526 | Honest count — +2 from transport property inference complexity paths |
+| L1 type knowledge | 0 | 0 | GREEN — hard gate (PR #352). Constructor functions dissolved, ListOf/ReceiverCollectionOf merged into ContainerOf. |
 | Complexity violations | 325 | 526 | Honest: 526 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
@@ -406,10 +406,14 @@ on impossible states.
 - [~] **BND-4: `container_param_name` derives from algebra.** T/K/V
   parameter names now derive from `algebra_type_param_names` declared
   per-profile in `std/algebra.dag` (PR #347). Hardcoded
-  `container_type_param_names` table deleted. `container_param_name`
-  string-keyed lookup still exists (reads algebra instead of table).
-  `__MISSING_PARAM__` branches remain as fail-closed sentinels —
-  dissolve when compiler can prove all container types have profiles.
+  `container_type_param_names` table deleted. `__MISSING_PARAM__`
+  sentinels dissolved — `container_param_name_required` (non-optional)
+  centralizes the fallback in `std/types.dag` (PR #352). Remaining:
+  `container_param_name_required` falls back to `kind_name` when no
+  profile exists. Dissolves with Tier 3 (FF-9): when the compiler
+  reads type declarations at resolve time, param names come from the
+  declaration itself — the string→profile→names lookup chain and its
+  fallback become unnecessary.
 
 **Dependency:** BND-1 and BND-2 can land independently. BND-3 lands
 with whichever is first. BND-4 requires Tier 2.5 (algebra-derived
@@ -750,22 +754,20 @@ data (each rule → one test).
 ## M4: Structural Identity (L1 = 0) — follows Lanes 1+2
 
 **Root cause:** The compiler uses `Node.name` (a string) as semantic
-authority. 27 type constructors + 10 name comparisons = L1 37.
-Deletion requires declaration-driven identity and structural algebra.
-CG render path cleaned (TypeRendering dissolved, PR #331). M2
-expected threading in good shape (remaining gap: bidirectional inference).
+authority. Deletion requires declaration-driven identity and structural
+algebra.
 
-**L1 name comparisons breakdown (10):**
-- 4× Callable: `has_fn_fields` (2), resolve `n_is_special` (1), `render_node_type` (1)
-- 3× Tuple: `render_node_type` (3)
-- 2× Dynamic/Error: `pattern_subject` (2), counted as 1 line in resolve
-- 1× List: `index_access` (positional indexing check)
-
-**Structural properties needed to dissolve:**
-- Callable: needs structural discriminator (only type using `params` for type parameters + `inferred` for return type). Tier 2.6 design: model callable as concept
-- Tuple: needs either a dedicated connective or a flag. Currently indistinguishable from 2-field struct Conj without name
-- Dynamic/Error: need structural markers for "unresolved/error type"
-- List positional indexing: needs "supports positional access" algebra fact
+**Status: L1 = 0 (hard gate, PR #352).** All 10 name comparisons
+dissolved (Arrow connective for Callable, structural `is_pair` for
+Tuple, `is_compiler_error` for Dynamic/Error, `ordered_element_collections`
+for List). `ListOf` and `ReceiverCollectionOf` merged into
+`ContainerOf { source: ContainerSource, element }` in algebra.dag.
+L1-tracked constructor functions deleted from production code:
+`container_node`, `tuple_node`, `callable_node`, `map_node`, `leaf_node`.
+`bare_map_node` remains (not L1-tracked, inlined its `map_node` call).
+`unify_template` enforces `ContainerSource` (carrier name must match).
+`container_param_name_required` replaces `__MISSING_PARAM__` sentinels
+(fail-closed: visible error marker if profile missing).
 
 ### M4 Lane 1: Declaration-driven algebra (Lane A)
 
@@ -774,21 +776,21 @@ instead of hardcoding them.
 
 - Tier 1 (data tables → .dag): DONE
 - Tier 2 (factor enrich_kernel_type): DONE
-- Tier 2.5 (algebra bridge fidelity):
+- Tier 2.5 (algebra bridge fidelity): DONE
   - [x] `CallableOf` variant for higher-order callback shapes
-  - [ ] Derive T/K/V type parameter names from algebra declarations
+  - [x] T/K/V parameter names derive from algebra via `container_param_name_required`
+  - [x] `ListOf`/`ReceiverCollectionOf` merged into `ContainerOf { source, element }`
+  - [x] `unify_template` enforces `ContainerSource` (carrier name match)
 - Tier 2.6 (functional system modeling):
   - [ ] Model function application as a concept (apply/call vs function-value-ref)
   - [ ] Inference encodes "this is a call" in the IR node, not as a type-arity heuristic
-  - [ ] Dissolves `rt.name == "Callable"` L1 violations (4 sites: has_fn_fields ×2, resolve, render_node_type)
-  - Same pattern as iteration modeling (fold/descend/repeat): ad-hoc emit
-    decisions are symptoms of a missing concept layer. Once the functional
-    system is modeled, arity-based rendering questions disappear.
+  - L1 Callable name comparisons already dissolved (Arrow connective).
+    Tier 2.6 is about deeper concept modeling, not L1 violations.
 - Tier 3 (full structural algebra, requires FF-9):
   - [ ] Compiler reads type declarations + algebra edges at resolve time
   - [ ] Derive kernel/container identity from type declarations
   - [ ] CollectionKind bridge dissolves when method algebras land
-  - [ ] 27 type constructor sites → 0
+  - [x] 27 type constructor sites → 0 (PR #352)
 
 ### M4 Lane 2: Node.name deletion (D6) — Phase 2, cross-cutting
 
@@ -798,11 +800,34 @@ resolve uses structural identity.
 - B3 (emit rendering): DONE
 - B4 (resolve structural identity): accessor layer done, `node.name`
   still semantic authority underneath
-- D6 open:
-  - [ ] Migrate remaining emit sites (Python ~5, Go ~5, shared ~5)
-  - [ ] Update ~256 Node constructions to drop `name:`
-  - [ ] Migrate synthetic node identity to structural
-  - [ ] Delete `Node.name` field + scrambled-name tests
+- D6 progress (PR #356):
+  - [x] Thread `si: NewlineIndex?` through complexity + ownership
+  - [x] Migrate ~90 accessor calls to `_at` variants
+  - [x] Centralize type builders in `04_types.dag`
+  - [x] Fix `ident_span` on 4 constructors (`name_span` parameter)
+  - [x] Fix ident_span through infer/resolve node reconstruction (18 sites)
+  - [x] Fix 6 name_span widening bugs (binding.span → node_name_span)
+  - [x] Wire real `source_index` through emitter (46 calls), infer (13),
+    resolve (12), access (9), ownership (2 entry points), types (18)
+  - [x] Thread `source_index` through type utilities: `is_fully_resolved`,
+    `node_type_compatible`, `node_type_equals`, `node_type_shape`,
+    `node_type_deps`, `check_index_access_node`, etc.
+  - [x] Remove dual-si from `build_complexity_report` (FuncEntry.si only)
+  - [x] Migrate ~30 direct `n.name` reads to `authored_name_at` in emit/types
+  - [x] Revert `@synthetic:` ident_span — structural identity is correct path
+  - **Status:** 52 `source_index: none` remain in scope-free functions.
+    ~20 direct `n.name` reads remain. 115 Node construction sites need
+    `name:` removed for field deletion.
+- D6 open (structural work, not mechanical wiring):
+  - [ ] Add `NewlineIndex` to `ParserState` (14 parser calls)
+  - [ ] Thread `source_indices` through compile.dag serialization (11 calls)
+  - [ ] Thread `source_index` through mock/service/transport utilities (19 calls)
+  - [ ] Migrate remaining `n.name` reads (resolve slot_bindings, service
+    names, normalize, access `is_ordered_element_collection`)
+  - [ ] `named_collection_type` fabrication — `container_param_name` gap
+  - [ ] Kernel type identity: structural checks, not name recovery
+  - [ ] Update ~115 Node constructions to drop `name:`
+  - [ ] Delete `Node.name` field + non-`_at` accessors + scrambled-name tests
 
 Lanes share only `00_core.dag` (different functions, no conflict).
 
@@ -1304,27 +1329,56 @@ RE-1: Transport emission fidelity (emit reads existing config)
 ### RE-1: Transport emission fidelity
 
 Make `emit_rest_call` and `emit_shell_call` consume the transport
-config they already receive. No new .dag modeling needed.
+config they already receive. PR #353.
 
 **REST:**
 - [ ] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
+  Inferred type enables structural dispatch; lowercases variant name for reqwest.
+  Gap: emit reads variant name text, not the resolved HttpMethod alternative.
 - [ ] RE-1b: Path template from `transport.path` with param substitution
-  → `format!("/repos/{}/{}/pulls", owner, repo)`
-- [ ] RE-1c: Query parameters from `transport.query`
-  → `.query(&[("state", &state)])`
+  → `format!("/repos/{}/{}/pulls", owner, repo)`. Uses ExprStringInterp structure.
+  Gap: interpolation segments still use expr_var_name_at, not full emit_typed_expr.
+- [x] RE-1c: Query parameters from `transport.query`
+  → `.query(&[("state", &state)])`. Uses emit_simple_expr for structural emission.
 - [ ] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
+  Dispatches on ExprData shape (ExprVar=unit, ExprCall=payload).
+  Gaps: collapses all unit variants (Bearer, ApiKey, Basic) to Bearer wire
+  format; non-literal Header { name: expr } emits expr text as header name;
+  ApiKey lacks structural carrier for key location. Needs resolved variant
+  identity at the infer/emit boundary.
 - [ ] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
+  Status code match works but response/exit are encoded as synthetic property
+  names — emitter re-parses strings. Needs first-class ResponseCase/ExitCase nodes.
 
 **Shell:**
 - [ ] RE-1f: argv from `transport.argv` with param substitution
-  → `Command::new("sh").arg("-lc").arg(&script)`
-- [ ] RE-1g: stdin from `transport.stdin`
-  → `.stdin(Stdio::piped())` + write
+  → `Command::new("sh").arg("-lc").arg(&script)`. ExprStringInterp structure.
+  Gap: interpolation uses raw format!() with no shell escaping. Values with
+  spaces, quotes, $(), backticks can break/inject commands. bash/emit.dag
+  quoting facts modeled but not yet consumed by the emitter.
+- [x] RE-1g: stdin from `transport.stdin`
+  → `.stdin(Stdio::piped())` + stdout/stderr piped + spawn + write + wait.
 - [ ] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
+  Same structural gap as RE-1e: encoded as property names, not case nodes.
 
 **Response:**
 - [ ] RE-1i: `from "content/0/text"` JSON path extraction on response
+  Not implemented. Nested path extraction deferred to RE-4.
 - [ ] RE-1j: Nested output struct field mapping via serde rename
+  `field_node_from_key` mechanism exists but no test covers it in this PR.
+
+**Infrastructure (PR #353):**
+- [x] Parser extended: `parse_rest_fields` captures method/path/query,
+  `parse_shell_fields` captures stdin, `parse_config_fields` captures auth_input
+- [x] Shell transport body marker preserved through resolve phase
+  (`make_transport_node` body parameter fix)
+- [x] `transport_env` excludes reserved keys (stdin separation)
+- [x] `int_to_string_acc` digit ordering fix
+- [x] HttpMethod moved from extdeps/transports/rest.dag to std/types.dag
+- [ ] CloudAuthScheme dissolved: std/types.dag has protocol-level schemes
+  (Bearer, Header, Basic, ApiKey). Cloud-specific SigV4/OidcToken need
+  a Layer-2 cloud auth coproduct in extdeps/cloud that composes std/ schemes.
+- [x] 7 RE-1 acceptance tests (5 REST + 2 shell)
 
 **Blocked by:** Nothing — all data already flows to the emitter.
 
@@ -1418,6 +1472,30 @@ review_dag_emitted_rust_builds
   Assert: cargo check exits 0
   Note: same pattern as bootstrap_stage0_to_stage1
 ```
+
+### RE follow-up: structural gaps from PR #353 review
+
+Three design-level issues surfaced during review that need follow-up work:
+
+**1. First-class response/exit case nodes (M4/M8/M9)**
+The parser encodes `response { 200 => List<PullRequest> }` as synthetic property
+names (`response_200`). The emitter re-parses these strings to rediscover patterns.
+Fix: model as structural case arms — `ResponseCase { pattern: StatusPattern, body: Node }`
+and `ExitCase { pattern: ExitPattern, body: Node }` — thread through parse/resolve/infer,
+let emit consume directly. This removes the entire name-slicing class.
+
+**2. Generic diagnostics/result carrier (M6/M9)**
+Transport property inference introduced ad-hoc `InferPropertiesResult` and
+`InferTransportResult` types. These should collapse into a generic result carrier
+from `std/` that all inference helpers parametrize on, eliminating per-pass
+boilerplate. Depends on std pattern work.
+
+**3. Typed transport/auth accessors at infer/emit boundary (M4/M8)**
+The emitter dispatches on expression shape (ExprVar vs ExprCall) and lowercased
+variant names rather than resolved variant identity. The upstream fix: add typed
+accessors or transport case nodes at the infer/emit boundary that preserve the
+exact `HttpMethod` and `AuthScheme` alternative, so emit translates those directly
+without reclassifying expressions.
 
 ### RE-3: review.dag live integration
 
@@ -1514,8 +1592,8 @@ RE item is implemented — the ratchet counts tests that exist AND pass.
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| RE-1 transport tests | 0/10 | 10 |
-| RE-2 compilation tests | 0/3 | 3 |
+| RE-1 transport tests | 7/10 | 10 |
+| RE-2 compilation tests | 0/3 (3 cargo check errors, ratchet at 3) | 3 |
 | RE-3 integration tests | 0/4 | 4 |
 | RE-4 API tests | 0/3 | 3 |
 | RE-5 multi-backend test | 0/1 | 1 |

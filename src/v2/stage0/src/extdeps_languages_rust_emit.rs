@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 
 pub fn rust_type_map() -> Rc<HashMap<String, String>> {
     thread_local! {
@@ -192,13 +152,121 @@ pub fn rust_enum_derives_copy() -> String {
 pub fn rust_serde_tag() -> String {
     thread_local! {
         static CACHED: String = {
-            "".to_string()
+            "#[serde(tag = \"_variant\")]".to_string()
         };
     }
     CACHED.with(|c| c.clone())
 }
 
 pub fn rust_serde_rename_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "#[serde(rename = \"{0}\")]".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_func_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "fn".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_async_prefix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "async ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_struct_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "struct".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_enum_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "enum".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_type_alias_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "type".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_param_separator() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ", ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_return_arrow() -> String {
+    thread_local! {
+        static CACHED: String = {
+            " -> ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_param_type_sep() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ": ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_string_literal_suffix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ".to_string()".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_module_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "mod".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_import_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "use".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_import_from_keyword() -> String {
     thread_local! {
         static CACHED: String = {
             "".to_string()
@@ -245,7 +313,7 @@ pub struct RuntimeFunction {
 pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<RuntimeFunction>>> = {
-            serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false, "wraps_result": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true, "wraps_result": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true, "wraps_result": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true, "wraps_result": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true, "wraps_result": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true, "wraps_result": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true, "wraps_result": false}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false, "wraps_result": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false, "wraps_result": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false, "wraps_result": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false, "wraps_result": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false, "wraps_result": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true, "wraps_result": false}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true, "wraps_result": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false, "wraps_result": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true, "wraps_result": false}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true, "wraps_result": false}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false, "wraps_result": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false, "wraps_result": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true, "wraps_result": false}, {"name": "append", "bridge_name": "append", "passes_by_ref": false, "wraps_result": true}]))
+            serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false, "wraps_result": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true, "wraps_result": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true, "wraps_result": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true, "wraps_result": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true, "wraps_result": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true, "wraps_result": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true, "wraps_result": false}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false, "wraps_result": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false, "wraps_result": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false, "wraps_result": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false, "wraps_result": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false, "wraps_result": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true, "wraps_result": false}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true, "wraps_result": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false, "wraps_result": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true, "wraps_result": false}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true, "wraps_result": false}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false, "wraps_result": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false, "wraps_result": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true, "wraps_result": false}, {"name": "append", "bridge_name": "append", "passes_by_ref": false, "wraps_result": true}, {"name": "contains", "bridge_name": "contains", "passes_by_ref": false, "wraps_result": false}, {"name": "count", "bridge_name": "count", "passes_by_ref": false, "wraps_result": false}]))
                 .expect("valid data definition")
         };
     }
@@ -286,6 +354,8 @@ pub fn rt_functions() -> Rc<HashMap<String, bool>> {
             __m.insert("replace".to_string(), true);
             __m.insert("chars_to_string".to_string(), true);
             __m.insert("append".to_string(), true);
+            __m.insert("contains".to_string(), true);
+            __m.insert("count".to_string(), true);
             Rc::new(__m)
         };
     }

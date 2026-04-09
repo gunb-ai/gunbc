@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::v2_std_core::{Node, param_node_type_expr, authored_name_at, NewlineIndex, find_child_named, has_child_named, InferredNode, Cardinality, MethodSemantics, FieldAccessStyle, FieldValueShape, FieldSummary, with_optional_cardinality, with_required_cardinality, Connective};
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -53,8 +13,9 @@ use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSem
 use crate::v2_std_core::FieldAccessStyle::{OptionalUnwrap};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
-pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTemplate, AlgebraTypeTemplate, kernel_algebra_profile, algebra_templates_for_profile};
-use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverCollectionOf, ListOf};
+pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTemplate, AlgebraTypeTemplate, ContainerSource, kernel_algebra_profile, algebra_templates_for_profile};
+use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ContainerOf};
+use crate::std_algebra::ContainerSource::{SameAsReceiver, Named};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
 pub use crate::v2_compiler_infer_types::{child_type_node, nominal_type_ref, normalize_access_type_node, node_is_keyed_collection, method_receiver_element_node, emit_map_has, enrich_kernel_type};
@@ -220,9 +181,9 @@ if is_optional {
 pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
         let normed = normalize_access_type_node(type_node);
-let resolved = resolve_scrutinee_type_node(env, normed);
+let resolved = resolve_scrutinee_type_node(env.clone(), normed);
 let map_type = normalize_access_type_node(resolved);
-if (node_is_keyed_collection(map_type.clone()) && ((map_type.children.clone().len() as i64) >= 2)) {
+if (node_is_keyed_collection(map_type.clone(), env.source_index.clone()) && ((map_type.children.clone().len() as i64) >= 2)) {
             match map_type.children.clone().get(1 as usize).cloned() {
     Some(value_type) => Some(value_type.clone()),
     None => None,
@@ -236,9 +197,9 @@ if (node_is_keyed_collection(map_type.clone()) && ((map_type.children.clone().le
 pub fn map_key_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
         let normed = normalize_access_type_node(type_node);
-let resolved = resolve_scrutinee_type_node(env, normed);
+let resolved = resolve_scrutinee_type_node(env.clone(), normed);
 let map_type = normalize_access_type_node(resolved);
-if (node_is_keyed_collection(map_type.clone()) && ((map_type.children.clone().len() as i64) >= 1)) {
+if (node_is_keyed_collection(map_type.clone(), env.source_index.clone()) && ((map_type.children.clone().len() as i64) >= 1)) {
             match map_type.children.clone().first().cloned() {
     Some(key_type) => Some(key_type.clone()),
     None => None,

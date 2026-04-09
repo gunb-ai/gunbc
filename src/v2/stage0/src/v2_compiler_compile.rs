@@ -4,49 +4,9 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
-pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name, resource_use_resource, param_node_name, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern, arg_name, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field, expr_call_func, lambda_param_names, record_lit_type_name, foreach_variable, expr_method_name};
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
+pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name, resource_use_name_at, resource_use_resource, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_name_at, field_binding_pattern, arg_name, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, foreach_variable, foreach_variable_at, expr_method_name, expr_method_name_at};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, OwnershipViolation};
 use crate::v2_std_core::Connective::{NoConnective, Arrow};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -116,7 +76,7 @@ pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
 }
 
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
-    Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap())); } __result })).iter().cloned()); } __result })
+    Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), m.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
 }
 
 pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -319,7 +279,7 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
 }
 
 pub fn serialize_field_binding(binding: Rc<Node>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"field_name\": ".to_string(), json_quote(field_binding_name(binding.clone()))), ", \"binding\": ".to_string()), serialize_match_pattern(field_binding_pattern(binding.clone()))), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"field_name\": ".to_string(), json_quote(field_binding_name_at(binding.clone(), None))), ", \"binding\": ".to_string()), serialize_match_pattern(field_binding_pattern(binding.clone()))), "}".to_string())
 }
 
 pub fn serialize_match_pattern(pattern: Rc<MatchPattern>) -> String {
@@ -332,7 +292,7 @@ pub fn serialize_match_pattern(pattern: Rc<MatchPattern>) -> String {
 }
 
 pub fn serialize_named_arg(arg: Rc<Node>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_optional_string(arg_name(arg.clone()))), ", \"value\": ".to_string()), serialize_node(arg_value(arg.clone()))), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_optional_string(arg_name_at(arg.clone(), None))), ", \"value\": ".to_string()), serialize_node(arg_value(arg.clone()))), "}".to_string())
 }
 
 pub fn serialize_match_arm(arm: Rc<Node>) -> String {
@@ -340,7 +300,7 @@ pub fn serialize_match_arm(arm: Rc<Node>) -> String {
 }
 
 pub fn serialize_field_init(field_init: Rc<Node>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_init_node_name(field_init.clone()))), ", \"value\": ".to_string()), serialize_node(field_init_node_value(field_init.clone()))), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_init_node_name_at(field_init.clone(), None))), ", \"value\": ".to_string()), serialize_node(field_init_node_value(field_init.clone()))), "}".to_string())
 }
 
 pub fn serialize_string_part(part: Rc<StringPart>) -> String {
@@ -392,7 +352,7 @@ match (*expr_node.expr_data.clone()).clone() {
     None => "null".to_string(),
 }), "}".to_string()),
     ExprData::ExprFieldAccess { summary, .. } => {
-            let field = field_access_field(expr_node.clone());
+            let field = field_access_field_at(expr_node.clone(), None);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprFieldAccess\", \"field\": ".to_string(), json_quote(field)), ", \"summary\": ".to_string()), match summary.clone() {
     Some(inner) => serialize_field_summary(inner.clone()),
     None => "null".to_string(),
@@ -403,13 +363,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprCall\", \"func\": ".to_string(), json_quote(func)), ", \"call_semantics\": ".to_string()), serialize_call_semantics(call_semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprMethodCall { method_semantics, .. } => {
-            let method = expr_method_name(expr_node.clone());
+            let method = expr_method_name_at(expr_node.clone(), None);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMethodCall\", \"method\": ".to_string(), json_quote(method)), ", \"method_semantics\": ".to_string()), serialize_method_semantics(method_semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprBinOp { op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBinOp\", \"op\": ".to_string(), json_quote(bin_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
     ExprData::ExprUnaryOp { op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprUnaryOp\", \"op\": ".to_string(), json_quote(unary_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
     ExprData::ExprLambda { semantics, .. } => {
-            let params = lambda_param_names(expr_node.clone());
+            let params = lambda_param_names_at(expr_node.clone(), None);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLambda\", \"params\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(json_quote(p.clone())); } __result }))), ", \"semantics\": ".to_string()), serialize_lambda_semantics(semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprLet => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLet\", \"name\": ".to_string(), json_quote(name)), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
@@ -418,7 +378,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprRecordLit\", \"type_name\": ".to_string(), json_optional_string(type_name)), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprForEach => {
-            let variable = foreach_variable(expr_node.clone());
+            let variable = foreach_variable_at(expr_node.clone(), None);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprForEach\", \"variable\": ".to_string(), json_quote(variable)), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprMatch => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMatch\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
@@ -443,15 +403,15 @@ pub fn serialize_inferred_node(inferred: Rc<InferredNode>) -> String {
 }
 
 pub fn serialize_resource_use(resource_use: Rc<Node>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(resource_use_name(resource_use.clone()))), ", \"resource\": ".to_string()), serialize_node(resource_use_resource(resource_use.clone()))), ", \"span\": ".to_string()), serialize_span(resource_use.span.clone())), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(resource_use_name_at(resource_use.clone(), None))), ", \"resource\": ".to_string()), serialize_node(resource_use_resource(resource_use.clone()))), ", \"span\": ".to_string()), serialize_span(resource_use.span.clone())), "}".to_string())
 }
 
 pub fn serialize_field(field: Rc<Node>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_node_name(field.clone()))), ", \"type_expr\": ".to_string()), serialize_node(field_node_type_expr(field.clone()))), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node(field_node_default_value(field.clone()))), ", \"from_key\": ".to_string()), json_optional_string(field_node_from_key(field.clone()))), ", \"span\": ".to_string()), serialize_span(field_node_span(field.clone()))), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_node_name_at(field.clone(), None))), ", \"type_expr\": ".to_string()), serialize_node(field_node_type_expr(field.clone()))), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node(field_node_default_value(field.clone()))), ", \"from_key\": ".to_string()), json_optional_string(field_node_from_key(field.clone()))), ", \"span\": ".to_string()), serialize_span(field_node_span(field.clone()))), "}".to_string())
 }
 
 pub fn serialize_param(param: Rc<Node>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(param_node_name(param.clone()))), ", \"type_expr\": ".to_string()), serialize_node(param_node_type_expr(param.clone()))), ", \"default_value\": ".to_string()), json_optional_node(param_node_default_value(param.clone()))), ", \"span\": ".to_string()), serialize_span(param_node_span(param.clone()))), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(param_node_name_at(param.clone(), None))), ", \"type_expr\": ".to_string()), serialize_node(param_node_type_expr(param.clone()))), ", \"default_value\": ".to_string()), json_optional_node(param_node_default_value(param.clone()))), ", \"span\": ".to_string()), serialize_span(param_node_span(param.clone()))), "}".to_string())
 }
 
 pub fn serialize_node(node: Rc<Node>) -> String {

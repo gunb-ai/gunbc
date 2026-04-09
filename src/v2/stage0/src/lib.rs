@@ -13,8 +13,11 @@ pub mod std_syntax;
 pub mod std_termination;
 pub mod v2_compiler_runtime_rust;
 pub mod extdeps_languages_dag_syntax;
+pub mod extdeps_languages_go_syntax;
 pub mod extdeps_languages_go_types;
+pub mod extdeps_languages_python_syntax;
 pub mod extdeps_languages_python_types;
+pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
 pub mod std_computation;
 pub mod std_graph;
@@ -50,6 +53,48 @@ pub mod v2_compiler_emit_python;
 pub mod v2_compiler_emit_rust;
 pub mod v2_compiler_compile;
 pub mod v2_rt;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NonEmptyVec<T>(Vec<T>);
+
+impl<T> NonEmptyVec<T> {
+    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
+        if items.is_empty() {
+            Err("NonEmptyVec requires at least one element")
+        } else {
+            Ok(Self(items))
+        }
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        &self.0
+    }
+
+    pub fn into_vec(self) -> Vec<T> {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
+
+impl<T: Ord> NonEmptyBTreeSet<T> {
+    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
+        if items.is_empty() {
+            Err("NonEmptyBTreeSet requires at least one element")
+        } else {
+            Ok(Self(items))
+        }
+    }
+
+    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
+        &self.0
+    }
+
+    pub fn into_set(self) -> std::collections::BTreeSet<T> {
+        self.0
+    }
+}
 
 #[cfg(test)]
 mod compiler_tests;

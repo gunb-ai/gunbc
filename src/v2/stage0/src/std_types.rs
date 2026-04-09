@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::std_algebra::{FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names};
 use Bool::*;
 use WarningPolicy::*;
@@ -63,6 +23,7 @@ use ExecutionEnv::*;
 use EntryKind::*;
 use SymlinkTarget::*;
 use ContentEncoding::*;
+use HttpMethod::*;
 use AuthScheme::*;
 use CodegenBackend::*;
 
@@ -134,6 +95,13 @@ match Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __r
 }
 }
 
+pub fn container_param_name_required(kind_name: String, index: i64) -> String {
+    match container_param_name(kind_name.clone(), index) {
+    Some(n) => n.clone(),
+    None => v2_rt::concat("__BUG_NO_PROFILE_".to_string(), kind_name.clone()),
+}
+}
+
 pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
@@ -181,7 +149,7 @@ pub fn container_to_algebra_name(name: String) -> Option<String> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Bool {
     True,
     False,
@@ -309,14 +277,14 @@ pub type OidcSubjectToken = String;
 pub type WifAudience = String;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum WarningPolicy {
     DenyAll,
     Default,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CloudRuntime {
     GitHubActions,
     Metadata,
@@ -324,7 +292,7 @@ pub enum CloudRuntime {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Platform {
     Linux,
     Macos,
@@ -332,7 +300,7 @@ pub enum Platform {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TopologyNodeKind {
     Pure,
     Transport,
@@ -341,7 +309,7 @@ pub enum TopologyNodeKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum DocSourceKind {
     Template,
     Generated,
@@ -349,7 +317,7 @@ pub enum DocSourceKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum FermiDepth {
     Xs,
     S,
@@ -359,7 +327,7 @@ pub enum FermiDepth {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CredentialFlow {
     Stored {
         secret_name: String,
@@ -381,7 +349,7 @@ pub enum CredentialFlow {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Arch {
     X86_64,
     X86,
@@ -397,7 +365,7 @@ pub enum Arch {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Vendor {
     UnknownVendor,
     Pc,
@@ -406,7 +374,7 @@ pub enum Vendor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Os {
     Linux,
     Macos,
@@ -418,7 +386,7 @@ pub enum Os {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum AbiEnv {
     NoneAbi,
     Gnu,
@@ -432,7 +400,7 @@ pub enum AbiEnv {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ExecutionEnv {
     Native,
     Wsl,
@@ -456,7 +424,7 @@ pub struct RuntimePlatform {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum EntryKind {
     RegularFile,
     Directory,
@@ -466,7 +434,7 @@ pub enum EntryKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum SymlinkTarget {
     TargetFile,
     TargetDir,
@@ -474,7 +442,7 @@ pub enum SymlinkTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ContentEncoding {
     UTF8,
     ASCII,
@@ -498,8 +466,20 @@ pub struct FileClassification {
 
 pub type MimeType = String;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum HttpMethod {
+    GET,
+    POST,
+    PUT,
+    PATCH,
+    DELETE,
+    HEAD,
+    OPTIONS,
+}
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum AuthScheme {
     Bearer,
     Header {
@@ -508,6 +488,7 @@ pub enum AuthScheme {
     Basic {
         username: String,
     },
+    ApiKey,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -548,7 +529,7 @@ pub type ToolHandle = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransportRequest {
-    pub method: String,
+    pub method: HttpMethod,
     pub url: String,
     pub headers: serde_json::Value,
     pub body: String,
@@ -707,7 +688,7 @@ pub struct CodegenTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CodegenBackend {
     Rust,
     Go,
