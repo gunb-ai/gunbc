@@ -626,7 +626,7 @@ fn emit_py_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 }
 
 fn emit_py_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_py_typed_for_each(variable: foreach_variable_at(texpr: expr, source_index: none), collection: foreach_collection(texpr: expr), body: foreach_body(texpr: expr), registry: registry, scope: scope, depth: depth)
+  emit_py_typed_for_each(variable: foreach_variable_at(texpr: expr, source_index: scope.type_env.source_index), collection: foreach_collection(texpr: expr), body: foreach_body(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {

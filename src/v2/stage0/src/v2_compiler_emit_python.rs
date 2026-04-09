@@ -587,7 +587,7 @@ pub fn emit_py_expr_cast(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInf
 }
 
 pub fn emit_py_expr_for_each(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_py_typed_for_each(foreach_variable_at(expr.clone(), None), foreach_collection(expr.clone()), foreach_body(expr.clone()), registry, scope, depth)
+    emit_py_typed_for_each(foreach_variable_at(expr.clone(), scope.type_env.clone().source_index.clone()), foreach_collection(expr.clone()), foreach_body(expr.clone()), registry, scope.clone(), depth)
 }
 
 pub fn emit_py_expr_index(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
