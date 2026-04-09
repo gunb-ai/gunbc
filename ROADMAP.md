@@ -57,7 +57,7 @@ Bootstrap D │                                                         ├→ M
 |------|--------|-----|--------------|
 | A | M2 (BND-1..4), M4-L1 (declaration algebra, Tier 2.5/2.6/3) | — | Gate 1 (M2, M4) |
 | B | CG (TLC-4, P1-B), LS (spec data), RE-1 (transport fidelity), KF-6 (Verilog) | KF-6 | Gates 1 (CG,LS,RE), 3 (parity), 4 (hardware) |
-| C | CX-NEXT (526→0), KF-1 (complexity proof), KF-2 (reject suboptimal) | KF-1, KF-2 | Gates 1 (CX), 4 (complexity) |
+| C | CX-NEXT (525→0), KF-1 (complexity proof), KF-2 (reject suboptimal), KF-7 (space complexity), KF-8 (optimality gate) | KF-1, KF-2, KF-7, KF-8 | Gates 1 (CX), 4 (complexity) |
 | D | RE-2..5 (review.dag, gist.dag), BC-1..4, service extdep models | — | Gates 1 (RE), 5 (business cases) |
 | E | M3 (test generation), KF-3 (witnesses), KF-4 (cross-language) | KF-3, KF-4 | Gates 3 (parity), 6 (test gen) |
 
@@ -133,9 +133,9 @@ Previously eliminated:
 
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
-| Self-compile diagnostics | 528 | 526 | Honest count — +2 from transport property inference complexity paths |
+| Self-compile diagnostics | 314 | 525 | Honest count — complexity violations surfaced, non-blocking |
 | L1 type knowledge | 0 | 0 | GREEN — hard gate (PR #352). Constructor functions dissolved, ListOf/ReceiverCollectionOf merged into ContainerOf. |
-| Complexity violations | 325 | 526 | Honest: 526 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
+| Complexity violations | 325 | 525 | Honest: 525 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
@@ -840,13 +840,11 @@ then deleted. `Node.name` field deleted.
 
 ## CX: Complexity Analyzer (Lane C)
 
-**Status:** Down from 315 → 164 (main) → 76 after PR #318 → 526 honest (PR #336).
-Phase 1-2 complete (RecursionPattern deleted, all classifiers return LoweringTarget).
-CX-N: var threading, type-directed dimension selection, algebra-to-dimension bridge.
-526 honest violations — CostUnknown restored for unresolved descent patterns.
-Complexity analysis re-enabled in compile pipeline (non-blocking gate).
-PR #336: soundness fixes, graph extraction, is_valid_proof, honest CostUnknown.
-See `docs/cx-violation-triage.md` for the 3-fix reduction path.
+**Status:** 525 honest violations (non-blocking gate).
+PR #354: structural induction model (std/induction.dag), CX-L1/L2/L3 pipeline,
+master theorem integration, 13 end-to-end regression tests.
+**Binary search proven O(log n) from source code.** Catamorphisms proven O(n).
+Next: space complexity (KF-7), optimality gate (KF-8), 525→0 violations.
 
 **Root cause:** The analyzer maintains parallel heuristic classifiers
 instead of consuming the structural facts already modeled in std/.
@@ -980,7 +978,10 @@ CX-D (model facts in std/)
       derived at consumer from expression return type. `size_effect`/`cost_shape` on `MethodSemantics`
       is a bridge; endgame: facts on the resolved method Node. **(PR #328)**
   (2) **Type structure facts** — field sub-value relationships
-      (child access produces a smaller tree). Not started.
+      (child access produces a smaller tree). **Done (PR #354).**
+      InductiveField + SubValueRelation + ShrinkFactor in std/induction.dag.
+      CX-L1 detects recursive fields, CX-L2 annotates descent evidence,
+      CX-L3 reads evidence to produce CostBound via derive_bound/master_theorem.
   (3) **Coproduct projection facts** — match arms narrow the type,
       producing strictly smaller data. Not started.
   The lowering table in `std/computation.dag` (CallPattern → LoweringTarget)
@@ -1025,7 +1026,7 @@ CX-D (model facts in std/)
   un-ignore 14 complexity tests (10 `complexity_*`, 3 `soundness_*`,
   1 `structural_classify_*`; all `#[ignore]` with "CX track" comment).
   **Blocked-by: CX-A, CX-B, CX-C** (0 violations required).
-  **Current: 526 violations (non-blocking gate). See CX-NEXT.**
+  **Current: 525 violations (non-blocking gate). See CX-NEXT.**
 
 ### Acceptance (endgame — Gate 4)
 
@@ -1035,40 +1036,151 @@ reads structural facts — no heuristic name-matching in the analyzer.
 
 ### CX Launch Gate (public release)
 
-**Goal:** User-written .dag functions get proven complexity bounds.
-Built on type-derived strict descent (not heuristic pattern-matching).
+**Goal:** User-written .dag functions get proven time AND space complexity
+bounds. Suboptimal algorithms are rejected at compile time. Built on
+type-derived strict descent (not heuristic pattern-matching).
 Fail-closed: unknown complexity is a hard error (INVARIANTS.md).
 
-**Hard gate:**
-- Strict descent on standard patterns: tree walks (recursive type
-  fields), list consumption (`List |> fold/map`), arithmetic decrease
-- Descent derived from type declarations (`recursive_type_set`,
-  `RecursiveVariantFieldWitness`), not hand-maintained tables
-- Fail-closed: if the analyzer cannot prove a bound, compilation
-  fails with a hard error telling the user to restructure
-- Bounds reported as user-facing diagnostics (`info: f is O(n) in tree_size`)
-- Architecture consistent with `docs/cx-design.md` (P1-P6)
+**This is a language-differentiating feature.** No other production
+language proves algorithmic complexity from source code at compile time.
 
-**Aspirational (not blocking launch):**
-- Suboptimality rejection: small hand-curated equivalence catalog
-  (e.g., `filter |> count > 0` → error, suggest `any()`)
-- Compiler self-analysis: internal violations → 0
-- CostUnknown variant deleted
+#### Current state (PR #354)
 
-**What this does NOT require:**
+37 proven structural bounds (all O(n) catamorphisms). 525 violations.
+Zero overlap — the proven functions don't have violations.
+
+**What works (22 regression tests):**
+- Direct field binding: `match x { Cons { tail: t } => f(x: t) }`
+- Fold/map on collection field: `cs |> fold(f: (acc, c) => f(t: c))`
+- Divide-and-conquer: binary search O(log n) via master theorem
+- Fail-closed: same-argument, arithmetic, lambda-captured variables,
+  duplicate-same-child, invalid proportional shrink
+
+**What doesn't work (the real compiler patterns):**
+- Match on one field, recurse on another: `match n.expr_data { ... } =>
+  n.children |> map(c => f(c))` — shape dispatch ≠ recursion target
+- Accessor chaining in fold: `n.params |> map(p => f(n: accessor(n: p)))`
+- Higher-order combinators: `map_children(node: n, transform: c => f(c))`
+
+**Root cause:** The analyzer traces individual call arguments bottom-up
+(ExprVar? ExprFieldAccess? ExprCall?), adding special cases for each
+syntax form. The real compiler uses ~15 different syntactic patterns that
+all reduce to the same thing: fold over a tree. The argument-tracing
+approach is fundamentally combinatorial — it will never cover all skins.
+
+**The missing abstraction: recursion scheme recognition.** Instead of
+tracing "is this argument a sub-value?", recognize "is this function a
+structural fold over an inductive type?" A function `f(n: Node) → T`
+is a catamorphism if every self-call passes a strict sub-Node. The
+proof obligation is the negative check (no call preserves or grows the
+argument), not the positive trace (trace each call to a specific field).
+
+This is the same insight as "iteration in different skin" — fold, map,
+match+recurse, map_children, accessor chains are all the same operation.
+The analyzer must collapse them to a singular case.
+
+Infrastructure: CX-L1 (InductiveField), CX-L2 (descent_evidence with
+lambda transparency + fold context threading), CX-L3 (catamorphism +
+disjointness + master theorem), all in std/induction.dag.
+
+**Channels unified:** `classify_recursion_pattern` now reads
+`descent_evidence` first (single authority), falling back to existing
+proof constructors only for non-structural patterns (arithmetic,
+parser, worklist). No dual representation.
+
+#### Design direction: recursion scheme recognition
+
+The current bottom-up argument tracing (ExprVar? ExprFieldAccess?
+ExprCall?) is combinatorial — each syntactic form needs a special case.
+The compiler uses ~15 patterns that all reduce to "fold over a tree."
+
+**Next step:** Replace argument tracing with recursion scheme
+recognition. A function `f(n: T)` where T is inductive is a
+catamorphism if no self-call passes the original parameter or anything
+derived from a non-shrinking path. One check, not N special cases.
+
+**Concrete gaps (documented with gap_ tests):**
+- Accessor chains in scrutinee: `match get_inner(w: w) { ... }`
+- Operation-driven sub-values: `take`/`skip` as first-class shrink
+  witnesses (currently fabricated InductiveField)
+- Size expression unification: CX-L2's SizeExpr should merge with
+  complexity.dag's existing size algebra
+
+#### Hard gate: Time complexity (KF-1)
+
+- Strict descent on standard patterns: tree walks, list folds, arithmetic
+- Divide-and-conquer via master theorem (binary search, mergesort)
+- Descent derived from InductiveField + SizeExpr (not hand-maintained tables)
+- Fail-closed: unknown complexity → hard error
+- Bounds reported as user-facing diagnostics
+
+#### Hard gate: Space complexity (KF-7)
+
+Same SubValueRelation evidence, peer dimension alongside time:
+
+- **Stack space**: Derived from `has_non_tail_self_call` (already on Node).
+  Tail-recursive → O(1) stack. Non-tail with depth d → O(d) stack.
+  Depth from descent evidence: catamorphism → O(n), binary search → O(log n).
+- **Heap space**: Derived from output construction analysis. A function
+  that builds a new list of same size → O(n) heap. A function that
+  returns a scalar → O(1) heap. `ComplexitySummary.output_size` already
+  tracks collection cardinalities — extend to feed into heap bound.
+
+Both dimensions use the same `CostBound` type. `StructuralBoundResult`
+extends to `{ func_name, param, time_bound: CostBound, stack_bound: CostBound }`.
+
+#### Hard gate: Optimality checking (KF-8)
+
+If the compiler proves a function is O(n^2) and can determine that the
+same computation is achievable in O(n), it's a compiler error. Two parts:
+
+1. **Operation-level:** The algorithm specifications in `std/induction.dag`
+   define known optimal bounds for common operations (search on sorted =
+   O(log n), traversal = O(n)). If a function performs a sorted search
+   in O(n) instead of O(log n), the compiler emits an error with the
+   optimal alternative.
+
+2. **Pattern-level:** Equivalence catalog of suboptimal patterns.
+   `filter |> count > 0` → error: use `any()` (O(n) short-circuit vs
+   O(n) full iteration + count). `sort |> take(1)` → error: use `min()`
+   (O(n) vs O(n log n)). Catalog grows over time.
+
+3. **Structural-level:** If two functions have the same type signature
+   and the compiler can prove one has a strictly tighter bound, the
+   looser one is flagged. This is the full vision — requires semantic
+   equivalence classification (what is the function computing?).
+
+Launch requires (1) and (2). Item (3) is aspirational.
+
+#### Not blocking launch
+
 - Proving the compiler's own 1600 functions (internal debt, not user-facing)
 - Exotic patterns: worklists, condition-dependent, parser SCCs
 - Global descent (strict descent is sufficient for launch)
 - The full Gate 4 architecture
+- Structural equivalence classification (KF-8 item 3)
 
-**Acceptance test:**
+#### Acceptance tests
+
 ```
-cx_launch_user_code_bounds
-  Input: .dag program with tree-recursive, list-fold, and arithmetic functions
-  Assert: each function gets a proven bound in diagnostics
+cx_launch_time_bounds
+  Input: .dag program with tree-recursive, list-fold, divide-and-conquer
+  Assert: each function gets a proven time bound in diagnostics
+  Assert: binary_search → O(log n), tree_walk → O(n)
   Assert: no heuristic pattern-matching in the analysis path
-  Assert: descent facts derived from type declarations
-  Assert: function with unresolvable recursion produces hard error
+  Assert: function with unresolvable recursion → hard error
+
+cx_launch_space_bounds
+  Input: same program
+  Assert: tail-recursive → stack O(1), non-tail tree walk → stack O(n)
+  Assert: binary search → stack O(log n)
+  Assert: output-building function → heap O(n)
+
+cx_launch_optimality_gate
+  Input: .dag program with suboptimal patterns
+  Assert: linear scan on sorted list → error: use binary search O(log n)
+  Assert: filter |> count > 0 → error: use any()
+  Assert: sort |> take(1) → error: use min()
 ```
 
 ---
@@ -1098,7 +1210,7 @@ lanes — any lane can introduce a regression.
   Two-pass self-hosting gate: builds stage1, uses it to produce stage2,
   diffs for idempotence. Subsumes `bootstrap_stage0_to_stage1`.
   Complexity early-return removed — test is unconditional.
-- **PERF-3**: Self-compile complexity analysis. 526 honest violations
+- **PERF-3**: Self-compile complexity analysis. 525 honest violations
   (CostUnknown restored). OOM resolved by lambda recursion detection fix
   (PR #336). Complexity analysis re-enabled in compile.dag (non-blocking).
   Original OOM root causes (PR #336):
@@ -1176,23 +1288,66 @@ Over-retention:
 No test >2s without justification. Self-compile time tracked per-PR.
 Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
-### CX-NEXT: 526 → 0 violations (3 structural fixes)
+### CX-NEXT: 525 → 0 violations (3 structural fixes)
 
-**Status:** 526 honest violations. Full triage in
+**Status:** 525 honest violations. Full triage in
 [`docs/cx-violation-triage.md`](docs/cx-violation-triage.md).
+17 functions already have proven structural bounds (all O(n)
+catamorphisms on CostExpr, SizeExpr, TypeTemplate, Stack).
 
-All 526 trace to 3 root causes. 280 are direct (recursive functions
+All 525 trace to 3 root causes. 280 are direct (recursive functions
 where the analyzer can't see descent). 227 are composed (callers of
 direct unknowns — resolve automatically). 3 structural fixes cover all:
 
-| Fix | Direct | Composed | Total |
-|-----|--------|----------|-------|
-| Node tree descent recognition | ~230 | ~200 | ~430 |
-| Parser SCC TokenPosition threading | ~73 | ~53 | ~126 |
-| Graph DFS worklist (I1/I2) | 2 | ~10 | ~12 |
+| Fix | Direct | Composed | Total | Migration path |
+|-----|--------|----------|-------|----------------|
+| Node tree descent recognition | ~230 | ~200 | ~430 | Phase 1→2→3 below |
+| Parser SCC TokenPosition threading | ~73 | ~53 | ~126 | SCC termination proofs (std/termination.dag) |
+| Graph DFS worklist (I1/I2) | 2 | ~10 | ~12 | Worklist iteration pattern |
 
 When all three are done, `CostUnknown` can be deleted from `CostExpr`
 — because no code path can produce it.
+
+#### Migration path: Node as inductive type (highest ROI — ~430 violations)
+
+Three phases, each independently shippable:
+
+**Phase 1: Register Node.children now (bootstrap).**
+Seed `build_type_env` with Node.children as ListRecursion. Node is
+currently a hand-written Rust struct (the kernel's only recursive type).
+Declaring its structure as a fact lets CX-L1 prove tree-walk functions
+are O(n). This is a single change in the type-env kernel seeding and
+dissolves ~230 direct + ~200 composed violations immediately.
+
+**Phase 2: Declare Node structure in std/ (.dag fact).**
+Move the Node structural declaration from Rust kernel seeding into a
+.dag file (e.g., `std/node.dag` or `std/syntax.dag`). The compiler
+reads the declaration the same way it reads any other type. Node is
+still implemented in Rust — the .dag file is a fact declaration, not
+an implementation. This aligns with M9 (DFS the concept DAG) and makes
+Node's recursive structure visible to all downstream analysis.
+
+**Phase 3: Node IS a .dag type (self-hosting).**
+Node is defined in .dag and compiled to Rust. The kernel seed disappears.
+This is the endgame where the compiler's core data structure is defined
+in its own language. Blocked by: the compiler must be able to compile
+its own Node type and bootstrap from it.
+
+#### Migration path: Parser SCC termination
+
+Parser functions form mutual recursion groups (parse_type_expr →
+parse_expr → parse_type_expr). Each call passes the same token list
+but advances position. The proof requires showing that every SCC cycle
+advances the TokenPosition measure by at least 1. Infrastructure
+partially exists in `std/termination.dag`. The key enabler is threading
+parser-always-advancing proofs through SCC edge collection.
+
+#### Migration path: Graph DFS worklist
+
+`dfs_finish_order` and `dfs_collect_component` in `std/graph.dag` use
+visited-set recursion. The proof requires showing that the worklist
+shrinks on every iteration (each node visited at most once). This is
+a bounded-iteration pattern (I1/I2 in Exploratory Directions).
 
 **Cost algebra design direction:** SizeExpr is a parallel algebra that
 should derive from std/ concepts. Sizes are structural facts, not
@@ -1265,56 +1420,27 @@ RE-1: Transport emission fidelity (emit reads existing config)
 ### RE-1: Transport emission fidelity
 
 Make `emit_rest_call` and `emit_shell_call` consume the transport
-config they already receive. PR #353.
+config they already receive. No new .dag modeling needed.
 
 **REST:**
 - [ ] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
-  Inferred type enables structural dispatch; lowercases variant name for reqwest.
-  Gap: emit reads variant name text, not the resolved HttpMethod alternative.
 - [ ] RE-1b: Path template from `transport.path` with param substitution
-  → `format!("/repos/{}/{}/pulls", owner, repo)`. Uses ExprStringInterp structure.
-  Gap: interpolation segments still use expr_var_name_at, not full emit_typed_expr.
-- [x] RE-1c: Query parameters from `transport.query`
-  → `.query(&[("state", &state)])`. Uses emit_simple_expr for structural emission.
+  → `format!("/repos/{}/{}/pulls", owner, repo)`
+- [ ] RE-1c: Query parameters from `transport.query`
+  → `.query(&[("state", &state)])`
 - [ ] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
-  Dispatches on ExprData shape (ExprVar=unit, ExprCall=payload).
-  Gaps: collapses all unit variants (Bearer, ApiKey, Basic) to Bearer wire
-  format; non-literal Header { name: expr } emits expr text as header name;
-  ApiKey lacks structural carrier for key location. Needs resolved variant
-  identity at the infer/emit boundary.
 - [ ] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
-  Status code match works but response/exit are encoded as synthetic property
-  names — emitter re-parses strings. Needs first-class ResponseCase/ExitCase nodes.
 
 **Shell:**
 - [ ] RE-1f: argv from `transport.argv` with param substitution
-  → `Command::new("sh").arg("-lc").arg(&script)`. ExprStringInterp structure.
-  Gap: interpolation uses raw format!() with no shell escaping. Values with
-  spaces, quotes, $(), backticks can break/inject commands. bash/emit.dag
-  quoting facts modeled but not yet consumed by the emitter.
-- [x] RE-1g: stdin from `transport.stdin`
-  → `.stdin(Stdio::piped())` + stdout/stderr piped + spawn + write + wait.
+  → `Command::new("sh").arg("-lc").arg(&script)`
+- [ ] RE-1g: stdin from `transport.stdin`
+  → `.stdin(Stdio::piped())` + write
 - [ ] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
-  Same structural gap as RE-1e: encoded as property names, not case nodes.
 
 **Response:**
 - [ ] RE-1i: `from "content/0/text"` JSON path extraction on response
-  Not implemented. Nested path extraction deferred to RE-4.
 - [ ] RE-1j: Nested output struct field mapping via serde rename
-  `field_node_from_key` mechanism exists but no test covers it in this PR.
-
-**Infrastructure (PR #353):**
-- [x] Parser extended: `parse_rest_fields` captures method/path/query,
-  `parse_shell_fields` captures stdin, `parse_config_fields` captures auth_input
-- [x] Shell transport body marker preserved through resolve phase
-  (`make_transport_node` body parameter fix)
-- [x] `transport_env` excludes reserved keys (stdin separation)
-- [x] `int_to_string_acc` digit ordering fix
-- [x] HttpMethod moved from extdeps/transports/rest.dag to std/types.dag
-- [ ] CloudAuthScheme dissolved: std/types.dag has protocol-level schemes
-  (Bearer, Header, Basic, ApiKey). Cloud-specific SigV4/OidcToken need
-  a Layer-2 cloud auth coproduct in extdeps/cloud that composes std/ schemes.
-- [x] 7 RE-1 acceptance tests (5 REST + 2 shell)
 
 **Blocked by:** Nothing — all data already flows to the emitter.
 
@@ -1962,7 +2088,7 @@ fn find_duplicates(items: List<String>) -> List<String> {
 ```
 
 **Status:** Partially working. The analyzer computes CostExpr for
-all 1600 compiler functions. 526 get CostUnknown because descent
+all 1600 compiler functions. 525 get CostUnknown because descent
 evidence doesn't propagate through Node trees and parser SCCs.
 When the 3 structural fixes land (CX-NEXT), every function has a
 proven bound and CostUnknown is deleted from the type system.
@@ -2585,7 +2711,7 @@ polish depends on stable features.
 | 1. Active lanes | IN PROGRESS | All lane ratchets green |
 | 2. Structural debt | 1,115 → 0 | `structural-debt-count.sh` = 0 |
 | 3. Language parity (KF-4) | PARTIAL | 3-target `full_dsl_compiles` + cross-language equivalence |
-| 4. Complexity + suboptimality + hardware (KF-1, KF-2, KF-6) | 526 → 0 | `CostUnknown` deleted + catalog ships + Verilog emits |
+| 4. Complexity + suboptimality + hardware (KF-1, KF-2, KF-6) | 525 → 0 | `CostUnknown` deleted + catalog ships + Verilog emits |
 | 5. Business cases | 0/4 | BC-1..4 acceptance met |
 | 6. Test generation (KF-3) | NOT STARTED | Generated tests all pass |
 | 7. Demo polish (KF-5) | NOT STARTED | 5-minute onboarding, decidability front-and-center |
@@ -2595,7 +2721,7 @@ polish depends on stable features.
 | Feature | Status | Gate |
 |---------|--------|------|
 | KF-5: Decidable high-level language | DONE (language property) | Landing page explains it |
-| KF-1: Complexity proof on every compile | 526 unknown → 0 | CostUnknown deleted |
+| KF-1: Complexity proof on every compile | 525 unknown → 0 | CostUnknown deleted |
 | KF-2: Reject suboptimal algorithms | NOT STARTED | 5+ rules in equivalence catalog |
 | KF-3: Test generation from types | Level 0 done | Levels 4-6 implemented |
 | KF-4: Cross-language equivalence proof | NOT STARTED | Differential test suite green |

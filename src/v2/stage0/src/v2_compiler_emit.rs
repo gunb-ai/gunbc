@@ -16,7 +16,8 @@ use crate::v2_std_core::Cardinality::{CardOptional};
 use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
-pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
+pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
+pub use crate::std_induction::{InductiveField};
 pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast};
@@ -275,7 +276,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
     bindings: v2_rt::rc_empty_map::<Rc<TypeBinding>>(),
     recursive_types: Rc::new(vec![]),
     recursive_type_set: v2_rt::rc_empty_map::<bool>(),
-    recursive_variant_fields: v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(),
+    inductive_fields: v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(),
     source_index: None,
 }),
     func_env: Rc::new(ResolvedFuncEnv {

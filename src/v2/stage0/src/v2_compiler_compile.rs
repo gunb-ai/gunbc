@@ -34,6 +34,10 @@ pub use crate::v2_compiler_emit_rust::{emit_rust};
 pub use crate::v2_compiler_emit_python::{emit_python};
 pub use crate::v2_compiler_emit_go::{emit_go};
 pub use crate::v2_compiler_complexity::{ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report};
+pub use crate::std_induction::{SubValueRelation, InductiveField, ShrinkFactor, RecursionShape};
+use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
+use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
+use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
 pub use crate::v2_compiler_ownership::{OwnershipProof, OwnershipDecision, analyze_ownership};
 use crate::v2_compiler_ownership::OwnershipDecision::{SharedError};
 pub use crate::v2_compiler_artifact::{ArtifactPlan, Artifact, RenderTarget, default_artifact_plan};
@@ -336,6 +340,44 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"AlgebraMet
 }
 }
 
+pub fn serialize_recursion_shape(shape: RecursionShape) -> String {
+    match shape {
+    RecursionShape::DirectRecursion => "{\"_variant\": \"DirectRecursion\"}".to_string(),
+    RecursionShape::ListRecursion => "{\"_variant\": \"ListRecursion\"}".to_string(),
+    RecursionShape::OptionalRecursion => "{\"_variant\": \"OptionalRecursion\"}".to_string(),
+    RecursionShape::SetRecursion => "{\"_variant\": \"SetRecursion\"}".to_string(),
+    RecursionShape::MapValueRecursion => "{\"_variant\": \"MapValueRecursion\"}".to_string(),
+}
+}
+
+pub fn serialize_inductive_field(field: Rc<InductiveField>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"type_name\": ".to_string(), json_quote(field.type_name.clone())), ", \"variant_name\": ".to_string()), json_quote(field.variant_name.clone())), ", \"field_name\": ".to_string()), json_quote(field.field_name.clone())), ", \"shape\": ".to_string()), serialize_recursion_shape(field.shape.clone())), "}".to_string())
+}
+
+pub fn serialize_shrink_factor(factor: Rc<ShrinkFactor>) -> String {
+    match (*factor).clone() {
+    ShrinkFactor::UnitShrink => "{\"_variant\": \"UnitShrink\"}".to_string(),
+    ShrinkFactor::ConstantShrink { amount: a, .. } => v2_rt::concat(v2_rt::concat("{\"_variant\": \"ConstantShrink\", \"amount\": ".to_string(), (a.clone()).to_string()), "}".to_string()),
+    ShrinkFactor::ProportionalShrink { divisor: d, .. } => v2_rt::concat(v2_rt::concat("{\"_variant\": \"ProportionalShrink\", \"divisor\": ".to_string(), (d.clone()).to_string()), "}".to_string()),
+}
+}
+
+pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
+    match (*rel).clone() {
+    SubValueRelation::StrictSubValue { field: f, factor: fac, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"_variant\": \"StrictSubValue\", \"field\": ".to_string(), serialize_inductive_field(f.clone())), ", \"factor\": ".to_string()), serialize_shrink_factor(fac.clone())), "}".to_string()),
+    SubValueRelation::IteratedSubValue { field: f, .. } => v2_rt::concat(v2_rt::concat("{\"_variant\": \"IteratedSubValue\", \"field\": ".to_string(), serialize_inductive_field(f.clone())), "}".to_string()),
+    SubValueRelation::PreservedValue => "{\"_variant\": \"PreservedValue\"}".to_string(),
+    SubValueRelation::SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}".to_string(),
+}
+}
+
+pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> String {
+    match de {
+    Some(evidence) => json_list(Rc::new({ let mut __result = Vec::new(); for rel in evidence.clone().iter().cloned() { __result.push(serialize_sub_value_relation(rel.clone())); } __result })),
+    None => "null".to_string(),
+}
+}
+
 pub fn serialize_expr_data(expr_node: Rc<Node>) -> String {
     {
         let ch = expr_node.children.clone();
@@ -358,9 +400,9 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
     None => "null".to_string(),
 }), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
-    ExprData::ExprCall { call_semantics, .. } => {
+    ExprData::ExprCall { call_semantics, descent_evidence: de, .. } => {
             let func = expr_call_func_at(expr_node.clone(), None);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprCall\", \"func\": ".to_string(), json_quote(func)), ", \"call_semantics\": ".to_string()), serialize_call_semantics(call_semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprCall\", \"func\": ".to_string(), json_quote(func)), ", \"call_semantics\": ".to_string()), serialize_call_semantics(call_semantics.clone())), ", \"descent_evidence\": ".to_string()), serialize_descent_evidence(de.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprMethodCall { method_semantics, .. } => {
             let method = expr_method_name_at(expr_node.clone(), None);

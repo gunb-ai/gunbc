@@ -119,7 +119,7 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum) -> UniqueAccu
 fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum {
   // Per-node logic: detect function calls and accumulate unique names.
   let this_acc = match texpr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: texpr, source_index: none)
       if emit_map_has(m: acc.seen, key: f) { acc }
       else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }

@@ -98,8 +98,12 @@ import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
   is_recursive_type, lookup_type, lookup_type_for, merge_envs,
-  RecursiveVariantFieldWitness,
-  put_recursive_variant_field_witness, merge_recursive_variant_fields
+  put_inductive_field, merge_inductive_fields, inductive_fields_for
+}
+import std.induction {
+  InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
+  SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown,
+  ShrinkFactor, UnitShrink, ProportionalShrink
 }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
@@ -379,28 +383,97 @@ fn nominal_type_binding(name: String) -> TypeBinding {
   TypeBinding { name: name, resolved: nominal_leaf_type(name: name) }
 }
 
-fn collect_item_recursive_variant_fields(item: Node, recursive_type_set: Map<String, Bool>) -> Map<String, List<RecursiveVariantFieldWitness>> {
-  match item.connective {
-    Disj =>
-      if map_get(recursive_type_set, item.name) == none { empty_map() }
-      else {
-        item.children |> fold(init: empty_map(), f: (variant_acc, variant_node) =>
-          variant_node.children |> fold(init: variant_acc, f: (field_acc, field_node) =>
-            let field_type_name = field_node_type_expr(n: field_node).name
-            if field_type_name == item.name {
-              put_recursive_variant_field_witness(fields: field_acc, type_name: item.name, variant_name: variant_node.name, field_name: field_node.name)
-            } else { field_acc }
-          )
-        )
+// Classify a field's recursive relationship to its parent type.
+// Returns the RecursionShape if the field references the parent type, or none.
+// Dispatches on container identity (List/Set/Map), not arity.
+fn classify_field_recursion(field_node: Node, parent_name: String) -> RecursionShape? {
+  // After field_to_child_node, type info is in inferred (not children).
+  let type_expr = match field_node.inferred {
+    Some { value: Resolved { node: rt } } => rt
+    _ => field_node_type_expr(n: field_node)
+  }
+  let field_type_name = type_expr.name
+  if field_type_name == parent_name {
+    // Direct or Optional: check cardinality
+    match field_node.return_cardinality {
+      CardOptional => Some { value: OptionalRecursion }
+      _ => Some { value: DirectRecursion }
+    }
+  } else {
+    // Container<parent_type>: dispatch on container kind via std/types.dag
+    // Arity-1 containers (List, Set): element type is first child
+    // Arity-2 containers (Map): value type is second child
+    if is_container_type(name: field_type_name) {
+      let arity = match container_expected_arity(name: field_type_name) {
+        Some { value: a } => a
+        None => 0
       }
-    _ => empty_map()
+      let value_index = if arity == 2 { 1 } else { 0 }
+      let value_type = match type_expr.children |> skip(value_index) |> first {
+        Some { value: t } => t.name
+        None => ""
+      }
+      if value_type == parent_name {
+        // Dispatch on container identity — fail-closed for unrecognized containers
+        match field_type_name {
+          "List" => Some { value: ListRecursion }
+          "NonEmptyList" => Some { value: ListRecursion }
+          "Set" => Some { value: SetRecursion }
+          "NonEmptySet" => Some { value: SetRecursion }
+          "Map" => Some { value: MapValueRecursion }
+          _ => none
+        }
+      } else { none }
+    } else { none }
   }
 }
 
-fn build_item_recursive_variant_fields(items: List<Node>, recursive_type_set: Map<String, Bool>) -> Map<String, List<RecursiveVariantFieldWitness>> {
-  items |> fold(init: empty_map(), f: (acc, item) =>
-    merge_recursive_variant_fields(left: acc, right: collect_item_recursive_variant_fields(item: item, recursive_type_set: recursive_type_set))
+// Collect InductiveFields for the fields of a single variant or record.
+fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_name: String, acc: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
+  fields |> fold(init: acc, f: (field_acc, field_node) =>
+    match classify_field_recursion(field_node: field_node, parent_name: parent_name) {
+      Some { value: shape } =>
+        put_inductive_field(fields: field_acc, type_name: parent_name, variant_name: variant_name, field_name: field_node.name, shape: shape)
+      None => field_acc
+    }
   )
+}
+
+// Collect InductiveFields from a type item (handles both Disj and Conj).
+fn collect_item_inductive_fields(item: Node, recursive_type_set: Map<String, Bool>) -> Map<String, List<InductiveField>> {
+  if map_get(recursive_type_set, item.name) == none { empty_map() }
+  else {
+    match item.connective {
+      // Sum type (enum): each child is a variant with its own fields
+      Disj =>
+        item.children |> fold(init: empty_map(), f: (variant_acc, variant_node) =>
+          collect_fields_inductive(fields: variant_node.children, parent_name: item.name, variant_name: variant_node.name, acc: variant_acc)
+        )
+      // Product type (record): fields are direct children
+      Conj =>
+        collect_fields_inductive(fields: item.children, parent_name: item.name, variant_name: "", acc: empty_map())
+      _ => empty_map()
+    }
+  }
+}
+
+fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Map<String, Bool>) -> Map<String, List<InductiveField>> {
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    merge_inductive_fields(left: acc, right: collect_item_inductive_fields(item: item, recursive_type_set: recursive_type_set))
+  )
+}
+
+// Kernel seed for Node's inductive fields. Uses build_item_inductive_fields
+// with empty items to get a correctly-typed empty map, then adds entries.
+fn kernel_node_inductive_fields() -> Map<String, List<InductiveField>> {
+  let fields = build_item_inductive_fields(items: [], recursive_type_set: empty_map())
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "children", shape: ListRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "params", shape: ListRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "uses", shape: ListRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "properties", shape: ListRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "body", shape: OptionalRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "transport", shape: OptionalRecursion)
+  put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "type_annotation", shape: OptionalRecursion)
 }
 
 fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
@@ -852,7 +925,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               if (fsig.params |> count) == 0 {
                 ok_infer(texpr: make_named_expr_node(
                   name: name,
-                  expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+                  expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
                   children: [],
                   inferred: Some { value: Resolved { node: fsig.inferred } },
                   span: span,
@@ -965,7 +1038,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       }
       }
 
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let func_name = expr_call_func_at(texpr: texpr, source_index: scope.type_env.source_index)
       let span = texpr.span
       // Children are already arg nodes
@@ -1031,7 +1104,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         }
         InferResult {
           typed: make_named_expr_node(
-            name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+            name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
             children: typed_arg_nodes,
             inferred: Some { value: Resolved { node: resolved_type } },
             span: span,
@@ -1147,7 +1220,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
           InferResult {
             typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
               children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: empty_map_type } },
               span: span,
@@ -1206,7 +1279,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
           InferResult {
             typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: call_semantics },
+              name: func_name, expr_data: ExprCall { call_semantics: call_semantics, descent_evidence: none },
               children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: bt } },
               span: span,
@@ -1230,7 +1303,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             let resolved_type = callable_inferred(n: callable_type)
             InferResult {
               typed: make_named_expr_node(
-                name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+                name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
                 children: typed_arg_nodes,
                 inferred: Some { value: Resolved { node: resolved_type } },
                 span: span,
@@ -1255,7 +1328,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
           InferResult {
             typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics } },
+              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
               children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: resolved_type } },
               span: span,
@@ -2070,6 +2143,664 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   }
 }
 
+// =========================================================================
+// CX-L2: Descent evidence annotation (post-inference)
+//
+// After a function body is type-inferred, this pass walks the typed body
+// and annotates each self-call ExprCall node with descent_evidence.
+// The pass reads InductiveField facts from TypeEnv — it never pattern-
+// matches AST to discover descent. Adding a new recursive type requires
+// zero changes here.
+// =========================================================================
+
+// Track let-bound expressions that represent collection sizes.
+// Used to recognize proportional shrink: take(xs, count(xs) / 2).
+type SizeExpr
+  = ParamSize { param: String }
+  | DividedSize { param: String, divisor: Int }
+
+// Context threaded through the descent annotation walk.
+// sub_value_vars tracks which local variables are known sub-values of
+// a parameter, and what their structural relationship is.
+// size_aliases tracks variables bound to collection sizes (for ProportionalShrink).
+// M4 constraint: param_names uses String keys/values because .dag has no
+// declaration-reference type yet. Will migrate to structural refs with M4.
+type DescentContext {
+  fn_name: String
+  param_names: Map<String, String>  // param_name → type_name (M4: String proxy)
+  param_order: List<String>         // param names in definition order
+  type_env: TypeEnv
+  sub_value_vars: Map<String, SubValueRelation>
+  size_aliases: Map<String, SizeExpr>
+}
+
+// Classify a let-value as a size expression for ProportionalShrink tracking.
+// Recognizes: xs |> count → ParamSize, n / 2 → DividedSize
+fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
+  match val.expr_data {
+    // xs |> count → ParamSize { param: "xs" }
+    ExprMethodCall { method_semantics: _ } =>
+      let mname = expr_method_name(texpr: val)
+      if mname == "count" {
+        let receiver = method_receiver(texpr: val)
+        match receiver.expr_data {
+          ExprVar { binding_kind: _ } =>
+            let rname = expr_var_name(texpr: receiver)
+            match map_get(ctx.param_names, rname) {
+              Some { value: _ } => Some { value: ParamSize { param: rname } }
+              None => none
+            }
+          _ => none
+        }
+      } else { none }
+    // n / 2 → DividedSize if n is a known ParamSize
+    ExprBinOp { op: _ } =>
+      let left = binop_left(texpr: val)
+      let right = binop_right(texpr: val)
+      match val.expr_data {
+        ExprBinOp { op: Div } =>
+          match left.expr_data {
+            ExprVar { binding_kind: _ } =>
+              let lname = expr_var_name(texpr: left)
+              match map_get(ctx.size_aliases, lname) {
+                Some { value: ParamSize { param: p } } =>
+                  match right.expr_data {
+                    ExprLiteral { value: LitInt { value: d } } =>
+                      if d > 0 { Some { value: DividedSize { param: p, divisor: d } } }
+                      else { none }
+                    _ => none
+                  }
+                _ => none
+              }
+            _ => none
+          }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+// Classify a method-call expression as a collection shrink.
+// Recognizes: param |> take(mid) or param |> skip(mid) where mid is a known size alias.
+fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
+  match arg_expr.expr_data {
+    ExprMethodCall { method_semantics: _ } =>
+      let mname = expr_method_name(texpr: arg_expr)
+      if mname == "take" || mname == "skip" {
+        let receiver = method_receiver(texpr: arg_expr)
+        // Check receiver is the parameter
+        match receiver.expr_data {
+          ExprVar { binding_kind: _ } =>
+            let rname = expr_var_name(texpr: receiver)
+            if rname == param_name {
+              // Check argument is a known size alias
+              let args = method_arg_nodes(texpr: arg_expr)
+              match args |> first {
+                Some { value: arg_node } =>
+                  let arg_val = arg_value(n: arg_node)
+                  match arg_val.expr_data {
+                    ExprVar { binding_kind: _ } =>
+                      let aname = expr_var_name(texpr: arg_val)
+                      match map_get(ctx.size_aliases, aname) {
+                        Some { value: DividedSize { param: p, divisor: d } } =>
+                          if p == param_name {
+                            let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion }
+                            StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
+                          } else { SubValueUnknown }
+                        _ => SubValueUnknown
+                      }
+                    // mid + 1 or mid - 1: only Add/Sub with a literal integer RHS
+                    ExprBinOp { op: op } =>
+                      match op {
+                        Add =>
+                          let left = binop_left(texpr: arg_val)
+                          let right = binop_right(texpr: arg_val)
+                          let rhs_is_literal = match right.expr_data { ExprLiteral { value: LitInt { value: _ } } => true  _ => false }
+                          if rhs_is_literal {
+                            match left.expr_data {
+                              ExprVar { binding_kind: _ } =>
+                                let lname = expr_var_name(texpr: left)
+                                match map_get(ctx.size_aliases, lname) {
+                                  Some { value: DividedSize { param: p, divisor: d } } =>
+                                    if p == param_name {
+                                      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion }
+                                      StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
+                                    } else { SubValueUnknown }
+                                  _ => SubValueUnknown
+                                }
+                              _ => SubValueUnknown
+                            }
+                          } else { SubValueUnknown }
+                        Sub =>
+                          let left = binop_left(texpr: arg_val)
+                          let right = binop_right(texpr: arg_val)
+                          let rhs_is_literal = match right.expr_data { ExprLiteral { value: LitInt { value: _ } } => true  _ => false }
+                          if rhs_is_literal {
+                            match left.expr_data {
+                              ExprVar { binding_kind: _ } =>
+                                let lname = expr_var_name(texpr: left)
+                                match map_get(ctx.size_aliases, lname) {
+                                  Some { value: DividedSize { param: p, divisor: d } } =>
+                                    if p == param_name {
+                                      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion }
+                                      StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
+                                    } else { SubValueUnknown }
+                                  _ => SubValueUnknown
+                                }
+                              _ => SubValueUnknown
+                            }
+                          } else { SubValueUnknown }
+                        _ => SubValueUnknown
+                      }
+                    _ => SubValueUnknown
+                  }
+                None => SubValueUnknown
+              }
+            } else { SubValueUnknown }
+          _ => SubValueUnknown
+        }
+      } else { SubValueUnknown }
+    _ => SubValueUnknown
+  }
+}
+
+// Accumulator for ExprBlock annotation: threads context through sequential children.
+type BlockAnnotateAcc {
+  ctx: DescentContext
+  children: List<Node>
+}
+
+// Classify one self-call argument against its corresponding parameter.
+fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
+  match arg_expr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let vname = expr_var_name(texpr: arg_expr)
+      if vname == param_name { PreservedValue }
+      else {
+        match map_get(ctx.sub_value_vars, vname) {
+          Some { value: rel } => rel
+          None => SubValueUnknown
+        }
+      }
+    // base.field where base is a param or bound sub-value, and field is inductive → StrictSubValue
+    ExprFieldAccess { summary: _ } =>
+      let base = field_access_base(texpr: arg_expr)
+      let field = field_access_field(texpr: arg_expr)
+      match base.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let bname = expr_var_name(texpr: base)
+          // Look up type from params first, then from bound sub-values
+          let type_name = match map_get(ctx.param_names, bname) {
+            Some { value: t } => t
+            None =>
+              match map_get(ctx.sub_value_vars, bname) {
+                Some { value: rel } =>
+                  match rel {
+                    StrictSubValue { field: f, factor: _ } => f.type_name
+                    IteratedSubValue { field: f } => f.type_name
+                    _ => ""
+                  }
+                None => ""
+              }
+          }
+          let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
+          let matching = fields |> filter(f => f.field_name == field) |> first
+          match matching {
+            Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+            None => SubValueUnknown
+          }
+        _ => SubValueUnknown
+      }
+    // accessor(n: sub_value) — pure Node→Node accessor applied to a known sub-value.
+    // If the first argument is a sub-value, the result is also a sub-value (deeper descent).
+    // Covers patterns like param_node_type_expr(n: p), arg_value(n: a), arm_body(n: arm).
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let call_args = arg_expr.children
+      match call_args |> first {
+        Some { value: first_arg } =>
+          let inner = arg_value(n: first_arg)
+          // Recursively classify the inner argument
+          let inner_rel = classify_argument(arg_expr: inner, param_name: param_name, ctx: ctx)
+          match inner_rel {
+            // If inner is a sub-value, the accessor result is also a sub-value
+            StrictSubValue { field: _, factor: _ } => inner_rel
+            IteratedSubValue { field: _ } => inner_rel
+            PreservedValue => PreservedValue
+            SubValueUnknown => SubValueUnknown
+          }
+        None => SubValueUnknown
+      }
+    // param |> take(mid) or param |> skip(mid) → collection shrink
+    ExprMethodCall { method_semantics: _ } =>
+      classify_collection_shrink(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    _ => SubValueUnknown
+  }
+}
+
+// Build descent_evidence for a self-call: one SubValueRelation per parameter
+// in definition order. Named args are matched by name; unnamed args fall back
+// to positional alignment.
+fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRelation> {
+  // Build map from arg name → (index, arg_value_node)
+  let arg_map = call_node.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+    let idx = pair.first
+    let arg_node = pair.second
+    let aname = arg_name(n: arg_node)
+    match aname {
+      Some { value: pname } => map_insert(acc, pname, arg_value(n: arg_node))
+      None => acc
+    }
+  )
+  // Build positional list for unnamed args
+  let positional_args = call_node.children |> filter(arg_node => arg_name(n: arg_node) == none) |> map(arg_node => arg_value(n: arg_node))
+  // Produce evidence in param definition order
+  let positional_idx = 0
+  ctx.param_order |> enumerate |> map(pair =>
+    let def_idx = pair.first
+    let pname = pair.second
+    match map_get(arg_map, pname) {
+      Some { value: arg_val } => classify_argument(arg_expr: arg_val, param_name: pname, ctx: ctx)
+      None =>
+        // Positional fallback: use position in unnamed arg list
+        match positional_args |> skip(def_idx) |> first {
+          Some { value: arg_val } => classify_argument(arg_expr: arg_val, param_name: pname, ctx: ctx)
+          None => SubValueUnknown
+        }
+    }
+  )
+}
+
+// Walk a typed body and annotate self-call ExprCall nodes with descent_evidence.
+// Extends sub_value_vars when entering match arms (variant field bindings)
+// and let-bindings (aliases of known sub-values).
+fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
+  match body.expr_data {
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      let callee = expr_call_func(texpr: body)
+      if callee == ctx.fn_name {
+        // Self-call: compute descent evidence for each argument
+        let evidence = build_call_evidence(call_node: body, ctx: ctx)
+        // Also annotate children (arguments may contain nested self-calls)
+        let annotated_children = body.children |> map(child => annotate_descent(body: child, ctx: ctx))
+        Node {
+          name: body.name, span: body.span, ident_span: body.ident_span,
+          children: annotated_children, connective: body.connective, params: body.params,
+          inferred: body.inferred, return_cardinality: body.return_cardinality,
+          uses: body.uses, body: body.body, transport: body.transport,
+          properties: body.properties, type_annotation: body.type_annotation,
+          is_self_recursive: body.is_self_recursive,
+          has_non_tail_self_call: body.has_non_tail_self_call,
+          match_pattern: body.match_pattern,
+          expr_data: ExprCall { call_semantics: cs, descent_evidence: Some { value: evidence } }
+        }
+      } else {
+        // Non-self-call: just recurse into children
+        map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
+      }
+    ExprMatch =>
+      // If scrutinee is a parameter or a known sub-value, extend context
+      // with variant field bindings from each arm
+      let scrut = match_scrutinee(texpr: body)
+      // Determine scrutinee type (for enum params) or inducing field (for field-access)
+      let scrut_type = match scrut.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let sname = expr_var_name(texpr: scrut)
+          match map_get(ctx.param_names, sname) {
+            Some { value: t } => t
+            None => ""
+          }
+        _ => ""
+      }
+      // For field-access scrutinees (e.g., c.next), find the inducing InductiveField
+      let scrut_inducing_field = match scrut.expr_data {
+        ExprFieldAccess { summary: _ } =>
+          let base = field_access_base(texpr: scrut)
+          let fname = field_access_field(texpr: scrut)
+          match base.expr_data {
+            ExprVar { binding_kind: _ } =>
+              let bname = expr_var_name(texpr: base)
+              let base_type = match map_get(ctx.param_names, bname) {
+                Some { value: t } => t
+                None => ""
+              }
+              if base_type != "" {
+                let ind_fields = inductive_fields_for(env: ctx.type_env, type_name: base_type)
+                ind_fields |> filter(f => f.field_name == fname) |> first
+              } else { none }
+            _ => none
+          }
+        _ => none
+      }
+      let scrut_has_inductive = (scrut_type != "" && inductive_fields_for(env: ctx.type_env, type_name: scrut_type) |> count > 0) || scrut_inducing_field != none
+      // Annotate scrutinee
+      let annotated_scrut = annotate_descent(body: scrut, ctx: ctx)
+      // Process each arm with extended context
+      let annotated_arms = match_arm_nodes(texpr: body) |> map(arm_node =>
+        let arm_ctx = if scrut_has_inductive {
+          match arm_pattern(n: arm_node) {
+            VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
+              // For field-access scrutinees with OptionalRecursion, the Some.value
+              // binding IS the unwrapped sub-value (e.g., c.next: Chain? → rest: Chain)
+              match scrut_inducing_field {
+                Some { value: ind_field } =>
+                  if vname == "Some" {
+                    bindings |> fold(init: ctx, f: (c, fb) =>
+                      let bind_name = match field_binding_pattern(n: fb) {
+                        Bind { name: bname } => bname
+                        _ => ""
+                      }
+                      if bind_name != "" {
+                        DescentContext {
+                          fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env,
+                          sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
+                          size_aliases: c.size_aliases
+                        }
+                      } else { c }
+                    )
+                  } else { ctx }
+                None =>
+                  // Standard case: match on enum parameter, look up variant fields
+                  let ind_fields = inductive_fields_for(env: ctx.type_env, type_name: scrut_type)
+                  bindings |> fold(init: ctx, f: (c, fb) =>
+                    let field_name = field_binding_name(n: fb)
+                    let bind_name = match field_binding_pattern(n: fb) {
+                      Bind { name: bname } => bname
+                      _ => ""
+                    }
+                    let matching = ind_fields |> filter(f => f.variant_name == vname && f.field_name == field_name) |> first
+                    match matching {
+                      Some { value: ind_field } =>
+                        if bind_name != "" {
+                          DescentContext {
+                            fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env,
+                            sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
+                            size_aliases: c.size_aliases
+                          }
+                        } else { c }
+                      None => c
+                    }
+                  )
+              }
+            Bind { name: bname } =>
+              // Catch-all binds the entire scrutinee value.
+              // If scrutinee is a parameter, register alias in param_names (for field access)
+              // and sub_value_vars (for PreservedValue classification).
+              if scrut_type != "" {
+                DescentContext {
+                  fn_name: ctx.fn_name,
+                  param_names: map_insert(ctx.param_names, bname, scrut_type),
+                  param_order: ctx.param_order, type_env: ctx.type_env,
+                  sub_value_vars: map_insert(ctx.sub_value_vars, bname, PreservedValue),
+                  size_aliases: ctx.size_aliases
+                }
+              } else {
+                match scrut_inducing_field {
+                  Some { value: ind_field } =>
+                    DescentContext {
+                      fn_name: ctx.fn_name,
+                      param_names: map_insert(ctx.param_names, bname, ind_field.type_name),
+                      param_order: ctx.param_order, type_env: ctx.type_env,
+                      sub_value_vars: map_insert(ctx.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
+                      size_aliases: ctx.size_aliases
+                    }
+                  None => ctx
+                }
+              }
+            _ => ctx
+          }
+        } else { ctx }
+        let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: arm_ctx)
+        // Reconstruct arm node with annotated body
+        make_arm_node(pattern: arm_pattern(n: arm_node), guard: arm_guard(n: arm_node), body: annotated_body, span: arm_node.span)
+      )
+      // Reconstruct match with annotated scrutinee and arms
+      Node {
+        name: body.name, span: body.span, ident_span: body.ident_span,
+        children: concat([annotated_scrut], annotated_arms),
+        connective: body.connective, params: body.params,
+        inferred: body.inferred, return_cardinality: body.return_cardinality,
+        uses: body.uses, body: body.body, transport: body.transport,
+        properties: body.properties, type_annotation: body.type_annotation,
+        is_self_recursive: body.is_self_recursive,
+        has_non_tail_self_call: body.has_non_tail_self_call,
+        match_pattern: body.match_pattern, expr_data: body.expr_data
+      }
+    ExprLet =>
+      // If let-value is a known sub-value var, extend context for binding name
+      let val = let_value(texpr: body)
+      let binding_name = let_binding_name(texpr: body)
+      let val_relation = match val.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let vname = expr_var_name(texpr: val)
+          map_get(ctx.sub_value_vars, vname)
+        _ => none
+      }
+      // Track size aliases: let n = xs |> count → ParamSize, let mid = n / 2 → DividedSize
+      let size_alias = classify_size_expr(val: val, ctx: ctx)
+      let inner_size_aliases = match size_alias {
+        Some { value: se } => map_insert(ctx.size_aliases, binding_name, se)
+        None => ctx.size_aliases
+      }
+      let inner_ctx = match val_relation {
+        Some { value: rel } =>
+          DescentContext {
+            fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
+            sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
+            size_aliases: inner_size_aliases
+          }
+        None =>
+          DescentContext {
+            fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
+            sub_value_vars: ctx.sub_value_vars,
+            size_aliases: inner_size_aliases
+          }
+      }
+      // Recurse into value and body
+      map_children(node: body, transform: child => annotate_descent(body: child, ctx: inner_ctx))
+    // ExprBlock: thread context through sequential children so that
+    // let-bindings extend context for subsequent statements.
+    ExprBlock =>
+      let threaded = body.children |> fold(init: BlockAnnotateAcc { ctx: ctx, children: [] }, f: (acc, child) =>
+        let annotated = annotate_descent(body: child, ctx: acc.ctx)
+        // If this child is an ExprLet, extend context for subsequent children
+        let next_ctx = match child.expr_data {
+          ExprLet =>
+            let val = let_value(texpr: child)
+            let bname = let_binding_name(texpr: child)
+            let val_rel = match val.expr_data {
+              ExprVar { binding_kind: _ } =>
+                let vname = expr_var_name(texpr: val)
+                map_get(acc.ctx.sub_value_vars, vname)
+              _ => none
+            }
+            let sa = classify_size_expr(val: val, ctx: acc.ctx)
+            let new_sa = match sa {
+              Some { value: se } => map_insert(acc.ctx.size_aliases, bname, se)
+              None => acc.ctx.size_aliases
+            }
+            match val_rel {
+              Some { value: rel } =>
+                DescentContext {
+                  fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
+                  sub_value_vars: map_insert(acc.ctx.sub_value_vars, bname, rel),
+                  size_aliases: new_sa
+                }
+              None =>
+                DescentContext {
+                  fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
+                  sub_value_vars: acc.ctx.sub_value_vars,
+                  size_aliases: new_sa
+                }
+            }
+          _ => acc.ctx
+        }
+        BlockAnnotateAcc { ctx: next_ctx, children: concat(acc.children, [annotated]) }
+      )
+      Node {
+        name: body.name, span: body.span, ident_span: body.ident_span,
+        children: threaded.children, connective: body.connective, params: body.params,
+        inferred: body.inferred, return_cardinality: body.return_cardinality,
+        uses: body.uses, body: body.body, transport: body.transport,
+        properties: body.properties, type_annotation: body.type_annotation,
+        is_self_recursive: body.is_self_recursive,
+        has_non_tail_self_call: body.has_non_tail_self_call,
+        match_pattern: body.match_pattern, expr_data: body.expr_data
+      }
+    // Method calls on collections: thread descent context into fold/map/filter
+    // lambda bodies. The lambda element parameter is an IteratedSubValue of
+    // the receiver's collection field.
+    ExprMethodCall { method_semantics: _ } =>
+      let mname = expr_method_name(texpr: body)
+      let is_iteration = mname == "fold" || mname == "map" || mname == "filter" || mname == "flat_map" || mname == "any" || mname == "all"
+      if is_iteration {
+        // Check if receiver is a collection sub-value (field access or bound variable).
+        let receiver = method_receiver(texpr: body)
+        let receiver_field = match receiver.expr_data {
+          ExprFieldAccess { summary: _ } =>
+            let base = field_access_base(texpr: receiver)
+            let fname = field_access_field(texpr: receiver)
+            match base.expr_data {
+              ExprVar { binding_kind: _ } =>
+                let bname = expr_var_name(texpr: base)
+                let base_type = match map_get(ctx.param_names, bname) {
+                  Some { value: t } => t
+                  None =>
+                    match map_get(ctx.sub_value_vars, bname) {
+                      Some { value: rel } =>
+                        match rel {
+                          StrictSubValue { field: f, factor: _ } => f.type_name
+                          IteratedSubValue { field: f } => f.type_name
+                          _ => ""
+                        }
+                      None => ""
+                    }
+                }
+                if base_type != "" {
+                  inductive_fields_for(env: ctx.type_env, type_name: base_type) |> filter(f => f.field_name == fname) |> first
+                } else { none }
+              _ => none
+            }
+          // Receiver is a variable bound as a sub-value (e.g., cs from match children: cs)
+          ExprVar { binding_kind: _ } =>
+            let rname = expr_var_name(texpr: receiver)
+            match map_get(ctx.sub_value_vars, rname) {
+              Some { value: rel } =>
+                match rel {
+                  StrictSubValue { field: f, factor: _ } =>
+                    match f.shape { ListRecursion => Some { value: f }  _ => none }
+                  IteratedSubValue { field: f } =>
+                    match f.shape { ListRecursion => Some { value: f }  _ => none }
+                  _ => none
+                }
+              None => none
+            }
+          _ => none
+        }
+        // Find the lambda argument and extend context for its element parameter
+        let method_args = method_arg_nodes(texpr: body)
+        let lambda_arg = method_args |> filter(a =>
+          match arg_value(n: a).expr_data { ExprLambda { semantics: _ } => true  _ => false }
+        ) |> first
+        // Inside a fold/map lambda, captured sub_value_vars are cleared.
+        // Captured variables have their descent multiplied by the fold
+        // iteration count (unknown), so they cannot produce valid evidence.
+        // Only the element parameter (if the receiver is a known collection
+        // field) gets registered as IteratedSubValue.
+        let lambda_elem_info = match lambda_arg {
+          Some { value: la } =>
+            let lambda_node = arg_value(n: la)
+            let lparams = lambda_param_names(texpr: lambda_node)
+            match lparams |> skip(lparams |> count - 1) |> first {
+              Some { value: n } => Some { value: n }
+              None => none
+            }
+          None => none
+        }
+        let inner_ctx = match lambda_elem_info {
+          Some { value: elem_name } =>
+            match receiver_field {
+              Some { value: ind_field } =>
+                DescentContext {
+                  fn_name: ctx.fn_name,
+                  param_names: map_insert(ctx.param_names, elem_name, ind_field.type_name),
+                  param_order: ctx.param_order, type_env: ctx.type_env,
+                  sub_value_vars: map_insert(empty_map(), elem_name, IteratedSubValue { field: ind_field }),
+                  size_aliases: ctx.size_aliases
+                }
+              None =>
+                // Fold on non-recognized collection: clear sub_value_vars entirely
+                DescentContext {
+                  fn_name: ctx.fn_name, param_names: ctx.param_names,
+                  param_order: ctx.param_order, type_env: ctx.type_env,
+                  sub_value_vars: empty_map(),
+                  size_aliases: ctx.size_aliases
+                }
+            }
+          None => ctx
+        }
+        // Annotate receiver with outer context, lambda args with inner (restricted) context
+        let annotated_receiver = annotate_descent(body: method_receiver(texpr: body), ctx: ctx)
+        let annotated_args = method_arg_nodes(texpr: body) |> map(arg_node =>
+          let arg_val = arg_value(n: arg_node)
+          let is_lambda = match arg_val.expr_data { ExprLambda { semantics: _ } => true  _ => false }
+          if is_lambda {
+            make_arg_node(name: match arg_name(n: arg_node) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span, name_span: arg_node.span)
+          } else {
+            make_arg_node(name: match arg_name(n: arg_node) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: ctx), span: arg_node.span, name_span: arg_node.span)
+          }
+        )
+        Node {
+          name: body.name, span: body.span, ident_span: body.ident_span,
+          children: concat([annotated_receiver], annotated_args),
+          connective: body.connective, params: body.params,
+          inferred: body.inferred, return_cardinality: body.return_cardinality,
+          uses: body.uses, body: body.body, transport: body.transport,
+          properties: body.properties, type_annotation: body.type_annotation,
+          is_self_recursive: body.is_self_recursive,
+          has_non_tail_self_call: body.has_non_tail_self_call,
+          match_pattern: body.match_pattern, expr_data: body.expr_data
+        }
+      } else {
+        map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
+      }
+    _ =>
+      // All other expression types (including lambdas): recurse into children
+      map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
+  }
+}
+
+// Extract type name from a node that may have its type in `inferred` (post
+// field_to_child_node) or in `children` (raw parsed form).
+fn resolved_type_name(n: Node) -> String {
+  match n.inferred {
+    Some { value: Resolved { node: rt } } => rt.name
+    _ =>
+      match n.children |> first {
+        Some { value: c } => c.name
+        None => ""
+      }
+  }
+}
+
+// Top-level: annotate a self-recursive function body with descent evidence.
+fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv) -> Node {
+  let param_name_map = params |> fold(init: empty_map(), f: (acc, p) =>
+    let pname = param_node_name(n: p)
+    let ptype = resolved_type_name(n: p)
+    map_insert(acc, pname, ptype)
+  )
+  let param_order_list = params |> map(p => param_node_name(n: p))
+  let ctx = DescentContext {
+    fn_name: fn_name,
+    param_names: param_name_map,
+    param_order: param_order_list,
+    type_env: type_env,
+    sub_value_vars: empty_map(),
+    size_aliases: empty_map()
+  }
+  annotate_descent(body: body, ctx: ctx)
+}
+
 // -------------------------------------------------------------------------
 // Transport/property inference: variant bindings (GET, POST, Bearer, etc.)
 // are already in scope.locals from imports. Running infer_expr on transport
@@ -2091,7 +2822,6 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
   let results = props |> map(p =>
     let val = field_init_node_value(n: p)
     let val_result = infer_expr(texpr: val, scope: scope, expected: none)
-    // Reconstruct field-init node with typed value, preserving name and spans
     {
       prop: Node {
         name: p.name, span: p.span, ident_span: p.ident_span,
@@ -2115,9 +2845,6 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
   match transport {
     None => InferTransportResult { transport: none, diagnostics: [] }
     Some { value: t } =>
-      // Infer transport properties (method, auth_scheme, base_url etc.)
-      // but NOT children (argv elements contain operation param references
-      // that aren't in the current scope — they need operation-level scope).
       let prop_result = infer_property_values(props: t.properties, scope: scope)
       InferTransportResult {
         transport: Some { value: Node {
@@ -2140,10 +2867,7 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
 
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let typed_anno = item.type_annotation
-  let typed_properties = item.properties
   // Infer transport properties with the correct scope.
-  // Operations (items with params) need param scope for references like
-  // auth_token, path, etc. Non-parameterized items use module scope.
   let transport_scope = if item.params |> count > 0 {
     build_params_scope(scope: scope, params: item.params)
   } else { scope }
@@ -2157,7 +2881,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: Some { value: Resolved { node: unit_type } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
-               properties: typed_properties, type_annotation: typed_anno,
+               properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
       diagnostics: transport_diags
@@ -2175,13 +2899,18 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
+    // CX-L2: annotate self-call sites with descent evidence
+    let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: item.name)
+    let annotated_body = if is_recursive {
+      annotate_descent_evidence(body: body_typed, fn_name: item.name, params: item.params, type_env: scope.type_env)
+    } else { body_typed }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
-        inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: item.uses, body: Some { value: body_typed },
+        inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: item.uses, body: Some { value: annotated_body },
         connective: NoConnective, transport: typed_transport,
-               properties: typed_properties, type_annotation: typed_anno,
-        is_self_recursive: expr_has_self_call(texpr: body_typed, fn_name: item.name),
+               properties: item.properties, type_annotation: typed_anno,
+        is_self_recursive: is_recursive,
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true),
         match_pattern: none, expr_data: NoExprData
       },
@@ -2200,7 +2929,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
         inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: Some { value: body_typed },
         connective: NoConnective, transport: typed_transport,
-               properties: typed_properties, type_annotation: typed_anno,
+               properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
       diagnostics: concat(transport_diags, body_diags)
@@ -2218,7 +2947,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: [], body: Some { value: val_typed },
         connective: NoConnective, transport: typed_transport,
-               properties: typed_properties, type_annotation: typed_anno,
+               properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
       diagnostics: concat(transport_diags, val_diags)
@@ -2231,7 +2960,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Some { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: NoConnective, transport: typed_transport,
-               properties: typed_properties, type_annotation: typed_anno,
+               properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
       diagnostics: transport_diags
@@ -2244,7 +2973,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Some { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
-               properties: typed_properties, type_annotation: typed_anno,
+               properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
       diagnostics: transport_diags
@@ -2338,7 +3067,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let some_variant = Node { name: "Some", span: zero_span, ident_span: Some { value: zero_span }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, ident_span: Some { value: zero_span }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
-  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: source_index }
+  // Node is the kernel's only recursive type. Seed its inductive fields
+  // so CX-L1 can prove tree-walk functions are O(n). Phase 1 of the
+  // Node migration path (see ROADMAP CX-NEXT).
+  let node_fields = kernel_node_inductive_fields()
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: node_fields, source_index: source_index }
 
   // Collect imported type bindings from parent modules.
   // For type resolution to work on imported types (e.g., FileClassification
@@ -2384,8 +3117,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   )
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
-  let import_recursive_variant_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_recursive_variant_fields(left: acc, right: env.recursive_variant_fields))
-  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, recursive_variant_fields: import_recursive_variant_fields, source_index: source_index }
+  let import_inductive_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
+  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_index: source_index }
   let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_module.value.span }, module_name: module.module.name)] })
 
   // Collect local type definitions from module items.
@@ -2455,7 +3188,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Compute local name set BEFORE merging param bindings (local_bindings consumed by map_merge).
   let local_name_set = fold(local_bindings |> map_keys, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let all_local_bindings = map_merge(local_bindings, param_bindings)
-  let pre_local_env = TypeEnv { bindings: all_local_bindings, recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: source_index }
+  let pre_local_env = TypeEnv { bindings: all_local_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_index: source_index }
 
   // Merge in shadowing order: kernel < imports < local.
   let merged = merge_envs(envs: [kernel, import_env, pre_local_env])
@@ -2471,9 +3204,9 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Build recursive variant fields AFTER cycle detection so the structural
   // cycle_map gates which types are considered recursive, replacing the
   // raw-name identity check with a structurally validated one.
-  let local_recursive_variant_fields = build_item_recursive_variant_fields(items: module_items(n: module.module), recursive_type_set: cycle_map)
-  let merged_recursive_variant_fields = merge_recursive_variant_fields(left: merged.recursive_variant_fields, right: local_recursive_variant_fields)
-  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, recursive_variant_fields: merged_recursive_variant_fields, source_index: source_index }
+  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_map)
+  let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
+  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, inductive_fields: merged_inductive_fields, source_index: source_index }
   // Resolve only LOCAL type bindings. Imported bindings are already resolved.
   // (local_name_set computed above, before param_bindings merge.)
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module.module.name, local_names: local_name_set, deps_map: all_deps_map)
@@ -2483,7 +3216,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     bindings: resolved_env_out.bindings,
     recursive_types: resolved_env_out.recursive_types,
     recursive_type_set: resolved_env_out.recursive_type_set,
-    recursive_variant_fields: resolved_env_out.recursive_variant_fields,
+    inductive_fields: resolved_env_out.inductive_fields,
     source_index: resolved_env_out.source_index
   }
   BuildTypeEnvResult {
@@ -2507,7 +3240,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let some_variant = Node { name: "Some", span: zero_span, ident_span: Some { value: zero_span }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, ident_span: Some { value: zero_span }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
-  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: source_index }
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_index: source_index }
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
   // Mirror the same bootstrap bridge in the unresolved path.
   let std_types_parent_env = if module.module.name != "std.types" && imports_std_types == false {
@@ -2540,8 +3273,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   )
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
-  let import_recursive_variant_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_recursive_variant_fields(left: acc, right: env.recursive_variant_fields))
-  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, recursive_variant_fields: import_recursive_variant_fields, source_index: source_index }
+  let import_inductive_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
+  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_index: source_index }
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
     let has_structure = item.connective != NoConnective
     if has_structure {
@@ -2559,16 +3292,16 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
       acc
     }
   )
-  let pre_local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: source_index }
+  let pre_local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_index: source_index }
   let merged = merge_envs(envs: [kernel, import_env, pre_local_env])
   let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, node_type_deps(n: b.resolved, source_index: source_index))
   )
   let cycle_set = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: merged.bindings)
   let cycle_map = fold(cycle_set, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
-  let local_recursive_variant_fields = build_item_recursive_variant_fields(items: module_items(n: module.module), recursive_type_set: cycle_map)
-  let merged_recursive_variant_fields = merge_recursive_variant_fields(left: merged.recursive_variant_fields, right: local_recursive_variant_fields)
-  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, recursive_variant_fields: merged_recursive_variant_fields, source_index: source_index }
+  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_map)
+  let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
+  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, inductive_fields: merged_inductive_fields, source_index: source_index }
   BuildTypeEnvResult { env: unresolved_env, diagnostics: [] }
 }
 
@@ -2591,13 +3324,10 @@ fn build_item_info(item: Node, source_index: NewlineIndex?) -> ItemInfo {
         has_non_tail_self_call: false
       }
     FnItem =>
-      // fn items that contain service calls are effectful — upgrade to FuncItem
-      let svc_names = if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value) }
-      let effective_kind = if svc_names |> count > 0 { FuncItem } else { FnItem }
       ItemInfo {
         name: item.name,
-        kind: effective_kind,
-        service_names: svc_names,
+        kind: kind,
+        service_names: [],
         resource_names: res_names,
         params: item.params,
         is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item.name) },
@@ -2957,7 +3687,7 @@ fn topo_resolve_types(
       }
     )
     return EnvResolveResult {
-      env: TypeEnv { bindings: stuck_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, recursive_variant_fields: env.recursive_variant_fields, source_index: env.source_index },
+      env: TypeEnv { bindings: stuck_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_index: env.source_index },
       diagnostics: concat(diagnostics, stuck_accum.diagnostics)
     }
   }
@@ -2982,7 +3712,7 @@ fn topo_resolve_types(
 
   topo_resolve_types(
     remaining: next_remaining,
-    env: TypeEnv { bindings: ready_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, recursive_variant_fields: env.recursive_variant_fields, source_index: env.source_index },
+    env: TypeEnv { bindings: ready_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_index: env.source_index },
     module_name: module_name,
     diagnostics: concat(diagnostics, ready_accum.diagnostics),
     local_names: local_names,

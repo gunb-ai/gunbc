@@ -2040,7 +2040,7 @@ fn emit_rust_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scop
 
 fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: expr, source_index: scope.type_env.source_index)
       emit_typed_call_expr(func: f, args: expr.children, inferred: expr.inferred, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_call expected ExprCall", target: Rust)
@@ -2691,7 +2691,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   let init_str = match args |> first {
     Some { value: init_arg } =>
       match arg_value(n: init_arg).expr_data {
-        ExprCall { call_semantics: _ } =>
+        ExprCall { call_semantics: _, descent_evidence: _ } =>
           let init_func = expr_call_func_at(texpr: arg_value(n: init_arg), source_index: scope.type_env.source_index)
           if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             let value_type_str = rust_empty_map_value_type_str(map_type: acc_type_node, shared_types: shared_types, source_index: scope.type_env.source_index)
@@ -3578,7 +3578,7 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registr
 
 fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: frame.expr, source_index: frame.scope.type_env.source_index)
       let call_str = emit_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       concat("break ", call_str, ";")
