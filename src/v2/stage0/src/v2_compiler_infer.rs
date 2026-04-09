@@ -2081,10 +2081,71 @@ Rc::new(InferResult {
 }
 }
 
+pub fn infer_property_values(props: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({ let mut __result = Vec::new(); for p in props.iter().cloned() { __result.push({
+        let val = field_init_node_value(p.clone());
+let val_result = infer_expr(val.clone(), scope.clone(), None);
+Rc::new(Node {
+    name: p.name.clone(),
+    span: p.span.clone(),
+    ident_span: p.ident_span.clone(),
+    children: Rc::new(vec![val_result.typed.clone()]),
+    connective: p.connective.clone(),
+    params: p.params.clone(),
+    inferred: p.inferred.clone(),
+    return_cardinality: p.return_cardinality.clone(),
+    uses: p.uses.clone(),
+    body: p.body.clone(),
+    transport: p.transport.clone(),
+    properties: p.properties.clone(),
+    type_annotation: p.type_annotation.clone(),
+    is_self_recursive: p.is_self_recursive.clone(),
+    has_non_tail_self_call: p.has_non_tail_self_call.clone(),
+    match_pattern: p.match_pattern.clone(),
+    expr_data: p.expr_data.clone(),
+})
+}); } __result })
+}
+
+pub fn infer_transport_node(transport: Option<Rc<Node>>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match transport {
+    None => None,
+    Some(t) => {
+        let typed_props = infer_property_values(t.properties.clone(), scope);
+Some(Rc::new(Node {
+    name: t.name.clone(),
+    span: t.span.clone(),
+    ident_span: t.ident_span.clone(),
+    children: t.children.clone(),
+    connective: t.connective.clone(),
+    params: t.params.clone(),
+    inferred: t.inferred.clone(),
+    return_cardinality: t.return_cardinality.clone(),
+    uses: t.uses.clone(),
+    body: t.body.clone(),
+    transport: t.transport.clone(),
+    properties: typed_props,
+    type_annotation: t.type_annotation.clone(),
+    is_self_recursive: t.is_self_recursive.clone(),
+    has_non_tail_self_call: t.has_non_tail_self_call.clone(),
+    match_pattern: t.match_pattern.clone(),
+    expr_data: t.expr_data.clone(),
+}))
+},
+}
+}
+
 pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let typed_anno = item.type_annotation.clone();
+let typed_properties = item.properties.clone();
+let transport_scope = if ((item.params.clone().len() as i64) > 0) {
+                build_params_scope(scope.clone(), item.params.clone())
+} else {
+                scope.clone()
+};
+let typed_transport = infer_transport_node(item.transport.clone(), transport_scope);
 if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None)) {
                 Rc::new(TypedItemResult {
     item: Rc::new(Node {
@@ -2100,8 +2161,8 @@ if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clo
     uses: item.uses.clone(),
     body: None,
     connective: item.connective.clone(),
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -2140,8 +2201,8 @@ Rc::new(TypedItemResult {
     uses: item.uses.clone(),
     body: Some(body_typed.clone()),
     connective: Connective::NoConnective,
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: expr_has_self_call(body_typed.clone(), item.name.clone()),
     has_non_tail_self_call: expr_has_non_tail_self_call(body_typed.clone(), item.name.clone(), true),
@@ -2170,8 +2231,8 @@ Rc::new(TypedItemResult {
     uses: Rc::new(vec![]),
     body: Some(body_typed.clone()),
     connective: Connective::NoConnective,
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -2211,8 +2272,8 @@ Rc::new(TypedItemResult {
     uses: Rc::new(vec![]),
     body: Some(val_typed.clone()),
     connective: Connective::NoConnective,
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -2242,8 +2303,8 @@ Rc::new(TypedItemResult {
     uses: item.uses.clone(),
     body: None,
     connective: Connective::NoConnective,
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -2271,8 +2332,8 @@ Rc::new(TypedItemResult {
     uses: item.uses.clone(),
     body: None,
     connective: item.connective.clone(),
-    transport: item.transport.clone(),
-    properties: item.properties.clone(),
+    transport: typed_transport,
+    properties: typed_properties,
     type_annotation: typed_anno,
     is_self_recursive: false,
     has_non_tail_self_call: false,
