@@ -4101,7 +4101,7 @@ Rc::new({ let mut __result = Vec::new(); for ch in Rc::new(method_name.chars().m
 },
     _ => "compile_error!(\"transport method type not resolved\")".to_string(),
 },
-    None => "post".to_string(),
+    None => "compile_error!(\"transport method not specified\")".to_string(),
 }
 }
 

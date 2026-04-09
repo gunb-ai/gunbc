@@ -3906,7 +3906,7 @@ fn emit_rest_http_method(transport: Node, source_index: NewlineIndex?) -> String
         // Fallback for uninferred transport (fail-closed)
         concat("compile_error!(\"transport method type not resolved\")")
     }
-    None => "post"
+    None => "compile_error!(\"transport method not specified\")"
   }
 }
 

@@ -1245,14 +1245,17 @@ Make `emit_rest_call` and `emit_shell_call` consume the transport
 config they already receive. PR #353.
 
 **REST:**
-- [x] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
-  Structural dispatch via inferred HttpMethod type. Fail-closed on unresolved.
-- [x] RE-1b: Path template from `transport.path` with param substitution
+- [ ] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
+  Inferred type enables structural dispatch; lowercases variant name for reqwest.
+  Gap: emit reads variant name text, not the resolved HttpMethod alternative.
+- [ ] RE-1b: Path template from `transport.path` with param substitution
   → `format!("/repos/{}/{}/pulls", owner, repo)`. Uses ExprStringInterp structure.
+  Gap: interpolation segments still use expr_var_name_at, not full emit_typed_expr.
 - [x] RE-1c: Query parameters from `transport.query`
   → `.query(&[("state", &state)])`. Uses emit_simple_expr for structural emission.
-- [x] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
-  Structural dispatch on ExprData shape (ExprVar=unit, ExprCall=payload).
+- [ ] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
+  Dispatches on ExprData shape (ExprVar=unit, ExprCall=payload).
+  Gap: collapses all unit variants to Bearer; needs resolved variant identity.
 - [ ] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
   Status code match works but response/exit are encoded as synthetic property
   names — emitter re-parses strings. Needs first-class ResponseCase/ExitCase nodes.
@@ -1268,8 +1271,8 @@ config they already receive. PR #353.
 **Response:**
 - [ ] RE-1i: `from "content/0/text"` JSON path extraction on response
   Not implemented. Nested path extraction deferred to RE-4.
-- [x] RE-1j: Nested output struct field mapping via serde rename
-  Already working via existing `field_node_from_key` mechanism.
+- [ ] RE-1j: Nested output struct field mapping via serde rename
+  `field_node_from_key` mechanism exists but no test covers it in this PR.
 
 **Infrastructure (PR #353):**
 - [x] Parser extended: `parse_rest_fields` captures method/path/query,
@@ -1279,8 +1282,9 @@ config they already receive. PR #353.
 - [x] `transport_env` excludes reserved keys (stdin separation)
 - [x] `int_to_string_acc` digit ordering fix
 - [x] HttpMethod moved from extdeps/transports/rest.dag to std/types.dag
-- [x] CloudAuthScheme dissolved into std/ AuthScheme (Bearer, Header, Basic,
-  ApiKey, SigV4, OidcToken)
+- [ ] CloudAuthScheme dissolved: std/types.dag has protocol-level schemes
+  (Bearer, Header, Basic, ApiKey). Cloud-specific SigV4/OidcToken need
+  a Layer-2 cloud auth coproduct in extdeps/cloud that composes std/ schemes.
 - [x] 7 RE-1 acceptance tests (5 REST + 2 shell)
 
 **Blocked by:** Nothing — all data already flows to the emitter.
@@ -1472,7 +1476,7 @@ RE item is implemented — the ratchet counts tests that exist AND pass.
 | Metric | Current | Target |
 |--------|---------|--------|
 | RE-1 transport tests | 7/10 | 10 |
-| RE-2 compilation tests | 0/3 (51 cargo check errors, ratchet) | 3 |
+| RE-2 compilation tests | 0/3 (3 cargo check errors, ratchet at 3) | 3 |
 | RE-3 integration tests | 0/4 | 4 |
 | RE-4 API tests | 0/3 | 3 |
 | RE-5 multi-backend test | 0/1 | 1 |

@@ -28,10 +28,20 @@ type RateLimitPolicy {
   scope: String
 }
 
+// -- Cloud auth (Layer 2) ------------------------------------------
+// Composes protocol-level AuthScheme from std/ with provider-specific
+// schemes. Provider services project the subset they actually use.
+// AWS: SigV4. GCP: OidcToken. Azure: Bearer (already in std/).
+
+type CloudAuthScheme
+  = Protocol { scheme: AuthScheme }
+  | SigV4 { region: String, service: String }
+  | OidcToken { audience: String }
+
 // -- Credentials ---------------------------------------------------
 
 type Credential {
-  scheme: AuthScheme
+  scheme: CloudAuthScheme
   scopes: List<String>?
   expires_seconds: Int?
 }
