@@ -1492,8 +1492,13 @@ config they already receive. No new .dag modeling needed.
 - [x] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
 
 **Response:**
-- [ ] RE-1i: `from "content/0/text"` JSON path extraction on response
-- [ ] RE-1j: Nested output struct field mapping via serde rename
+- [x] RE-1i: `from "content/0/text"` JSON path extraction on response
+  — emitter detects `from_key` on output fields, deserializes to `serde_json::Value`,
+  extracts via `json_body.pointer()` with type-specific accessors (`.as_str()`,
+  `.as_i64()`, etc.). Flat paths use same mechanism. Test: `rest_output_from_clause_extracts_path`.
+- [x] RE-1j: Nested output struct field mapping via serde rename
+  — flat `from_key` paths already used serde rename on struct fields (line 947-957).
+  Nested paths now handled via JSON pointer extraction (RE-1i).
 
 **Blocked by:** Nothing — all data already flows to the emitter.
 

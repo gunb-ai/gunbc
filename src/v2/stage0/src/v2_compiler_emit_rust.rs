@@ -4249,21 +4249,98 @@ pub fn has_response_prefix(name: String) -> bool {
 }
 }
 
+pub fn child_from_key(ch: Rc<Node>) -> Option<String> {
+    match Rc::new({ let mut __result = Vec::new(); for p in ch.properties.clone().iter().cloned() { if (field_init_node_name(p.clone()).as_str() == "from_key".to_string().as_str()) { __result.push(p); } } __result }).first().cloned() {
+    Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; Some(s.clone()) },
+    _ => None,
+},
+    None => None,
+}
+}
+
+pub fn has_from_key_fields(op_node: Rc<Node>) -> bool {
+    {
+        let rt = resolved_type(op_node);
+let is_conj = (rt.connective.clone() == Connective::Conj);
+let from_key_count = (Rc::new({ let mut __result = Vec::new(); for ch in rt.children.clone().iter().cloned() { if match child_from_key(ch.clone()) {
+    Some(_) => true,
+    None => false,
+} { __result.push(ch); } } __result }).len() as i64);
+(is_conj && (from_key_count > 0))
+}
+}
+
+pub fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String) -> String {
+    {
+        let pointer = v2_rt::concat("/".to_string(), from_path.clone());
+let accessor = if (dag_type_name.clone().as_str() == "String".to_string().as_str()) {
+            v2_rt::concat(v2_rt::concat(".and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())
+} else {
+            if (dag_type_name.clone().as_str() == "Int".to_string().as_str()) {
+                v2_rt::concat(v2_rt::concat(".and_then(|v| v.as_i64()).ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())
+} else {
+                if (dag_type_name.clone().as_str() == "Float".to_string().as_str()) {
+                    v2_rt::concat(v2_rt::concat(".and_then(|v| v.as_f64()).ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())
+} else {
+                    if (dag_type_name.clone().as_str() == "Bool".to_string().as_str()) {
+                        v2_rt::concat(v2_rt::concat(".and_then(|v| v.as_bool()).ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())
+} else {
+                        v2_rt::concat(v2_rt::concat(".cloned().map(|v| serde_json::from_value(v)).transpose()?.ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())
+}
+}
+}
+};
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), var_name), " = json_body.pointer(\"".to_string()), pointer), "\")".to_string()), accessor), ";".to_string())
+}
+}
+
+pub fn emit_from_key_extraction(op_node: Rc<Node>) -> String {
+    {
+        let rt = resolved_type(op_node);
+let children = rt.children.clone();
+let extract_lines = Rc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push({
+            let field_name = emit_ident(ch.name.clone(), RenderTarget::Rust);
+let from_path = match child_from_key(ch.clone()) {
+    Some(p) => p.clone(),
+    None => ch.name.clone(),
+};
+let type_name = match ch.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: tn, .. }) => tn.name.clone(),
+    _ => "String".to_string(),
+};
+emit_json_value_extract(field_name.clone(), from_path.clone(), type_name.clone())
+}); } __result });
+let field_names = Rc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push(emit_ident(ch.name.clone(), RenderTarget::Rust)); } __result });
+let tuple_body = if ((field_names.clone().len() as i64) == 1) {
+            v2_rt::concat(v2_rt::concat("(".to_string(), field_names.clone().first().cloned().clone().unwrap()), ",)".to_string())
+} else {
+            v2_rt::concat(v2_rt::concat("(".to_string(), field_names.clone().join(&", ".to_string())), ")".to_string())
+};
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let json_body: serde_json::Value = response.json().await?;\n".to_string(), extract_lines.join(&"\n".to_string())), "\nOk(".to_string()), tuple_body), ")".to_string())
+}
+}
+
 pub fn emit_response_code_handling(op_node: Rc<Node>) -> String {
     {
-        let response_props = Rc::new({ let mut __result = Vec::new(); for p in op_node.properties.clone().iter().cloned() { if has_response_prefix(field_init_node_name(p.clone())) { __result.push(p); } } __result });
+        let use_from_key = has_from_key_fields(op_node.clone());
+let response_props = Rc::new({ let mut __result = Vec::new(); for p in op_node.properties.clone().iter().cloned() { if has_response_prefix(field_init_node_name(p.clone())) { __result.push(p); } } __result });
 if ((response_props.clone().len() as i64) == 0) {
-            "let result = response.json().await?;\nOk(result)".to_string()
+            if use_from_key.clone() {
+                emit_from_key_extraction(op_node.clone())
+} else {
+                "let result = response.json().await?;\nOk(result)".to_string()
+}
 } else {
             {
-                let arms = Rc::new({ let mut __result = Vec::new(); for p in response_props.clone().iter().cloned() { __result.push(emit_response_arm(p.clone())); } __result });
+                let arms = Rc::new({ let mut __result = Vec::new(); for p in response_props.clone().iter().cloned() { __result.push(emit_response_arm(p.clone(), op_node.clone(), use_from_key.clone())); } __result });
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let status = response.status().as_u16();\n".to_string(), "match status {\n".to_string()), arms.join(&"\n".to_string())), "\n    _ => Err(format!(\"unexpected status code: {}\", status).into())\n".to_string()), "}".to_string())
 }
 }
 }
 }
 
-pub fn emit_response_arm(prop: Rc<Node>) -> String {
+pub fn emit_response_arm(prop: Rc<Node>, op_node: Rc<Node>, use_from_key: bool) -> String {
     {
         let name = field_init_node_name(prop);
 let code_str = v2_rt::substring(&name, 9, v2_rt::string_length(&name));
@@ -4285,7 +4362,11 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "00..=".to_string()), 
 }
 };
 if is_success {
-            v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { let result = response.json().await?; Ok(result) },".to_string())
+            if use_from_key {
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { ".to_string()), emit_from_key_extraction(op_node)), " },".to_string())
+} else {
+                v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { let result = response.json().await?; Ok(result) },".to_string())
+}
 } else {
             v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { let err_body = response.text().await.unwrap_or_default(); Err(format!(\"HTTP {}: {}\", status, err_body).into()) },".to_string())
 }

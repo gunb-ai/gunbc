@@ -4842,6 +4842,46 @@ service shell.Pipe {
     );
 }
 
+// ── RE-1i: from clause JSON path extraction ─────────────────────────────
+#[test]
+fn rest_output_from_clause_extracts_path() {
+    let source = r#"module re1i
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation Query {
+    input { prompt: String }
+    output {
+      content: String from "choices/0/message/content"
+      model: String from "model"
+      tokens: Int from "usage/total_tokens"
+    }
+    transport rest { method: POST, path: "/v1/completions" }
+    mock_response {
+      200 => "ok" "content"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1i.rs");
+    assert!(
+        content.contains("json_body.pointer("),
+        "RE-1i: expected json_body.pointer() for nested from path, got:\n{content}"
+    );
+    assert!(
+        content.contains("/choices/0/message/content"),
+        "RE-1i: expected nested JSON pointer path, got:\n{content}"
+    );
+    assert!(
+        content.contains("/usage/total_tokens"),
+        "RE-1i: expected nested JSON pointer for Int field, got:\n{content}"
+    );
+}
+
 // ── RE-2: review.dag compiles to Rust ───────────────────────────────────
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
 // This is the acceptance gate for RE-2.

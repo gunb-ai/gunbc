@@ -4086,12 +4086,84 @@ fn has_response_prefix(name: String) -> Bool {
   else { substring(s: name, start: 0, end: 9) == "response_" }
 }
 
+// RE-1i: Extract from_key path from an output field's properties.
+fn child_from_key(ch: Node) -> String? {
+  match ch.properties |> filter(p => field_init_node_name(n: p) == "from_key") |> first {
+    Some { value: prop } => match field_init_node_value(n: prop).expr_data {
+      ExprLiteral { value: LitStr { value: s } } => Some { value: s }
+      _ => none
+    }
+    None => none
+  }
+}
+
+// RE-1i: Check if any output field of an operation has a from_key path.
+fn has_from_key_fields(op_node: Node) -> Bool {
+  let rt = resolved_type(n: op_node)
+  let is_conj = rt.connective == Conj
+  let from_key_count = rt.children |> filter(ch => match child_from_key(ch: ch) { Some { value: _ } => true  None => false }) |> count
+  is_conj && from_key_count > 0
+}
+
+// RE-1i: Emit type-specific JSON value extraction for a single field.
+// Converts dag type name to the appropriate serde_json accessor.
+fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String) -> String {
+  let pointer = concat("/", from_path)
+  let accessor = if dag_type_name == "String" {
+    concat(".and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or(\"missing field: ", from_path, "\")?")
+  } else if dag_type_name == "Int" {
+    concat(".and_then(|v| v.as_i64()).ok_or(\"missing field: ", from_path, "\")?")
+  } else if dag_type_name == "Float" {
+    concat(".and_then(|v| v.as_f64()).ok_or(\"missing field: ", from_path, "\")?")
+  } else if dag_type_name == "Bool" {
+    concat(".and_then(|v| v.as_bool()).ok_or(\"missing field: ", from_path, "\")?")
+  } else {
+    // Complex types: clone and deserialize
+    concat(".cloned().map(|v| serde_json::from_value(v)).transpose()?.ok_or(\"missing field: ", from_path, "\")?")
+  }
+  concat("let ", var_name, " = json_body.pointer(\"", pointer, "\")", accessor, ";")
+}
+
+// RE-1i: Emit JSON pointer extraction for all output fields.
+// Deserializes to serde_json::Value, extracts each field by path, returns tuple.
+fn emit_from_key_extraction(op_node: Node) -> String {
+  let rt = resolved_type(n: op_node)
+  let children = rt.children
+  let extract_lines = children |> map(ch =>
+    let field_name = emit_ident(name: ch.name, target: Rust)
+    let from_path = match child_from_key(ch: ch) {
+      Some { value: p } => p
+      None => ch.name
+    }
+    let type_name = match ch.inferred {
+      Some { value: Resolved { node: tn } } => tn.name
+      _ => "String"
+    }
+    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: type_name)
+  )
+  let field_names = children |> map(ch => emit_ident(name: ch.name, target: Rust))
+  let tuple_body = if field_names |> count == 1 {
+    concat("(", field_names |> first.value, ",)")
+  } else {
+    concat("(", field_names |> join(separator: ", "), ")")
+  }
+  concat(
+    "let json_body: serde_json::Value = response.json().await?;\n",
+    extract_lines |> join(separator: "\n"),
+    "\nOk(", tuple_body, ")")
+}
+
 fn emit_response_code_handling(op_node: Node) -> String {
+  let use_from_key = has_from_key_fields(op_node: op_node)
   let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name(n: p)))
   if response_props |> count == 0 {
-    "let result = response.json().await?;\nOk(result)"
+    if use_from_key {
+      emit_from_key_extraction(op_node: op_node)
+    } else {
+      "let result = response.json().await?;\nOk(result)"
+    }
   } else {
-    let arms = response_props |> map(p => emit_response_arm(prop: p))
+    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key))
     concat(
       "let status = response.status().as_u16();\n",
       "match status {\n",
@@ -4101,7 +4173,7 @@ fn emit_response_code_handling(op_node: Node) -> String {
   }
 }
 
-fn emit_response_arm(prop: Node) -> String {
+fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool) -> String {
   let name = field_init_node_name(n: prop)
   let code_str = substring(s: name, start: 9, end: string_length(s: name))
   // RFC 9110: 2xx = success, everything else = error
@@ -4115,7 +4187,11 @@ fn emit_response_arm(prop: Node) -> String {
     }
     else { code_str }
   if is_success {
-    concat("    ", pattern, " => { let result = response.json().await?; Ok(result) },")
+    if use_from_key {
+      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node), " },")
+    } else {
+      concat("    ", pattern, " => { let result = response.json().await?; Ok(result) },")
+    }
   } else {
     concat("    ", pattern, " => { let err_body = response.text().await.unwrap_or_default(); Err(format!(\"HTTP {}: {}\", status, err_body).into()) },")
   }
