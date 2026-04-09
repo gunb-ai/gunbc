@@ -2076,12 +2076,12 @@ let else_str = recurse(eb.clone(), depth.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), then_str), ") if (".to_string()), cond_str), ") else (".to_string()), else_str), ")".to_string())
 },
     IfValueForm::IfStatement => {
-            let then_str = recurse(then_branch.clone(), depth.clone());
-let else_str = recurse(eb.clone(), depth.clone());
-let result_type = match if_result_type {
+            let result_type = match if_result_type {
     Some(rt) => emit_node_type(rt.clone(), target.clone(), source_index),
     None => emit_node_type(resolved_type(then_branch.clone()), target.clone(), source_index),
 };
+let then_str = recurse(then_branch.clone(), depth.clone());
+let else_str = recurse(eb.clone(), depth.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func() ".to_string(), result_type), " { if ".to_string()), cond_str), bs.block_open.clone()), make_indent((depth.clone() + 1))), "return ".to_string()), then_str), "\n".to_string()), make_indent(depth.clone())), bs.else_clause.clone()), make_indent((depth.clone() + 1))), "return ".to_string()), else_str), "\n".to_string()), make_indent(depth.clone())), bs.block_close.clone()), " }()".to_string())
 },
 },

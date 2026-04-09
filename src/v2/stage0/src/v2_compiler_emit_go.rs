@@ -966,6 +966,6 @@ if { let mut __found = false; for r in go_reserved().iter().cloned() { if (r.clo
             result.clone()
         }
 },
-    _ => emit_ident(name, RenderTarget::Go),
+    _ => "__GO_VISIBILITY_SPEC_MISMATCH__".to_string(),
 }
 }

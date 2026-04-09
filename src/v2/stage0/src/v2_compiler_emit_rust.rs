@@ -109,7 +109,7 @@ pub fn rust_source_ext() -> String {
 pub fn rust_visibility_prefix() -> String {
     match (*visibility_for_target(RenderTarget::Rust)).clone() {
     VisibilitySpec::KeywordVisibility { prefix: p, .. } => p.clone(),
-    _ => "".to_string(),
+    _ => "__VISIBILITY_SPEC_MISMATCH__".to_string(),
 }
 }
 

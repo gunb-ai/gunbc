@@ -214,7 +214,7 @@ pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -
         let matching = Rc::new({ let mut __result = Vec::new(); for f in forms.iter().cloned() { if (f.kind.clone() == kind.clone()) { __result.push(f); } } __result });
 match matching.first().cloned() {
     Some(f) => f.keyword.clone(),
-    None => "".to_string(),
+    None => "__MISSING_ITEM_KEYWORD__".to_string(),
 }
 }
 }
