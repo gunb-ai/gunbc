@@ -11,9 +11,8 @@ use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::v2_std_core::{BinOp, LiteralValue};
 use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::v2_std_core::LiteralValue::*;
-pub use crate::std_syntax::{ItemForm, ItemFormKind, NamingCase, OperatorSpec, SyntaxSpec, BodyKind};
+pub use crate::std_syntax::{ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec, BodyKind};
 use crate::std_syntax::ItemFormKind::{FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm};
-use crate::std_syntax::NamingCase::{PascalCase, SnakeCase};
 use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
 pub use crate::extdeps_languages_rust_syntax::{rust_operators, rust_item_forms};
 pub use crate::extdeps_languages_python_syntax::{python_operators, python_item_forms};
@@ -26,6 +25,7 @@ use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
 use IfValueForm::*;
+use NamingCase::*;
 use VisibilitySpec::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -171,6 +171,13 @@ pub enum IfValueForm {
 pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
     pub wildcard_case: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NamingCase {
+    PascalCase,
+    SnakeCase,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

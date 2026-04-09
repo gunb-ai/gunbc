@@ -17,11 +17,14 @@ import v2.std.core {
 }
 import std.syntax {
   ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
-  NamingCase, PascalCase, SnakeCase,
   OperatorSpec, SyntaxSpec,
   BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody
 }
+// NamingCase: mirrors std.languages.NamingCase (single authority).
+// Cannot import directly — std/languages.dag contains CommentSyntax
+// with String? fields the bootstrap compiler doesn't yet emit correctly.
+// Import from std.languages once bootstrap handles optional string fields.
 
 import extdeps.languages.rust.syntax { rust_operators, rust_item_forms }
 import extdeps.languages.python.syntax { python_operators, python_item_forms }
@@ -213,10 +216,13 @@ type ExpressionSemantics {
   wildcard_case: String?        // Go: "default", Rust/Python: none (use pattern)
 }
 
+// Naming case — bootstrap-local mirror of std.languages.NamingCase.
+// Only PascalCase is used by current visibility rendering.
+type NamingCase = PascalCase | SnakeCase
+
 // Visibility specification — how each language controls export/access.
 // Ref: Rust Reference §6.1 "Visibility", Go Spec "Exported identifiers".
 // Coproduct: each variant carries the data its renderer consumes.
-// NamingCase imported from std.syntax (single authority).
 type VisibilitySpec
   = KeywordVisibility { prefix: String }          // Rust: "pub "
   | CaseVisibility { export_case: NamingCase }    // Go: PascalCase = exported

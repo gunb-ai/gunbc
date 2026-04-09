@@ -56,12 +56,6 @@ type ItemFormKind
   | ModuleForm
   | OtherForm        // trait, impl, const, static, service, resource, etc.
 
-// -- Naming case ------------------------------------------------------
-// Identifier surface form transformations.
-// Used by visibility specs and export conventions.
-
-type NamingCase = PascalCase | SnakeCase
-
 // -- Item form --------------------------------------------------------
 // Describes one kind of declaration (fn, type, service, etc.)
 // as data. The parser reads this to decide what structural

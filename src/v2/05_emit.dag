@@ -59,6 +59,7 @@ import v2.std.core {
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import std.induction { InductiveField }
+// NamingCase, PascalCase, SnakeCase imported via v2.compiler.languages (bootstrap-local mirror)
 import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
 import std.types { is_container_type, container_to_algebra_name }
 import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
