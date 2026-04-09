@@ -4616,10 +4616,8 @@ fn size(t: BinTree<Int>) -> Int {
 
 #[test]
 fn structural_bound_optional_chain() {
-    // OptionalRecursion on a record field: match on field access c.next
-    // CX-L2 currently handles match on parameters (ExprVar), not field access.
-    // This test verifies the CX-L1 detection works (OptionalRecursion shape)
-    // and CX-L2 correctly reports no bound (fail-closed) rather than crashing.
+    // OptionalRecursion on a record field: match c.next { Some { rest } => ... }
+    // CX-L2 handles field-access scrutinees: c.next where c: Chain, next: Chain?
     let source = r#"module opt_chain
 
 type Chain { value: Int, next: Chain? }
@@ -4632,15 +4630,21 @@ fn count(c: Chain) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    // CX-L1: Chain.next should have OptionalRecursion shape
-    // CX-L2: field access pattern not yet handled → SubValueUnknown → no bound
-    // When CX-L2 extends to field access scrutinees, this should produce O(n).
     let bounds: Vec<_> = complexity.structural_bounds.iter()
         .filter(|b| b.func_name == "count")
         .collect();
-    // For now, verify fail-closed (no bound), not crash.
-    // Future: assert O(n) once field-access descent is implemented.
-    let _ = bounds;
+    assert!(!bounds.is_empty(), "expected structural bound for count, got none");
+    assert_eq!(bounds[0].param, "c");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "c".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "optional chain traversal should be O(n)"
+    );
 }
 
 #[test]
@@ -4728,4 +4732,110 @@ fn sum_tree(t: Tree) -> Int {
     }
     // If bounds is empty, the test still passes — fold lambda descent is
     // a harder pattern that may not be wired in CX-L2 yet.
+}
+
+#[test]
+fn structural_bound_bst_search() {
+    // BST search: single-branch descent (left OR right per path).
+    // Correct worst-case bound is O(n) — degenerate tree = linked list.
+    let source = r#"module bst_search
+
+type BST<T> = Leaf | Node { value: T, left: BST<T>, right: BST<T> }
+
+fn search(tree: BST<Int>, target: Int) -> Bool {
+  match tree {
+    Leaf => false
+    Node { value: v, left: l, right: r } =>
+      if v == target { true }
+      else if target < v { search(tree: l, target: target) }
+      else { search(tree: r, target: target) }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "search")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for search, got none");
+    assert_eq!(bounds[0].param, "tree");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "tree".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "BST search is O(n) worst case (catamorphism on tree structure)"
+    );
+}
+
+#[test]
+fn structural_bound_bst_insert() {
+    // BST insert: single-branch descent, constructs new nodes on the way back.
+    let source = r#"module bst_insert
+
+type BST<T> = Leaf | Node { value: T, left: BST<T>, right: BST<T> }
+
+fn insert(tree: BST<Int>, val: Int) -> BST<Int> {
+  match tree {
+    Leaf => Node { value: val, left: Leaf, right: Leaf }
+    Node { value: v, left: l, right: r } =>
+      if val < v { Node { value: v, left: insert(tree: l, val: val), right: r } }
+      else { Node { value: v, left: l, right: insert(tree: r, val: val) } }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "insert")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for insert, got none");
+    assert_eq!(bounds[0].param, "tree");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "tree".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "BST insert is O(n) worst case"
+    );
+}
+
+#[test]
+fn structural_bound_tree_depth() {
+    // Tree depth: multi-branch descent (both left AND right), takes max.
+    // Still O(n) — catamorphism visits all nodes.
+    let source = r#"module tree_depth
+
+type BinTree<T> = Leaf | Node { left: BinTree<T>, right: BinTree<T> }
+
+fn depth(t: BinTree<Int>) -> Int {
+  match t {
+    Leaf => 0
+    Node { left: l, right: r } =>
+      let ld = depth(t: l)
+      let rd = depth(t: r)
+      if ld > rd { 1 + ld } else { 1 + rd }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "depth")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for depth, got none");
+    assert_eq!(bounds[0].param, "t");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "t".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "tree depth is O(n) catamorphism"
+    );
 }

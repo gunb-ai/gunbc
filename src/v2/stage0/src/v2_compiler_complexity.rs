@@ -58,8 +58,9 @@ use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, Arithmeti
 pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension, type_iteration_dimension};
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
 use crate::std_computation::IterationDimension::{TreeDescent, CollectionFold, ArithmeticRepeat};
-pub use crate::std_induction::{SubValueRelation, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, catamorphism_bound};
+pub use crate::std_induction::{SubValueRelation, ShrinkFactor, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, catamorphism_bound, derive_bound};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
+use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
 use crate::std_induction::CostBound::{ConstantBound, AtomicBound, ForeverBound, ErrorBound};
 use crate::std_induction::AtomicCost::{PolyCost};
 use crate::std_induction::PolynomialExponent::{IntegerExp};
@@ -4710,6 +4711,34 @@ pub fn is_catamorphism_param(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, 
 }) { __all = false; break; } } __all }
 }
 
+pub fn extract_shrink_factor(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> Rc<ShrinkFactor> {
+    all_calls.iter().cloned().fold(Rc::new(ShrinkFactor::UnitShrink), |acc: Rc<ShrinkFactor>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence.clone().get(param_index.clone() as usize).cloned() {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { factor: f, .. } => match (*acc.clone()).clone() {
+    ShrinkFactor::UnitShrink => f.clone(),
+    _ => if (acc.clone() == f.clone()) {
+        acc.clone()
+} else {
+        Rc::new(ShrinkFactor::UnitShrink)
+},
+},
+    _ => acc.clone(),
+},
+    None => acc.clone(),
+})
+}
+
+pub fn count_descending_calls(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> i64 {
+    all_calls.iter().cloned().fold(0, |acc: i64, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence.clone().get(param_index.clone() as usize).cloned() {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => (acc.clone() + 1),
+    SubValueRelation::IteratedSubValue { .. } => (acc.clone() + 1),
+    _ => acc.clone(),
+},
+    None => acc.clone(),
+})
+}
+
 pub fn analyze_structural_bounds(func_entries: Rc<Vec<Rc<FuncEntry>>>) -> Rc<Vec<Rc<StructuralBoundResult>>> {
     func_entries.iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<StructuralBoundResult>>>, entry: Rc<FuncEntry>| {
         let all_calls = collect_self_call_evidence(entry.body.clone(), entry.name.clone());
@@ -4724,7 +4753,15 @@ let evidence = merge_param_evidence(all_calls.clone(), param_index.clone());
 match evidence.clone() {
     DescentEvidence::Strict => {
                         let param_name = param_node_name(param_node.clone());
-let bound = catamorphism_bound(param_name.clone(), 1);
+let factor = extract_shrink_factor(all_calls.clone(), param_index.clone());
+let bound = match (*factor.clone()).clone() {
+    ShrinkFactor::UnitShrink => catamorphism_bound(param_name.clone(), 1),
+    ShrinkFactor::ConstantShrink { .. } => catamorphism_bound(param_name.clone(), 1),
+    ShrinkFactor::ProportionalShrink { .. } => {
+                            let branches = count_descending_calls(all_calls.clone(), param_index.clone());
+derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0)
+},
+};
 v2_rt::concat(pacc.clone(), Rc::new(vec![Rc::new(StructuralBoundResult {
     func_name: entry.name.clone(),
     param: param_name.clone(),

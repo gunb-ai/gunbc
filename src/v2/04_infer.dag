@@ -2213,6 +2213,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       // If scrutinee is a parameter or a known sub-value, extend context
       // with variant field bindings from each arm
       let scrut = match_scrutinee(texpr: body)
+      // Determine scrutinee type (for enum params) or inducing field (for field-access)
       let scrut_type = match scrut.expr_data {
         ExprVar { binding_kind: _ } =>
           let sname = expr_var_name(texpr: scrut)
@@ -2222,7 +2223,27 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           }
         _ => ""
       }
-      let scrut_has_inductive = scrut_type != "" && (inductive_fields_for(env: ctx.type_env, type_name: scrut_type) |> count > 0)
+      // For field-access scrutinees (e.g., c.next), find the inducing InductiveField
+      let scrut_inducing_field = match scrut.expr_data {
+        ExprFieldAccess { summary: _ } =>
+          let base = field_access_base(texpr: scrut)
+          let fname = field_access_field(texpr: scrut)
+          match base.expr_data {
+            ExprVar { binding_kind: _ } =>
+              let bname = expr_var_name(texpr: base)
+              let base_type = match map_get(ctx.param_names, bname) {
+                Some { value: t } => t
+                None => ""
+              }
+              if base_type != "" {
+                let ind_fields = inductive_fields_for(env: ctx.type_env, type_name: base_type)
+                ind_fields |> filter(f => f.field_name == fname) |> first
+              } else { none }
+            _ => none
+          }
+        _ => none
+      }
+      let scrut_has_inductive = (scrut_type != "" && inductive_fields_for(env: ctx.type_env, type_name: scrut_type) |> count > 0) || scrut_inducing_field != none
       // Annotate scrutinee
       let annotated_scrut = annotate_descent(body: scrut, ctx: ctx)
       // Process each arm with extended context
@@ -2230,29 +2251,47 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         let arm_ctx = if scrut_has_inductive {
           match arm_pattern(n: arm_node) {
             VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
-              let ind_fields = inductive_fields_for(env: ctx.type_env, type_name: scrut_type)
-              bindings |> fold(init: ctx, f: (c, fb) =>
-                let field_name = field_binding_name(n: fb)
-                // The BINDING variable name (what's in scope), not the field name
-                let bind_name = match field_binding_pattern(n: fb) {
-                  Bind { name: bname } => bname
-                  _ => ""
-                }
-                let matching = ind_fields |> filter(f => f.variant_name == vname && f.field_name == field_name) |> first
-                match matching {
-                  Some { value: ind_field } =>
-                    if bind_name != "" {
-                      DescentContext {
-                        fn_name: c.fn_name, param_names: c.param_names, type_env: c.type_env,
-                        sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink })
+              // For field-access scrutinees with OptionalRecursion, the Some.value
+              // binding IS the unwrapped sub-value (e.g., c.next: Chain? → rest: Chain)
+              match scrut_inducing_field {
+                Some { value: ind_field } =>
+                  if vname == "Some" {
+                    bindings |> fold(init: ctx, f: (c, fb) =>
+                      let bind_name = match field_binding_pattern(n: fb) {
+                        Bind { name: bname } => bname
+                        _ => ""
                       }
-                    } else { c }
-                  None => c
-                }
-              )
+                      if bind_name != "" {
+                        DescentContext {
+                          fn_name: c.fn_name, param_names: c.param_names, type_env: c.type_env,
+                          sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink })
+                        }
+                      } else { c }
+                    )
+                  } else { ctx }
+                None =>
+                  // Standard case: match on enum parameter, look up variant fields
+                  let ind_fields = inductive_fields_for(env: ctx.type_env, type_name: scrut_type)
+                  bindings |> fold(init: ctx, f: (c, fb) =>
+                    let field_name = field_binding_name(n: fb)
+                    let bind_name = match field_binding_pattern(n: fb) {
+                      Bind { name: bname } => bname
+                      _ => ""
+                    }
+                    let matching = ind_fields |> filter(f => f.variant_name == vname && f.field_name == field_name) |> first
+                    match matching {
+                      Some { value: ind_field } =>
+                        if bind_name != "" {
+                          DescentContext {
+                            fn_name: c.fn_name, param_names: c.param_names, type_env: c.type_env,
+                            sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink })
+                          }
+                        } else { c }
+                      None => c
+                    }
+                  )
+              }
             Bind { name: bname } =>
-              // Bare bind on a parameter that has inductive fields: the bound
-              // variable IS the parameter value (PreservedValue, not sub-value)
               ctx
             _ => ctx
           }

@@ -39,9 +39,10 @@ import std.computation {
 }
 import std.induction {
   SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown,
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent, IntegerExp,
-  sub_value_to_evidence, catamorphism_bound
+  sub_value_to_evidence, catamorphism_bound, derive_bound
 }
 import v2.std.core {
   Node,
@@ -4911,22 +4912,51 @@ fn is_catamorphism_param(all_calls: List<List<SubValueRelation>>, param_index: I
   )
 }
 
+// Extract the ShrinkFactor for a parameter across all self-call sites.
+// Conservative: mixed factors → UnitShrink (catamorphism fallback).
+fn extract_shrink_factor(all_calls: List<List<SubValueRelation>>, param_index: Int) -> ShrinkFactor {
+  all_calls |> fold(init: UnitShrink, f: (acc, call_evidence) =>
+    match call_evidence |> skip(param_index) |> first {
+      Some { value: rel } =>
+        match rel {
+          StrictSubValue { field: _, factor: f } =>
+            match acc {
+              UnitShrink => f
+              _ => if acc == f { acc } else { UnitShrink }
+            }
+          _ => acc
+        }
+      None => acc
+    }
+  )
+}
+
+// Count how many self-call sites descend on a given parameter.
+fn count_descending_calls(all_calls: List<List<SubValueRelation>>, param_index: Int) -> Int {
+  all_calls |> fold(init: 0, f: (acc, call_evidence) =>
+    match call_evidence |> skip(param_index) |> first {
+      Some { value: rel } =>
+        match rel {
+          StrictSubValue { field: _, factor: _ } => acc + 1
+          IteratedSubValue { field: _ } => acc + 1
+          _ => acc
+        }
+      None => acc
+    }
+  )
+}
+
 // Analyze structural bounds for all self-recursive functions.
 // Recursion is detected from descent_evidence, not a stored flag.
 //
-// Current scope: catamorphisms only. All merged-Strict evidence →
-// catamorphism_bound(param, 1) = O(n). This is correct for structural
-// recursion where every sub-value is visited exactly once (list walk,
-// tree traversal). Divide-and-conquer (ProportionalShrink) and
-// multi-parameter recurrences require master_theorem, which is not
-// yet wired here — those patterns currently produce no bound (fail-closed
-// via NonIncreasing merge).
+// Dispatches on ShrinkFactor to choose between catamorphism_bound
+// (UnitShrink/ConstantShrink → O(n)) and derive_bound → master_theorem
+// (ProportionalShrink → O(log n), O(n log n), etc.).
 fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBoundResult> {
   func_entries |> fold(init: [], f: (acc, entry) =>
     let all_calls = collect_self_call_evidence(body: entry.body, fn_name: entry.name)
     if all_calls |> count == 0 { acc }
     else {
-      // Check each parameter for structural descent
       let param_results = entry.params |> enumerate |> fold(init: [], f: (pacc, pair) =>
         let param_index = pair.first
         let param_node = pair.second
@@ -4934,7 +4964,16 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBo
         match evidence {
           Strict =>
             let param_name = param_node_name(n: param_node)
-            let bound = catamorphism_bound(param: param_name, nesting_depth: 1)
+            let factor = extract_shrink_factor(all_calls: all_calls, param_index: param_index)
+            let bound = match factor {
+              // Structural recursion: each step removes one constructor → O(n)
+              UnitShrink => catamorphism_bound(param: param_name, nesting_depth: 1)
+              ConstantShrink { amount: _ } => catamorphism_bound(param: param_name, nesting_depth: 1)
+              // Divide-and-conquer: use derive_bound → master_theorem
+              ProportionalShrink { divisor: _ } =>
+                let branches = count_descending_calls(all_calls: all_calls, param_index: param_index)
+                derive_bound(param: param_name, branches: branches, factor: factor, work_exponent: 0)
+            }
             concat(pacc, [StructuralBoundResult { func_name: entry.name, param: param_name, bound: bound }])
           _ => pacc
         }

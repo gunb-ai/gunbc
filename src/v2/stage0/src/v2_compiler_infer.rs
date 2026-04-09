@@ -2270,12 +2270,61 @@ match v2_rt::map_get(&ctx.param_names.clone(), sname) {
 },
     _ => "".to_string(),
 };
-let scrut_has_inductive = ((scrut_type.clone().as_str() != "".to_string().as_str()) && ((inductive_fields_for(ctx.type_env.clone(), scrut_type.clone()).len() as i64) > 0));
+let scrut_inducing_field = match (*scrut.expr_data.clone()).clone() {
+    ExprData::ExprFieldAccess { .. } => {
+                let base = field_access_base(scrut.clone());
+let fname = field_access_field(scrut.clone());
+match (*base.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                    let bname = expr_var_name(base.clone());
+let base_type = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
+    Some(t) => t.clone(),
+    None => "".to_string(),
+};
+if (base_type.clone().as_str() != "".to_string().as_str()) {
+                        {
+                            let ind_fields = inductive_fields_for(ctx.type_env.clone(), base_type.clone());
+Rc::new({ let mut __result = Vec::new(); for f in ind_fields.clone().iter().cloned() { if (f.field_name.clone().as_str() == fname.clone().as_str()) { __result.push(f); } } __result }).first().cloned()
+}
+} else {
+                        None
+}
+},
+    _ => None,
+}
+},
+    _ => None,
+};
+let scrut_has_inductive = (((scrut_type.clone().as_str() != "".to_string().as_str()) && ((inductive_fields_for(ctx.type_env.clone(), scrut_type.clone()).len() as i64) > 0)) || (scrut_inducing_field.clone() != None));
 let annotated_scrut = annotate_descent(scrut.clone(), ctx.clone());
 let annotated_arms = Rc::new({ let mut __result = Vec::new(); for arm_node in match_arm_nodes(body.clone()).iter().cloned() { __result.push({
                 let arm_ctx = if scrut_has_inductive.clone() {
                     match (*arm_pattern(arm_node.clone())).clone() {
-    MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => {
+    MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => match scrut_inducing_field.clone() {
+    Some(ind_field) => if (vname.clone().as_str() == "Some".to_string().as_str()) {
+                        bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| {
+                            let bind_name = match (*field_binding_pattern(fb.clone())).clone() {
+    MatchPattern::Bind { name: bname, .. } => bname.clone(),
+    _ => "".to_string(),
+};
+if (bind_name.clone().as_str() != "".to_string().as_str()) {
+                                Rc::new(DescentContext {
+    fn_name: c.fn_name.clone(),
+    param_names: c.param_names.clone(),
+    type_env: c.type_env.clone(),
+    sub_value_vars: v2_rt::rc_map_insert(c.sub_value_vars.clone(), bind_name.clone(), Rc::new(SubValueRelation::StrictSubValue {
+    field: ind_field.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+})),
+})
+} else {
+                                c.clone()
+}
+})
+} else {
+                        ctx.clone()
+},
+    None => {
                         let ind_fields = inductive_fields_for(ctx.type_env.clone(), scrut_type.clone());
 bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| {
                             let field_name = field_binding_name(fb.clone());
@@ -2301,6 +2350,7 @@ match matching.clone() {
     None => c.clone(),
 }
 })
+},
 },
     MatchPattern::Bind { name: bname, .. } => ctx.clone(),
     _ => ctx.clone(),
