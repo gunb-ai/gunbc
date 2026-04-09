@@ -597,8 +597,8 @@ match inferred_parent {
 
 pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> Rc<InferScope> {
     {
-        let new_locals = params.iter().cloned().fold(scope.locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, p: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name_at(p.clone(), None), Rc::new(TypeBinding {
-    name: param_node_name_at(p.clone(), None),
+        let new_locals = params.iter().cloned().fold(scope.locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, p: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name_at(p.clone(), scope.type_env.clone().source_index.clone()), Rc::new(TypeBinding {
+    name: param_node_name_at(p.clone(), scope.type_env.clone().source_index.clone()),
     resolved: param_node_type_expr(p.clone()),
 })));
 Rc::new(InferScope {
@@ -664,11 +664,11 @@ Rc::new(InferScope {
 pub fn scope_after_stmt_node(stmt: Rc<Node>, stmt_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {
     match (*stmt.expr_data.clone()).clone() {
     ExprData::ExprLet => if ((stmt.children.clone().len() as i64) <= 1) {
-        extend_scope(scope, let_binding_name_at(stmt.clone(), None), stmt_type)
+        extend_scope(scope.clone(), let_binding_name_at(stmt.clone(), scope.type_env.clone().source_index.clone()), stmt_type)
 } else {
-        scope
+        scope.clone()
 },
-    _ => scope,
+    _ => scope.clone(),
 }
 }
 
@@ -861,7 +861,7 @@ Rc::new(InferResult {
 })
 },
     ExprData::ExprVar { .. } => {
-            let name = expr_var_name_at(texpr.clone(), None);
+            let name = expr_var_name_at(texpr.clone(), scope.type_env.clone().source_index.clone());
 let span = texpr.span.clone();
 match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
     Some(binding) => {
@@ -901,7 +901,7 @@ Rc::new(InferResult {
 }
 },
     ExprData::ExprFieldAccess { .. } => {
-            let field_name = field_access_field_at(texpr.clone(), None);
+            let field_name = field_access_field_at(texpr.clone(), scope.type_env.clone().source_index.clone());
 let span = texpr.span.clone();
 let base_expr = field_access_base(texpr.clone());
 let base_result = infer_expr(base_expr, scope.clone(), None);
@@ -985,7 +985,7 @@ Rc::new(InferResult {
 }
 },
     ExprData::ExprCall { .. } => {
-            let func_name = expr_call_func_at(texpr.clone(), None);
+            let func_name = expr_call_func_at(texpr.clone(), scope.type_env.clone().source_index.clone());
 let span = texpr.span.clone();
 let call_args = texpr.children.clone();
 let sig = lookup_func_sig(scope.func_env.clone(), func_name.clone());
@@ -1298,7 +1298,7 @@ Rc::new(InferResult {
 }
 },
     ExprData::ExprMethodCall { .. } => {
-            let method_name = expr_method_name_at(texpr.clone(), None);
+            let method_name = expr_method_name_at(texpr.clone(), scope.type_env.clone().source_index.clone());
 let span = texpr.span.clone();
 let recv = method_receiver(texpr.clone());
 let mc_args = method_arg_nodes(texpr.clone());
@@ -1577,7 +1577,7 @@ Rc::new(InferResult {
 }
 },
     ExprData::ExprLet => {
-            let let_name = let_binding_name_at(texpr.clone(), None);
+            let let_name = let_binding_name_at(texpr.clone(), scope.type_env.clone().source_index.clone());
 let span = texpr.span.clone();
 let val_expr = let_value(texpr.clone());
 let body_expr = let_body(texpr.clone());
@@ -1728,7 +1728,7 @@ Rc::new(InferResult {
     ExprData::ExprLambda { .. } => {
             let span = texpr.span.clone();
 let lam_body = lambda_body(texpr.clone());
-let lam_params = lambda_param_names_at(texpr.clone(), None);
+let lam_params = lambda_param_names_at(texpr.clone(), scope.type_env.clone().source_index.clone());
 let lam_param_nodes = Rc::new(texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let lam_scope = if (expected.clone() != None) {
                 {
@@ -1845,7 +1845,7 @@ Rc::new(InferResult {
 })
 },
     ExprData::ExprForEach => {
-            let variable = foreach_variable_at(texpr.clone(), None);
+            let variable = foreach_variable_at(texpr.clone(), scope.type_env.clone().source_index.clone());
 let span = texpr.span.clone();
 let coll = foreach_collection(texpr.clone());
 let body_expr = foreach_body(texpr.clone());
@@ -2136,7 +2136,7 @@ if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clo
                 if ((item.body.clone() != None) && ((item.params.clone().len() as i64) > 0)) {
                     {
                         let fn_scope = build_params_scope(scope.clone(), item.params.clone());
-let fn_scope = item.uses.clone().iter().cloned().fold(fn_scope, |s: Rc<InferScope>, u: Rc<Node>| extend_scope(s.clone(), resource_use_name_at(u.clone(), None), resource_use_resource(u.clone())));
+let fn_scope = item.uses.clone().iter().cloned().fold(fn_scope, |s: Rc<InferScope>, u: Rc<Node>| extend_scope(s.clone(), resource_use_name_at(u.clone(), scope.type_env.clone().source_index.clone()), resource_use_resource(u.clone())));
 let fn_return_expected = if (item.inferred.clone() != None) {
                             Some(resolved_type(item.clone()))
 } else {

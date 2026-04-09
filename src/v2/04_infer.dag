@@ -602,7 +602,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
 
 fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, param_node_name_at(n: p, source_index: none), TypeBinding { name: param_node_name_at(n: p, source_index: none), resolved: param_node_type_expr(n: p) })
+    map_insert(acc, param_node_name_at(n: p, source_index: scope.type_env.source_index), TypeBinding { name: param_node_name_at(n: p, source_index: scope.type_env.source_index), resolved: param_node_type_expr(n: p) })
   )
   InferScope {
     type_env: scope.type_env,
@@ -664,7 +664,7 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
     ExprLet =>
       // children: [value] or [value, body] -- no body means children has 1 element
       if stmt.children |> count <= 1 {
-        extend_scope(scope: scope, name: let_binding_name_at(texpr: stmt, source_index: none), resolved: stmt_type)
+        extend_scope(scope: scope, name: let_binding_name_at(texpr: stmt, source_index: scope.type_env.source_index), resolved: stmt_type)
       } else {
         scope
       }
@@ -831,7 +831,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       }
 
     ExprVar { binding_kind: _ } =>
-      let name = expr_var_name_at(texpr: texpr, source_index: none)
+      let name = expr_var_name_at(texpr: texpr, source_index: scope.type_env.source_index)
       let span = texpr.span
       match map_get(scope.locals, name) {
         Some { value: binding } =>
@@ -889,7 +889,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       }
 
     ExprFieldAccess { summary: _ } =>
-      let field_name = field_access_field_at(texpr: texpr, source_index: none)
+      let field_name = field_access_field_at(texpr: texpr, source_index: scope.type_env.source_index)
       let span = texpr.span
       let base_expr = field_access_base(texpr: texpr)
       let base_result = infer_expr(texpr: base_expr, scope: scope, expected: none)
@@ -966,7 +966,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       }
 
     ExprCall { call_semantics: _ } =>
-      let func_name = expr_call_func_at(texpr: texpr, source_index: none)
+      let func_name = expr_call_func_at(texpr: texpr, source_index: scope.type_env.source_index)
       let span = texpr.span
       // Children are already arg nodes
       let call_args = texpr.children
@@ -1268,7 +1268,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       }
 
     ExprMethodCall { method_semantics: _ } =>
-      let method_name = expr_method_name_at(texpr: texpr, source_index: none)
+      let method_name = expr_method_name_at(texpr: texpr, source_index: scope.type_env.source_index)
       let span = texpr.span
       // children: [receiver, arg0, arg1, ...]
       let recv = method_receiver(texpr: texpr)
@@ -1550,7 +1550,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       }
 
     ExprLet =>
-      let let_name = let_binding_name_at(texpr: texpr, source_index: none)
+      let let_name = let_binding_name_at(texpr: texpr, source_index: scope.type_env.source_index)
       let span = texpr.span
       // children: [value] or [value, body]
       let val_expr = let_value(texpr: texpr)
@@ -1682,7 +1682,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       // children: [body, param0, param1, ...]
       let lam_body = lambda_body(texpr: texpr)
-      let lam_params = lambda_param_names_at(texpr: texpr, source_index: none)
+      let lam_params = lambda_param_names_at(texpr: texpr, source_index: scope.type_env.source_index)
       let lam_param_nodes = texpr.children |> skip(1)
       // If expected carries an element type, use it for lambda params.
       // Single param or last param gets the element type; others get TypeVariable.
@@ -1806,7 +1806,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       }
 
     ExprForEach =>
-      let variable = foreach_variable_at(texpr: texpr, source_index: none)
+      let variable = foreach_variable_at(texpr: texpr, source_index: scope.type_env.source_index)
       let span = texpr.span
       // children: [collection, body]
       let coll = foreach_collection(texpr: texpr)
@@ -2091,7 +2091,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let fn_scope = build_params_scope(scope: scope, params: item.params)
     // Add uses bindings (e.g., uses net: Network) to scope
     let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
-      extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: none), resolved: resource_use_resource(n: u))
+      extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: scope.type_env.source_index), resolved: resource_use_resource(n: u))
     )
     let fn_return_expected = if item.inferred != none { Some { value: resolved_type(n: item) } } else { none }
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: fn_return_expected)
