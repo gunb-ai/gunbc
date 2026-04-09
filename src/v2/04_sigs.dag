@@ -76,7 +76,7 @@ fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>)
 fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
   // Per-node logic: detect local function calls and produce call edges.
   let this_edges = match texpr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: texpr, source_index: none)
       if emit_map_has(m: local_func_set, key: f) { [CallEdge { caller: caller, callee: f }] }
       else { [] }

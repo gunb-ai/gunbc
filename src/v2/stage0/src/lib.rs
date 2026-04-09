@@ -21,6 +21,7 @@ pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
 pub mod std_computation;
 pub mod std_graph;
+pub mod std_induction;
 pub mod v2_std_core;
 pub mod v2_compiler_artifact;
 pub mod v2_compiler_infer_env;

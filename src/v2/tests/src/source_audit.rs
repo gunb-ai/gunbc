@@ -540,10 +540,10 @@ fn recursive_variant_witnesses_are_structural() {
     let env_stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_infer_env.rs");
     let infer_source = read_v2_file("src/v2/04_infer.dag");
 
+    // InductiveField replaces RecursiveVariantFieldWitness (CX-L1)
     for needle in [
-        "type RecursiveVariantFieldWitness",
-        "fn put_recursive_variant_field_witness(",
-        "fn merge_recursive_variant_fields(",
+        "fn put_inductive_field(",
+        "fn merge_inductive_fields(",
     ] {
         assert_live_contains(
             &env_source,
@@ -553,9 +553,8 @@ fn recursive_variant_witnesses_are_structural() {
     }
 
     for needle in [
-        "pub struct RecursiveVariantFieldWitness",
-        "pub fn put_recursive_variant_field_witness(",
-        "pub fn merge_recursive_variant_fields(",
+        "pub fn put_inductive_field(",
+        "pub fn merge_inductive_fields(",
     ] {
         assert_live_contains(
             &env_stage0,
@@ -564,25 +563,15 @@ fn recursive_variant_witnesses_are_structural() {
         );
     }
 
-    assert_live_not_contains(
-        &env_source,
-        "fn recursive_variant_field_key(",
-        "recursive variant witnesses should no longer be keyed by concatenated strings",
-    );
-    assert_live_not_contains(
-        &env_stage0,
-        "pub fn recursive_variant_field_key(",
-        "stage0 recursive variant witnesses should no longer be keyed by concatenated strings",
-    );
     assert_live_contains(
         &infer_source,
-        "put_recursive_variant_field_witness(",
-        "inference should build recursive-field witnesses structurally",
+        "put_inductive_field(",
+        "inference should build inductive fields structurally",
     );
 }
 
 #[test]
-fn emit_backends_do_not_consume_recursive_variant_witnesses() {
+fn emit_backends_do_not_consume_inductive_fields() {
     let emit_source = read_v2_file("src/v2/05_emit.dag");
     let emit_stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_emit.rs");
     let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
@@ -594,13 +583,13 @@ fn emit_backends_do_not_consume_recursive_variant_witnesses() {
 
     assert_live_not_contains(
         &emit_source,
-        "scope.type_env.recursive_variant_fields",
-        "shared emit helpers should not read recursive variant witnesses from TypeEnv",
+        "scope.type_env.inductive_fields",
+        "shared emit helpers should not read inductive fields from TypeEnv",
     );
     assert_live_not_contains(
         &emit_stage0,
-        "scope.type_env.recursive_variant_fields",
-        "stage0 shared emit helpers should not read recursive variant witnesses from TypeEnv",
+        "scope.type_env.inductive_fields",
+        "stage0 shared emit helpers should not read inductive fields from TypeEnv",
     );
 
     for (label, source) in [
@@ -613,13 +602,13 @@ fn emit_backends_do_not_consume_recursive_variant_witnesses() {
     ] {
         assert_live_not_contains(
             source,
-            "recursive_variant_fields",
-            &format!("{label} should not consume recursion witnesses directly"),
+            "inductive_fields",
+            &format!("{label} should not consume inductive fields directly"),
         );
         assert_live_not_contains(
             source,
-            "RecursiveVariantFieldWitness",
-            &format!("{label} should not import recursion witness types directly"),
+            "InductiveField",
+            &format!("{label} should not import inductive field types directly"),
         );
     }
 }

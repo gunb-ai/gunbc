@@ -286,7 +286,7 @@ fn optional_match_exhaustiveness_reports_missing_none() {
             bindings: Rc::new(std::collections::HashMap::new()),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
-            recursive_variant_fields: Rc::new(std::collections::HashMap::new()),
+            inductive_fields: Rc::new(std::collections::HashMap::new()),
             source_index: None,
         }),
         zero_span(),
@@ -308,7 +308,7 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
             bindings: Rc::new(std::collections::HashMap::new()),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
-            recursive_variant_fields: Rc::new(std::collections::HashMap::new()),
+            inductive_fields: Rc::new(std::collections::HashMap::new()),
             source_index: None,
         }),
         zero_span(),
@@ -353,7 +353,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         )])),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
-        recursive_variant_fields: Rc::new(std::collections::HashMap::new()),
+        inductive_fields: Rc::new(std::collections::HashMap::new()),
         source_index: None,
     });
 

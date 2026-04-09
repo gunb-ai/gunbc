@@ -9037,12 +9037,14 @@ pub fn make_call_expr(lhs: Rc<Node>, args: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpa
     match (*lhs.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => make_named_expr_node(expr_var_name_at(lhs.clone(), None), Rc::new(ExprData::ExprCall {
     call_semantics: None,
+    descent_evidence: None,
 }), args, None, lhs.span.clone(), node_name_span(lhs.clone())),
     ExprData::ExprFieldAccess { .. } => make_named_expr_node(field_access_field_at(lhs.clone(), None), Rc::new(ExprData::ExprMethodCall {
     method_semantics: None,
 }), v2_rt::concat(Rc::new(vec![lhs.children.clone().first().cloned().clone().unwrap()]), args), None, lhs.span.clone(), node_name_span(lhs.clone())),
     _ => make_named_expr_node("<expr>".to_string(), Rc::new(ExprData::ExprCall {
     call_semantics: None,
+    descent_evidence: None,
 }), args, None, lhs.span.clone(), no_span()),
 }
 }

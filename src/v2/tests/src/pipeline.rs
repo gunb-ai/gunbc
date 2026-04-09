@@ -1028,6 +1028,7 @@ fn compile_dag_with_complexity(source: &str) -> Rc<v2_compiler::v2_compiler_comp
     let norm = normalize_graph(graph);
     let source_indices = Rc::new(HashMap::new());
     let typed = reconcile(norm.graph.clone(), source_indices);
+
     let func_entries = extract_func_entries(typed.clone());
     let recursion_ctx = build_recursion_context(typed);
     build_complexity_report(func_entries, recursion_ctx)
@@ -4929,4 +4930,1022 @@ fn review_dag_compiles_to_rust() {
     if error_count == 0 {
         eprintln!("RE-2: review.dag emitted Rust passes cargo check!");
     }
+}
+
+// ── CX-L3: Structural complexity bound regression tests ─────────────────
+//
+// End-to-end: compile .dag source → CX-L1 (InductiveField) → CX-L2
+// (descent_evidence) → CX-L3 (analyze_structural_bounds) → assert bound.
+
+#[test]
+fn structural_bound_linked_list_length() {
+    // Single-branch DirectRecursion catamorphism → O(n)
+    let source = r#"module list_len
+
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn len(xs: MyList<Int>) -> Int {
+  match xs {
+    Nil => 0
+    Cons { head: _, tail: rest } => 1 + len(xs: rest)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "len")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for len, got none");
+    assert_eq!(bounds[0].param, "xs");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "xs".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "linked list length should be O(n)"
+    );
+}
+
+#[test]
+fn structural_bound_binary_tree_size() {
+    // Multi-branch catamorphism: both branches descend on disjoint fields → O(n)
+    let source = r#"module tree_size
+
+type BinTree<T> = Leaf { value: T } | Branch { left: BinTree<T>, right: BinTree<T> }
+
+fn size(t: BinTree<Int>) -> Int {
+  match t {
+    Leaf { value: _ } => 1
+    Branch { left: l, right: r } => size(t: l) + size(t: r)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "size")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for size, got none");
+    assert_eq!(bounds[0].param, "t");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "t".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "binary tree traversal is catamorphism: O(n), not O(2^n)"
+    );
+}
+
+#[test]
+fn structural_bound_optional_chain() {
+    // OptionalRecursion on a record field: match c.next { Some { rest } => ... }
+    // CX-L2 handles field-access scrutinees: c.next where c: Chain, next: Chain?
+    let source = r#"module opt_chain
+
+type Chain { value: Int, next: Chain? }
+
+fn count(c: Chain) -> Int {
+  match c.next {
+    Some { value: rest } => 1 + count(c: rest)
+    None => 1
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "count")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for count, got none");
+    assert_eq!(bounds[0].param, "c");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "c".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "optional chain traversal should be O(n)"
+    );
+}
+
+#[test]
+fn structural_bound_arithmetic_no_bound() {
+    // Arithmetic recursion on Int — no InductiveField, no structural bound
+    let source = r#"module arith
+
+fn countdown(n: Int) -> Int {
+  if n <= 0 { 0 }
+  else { 1 + countdown(n: n - 1) }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "countdown")
+        .collect();
+    assert!(
+        bounds.is_empty(),
+        "arithmetic descent on Int should produce no structural bound (got {:?})",
+        bounds.iter().map(|b| format!("{:?}", b.bound)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn structural_bound_bad_recursion_unknown() {
+    // Self-call passes wrong argument → SubValueUnknown → no structural bound
+    let source = r#"module bad_rec
+
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn bad(xs: MyList<Int>, ys: MyList<Int>) -> Int {
+  match xs {
+    Nil => 0
+    Cons { head: _, tail: _ } => bad(xs: ys, ys: xs)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "bad")
+        .collect();
+    assert!(
+        bounds.is_empty(),
+        "bad recursion (swapped args) should produce no structural bound (fail-closed)"
+    );
+}
+
+#[test]
+fn structural_bound_node_fold_children() {
+    // IteratedSubValue via fold over recursive children → O(n)
+    // This is the most common pattern in the compiler itself.
+    let source = r#"module node_fold
+
+type Tree = Leaf { value: Int } | Branch { value: Int, children: List<Tree> }
+
+fn sum_tree(t: Tree) -> Int {
+  match t {
+    Leaf { value: v } => v
+    Branch { value: v, children: cs } =>
+      v + (cs |> fold(init: 0, f: (acc, child) => acc + sum_tree(t: child)))
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "sum_tree")
+        .collect();
+    // NOTE: This test verifies the fold-over-children pattern.
+    // CX-L2 must detect that `child` in the fold lambda is an IteratedSubValue
+    // of `cs` (which is the `children` inductive field of Tree).
+    // If CX-L2 doesn't handle fold lambdas yet, the bound will be absent.
+    // When it works, the expected bound is O(n).
+    // Fold over children: lambda element parameter is an IteratedSubValue
+    // of the receiver's collection field. CX-L2 threads context through
+    // fold/map lambdas so the self-call gets descent evidence.
+    assert!(!bounds.is_empty(), "fold over children should produce catamorphism O(n) bound");
+    assert_eq!(bounds[0].param, "t");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "t".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "fold over children should produce catamorphism O(n) bound"
+    );
+}
+
+#[test]
+fn structural_bound_bst_search() {
+    // BST search: single-branch descent (left OR right per path).
+    // Correct worst-case bound is O(n) — degenerate tree = linked list.
+    let source = r#"module bst_search
+
+type BST<T> = Leaf | Node { value: T, left: BST<T>, right: BST<T> }
+
+fn search(tree: BST<Int>, target: Int) -> Bool {
+  match tree {
+    Leaf => false
+    Node { value: v, left: l, right: r } =>
+      if v == target { true }
+      else if target < v { search(tree: l, target: target) }
+      else { search(tree: r, target: target) }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "search")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for search, got none");
+    assert_eq!(bounds[0].param, "tree");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "tree".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "BST search is O(n) worst case (catamorphism on tree structure)"
+    );
+}
+
+#[test]
+fn structural_bound_bst_insert() {
+    // BST insert: single-branch descent, constructs new nodes on the way back.
+    let source = r#"module bst_insert
+
+type BST<T> = Leaf | Node { value: T, left: BST<T>, right: BST<T> }
+
+fn insert(tree: BST<Int>, val: Int) -> BST<Int> {
+  match tree {
+    Leaf => Node { value: val, left: Leaf, right: Leaf }
+    Node { value: v, left: l, right: r } =>
+      if val < v { Node { value: v, left: insert(tree: l, val: val), right: r } }
+      else { Node { value: v, left: l, right: insert(tree: r, val: val) } }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "insert")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for insert, got none");
+    assert_eq!(bounds[0].param, "tree");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "tree".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "BST insert is O(n) worst case"
+    );
+}
+
+#[test]
+fn structural_bound_tree_depth() {
+    // Tree depth: multi-branch descent (both left AND right), takes max.
+    // Still O(n) — catamorphism visits all nodes.
+    let source = r#"module tree_depth
+
+type BinTree<T> = Leaf | Node { left: BinTree<T>, right: BinTree<T> }
+
+fn depth(t: BinTree<Int>) -> Int {
+  match t {
+    Leaf => 0
+    Node { left: l, right: r } =>
+      let ld = depth(t: l)
+      let rd = depth(t: r)
+      if ld > rd { 1 + ld } else { 1 + rd }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "depth")
+        .collect();
+    assert!(!bounds.is_empty(), "expected structural bound for depth, got none");
+    assert_eq!(bounds[0].param, "t");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "t".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "tree depth is O(n) catamorphism"
+    );
+}
+
+#[test]
+fn structural_bound_binary_search() {
+    // Divide-and-conquer: binary search on sorted list.
+    // T(n) = 1·T(n/2) + O(1) → O(log n) via master theorem (Case 2, a == b^d).
+    let source = r#"module bin_search
+
+fn binary_search(xs: List<Int>, target: Int) -> Bool {
+  let n = xs |> count
+  if n == 0 { false }
+  else {
+    let mid = n / 2
+    let mid_val = xs |> skip(mid) |> first
+    match mid_val {
+      None => false
+      Some { value: v } =>
+        if v == target { true }
+        else if target < v { binary_search(xs: xs |> take(mid), target: target) }
+        else { binary_search(xs: xs |> skip(mid + 1), target: target) }
+    }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "binary_search")
+        .collect();
+    // CX-L2 detects xs |> take(mid) where mid = count(xs) / 2 as ProportionalShrink(2).
+    // CX-L3: derive_bound(branches: 1, ProportionalShrink(2), work: 0) → master_theorem → O(log n).
+    assert!(!bounds.is_empty(), "expected structural bound for binary_search, got none");
+    {
+        assert_eq!(bounds[0].param, "xs");
+        assert_eq!(
+            *bounds[0].bound,
+            v2_compiler::std_induction::CostBound::AtomicBound {
+                cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
+                    param: "xs".to_string(),
+                }),
+            },
+            "binary search should be O(log n)"
+        );
+    }
+}
+
+#[test]
+fn structural_bound_composed_tree_then_search() {
+    // Composition: flatten a tree to a list, then search the list.
+    // flatten is O(n) catamorphism on tree, search is O(n) catamorphism on list.
+    // Both should independently produce structural bounds.
+    let source = r#"module compose_test
+
+type BST<T> = Leaf | Node { value: T, left: BST<T>, right: BST<T> }
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn flatten(tree: BST<Int>) -> MyList<Int> {
+  match tree {
+    Leaf => Nil
+    Node { value: v, left: l, right: r } =>
+      let left_flat = flatten(tree: l)
+      let right_flat = flatten(tree: r)
+      Cons { head: v, tail: left_flat }
+  }
+}
+
+fn list_contains(xs: MyList<Int>, target: Int) -> Bool {
+  match xs {
+    Nil => false
+    Cons { head: h, tail: rest } =>
+      if h == target { true }
+      else { list_contains(xs: rest, target: target) }
+  }
+}
+
+fn tree_contains(tree: BST<Int>, target: Int) -> Bool {
+  let flat = flatten(tree: tree)
+  list_contains(xs: flat, target: target)
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    // flatten should produce O(n) on tree
+    let flatten_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "flatten")
+        .collect();
+    assert!(!flatten_bounds.is_empty(), "expected structural bound for flatten");
+    assert_eq!(flatten_bounds[0].param, "tree");
+    // list_contains should produce O(n) on xs
+    let search_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "list_contains")
+        .collect();
+    assert!(!search_bounds.is_empty(), "expected structural bound for list_contains");
+    assert_eq!(search_bounds[0].param, "xs");
+    // tree_contains is not recursive — no structural bound expected
+    let tc_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "tree_contains")
+        .collect();
+    assert!(tc_bounds.is_empty(), "tree_contains is not recursive, should have no structural bound");
+}
+
+#[test]
+fn structural_bound_mutual_types() {
+    // Two recursive types used together: a forest is a list of trees.
+    // sum_tree is O(n) on tree; sum_forest is O(n) on forest.
+    let source = r#"module mutual_types
+
+type Tree = Leaf { value: Int } | Branch { left: Tree, right: Tree }
+
+fn sum_tree(t: Tree) -> Int {
+  match t {
+    Leaf { value: v } => v
+    Branch { left: l, right: r } => sum_tree(t: l) + sum_tree(t: r)
+  }
+}
+
+type Forest = Empty | Trees { first: Tree, rest: Forest }
+
+fn sum_forest(f: Forest) -> Int {
+  match f {
+    Empty => 0
+    Trees { first: t, rest: r } => sum_tree(t: t) + sum_forest(f: r)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let tree_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "sum_tree")
+        .collect();
+    assert!(!tree_bounds.is_empty(), "expected structural bound for sum_tree");
+    assert_eq!(tree_bounds[0].param, "t");
+    let forest_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "sum_forest")
+        .collect();
+    assert!(!forest_bounds.is_empty(), "expected structural bound for sum_forest");
+    assert_eq!(forest_bounds[0].param, "f");
+}
+
+#[test]
+fn structural_bound_nested_algorithms() {
+    // Stress test: a linked list filter that calls binary search on a
+    // separate sorted list for each element. Both algorithms have
+    // independent structural bounds on different parameters.
+    //
+    // filter_by_membership: O(n) on items (catamorphism on linked list)
+    // binary_search: O(log n) on sorted (divide-and-conquer on List<Int>)
+    let source = r#"module nested_algos
+
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn binary_search(sorted: List<Int>, target: Int) -> Bool {
+  let n = sorted |> count
+  if n == 0 { false }
+  else {
+    let mid = n / 2
+    let mid_val = sorted |> skip(mid) |> first
+    match mid_val {
+      None => false
+      Some { value: v } =>
+        if v == target { true }
+        else if target < v { binary_search(sorted: sorted |> take(mid), target: target) }
+        else { binary_search(sorted: sorted |> skip(mid + 1), target: target) }
+    }
+  }
+}
+
+fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
+  match items {
+    Nil => Nil
+    Cons { head: h, tail: rest } =>
+      if binary_search(sorted: allowed, target: h) {
+        Cons { head: h, tail: filter_by_membership(items: rest, allowed: allowed) }
+      } else {
+        filter_by_membership(items: rest, allowed: allowed)
+      }
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+
+    // binary_search should produce O(log n) on sorted
+    let bs_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "binary_search")
+        .collect();
+    assert!(!bs_bounds.is_empty(), "expected structural bound for binary_search");
+    assert_eq!(bs_bounds[0].param, "sorted");
+    assert_eq!(
+        *bs_bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
+                param: "sorted".to_string(),
+            }),
+        },
+        "binary_search should be O(log n) even when called from another algorithm"
+    );
+
+    // filter_by_membership should produce O(n) on items (catamorphism)
+    let filter_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "filter_by_membership")
+        .collect();
+    assert!(!filter_bounds.is_empty(), "expected structural bound for filter_by_membership");
+    assert_eq!(filter_bounds[0].param, "items");
+}
+
+// ── CX adversarial tests: stress the analyzer with weird/hostile patterns ───
+
+#[test]
+fn adversarial_infinite_loop() {
+    // self(same_arg) — infinite loop. Should produce NO structural bound
+    // (fail-closed). The existing complexity analyzer classifies this as
+    // "same-argument recursion" (Forever/repeat(max_int)).
+    let source = r#"module inf_loop
+
+fn spin(x: Int) -> Int {
+  spin(x: x)
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "spin")
+        .collect();
+    eprintln!("[adversarial] spin: {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // spin(x: x) passes x unchanged → PreservedValue → NonIncreasing evidence.
+    // merge_param_evidence → NonIncreasing (not Strict) → no structural bound.
+    assert!(bounds.is_empty(), "infinite loop should produce no structural bound (fail-closed)");
+}
+
+#[test]
+fn adversarial_mutual_recursion() {
+    // A calls B calls A — mutual recursion. CX-L2 only tracks self-calls,
+    // not cross-function calls. Should fail-closed.
+    let source = r#"module mutual_rec
+
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn even_count(xs: MyList<Int>) -> Int {
+  match xs {
+    Nil => 0
+    Cons { head: _, tail: rest } => odd_count(xs: rest)
+  }
+}
+
+fn odd_count(xs: MyList<Int>) -> Int {
+  match xs {
+    Nil => 0
+    Cons { head: _, tail: rest } => 1 + even_count(xs: rest)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let even_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "even_count")
+        .collect();
+    let odd_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "odd_count")
+        .collect();
+    eprintln!("[adversarial] even_count: {} bounds, odd_count: {} bounds", even_bounds.len(), odd_bounds.len());
+    // Neither function self-calls — they call each other.
+    // CX-L2 only annotates self-calls. No descent evidence → no bounds.
+    assert!(even_bounds.is_empty(), "mutual recursion should produce no structural bound");
+    assert!(odd_bounds.is_empty(), "mutual recursion should produce no structural bound");
+}
+
+#[test]
+fn adversarial_exponential_blowup() {
+    // Naive fibonacci: f(n-1) + f(n-2). Two recursive calls on non-structural
+    // arguments (Int, no InductiveField). Should produce no bound.
+    let source = r#"module fib
+
+fn fib(n: Int) -> Int {
+  if n <= 1 { n }
+  else { fib(n: n - 1) + fib(n: n - 2) }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "fib")
+        .collect();
+    eprintln!("[adversarial] fib: {} bounds", bounds.len());
+    // Int is not an inductive type → no InductiveField → SubValueUnknown → no bound.
+    assert!(bounds.is_empty(), "fibonacci on Int should produce no structural bound");
+}
+
+#[test]
+fn adversarial_hidden_nontermination() {
+    // Looks structural but sneaks in a growing argument.
+    // Each call to walk passes a LARGER tree (wraps in Branch).
+    let source = r#"module sneaky
+
+type Tree = Leaf | Branch { left: Tree, right: Tree }
+
+fn walk(t: Tree) -> Int {
+  match t {
+    Leaf => 0
+    Branch { left: l, right: _ } => walk(t: Branch { left: l, right: l })
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "walk")
+        .collect();
+    eprintln!("[adversarial] walk (growing arg): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // The self-call passes `Branch { left: l, right: l }` — a CONSTRUCTOR,
+    // not a sub-value. classify_argument sees ExprRecordLit, returns SubValueUnknown.
+    assert!(bounds.is_empty(), "growing argument should produce no structural bound (fail-closed)");
+}
+
+#[test]
+fn adversarial_ackermann() {
+    // Ackermann function: nested recursion on two parameters.
+    // Neither parameter has InductiveField (both Int).
+    let source = r#"module ackermann
+
+fn ack(m: Int, n: Int) -> Int {
+  if m == 0 { n + 1 }
+  else if n == 0 { ack(m: m - 1, n: 1) }
+  else { ack(m: m - 1, n: ack(m: m, n: n - 1)) }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "ack")
+        .collect();
+    eprintln!("[adversarial] ackermann: {} bounds", bounds.len());
+    // Int has no InductiveField → all arguments are SubValueUnknown → no bound.
+    assert!(bounds.is_empty(), "ackermann on Int should produce no structural bound");
+}
+
+#[test]
+fn adversarial_quadratic_nested_walk() {
+    // O(n^2): for each node in a tree, walks the entire left subtree.
+    // The inner call is on a sub-value, but it's called N times.
+    let source = r#"module quadratic
+
+type Tree = Leaf { value: Int } | Branch { left: Tree, right: Tree }
+
+fn count_left(t: Tree) -> Int {
+  match t {
+    Leaf { value: _ } => 1
+    Branch { left: l, right: _ } => count_left(t: l)
+  }
+}
+
+fn quadratic_walk(t: Tree) -> Int {
+  match t {
+    Leaf { value: _ } => 0
+    Branch { left: l, right: r } =>
+      let left_count = count_left(t: l)
+      left_count + quadratic_walk(t: l) + quadratic_walk(t: r)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    // count_left is a catamorphism → O(n)
+    let cl_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "count_left")
+        .collect();
+    assert!(!cl_bounds.is_empty(), "count_left should be O(n)");
+    // quadratic_walk: both branches descend → merged Strict → catamorphism O(n).
+    // NOTE: The actual complexity is O(n^2) because count_left is called
+    // at each node. But CX-L3 only analyzes the STRUCTURAL recursion of
+    // quadratic_walk itself (which is a catamorphism). The O(n) per-node
+    // work from count_left is not yet factored in (work_exponent = 0).
+    // This is a known limitation: work_exponent detection is future work.
+    let qw_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "quadratic_walk")
+        .collect();
+    eprintln!("[adversarial] quadratic_walk: {} bounds", qw_bounds.len());
+    for b in &qw_bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // The structural bound reports O(n) — recursion structure is catamorphism.
+    // The existing cost algebra reports O(n * n) — accounts for count_left cost.
+    // Both are correct views. The structural bound should compose with per-node
+    // work to produce O(n^2). This requires reading work_exponent from the
+    // existing analyzer (CX-L3 currently uses work_exponent=0).
+    assert_eq!(
+        complexity.function_classes.get("quadratic_walk").map(|s| s.as_str()),
+        Some("O(n * n)"),
+        "existing cost algebra should classify quadratic_walk as O(n^2)"
+    );
+    assert_eq!(
+        complexity.function_classes.get("count_left").map(|s| s.as_str()),
+        Some("O(n)"),
+        "count_left should be O(n)"
+    );
+}
+
+#[test]
+fn adversarial_take_mid_mul_no_proportional() {
+    // take(mid * 2) must NOT produce ProportionalShrink.
+    // Only Add/Sub with a literal constant are valid adjustments.
+    let source = r#"module bad_shrink
+
+fn bad_split(xs: List<Int>) -> Int {
+  let n = xs |> count
+  if n == 0 { 0 }
+  else {
+    let mid = n / 2
+    1 + bad_split(xs: xs |> take(mid * 2))
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "bad_split")
+        .collect();
+    eprintln!("[adversarial] bad_split: {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // mid * 2 is NOT a small-constant adjustment → should not get ProportionalShrink.
+    // Expect either no bound or O(n) catamorphism at most (fail-closed).
+    for b in &bounds {
+        assert_ne!(
+            *b.bound,
+            v2_compiler::std_induction::CostBound::AtomicBound {
+                cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
+                    param: "xs".to_string(),
+                }),
+            },
+            "take(mid * 2) must not produce O(log n) — that fabricates a false proof"
+        );
+    }
+}
+
+#[test]
+fn adversarial_lambda_hidden_recursion() {
+    // Self-call inside a fold on a LITERAL list (not a collection field).
+    // The fold receiver [1, 2] is not a field access on a parameter, so
+    // the lambda element parameter is NOT registered as IteratedSubValue.
+    // The self-call bad_walk(t: l) uses a match-bound sub-value l, which
+    // IS recognized. But this is called twice (fold over 2 elements),
+    // making it T(n) = 2T(n-1) = O(2^n). The disjointness check catches
+    // this: max_path=2 (two lambda invocations) > distinct_fields=1.
+    let source = r#"module lambda_hidden
+
+type Tree = Leaf | Branch { left: Tree, right: Tree }
+
+fn bad_walk(t: Tree) -> Int {
+  match t {
+    Leaf => 0
+    Branch { left: l, right: _ } =>
+      [1, 2] |> fold(init: 0, f: (acc, x) => acc + bad_walk(t: l))
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "bad_walk")
+        .collect();
+    eprintln!("[adversarial] bad_walk (lambda): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // With transparent lambdas, the self-call bad_walk(t: l) IS visible.
+    // But l is used in a fold over [1, 2] (not a collection field), so
+    // the self-call gets StrictSubValue evidence for l. The fold invokes
+    // the lambda twice, so this is NOT a catamorphism. The disjointness
+    // check or the existing cost algebra should catch this.
+    // The bound should either be absent or not O(n).
+    for b in &bounds {
+        assert_ne!(
+            *b.bound,
+            v2_compiler::std_induction::CostBound::AtomicBound {
+                cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                    param: "t".to_string(),
+                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                }),
+            },
+            "fold-hidden recursion on same sub-value must not produce catamorphism O(n)"
+        );
+    }
+}
+
+#[test]
+fn adversarial_duplicate_same_child() {
+    // f(l) + f(l): two calls descending on the SAME child.
+    // T(n) = 2T(n-1) + O(1) = O(2^n), NOT a catamorphism.
+    let source = r#"module dup_child
+
+type Tree = Leaf | Branch { left: Tree, right: Tree }
+
+fn dup(t: Tree) -> Int {
+  match t {
+    Leaf => 1
+    Branch { left: l, right: _ } =>
+      dup(t: l) + dup(t: l)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "dup")
+        .collect();
+    eprintln!("[adversarial] dup: {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // Two calls on the same child (left) → max_path=2 > distinct_fields=1.
+    // Disjointness check fails → should not produce catamorphism O(n).
+    for b in &bounds {
+        assert_ne!(
+            *b.bound,
+            v2_compiler::std_induction::CostBound::AtomicBound {
+                cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                    param: "t".to_string(),
+                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                }),
+            },
+            "duplicate same-child descent must not produce catamorphism O(n)"
+        );
+    }
+}
+
+// ── CX gap tests: patterns used in real compiler but not yet proven ────
+//
+// These tests document the MISSING PATTERNS that prevent the CX analyzer
+// from proving bounds for real compiler functions. Each test exercises a
+// pattern used heavily in the compiler (render_node_type, walk_expr, etc.)
+// that the current analyzer cannot handle. As the analyzer improves,
+// these tests should be upgraded from "assert no bound / assert not O(n)"
+// to "assert O(n)".
+//
+// All of these are iteration in different skin. The right fix is recursion
+// scheme recognition, not per-pattern special cases.
+
+#[test]
+fn gap_match_shape_recurse_children() {
+    // Pattern: match on expr_data (shape), recurse on children (structure).
+    // This is the dominant pattern in the compiler: render_node_type,
+    // walk_expr, resolve_expr_types all discriminate on node shape then
+    // recurse into sub-nodes. The match scrutinee (n.expr_data) and the
+    // recursion target (n.children) are different fields of the same Node.
+    let source = r#"module shape_recurse
+
+type Expr
+  = Lit { value: Int }
+  | Add { left: Expr, right: Expr }
+  | Neg { inner: Expr }
+
+fn eval(e: Expr) -> Int {
+  match e {
+    Lit { value: v } => v
+    Add { left: l, right: r } => eval(e: l) + eval(e: r)
+    Neg { inner: x } => 0 - eval(e: x)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "eval")
+        .collect();
+    eprintln!("[gap] eval (match-shape-recurse): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // This IS a catamorphism — every arm recurses on strict sub-values.
+    assert!(!bounds.is_empty(), "eval should produce structural bound");
+    assert_eq!(bounds[0].param, "e");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "e".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "match-shape-recurse-children is a catamorphism O(n)"
+    );
+}
+
+#[test]
+fn gap_accessor_in_fold() {
+    // Pattern: fold over a collection field, self-call passes the element directly.
+    // This already works with lambda transparency + fold context threading.
+    let source = r#"module accessor_fold
+
+type Container { items: List<Container>, label: Int }
+
+fn get_label(c: Container) -> Int { c.label }
+
+fn sum_labels(c: Container) -> Int {
+  let own = get_label(c: c)
+  own + (c.items |> fold(init: 0, f: (acc, child) => acc + sum_labels(c: child)))
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "sum_labels")
+        .collect();
+    eprintln!("[gap] sum_labels (accessor-in-fold): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    assert!(!bounds.is_empty(), "sum_labels should produce structural bound");
+    assert_eq!(bounds[0].param, "c");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "c".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "fold-over-collection-field is a catamorphism O(n)"
+    );
+}
+
+#[test]
+fn gap_mixed_field_recursion() {
+    // Pattern: function recurses through MULTIPLE fields of the same node
+    // using different access patterns (direct field, optional unwrap, list fold).
+    // This is how resolve_expr_types and infer_item work.
+    let source = r#"module mixed_fields
+
+type Item {
+  children: List<Item>
+  body: Item?
+  annotation: Item?
+}
+
+fn count_items(item: Item) -> Int {
+  let child_count = item.children |> fold(init: 0, f: (acc, c) => acc + count_items(item: c))
+  let body_count = match item.body {
+    Some { value: b } => count_items(item: b)
+    None => 0
+  }
+  let anno_count = match item.annotation {
+    Some { value: a } => count_items(item: a)
+    None => 0
+  }
+  1 + child_count + body_count + anno_count
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "count_items")
+        .collect();
+    eprintln!("[gap] count_items (mixed-field-recursion): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // Catamorphism through children (List), body (Optional), annotation (Optional).
+    assert!(!bounds.is_empty(), "count_items should produce structural bound");
+    assert_eq!(bounds[0].param, "item");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "item".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "mixed-field-recursion is a catamorphism O(n)"
+    );
+}
+
+#[test]
+fn gap_accessor_chain_in_self_call() {
+    // Pattern: self-call argument is a chain of accessor functions.
+    // f(n: inner(n: outer(n: p))) — two levels of extraction.
+    // render_node_type uses this: render_node_type(n: child_type_node(ch: kn))
+    let source = r#"module accessor_chain
+
+type Wrapper { inner: Wrapper?, label: Int }
+
+fn get_inner(w: Wrapper) -> Wrapper? { w.inner }
+
+fn depth(w: Wrapper) -> Int {
+  match get_inner(w: w) {
+    Some { value: next } => 1 + depth(w: next)
+    None => 0
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "depth")
+        .collect();
+    eprintln!("[gap] depth (accessor-chain): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // This IS a catamorphism — get_inner extracts the Optional sub-Wrapper,
+    // match unwraps it, depth recurses. Total: visits each Wrapper once.
+    // When it works: assert O(n).
+    if !bounds.is_empty() {
+        assert_eq!(bounds[0].param, "w");
+    }
+}
+
+// ── CX complexity report dump ──────────────────────────────────────────
+
+#[test]
+#[ignore] // run with: cargo test -p v2-compiler-tests dump_complexity_report -- --ignored --nocapture
+fn dump_complexity_report() {
+    let ws = workspace_root();
+    let mut all_sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect_dag_sources(&ws, &ws.join("dsl"), &mut all_sources);
+    collect_dag_sources(&ws, &ws.join("src/v2"), &mut all_sources);
+
+    eprintln!("Compiling {} .dag files...", all_sources.len());
+    let result = v2_compiler::v2_compiler_compile::compile_sources(
+        Rc::new(all_sources), RenderTarget::Rust,
+    );
+
+    let cx = &result.complexity;
+    eprintln!("\n=== STRUCTURAL BOUNDS ({}) ===", cx.structural_bounds.len());
+    let mut bounds: Vec<_> = cx.structural_bounds.iter().collect();
+    bounds.sort_by(|a, b| a.func_name.cmp(&b.func_name));
+    for b in &bounds {
+        eprintln!("  {:50} param={:15} bound={:?}", b.func_name, b.param, b.bound);
+    }
+
+    let mut classes: HashMap<String, Vec<String>> = HashMap::new();
+    for (func, class) in cx.function_classes.iter() {
+        classes.entry(class.clone()).or_default().push(func.clone());
+    }
+    let mut sorted_classes: Vec<_> = classes.iter().collect();
+    sorted_classes.sort_by(|(a, _), (b, _)| a.cmp(b));
+    eprintln!("\n=== FUNCTION CLASSES ({} functions) ===", cx.function_classes.len());
+    for (class, funcs) in &sorted_classes {
+        eprintln!("  {:20} — {} functions", class, funcs.len());
+    }
+
+    eprintln!("\n=== VIOLATIONS ({}) ===", cx.violations.len());
+    for v in cx.violations.iter().take(20) {
+        eprintln!("  {:?}", v);
+    }
+    if cx.violations.len() > 20 {
+        eprintln!("  ... and {} more", cx.violations.len() - 20);
+    }
+
+    eprintln!("\n=== SUMMARY ===");
+    eprintln!("  Total functions:    {}", cx.function_classes.len());
+    eprintln!("  Structural bounds:  {}", cx.structural_bounds.len());
+    eprintln!("  Violations:         {}", cx.violations.len());
 }

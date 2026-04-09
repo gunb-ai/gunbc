@@ -42,6 +42,7 @@ import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
+import std.induction { SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown, InductiveField, ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
 import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
@@ -424,6 +425,53 @@ fn serialize_method_semantics(value: MethodSemantics?) -> String {
   }
 }
 
+fn serialize_recursion_shape(shape: RecursionShape) -> String {
+  match shape {
+    DirectRecursion => "{\"_variant\": \"DirectRecursion\"}"
+    ListRecursion => "{\"_variant\": \"ListRecursion\"}"
+    OptionalRecursion => "{\"_variant\": \"OptionalRecursion\"}"
+    SetRecursion => "{\"_variant\": \"SetRecursion\"}"
+    MapValueRecursion => "{\"_variant\": \"MapValueRecursion\"}"
+  }
+}
+
+fn serialize_inductive_field(field: InductiveField) -> String {
+  concat(
+    "{\"type_name\": ", json_quote(s: field.type_name),
+    ", \"variant_name\": ", json_quote(s: field.variant_name),
+    ", \"field_name\": ", json_quote(s: field.field_name),
+    ", \"shape\": ", serialize_recursion_shape(shape: field.shape),
+    "}")
+}
+
+fn serialize_shrink_factor(factor: ShrinkFactor) -> String {
+  match factor {
+    UnitShrink => "{\"_variant\": \"UnitShrink\"}"
+    ConstantShrink { amount: a } => concat("{\"_variant\": \"ConstantShrink\", \"amount\": ", to_string(i: a), "}")
+    ProportionalShrink { divisor: d } => concat("{\"_variant\": \"ProportionalShrink\", \"divisor\": ", to_string(i: d), "}")
+  }
+}
+
+fn serialize_sub_value_relation(rel: SubValueRelation) -> String {
+  match rel {
+    StrictSubValue { field: f, factor: fac } =>
+      concat(
+        "{\"_variant\": \"StrictSubValue\", \"field\": ", serialize_inductive_field(field: f),
+        ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
+    IteratedSubValue { field: f } =>
+      concat("{\"_variant\": \"IteratedSubValue\", \"field\": ", serialize_inductive_field(field: f), "}")
+    PreservedValue => "{\"_variant\": \"PreservedValue\"}"
+    SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}"
+  }
+}
+
+fn serialize_descent_evidence(de: List<SubValueRelation>?) -> String {
+  match de {
+    Some { value: evidence } => json_list(items: evidence |> map(rel => serialize_sub_value_relation(rel: rel)))
+    None => "null"
+  }
+}
+
 // Serialize expression data. ExprData is now pure metadata; children are
 // serialized uniformly from node.children via serialize_node.
 fn serialize_expr_data(expr_node: Node) -> String {
@@ -465,11 +513,12 @@ fn serialize_expr_data(expr_node: Node) -> String {
         },
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
-    ExprCall { call_semantics: call_semantics } =>
+    ExprCall { call_semantics: call_semantics, descent_evidence: de } =>
       let func = expr_call_func_at(texpr: expr_node, source_index: none)
       concat(
         "{\"kind\": \"ExprCall\", \"func\": ", json_quote(s: func),
         ", \"call_semantics\": ", serialize_call_semantics(value: call_semantics),
+        ", \"descent_evidence\": ", serialize_descent_evidence(de: de),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
     ExprMethodCall { method_semantics: method_semantics } =>

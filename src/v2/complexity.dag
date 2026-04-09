@@ -37,6 +37,13 @@ import std.computation {
   IterationDimension, TreeDescent, CollectionFold, ArithmeticRepeat,
   type_iteration_dimension
 }
+import std.induction {
+  SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown,
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
+  CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
+  AtomicCost, PolyCost, PolynomialExponent, IntegerExp,
+  sub_value_to_evidence, sub_value_to_call_pattern, catamorphism_bound, derive_bound
+}
 import v2.std.core {
   Node,
   NewlineIndex,
@@ -510,7 +517,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         ProgressUnknown
       }
 
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       match parser_passthrough_state_expr(expr: expr) {
         Some { value: state_expr } =>
           parser_state_expr_progress(
@@ -639,7 +646,7 @@ fn parser_block_state_progress(stmts: List<Node>, state_param: ParserStateParam,
 
 fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: NewlineIndex?) -> ParserResultSource {
   match expr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let input_progress = match parser_state_arg_expr(call_node: expr, state_param: state_param, si: si) {
         Some { value: state_expr } =>
           parser_state_expr_progress(
@@ -776,7 +783,7 @@ fn collect_parser_progress_block_edges(caller: String, stmts: List<Node>, state_
 
 fn collect_parser_progress_edges(caller: String, body: Node, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: NewlineIndex?) -> List<ParserProgressEdge> {
   match body.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let own_edges = if set_has(m: scc_name_set, key: expr_call_func_at(texpr: body, source_index: si)) {
         [ParserProgressEdge {
           caller: caller,
@@ -961,7 +968,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
         None => ProgressUnknown
       }
 
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       parser_result_state_progress(
         source: parser_result_source_for_expr(
           expr: expr,
@@ -1310,7 +1317,7 @@ fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<
 // Used by classify_recursion_pattern for total call count.
 fn count_self_calls(body: Node, func_name: String, si: NewlineIndex?) -> Int {
   let own = match body.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: body, source_index: si)
       if f == func_name { 1 } else { 0 }
     _ => 0
@@ -1339,7 +1346,7 @@ fn max_path_self_calls(body: Node, func_name: String, si: NewlineIndex?) -> Int 
 // together by a surrounding block.
 fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: Int, si: NewlineIndex?) -> Int {
   match body.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: body, source_index: si)
       let own = if f == func_name { 1 } else { 0 }
       let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>
@@ -1433,7 +1440,7 @@ fn max_path_self_calls_block(stmts: List<Node>, func_name: String, continue_call
 
 fn count_target_calls(body: Node, target_set: Map<String, Bool>, si: NewlineIndex?) -> Int {
   let own = match body.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: body, source_index: si)
       if set_has(m: target_set, key: f) { 1 } else { 0 }
     _ => 0
@@ -1450,7 +1457,7 @@ fn max_path_target_calls(body: Node, target_set: Map<String, Bool>, si: NewlineI
 
 fn max_path_target_calls_with_cont(body: Node, target_set: Map<String, Bool>, continue_calls: Int, si: NewlineIndex?) -> Int {
   match body.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: body, source_index: si)
       let own = if set_has(m: target_set, key: f) { 1 } else { 0 }
       let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>
@@ -1550,7 +1557,7 @@ fn target_call_has_arithmetic_descent(call_node: Node, target_set: Map<String, B
 
 fn scc_calls_have_arithmetic_descent(body: Node, target_set: Map<String, Bool>, func_index: Map<String, FuncEntry>, scc_measure_params: Map<String, Map<String, String>>, si: NewlineIndex?) -> Bool {
   match body.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       target_call_has_arithmetic_descent(call_node: body, target_set: target_set, func_index: func_index, scc_measure_params: scc_measure_params, si: si)
       && (body.children |> all(child =>
         scc_calls_have_arithmetic_descent(body: child, target_set: target_set, func_index: func_index, scc_measure_params: scc_measure_params, si: si)
@@ -1689,7 +1696,7 @@ fn is_descending_expr(expr: Node) -> Bool {
 // provably descending (param - expr or param / expr).
 fn has_arithmetic_descent(body: Node, func_name: String, si: NewlineIndex?) -> Bool {
   match body.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let own_ok = if expr_call_func_at(texpr: body, source_index: si) == func_name {
         body.children |> any(arg_node => is_descending_expr(expr: arg_value(n: arg_node)))
       } else { false }
@@ -1717,7 +1724,7 @@ fn has_arithmetic_descent(body: Node, func_name: String, si: NewlineIndex?) -> B
 // of that sub-tree — strictly smaller than param.
 fn is_accessor_of_param(expr: Node, param_name: String, vars: Map<String, Bool>, si: NewlineIndex?) -> Bool {
   match expr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: expr, source_index: si)
       is_child_accessor_in_model(name: callee)
       && (expr.children |> any(arg_node =>
@@ -1807,7 +1814,7 @@ fn is_child_descent_expr(expr: Node, param_name: String, vars: Map<String, Bool>
 // through these wrappers: wrapper(n: arg) has the same tree size as arg.
 fn is_tree_size_preserving_wrapper(expr: Node, si: NewlineIndex?) -> Bool {
   match expr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: expr, source_index: si)
       is_tree_size_preserving(func_name: callee)
     _ => false
@@ -1828,7 +1835,7 @@ fn wrapper_inner_arg(expr: Node) -> Node {
 // n.children |> first. Both produce a strict sub-value of the input Node.
 fn is_sub_value_extractor(expr: Node, si: NewlineIndex?) -> Bool {
   match expr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: expr, source_index: si)
       is_tree_size_reducing(func_name: callee)
     _ => false
@@ -2265,7 +2272,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
         }
       )
       result.ok
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_index: si)
       let own_ok = if callee == func_name {
         body.children |> any(arg_node =>
@@ -2420,7 +2427,7 @@ fn classify_self_call_evidence(arg_expr: Node, param_name: String, descent_vars:
         else if vname == param_name { NonIncreasing }
         else { DescentUnknown }
       // CX-D: wrapper transparency — unwrap and re-classify inner argument
-      ExprCall { call_semantics: _ } =>
+      ExprCall { call_semantics: _, descent_evidence: _ } =>
         if is_tree_size_preserving_wrapper(expr: arg_expr, si: si) {
           classify_self_call_evidence(arg_expr: wrapper_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
         } else if is_sub_value_extractor(expr: arg_expr, si: si) {
@@ -2601,7 +2608,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           }
         }
       merge_optional_evidence(a: cond_ev, b: merge_optional_evidence(a: then_ev, b: else_ev))
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_index: si)
       let own_evidence = if callee == func_name {
         let arg_evidence = body.children |> fold(init: DescentUnknown, f: (acc, arg_node) =>
@@ -2874,85 +2881,108 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
   if path_calls == 0 {
     lower_call_pattern(pattern: FoldBodyCall)
   } else {
-    // Try proof constructor FIRST — if ALL self-calls descend on children
-    // (TreeSize/ListLength), the function is O(n) regardless of path_calls,
-    // because children are disjoint subtrees (each node visited once).
-    // ArithmeticValue descent (param - N) is only safe for single-call paths;
-    // with multiple calls (e.g., fib(n-1) + fib(n-2)) it's O(2^n).
-    let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing, si: si)
-    // Branching safety: ALL dimensions must be structural (TreeSize/ListLength).
-    // A mixed proof like [TreeSize(t), ArithmeticParam(k)] is unsafe for
-    // branching: a branch can revisit the same structural node while only
-    // the secondary dimension decreases, leading to exponential blowup.
-    // Only purely structural proofs guarantee O(n) for branching recursion,
-    // because disjoint subtrees bound the total number of recursive entries.
-    let proof_safe_for_branching = match proof {
-      Some { value: p } =>
-        if p.dimensions |> count == 0 { false }
-        else {
-          p.dimensions |> all(dim =>
-            match dim {
-              TreeSize { param: _ } => true
-              ListLength { param: _ } => true
+    // ── Step 1: Try descent_evidence (single authority) ──────────────
+    // Read the evidence that CX-L2 annotated on ExprCall nodes.
+    // This is the same source of truth that analyze_structural_bounds uses.
+    // If ALL self-calls have structural descent evidence (StrictSubValue
+    // or IteratedSubValue), convert to CallPattern directly. This unifies
+    // both channels — no dual representation.
+    let all_evidence = collect_self_call_evidence(body: body, fn_name: func_name)
+    let has_evidence = all_evidence |> count > 0
+    // Check if ALL self-calls have structural evidence on at least one param
+    let all_structural = has_evidence && all_evidence |> all(call_ev =>
+      call_ev |> any(rel =>
+        match rel {
+          StrictSubValue { field: _, factor: _ } => true
+          IteratedSubValue { field: _ } => true
+          _ => false
+        }
+      )
+    )
+    if all_structural {
+      // Find the first structural call pattern from the evidence
+      let first_call = match all_evidence |> first {
+        Some { value: call_ev } =>
+          call_ev |> filter(rel =>
+            match rel {
+              StrictSubValue { field: _, factor: _ } => true
+              IteratedSubValue { field: _ } => true
               _ => false
             }
-          )
-        }
-      None => false
-    }
-    // CX-N: branching proof fallback — when the all-branches proof fails for
-    // branching functions, try again collecting evidence only from the heaviest
-    // branches. If that yields TreeSize/ListLength, the function is still O(n)
-    // because children are disjoint subtrees.
-    let branching_proof = if path_calls > 1 && !proof_safe_for_branching {
-      construct_branching_termination_proof(func_name: func_name, body: body, params: params, si: si)
-    } else { none }
-    // Validate ALL dimensions of the branching proof are structural.
-    // A lexicographic proof [Structural, NonStructural] would under-approximate
-    // if we only checked the first dimension.
-    let branching_proof_safe = match branching_proof {
-      Some { value: bp } =>
-        if bp.dimensions |> count == 0 { false }
-        else {
-          bp.dimensions |> all(dim =>
-            match dim {
-              TreeSize { param: _ } => true
-              ListLength { param: _ } => true
-              _ => false
-            }
-          )
-        }
-      None => false
-    }
-    match proof {
-      Some { value: p } =>
-        if path_calls == 1 || proof_safe_for_branching {
-          lower_call_pattern(pattern: proof_to_call_pattern(proof: p))
-        } else if branching_proof_safe {
-          match branching_proof {
-            Some { value: bp } => lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
+          ) |> first
+        None => none
+      }
+      match first_call {
+        Some { value: rel } =>
+          match sub_value_to_call_pattern(relation: rel) {
+            Some { value: cp } => lower_call_pattern(pattern: cp)
             None => lower_call_pattern(pattern: SameArgumentCall)
           }
-        } else {
-          lower_call_pattern(pattern: SameArgumentCall)
-        }
-      None =>
-        // Proof constructor tried all dimensions (TreeSize, ListLength,
-        // ArithmeticValue, TokenPosition) and found nothing.
-        // For branching recursion, try the branching-only proof.
-        if path_calls > 1 {
-          match branching_proof {
-            Some { value: bp } =>
-              if branching_proof_safe {
-                lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
-              } else {
-                lower_call_pattern(pattern: SameArgumentCall)
+        None => lower_call_pattern(pattern: SameArgumentCall)
+      }
+    } else {
+      // ── Step 2: Fall back to existing proof constructors ────────────
+      // For non-structural patterns (arithmetic descent, token position
+      // advancement, set removal), the old proof system still applies.
+      let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing, si: si)
+      let proof_safe_for_branching = match proof {
+        Some { value: p } =>
+          if p.dimensions |> count == 0 { false }
+          else {
+            p.dimensions |> all(dim =>
+              match dim {
+                TreeSize { param: _ } => true
+                ListLength { param: _ } => true
+                _ => false
               }
-            None => lower_call_pattern(pattern: SameArgumentCall)
+            )
           }
-        } else {
-          lower_call_pattern(pattern: SameArgumentCall)
-        }
+        None => false
+      }
+      let branching_proof = if path_calls > 1 && !proof_safe_for_branching {
+        construct_branching_termination_proof(func_name: func_name, body: body, params: params, si: si)
+      } else { none }
+      let branching_proof_safe = match branching_proof {
+        Some { value: bp } =>
+          if bp.dimensions |> count == 0 { false }
+          else {
+            bp.dimensions |> all(dim =>
+              match dim {
+                TreeSize { param: _ } => true
+                ListLength { param: _ } => true
+                _ => false
+              }
+            )
+          }
+        None => false
+      }
+      match proof {
+        Some { value: p } =>
+          if path_calls == 1 || proof_safe_for_branching {
+            lower_call_pattern(pattern: proof_to_call_pattern(proof: p))
+          } else if branching_proof_safe {
+            match branching_proof {
+              Some { value: bp } => lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
+              None => lower_call_pattern(pattern: SameArgumentCall)
+            }
+          } else {
+            lower_call_pattern(pattern: SameArgumentCall)
+          }
+        None =>
+          if path_calls > 1 {
+            match branching_proof {
+              Some { value: bp } =>
+                if branching_proof_safe {
+                  lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
+                } else {
+                  lower_call_pattern(pattern: SameArgumentCall)
+                }
+              None => lower_call_pattern(pattern: SameArgumentCall)
+            }
+          } else {
+            lower_call_pattern(pattern: SameArgumentCall)
+          }
+      }
     }
   }
 }
@@ -3018,7 +3048,7 @@ fn extract_unknown_reason(expr: CostExpr) -> String {
 
 fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: Map<String, Bool>, si: NewlineIndex?) -> List<CallEdge> {
   let this_edges = match body.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_index: si)
       if set_has(m: local_func_set, key: callee) { [CallEdge { caller: caller, callee: callee }] }
       else { [] }
@@ -3081,7 +3111,7 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
         else if vname == param_name { ProgressSame }
         else { ProgressUnknown }
       // CX-D: wrapper transparency — unwrap and re-classify inner argument
-      ExprCall { call_semantics: _ } =>
+      ExprCall { call_semantics: _, descent_evidence: _ } =>
         if is_tree_size_preserving_wrapper(expr: arg_expr, si: si) {
           classify_scc_call_progress(arg_expr: wrapper_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, si: si)
         } else if is_sub_value_extractor(expr: arg_expr, si: si) {
@@ -3117,7 +3147,7 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
 fn collect_scc_child_edges(body: Node, caller: String, param_name: String, descent_vars: Map<String, Bool>, target_set: Map<String, Bool>, check_child: Bool, check_list: Bool, scc_measure_params: Map<String, Map<String, String>>, si: NewlineIndex?) -> List<ParserProgressEdge> {
   match body.expr_data {
     ExprLambda { semantics: _ } => []
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_index: si)
       let own_edges = if set_has(m: target_set, key: callee) {
         // CX-P: Check arguments targeting the CALLEE's measure parameters.
@@ -3945,17 +3975,23 @@ type ComplexityViolation {
   span: SourceSpan
 }
 
+type StructuralBoundResult {
+  func_name: String
+  param: String
+  bound: CostBound
+}
+
 type ComplexityReport {
   function_classes: Map<String, String>
   violations: List<ComplexityViolation>
-  // intern_table removed: transit-only data used during topological fold.
-  // Exposing it in the public report leaked evicted/fabricated summaries.
+  structural_bounds: List<StructuralBoundResult>
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_classes: empty_map(),
-    violations: []
+    violations: [],
+    structural_bounds: []
   }
 }
 
@@ -4847,6 +4883,199 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 }
 
 // =========================================================================
+// CX-L3: Structural descent analyzer
+//
+// Reads SubValueRelation witnesses from typed ExprCall nodes.
+// Produces CostBound for self-recursive functions via the induction model.
+// NEVER pattern-matches AST — reads only descent_evidence fields.
+// =========================================================================
+
+// Collect descent_evidence from all self-call ExprCall nodes in a body.
+// Lambda bodies are opaque — self-calls inside closures are not collected.
+fn collect_self_call_evidence(body: Node, fn_name: String) -> List<List<SubValueRelation>> {
+  match body.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: de } =>
+      let callee = expr_call_func(texpr: body)
+      let own = if callee == fn_name {
+        match de {
+          Some { value: evidence } => [evidence]
+          None => []
+        }
+      } else { [] }
+      let from_children = body.children |> fold(init: [], f: (acc, child) =>
+        concat(acc, collect_self_call_evidence(body: child, fn_name: fn_name))
+      )
+      concat(own, from_children)
+    _ =>
+      body.children |> fold(init: [], f: (acc, child) =>
+        concat(acc, collect_self_call_evidence(body: child, fn_name: fn_name))
+      )
+  }
+}
+
+// Merge descent evidence for a specific parameter across all self-call sites.
+fn merge_param_evidence(all_calls: List<List<SubValueRelation>>, param_index: Int) -> DescentEvidence {
+  all_calls |> fold(init: Strict, f: (acc, call_evidence) =>
+    match call_evidence |> skip(param_index) |> first {
+      Some { value: rel } => merge_evidence(a: acc, b: sub_value_to_evidence(relation: rel))
+      None => acc
+    }
+  )
+}
+
+// Extract the ShrinkFactor for a parameter across all self-call sites.
+// Fail-closed: mixed factors → none (no structural bound produced).
+fn extract_shrink_factor(all_calls: List<List<SubValueRelation>>, param_index: Int) -> ShrinkFactor? {
+  all_calls |> fold(init: Some { value: UnitShrink }, f: (acc, call_evidence) =>
+    match acc {
+      None => none
+      Some { value: prev } =>
+        match call_evidence |> skip(param_index) |> first {
+          Some { value: rel } =>
+            match rel {
+              StrictSubValue { field: _, factor: f } =>
+                match prev {
+                  UnitShrink => Some { value: f }
+                  _ => if prev == f { acc } else { none }
+                }
+              _ => acc
+            }
+          None => acc
+        }
+    }
+  )
+}
+
+// Count the maximum number of descending self-calls on a given parameter
+// that can execute in a single path through the function body.
+// ExprIf/ExprMatch: MAX over branches. Sequential code: SUM.
+fn max_path_descending(body: Node, fn_name: String, param_index: Int) -> Int {
+  match body.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: de } =>
+      let callee = expr_call_func(texpr: body)
+      let own = if callee == fn_name {
+        match de {
+          Some { value: evidence } =>
+            match evidence |> skip(param_index) |> first {
+              Some { value: rel } =>
+                match rel {
+                  StrictSubValue { field: _, factor: _ } => 1
+                  IteratedSubValue { field: _ } => 1
+                  _ => 0
+                }
+              None => 0
+            }
+          None => 0
+        }
+      } else { 0 }
+      let from_children = body.children |> fold(init: 0, f: (acc, child) =>
+        acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index)
+      )
+      own + from_children
+    // ExprIf: condition executes on every path + MAX over then/else branches
+    ExprIf =>
+      let cond_count = max_path_descending(body: if_condition(texpr: body), fn_name: fn_name, param_index: param_index)
+      let then_count = max_path_descending(body: if_then_branch(texpr: body), fn_name: fn_name, param_index: param_index)
+      let else_branch = if_else_branch(texpr: body)
+      let else_count = match else_branch {
+        Some { value: eb } => max_path_descending(body: eb, fn_name: fn_name, param_index: param_index)
+        None => 0
+      }
+      let branch_max = if then_count > else_count { then_count } else { else_count }
+      cond_count + branch_max
+    // ExprMatch: scrutinee executes on every path + MAX over arms
+    ExprMatch =>
+      let scrut_count = max_path_descending(body: match_scrutinee(texpr: body), fn_name: fn_name, param_index: param_index)
+      let arms = match_arm_nodes(texpr: body)
+      let arm_max = arms |> fold(init: 0, f: (acc, arm) =>
+        let arm_count = max_path_descending(body: arm_body(n: arm), fn_name: fn_name, param_index: param_index)
+        if arm_count > acc { arm_count } else { acc }
+      )
+      scrut_count + arm_max
+    // Sequential: SUM of children
+    _ =>
+      body.children |> fold(init: 0, f: (acc, child) =>
+        acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index)
+      )
+  }
+}
+
+// Count the number of distinct inductive fields descended on for a parameter.
+// Used for catamorphism disjointness: if max_path calls > distinct fields,
+// some field is visited multiple times per path → not a catamorphism.
+fn distinct_descended_fields(all_calls: List<List<SubValueRelation>>, param_index: Int) -> Int {
+  let field_set = all_calls |> fold(init: empty_map(), f: (acc, call_evidence) =>
+    match call_evidence |> skip(param_index) |> first {
+      Some { value: rel } =>
+        match rel {
+          StrictSubValue { field: f, factor: _ } => map_insert(acc, f.field_name, true)
+          IteratedSubValue { field: f } => map_insert(acc, f.field_name, true)
+          _ => acc
+        }
+      None => acc
+    }
+  )
+  map_keys(field_set) |> count
+}
+
+// Analyze structural bounds for all self-recursive functions.
+// Recursion is detected from descent_evidence, not a stored flag.
+//
+// Dispatches on ShrinkFactor to choose between catamorphism_bound
+// (UnitShrink/ConstantShrink → O(n)) and derive_bound → master_theorem
+// (ProportionalShrink → O(log n), O(n log n), etc.).
+fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBoundResult> {
+  func_entries |> fold(init: [], f: (acc, entry) =>
+    let all_calls = collect_self_call_evidence(body: entry.body, fn_name: entry.name)
+    if all_calls |> count == 0 { acc }
+    else {
+      let param_results = entry.params |> enumerate |> fold(init: [], f: (pacc, pair) =>
+        let param_index = pair.first
+        let param_node = pair.second
+        let evidence = merge_param_evidence(all_calls: all_calls, param_index: param_index)
+        match evidence {
+          Strict =>
+            let param_name = param_node_name(n: param_node)
+            let factor_opt = extract_shrink_factor(all_calls: all_calls, param_index: param_index)
+            match factor_opt {
+              Some { value: factor } =>
+                let branches = max_path_descending(body: entry.body, fn_name: entry.name, param_index: param_index)
+                let bound = match factor {
+                  // Structural recursion: catamorphism O(n) only if each sub-value
+                  // is used at most once per path (disjointness check).
+                  UnitShrink =>
+                    let distinct_fields = distinct_descended_fields(all_calls: all_calls, param_index: param_index)
+                    if branches <= distinct_fields {
+                      catamorphism_bound(param: param_name, nesting_depth: 1)
+                    } else {
+                      // Same field visited multiple times per path → use derive_bound
+                      // (UnitShrink with branches > 1 → ForeverBound in derive_bound)
+                      derive_bound(param: param_name, branches: branches, factor: factor, work_exponent: 0)
+                    }
+                  ConstantShrink { amount: _ } =>
+                    let distinct_fields = distinct_descended_fields(all_calls: all_calls, param_index: param_index)
+                    if branches <= distinct_fields {
+                      catamorphism_bound(param: param_name, nesting_depth: 1)
+                    } else {
+                      derive_bound(param: param_name, branches: branches, factor: factor, work_exponent: 0)
+                    }
+                  // Divide-and-conquer: use derive_bound → master_theorem
+                  ProportionalShrink { divisor: _ } =>
+                    derive_bound(param: param_name, branches: branches, factor: factor, work_exponent: 0)
+                }
+                concat(pacc, [StructuralBoundResult { func_name: entry.name, param: param_name, bound: bound }])
+              None => pacc
+            }
+          _ => pacc
+        }
+      )
+      concat(acc, param_results)
+    }
+  )
+}
+
+
+// =========================================================================
 // D4: Complexity reporting
 //
 // build_complexity_report takes function entries, computes summaries
@@ -4964,8 +5193,11 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   })
   // intern_table is transit-only — not exposed in the report.
   // Evicted entries contain fabricated placeholders that would mislead consumers.
+  // CX-L3: structural descent analysis — reads descent_evidence, not AST.
+  let structural_bounds = analyze_structural_bounds(func_entries: func_entries)
   ComplexityReport {
     function_classes: result.classes,
-    violations: result.violations
+    violations: result.violations,
+    structural_bounds: structural_bounds
   }
 }
