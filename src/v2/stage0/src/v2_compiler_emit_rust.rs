@@ -662,10 +662,10 @@ let item_text = authored_name(env.clone(), item.clone());
 if is_type_def_item(item.clone()) {
             emit_type_def_from_connective(item.clone(), emit_info.recursive_type_set.clone(), shared_types, env.clone(), emit_info.clone())
 } else {
-            if is_type_alias_item(item.clone()) {
+            if is_type_alias_item(item.clone(), env.source_index.clone()) {
                 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), rust_items().type_alias_keyword.clone()), " ".to_string()), item_text.clone()), " = ".to_string()), render_rust_type(resolved_type(item.clone()), shared_types, env.source_index.clone())), ";".to_string())
 } else {
-                if is_type_decl_item(item.clone()) {
+                if is_type_decl_item(item.clone(), env.source_index.clone()) {
                     "".to_string()
 } else {
                     if is_function_item(item.clone()) {
@@ -2203,7 +2203,7 @@ pub fn contextual_variant_parent(variant_name: String, parent_enum: Option<Strin
 
 pub fn is_map_typed_expr(texpr: Rc<Node>) -> bool {
     match texpr.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: n, .. }) => node_is_keyed_collection(n.clone()),
+    Some(InferredNode::Resolved { node: n, .. }) => node_is_keyed_collection(n.clone(), None),
     _ => false,
 }
 }
@@ -2462,7 +2462,7 @@ pub fn emit_typed_index(base: Rc<Node>, index: Rc<Node>, registry: Rc<HashMap<St
 let base_str = emit_typed_expr(base.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 let index_str = emit_typed_expr(index, registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 let base_node = normalize_access_type_node(resolved_type(base.clone()));
-let is_map = node_is_keyed_collection(base_node.clone());
+let is_map = node_is_keyed_collection(base_node.clone(), scope.type_env.clone().source_index.clone());
 if is_rust_string_like(base_node.clone()) {
             apply_type_template2(spec.indexing.clone().string_index.clone(), base_str, index_str)
 } else {
@@ -2499,7 +2499,7 @@ if is_rust_string_like(base_node) {
 pub fn collection_element_type(receiver_type: Option<Rc<InferredNode>>, shared_types: Rc<HashMap<String, bool>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     match receiver_type.as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        let __rt_is_container = node_is_element_collection(rt.clone());
+        let __rt_is_container = node_is_element_collection(rt.clone(), source_index.clone());
 if __rt_is_container {
             match rt.children.clone().first().cloned() {
     Some(elem_child) => {
@@ -2517,7 +2517,7 @@ let elem_is_type_var = if (elem_node.inferred.clone() != None) {
 if (elem_is_error || elem_is_type_var) {
                     "_".to_string()
 } else {
-                    render_rust_type(elem_node.clone(), shared_types, source_index)
+                    render_rust_type(elem_node.clone(), shared_types, source_index.clone())
 }
 },
     None => "_".to_string(),
@@ -2648,9 +2648,9 @@ let contextual_acc_type = match result_type.as_deref().cloned() {
 let acc_type_node = match fold_accumulator_type {
     Some(acc_type) => {
             let acc_children_have_unit = ({ let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if (is_unit_like(c.clone()) || (c.ident_span.clone() == None)) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if (is_unit_like(gc.clone()) || (gc.ident_span.clone() == None)) { __found = true; break; } } __found } { __found = true; break; } } __found });
-let is_under_resolved_map = (node_is_keyed_collection(acc_type.clone()) && (((acc_type.children.clone().len() as i64) == 0) || acc_children_have_unit));
-let is_under_resolved_list = (node_is_element_collection(acc_type.clone()) && ((acc_type.children.clone().len() as i64) == 0));
-let is_under_resolved_non_collection = ((!node_is_keyed_collection(acc_type.clone()) && !node_is_element_collection(acc_type.clone())) && !node_is_collection(acc_type.clone()));
+let is_under_resolved_map = (node_is_keyed_collection(acc_type.clone(), scope.type_env.clone().source_index.clone()) && (((acc_type.children.clone().len() as i64) == 0) || acc_children_have_unit));
+let is_under_resolved_list = (node_is_element_collection(acc_type.clone(), scope.type_env.clone().source_index.clone()) && ((acc_type.children.clone().len() as i64) == 0));
+let is_under_resolved_non_collection = ((!node_is_keyed_collection(acc_type.clone(), scope.type_env.clone().source_index.clone()) && !node_is_element_collection(acc_type.clone(), scope.type_env.clone().source_index.clone())) && !node_is_collection(acc_type.clone(), scope.type_env.clone().source_index.clone()));
 if ((is_under_resolved_map || is_under_resolved_list) || is_under_resolved_non_collection) {
                 match contextual_acc_type {
     Some(concrete_type) => concrete_type.clone(),
@@ -4151,7 +4151,7 @@ if is_bool {
             "Ok(output.status.success())".to_string()
 } else {
             {
-                let __eff_is_container = node_is_element_collection(effective.clone());
+                let __eff_is_container = node_is_element_collection(effective.clone(), None);
 if __eff_is_container {
                     "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())".to_string()
 } else {
@@ -4269,7 +4269,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("            serde_json::from_value(se
 }
 } else {
         {
-            let is_map = node_is_keyed_collection(type_node.clone());
+            let is_map = node_is_keyed_collection(type_node.clone(), scope.type_env.clone().source_index.clone());
 if is_map {
                 match (*value.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => {

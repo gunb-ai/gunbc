@@ -762,9 +762,9 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info)
-  } else if is_type_alias_item(item: item) {
+  } else if is_type_alias_item(item: item, source_index: env.source_index) {
     concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_index: env.source_index), ";")
-  } else if is_type_decl_item(item: item) {
+  } else if is_type_decl_item(item: item, source_index: env.source_index) {
     ""
   } else if is_function_item(item: item) {
     let fn_movable = if is_tco_eligible(name: item_text, body: item.body.value, registry: registry) {
@@ -2208,7 +2208,7 @@ fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolve
 
 fn is_map_typed_expr(texpr: Node) -> Bool {
   match texpr.inferred {
-    Some { value: Resolved { node: n } } => node_is_keyed_collection(n: n)
+    Some { value: Resolved { node: n } } => node_is_keyed_collection(n: n, source_index: none)
     _ => false
   }
 }
@@ -2429,7 +2429,7 @@ fn emit_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, sc
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let index_str = emit_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let base_node = normalize_access_type_node(n: resolved_type(n: base))
-  let is_map = node_is_keyed_collection(n: base_node)
+  let is_map = node_is_keyed_collection(n: base_node, source_index: scope.type_env.source_index)
   if is_rust_string_like(n: base_node) {
     apply_type_template2(template: spec.indexing.string_index, arg0: base_str, arg1: index_str)
   } else if is_map {
@@ -2462,7 +2462,7 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
 fn collection_element_type(receiver_type: InferredNode?, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
   match receiver_type {
     Some { value: Resolved { node: rt } } =>
-      let __rt_is_container = node_is_element_collection(n: rt)
+      let __rt_is_container = node_is_element_collection(n: rt, source_index: source_index)
       if __rt_is_container {
         match rt.children |> first {
           Some { value: elem_child } =>
@@ -2588,9 +2588,9 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   let acc_type_node = match fold_accumulator_type {
     Some { value: acc_type } =>
       let acc_children_have_unit = acc_type.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
-      let is_under_resolved_map = node_is_keyed_collection(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit)
-      let is_under_resolved_list = node_is_element_collection(n: acc_type) && acc_type.children |> count == 0
-      let is_under_resolved_non_collection = !node_is_keyed_collection(n: acc_type) && !node_is_element_collection(n: acc_type) && !node_is_collection(n: acc_type)
+      let is_under_resolved_map = node_is_keyed_collection(n: acc_type, source_index: scope.type_env.source_index) && (acc_type.children |> count == 0 || acc_children_have_unit)
+      let is_under_resolved_list = node_is_element_collection(n: acc_type, source_index: scope.type_env.source_index) && acc_type.children |> count == 0
+      let is_under_resolved_non_collection = !node_is_keyed_collection(n: acc_type, source_index: scope.type_env.source_index) && !node_is_element_collection(n: acc_type, source_index: scope.type_env.source_index) && !node_is_collection(n: acc_type, source_index: scope.type_env.source_index)
       if is_under_resolved_map || is_under_resolved_list || is_under_resolved_non_collection {
         match contextual_acc_type {
           Some { value: concrete_type } => concrete_type
@@ -3905,7 +3905,7 @@ fn emit_shell_return(inferred: Node) -> String {
   if is_bool {
     "Ok(output.status.success())"
   } else {
-    let __eff_is_container = node_is_element_collection(n: effective)
+    let __eff_is_container = node_is_element_collection(n: effective, source_index: none)
     if __eff_is_container {
       "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
     } else if is_product && effective.children |> count > 1 {
@@ -4032,7 +4032,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
     concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "                .expect(\"valid data definition\")")
   } else {
-    let is_map = node_is_keyed_collection(n: type_node)
+    let is_map = node_is_keyed_collection(n: type_node, source_index: scope.type_env.source_index)
     if is_map {
       match value.expr_data {
         ExprRecordLit { parent_enum: _ } =>

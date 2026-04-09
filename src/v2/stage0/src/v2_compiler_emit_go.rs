@@ -317,10 +317,10 @@ let item_text = authored_name(env.clone(), item.clone());
 if is_type_def_item(item.clone()) {
             emit_go_type_def_from_connective(item.clone(), env.clone())
 } else {
-            if is_type_alias_item(item.clone()) {
+            if is_type_alias_item(item.clone(), env.source_index.clone()) {
                 emit_go_type_alias(item_text, resolved_type(item.clone()), env.source_index.clone())
 } else {
-                if is_type_decl_item(item.clone()) {
+                if is_type_decl_item(item.clone(), env.source_index.clone()) {
                     "".to_string()
 } else {
                     if is_function_item(item.clone()) {
@@ -580,11 +580,11 @@ pub fn emit_go_expr_for_each(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<Ite
 }
 
 pub fn emit_go_expr_index(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_typed_index_shared(index_base(expr.clone()), index_expr(expr.clone()), RenderTarget::Go, |child| emit_go_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), 1024))
+    emit_typed_index_shared(index_base(expr.clone()), index_expr(expr.clone()), RenderTarget::Go, |child| emit_go_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), 1024), scope.type_env.clone().source_index.clone())
 }
 
 pub fn emit_go_expr_slice(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_typed_slice_shared(slice_base(expr.clone()), slice_start(expr.clone()), slice_end(expr.clone()), RenderTarget::Go, |child| emit_go_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), 1024))
+    emit_typed_slice_shared(slice_base(expr.clone()), slice_start(expr.clone()), slice_end(expr.clone()), RenderTarget::Go, |child| emit_go_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), 1024), scope.type_env.clone().source_index.clone())
 }
 
 pub fn emit_go_typed_expr(texpr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, fuel: i64) -> String {

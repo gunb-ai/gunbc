@@ -1050,7 +1050,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
         // Refine fold_acc_type from lambda body when init is under-resolved.
-        let call_acc_is_under_resolved = !is_fully_resolved(n: call_fold_acc_type)
+        let call_acc_is_under_resolved = !is_fully_resolved(n: call_fold_acc_type, source_index: scope.type_env.source_index)
         let refined_call_fold_acc_type = if call_fold_info != none && call_acc_is_under_resolved {
           match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
             Some { value: lambda_arg } => resolved_type(n: arg_value(n: lambda_arg))
@@ -1079,7 +1079,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
                 match at {
                   Some { value: t } =>
-                    if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type) {
+                    if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type, source_index: scope.type_env.source_index) {
                       let call_arg_types = remaining |> map(a => resolved_type(n: arg_value(n: a)))
                       let fold_overrides = if call_fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_call_fold_acc_type) } else { empty_override_map() }
                       resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides)
@@ -1105,7 +1105,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           // When the method returns ReceiverSelf and the result is resolved but
           // the receiver was under-resolved (e.g., map_insert(empty_map(), k, v)),
           // patch the receiver to carry the resolved type.
-          let final_receiver = if returns_receiver_self && is_fully_resolved(n: bridge_result_type) && !is_fully_resolved(n: first_arg_type) {
+          let final_receiver = if returns_receiver_self && is_fully_resolved(n: bridge_result_type, source_index: scope.type_env.source_index) && !is_fully_resolved(n: first_arg_type, source_index: scope.type_env.source_index) {
             Node {
               name: receiver.name, span: receiver.span, ident_span: receiver.ident_span,
               children: bridge_result_type.children,
@@ -1135,13 +1135,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           // field or fold accumulator), otherwise emit a diagnostic.
           let empty_map_type = match expected {
             Some { value: exp } =>
-              if node_is_keyed_collection(n: exp) { exp }
+              if node_is_keyed_collection(n: exp, source_index: scope.type_env.source_index) { exp }
               else { bare_map_node() }
             None => bare_map_node()
           }
           let empty_map_diags = match expected {
             Some { value: exp } =>
-              if node_is_keyed_collection(n: exp) { [] }
+              if node_is_keyed_collection(n: exp, source_index: scope.type_env.source_index) { [] }
               else { [inference_error(message: "empty_map(): expected type is not a keyed collection", span: span, module_name: scope.module_name)] }
             None => []
           }
@@ -1293,7 +1293,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // Refine fold_acc_type from lambda body when init is under-resolved.
       // The lambda has been inferred (typed_mc_args), so its body return type
       // carries the resolved type from the fold body (e.g., map_merge result).
-      let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type)
+      let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type, source_index: scope.type_env.source_index)
       let refined_fold_acc_type = if fold_info != none && mc_acc_is_under_resolved {
         match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
           Some { value: lambda_arg } => resolved_type(n: arg_value(n: lambda_arg))
@@ -1330,7 +1330,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
             match at {
               Some { value: t } =>
-                if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type) {
+                if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type, source_index: scope.type_env.source_index) {
                   let mc_arg_types = typed_mc_args |> map(a => resolved_type(n: arg_value(n: a)))
                   let mc_fold_overrides = if fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_fold_acc_type) } else { empty_override_map() }
                   resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides)
@@ -1412,7 +1412,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       }
       // Re-infer under-resolved arms with the unified type as expected.
       // This lets empty_map() in None arms adopt the type from resolved arms.
-      let arm_infer_results = if is_fully_resolved(n: unified_arm_type) {
+      let arm_infer_results = if is_fully_resolved(n: unified_arm_type, source_index: scope.type_env.source_index) {
         arm_nodes |> enumerate |> map(pair =>
           let idx = pair.first
           let arm_node = pair.second
@@ -1421,7 +1421,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Some { value: ar } => ar
             None => ArmInferResult { typed_arm: arm_node, diagnostics: [], body_type: scrut_rt }
           }
-          if !is_fully_resolved(n: original.body_type) {
+          if !is_fully_resolved(n: original.body_type, source_index: scope.type_env.source_index) {
             // Re-infer this arm with the unified type as expected.
             let arm_pat = arm_pattern(n: arm_node)
             let arm_g = arm_guard(n: arm_node)
@@ -1506,10 +1506,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let then_rt = resolved_type(n: then_result.typed)
           let else_rt = resolved_type(n: else_result.typed)
           // Re-infer under-resolved branch with the resolved branch's type.
-          let then_result = if !is_fully_resolved(n: then_rt) && is_fully_resolved(n: else_rt) {
+          let then_result = if !is_fully_resolved(n: then_rt, source_index: scope.type_env.source_index) && is_fully_resolved(n: else_rt, source_index: scope.type_env.source_index) {
             infer_expr(texpr: then_expr, scope: scope, expected: Some { value: else_rt })
           } else { then_result }
-          let else_result = if !is_fully_resolved(n: else_rt) && is_fully_resolved(n: then_rt) {
+          let else_result = if !is_fully_resolved(n: else_rt, source_index: scope.type_env.source_index) && is_fully_resolved(n: then_rt, source_index: scope.type_env.source_index) {
             infer_expr(texpr: else_branch, scope: scope, expected: Some { value: then_rt })
           } else { else_result }
           let then_typed = then_result.typed
@@ -1528,9 +1528,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             [inference_error(
               message: concat(
                 "if branches resolve to incompatible types: ",
-                node_type_shape(n: then_rt),
+                node_type_shape(n: then_rt, source_index: scope.type_env.source_index),
                 " vs ",
-                node_type_shape(n: else_rt)
+                node_type_shape(n: else_rt, source_index: scope.type_env.source_index)
               ),
               span: span,
               module_name: scope.module_name
@@ -1599,7 +1599,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let elements = texpr.children
       let elem_expected = match expected {
         Some { value: exp } =>
-          if node_is_element_collection(n: exp) {
+          if node_is_element_collection(n: exp, source_index: scope.type_env.source_index) {
             match exp.children |> first { Some { value: elem } => Some { value: child_type_node(ch: elem) }  None => none }
           } else { none }
         None => none
@@ -1616,7 +1616,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         // Empty list: adopt expected element type if available.
         match expected {
           Some { value: exp } =>
-            if node_is_element_collection(n: exp) {
+            if node_is_element_collection(n: exp, source_index: scope.type_env.source_index) {
               match exp.children |> first {
                 Some { value: elem } => child_type_node(ch: elem)
                 None => unit_type
@@ -1628,7 +1628,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let empty_list_diags = if count(elem_results) == 0 {
         match expected {
           Some { value: exp } =>
-            if node_is_element_collection(n: exp) {
+            if node_is_element_collection(n: exp, source_index: scope.type_env.source_index) {
               match exp.children |> first {
                 Some { value: _ } => []
                 None => [inference_error(message: "empty list literal: expected type has no element type", span: span, module_name: scope.module_name)]
@@ -2385,7 +2385,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Precompute deps once per binding -- avoids repeated tree walks in cycle
   // detection and topological resolution (was O(N^2*D), now O(B)).
   let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
-    map_insert(acc, b.name, node_type_deps(n: b.resolved))
+    map_insert(acc, b.name, node_type_deps(n: b.resolved, source_index: source_index))
   )
   // Precompute which types participate in cycles. Used by resolve_node
   // to break recursive expansion without threading a growing resolving list.
@@ -2485,7 +2485,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let pre_local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: source_index }
   let merged = merge_envs(envs: [kernel, import_env, pre_local_env])
   let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
-    map_insert(acc, b.name, node_type_deps(n: b.resolved))
+    map_insert(acc, b.name, node_type_deps(n: b.resolved, source_index: source_index))
   )
   let cycle_set = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: merged.bindings)
   let cycle_map = fold(cycle_set, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))

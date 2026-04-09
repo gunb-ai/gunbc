@@ -360,9 +360,9 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
     emit_py_type_def_from_connective(item: item, env: env)
-  } else if is_type_alias_item(item: item) {
+  } else if is_type_alias_item(item: item, source_index: env.source_index) {
     concat(item_text, " = ", emit_node_type(n: resolved_type(n: item), target: Python, source_index: env.source_index))
-  } else if is_type_decl_item(item: item) {
+  } else if is_type_decl_item(item: item, source_index: env.source_index) {
     ""
   } else if is_function_item(item: item) {
     if item.uses |> count > 0 {
@@ -630,11 +630,11 @@ fn emit_py_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: Inf
 }
 
 fn emit_py_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: Python, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024))
+  emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: Python, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_index: scope.type_env.source_index)
 }
 
 fn emit_py_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_slice_shared(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), target: Python, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024))
+  emit_typed_slice_shared(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), target: Python, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_index: scope.type_env.source_index)
 }
 
 fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int) -> String {

@@ -4299,7 +4299,7 @@ let method_cost_result = if (ms.clone() == None) {
 } else {
                 match (*ms.clone().unwrap()).clone() {
     MethodSemantics::AlgebraMethodSemantics { method_def: md, cost_shape: cs, .. } => {
-                    let pc = node_is_collection(resolved_type(texpr.clone()));
+                    let pc = node_is_collection(resolved_type(texpr.clone()), si.clone());
 match cs.clone() {
     Some(shape) => Some(cost_of_method_by_shape(shape.clone(), pc, recv_r.clone(), mc_args.clone(), size.clone(), binder, func_index.clone(), scc_index.clone(), parser_always_advancing.clone(), recursion_ctx.clone(), si.clone())),
     None => Some(Rc::new(SummaryResult {

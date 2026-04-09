@@ -593,7 +593,7 @@ result
 }
 } else {
                     {
-                        let is_map = node_is_keyed_collection(n.clone());
+                        let is_map = node_is_keyed_collection(n.clone(), env.source_index.clone());
 if is_map {
                             {
                                 let type_name = n.name.clone();

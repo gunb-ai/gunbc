@@ -64,7 +64,7 @@ fn access_result(inferred: Node, diagnostics: List<ErrorNode>, span: SourceSpan,
 }
 
 fn keyed_collection_parts(n: Node) -> KeyedCollectionParts? {
-  if node_is_keyed_collection(n: n) && n.children |> count >= 2 {
+  if node_is_keyed_collection(n: n, source_index: none) && n.children |> count >= 2 {
     match n.children |> first {
       Some { value: key_child } =>
         match n.children |> skip(1) |> first {
@@ -94,10 +94,10 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
         else { [access_error(message: "keyed collection index key type does not match the collection key type", span: span, module_name: module_name)] }
         access_result(inferred: with_optional_cardinality(n: parts.value_type), diagnostics: key_diags, span: span, fallback_message: "invalid keyed collection index access")
       None =>
-        if node_is_keyed_collection(n: normed) {
+        if node_is_keyed_collection(n: normed, source_index: none) {
           let malformed_diags = [access_error(message: "malformed keyed collection type in index access", span: span, module_name: module_name)]
           access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed keyed collection type in index access")
-        } else if is_ordered_element_collection(name: normed.name) && node_is_element_collection(n: normed) && index_is_int {
+        } else if is_ordered_element_collection(name: normed.name) && node_is_element_collection(n: normed, source_index: none) && index_is_int {
           let elem = for_each_element_type_node(n: normed)
           access_result(inferred: with_optional_cardinality(n: elem), diagnostics: [], span: span, fallback_message: "list index access")
         } else {

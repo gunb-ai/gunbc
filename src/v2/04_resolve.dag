@@ -382,7 +382,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       result
     }
   } else {
-    let is_map = node_is_keyed_collection(n: n)
+    let is_map = node_is_keyed_collection(n: n, source_index: env.source_index)
     if is_map {
       // Map: recurse on both key and value children (extract type from field-style encoding)
       let type_name = n.name

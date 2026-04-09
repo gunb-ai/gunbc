@@ -611,19 +611,19 @@ fn node_is_keyed_collection_true_for_map() {
         leaf_node("String".to_string()),
         leaf_node("Bool".to_string()),
     );
-    assert!(node_is_keyed_collection(m));
+    assert!(node_is_keyed_collection(m, None));
 }
 
 #[test]
 fn node_is_keyed_collection_false_for_list() {
     let list = container_node("List".to_string(), leaf_node("Int".to_string()));
-    assert!(!node_is_keyed_collection(list));
+    assert!(!node_is_keyed_collection(list, None));
 }
 
 #[test]
 fn node_is_keyed_collection_false_for_leaf() {
     let leaf = leaf_node("String".to_string());
-    assert!(!node_is_keyed_collection(leaf));
+    assert!(!node_is_keyed_collection(leaf, None));
 }
 
 // ── is_fully_resolved ─────────────────────────────────────────────────
@@ -633,20 +633,20 @@ fn is_fully_resolved_rejects_under_parameterized_container() {
     // leaf_node("List") creates a node named "List" with 0 children.
     // container_expected_arity("List") = Some(1), so 0 < 1 → not fully resolved.
     let bare_list = leaf_node("List".to_string());
-    assert!(!is_fully_resolved(bare_list));
+    assert!(!is_fully_resolved(bare_list, None));
 }
 
 #[test]
 fn is_fully_resolved_accepts_parameterized_container() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    assert!(is_fully_resolved(list_int));
+    assert!(is_fully_resolved(list_int, None));
 }
 
 #[test]
 fn is_fully_resolved_ignores_unknown_type_names() {
     // User-defined "Widget" with 0 children → arity is None → not under-parameterized.
     let widget = leaf_node("Widget".to_string());
-    assert!(is_fully_resolved(widget));
+    assert!(is_fully_resolved(widget, None));
 }
 
 #[test]

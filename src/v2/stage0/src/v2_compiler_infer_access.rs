@@ -97,7 +97,7 @@ Rc::new(AccessCheckResultNode {
 }
 
 pub fn keyed_collection_parts(n: Rc<Node>) -> Option<Rc<KeyedCollectionParts>> {
-    if (node_is_keyed_collection(n.clone()) && ((n.children.clone().len() as i64) >= 2)) {
+    if (node_is_keyed_collection(n.clone(), None) && ((n.children.clone().len() as i64) >= 2)) {
         match n.children.clone().first().cloned() {
     Some(key_child) => match n.children.clone().get(1 as usize).cloned() {
     Some(value_child) => Some(Rc::new(KeyedCollectionParts {
@@ -138,13 +138,13 @@ access_result(string_type(), diags, span.clone(), "invalid string index access".
 };
 access_result(with_optional_cardinality(parts.value_type.clone()), key_diags, span.clone(), "invalid keyed collection index access".to_string())
 },
-    None => if node_is_keyed_collection(normed.clone()) {
+    None => if node_is_keyed_collection(normed.clone(), None) {
                 {
                     let malformed_diags = Rc::new(vec![access_error("malformed keyed collection type in index access".to_string(), span.clone(), module_name)]);
 access_result(unit_type(), malformed_diags, span.clone(), "malformed keyed collection type in index access".to_string())
 }
 } else {
-                if ((is_ordered_element_collection(normed.name.clone()) && node_is_element_collection(normed.clone())) && index_is_int) {
+                if ((is_ordered_element_collection(normed.name.clone()) && node_is_element_collection(normed.clone(), None)) && index_is_int) {
                     {
                         let elem = for_each_element_type_node(normed.clone());
 access_result(with_optional_cardinality(elem), Rc::new(vec![]), span.clone(), "list index access".to_string())

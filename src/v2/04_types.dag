@@ -36,7 +36,8 @@ import v2.std.core {
   leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
-  default_ident_span
+  default_ident_span,
+  authored_name_at
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -95,16 +96,16 @@ fn child_type_at(n: Node, index: Int) -> Node? {
 // alone — no name checks, no CollectionKind enum. Pass scrambled-name test.
 // =========================================================================
 
-fn node_is_collection(n: Node) -> Bool {
-  (n.children |> count) > 0 && n.connective == NoConnective && is_container_type(name: n.name)
+fn node_is_collection(n: Node, source_index: NewlineIndex?) -> Bool {
+  (n.children |> count) > 0 && n.connective == NoConnective && is_container_type(name: authored_name_at(source_index: source_index, node: n))
 }
 
-fn node_is_keyed_collection(n: Node) -> Bool {
-  node_is_collection(n: n) && (n.children |> count) == 2
+fn node_is_keyed_collection(n: Node, source_index: NewlineIndex?) -> Bool {
+  node_is_collection(n: n, source_index: source_index) && (n.children |> count) == 2
 }
 
-fn node_is_element_collection(n: Node) -> Bool {
-  node_is_collection(n: n) && (n.children |> count) == 1
+fn node_is_element_collection(n: Node, source_index: NewlineIndex?) -> Bool {
+  node_is_collection(n: n, source_index: source_index) && (n.children |> count) == 1
 }
 
 // =========================================================================
@@ -119,16 +120,16 @@ fn is_coproduct_type(n: Node) -> Bool { n.connective == Disj }
 fn is_leaf_type(n: Node) -> Bool { n.connective == NoConnective }
 fn is_unit_like(n: Node) -> Bool { n.connective == Conj && n.children |> count == 0 }
 
-fn is_fully_resolved(n: Node) -> Bool {
+fn is_fully_resolved(n: Node, source_index: NewlineIndex?) -> Bool {
   let self_is_type_var = match n.inferred { Some { value: inf } => is_type_variable(inferred: inf)  None => false }
   if self_is_type_var { false }
   else {
-    let under_param = match container_expected_arity(name: n.name) {
+    let under_param = match container_expected_arity(name: authored_name_at(source_index: source_index, node: n)) {
       Some { value: expected } => (n.children |> count) < expected
       None => false
     }
     if under_param { false }
-    else { n.children |> all(ch => is_fully_resolved(n: child_type_node(ch: ch))) }
+    else { n.children |> all(ch => is_fully_resolved(n: child_type_node(ch: ch), source_index: source_index)) }
   }
 }
 
@@ -520,45 +521,46 @@ fn normalize_access_type_node(n: Node) -> Node {
 // Type shape and comparison
 // =========================================================================
 
-fn node_type_shape(n: Node) -> String {
+fn node_type_shape(n: Node, source_index: NewlineIndex?) -> String {
   let __is_leaf = n.connective == NoConnective && n.children |> count == 0 && n.properties |> count == 0
+  let n_name = authored_name_at(source_index: source_index, node: n)
   if __is_leaf {
     let __is_named_ref = match n.inferred {
       Some { value: Resolved { node: rt } } =>
         rt.connective == NoConnective && rt.children |> count == 0
-          && rt.ident_span != none && rt.name != "None"
-          && is_kernel_type(name: rt.name) == false
+          && rt.ident_span != none && authored_name_at(source_index: source_index, node: rt) != "None"
+          && is_kernel_type(name: authored_name_at(source_index: source_index, node: rt)) == false
       _ => false
     }
     if __is_named_ref {
-      concat("Named(", n.name, ")")
+      concat("Named(", n_name, ")")
     } else {
-      concat("Primitive(", n.name, ")")
+      concat("Primitive(", n_name, ")")
     }
   } else {
     let is_product = n.connective == Conj
     let is_coproduct = n.connective == Disj
     if is_product {
-      if n.ident_span == none { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
+      if n.ident_span == none { "Product(<anon>)" } else { concat("Product(", n_name, ")") }
     } else if is_coproduct {
-      if n.ident_span == none { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
+      if n.ident_span == none { "Coproduct(<anon>)" } else { concat("Coproduct(", n_name, ")") }
     } else {
-      let __is_container = node_is_element_collection(n: n)
+      let __is_container = node_is_element_collection(n: n, source_index: source_index)
       let is_optional = n.return_cardinality == CardOptional
-      let is_map = node_is_keyed_collection(n: n)
+      let is_map = node_is_keyed_collection(n: n, source_index: source_index)
       if __is_container {
         let elem_shape = match n.children |> first {
-          Some { value: el } => node_type_shape(n: child_type_node(ch: el))
+          Some { value: el } => node_type_shape(n: child_type_node(ch: el), source_index: source_index)
           None => "?"
         }
-        concat("Container(", n.name, ",", elem_shape, ")")
+        concat("Container(", n_name, ",", elem_shape, ")")
       } else if is_optional {
-        let inner_shape = node_type_shape(n: with_required_cardinality(n: n))
+        let inner_shape = node_type_shape(n: with_required_cardinality(n: n), source_index: source_index)
         concat("Optional(", inner_shape, ")")
       } else if is_map {
         "Map(...)"
       } else {
-        concat("Node(", n.name, ")")
+        concat("Node(", n_name, ")")
       }
     }
   }
@@ -580,8 +582,8 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
   else {
-    let left_is_container = node_is_element_collection(n: left)
-    let right_is_container = node_is_element_collection(n: right)
+    let left_is_container = node_is_element_collection(n: left, source_index: none)
+    let right_is_container = node_is_element_collection(n: right, source_index: none)
     if left_is_container && right_is_container {
       if left.name != right.name { false }
       else {
@@ -615,7 +617,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
 }
 
 fn prefer_specific_type(left: Node, right: Node) -> Node {
-  let left_is_container = node_is_element_collection(n: left)
+  let left_is_container = node_is_element_collection(n: left, source_index: none)
   let left_is_optional = left.return_cardinality == CardOptional
   let left_first_child = left.children |> first
   let left_norm_name = left.name
@@ -631,7 +633,7 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     let left_is_unit = is_unit_like(n: left)
     left_is_unit
   } else { false }
-  let right_is_container = node_is_element_collection(n: right)
+  let right_is_container = node_is_element_collection(n: right, source_index: none)
   let right_is_optional = right.return_cardinality == CardOptional
   let same_kind = if left_is_container && right_is_container {
     left_norm_name == right.name
@@ -639,7 +641,7 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     true
   } else { false }
   if same_kind && left_is_unit_inner { right }
-  else if is_fully_resolved(n: right) && !is_fully_resolved(n: left) { right }
+  else if is_fully_resolved(n: right, source_index: none) && !is_fully_resolved(n: left, source_index: none) { right }
   else { left }
 }
 
@@ -699,8 +701,8 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
     left.name == right.name
   }
   else {
-    let left_is_container = node_is_element_collection(n: left)
-    let right_is_container = node_is_element_collection(n: right)
+    let left_is_container = node_is_element_collection(n: left, source_index: none)
+    let right_is_container = node_is_element_collection(n: right, source_index: none)
     if left_is_container && right_is_container {
       if left.name != right.name { false }
       else {
@@ -715,7 +717,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
       }
     }
     else {
-      let both_maps = node_is_keyed_collection(n: left) && node_is_keyed_collection(n: right)
+      let both_maps = node_is_keyed_collection(n: left, source_index: none) && node_is_keyed_collection(n: right, source_index: none)
       if both_maps {
         if left.children |> count == 2 && right.children |> count == 2 {
           match left.children |> first {
@@ -775,7 +777,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
 // Type dependency analysis
 // =========================================================================
 
-fn node_type_deps(n: Node) -> List<String> {
+fn node_type_deps(n: Node, source_index: NewlineIndex?) -> List<String> {
   // TypeVariable nodes have no type dependencies — they are unresolved placeholders.
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return [] }
@@ -784,34 +786,35 @@ fn node_type_deps(n: Node) -> List<String> {
     match n.inferred {
       Some { value: Resolved { node: rt } } =>
         rt.connective == NoConnective && rt.children |> count == 0
-          && rt.ident_span != none && rt.name != "None"
-          && is_kernel_type(name: rt.name) == false
+          && rt.ident_span != none && authored_name_at(source_index: source_index, node: rt) != "None"
+          && is_kernel_type(name: authored_name_at(source_index: source_index, node: rt)) == false
       _ => false
     }
   }
   let has_structure = n.connective != NoConnective
+  let n_name = authored_name_at(source_index: source_index, node: n)
   if __is_named_ref {
-    match n.inferred { Some { value: Resolved { node: rt } } => [rt.name]  _ => [] }
+    match n.inferred { Some { value: Resolved { node: rt } } => [authored_name_at(source_index: source_index, node: rt)]  _ => [] }
   } else if has_structure {
     flat_map(n.children, child =>
       match child.inferred {
-        Some { value: Resolved { node: rt } } => node_type_deps(n: rt)
-        _ => if child.inferred == none { node_type_deps(n: child) } else { [] }
+        Some { value: Resolved { node: rt } } => node_type_deps(n: rt, source_index: source_index)
+        _ => if child.inferred == none { node_type_deps(n: child, source_index: source_index) } else { [] }
       }
     )
   } else if n.inferred != none {
-    match n.inferred { Some { value: Resolved { node: rt } } => node_type_deps(n: rt)  _ => [] }
+    match n.inferred { Some { value: Resolved { node: rt } } => node_type_deps(n: rt, source_index: source_index)  _ => [] }
   } else if n.children |> count > 0 {
     // Parameterized type reference (e.g., MyList<T>): the node name IS a
     // dependency (MyList) AND the children (type args like T) may also be.
-    let child_deps = flat_map(n.children, child => node_type_deps(n: child))
-    if n.ident_span != none && is_kernel_type(name: n.name) == false {
-      concat([n.name], child_deps)
+    let child_deps = flat_map(n.children, child => node_type_deps(n: child, source_index: source_index))
+    if n.ident_span != none && is_kernel_type(name: n_name) == false {
+      concat([n_name], child_deps)
     } else { child_deps }
-  } else if is_kernel_type(name: n.name) || n.name == none_type.name || n.ident_span == none {
+  } else if is_kernel_type(name: n_name) || n_name == none_type.name || n.ident_span == none {
     []
   } else {
-    [n.name]
+    [n_name]
   }
 }
 
@@ -835,7 +838,7 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
 
 fn method_receiver_element_node(receiver_type: Node) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
-  let maybe_element = if node_is_keyed_collection(n: normed) {
+  let maybe_element = if node_is_keyed_collection(n: normed, source_index: none) {
     match normed.children |> skip(1) |> first {
       Some { value: ch } => Some { value: child_type_node(ch: ch) }
       None => none

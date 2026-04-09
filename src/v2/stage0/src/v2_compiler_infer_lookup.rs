@@ -221,9 +221,9 @@ if is_optional {
 pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
         let normed = normalize_access_type_node(type_node);
-let resolved = resolve_scrutinee_type_node(env, normed);
+let resolved = resolve_scrutinee_type_node(env.clone(), normed);
 let map_type = normalize_access_type_node(resolved);
-if (node_is_keyed_collection(map_type.clone()) && ((map_type.children.clone().len() as i64) >= 2)) {
+if (node_is_keyed_collection(map_type.clone(), env.source_index.clone()) && ((map_type.children.clone().len() as i64) >= 2)) {
             match map_type.children.clone().get(1 as usize).cloned() {
     Some(value_type) => Some(value_type.clone()),
     None => None,
@@ -237,9 +237,9 @@ if (node_is_keyed_collection(map_type.clone()) && ((map_type.children.clone().le
 pub fn map_key_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
         let normed = normalize_access_type_node(type_node);
-let resolved = resolve_scrutinee_type_node(env, normed);
+let resolved = resolve_scrutinee_type_node(env.clone(), normed);
 let map_type = normalize_access_type_node(resolved);
-if (node_is_keyed_collection(map_type.clone()) && ((map_type.children.clone().len() as i64) >= 1)) {
+if (node_is_keyed_collection(map_type.clone(), env.source_index.clone()) && ((map_type.children.clone().len() as i64) >= 1)) {
             match map_type.children.clone().first().cloned() {
     Some(key_type) => Some(key_type.clone()),
     None => None,

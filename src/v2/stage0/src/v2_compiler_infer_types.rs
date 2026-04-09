@@ -51,7 +51,7 @@ pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, ContainerSourc
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ContainerOf, OptionalOf, TupleOf, AlgebraTypeVariable};
 use crate::std_algebra::ContainerSource::{SameAsReceiver, Named};
-pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, find_child_named, NewlineIndex, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, has_inferred, is_compiler_error, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, ExprData};
+pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, find_child_named, NewlineIndex, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, has_inferred, is_compiler_error, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, authored_name_at, ExprData};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral};
@@ -113,16 +113,16 @@ pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
 }
 }
 
-pub fn node_is_collection(n: Rc<Node>) -> bool {
-    ((((n.children.clone().len() as i64) > 0) && (n.connective.clone() == Connective::NoConnective)) && is_container_type(n.name.clone()))
+pub fn node_is_collection(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+    ((((n.children.clone().len() as i64) > 0) && (n.connective.clone() == Connective::NoConnective)) && is_container_type(authored_name_at(source_index, n.clone())))
 }
 
-pub fn node_is_keyed_collection(n: Rc<Node>) -> bool {
-    (node_is_collection(n.clone()) && ((n.children.clone().len() as i64) == 2))
+pub fn node_is_keyed_collection(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+    (node_is_collection(n.clone(), source_index) && ((n.children.clone().len() as i64) == 2))
 }
 
-pub fn node_is_element_collection(n: Rc<Node>) -> bool {
-    (node_is_collection(n.clone()) && ((n.children.clone().len() as i64) == 1))
+pub fn node_is_element_collection(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+    (node_is_collection(n.clone(), source_index) && ((n.children.clone().len() as i64) == 1))
 }
 
 pub fn is_product_type(n: Rc<Node>) -> bool {
@@ -141,7 +141,7 @@ pub fn is_unit_like(n: Rc<Node>) -> bool {
     ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
 }
 
-pub fn is_fully_resolved(n: Rc<Node>) -> bool {
+pub fn is_fully_resolved(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let self_is_type_var = match n.inferred.clone() {
@@ -152,14 +152,14 @@ if self_is_type_var {
                 false
 } else {
                 {
-                    let under_param = match container_expected_arity(n.name.clone()) {
+                    let under_param = match container_expected_arity(authored_name_at(source_index.clone(), n.clone())) {
     Some(expected) => ((n.children.clone().len() as i64) < expected.clone()),
     None => false,
 };
 if under_param {
                         false
 } else {
-                        { let mut __all = true; for ch in n.children.clone().iter().cloned() { if !(is_fully_resolved(child_type_node(ch.clone()))) { __all = false; break; } } __all }
+                        { let mut __all = true; for ch in n.children.clone().iter().cloned() { if !(is_fully_resolved(child_type_node(ch.clone()), source_index.clone())) { __all = false; break; } } __all }
 }
 }
 }
@@ -824,20 +824,21 @@ continue;
 }
 }
 
-pub fn node_type_shape(n: Rc<Node>) -> String {
+pub fn node_type_shape(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let __is_leaf = (((n.connective.clone() == Connective::NoConnective) && ((n.children.clone().len() as i64) == 0)) && ((n.properties.clone().len() as i64) == 0));
+let n_name = authored_name_at(source_index.clone(), n.clone());
 if __is_leaf {
                 {
                     let __is_named_ref = match n.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (rt.name.clone().as_str() != "None".to_string().as_str())) && (is_kernel_type(rt.name.clone()) == false)),
+    Some(InferredNode::Resolved { node: rt, .. }) => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (authored_name_at(source_index.clone(), rt.clone()).as_str() != "None".to_string().as_str())) && (is_kernel_type(authored_name_at(source_index.clone(), rt.clone())) == false)),
     _ => false,
 };
 if __is_named_ref {
-                        v2_rt::concat(v2_rt::concat("Named(".to_string(), n.name.clone()), ")".to_string())
+                        v2_rt::concat(v2_rt::concat("Named(".to_string(), n_name), ")".to_string())
 } else {
-                        v2_rt::concat(v2_rt::concat("Primitive(".to_string(), n.name.clone()), ")".to_string())
+                        v2_rt::concat(v2_rt::concat("Primitive(".to_string(), n_name), ")".to_string())
 }
 }
 } else {
@@ -848,39 +849,39 @@ if is_product {
                         if (n.ident_span.clone() == None) {
                             "Product(<anon>)".to_string()
 } else {
-                            v2_rt::concat(v2_rt::concat("Product(".to_string(), n.name.clone()), ")".to_string())
+                            v2_rt::concat(v2_rt::concat("Product(".to_string(), n_name), ")".to_string())
 }
 } else {
                         if is_coproduct {
                             if (n.ident_span.clone() == None) {
                                 "Coproduct(<anon>)".to_string()
 } else {
-                                v2_rt::concat(v2_rt::concat("Coproduct(".to_string(), n.name.clone()), ")".to_string())
+                                v2_rt::concat(v2_rt::concat("Coproduct(".to_string(), n_name), ")".to_string())
 }
 } else {
                             {
-                                let __is_container = node_is_element_collection(n.clone());
+                                let __is_container = node_is_element_collection(n.clone(), source_index.clone());
 let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-let is_map = node_is_keyed_collection(n.clone());
+let is_map = node_is_keyed_collection(n.clone(), source_index.clone());
 if __is_container {
                                     {
                                         let elem_shape = match n.children.clone().first().cloned() {
-    Some(el) => node_type_shape(child_type_node(el.clone())),
+    Some(el) => node_type_shape(child_type_node(el.clone()), source_index.clone()),
     None => "?".to_string(),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Container(".to_string(), n.name.clone()), ",".to_string()), elem_shape), ")".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Container(".to_string(), n_name), ",".to_string()), elem_shape), ")".to_string())
 }
 } else {
                                     if is_optional {
                                         {
-                                            let inner_shape = node_type_shape(with_required_cardinality(n.clone()));
+                                            let inner_shape = node_type_shape(with_required_cardinality(n.clone()), source_index.clone());
 v2_rt::concat(v2_rt::concat("Optional(".to_string(), inner_shape), ")".to_string())
 }
 } else {
                                         if is_map {
                                             "Map(...)".to_string()
 } else {
-                                            v2_rt::concat(v2_rt::concat("Node(".to_string(), n.name.clone()), ")".to_string())
+                                            v2_rt::concat(v2_rt::concat("Node(".to_string(), n_name), ")".to_string())
 }
 }
 }
@@ -931,8 +932,8 @@ if (left_err.clone() || right_err.clone()) {
                     if (left_is_unit.clone() && right_opt.clone()) {
                         break true;
 } else {
-                        let left_is_container = node_is_element_collection(left.clone());
-let right_is_container = node_is_element_collection(right.clone());
+                        let left_is_container = node_is_element_collection(left.clone(), None);
+let right_is_container = node_is_element_collection(right.clone(), None);
 if (left_is_container.clone() && right_is_container.clone()) {
                             if (left.name.clone().as_str() != right.name.clone().as_str()) {
                                 break false;
@@ -993,7 +994,7 @@ continue;
 
 pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
     {
-        let left_is_container = node_is_element_collection(left.clone());
+        let left_is_container = node_is_element_collection(left.clone(), None);
 let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
 let left_first_child = left.children.clone().first().cloned();
 let left_norm_name = left.name.clone();
@@ -1016,7 +1017,7 @@ left_is_unit
                 false
 }
 };
-let right_is_container = node_is_element_collection(right.clone());
+let right_is_container = node_is_element_collection(right.clone(), None);
 let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
 let same_kind = if (left_is_container.clone() && right_is_container) {
             (left_norm_name.as_str() == right.name.clone().as_str())
@@ -1030,7 +1031,7 @@ let same_kind = if (left_is_container.clone() && right_is_container) {
 if (same_kind && left_is_unit_inner) {
             right.clone()
 } else {
-            if (is_fully_resolved(right.clone()) && !is_fully_resolved(left.clone())) {
+            if (is_fully_resolved(right.clone(), None) && !is_fully_resolved(left.clone(), None)) {
                 right.clone()
 } else {
                 left.clone()
@@ -1127,8 +1128,8 @@ if (left_leaf.clone() && right_leaf.clone()) {
                         (left.name.clone().as_str() == right.name.clone().as_str())
 } else {
                         {
-                            let left_is_container = node_is_element_collection(left.clone());
-let right_is_container = node_is_element_collection(right.clone());
+                            let left_is_container = node_is_element_collection(left.clone(), None);
+let right_is_container = node_is_element_collection(right.clone(), None);
 if (left_is_container && right_is_container) {
                                 if (left.name.clone().as_str() != right.name.clone().as_str()) {
                                     false
@@ -1143,7 +1144,7 @@ if (left_is_container && right_is_container) {
 }
 } else {
                                 {
-                                    let both_maps = (node_is_keyed_collection(left.clone()) && node_is_keyed_collection(right.clone()));
+                                    let both_maps = (node_is_keyed_collection(left.clone(), None) && node_is_keyed_collection(right.clone(), None));
 if both_maps {
                                         if (((left.children.clone().len() as i64) == 2) && ((right.children.clone().len() as i64) == 2)) {
                                             match left.children.clone().first().cloned() {
@@ -1201,7 +1202,7 @@ if (params_eq == false) {
 }
 }
 
-pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
+pub fn node_type_deps(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let n_is_type_var = if (n.inferred.clone() != None) {
@@ -1216,22 +1217,23 @@ let __is_named_ref = if (n.inferred.clone() == None) {
                 false
 } else {
                 match n.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (rt.name.clone().as_str() != "None".to_string().as_str())) && (is_kernel_type(rt.name.clone()) == false)),
+    Some(InferredNode::Resolved { node: rt, .. }) => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (authored_name_at(source_index.clone(), rt.clone()).as_str() != "None".to_string().as_str())) && (is_kernel_type(authored_name_at(source_index.clone(), rt.clone())) == false)),
     _ => false,
 }
 };
 let has_structure = (n.connective.clone() != Connective::NoConnective);
+let n_name = authored_name_at(source_index.clone(), n.clone());
 if __is_named_ref {
                 match n.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => Rc::new(vec![rt.name.clone()]),
+    Some(InferredNode::Resolved { node: rt, .. }) => Rc::new(vec![authored_name_at(source_index.clone(), rt.clone())]),
     _ => Rc::new(vec![]),
 }
 } else {
                 if has_structure {
                     Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*match child.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => node_type_deps(rt.clone()),
+    Some(InferredNode::Resolved { node: rt, .. }) => node_type_deps(rt.clone(), source_index.clone()),
     _ => if (child.inferred.clone() == None) {
-                        node_type_deps(child.clone())
+                        node_type_deps(child.clone(), source_index.clone())
 } else {
                         Rc::new(vec![])
 },
@@ -1239,24 +1241,24 @@ if __is_named_ref {
 } else {
                     if (n.inferred.clone() != None) {
                         match n.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => node_type_deps(rt.clone()),
+    Some(InferredNode::Resolved { node: rt, .. }) => node_type_deps(rt.clone(), source_index.clone()),
     _ => Rc::new(vec![]),
 }
 } else {
                         if ((n.children.clone().len() as i64) > 0) {
                             {
-                                let child_deps = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*node_type_deps(child.clone())).iter().cloned()); } __result });
-if ((n.ident_span.clone() != None) && (is_kernel_type(n.name.clone()) == false)) {
-                                    v2_rt::concat(Rc::new(vec![n.name.clone()]), child_deps)
+                                let child_deps = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*node_type_deps(child.clone(), source_index.clone())).iter().cloned()); } __result });
+if ((n.ident_span.clone() != None) && (is_kernel_type(n_name.clone()) == false)) {
+                                    v2_rt::concat(Rc::new(vec![n_name.clone()]), child_deps)
 } else {
                                     child_deps
 }
 }
 } else {
-                            if ((is_kernel_type(n.name.clone()) || (n.name.clone().as_str() == none_type().name.clone().as_str())) || (n.ident_span.clone() == None)) {
+                            if ((is_kernel_type(n_name.clone()) || (n_name.clone().as_str() == none_type().name.clone().as_str())) || (n.ident_span.clone() == None)) {
                                 Rc::new(vec![])
 } else {
-                                Rc::new(vec![n.name.clone()])
+                                Rc::new(vec![n_name.clone()])
 }
 }
 }
@@ -1279,7 +1281,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
 pub fn method_receiver_element_node(receiver_type: Rc<Node>) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(receiver_type.clone());
-let maybe_element = if node_is_keyed_collection(normed.clone()) {
+let maybe_element = if node_is_keyed_collection(normed.clone(), None) {
             match normed.children.clone().get(1 as usize).cloned() {
     Some(ch) => Some(child_type_node(ch.clone())),
     None => None,

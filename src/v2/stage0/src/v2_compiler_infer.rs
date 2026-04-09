@@ -1066,7 +1066,7 @@ let method_receiver = match typed_args.clone().first().cloned() {
     Some(ta) => arg_value(ta.clone()),
     None => internal_expr_error_node("method bridge missing receiver".to_string(), span.clone()),
 };
-let call_acc_is_under_resolved = !is_fully_resolved(call_fold_acc_type.clone());
+let call_acc_is_under_resolved = !is_fully_resolved(call_fold_acc_type.clone(), scope.type_env.clone().source_index.clone());
 let refined_call_fold_acc_type = if ((call_fold_info.clone() != None) && call_acc_is_under_resolved) {
                         match Rc::new({ let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }).first().cloned() {
     Some(lambda_arg) => resolved_type(arg_value(lambda_arg.clone())),
@@ -1094,7 +1094,7 @@ let bridge_result_type = if (method_resolution.semantics.clone() == None) {
 } else {
                                 match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
     MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. } => match at.clone() {
-    Some(t) => if (template_return_has_variables(t.clone()) || !is_fully_resolved(base_result_type.clone())) {
+    Some(t) => if (template_return_has_variables(t.clone()) || !is_fully_resolved(base_result_type.clone(), scope.type_env.clone().source_index.clone())) {
                                     {
                                         let call_arg_types = Rc::new({ let mut __result = Vec::new(); for a in remaining.clone().iter().cloned() { __result.push(resolved_type(arg_value(a.clone()))); } __result });
 let fold_overrides = if (call_fold_info.clone() != None) {
@@ -1123,7 +1123,7 @@ let returns_receiver_self = if (method_resolution.semantics.clone() == None) {
     _ => false,
 }
 };
-let final_receiver = if ((returns_receiver_self && is_fully_resolved(bridge_result_type.clone())) && !is_fully_resolved(first_arg_type.clone())) {
+let final_receiver = if ((returns_receiver_self && is_fully_resolved(bridge_result_type.clone(), scope.type_env.clone().source_index.clone())) && !is_fully_resolved(first_arg_type.clone(), scope.type_env.clone().source_index.clone())) {
                                 Rc::new(Node {
     name: receiver.name.clone(),
     span: receiver.span.clone(),
@@ -1162,7 +1162,7 @@ Rc::new(InferResult {
                         if (func_name.clone().as_str() == "empty_map".to_string().as_str()) {
                             {
                                 let empty_map_type = match expected.clone() {
-    Some(exp) => if node_is_keyed_collection(exp.clone()) {
+    Some(exp) => if node_is_keyed_collection(exp.clone(), scope.type_env.clone().source_index.clone()) {
                                     exp.clone()
 } else {
                                     bare_map_node()
@@ -1170,7 +1170,7 @@ Rc::new(InferResult {
     None => bare_map_node(),
 };
 let empty_map_diags = match expected.clone() {
-    Some(exp) => if node_is_keyed_collection(exp.clone()) {
+    Some(exp) => if node_is_keyed_collection(exp.clone(), scope.type_env.clone().source_index.clone()) {
                                     Rc::new(vec![])
 } else {
                                     Rc::new(vec![inference_error("empty_map(): expected type is not a keyed collection".to_string(), span.clone(), scope.module_name.clone())])
@@ -1316,7 +1316,7 @@ let fold_acc_type = match fold_info.clone() {
 let mc_arg_infer_results = infer_method_args_with_fold(mc_method_name.clone(), mc_args.clone(), fold_info.clone(), fold_acc_type.clone(), recv_elem_type, scope.clone());
 let typed_mc_args = Rc::new({ let mut __result = Vec::new(); for air in mc_arg_infer_results.clone().iter().cloned() { __result.push(air.typed_arg.clone()); } __result });
 let mc_arg_diags = Rc::new({ let mut __result = Vec::new(); for air in mc_arg_infer_results.clone().iter().cloned() { __result.extend((*air.diagnostics.clone()).iter().cloned()); } __result });
-let mc_acc_is_under_resolved = !is_fully_resolved(fold_acc_type.clone());
+let mc_acc_is_under_resolved = !is_fully_resolved(fold_acc_type.clone(), scope.type_env.clone().source_index.clone());
 let refined_fold_acc_type = if ((fold_info.clone() != None) && mc_acc_is_under_resolved) {
                 match Rc::new({ let mut __result = Vec::new(); for a in typed_mc_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }).first().cloned() {
     Some(lambda_arg) => resolved_type(arg_value(lambda_arg.clone())),
@@ -1353,7 +1353,7 @@ let result_type = if (method_resolution.semantics.clone() == None) {
 } else {
                 match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
     MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. } => match at.clone() {
-    Some(t) => if (template_return_has_variables(t.clone()) || !is_fully_resolved(base_result_type.clone())) {
+    Some(t) => if (template_return_has_variables(t.clone()) || !is_fully_resolved(base_result_type.clone(), scope.type_env.clone().source_index.clone())) {
                     {
                         let mc_arg_types = Rc::new({ let mut __result = Vec::new(); for a in typed_mc_args.clone().iter().cloned() { __result.push(resolved_type(arg_value(a.clone()))); } __result });
 let mc_fold_overrides = if (fold_info.clone() != None) {
@@ -1439,7 +1439,7 @@ let unified_arm_type = match arm_body_types.clone().first().cloned() {
     Some(first_type) => Rc::new(arm_body_types.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned().fold(first_type, |acc: Rc<Node>, t: Rc<Node>| prefer_specific_type(acc.clone(), t.clone())),
     None => scrut_rt.clone(),
 };
-let arm_infer_results = if is_fully_resolved(unified_arm_type.clone()) {
+let arm_infer_results = if is_fully_resolved(unified_arm_type.clone(), scope.type_env.clone().source_index.clone()) {
                 Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(arm_nodes.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
                     let idx = pair.0.clone();
 let arm_node = pair.1.clone();
@@ -1452,7 +1452,7 @@ let original = match original_list.clone().first().cloned() {
     body_type: scrut_rt.clone(),
 }),
 };
-if !is_fully_resolved(original.body_type.clone()) {
+if !is_fully_resolved(original.body_type.clone(), scope.type_env.clone().source_index.clone()) {
                         {
                             let arm_pat = arm_pattern(arm_node.clone());
 let arm_g = arm_guard(arm_node.clone());
@@ -1535,12 +1535,12 @@ match else_expr {
                 let else_result = infer_expr(else_branch.clone(), scope.clone(), expected.clone());
 let then_rt = resolved_type(then_result.typed.clone());
 let else_rt = resolved_type(else_result.typed.clone());
-let then_result = if (!is_fully_resolved(then_rt.clone()) && is_fully_resolved(else_rt.clone())) {
+let then_result = if (!is_fully_resolved(then_rt.clone(), scope.type_env.clone().source_index.clone()) && is_fully_resolved(else_rt.clone(), scope.type_env.clone().source_index.clone())) {
                     infer_expr(then_expr.clone(), scope.clone(), Some(else_rt.clone()))
 } else {
                     then_result.clone()
 };
-let else_result = if (!is_fully_resolved(else_rt.clone()) && is_fully_resolved(then_rt.clone())) {
+let else_result = if (!is_fully_resolved(else_rt.clone(), scope.type_env.clone().source_index.clone()) && is_fully_resolved(then_rt.clone(), scope.type_env.clone().source_index.clone())) {
                     infer_expr(else_branch.clone(), scope.clone(), Some(then_rt.clone()))
 } else {
                     else_result.clone()
@@ -1555,7 +1555,7 @@ let unified = prefer_specific_type(then_rt.clone(), else_rt.clone());
 let branch_diags = if node_type_compatible(then_rt.clone(), else_rt.clone()) {
                     Rc::new(vec![])
 } else {
-                    Rc::new(vec![inference_error(v2_rt::concat(v2_rt::concat(v2_rt::concat("if branches resolve to incompatible types: ".to_string(), node_type_shape(then_rt.clone())), " vs ".to_string()), node_type_shape(else_rt.clone())), span.clone(), scope.module_name.clone())])
+                    Rc::new(vec![inference_error(v2_rt::concat(v2_rt::concat(v2_rt::concat("if branches resolve to incompatible types: ".to_string(), node_type_shape(then_rt.clone(), scope.type_env.clone().source_index.clone())), " vs ".to_string()), node_type_shape(else_rt.clone(), scope.type_env.clone().source_index.clone())), span.clone(), scope.module_name.clone())])
 };
 let if_texpr = make_expr_node(Rc::new(ExprData::ExprIf), Rc::new(vec![cond_typed, then_typed.clone(), else_typed.clone()]), Some(Rc::new(InferredNode::Resolved {
     node: unified,
@@ -1630,7 +1630,7 @@ infer_record_lit(record_lit_type_name(texpr.clone()), field_inits, span.clone(),
             let span = texpr.span.clone();
 let elements = texpr.children.clone();
 let elem_expected = match expected.clone() {
-    Some(exp) => if node_is_element_collection(exp.clone()) {
+    Some(exp) => if node_is_element_collection(exp.clone(), scope.type_env.clone().source_index.clone()) {
                 match exp.children.clone().first().cloned() {
     Some(elem) => Some(child_type_node(elem.clone())),
     None => None,
@@ -1650,7 +1650,7 @@ let elem_type_node = if ((elem_results.clone().len() as i64) > 0) {
 }
 } else {
                 match expected.clone() {
-    Some(exp) => if node_is_element_collection(exp.clone()) {
+    Some(exp) => if node_is_element_collection(exp.clone(), scope.type_env.clone().source_index.clone()) {
                     match exp.children.clone().first().cloned() {
     Some(elem) => child_type_node(elem.clone()),
     None => unit_type(),
@@ -1663,7 +1663,7 @@ let elem_type_node = if ((elem_results.clone().len() as i64) > 0) {
 };
 let empty_list_diags = if ((elem_results.clone().len() as i64) == 0) {
                 match expected.clone() {
-    Some(exp) => if node_is_element_collection(exp.clone()) {
+    Some(exp) => if node_is_element_collection(exp.clone(), scope.type_env.clone().source_index.clone()) {
                     match exp.children.clone().first().cloned() {
     Some(_) => Rc::new(vec![]),
     None => Rc::new(vec![inference_error("empty list literal: expected type has no element type".to_string(), span.clone(), scope.module_name.clone())]),
@@ -2622,7 +2622,7 @@ let pre_local_env = Rc::new(TypeEnv {
     source_index: source_index.clone(),
 });
 let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
-let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone())));
+let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone(), source_index.clone())));
 let cycle_set = detect_type_cycles_kahn(all_deps_map.clone(), merged.bindings.clone());
 let cycle_map = cycle_set.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let local_recursive_variant_fields = build_item_recursive_variant_fields(module_items(module.module.clone()), cycle_map.clone());
@@ -2869,7 +2869,7 @@ let pre_local_env = Rc::new(TypeEnv {
     source_index: source_index.clone(),
 });
 let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
-let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone())));
+let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone(), source_index.clone())));
 let cycle_set = detect_type_cycles_kahn(all_deps_map, merged.bindings.clone());
 let cycle_map = cycle_set.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let local_recursive_variant_fields = build_item_recursive_variant_fields(module_items(module.module.clone()), cycle_map.clone());
