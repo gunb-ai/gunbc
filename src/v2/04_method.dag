@@ -9,7 +9,7 @@
 
 module v2.compiler.infer_method
 
-import std.types { SourceSpan, container_param_name_required }
+import std.types { SourceSpan }
 import v2.std.core {
   Node, TypeVariable, Resolved,
   NoConnective,
@@ -17,6 +17,9 @@ import v2.std.core {
   NoExprData,
   make_span, with_optional_cardinality,
   unit_type, bool_type, string_type, int_type
+}
+import v2.compiler.infer_types {
+  make_container_type, make_map_type
 }
 
 // =========================================================================
@@ -33,40 +36,15 @@ fn type_variable_node(id: String) -> Node {
 }
 
 fn map_of_type_variables() -> Node {
-  let key_name = container_param_name_required(kind_name: "Map", index: 0)
-  let val_name = container_param_name_required(kind_name: "Map", index: 1)
-  let key = type_variable_node(id: "map_key")
-  let value = type_variable_node(id: "map_value")
-  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
-    Node { name: key_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: val_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value"))
 }
 
 fn list_of_type_variable(id: String) -> Node {
-  let param_name = container_param_name_required(kind_name: "List", index: 0)
-  Node {
-    name: "List", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) },
-    children: [
-      Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_variable_node(id: id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    ], connective: NoConnective, params: [],
-    inferred: none, return_cardinality: Required,
-    uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
-  }
+  make_container_type(kind_name: "List", element: type_variable_node(id: id))
 }
 
 fn list_of_element(element: Node) -> Node {
-  let param_name = container_param_name_required(kind_name: "List", index: 0)
-  Node {
-    name: "List", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) },
-    children: [
-      Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    ], connective: NoConnective, params: [],
-    inferred: none, return_cardinality: Required,
-    uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
-  }
+  make_container_type(kind_name: "List", element: element)
 }
 
 // Builtin function return type registry.

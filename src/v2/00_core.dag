@@ -23,6 +23,7 @@ import std.syntax {
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
+import std.induction { SubValueRelation }
 
 // =========================================================================
 // Tokens
@@ -195,7 +196,7 @@ type ExprData
   | ExprError { kind: ExprErrorKind, message: String }
   | ExprVar { binding_kind: VarBindingKind? }
   | ExprFieldAccess { summary: FieldSummary? }
-  | ExprCall { call_semantics: CallSemantics? }
+  | ExprCall { call_semantics: CallSemantics?, descent_evidence: List<SubValueRelation>? }
   | ExprMethodCall { method_semantics: MethodSemantics? }
   | ExprMatch
   | ExprIf
@@ -422,9 +423,9 @@ fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredN
 
 // Construct a Node carrying expression data with a dissolved identifier (D3).
 // The name field carries the identifier that was formerly in ExprData.
-fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
+fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: children,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children,
     connective: NoConnective,
 
     params: [], inferred: inferred, return_cardinality: Required,
@@ -456,10 +457,10 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 
 // Argument node: the call-site dual of Param. Name carries the arg name
 // (empty string for positional args), child is the value expression.
-fn make_arg_node(name: String?, value: Node, span: SourceSpan) -> Node {
+fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   let arg_name = match name { Some { value: n } => n  None => "" }
   Node {
-    name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: span), children: [value], connective: NoConnective,
+    name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: name_span), children: [value], connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -484,9 +485,9 @@ fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSp
 }
 
 // Resource use node: name carries the resource binding name, child is the resource type node.
-fn make_resource_use_node(name: String, resource: Node, span: SourceSpan) -> Node {
+fn make_resource_use_node(name: String, resource: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [resource], connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [resource], connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -518,9 +519,9 @@ fn make_field_init_node(name: String, value: Node, span: SourceSpan, name_span: 
 }
 
 // Field binding node (D2c): name carries the field name, match_pattern carries the binding pattern.
-fn make_field_binding_node(field_name: String, binding: MatchPattern, span: SourceSpan) -> Node {
+fn make_field_binding_node(field_name: String, binding: MatchPattern, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
-    name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: span), children: [], connective: NoConnective,
+    name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: name_span), children: [], connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -662,6 +663,7 @@ fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, defa
 }
 
 fn field_node_name(n: Node) -> String { n.name }
+fn field_node_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 
 fn field_node_type_expr(n: Node) -> Node {
   match n.children |> first {
@@ -700,6 +702,7 @@ fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan, name_sp
 }
 
 fn variant_node_name(n: Node) -> String { n.name }
+fn variant_node_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 fn variant_node_fields(n: Node) -> List<Node> { n.children }
 fn variant_node_span(n: Node) -> SourceSpan { n.span }
 
@@ -984,6 +987,13 @@ fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
 fn expr_call_func(texpr: Node) -> String { texpr.name }
 fn expr_call_func_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
+fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
+  match texpr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: de } => de
+    _ => none
+  }
+}
+
 // -- ExprMethodCall (D3: method dissolved into Node.name) --
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
 fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
@@ -1057,36 +1067,59 @@ data transport_path_key: String = "base_path"
 data transport_auth_token_key: String = "auth_token"
 data transport_auth_header_key: String = "auth_header"
 data transport_auth_scheme_key: String = "auth_scheme"
+data transport_method_key: String = "method"
+data transport_path_template_key: String = "path"
+data transport_query_key: String = "query"
+data transport_stdin_key: String = "stdin"
 
-fn make_transport_node(properties: List<Node>, children: List<Node>, span: SourceSpan) -> Node {
+fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
-    uses: [], body: none, transport: none, properties: properties,
+    uses: [], body: body, transport: none, properties: properties,
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
 
 fn local_transport_node(span: SourceSpan) -> Node {
-  make_transport_node(properties: [], children: [], span: span)
+  make_transport_node(properties: [], children: [], body: none, span: span)
 }
 
-fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, span: SourceSpan) -> Node {
-  let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
-  let props = concat([url_field], auth_props, headers)
-  make_transport_node(properties: props, children: [], span: span)
+fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, span: SourceSpan) -> Node {
+  let zero_span = make_span(start: 0, end: 0)
+  let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: zero_span, name_span: zero_span)
+  let method_props = match method {
+    Some { value: m } => [make_field_init_node(name: transport_method_key, value: m, span: zero_span, name_span: zero_span)]
+    None => []
+  }
+  let path_props = match path {
+    Some { value: p } => [make_field_init_node(name: transport_path_template_key, value: p, span: zero_span, name_span: zero_span)]
+    None => []
+  }
+  let query_props = match query {
+    Some { value: q } => [make_field_init_node(name: transport_query_key, value: q, span: zero_span, name_span: zero_span)]
+    None => []
+  }
+  let props = concat([url_field], method_props, path_props, query_props, auth_props, headers)
+  make_transport_node(properties: props, children: [], body: none, span: span)
 }
 
-fn shell_transport_node(argv: List<Node>, env: List<Node>, span: SourceSpan) -> Node {
+fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
   // Shell transports set body to a marker node so they're structurally
   // distinguishable from local even when argv and env are empty.
   let shell_marker = Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let zero_span = make_span(start: 0, end: 0)
+  let stdin_props = match stdin {
+    Some { value: s } => [make_field_init_node(name: transport_stdin_key, value: s, span: zero_span, name_span: zero_span)]
+    None => []
+  }
+  let all_props = concat(env, stdin_props)
   Node {
     name: "", span: span, ident_span: none, children: argv, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
-    uses: [], body: Some { value: shell_marker }, transport: none, properties: env,
+    uses: [], body: Some { value: shell_marker }, transport: none, properties: all_props,
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
@@ -1094,7 +1127,7 @@ fn shell_transport_node(argv: List<Node>, env: List<Node>, span: SourceSpan) -> 
 
 fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
-  make_transport_node(properties: [path_field], children: [], span: span)
+  make_transport_node(properties: [path_field], children: [], body: none, span: span)
 }
 
 // =========================================================================
@@ -1170,9 +1203,27 @@ fn transport_has_auth(t: Node) -> Bool {
   }
 }
 
+fn transport_method(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_method_key)
+}
+
+fn transport_path_template(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_path_template_key)
+}
+
+fn transport_query(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_query_key)
+}
+
+fn transport_stdin(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_stdin_key)
+}
+
 fn is_config_reserved_key(name: String) -> Bool {
   name == transport_url_key || name == transport_path_key || name == transport_auth_scheme_key
     || name == transport_auth_header_key || name == transport_auth_token_key
+    || name == transport_method_key || name == transport_path_template_key
+    || name == transport_query_key || name == transport_stdin_key
 }
 
 fn transport_headers(t: Node) -> List<Node> {
@@ -1182,7 +1233,9 @@ fn transport_headers(t: Node) -> List<Node> {
 }
 
 fn transport_env(t: Node) -> List<Node> {
-  t.properties
+  t.properties |> filter(p =>
+    !is_config_reserved_key(name: field_init_node_name(n: p))
+  )
 }
 
 // =========================================================================
@@ -1218,7 +1271,7 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
 
 fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
   match texpr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       if expr_call_func(texpr: texpr) == fn_name { true }
       else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name)) }
     _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name))
@@ -1227,7 +1280,7 @@ fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
 
 fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> Bool {
   match texpr.expr_data {
-    ExprCall { call_semantics: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       if expr_call_func(texpr: texpr) == fn_name {
         if in_tail == false { true }
         else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false)) }
@@ -1301,11 +1354,15 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
 //   "svc_rate_limit" = rate_limit Node, "svc_retry" = retry Node.
 // Only non-none fields are included.
 
-fn service_config_properties(endpoint: Node, auth: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
+fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
   let zero_span = make_span(start: 0, end: 0)
   let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
   let auth_prop = match auth {
     Some { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span, name_span: zero_span)]
+    None => []
+  }
+  let auth_input_prop = match auth_input {
+    Some { value: ai } => [make_field_init_node(name: "svc_auth_input", value: ai, span: zero_span, name_span: zero_span)]
     None => []
   }
   let rate_prop = match rate_limit {
@@ -1316,7 +1373,7 @@ fn service_config_properties(endpoint: Node, auth: Node?, rate_limit: Node?, ret
     Some { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span, name_span: zero_span)]
     None => []
   }
-  concat(ep_prop, auth_prop, rate_prop, retry_prop)
+  concat(ep_prop, auth_prop, auth_input_prop, rate_prop, retry_prop)
 }
 
 fn has_service_config(n: Node) -> Bool {
@@ -1337,6 +1394,10 @@ fn service_config_rate_limit(n: Node) -> Node? {
 
 fn service_config_retry(n: Node) -> Node? {
   find_property(props: n.properties, prop_name: "svc_retry")
+}
+
+fn service_config_auth_input(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth_input")
 }
 
 // --- Module as Node ---

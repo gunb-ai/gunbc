@@ -17,19 +17,19 @@ import v2.std.core {
   CompileResult, TextFile, SourceSpan,
   ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
   Connective, NoConnective, Arrow, Cardinality,
-  resource_use_name, resource_use_resource,
-  param_node_name, param_node_type_expr, param_node_default_value, param_node_span,
-  field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span,
+  resource_use_name, resource_use_name_at, resource_use_resource,
+  param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
+  field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span,
   module_imports, module_items, import_is_all, import_specific_names,
   FieldAccessStyle, FieldValueShape, FieldSummary,
   InferredNode, Resolved, CompilerError, TypeVariable,
   VarBindingKind, CallSemantics, LambdaSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
-  ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern,
-  arg_name, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_value,
+  ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_name_at, field_binding_pattern,
+  arg_name, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_name_at, field_init_node_value,
   LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token,
   NewlineIndex, build_newline_index,
-  field_access_field, expr_call_func, lambda_param_names, record_lit_type_name, foreach_variable, expr_method_name
+  field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, foreach_variable, foreach_variable_at, expr_method_name, expr_method_name_at
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
@@ -42,6 +42,7 @@ import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
+import std.induction { SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown, InductiveField, ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
 import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
@@ -84,7 +85,8 @@ fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
         name: item.name,
         body: item.body.value,
         params: item.params,
-        span: item.span
+        span: item.span,
+        si: m.type_env.source_index
       }
     )
   )
@@ -102,7 +104,7 @@ fn build_recursion_context(typed: ResolvedGraph) -> RecursionContext {
 fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
   typed.modules |> flat_map(m =>
     m.items |> filter(item => item.body != None) |> map(item =>
-      analyze_ownership(func_name: item.name, params: item.params, body: item.body.value)
+      analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index)
     )
   )
 }
@@ -329,7 +331,7 @@ fn serialize_literal(value: LiteralValue) -> String {
 
 fn serialize_field_binding(binding: Node) -> String {
   concat(
-    "{\"field_name\": ", json_quote(s: field_binding_name(n: binding)),
+    "{\"field_name\": ", json_quote(s: field_binding_name_at(n: binding, source_index: none)),
     ", \"binding\": ", serialize_match_pattern(pattern: field_binding_pattern(n: binding)),
     "}")
 }
@@ -352,7 +354,7 @@ fn serialize_match_pattern(pattern: MatchPattern) -> String {
 
 fn serialize_named_arg(arg: Node) -> String {
   concat(
-    "{\"name\": ", json_optional_string(value: arg_name(n: arg)),
+    "{\"name\": ", json_optional_string(value: arg_name_at(n: arg, source_index: none)),
     ", \"value\": ", serialize_node(node: arg_value(n: arg)),
     "}")
 }
@@ -367,7 +369,7 @@ fn serialize_match_arm(arm: Node) -> String {
 
 fn serialize_field_init(field_init: Node) -> String {
   concat(
-    "{\"name\": ", json_quote(s: field_init_node_name(n: field_init)),
+    "{\"name\": ", json_quote(s: field_init_node_name_at(n: field_init, source_index: none)),
     ", \"value\": ", serialize_node(node: field_init_node_value(n: field_init)),
     "}")
 }
@@ -423,6 +425,53 @@ fn serialize_method_semantics(value: MethodSemantics?) -> String {
   }
 }
 
+fn serialize_recursion_shape(shape: RecursionShape) -> String {
+  match shape {
+    DirectRecursion => "{\"_variant\": \"DirectRecursion\"}"
+    ListRecursion => "{\"_variant\": \"ListRecursion\"}"
+    OptionalRecursion => "{\"_variant\": \"OptionalRecursion\"}"
+    SetRecursion => "{\"_variant\": \"SetRecursion\"}"
+    MapValueRecursion => "{\"_variant\": \"MapValueRecursion\"}"
+  }
+}
+
+fn serialize_inductive_field(field: InductiveField) -> String {
+  concat(
+    "{\"type_name\": ", json_quote(s: field.type_name),
+    ", \"variant_name\": ", json_quote(s: field.variant_name),
+    ", \"field_name\": ", json_quote(s: field.field_name),
+    ", \"shape\": ", serialize_recursion_shape(shape: field.shape),
+    "}")
+}
+
+fn serialize_shrink_factor(factor: ShrinkFactor) -> String {
+  match factor {
+    UnitShrink => "{\"_variant\": \"UnitShrink\"}"
+    ConstantShrink { amount: a } => concat("{\"_variant\": \"ConstantShrink\", \"amount\": ", to_string(i: a), "}")
+    ProportionalShrink { divisor: d } => concat("{\"_variant\": \"ProportionalShrink\", \"divisor\": ", to_string(i: d), "}")
+  }
+}
+
+fn serialize_sub_value_relation(rel: SubValueRelation) -> String {
+  match rel {
+    StrictSubValue { field: f, factor: fac } =>
+      concat(
+        "{\"_variant\": \"StrictSubValue\", \"field\": ", serialize_inductive_field(field: f),
+        ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
+    IteratedSubValue { field: f } =>
+      concat("{\"_variant\": \"IteratedSubValue\", \"field\": ", serialize_inductive_field(field: f), "}")
+    PreservedValue => "{\"_variant\": \"PreservedValue\"}"
+    SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}"
+  }
+}
+
+fn serialize_descent_evidence(de: List<SubValueRelation>?) -> String {
+  match de {
+    Some { value: evidence } => json_list(items: evidence |> map(rel => serialize_sub_value_relation(rel: rel)))
+    None => "null"
+  }
+}
+
 // Serialize expression data. ExprData is now pure metadata; children are
 // serialized uniformly from node.children via serialize_node.
 fn serialize_expr_data(expr_node: Node) -> String {
@@ -454,7 +503,7 @@ fn serialize_expr_data(expr_node: Node) -> String {
         },
         "}")
     ExprFieldAccess { summary: summary } =>
-      let field = field_access_field(texpr: expr_node)
+      let field = field_access_field_at(texpr: expr_node, source_index: none)
       concat(
         "{\"kind\": \"ExprFieldAccess\", \"field\": ", json_quote(s: field),
         ", \"summary\": ",
@@ -464,15 +513,16 @@ fn serialize_expr_data(expr_node: Node) -> String {
         },
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
-    ExprCall { call_semantics: call_semantics } =>
-      let func = expr_call_func(texpr: expr_node)
+    ExprCall { call_semantics: call_semantics, descent_evidence: de } =>
+      let func = expr_call_func_at(texpr: expr_node, source_index: none)
       concat(
         "{\"kind\": \"ExprCall\", \"func\": ", json_quote(s: func),
         ", \"call_semantics\": ", serialize_call_semantics(value: call_semantics),
+        ", \"descent_evidence\": ", serialize_descent_evidence(de: de),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
     ExprMethodCall { method_semantics: method_semantics } =>
-      let method = expr_method_name(texpr: expr_node)
+      let method = expr_method_name_at(texpr: expr_node, source_index: none)
       concat(
         "{\"kind\": \"ExprMethodCall\", \"method\": ", json_quote(s: method),
         ", \"method_semantics\": ", serialize_method_semantics(value: method_semantics),
@@ -489,7 +539,7 @@ fn serialize_expr_data(expr_node: Node) -> String {
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
     ExprLambda { semantics: semantics } =>
-      let params = lambda_param_names(texpr: expr_node)
+      let params = lambda_param_names_at(texpr: expr_node, source_index: none)
       concat(
         "{\"kind\": \"ExprLambda\", \"params\": ", json_list(items: params |> map(p => json_quote(s: p))),
         ", \"semantics\": ", serialize_lambda_semantics(value: semantics),
@@ -508,7 +558,7 @@ fn serialize_expr_data(expr_node: Node) -> String {
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
     ExprForEach =>
-      let variable = foreach_variable(texpr: expr_node)
+      let variable = foreach_variable_at(texpr: expr_node, source_index: none)
       concat(
         "{\"kind\": \"ExprForEach\", \"variable\": ", json_quote(s: variable),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
@@ -577,7 +627,7 @@ fn serialize_inferred_node(inferred: InferredNode) -> String {
 
 fn serialize_resource_use(resource_use: Node) -> String {
   concat(
-    "{\"name\": ", json_quote(s: resource_use_name(n: resource_use)),
+    "{\"name\": ", json_quote(s: resource_use_name_at(n: resource_use, source_index: none)),
     ", \"resource\": ", serialize_node(node: resource_use_resource(n: resource_use)),
     ", \"span\": ", serialize_span(span: resource_use.span),
     "}")
@@ -585,7 +635,7 @@ fn serialize_resource_use(resource_use: Node) -> String {
 
 fn serialize_field(field: Node) -> String {
   concat(
-    "{\"name\": ", json_quote(s: field_node_name(n: field)),
+    "{\"name\": ", json_quote(s: field_node_name_at(n: field, source_index: none)),
     ", \"type_expr\": ", serialize_node(node: field_node_type_expr(n: field)),
     ", \"cardinality\": ", json_quote(s: cardinality_name(value: field_node_cardinality(n: field))),
     ", \"default_value\": ", json_optional_node(value: field_node_default_value(n: field)),
@@ -596,7 +646,7 @@ fn serialize_field(field: Node) -> String {
 
 fn serialize_param(param: Node) -> String {
   concat(
-    "{\"name\": ", json_quote(s: param_node_name(n: param)),
+    "{\"name\": ", json_quote(s: param_node_name_at(n: param, source_index: none)),
     ", \"type_expr\": ", serialize_node(node: param_node_type_expr(n: param)),
     ", \"default_value\": ", json_optional_node(value: param_node_default_value(n: param)),
     ", \"span\": ", serialize_span(span: param_node_span(n: param)),

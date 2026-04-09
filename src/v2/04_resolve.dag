@@ -16,8 +16,8 @@ import std.types { SourceSpan, container_param_name }
 import v2.std.core {
   Node,
   authored_name_at, NewlineIndex,
-  make_param_node, param_node_name, param_node_type_expr, param_node_default_value,
-  make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
+  make_param_node, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value,
+  make_field_node, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
   InternalError, ArityMismatch, UnresolvedType,
@@ -31,8 +31,8 @@ import v2.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   ExprErrorKind, SemanticExprError,
   make_expr_node, make_named_expr_node, make_expr_error_node, map_children,
-  expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name,
-  make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node,
+  expr_var_name, field_access_field, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at, foreach_variable, foreach_variable_at, lambda_param_names, record_lit_type_name,
+  make_arg_node, arg_name, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
   make_transport_node, local_transport_node,
   is_local_transport,
   is_kernel_type, is_container_type,
@@ -382,7 +382,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       result
     }
   } else {
-    let is_map = node_is_keyed_collection(n: n)
+    let is_map = node_is_keyed_collection(n: n, source_index: env.source_index)
     if is_map {
       // Map: recurse on both key and value children (extract type from field-style encoding)
       let type_name = n.name
@@ -513,7 +513,7 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResult 
   }
   FieldResult {
     field: make_field_node(
-      name: field_node_name(n: field),
+      name: field_node_name_at(n: field, source_index: env.source_index),
       type_expr: type_resolved,
       cardinality: field_node_cardinality(n: field),
       default_value: match default_resolved {
@@ -545,7 +545,7 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
   }
   ParamResult {
     param: make_param_node(
-      name: param_node_name(n: param),
+      name: param_node_name_at(n: param, source_index: env.source_index),
       type_expr: type_resolved,
       default_value: match default_resolved {
         Some { value: result } => Some { value: result.expr }
@@ -570,7 +570,7 @@ fn resolve_resource_use(ru: Node, env: TypeEnv, module_name: String) -> Resource
   let type_resolved = type_result.resolved
   let type_diags = type_result.diagnostics
   ResourceUseResult {
-    resource_use: make_resource_use_node(name: resource_use_name(n: ru), resource: type_resolved, span: ru.span),
+    resource_use: make_resource_use_node(name: resource_use_name_at(n: ru, source_index: env.source_index), resource: type_resolved, span: ru.span, name_span: node_name_span(n: ru)),
     diagnostics: type_diags
   }
 }
@@ -580,7 +580,7 @@ fn resolve_named_arg(arg: Node, env: TypeEnv, module_name: String) -> NamedArgRe
   let value_expr = value_result.expr
   let value_diags = value_result.diagnostics
   NamedArgResolveResult {
-    arg: make_arg_node(name: arg_name(n: arg), value: value_expr, span: arg.span),
+    arg: make_arg_node(name: arg_name(n: arg), value: value_expr, span: arg.span, name_span: node_name_span(n: arg)),
     diagnostics: value_diags
   }
 }
@@ -590,7 +590,7 @@ fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> Fi
   let value_expr = value_result.expr
   let value_diags = value_result.diagnostics
   FieldInitResolveResult {
-    field_init: make_field_init_node(name: field_init_node_name(n: field_init), value: value_expr, span: field_init.span, name_span: node_name_span(n: field_init)),
+    field_init: make_field_init_node(name: field_init_node_name_at(n: field_init, source_index: env.source_index), value: value_expr, span: field_init.span, name_span: node_name_span(n: field_init)),
     diagnostics: value_diags
   }
 }
@@ -651,7 +651,7 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
     // Generic resolution: resolve all property values and children
     let prop_results = map(transport.properties, p =>
       let val_result = resolve_expr_types(texpr: field_init_node_value(n: p), env: env, module_name: module_name)
-      FieldInitResolveResult { field_init: make_field_init_node(name: field_init_node_name(n: p), value: val_result.expr, span: p.span, name_span: node_name_span(n: p)), diagnostics: val_result.diagnostics }
+      FieldInitResolveResult { field_init: make_field_init_node(name: field_init_node_name_at(n: p, source_index: env.source_index), value: val_result.expr, span: p.span, name_span: node_name_span(n: p)), diagnostics: val_result.diagnostics }
     )
     let resolved_props = map(prop_results, pr => pr.field_init)
     let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
@@ -659,7 +659,7 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
     let resolved_children = map(child_results, cr => cr.expr)
     let child_diags = flat_map(child_results, cr => cr.diagnostics)
     TransportResolveResult {
-      transport: make_transport_node(properties: resolved_props, children: resolved_children, span: transport.span),
+      transport: make_transport_node(properties: resolved_props, children: resolved_children, body: transport.body, span: transport.span),
       diagnostics: concat(prop_diags, child_diags)
     }
   }
@@ -683,19 +683,19 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         None => ExprResolveResult { expr: texpr, diagnostics: [] }
       }
       ExprResolveResult { expr: map_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
-    ExprCall { call_semantics: cs } =>
+    ExprCall { call_semantics: cs, descent_evidence: de } =>
       // children: arg nodes
       let resolved_children = texpr.children |> map(arg_node =>
         let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-        make_arg_node(name: if arg_node.ident_span == none { none } else { Some { value: arg_node.name } }, value: vr.expr, span: arg_node.span)
+        make_arg_node(name: if arg_node.ident_span == none { none } else { Some { value: arg_node.name } }, value: vr.expr, span: arg_node.span, name_span: node_name_span(n: arg_node))
       )
       let all_diags = texpr.children |> flat_map(arg_node =>
         let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
         vr.diagnostics
       )
-      ExprResolveResult { expr: make_named_expr_node(name: expr_call_func(texpr: texpr), expr_data: ExprCall { call_semantics: cs }, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+      ExprResolveResult { expr: make_named_expr_node(name: expr_call_func_at(texpr: texpr, source_index: env.source_index), expr_data: ExprCall { call_semantics: cs, descent_evidence: de }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprMethodCall { method_semantics: ms } =>
       // children: [receiver, arg0, arg1, ...]
       let resolved_children = texpr.children |> enumerate |> map(pair =>
@@ -707,7 +707,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         } else {
           let val = match child.children |> first { Some { value: v } => v  None => child }
           let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-          make_arg_node(name: if child.ident_span == none { none } else { Some { value: child.name } }, value: vr.expr, span: child.span)
+          make_arg_node(name: if child.ident_span == none { none } else { Some { value: child.name } }, value: vr.expr, span: child.span, name_span: node_name_span(n: child))
         }
       )
       let all_diags = texpr.children |> enumerate |> flat_map(pair =>
@@ -722,7 +722,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
           vr.diagnostics
         }
       )
-      ExprResolveResult { expr: make_named_expr_node(name: expr_method_name(texpr: texpr), expr_data: ExprMethodCall { method_semantics: ms }, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+      ExprResolveResult { expr: make_named_expr_node(name: expr_method_name_at(texpr: texpr, source_index: env.source_index), expr_data: ExprMethodCall { method_semantics: ms }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprMatch =>
       // children: [scrutinee, arm0, arm1, ...]
       let resolved_children = texpr.children |> enumerate |> map(pair =>
@@ -779,7 +779,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let vr = match ch |> first { Some { value: v } => resolve_expr_types(texpr: v, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let br = match ch |> skip(1) |> first { Some { value: bd } => Some { value: resolve_expr_types(texpr: bd, env: env, module_name: module_name) }  None => none }
       let resolved_children = match br { Some { value: r } => [vr.expr, r.expr]  None => [vr.expr] }
-      ExprResolveResult { expr: make_named_expr_node(name: let_binding_name(texpr: texpr), expr_data: ExprLet, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(vr.diagnostics, match br { Some { value: r } => r.diagnostics  None => [] }) }
+      ExprResolveResult { expr: make_named_expr_node(name: let_binding_name_at(texpr: texpr, source_index: env.source_index), expr_data: ExprLet, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: concat(vr.diagnostics, match br { Some { value: r } => r.diagnostics  None => [] }) }
     ExprRecordLit { parent_enum: pe } =>
       // children: field init nodes
       let resolved_children = texpr.children |> map(fi_node =>
@@ -792,7 +792,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
         vr.diagnostics
       )
-      ExprResolveResult { expr: make_named_expr_node(name: texpr.name, expr_data: ExprRecordLit { parent_enum: pe }, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+      ExprResolveResult { expr: make_named_expr_node(name: texpr.name, expr_data: ExprRecordLit { parent_enum: pe }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprListLit =>
       // children: element expressions
       let el_results = texpr.children |> map(el => resolve_expr_types(texpr: el, env: env, module_name: module_name))
@@ -858,7 +858,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let ch = texpr.children
       let cr = match ch |> first { Some { value: c } => resolve_expr_types(texpr: c, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let br = match ch |> skip(1) |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
-      ExprResolveResult { expr: make_named_expr_node(name: foreach_variable(texpr: texpr), expr_data: ExprForEach, children: [cr.expr, br.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(cr.diagnostics, br.diagnostics) }
+      ExprResolveResult { expr: make_named_expr_node(name: foreach_variable_at(texpr: texpr, source_index: env.source_index), expr_data: ExprForEach, children: [cr.expr, br.expr], inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: concat(cr.diagnostics, br.diagnostics) }
     ExprIndex =>
       // children: [base, index]
       let ch = texpr.children
@@ -890,16 +890,16 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
 // Extract function type parameter names from params. Type params are
 // structurally distinguishable: param_node_name == param_node_type_expr.name
 // (self-referential), while function params have name != type_expr.name.
-fn fn_type_param_names(item: Node) -> List<String> {
+fn fn_type_param_names(item: Node, source_index: NewlineIndex?) -> List<String> {
   item.params |> filter(p =>
-    param_node_name(n: p) == param_node_type_expr(n: p).name
-  ) |> map(p => param_node_name(n: p))
+    param_node_name_at(n: p, source_index: source_index) == param_node_type_expr(n: p).name
+  ) |> map(p => param_node_name_at(n: p, source_index: source_index))
 }
 
 fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResult {
   // Register function type params (e.g., <T, B>) as TypeVariable bindings
   // so bare references to T/B in params/body don't produce UnresolvedType.
-  let tp_names = fn_type_param_names(item: item)
+  let tp_names = fn_type_param_names(item: item, source_index: env.source_index)
   let env = fold(tp_names, init: env, f: (e, tp_name) =>
     TypeEnv {
       bindings: map_insert(e.bindings, tp_name, TypeBinding {
@@ -908,7 +908,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       }),
       recursive_types: e.recursive_types,
       recursive_type_set: e.recursive_type_set,
-      recursive_variant_fields: e.recursive_variant_fields,
+      inductive_fields: e.inductive_fields,
       source_index: e.source_index
     }
   )

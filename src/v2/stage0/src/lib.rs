@@ -21,10 +21,10 @@ pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
 pub mod std_computation;
 pub mod std_graph;
+pub mod std_induction;
 pub mod v2_std_core;
 pub mod v2_compiler_artifact;
 pub mod v2_compiler_infer_env;
-pub mod v2_compiler_infer_method;
 pub mod v2_compiler_infer_types;
 pub mod v2_compiler_ownership;
 pub mod v2_compiler_resolve;
@@ -34,6 +34,7 @@ pub mod v2_compiler_coercion;
 pub mod v2_compiler_infer_access;
 pub mod v2_compiler_infer_cycle;
 pub mod v2_compiler_infer_emit_info;
+pub mod v2_compiler_infer_method;
 pub mod v2_compiler_infer_patterns;
 pub mod v2_compiler_infer_resolve;
 pub mod v2_compiler_infer_sigs;
@@ -52,6 +53,48 @@ pub mod v2_compiler_emit_python;
 pub mod v2_compiler_emit_rust;
 pub mod v2_compiler_compile;
 pub mod v2_rt;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NonEmptyVec<T>(Vec<T>);
+
+impl<T> NonEmptyVec<T> {
+    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
+        if items.is_empty() {
+            Err("NonEmptyVec requires at least one element")
+        } else {
+            Ok(Self(items))
+        }
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        &self.0
+    }
+
+    pub fn into_vec(self) -> Vec<T> {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
+
+impl<T: Ord> NonEmptyBTreeSet<T> {
+    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
+        if items.is_empty() {
+            Err("NonEmptyBTreeSet requires at least one element")
+        } else {
+            Ok(Self(items))
+        }
+    }
+
+    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
+        &self.0
+    }
+
+    pub fn into_set(self) -> std::collections::BTreeSet<T> {
+        self.0
+    }
+}
 
 #[cfg(test)]
 mod compiler_tests;

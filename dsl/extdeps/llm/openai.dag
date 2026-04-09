@@ -10,6 +10,7 @@ module extdeps.llm.openai
 
 import extdeps.llm.llm { Role, StopReason, TokenUsage }
 import std.errors { OpenAiErrorShape }
+import std.types { HttpMethod, AuthScheme }
 
 // -- Models --------------------------------------------------------
 
@@ -74,7 +75,7 @@ type ToolCall {
 service llm.OpenAI {
   config {
     endpoint: "https://api.openai.com"
-    auth: BearerToken
+    auth: Bearer
     auth_input: api_key
     // OpenAI API rate limits: varies by tier (500-3500 RPM), use conservative default
     rate_limit: { requests: 500, per: minute, scope: chat }

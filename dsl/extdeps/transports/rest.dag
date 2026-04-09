@@ -13,8 +13,7 @@
 
 module extdeps.transports.rest
 
-// RFC 9110 Section 9: request methods.
-type HttpMethod = GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
+import std.types { HttpMethod }
 
 // Configuration type for REST transport bindings.
 // The parser validates transport blocks labeled "rest" against this schema.

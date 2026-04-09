@@ -4,56 +4,18 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::v2_std_core::{Node, NewlineIndex, source_text_at, authored_name_at};
+pub use crate::std_induction::{InductiveField, RecursionShape};
+use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
     pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub recursive_types: Rc<Vec<String>>,
     pub recursive_type_set: Rc<HashMap<String, bool>>,
-    pub recursive_variant_fields: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>,
+    pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     pub source_index: Option<Rc<NewlineIndex>>,
 }
 
@@ -61,12 +23,6 @@ pub struct TypeEnv {
 pub struct TypeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RecursiveVariantFieldWitness {
-    pub variant_name: String,
-    pub field_name: String,
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, name: String) -> bool {
@@ -98,35 +54,37 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
     is_recursive_type(env, node.name.clone())
 }
 
-pub fn recursive_variant_field_witnesses(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<RecursiveVariantFieldWitness>>> {
-    match v2_rt::map_get(&env.recursive_variant_fields.clone(), type_name) {
-    Some(witnesses) => witnesses.clone(),
+pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
+    match v2_rt::map_get(&env.inductive_fields.clone(), type_name) {
+    Some(fields) => fields.clone(),
     None => Rc::new(vec![]),
 }
 }
 
-pub fn is_recursive_variant_field(env: Rc<TypeEnv>, type_name: String, variant_name: String, field_name: String) -> bool {
-    { let mut __found = false; for witness in recursive_variant_field_witnesses(env, type_name).iter().cloned() { if ((witness.variant_name.clone().as_str() == variant_name.clone().as_str()) && (witness.field_name.clone().as_str() == field_name.clone().as_str())) { __found = true; break; } } __found }
+pub fn is_inductive_field(env: Rc<TypeEnv>, type_name: String, variant_name: String, field_name: String) -> bool {
+    { let mut __found = false; for f in inductive_fields_for(env, type_name).iter().cloned() { if ((f.variant_name.clone().as_str() == variant_name.clone().as_str()) && (f.field_name.clone().as_str() == field_name.clone().as_str())) { __found = true; break; } } __found }
 }
 
-pub fn put_recursive_variant_field_witness(fields: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, type_name: String, variant_name: String, field_name: String) -> Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>> {
+pub fn put_inductive_field(fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v2_rt::map_get(&fields, type_name.clone()) {
-    Some(witnesses) => witnesses.clone(),
+    Some(fs) => fs.clone(),
     None => Rc::new(vec![]),
 };
-v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing, Rc::new(vec![Rc::new(RecursiveVariantFieldWitness {
+v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing, Rc::new(vec![Rc::new(InductiveField {
+    type_name: type_name.clone(),
     variant_name: variant_name,
     field_name: field_name,
+    shape: shape,
 })])))
 }
 }
 
-pub fn merge_recursive_variant_fields(left: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, right: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>) -> Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>> {
-    Rc::new(v2_rt::map_keys(&right)).iter().cloned().fold(left.clone(), |acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, type_name: String| match v2_rt::map_get(&right, type_name.clone()) {
+pub fn merge_inductive_fields(left: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, right: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    Rc::new(v2_rt::map_keys(&right)).iter().cloned().fold(left.clone(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| match v2_rt::map_get(&right, type_name.clone()) {
     Some(incoming) => {
         let existing = match v2_rt::map_get(&acc, type_name.clone()) {
-    Some(witnesses) => witnesses.clone(),
+    Some(fs) => fs.clone(),
     None => Rc::new(vec![]),
 };
 v2_rt::rc_map_insert(acc.clone(), type_name.clone(), v2_rt::concat(existing.clone(), incoming.clone()))
@@ -140,7 +98,7 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
         let merged_bindings = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.bindings.clone()));
 let merged_recursive = envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
 let merged_recursive_set = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
-let merged_recursive_variant_fields = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<RecursiveVariantFieldWitness>>>>>, env: Rc<TypeEnv>| merge_recursive_variant_fields(acc.clone(), env.recursive_variant_fields.clone()));
+let merged_inductive_fields = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc.clone(), env.inductive_fields.clone()));
 let source_index = envs.clone().iter().cloned().fold(None, |acc: _, env: Rc<TypeEnv>| if (env.source_index.clone() != None) {
             env.source_index.clone()
 } else {
@@ -150,7 +108,7 @@ Rc::new(TypeEnv {
     bindings: merged_bindings,
     recursive_types: merged_recursive,
     recursive_type_set: merged_recursive_set,
-    recursive_variant_fields: merged_recursive_variant_fields,
+    inductive_fields: merged_inductive_fields,
     source_index: source_index,
 })
 }

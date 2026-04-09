@@ -10,6 +10,7 @@ module extdeps.llm.anthropic
 
 import extdeps.llm.llm { Role, StopReason, TokenUsage }
 import std.errors { AnthropicErrorShape }
+import std.types { HttpMethod }
 
 // -- Models --------------------------------------------------------
 

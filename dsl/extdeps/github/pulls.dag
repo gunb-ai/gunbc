@@ -16,7 +16,7 @@
 module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser }
-import std.types { Timestamp, Url }
+import std.types { Timestamp, Url, HttpMethod, AuthScheme }
 import std.errors { GitHubErrorShape }
 
 // -- Pull request model -----------------------------------------------
@@ -56,7 +56,7 @@ type IssueComment {
 service github.Pulls {
   config {
     endpoint: "https://api.github.com"
-    auth: BearerToken
+    auth: Bearer
     auth_input: auth_token
     // GitHub API rate limits: 5000 requests/hour for authenticated users
     rate_limit: { requests: 5000, per: hour, scope: core }

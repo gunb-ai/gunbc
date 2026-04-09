@@ -36,7 +36,8 @@ import v2.std.core {
   leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
-  default_ident_span
+  default_ident_span,
+  authored_name_at
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -95,16 +96,16 @@ fn child_type_at(n: Node, index: Int) -> Node? {
 // alone — no name checks, no CollectionKind enum. Pass scrambled-name test.
 // =========================================================================
 
-fn node_is_collection(n: Node) -> Bool {
-  (n.children |> count) > 0 && n.connective == NoConnective && is_container_type(name: n.name)
+fn node_is_collection(n: Node, source_index: NewlineIndex?) -> Bool {
+  (n.children |> count) > 0 && n.connective == NoConnective && is_container_type(name: authored_name_at(source_index: source_index, node: n))
 }
 
-fn node_is_keyed_collection(n: Node) -> Bool {
-  node_is_collection(n: n) && (n.children |> count) == 2
+fn node_is_keyed_collection(n: Node, source_index: NewlineIndex?) -> Bool {
+  node_is_collection(n: n, source_index: source_index) && (n.children |> count) == 2
 }
 
-fn node_is_element_collection(n: Node) -> Bool {
-  node_is_collection(n: n) && (n.children |> count) == 1
+fn node_is_element_collection(n: Node, source_index: NewlineIndex?) -> Bool {
+  node_is_collection(n: n, source_index: source_index) && (n.children |> count) == 1
 }
 
 // =========================================================================
@@ -119,16 +120,16 @@ fn is_coproduct_type(n: Node) -> Bool { n.connective == Disj }
 fn is_leaf_type(n: Node) -> Bool { n.connective == NoConnective }
 fn is_unit_like(n: Node) -> Bool { n.connective == Conj && n.children |> count == 0 }
 
-fn is_fully_resolved(n: Node) -> Bool {
+fn is_fully_resolved(n: Node, source_index: NewlineIndex?) -> Bool {
   let self_is_type_var = match n.inferred { Some { value: inf } => is_type_variable(inferred: inf)  None => false }
   if self_is_type_var { false }
   else {
-    let under_param = match container_expected_arity(name: n.name) {
+    let under_param = match container_expected_arity(name: authored_name_at(source_index: source_index, node: n)) {
       Some { value: expected } => (n.children |> count) < expected
       None => false
     }
     if under_param { false }
-    else { n.children |> all(ch => is_fully_resolved(n: child_type_node(ch: ch))) }
+    else { n.children |> all(ch => is_fully_resolved(n: child_type_node(ch: ch), source_index: source_index)) }
   }
 }
 
@@ -141,6 +142,44 @@ fn bare_map_node() -> Node {
     Node { name: key_id, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
     Node { name: val_id, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: val_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+// =========================================================================
+// Shared type construction authorities
+//
+// Single-authority builders for synthesized type nodes. All container param
+// names derive from algebra via container_param_name_required (fail-closed).
+// These centralize type-shape knowledge that was previously inlined as
+// raw Node literals across multiple files.
+//
+// Dissolution point: Tier 3 / FF-9 (declaration-driven construction).
+// =========================================================================
+
+fn make_container_type(kind_name: String, element: Node) -> Node {
+  let param_name = container_param_name_required(kind_name: kind_name, index: 0)
+  Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: kind_name, span: make_span(start: 0, end: 0)), children: [
+    Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+fn make_map_type(key: Node, value: Node) -> Node {
+  let key_name = container_param_name_required(kind_name: "Map", index: 0)
+  let val_name = container_param_name_required(kind_name: "Map", index: 1)
+  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
+    Node { name: key_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: val_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+fn make_callable_type(func_params: List<Node>, ret: Node) -> Node {
+  Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+fn make_tuple_type(first: Node, second: Node) -> Node {
+  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [
+    Node { name: "first", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "second", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
@@ -175,7 +214,7 @@ fn algebra_value_field(name: String, type_node: Node) -> Node {
 // from value fields, so we need real Param entries.
 fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
   let params = param_types |> map(t => make_param_node(name: "_", type_expr: t, default_value: none, span: no_span(), name_span: no_span()))
-  let callable = Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: params, inferred: Some { value: Resolved { node: return_type } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let callable = make_callable_type(func_params: params, ret: return_type)
   Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
@@ -214,23 +253,12 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node) -> Node {
     AlgebraTypeVariable { id: var_id } => type_variable_node(id: var_id)
     ContainerOf { source: src, element: inner } =>
       let kind_name = match src { SameAsReceiver => base.name  Named { name: n } => n }
-      let param_name = match container_param_name(kind_name: kind_name, index: 0) { Some { value: n } => n  None => kind_name }
-      let elem = instantiate_algebra_type(template: inner, base: base)
-      Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: kind_name, span: make_span(start: 0, end: 0)), children: [
-        Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: elem } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      make_container_type(kind_name: kind_name, element: instantiate_algebra_type(template: inner, base: base))
     OptionalOf { inner: inner } => with_optional_cardinality(n: instantiate_algebra_type(template: inner, base: base))
     TupleOf { first: first, second: second } =>
-      let first_node = instantiate_algebra_type(template: first, base: base)
-      let second_node = instantiate_algebra_type(template: second, base: base)
-      Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [
-        Node { name: "first", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-        Node { name: "second", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      make_tuple_type(first: instantiate_algebra_type(template: first, base: base), second: instantiate_algebra_type(template: second, base: base))
     CallableOf { params: p, return_type: r } =>
-      let func_params = p |> map(tp => instantiate_algebra_type(template: tp, base: base))
-      let ret = instantiate_algebra_type(template: r, base: base)
-      Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      make_callable_type(func_params: p |> map(tp => instantiate_algebra_type(template: tp, base: base)), ret: instantiate_algebra_type(template: r, base: base))
   }
 }
 
@@ -375,22 +403,13 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
                 Some { value: v } => v
                 None => type_variable_node(id: "V")
               }
-              let key_name = container_param_name_required(kind_name: "Map", index: 0)
-              let val_name = container_param_name_required(kind_name: "Map", index: 1)
-              Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
-                Node { name: key_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-                Node { name: val_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: val } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-              ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+              make_map_type(key: key, value: val)
             None => receiver
           }
         } else if arity == Some { value: 1 } {
           // Element container (List): enrich from __element__ binding.
           match map_get(subst, "__element__") {
-            Some { value: elem } =>
-              let param_name = match container_param_name(kind_name: receiver.name, index: 0) { Some { value: n } => n  None => receiver.name }
-              Node { name: receiver.name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: receiver.name, span: make_span(start: 0, end: 0)), children: [
-                Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: elem } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-              ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+            Some { value: elem } => make_container_type(kind_name: receiver.name, element: elem)
             None => receiver
           }
         } else { receiver }
@@ -425,24 +444,14 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
     NamedTemplate { name: n } => nominal_type_ref(name: n)
     ContainerOf { source: src, element: inner } =>
       let kind_name = match src { SameAsReceiver => receiver.name  Named { name: n } => n }
-      let param_name = match container_param_name(kind_name: kind_name, index: 0) { Some { value: n } => n  None => kind_name }
-      let elem = apply_type_substitution(template: inner, subst: subst, receiver: receiver)
-      Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: kind_name, span: make_span(start: 0, end: 0)), children: [
-        Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: elem } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      make_container_type(kind_name: kind_name, element: apply_type_substitution(template: inner, subst: subst, receiver: receiver))
     OptionalOf { inner: inner } =>
       with_optional_cardinality(n: apply_type_substitution(template: inner, subst: subst, receiver: receiver))
     TupleOf { first: ft, second: st } =>
-      let first_node = apply_type_substitution(template: ft, subst: subst, receiver: receiver)
-      let second_node = apply_type_substitution(template: st, subst: subst, receiver: receiver)
-      Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [
-        Node { name: "first", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-        Node { name: "second", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      make_tuple_type(first: apply_type_substitution(template: ft, subst: subst, receiver: receiver), second: apply_type_substitution(template: st, subst: subst, receiver: receiver))
     CallableOf { params: p, return_type: r } =>
       let param_nodes = p |> map(tp => apply_type_substitution(template: tp, subst: subst, receiver: receiver))
-      let ret = apply_type_substitution(template: r, subst: subst, receiver: receiver)
-      Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: param_nodes |> map(pn => make_param_node(name: "_", type_expr: pn, default_value: none, span: no_span(), name_span: no_span())), inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      make_callable_type(func_params: param_nodes |> map(pn => make_param_node(name: "_", type_expr: pn, default_value: none, span: no_span(), name_span: no_span())), ret: apply_type_substitution(template: r, subst: subst, receiver: receiver))
   }
 }
 
@@ -512,51 +521,52 @@ fn normalize_access_type_node(n: Node) -> Node {
 // Type shape and comparison
 // =========================================================================
 
-fn node_type_shape(n: Node) -> String {
+fn node_type_shape(n: Node, source_index: NewlineIndex?) -> String {
   let __is_leaf = n.connective == NoConnective && n.children |> count == 0 && n.properties |> count == 0
+  let n_name = authored_name_at(source_index: source_index, node: n)
   if __is_leaf {
     let __is_named_ref = match n.inferred {
       Some { value: Resolved { node: rt } } =>
         rt.connective == NoConnective && rt.children |> count == 0
-          && rt.ident_span != none && rt.name != "None"
-          && is_kernel_type(name: rt.name) == false
+          && rt.ident_span != none && authored_name_at(source_index: source_index, node: rt) != "None"
+          && is_kernel_type(name: authored_name_at(source_index: source_index, node: rt)) == false
       _ => false
     }
     if __is_named_ref {
-      concat("Named(", n.name, ")")
+      concat("Named(", n_name, ")")
     } else {
-      concat("Primitive(", n.name, ")")
+      concat("Primitive(", n_name, ")")
     }
   } else {
     let is_product = n.connective == Conj
     let is_coproduct = n.connective == Disj
     if is_product {
-      if n.ident_span == none { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
+      if n.ident_span == none { "Product(<anon>)" } else { concat("Product(", n_name, ")") }
     } else if is_coproduct {
-      if n.ident_span == none { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
+      if n.ident_span == none { "Coproduct(<anon>)" } else { concat("Coproduct(", n_name, ")") }
     } else {
-      let __is_container = node_is_element_collection(n: n)
+      let __is_container = node_is_element_collection(n: n, source_index: source_index)
       let is_optional = n.return_cardinality == CardOptional
-      let is_map = node_is_keyed_collection(n: n)
+      let is_map = node_is_keyed_collection(n: n, source_index: source_index)
       if __is_container {
         let elem_shape = match n.children |> first {
-          Some { value: el } => node_type_shape(n: child_type_node(ch: el))
+          Some { value: el } => node_type_shape(n: child_type_node(ch: el), source_index: source_index)
           None => "?"
         }
-        concat("Container(", n.name, ",", elem_shape, ")")
+        concat("Container(", n_name, ",", elem_shape, ")")
       } else if is_optional {
-        let inner_shape = node_type_shape(n: with_required_cardinality(n: n))
+        let inner_shape = node_type_shape(n: with_required_cardinality(n: n), source_index: source_index)
         concat("Optional(", inner_shape, ")")
       } else if is_map {
         "Map(...)"
       } else {
-        concat("Node(", n.name, ")")
+        concat("Node(", n_name, ")")
       }
     }
   }
 }
 
-fn node_type_compatible(left: Node, right: Node) -> Bool {
+fn node_type_compatible(left: Node, right: Node, source_index: NewlineIndex?) -> Bool {
   // CompilerError and TypeVariable nodes are compatible with anything — prevents
   // cascade comparisons on failed inference or unresolved type variables.
   let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
@@ -572,8 +582,8 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
   else {
-    let left_is_container = node_is_element_collection(n: left)
-    let right_is_container = node_is_element_collection(n: right)
+    let left_is_container = node_is_element_collection(n: left, source_index: source_index)
+    let right_is_container = node_is_element_collection(n: right, source_index: source_index)
     if left_is_container && right_is_container {
       if left.name != right.name { false }
       else {
@@ -586,7 +596,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
                 let left_el_is_unit = is_unit_like(n: left_el)
                 let right_el_is_unit = is_unit_like(n: right_el)
                 if left_el_is_unit || right_el_is_unit { true }
-                else { node_type_compatible(left: left_el, right: right_el) }
+                else { node_type_compatible(left: left_el, right: right_el, source_index: source_index) }
               None => true
             }
           None => true
@@ -599,15 +609,15 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
       let left_inner_is_unit = is_unit_like(n: left_inner)
       let right_inner_is_unit = is_unit_like(n: right_inner)
       if left_inner_is_unit || right_inner_is_unit { true }
-      else { node_type_compatible(left: left_inner, right: right_inner) }
+      else { node_type_compatible(left: left_inner, right: right_inner, source_index: source_index) }
     }
     else if left_opt || right_opt { false }
     else { left.name == right.name }
   }
 }
 
-fn prefer_specific_type(left: Node, right: Node) -> Node {
-  let left_is_container = node_is_element_collection(n: left)
+fn prefer_specific_type(left: Node, right: Node, source_index: NewlineIndex?) -> Node {
+  let left_is_container = node_is_element_collection(n: left, source_index: source_index)
   let left_is_optional = left.return_cardinality == CardOptional
   let left_first_child = left.children |> first
   let left_norm_name = left.name
@@ -623,7 +633,7 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     let left_is_unit = is_unit_like(n: left)
     left_is_unit
   } else { false }
-  let right_is_container = node_is_element_collection(n: right)
+  let right_is_container = node_is_element_collection(n: right, source_index: source_index)
   let right_is_optional = right.return_cardinality == CardOptional
   let same_kind = if left_is_container && right_is_container {
     left_norm_name == right.name
@@ -631,11 +641,11 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     true
   } else { false }
   if same_kind && left_is_unit_inner { right }
-  else if is_fully_resolved(n: right) && !is_fully_resolved(n: left) { right }
+  else if is_fully_resolved(n: right, source_index: source_index) && !is_fully_resolved(n: left, source_index: source_index) { right }
   else { left }
 }
 
-fn node_type_equals(left: Node, right: Node) -> Bool {
+fn node_type_equals(left: Node, right: Node, source_index: NewlineIndex?) -> Bool {
   // CompilerError nodes are equal to anything — prevents cascade comparisons
   // TypeVariable nodes: two type variables are equal (both unresolved);
   // a type variable vs a concrete type is not equal.
@@ -656,14 +666,14 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
     // Optional unwrap: same tree structure with cardinality stripped.
     // Separate from node_type_equals_core so CX sees SCC edge as Same
     // (wrapper transparency) rather than dragging core's Strict to NonIncreasing.
-    node_type_equals_core(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right))
+    node_type_equals_core(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right), source_index: source_index)
   }
   else {
-    node_type_equals_core(left: left, right: right)
+    node_type_equals_core(left: left, right: right, source_index: source_index)
   }
 }
 
-fn node_type_equals_core(left: Node, right: Node) -> Bool {
+fn node_type_equals_core(left: Node, right: Node, source_index: NewlineIndex?) -> Bool {
   let left_leaf = left.connective == NoConnective && left.children |> count == 0 && left.properties |> count == 0
   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
   let left_struct = left.connective != NoConnective
@@ -678,7 +688,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
     else {
       left.children |> enumerate |> all(pair =>
         match right.children |> skip(pair.first) |> first {
-          Some { value: right_child } => node_type_equals(left: pair.second, right: right_child)
+          Some { value: right_child } => node_type_equals(left: pair.second, right: right_child, source_index: source_index)
           None => false
         }
       )
@@ -691,15 +701,15 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
     left.name == right.name
   }
   else {
-    let left_is_container = node_is_element_collection(n: left)
-    let right_is_container = node_is_element_collection(n: right)
+    let left_is_container = node_is_element_collection(n: left, source_index: source_index)
+    let right_is_container = node_is_element_collection(n: right, source_index: source_index)
     if left_is_container && right_is_container {
       if left.name != right.name { false }
       else {
         match left.children |> first {
           Some { value: left_ch } =>
             match right.children |> first {
-              Some { value: right_ch } => node_type_equals(left: child_type_node(ch: left_ch), right: child_type_node(ch: right_ch))
+              Some { value: right_ch } => node_type_equals(left: child_type_node(ch: left_ch), right: child_type_node(ch: right_ch), source_index: source_index)
               None => false
             }
           None => false
@@ -707,7 +717,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
       }
     }
     else {
-      let both_maps = node_is_keyed_collection(n: left) && node_is_keyed_collection(n: right)
+      let both_maps = node_is_keyed_collection(n: left, source_index: source_index) && node_is_keyed_collection(n: right, source_index: source_index)
       if both_maps {
         if left.children |> count == 2 && right.children |> count == 2 {
           match left.children |> first {
@@ -718,7 +728,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
                     Some { value: left_second } =>
                       match right.children |> skip(1) |> first {
                         Some { value: right_second } =>
-                          node_type_equals(left: child_type_node(ch: left_first), right: child_type_node(ch: right_first)) && node_type_equals(left: child_type_node(ch: left_second), right: child_type_node(ch: right_second))
+                          node_type_equals(left: child_type_node(ch: left_first), right: child_type_node(ch: right_first), source_index: source_index) && node_type_equals(left: child_type_node(ch: left_second), right: child_type_node(ch: right_second), source_index: source_index)
                         None => false
                       }
                     None => false
@@ -737,7 +747,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
           let params_eq = left.params |> enumerate |> all(pair =>
             match right.params |> skip(pair.first) |> first {
               Some { value: right_param } =>
-                node_type_equals(left: param_node_type_expr(n: pair.second), right: param_node_type_expr(n: right_param))
+                node_type_equals(left: param_node_type_expr(n: pair.second), right: param_node_type_expr(n: right_param), source_index: source_index)
               None => false
             }
           )
@@ -746,7 +756,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
             match left.inferred {
               Some { value: Resolved { node: left_ret } } =>
                 match right.inferred {
-                  Some { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret)
+                  Some { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret, source_index: source_index)
                   None => false
                   _ => false
                 }
@@ -767,7 +777,7 @@ fn node_type_equals_core(left: Node, right: Node) -> Bool {
 // Type dependency analysis
 // =========================================================================
 
-fn node_type_deps(n: Node) -> List<String> {
+fn node_type_deps(n: Node, source_index: NewlineIndex?) -> List<String> {
   // TypeVariable nodes have no type dependencies — they are unresolved placeholders.
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return [] }
@@ -776,34 +786,35 @@ fn node_type_deps(n: Node) -> List<String> {
     match n.inferred {
       Some { value: Resolved { node: rt } } =>
         rt.connective == NoConnective && rt.children |> count == 0
-          && rt.ident_span != none && rt.name != "None"
-          && is_kernel_type(name: rt.name) == false
+          && rt.ident_span != none && authored_name_at(source_index: source_index, node: rt) != "None"
+          && is_kernel_type(name: authored_name_at(source_index: source_index, node: rt)) == false
       _ => false
     }
   }
   let has_structure = n.connective != NoConnective
+  let n_name = authored_name_at(source_index: source_index, node: n)
   if __is_named_ref {
-    match n.inferred { Some { value: Resolved { node: rt } } => [rt.name]  _ => [] }
+    match n.inferred { Some { value: Resolved { node: rt } } => [authored_name_at(source_index: source_index, node: rt)]  _ => [] }
   } else if has_structure {
     flat_map(n.children, child =>
       match child.inferred {
-        Some { value: Resolved { node: rt } } => node_type_deps(n: rt)
-        _ => if child.inferred == none { node_type_deps(n: child) } else { [] }
+        Some { value: Resolved { node: rt } } => node_type_deps(n: rt, source_index: source_index)
+        _ => if child.inferred == none { node_type_deps(n: child, source_index: source_index) } else { [] }
       }
     )
   } else if n.inferred != none {
-    match n.inferred { Some { value: Resolved { node: rt } } => node_type_deps(n: rt)  _ => [] }
+    match n.inferred { Some { value: Resolved { node: rt } } => node_type_deps(n: rt, source_index: source_index)  _ => [] }
   } else if n.children |> count > 0 {
     // Parameterized type reference (e.g., MyList<T>): the node name IS a
     // dependency (MyList) AND the children (type args like T) may also be.
-    let child_deps = flat_map(n.children, child => node_type_deps(n: child))
-    if n.ident_span != none && is_kernel_type(name: n.name) == false {
-      concat([n.name], child_deps)
+    let child_deps = flat_map(n.children, child => node_type_deps(n: child, source_index: source_index))
+    if n.ident_span != none && is_kernel_type(name: n_name) == false {
+      concat([n_name], child_deps)
     } else { child_deps }
-  } else if is_kernel_type(name: n.name) || n.name == none_type.name || n.ident_span == none {
+  } else if is_kernel_type(name: n_name) || n_name == none_type.name || n.ident_span == none {
     []
   } else {
-    [n.name]
+    [n_name]
   }
 }
 
@@ -825,9 +836,9 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
 // Element and unwrap utilities
 // =========================================================================
 
-fn method_receiver_element_node(receiver_type: Node) -> Node {
+fn method_receiver_element_node(receiver_type: Node, source_index: NewlineIndex?) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
-  let maybe_element = if node_is_keyed_collection(n: normed) {
+  let maybe_element = if node_is_keyed_collection(n: normed, source_index: source_index) {
     match normed.children |> skip(1) |> first {
       Some { value: ch } => Some { value: child_type_node(ch: ch) }
       None => none
