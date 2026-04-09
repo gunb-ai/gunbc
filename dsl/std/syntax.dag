@@ -67,6 +67,7 @@ type OperatorSpec {
   left_bp: Int
   right_bp: Int
   binop: BinOp?
+  algebra_field: String?  // when present, matches only this algebra field on the operand type
 }
 
 // -- Full syntax specification ----------------------------------------

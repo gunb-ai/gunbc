@@ -17,9 +17,9 @@ pub use crate::extdeps_languages_rust_syntax::{rust_operators};
 pub use crate::extdeps_languages_python_syntax::{python_operators};
 pub use crate::extdeps_languages_go_syntax::{go_operators};
 pub use crate::extdeps_languages_dag_syntax::{dag_operators};
-pub use crate::extdeps_languages_rust_emit::{rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_string_types, rust_method_templates, rust_func_keyword, rust_async_prefix, rust_struct_keyword, rust_enum_keyword, rust_type_alias_keyword, rust_param_separator, rust_return_arrow, rust_param_type_sep, rust_string_literal_suffix, rust_module_keyword, rust_import_keyword, rust_import_from_keyword};
-pub use crate::extdeps_languages_python_emit::{python_keywords, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates, python_string_types, python_func_keyword, python_async_prefix, python_struct_keyword, python_enum_keyword, python_type_alias_keyword, python_param_separator, python_return_arrow, python_param_type_sep, python_string_literal_suffix, python_module_keyword, python_import_keyword, python_import_from_keyword};
-pub use crate::extdeps_languages_go_emit::{go_keywords, go_reserved, go_reserved_escape_suffix, go_manifest_file, go_method_templates, go_string_types, go_func_keyword, go_async_prefix, go_struct_keyword, go_enum_keyword, go_type_alias_keyword, go_param_separator, go_return_arrow, go_param_type_sep, go_string_literal_suffix, go_module_keyword, go_import_keyword, go_import_from_keyword};
+pub use crate::extdeps_languages_rust_emit::{rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_string_types, rust_method_templates, rust_func_keyword, rust_async_prefix, rust_struct_keyword, rust_enum_keyword, rust_type_alias_keyword, rust_param_separator, rust_return_arrow, rust_param_type_sep, rust_module_keyword, rust_import_keyword, rust_import_from_keyword};
+pub use crate::extdeps_languages_python_emit::{python_keywords, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates, python_string_types, python_func_keyword, python_async_prefix, python_struct_keyword, python_enum_keyword, python_type_alias_keyword, python_param_separator, python_return_arrow, python_param_type_sep, python_module_keyword, python_import_keyword, python_import_from_keyword};
+pub use crate::extdeps_languages_go_emit::{go_keywords, go_reserved, go_reserved_escape_suffix, go_manifest_file, go_method_templates, go_string_types, go_func_keyword, go_async_prefix, go_struct_keyword, go_enum_keyword, go_type_alias_keyword, go_param_separator, go_return_arrow, go_param_type_sep, go_module_keyword, go_import_keyword, go_import_from_keyword};
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
@@ -105,6 +105,7 @@ pub struct ImportRule {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SharingStrategy {
+    pub needs_sharing: bool,
     pub wrap_template: String,
     pub clone_value: String,
     pub deref_clone: String,
@@ -152,11 +153,6 @@ pub struct BlockSyntax {
     pub arm_separator: String,
     pub stmt_terminator: String,
     pub significant_whitespace: bool,
-    pub arm_header_depth_offset: i64,
-    pub arm_body_depth_offset: i64,
-    pub if_else_expr_template: Option<String>,
-    pub func_return_suffix: String,
-    pub empty_return: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -179,7 +175,6 @@ pub struct ItemKeywords {
     pub param_separator: String,
     pub return_arrow: String,
     pub param_type_sep: String,
-    pub string_literal_suffix: String,
     pub module_keyword: String,
     pub import_keyword: String,
     pub import_from_keyword: String,
@@ -238,6 +233,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
 }),
     top_level_visibility: rust_visibility(),
     sharing: Rc::new(SharingStrategy {
+    needs_sharing: true,
     wrap_template: "Rc<{0}>".to_string(),
     clone_value: "{0}.clone()".to_string(),
     deref_clone: "(*{0}).clone()".to_string(),
@@ -278,11 +274,6 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     arm_separator: ",".to_string(),
     stmt_terminator: ";".to_string(),
     significant_whitespace: false,
-    arm_header_depth_offset: 0,
-    arm_body_depth_offset: 1,
-    if_else_expr_template: None,
-    func_return_suffix: "".to_string(),
-    empty_return: "".to_string(),
 }),
     tco: Rc::new(TcoSyntax {
     loop_keyword: "loop".to_string(),
@@ -301,7 +292,6 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     param_separator: rust_param_separator(),
     return_arrow: rust_return_arrow(),
     param_type_sep: rust_param_type_sep(),
-    string_literal_suffix: rust_string_literal_suffix(),
     module_keyword: rust_module_keyword(),
     import_keyword: rust_import_keyword(),
     import_from_keyword: rust_import_from_keyword(),
@@ -344,6 +334,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
 }),
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
+    needs_sharing: false,
     wrap_template: "{0}".to_string(),
     clone_value: "{0}".to_string(),
     deref_clone: "{0}".to_string(),
@@ -384,11 +375,6 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     arm_separator: "\n".to_string(),
     stmt_terminator: "".to_string(),
     significant_whitespace: true,
-    arm_header_depth_offset: 1,
-    arm_body_depth_offset: 2,
-    if_else_expr_template: Some("({then}) if ({cond}) else ({else})".to_string()),
-    func_return_suffix: "".to_string(),
-    empty_return: "return None".to_string(),
 }),
     tco: Rc::new(TcoSyntax {
     loop_keyword: "while True".to_string(),
@@ -407,7 +393,6 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     param_separator: python_param_separator(),
     return_arrow: python_return_arrow(),
     param_type_sep: python_param_type_sep(),
-    string_literal_suffix: python_string_literal_suffix(),
     module_keyword: python_module_keyword(),
     import_keyword: python_import_keyword(),
     import_from_keyword: python_import_from_keyword(),
@@ -450,6 +435,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
 }),
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
+    needs_sharing: false,
     wrap_template: "{0}".to_string(),
     clone_value: "{0}".to_string(),
     deref_clone: "{0}".to_string(),
@@ -490,11 +476,6 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     arm_separator: "\n".to_string(),
     stmt_terminator: "".to_string(),
     significant_whitespace: false,
-    arm_header_depth_offset: 0,
-    arm_body_depth_offset: 1,
-    if_else_expr_template: None,
-    func_return_suffix: ", nil".to_string(),
-    empty_return: "return struct{}{}, nil".to_string(),
 }),
     tco: Rc::new(TcoSyntax {
     loop_keyword: "for".to_string(),
@@ -513,7 +494,6 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     param_separator: go_param_separator(),
     return_arrow: go_return_arrow(),
     param_type_sep: go_param_type_sep(),
-    string_literal_suffix: go_string_literal_suffix(),
     module_keyword: go_module_keyword(),
     import_keyword: go_import_keyword(),
     import_from_keyword: go_import_from_keyword(),
@@ -557,16 +537,27 @@ pub fn target_operators(target: RenderTarget) -> Rc<Vec<Rc<OperatorSpec>>> {
 }
 }
 
-pub fn binop_symbol(target: RenderTarget, op: BinOp) -> String {
+pub fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: Option<String>) -> Option<String> {
     {
         let ops = target_operators(target);
-let matching = Rc::new({ let mut __result = Vec::new(); for spec in ops.iter().cloned() { if match spec.binop.clone() {
+let op_matching = Rc::new({ let mut __result = Vec::new(); for spec in ops.iter().cloned() { if match spec.binop.clone() {
     Some(b) => (b.clone() == op.clone()),
     None => false,
 } { __result.push(spec); } } __result });
-match matching.first().cloned() {
-    Some(spec) => spec.symbol.clone(),
-    None => "__MISSING_BINOP__".to_string(),
+let specific = match algebra_field {
+    Some(af) => Rc::new({ let mut __result = Vec::new(); for spec in op_matching.clone().iter().cloned() { if match spec.algebra_field.clone() {
+    Some(sf) => (sf.clone().as_str() == af.clone().as_str()),
+    _ => false,
+} { __result.push(spec); } } __result }).first().cloned(),
+    None => None,
+};
+let result = match specific.clone() {
+    Some(_) => specific.clone(),
+    None => Rc::new({ let mut __result = Vec::new(); for spec in op_matching.clone().iter().cloned() { if (spec.algebra_field.clone() == None) { __result.push(spec); } } __result }).first().cloned(),
+};
+match result {
+    Some(spec) => Some(spec.symbol.clone()),
+    None => None,
 }
 }
 }

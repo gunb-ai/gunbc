@@ -29,65 +29,14 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, shared_tco_body, shared_tco_default_return, shared_tco_non_self_call, shared_tco_if, shared_tco_let, shared_tco_block, shared_tco_reassign, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, seed_bindings, emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts, emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, shared_tco_body, shared_tco_default_return, shared_tco_non_self_call, shared_tco_if, shared_tco_let, shared_tco_block, shared_tco_reassign, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, seed_bindings, emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts, emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared, emit_block_stmts_shared, emit_init_block_stmts_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, emit_inferred_shared, emit_typed_block_join, emit_typed_first_arg_shared, emit_typed_tco_reassign_shared, emit_algebra_method_template};
 
-pub fn emit_py_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<String>>, mut scope: Rc<InferScope>, mut registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut depth: i64) -> Rc<BlockEmitState> {
-    loop {
-        match remaining.clone().first().cloned() {
-    None => { break Rc::new(BlockEmitState {
-    text: text.clone(),
-    scope: scope.clone(),
-}); },
-    Some(stmt) => { let line = emit_py_typed_expr(stmt.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let next_scope = scope_after_expr(stmt.clone(), scope.clone());
-{
-            let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = v2_rt::rc_list_push(text, line.clone());
-let __tco_2 = next_scope.clone();
-let __tco_3 = registry;
-let __tco_4 = depth;
-remaining = __tco_0;
-text = __tco_1;
-scope = __tco_2;
-registry = __tco_3;
-depth = __tco_4;
-continue;
-} },
-}
-}
+pub fn emit_py_block_stmts(remaining: Rc<Vec<Rc<Node>>>, text: Rc<Vec<String>>, scope: Rc<InferScope>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64) -> Rc<BlockEmitState> {
+    emit_block_stmts_shared(remaining, text, scope, depth, false, |stmt, sc, d| emit_py_typed_expr(stmt.clone(), registry.clone(), sc.clone(), d.clone(), 1024))
 }
 
-pub fn emit_py_init_block_stmts(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<String>>, mut scope: Rc<InferScope>, mut registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut depth: i64) -> Rc<BlockEmitState> {
-    loop {
-        match remaining.clone().first().cloned() {
-    None => { break Rc::new(BlockEmitState {
-    text: text.clone(),
-    scope: scope.clone(),
-}); },
-    Some(stmt) => { let rest = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-match rest.clone().first().cloned() {
-    None => { break Rc::new(BlockEmitState {
-    text: text.clone(),
-    scope: scope.clone(),
-}); },
-    Some(_) => { let line = emit_py_typed_expr(stmt.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let next_scope = scope_after_expr(stmt.clone(), scope.clone());
-{
-            let __tco_0 = rest.clone();
-let __tco_1 = v2_rt::rc_list_push(text, line.clone());
-let __tco_2 = next_scope.clone();
-let __tco_3 = registry;
-let __tco_4 = depth;
-remaining = __tco_0;
-text = __tco_1;
-scope = __tco_2;
-registry = __tco_3;
-depth = __tco_4;
-continue;
-} },
-} },
-}
-}
+pub fn emit_py_init_block_stmts(remaining: Rc<Vec<Rc<Node>>>, text: Rc<Vec<String>>, scope: Rc<InferScope>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64) -> Rc<BlockEmitState> {
+    emit_init_block_stmts_shared(remaining, text, scope, depth, false, |stmt, sc, d| emit_py_typed_expr(stmt.clone(), registry.clone(), sc.clone(), d.clone(), 1024))
 }
 
 pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
@@ -447,21 +396,15 @@ all_params.join(&", ".to_string())
 }
 
 pub fn emit_py_params(params: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    {
-        let strs = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_py_param(p.clone(), source_index.clone())); } __result });
-strs.join(&", ".to_string())
-}
+    emit_params_shared(params, RenderTarget::Python, source_index)
 }
 
 pub fn emit_py_param(param: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    {
-        let ty = emit_node_type(param_node_type_expr(param.clone()), RenderTarget::Python, source_index.clone());
-v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Python), language_spec(RenderTarget::Python).items.clone().param_type_sep.clone()), ty)
-}
+    emit_param_shared(param, RenderTarget::Python, source_index)
 }
 
 pub fn emit_py_inferred(inferred: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    v2_rt::concat(language_spec(RenderTarget::Python).items.clone().return_arrow.clone(), emit_node_type(inferred, RenderTarget::Python, source_index))
+    emit_inferred_shared(inferred, RenderTarget::Python, source_index)
 }
 
 pub fn emit_py_pattern(pattern: Rc<MatchPattern>, source_index: Option<Rc<NewlineIndex>>) -> String {
@@ -560,7 +503,7 @@ pub fn emit_py_expr_slice(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
 
 pub fn emit_py_typed_expr(texpr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, fuel: i64) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        emit_shared_expr(texpr, RenderTarget::Python, scope.type_env.clone().source_index.clone(), |result| result.clone(), |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), (fuel.clone() - 1)), |expr| emit_py_expr_var(expr.clone(), scope.type_env.clone().source_index.clone()), |expr| emit_py_expr_field_access(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_method_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_match(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_if(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_let(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_record_lit(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_string_interp(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_block(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_cast(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_for_each(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_index(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_slice(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_default_bin_op(expr.clone(), RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), (fuel.clone() - 1)), |result| result.clone()))
+        emit_shared_expr(texpr, RenderTarget::Python, scope.type_env.clone().source_index.clone(), |result| result.clone(), |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), (fuel.clone() - 1)), |expr| emit_py_expr_var(expr.clone(), scope.type_env.clone().source_index.clone()), |expr| emit_py_expr_field_access(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_method_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_match(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_if(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_let(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_record_lit(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_string_interp(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_block(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_cast(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_for_each(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_index(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_slice(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_default_bin_op(expr.clone(), RenderTarget::Python, scope.type_env.clone().source_index.clone(), |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), (fuel.clone() - 1)), |result| result.clone()))
     })
 }
 
@@ -619,24 +562,12 @@ pub fn emit_py_algebra_method_call(method_name: String, receiver: Rc<Node>, args
     {
         let recv_str = emit_py_typed_expr(receiver, registry.clone(), scope.clone(), depth.clone(), 1024);
 let first_arg_str = emit_py_typed_first_arg(args.clone(), registry.clone(), scope.clone(), depth.clone());
-let spec = language_spec(RenderTarget::Python);
-match spec.method_templates.clone() {
-    Some(templates) => match v2_rt::map_get(&templates, method_name.clone()) {
-    Some(tmpl) => {
-            let bindings = v2_rt::rc_map_insert(seed_bindings("recv".to_string(), recv_str), "arg".to_string(), first_arg_str);
-apply_named_template(tmpl.clone(), bindings)
-},
+match emit_algebra_method_template(method_name.clone(), recv_str.clone(), first_arg_str, RenderTarget::Python) {
+    Some(result) => result.clone(),
     None => {
             let function_name = py_bridge_method_name(method_name.clone());
 let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
-let all_args = v2_rt::concat(Rc::new(vec![recv_str]), arg_strs);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(function_name, RenderTarget::Python), "(".to_string()), all_args.join(&", ".to_string())), ")".to_string())
-},
-},
-    None => {
-            let function_name = py_bridge_method_name(method_name.clone());
-let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
-let all_args = v2_rt::concat(Rc::new(vec![recv_str]), arg_strs);
+let all_args = v2_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(function_name, RenderTarget::Python), "(".to_string()), all_args.join(&", ".to_string())), ")".to_string())
 },
 }
@@ -685,10 +616,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 
 pub fn emit_py_typed_first_arg(args: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    match args.first().cloned() {
-    Some(a) => emit_py_typed_expr(arg_value(a.clone()), registry, scope, depth, 1024),
-    None => "raise NotImplementedError(\"missing method argument\")".to_string(),
-}
+    emit_typed_first_arg_shared(args, RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), 1024))
 }
 
 pub fn emit_py_typed_match(scrutinee: Rc<Node>, arms: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
@@ -729,14 +657,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_py_typed_let(name: String, value: Rc<Node>, body: Option<Rc<Node>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let val_str = emit_py_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let let_line = emit_let_binding(name.clone(), val_str, RenderTarget::Python);
-match body {
-    Some(bd) => {
-            let next_scope = extend_scope(scope.clone(), name.clone(), resolved_type(value.clone()));
-v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_py_typed_expr(bd.clone(), registry.clone(), next_scope, depth.clone(), 1024))
-},
-    None => let_line,
-}
+emit_typed_let_shared(name, val_str, body, RenderTarget::Python, |bd, sc| emit_py_typed_expr(bd.clone(), registry.clone(), sc.clone(), depth.clone(), 1024), scope.clone(), value.clone())
 }
 }
 
@@ -760,21 +681,6 @@ let fields_str = field_strs.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(tn.clone(), "(".to_string()), fields_str), ")".to_string())
 }
 },
-}
-}
-
-pub fn emit_py_typed_bin_op(op: BinOp, left: Rc<Node>, right: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    {
-        let l_str = emit_py_typed_expr(left, registry.clone(), scope.clone(), depth.clone(), 1024);
-let r_str = emit_py_typed_expr(right, registry.clone(), scope.clone(), depth.clone(), 1024);
-if is_null_coalesce(op.clone()) {
-            emit_null_coalesce(l_str, r_str, RenderTarget::Python)
-} else {
-            {
-                let op_str = emit_bin_op_symbol(op.clone(), RenderTarget::Python);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), l_str), " ".to_string()), op_str), " ".to_string()), r_str), ")".to_string())
-}
-}
 }
 }
 
@@ -802,10 +708,7 @@ pub fn py_typed_interp_segment(part: Rc<StringPart>, registry: Rc<HashMap<String
 }
 
 pub fn emit_py_typed_block(stmts: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    {
-        let state = emit_py_block_stmts(stmts, Rc::new(vec![]), scope, registry, depth);
-state.text.clone().join(&"\n".to_string())
-}
+    emit_typed_block_join(stmts, scope, depth, |s, sc, d| emit_py_block_stmts(s.clone(), Rc::new(vec![]), sc.clone(), registry.clone(), d.clone()))
 }
 
 pub fn emit_py_typed_func_body(body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
@@ -914,12 +817,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 
 pub fn emit_py_typed_tco_reassign(args: Rc<Vec<Rc<Node>>>, params: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    {
-        let ordered_args = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(emit_py_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), 1024)); } __result });
-let si = scope.type_env.clone().source_index.clone();
-let param_names = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), si.clone()), RenderTarget::Python)); } __result });
-shared_tco_reassign(ordered_args, param_names, language_spec(RenderTarget::Python))
-}
+    emit_typed_tco_reassign_shared(args, params, RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), 1024), scope.type_env.clone().source_index.clone())
 }
 
 pub fn emit_py_service_def(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, env: Rc<TypeEnv>) -> String {

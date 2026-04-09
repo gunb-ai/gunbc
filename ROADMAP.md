@@ -727,6 +727,11 @@ Go equivalent: type conversion rules (all numeric conversions valid,
 Which operators are valid for which types, and what syntax they produce.
 Currently scattered across emitter logic.
 
+**DONE (PR #355):** Algebra-aware dispatch. OperatorSpec gains `algebra_field: String?`.
+Python Div splits: `/` (reciprocal/Field) and `//` (quotient/Ring). OrderedRing
+gains `quotient`/`remainder`. `binop_algebra_fields` returns candidate list.
+Mod fixed from "add" to "remainder".
+
 ### LS-3: Expression syntax
 
 Statement vs expression distinction, block syntax, match exhaustiveness
@@ -741,6 +746,45 @@ The Rust Reference defines these structurally.
 
 `pub`, `pub(crate)`, Go capitalization, Python `__all__`. Currently
 hardcoded per-backend.
+
+### LS-6: Shared typed handlers (Phase 1a)
+
+**DONE (PR #355):** 10 shared functions in 05_emit.dag replace duplicated
+implementations across Go/Python/Rust: block_stmts, init_block_stmts,
+typed_let, param, params, inferred, typed_block_join, first_arg,
+tco_reassign, algebra_method_template.
+
+### LS follow-ups (tracked for future PRs)
+
+- **Cast validation → infer phase:** CastRule uses string type names in emit.
+  Fix: model cast semantics structurally, validate in infer, emit renders
+  unconditionally. (Known violation, documented.)
+- **needs_sharing flag → structural:** `SharingStrategy.needs_sharing: Bool` is
+  a global codegen switch. Fix: derive sharing need per-type from structural
+  facts (recursive types, container algebra). Phase 3d.
+- **ItemKeywords/SyntaxSpec merge:** Dual authority for declaration syntax.
+  Fix: when target languages have SyntaxSpecs, derive ItemKeywords from
+  ItemForm.keyword (single authority). Phase 2d.
+- **operation_count_contracts → behavioral:** Ratchets file/line/entry counts
+  (shape metrics). Reviewer says behavioral contracts only. Consider replacing
+  with semantic invariants (e.g., "every BinOp has an OperatorSpec").
+- **EuclideanDomain separate from OrderedRing:** quotient/remainder are
+  currently on OrderedRing, but Euclidean division is a distinct algebraic
+  concept (EuclideanDomain with a norm). Fix: factor into separate type
+  that composes with OrderedRing via Int's profile.
+- **algebra_field string identity → structural dispatch:** OperatorSpec uses
+  string field names as semantic authority. Fix: the operator selection should
+  use structural type properties (has_reciprocal vs has_quotient) rather than
+  string name matching.
+- **resolved_binop_algebra in emit → infer:** Re-deriving algebra field in
+  emit is a decision. Fix: infer resolves which algebra field Div maps to,
+  stores on the Node (extend ExprBinOp or annotate), emit reads it.
+- **Python/Go cast_syntax pair whitelist:** Models generic `type(expr)` as
+  hand-curated (from,to) pairs. Fix: make emit render `type(expr)`
+  unconditionally, move validation to infer. Same root cause as cast→infer.
+- **Emit file deletion phases:** Phase 2 (StringInterpSyntax, SumTypeStrategy,
+  imports, service rendering), Phase 3 (dispatch strategies, ownership),
+  Phase 4 (delete Py/Go), Phase 5 (delete Rust). See plan file.
 
 ### Acceptance
 
@@ -1504,12 +1548,12 @@ Compile `review.dag` + its imports to a binary that runs with
 `--dry-run`, returning mock responses.
 
 - [ ] RE-2a: Async for-each — detect FuncItem body, emit `.await?`
-  in collection loop body
+  in collection loop body (emitter support exists; acceptance test not yet added)
 - [ ] RE-2b: Cross-module service resolution — review.dag imports
-  from 4 modules (FF-9 handles this; verify it works for dsl/ tree)
+  from 4 modules (FF-9 handles this; acceptance test not yet added)
 - [ ] RE-2c: Conditional guard — review.dag's `already_done` check
-  needs to short-circuit (`if`/`return` or restructured nesting)
-- [ ] RE-2d: End-to-end compilation gate
+  needs to short-circuit (acceptance test not yet added)
+- [x] RE-2d: End-to-end compilation gate (0 cargo check errors)
 
 **Blocked by:** RE-1
 
@@ -1534,6 +1578,46 @@ review_dag_emitted_rust_builds
   Assert: cargo check exits 0
   Note: same pattern as bootstrap_stage0_to_stage1
 ```
+
+### RE follow-up: structural gaps from PR #353/#358 review
+
+Five design-level issues surfaced during review that need follow-up work:
+
+**1. First-class response/exit case nodes (M4/M8/M9)**
+The parser encodes `response { 200 => List<PullRequest> }` as synthetic property
+names (`response_200`). The emitter re-parses these strings to rediscover patterns.
+Fix: model as structural case arms — `ResponseCase { pattern: StatusPattern, body: Node }`
+and `ExitCase { pattern: ExitPattern, body: Node }` — thread through parse/resolve/infer,
+let emit consume directly. This removes the entire name-slicing class.
+
+**2. Generic diagnostics/result carrier (M6/M9)**
+Transport property inference introduced ad-hoc `InferPropertiesResult` and
+`InferTransportResult` types. These should collapse into a generic result carrier
+from `std/` that all inference helpers parametrize on, eliminating per-pass
+boilerplate. Depends on std pattern work.
+
+**3. Typed transport/auth accessors at infer/emit boundary (M4/M8)**
+The emitter dispatches on expression shape (ExprVar vs ExprCall) and lowercased
+variant names rather than resolved variant identity. The upstream fix: add typed
+accessors or transport case nodes at the infer/emit boundary that preserve the
+exact `HttpMethod` and `AuthScheme` alternative, so emit translates those directly
+without reclassifying expressions.
+
+**4. Resolved call-argument bindings at infer/emit boundary (M4/M8, PR #358)**
+Service-call resolution hands emit a raw argument list plus `op_params`; emit
+rebuilds order from names, which drops positional arguments out of declaration
+order. The upstream fix: surface a resolved ordered binding sequence (e.g.,
+`BoundArg { param, value, source: Provided | Default }`) from lookup/infer so
+emit consumes pre-matched parameter-argument pairs. This also removes the
+`fill_op_default_args` function entirely. Blocked by: property-node children
+are not preserved through `infer_property_values` reconstruction.
+
+**5. Typed call-site coercion at infer boundary (M1/M4/M8, PR #358)**
+Emit currently performs Rust-specific Optional (`Some(...)`) and Json
+(`serde_json::from_str(...).unwrap()`) coercion at the call boundary. This
+should be a structural call-argument normalization step before emit, so every
+backend translates uniform coercion facts rather than re-deriving them from
+cardinality and rendered type strings.
 
 ### RE-3: review.dag live integration
 
@@ -1630,12 +1714,12 @@ RE item is implemented — the ratchet counts tests that exist AND pass.
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| RE-1 transport tests | 0/10 | 10 |
-| RE-2 compilation tests | 0/3 | 3 |
+| RE-1 transport tests | 7/10 | 10 |
+| RE-2 compilation tests | 1/3 (0 cargo check errors, 2 acceptance tests not yet added) | 3 |
 | RE-3 integration tests | 0/4 | 4 |
 | RE-4 API tests | 0/3 | 3 |
 | RE-5 multi-backend test | 0/1 | 1 |
-| Total | 0/21 | 21 |
+| Total | 8/21 | 21 |
 
 **Depends on:** CG (codegen correctness) for reliable emission.
 Parallel to CX (complexity doesn't block emission).

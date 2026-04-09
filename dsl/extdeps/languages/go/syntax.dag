@@ -19,17 +19,17 @@ import std.syntax {
 // Ref: Go Specification "Operator precedence"
 
 data go_operators: List<OperatorSpec> = [
-  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or },
-  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: And },
-  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: Eq },
-  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: Ne },
-  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: Lt },
-  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: Gt },
-  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: Le },
-  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: Ge },
-  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add },
-  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub },
-  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul },
-  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div },
-  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod }
+  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
+  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: And, algebra_field: none },
+  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: Eq, algebra_field: none },
+  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: Ne, algebra_field: none },
+  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: Lt, algebra_field: none },
+  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: Gt, algebra_field: none },
+  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: Le, algebra_field: none },
+  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: Ge, algebra_field: none },
+  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
+  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
+  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
+  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: none },
+  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none }
 ]

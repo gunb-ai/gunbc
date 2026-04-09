@@ -6,14 +6,14 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax};
+pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, CastRule};
 use OwnershipKind::*;
 use SmartPointerKind::*;
 
 pub fn rust_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
-            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "i64", "default_expr": "0", "is_copy": true}, {"dag_name": "Float", "target_type": "f64", "default_expr": "0.0", "is_copy": true}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "false", "is_copy": true}, {"dag_name": "Unit", "target_type": "()", "default_expr": "()", "is_copy": true}, {"dag_name": "String", "target_type": "String", "default_expr": "String::new()", "is_copy": false}, {"dag_name": "Bytes", "target_type": "Vec<u8>", "default_expr": "Vec::new()", "is_copy": false}, {"dag_name": "Secret", "target_type": "String", "default_expr": null, "is_copy": false}, {"dag_name": "Json", "target_type": "serde_json::Value", "default_expr": "serde_json::Value::Null", "is_copy": false}]))
+            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "i64", "default_expr": "0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Float", "target_type": "f64", "default_expr": "0.0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "false", "is_copy": true, "literal_suffix": null}, {"dag_name": "Unit", "target_type": "()", "default_expr": "()", "is_copy": true, "literal_suffix": null}, {"dag_name": "String", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Bytes", "target_type": "Vec<u8>", "default_expr": "Vec::new()", "is_copy": false, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "String", "default_expr": null, "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Json", "target_type": "serde_json::Value", "default_expr": "serde_json::Value::Null", "is_copy": false, "literal_suffix": null}]))
                 .expect("valid data definition")
         };
     }
@@ -181,7 +181,7 @@ pub fn float_types() -> Rc<Vec<String>> {
 pub fn rust_cast_syntax() -> Rc<CastSyntax> {
     thread_local! {
         static CACHED: Rc<CastSyntax> = {
-            serde_json::from_value(serde_json::json!({"template": "{expr} as {type}", "valid_targets": ["i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64"], "fail_open": false}))
+            serde_json::from_value(serde_json::json!({"template": "{expr} as {type}", "cast_rules": [{"from_type": "i64", "to_type": "i64"}, {"from_type": "i64", "to_type": "f64"}, {"from_type": "f64", "to_type": "i64"}, {"from_type": "f64", "to_type": "f64"}, {"from_type": "bool", "to_type": "i64"}]}))
                 .expect("valid data definition")
         };
     }

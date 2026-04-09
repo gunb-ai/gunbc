@@ -17,66 +17,79 @@ pub fn go_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     left_bp: 5,
     right_bp: 6,
     binop: Some(BinOp::Or),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: "&&".to_string(),
     left_bp: 7,
     right_bp: 8,
     binop: Some(BinOp::And),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: "==".to_string(),
     left_bp: 9,
     right_bp: 10,
     binop: Some(BinOp::Eq),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: "!=".to_string(),
     left_bp: 9,
     right_bp: 10,
     binop: Some(BinOp::Ne),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: "<".to_string(),
     left_bp: 11,
     right_bp: 12,
     binop: Some(BinOp::Lt),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: ">".to_string(),
     left_bp: 11,
     right_bp: 12,
     binop: Some(BinOp::Gt),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: "<=".to_string(),
     left_bp: 11,
     right_bp: 12,
     binop: Some(BinOp::Le),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: ">=".to_string(),
     left_bp: 11,
     right_bp: 12,
     binop: Some(BinOp::Ge),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: "+".to_string(),
     left_bp: 13,
     right_bp: 14,
     binop: Some(BinOp::Add),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: "-".to_string(),
     left_bp: 13,
     right_bp: 14,
     binop: Some(BinOp::Sub),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: "*".to_string(),
     left_bp: 15,
     right_bp: 16,
     binop: Some(BinOp::Mul),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: "/".to_string(),
     left_bp: 15,
     right_bp: 16,
     binop: Some(BinOp::Div),
+    algebra_field: None,
 }), Rc::new(OperatorSpec {
     symbol: "%".to_string(),
     left_bp: 15,
     right_bp: 16,
     binop: Some(BinOp::Mod),
+    algebra_field: None,
 })])
         };
     }

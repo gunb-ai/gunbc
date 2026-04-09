@@ -30,14 +30,14 @@ import std.coercion {
 // =========================================================================
 
 data python_type_checkpoints: List<TypeCheckpoint> = [
-  { dag_name: "Int",    target_type: "int",   default_expr: "0",      is_copy: none },
-  { dag_name: "Float",  target_type: "float", default_expr: "0.0",    is_copy: none },
-  { dag_name: "Bool",   target_type: "bool",  default_expr: "False",  is_copy: none },
-  { dag_name: "Unit",   target_type: "None",  default_expr: "None",   is_copy: none },
-  { dag_name: "String", target_type: "str",   default_expr: "\"\"",   is_copy: none },
-  { dag_name: "Bytes",  target_type: "bytes", default_expr: "b\"\"",  is_copy: none },
-  { dag_name: "Secret", target_type: "str",   default_expr: "\"\"",   is_copy: none },
-  { dag_name: "Json",   target_type: "dict",  default_expr: "{}",     is_copy: none }
+  { dag_name: "Int",    target_type: "int",   default_expr: "0",      is_copy: none, literal_suffix: none },
+  { dag_name: "Float",  target_type: "float", default_expr: "0.0",    is_copy: none, literal_suffix: none },
+  { dag_name: "Bool",   target_type: "bool",  default_expr: "False",  is_copy: none, literal_suffix: none },
+  { dag_name: "Unit",   target_type: "None",  default_expr: "None",   is_copy: none, literal_suffix: none },
+  { dag_name: "String", target_type: "str",   default_expr: "\"\"",   is_copy: none, literal_suffix: none },
+  { dag_name: "Bytes",  target_type: "bytes", default_expr: "b\"\"",  is_copy: none, literal_suffix: none },
+  { dag_name: "Secret", target_type: "str",   default_expr: "\"\"",   is_copy: none, literal_suffix: none },
+  { dag_name: "Json",   target_type: "dict",  default_expr: "{}",     is_copy: none, literal_suffix: none }
 ]
 
 
@@ -155,8 +155,24 @@ data type_checker_strict: String = "mypy --strict"
 // always syntactically valid. Invalid casts (e.g., int("hello")) produce
 // runtime errors, not syntax errors. The emitter faithfully renders the
 // construct; the target language's runtime validates.
+// Python constructor casts: int(x), float(x), bool(x), str(x).
+// All numeric conversions are syntactically valid in Python.
+// Runtime validates (e.g., int("hello") raises ValueError).
 data python_cast_syntax: CastSyntax = {
   template: "\{type\}(\{expr\})",
-  valid_targets: [],
-  fail_open: true
+  cast_rules: [
+    { from_type: "int", to_type: "int" },
+    { from_type: "int", to_type: "float" },
+    { from_type: "int", to_type: "bool" },
+    { from_type: "int", to_type: "str" },
+    { from_type: "float", to_type: "int" },
+    { from_type: "float", to_type: "float" },
+    { from_type: "float", to_type: "bool" },
+    { from_type: "float", to_type: "str" },
+    { from_type: "bool", to_type: "int" },
+    { from_type: "bool", to_type: "float" },
+    { from_type: "bool", to_type: "str" },
+    { from_type: "str", to_type: "int" },
+    { from_type: "str", to_type: "float" }
+  ]
 }

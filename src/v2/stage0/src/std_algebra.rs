@@ -74,6 +74,8 @@ pub struct OrderedRing<T> {
     pub mul: Rc<dyn Fn(T, T) -> T>,
     pub one: Box<T>,
     pub compare: Rc<dyn Fn(T, T) -> Ordering>,
+    pub quotient: Rc<dyn Fn(T, T) -> T>,
+    pub remainder: Rc<dyn Fn(T, T) -> T>,
 }
 
 #[derive(Clone)]
@@ -298,6 +300,18 @@ pub fn ordered_ring_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
     name: "Ordering".to_string(),
 }),
+    size_effect: None,
+    cost_shape: None,
+}), Rc::new(AlgebraFieldTemplate {
+    name: "quotient".to_string(),
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+    return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+    size_effect: None,
+    cost_shape: None,
+}), Rc::new(AlgebraFieldTemplate {
+    name: "remainder".to_string(),
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+    return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: None,
     cost_shape: None,
 })])

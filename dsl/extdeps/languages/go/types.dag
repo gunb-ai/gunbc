@@ -33,14 +33,14 @@ import std.coercion {
 // =========================================================================
 
 data go_type_checkpoints: List<TypeCheckpoint> = [
-  { dag_name: "Int",    target_type: "int64",       default_expr: "0",          is_copy: none },
-  { dag_name: "Float",  target_type: "float64",     default_expr: "0.0",        is_copy: none },
-  { dag_name: "Bool",   target_type: "bool",        default_expr: "false",      is_copy: none },
-  { dag_name: "Unit",   target_type: "struct{}",    default_expr: "struct{}{}", is_copy: none },
-  { dag_name: "String", target_type: "string",      default_expr: "\"\"",       is_copy: none },
-  { dag_name: "Bytes",  target_type: "[]byte",      default_expr: "nil",        is_copy: none },
-  { dag_name: "Secret", target_type: "string",      default_expr: "\"\"",       is_copy: none },
-  { dag_name: "Json",   target_type: "interface{}", default_expr: "nil",        is_copy: none }
+  { dag_name: "Int",    target_type: "int64",       default_expr: "0",          is_copy: none, literal_suffix: none },
+  { dag_name: "Float",  target_type: "float64",     default_expr: "0.0",        is_copy: none, literal_suffix: none },
+  { dag_name: "Bool",   target_type: "bool",        default_expr: "false",      is_copy: none, literal_suffix: none },
+  { dag_name: "Unit",   target_type: "struct{}",    default_expr: "struct{}{}", is_copy: none, literal_suffix: none },
+  { dag_name: "String", target_type: "string",      default_expr: "\"\"",       is_copy: none, literal_suffix: none },
+  { dag_name: "Bytes",  target_type: "[]byte",      default_expr: "nil",        is_copy: none, literal_suffix: none },
+  { dag_name: "Secret", target_type: "string",      default_expr: "\"\"",       is_copy: none, literal_suffix: none },
+  { dag_name: "Json",   target_type: "interface{}", default_expr: "nil",        is_copy: none, literal_suffix: none }
 ]
 
 
@@ -158,8 +158,16 @@ data type_conversion_template: String = "\{type\}(\{expr\})"
 // Cast syntax: Go uses type conversion T(x). fail_open=true models Go's
 // actual semantics: type conversions are syntactically valid for compatible
 // types. The Go compiler validates type compatibility at build time.
+// Go type conversions: T(x). All numeric conversions valid.
+// Ref: Go Specification "Conversions"
 data go_cast_syntax: CastSyntax = {
   template: "\{type\}(\{expr\})",
-  valid_targets: [],
-  fail_open: true
+  cast_rules: [
+    { from_type: "int64", to_type: "int64" },
+    { from_type: "int64", to_type: "float64" },
+    { from_type: "float64", to_type: "int64" },
+    { from_type: "float64", to_type: "float64" },
+    { from_type: "string", to_type: "[]byte" },
+    { from_type: "[]byte", to_type: "string" }
+  ]
 }

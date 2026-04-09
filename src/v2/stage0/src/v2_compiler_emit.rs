@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_name_at, arg_value, field_init_node_name, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, Connective, Cardinality};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_name_at, arg_value, field_init_node_name, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
@@ -18,9 +18,9 @@ use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
 pub use crate::std_induction::{InductiveField};
-pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
+pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, binop_algebra_fields};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
-pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name};
@@ -760,22 +760,49 @@ pub fn emit_keyword(key: String, target: RenderTarget) -> String {
 pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
     match (*value).clone() {
     LiteralValue::LitStr { value: s, .. } => {
-        let suffix = language_spec(target).items.clone().string_literal_suffix.clone();
+        let suffix = match literal_suffix(target.clone(), "String".to_string()) {
+    Some(sfx) => sfx.clone(),
+    None => match target.clone() {
+    RenderTarget::Dag => "".to_string(),
+    _ => emit_error_expr("missing TypeCheckpoint for String literal suffix".to_string(), target.clone()),
+},
+};
 emit_string_literal(s.clone(), suffix)
 },
     LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
     LiteralValue::LitFloat { value: f, .. } => f.clone(),
     LiteralValue::LitBool { value: b, .. } => if b.clone() {
-        emit_keyword("true".to_string(), target)
+        emit_keyword("true".to_string(), target.clone())
 } else {
-        emit_keyword("false".to_string(), target)
+        emit_keyword("false".to_string(), target.clone())
 },
-    LiteralValue::LitNull => emit_keyword("null".to_string(), target),
+    LiteralValue::LitNull => emit_keyword("null".to_string(), target.clone()),
 }
 }
 
-pub fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
-    binop_symbol(target, op)
+pub fn resolved_binop_algebra(op: BinOp, left_type: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
+    {
+        let candidates = binop_algebra_fields(op);
+let is_product = (left_type.connective.clone() == Connective::Conj);
+if is_product {
+            {
+                let matching = Rc::new({ let mut __result = Vec::new(); for c in candidates.iter().cloned() { if match find_child_named(left_type.clone(), c.clone(), source_index.clone()) {
+    Some(_) => true,
+    None => false,
+} { __result.push(c); } } __result });
+matching.first().cloned()
+}
+} else {
+            None
+}
+}
+}
+
+pub fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: Option<String>) -> String {
+    match binop_symbol(target.clone(), op, algebra_field) {
+    Some(sym) => sym.clone(),
+    None => emit_error_expr("missing OperatorSpec for BinOp in target language".to_string(), target.clone()),
+}
 }
 
 pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
@@ -1844,10 +1871,10 @@ let src_ty = match expr.inferred.clone().as_deref().cloned() {
 if ((src_ty.clone().as_str() != "".to_string().as_str()) && (src_ty.clone().as_str() == ty_str.clone().as_str())) {
             expr_str
 } else {
-            if can_cast(target.clone(), ty_str.clone()) {
+            if can_cast(target.clone(), src_ty.clone(), ty_str.clone()) {
                 render_cast(expr_str, ty_str.clone(), target.clone())
 } else {
-                v2_rt::concat(v2_rt::concat("compile_error!(\"unsupported cast to ".to_string(), ty_str.clone()), "\")".to_string())
+                emit_error_expr(v2_rt::concat(v2_rt::concat(v2_rt::concat("unsupported cast from ".to_string(), src_ty.clone()), " to ".to_string()), ty_str.clone()), target.clone())
 }
 }
 }
@@ -1929,23 +1956,167 @@ wrap_result(emit_return(recurse(ret_val), target.clone()))
 }
 }
 
-pub fn emit_default_bin_op(texpr: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, wrap_result: impl Fn(String) -> String + Clone) -> String {
+pub fn emit_default_bin_op(texpr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>, recurse: impl Fn(Rc<Node>) -> String + Clone, wrap_result: impl Fn(String) -> String + Clone) -> String {
     match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprBinOp { op, .. } => {
         let left = binop_left(texpr.clone());
 let right = binop_right(texpr.clone());
-let left_str = recurse(left);
+let left_str = recurse(left.clone());
 let right_str = recurse(right);
 if is_null_coalesce(op.clone()) {
             wrap_result(emit_null_coalesce(left_str, right_str, target))
 } else {
             {
-                let op_str = emit_bin_op_symbol(op.clone(), target);
+                let left_type = resolved_type(left.clone());
+let algebra = resolved_binop_algebra(op.clone(), left_type, source_index);
+let op_str = emit_bin_op_symbol(op.clone(), target, algebra);
 wrap_result(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), left_str), " ".to_string()), op_str), " ".to_string()), right_str), ")".to_string()))
 }
 }
 },
     _ => wrap_result(emit_error_expr("emit_default_bin_op expected ExprBinOp".to_string(), target)),
+}
+}
+
+pub fn emit_block_stmts_shared(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<String>>, mut scope: Rc<InferScope>, mut depth: i64, mut prepend_indent: bool, mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone) -> Rc<BlockEmitState> {
+    loop {
+        match remaining.clone().first().cloned() {
+    None => { break Rc::new(BlockEmitState {
+    text: text.clone(),
+    scope: scope.clone(),
+}); },
+    Some(stmt) => { let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
+let line = if prepend_indent.clone() {
+            v2_rt::concat(make_indent(depth.clone()), raw.clone())
+} else {
+            raw.clone()
+};
+let next_scope = scope_after_expr(stmt.clone(), scope.clone());
+{
+            let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = v2_rt::rc_list_push(text, line.clone());
+let __tco_2 = next_scope.clone();
+let __tco_3 = depth;
+let __tco_4 = prepend_indent;
+let __tco_5 = emit_expr;
+remaining = __tco_0;
+text = __tco_1;
+scope = __tco_2;
+depth = __tco_3;
+prepend_indent = __tco_4;
+emit_expr = __tco_5;
+continue;
+} },
+}
+}
+}
+
+pub fn emit_init_block_stmts_shared(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Vec<String>>, mut scope: Rc<InferScope>, mut depth: i64, mut prepend_indent: bool, mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone) -> Rc<BlockEmitState> {
+    loop {
+        match remaining.clone().first().cloned() {
+    None => { break Rc::new(BlockEmitState {
+    text: text.clone(),
+    scope: scope.clone(),
+}); },
+    Some(stmt) => { let rest = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+match rest.clone().first().cloned() {
+    None => { break Rc::new(BlockEmitState {
+    text: text.clone(),
+    scope: scope.clone(),
+}); },
+    Some(_) => { let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
+let line = if prepend_indent.clone() {
+            v2_rt::concat(make_indent(depth.clone()), raw.clone())
+} else {
+            raw.clone()
+};
+let next_scope = scope_after_expr(stmt.clone(), scope.clone());
+{
+            let __tco_0 = rest.clone();
+let __tco_1 = v2_rt::rc_list_push(text, line.clone());
+let __tco_2 = next_scope.clone();
+let __tco_3 = depth;
+let __tco_4 = prepend_indent;
+let __tco_5 = emit_expr;
+remaining = __tco_0;
+text = __tco_1;
+scope = __tco_2;
+depth = __tco_3;
+prepend_indent = __tco_4;
+emit_expr = __tco_5;
+continue;
+} },
+} },
+}
+}
+}
+
+pub fn emit_typed_let_shared(name: String, value_str: String, body: Option<Rc<Node>>, target: RenderTarget, recurse: impl Fn(Rc<Node>, Rc<InferScope>) -> String + Clone, scope: Rc<InferScope>, value_node: Rc<Node>) -> String {
+    {
+        let let_line = emit_let_binding(name.clone(), value_str, target);
+match body {
+    Some(bd) => {
+            let next_scope = extend_scope(scope, name.clone(), resolved_type(value_node));
+v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), recurse(bd.clone(), next_scope))
+},
+    None => let_line,
+}
+}
+}
+
+pub fn emit_param_shared(param: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
+    {
+        let ty = emit_node_type(param_node_type_expr(param.clone()), target.clone(), source_index.clone());
+v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(param.clone(), source_index.clone()), target.clone()), language_spec(target.clone()).items.clone().param_type_sep.clone()), ty)
+}
+}
+
+pub fn emit_params_shared(params: Rc<Vec<Rc<Node>>>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
+    {
+        let strs = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_param_shared(p.clone(), target.clone(), source_index.clone())); } __result });
+strs.join(&language_spec(target.clone()).items.clone().param_separator.clone())
+}
+}
+
+pub fn emit_inferred_shared(inferred: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
+    v2_rt::concat(language_spec(target.clone()).items.clone().return_arrow.clone(), emit_node_type(inferred, target.clone(), source_index))
+}
+
+pub fn emit_typed_block_join(stmts: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>, depth: i64, emit_block_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone) -> String {
+    {
+        let state = emit_block_stmts(stmts, scope, depth);
+state.text.clone().join(&"\n".to_string())
+}
+}
+
+pub fn emit_algebra_method_template(method_name: String, recv_str: String, first_arg_str: String, target: RenderTarget) -> Option<String> {
+    {
+        let spec = language_spec(target);
+match spec.method_templates.clone() {
+    Some(templates) => match v2_rt::map_get(&templates, method_name) {
+    Some(tmpl) => {
+            let bindings = v2_rt::rc_map_insert(seed_bindings("recv".to_string(), recv_str), "arg".to_string(), first_arg_str);
+Some(apply_named_template(tmpl.clone(), bindings))
+},
+    None => None,
+},
+    None => None,
+}
+}
+}
+
+pub fn emit_typed_first_arg_shared(args: Rc<Vec<Rc<Node>>>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    match args.first().cloned() {
+    Some(a) => recurse(arg_value(a.clone())),
+    None => emit_error_expr("missing method argument".to_string(), target),
+}
+}
+
+pub fn emit_typed_tco_reassign_shared(args: Rc<Vec<Rc<Node>>>, params: Rc<Vec<Rc<Node>>>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, source_index: Option<Rc<NewlineIndex>>) -> String {
+    {
+        let ordered_args = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(recurse(arg_value(a.clone()))); } __result });
+let param_names = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), source_index.clone()), target.clone())); } __result });
+shared_tco_reassign(ordered_args, param_names, language_spec(target.clone()))
 }
 }
 

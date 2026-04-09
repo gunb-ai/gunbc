@@ -38,7 +38,7 @@ import extdeps.languages.rust.emit {
   rust_func_keyword, rust_async_prefix, rust_struct_keyword,
   rust_enum_keyword, rust_type_alias_keyword,
   rust_param_separator, rust_return_arrow,
-  rust_param_type_sep, rust_string_literal_suffix,
+  rust_param_type_sep,
   rust_module_keyword, rust_import_keyword, rust_import_from_keyword
 }
 
@@ -52,7 +52,7 @@ import extdeps.languages.python.emit {
   python_func_keyword, python_async_prefix, python_struct_keyword,
   python_enum_keyword, python_type_alias_keyword,
   python_param_separator, python_return_arrow,
-  python_param_type_sep, python_string_literal_suffix,
+  python_param_type_sep,
   python_module_keyword, python_import_keyword, python_import_from_keyword
 }
 
@@ -65,7 +65,7 @@ import extdeps.languages.go.emit {
   go_func_keyword, go_async_prefix, go_struct_keyword,
   go_enum_keyword, go_type_alias_keyword,
   go_param_separator, go_return_arrow,
-  go_param_type_sep, go_string_literal_suffix,
+  go_param_type_sep,
   go_module_keyword, go_import_keyword, go_import_from_keyword
 }
 
@@ -123,6 +123,7 @@ type ImportRule {
 }
 
 type SharingStrategy {
+  needs_sharing: Bool         // Rust: true (ownership), Python/Go: false (GC)
   wrap_template: String
   // Clone templates: {0}=value, {1}=field (for field_clone).
   // In GC'd languages these are identity — no ownership transfer needed.
@@ -195,11 +196,6 @@ type BlockSyntax {
   arm_separator: String         // "," (Rust) or "\n" (Go/Python)
   stmt_terminator: String       // ";" (Rust) or "" (Go/Python)
   significant_whitespace: Bool  // true (Python) or false (Go/Rust)
-  arm_header_depth_offset: Int  // Python: 1 (case indented under match), Go/Rust: 0
-  arm_body_depth_offset: Int    // Python: 2 (body under case under match), Go/Rust: 1
-  if_else_expr_template: String? // Python: ternary "({1}) if ({0}) else ({2})", Go/Rust: none (IIFE/block)
-  func_return_suffix: String    // Go: ", nil" (error return), Python/Rust: ""
-  empty_return: String          // Go: "return struct{}{}, nil", Python: "return None", Rust: ""
 }
 
 type TcoSyntax {
@@ -213,6 +209,13 @@ type TcoSyntax {
 
 // Item definition facts — individual tokens the emitter composes.
 // Not templates: each field is one language fact.
+//
+// RELATION TO SyntaxSpec: SyntaxSpec.ItemForm.keyword is the PARSING
+// keyword (what to recognize). ItemKeywords.*_keyword is the EMISSION
+// keyword (what to produce). For same-language compilation (Rust→Rust)
+// these are identical. For cross-language (.dag→Rust) they differ
+// (parse "fn", emit "fn"/"def"/"func"). When each target language has
+// a full SyntaxSpec, ItemKeywords should derive from it (single authority).
 type ItemKeywords {
   func_keyword: String          // "fn" / "def" / "func"
   async_prefix: String          // "async " / "async " / ""
@@ -222,7 +225,6 @@ type ItemKeywords {
   param_separator: String       // ", " (universal so far)
   return_arrow: String          // " -> " / " -> " / " "
   param_type_sep: String         // ": " (Rust/Python) / " " (Go)
-  string_literal_suffix: String // ".to_string()" / "" / ""
   module_keyword: String         // "mod" (Rust) / "" (Python) / "package" (Go)
   import_keyword: String         // "use" (Rust) / "import" (Python) / "import" (Go)
   import_from_keyword: String    // "" (Rust) / "from" (Python) / "" (Go)
@@ -283,6 +285,7 @@ fn rust_spec() -> LanguageSpec {
     },
     top_level_visibility: rust_visibility,
     sharing: SharingStrategy {
+      needs_sharing: true,
       wrap_template: "Rc<{0}>",
       clone_value: "{0}.clone()",
       deref_clone: "(*{0}).clone()",
@@ -319,10 +322,7 @@ fn rust_spec() -> LanguageSpec {
       else_clause: "\} else \{\n",
       match_keyword: "match ", case_keyword: "",
       arm_separator: ",", stmt_terminator: ";",
-      significant_whitespace: false,
-      arm_header_depth_offset: 0, arm_body_depth_offset: 1,
-      if_else_expr_template: none,
-      func_return_suffix: "", empty_return: ""
+      significant_whitespace: false
     },
     tco: TcoSyntax {
       loop_keyword: "loop",
@@ -338,7 +338,6 @@ fn rust_spec() -> LanguageSpec {
       type_alias_keyword: rust_type_alias_keyword,
       param_separator: rust_param_separator, return_arrow: rust_return_arrow,
       param_type_sep: rust_param_type_sep,
-      string_literal_suffix: rust_string_literal_suffix,
       module_keyword: rust_module_keyword,
       import_keyword: rust_import_keyword,
       import_from_keyword: rust_import_from_keyword
@@ -379,6 +378,7 @@ fn python_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     sharing: SharingStrategy {
+      needs_sharing: false,
       wrap_template: "{0}",
       clone_value: "{0}",
       deref_clone: "{0}",
@@ -415,10 +415,7 @@ fn python_spec() -> LanguageSpec {
       else_clause: "else:\n",
       match_keyword: "match ", case_keyword: "case ",
       arm_separator: "\n", stmt_terminator: "",
-      significant_whitespace: true,
-      arm_header_depth_offset: 1, arm_body_depth_offset: 2,
-      if_else_expr_template: Some { value: "(\{then\}) if (\{cond\}) else (\{else\})" },
-      func_return_suffix: "", empty_return: "return None"
+      significant_whitespace: true
     },
     tco: TcoSyntax {
       loop_keyword: "while True",
@@ -434,7 +431,6 @@ fn python_spec() -> LanguageSpec {
       type_alias_keyword: python_type_alias_keyword,
       param_separator: python_param_separator, return_arrow: python_return_arrow,
       param_type_sep: python_param_type_sep,
-      string_literal_suffix: python_string_literal_suffix,
       module_keyword: python_module_keyword,
       import_keyword: python_import_keyword,
       import_from_keyword: python_import_from_keyword
@@ -475,6 +471,7 @@ fn go_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     sharing: SharingStrategy {
+      needs_sharing: false,
       wrap_template: "{0}",
       clone_value: "{0}",
       deref_clone: "{0}",
@@ -511,10 +508,7 @@ fn go_spec() -> LanguageSpec {
       else_clause: "\} else \{\n",
       match_keyword: "switch ", case_keyword: "case ",
       arm_separator: "\n", stmt_terminator: "",
-      significant_whitespace: false,
-      arm_header_depth_offset: 0, arm_body_depth_offset: 1,
-      if_else_expr_template: none,
-      func_return_suffix: ", nil", empty_return: "return struct\{\}\{\}, nil"
+      significant_whitespace: false
     },
     tco: TcoSyntax {
       loop_keyword: "for",
@@ -530,7 +524,6 @@ fn go_spec() -> LanguageSpec {
       type_alias_keyword: go_type_alias_keyword,
       param_separator: go_param_separator, return_arrow: go_return_arrow,
       param_type_sep: go_param_type_sep,
-      string_literal_suffix: go_string_literal_suffix,
       module_keyword: go_module_keyword,
       import_keyword: go_import_keyword,
       import_from_keyword: go_import_from_keyword
@@ -567,15 +560,29 @@ fn target_operators(target: RenderTarget) -> List<OperatorSpec> {
 
 // Look up the target language's symbol for a BinOp.
 // Reads from per-language OperatorSpec in extdeps/languages/*/syntax.dag.
-fn binop_symbol(target: RenderTarget, op: BinOp) -> String {
+// Type-aware: when algebra_field is provided, prefers specs matching that field.
+// Falls back to unconstrained specs (algebra_field: none) for languages like
+// Go/Rust where a single operator handles both int and float division.
+fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: String?) -> String? {
   let ops = target_operators(target: target)
-  let matching = ops |> filter(spec => match spec.binop {
+  let op_matching = ops |> filter(spec => match spec.binop {
     Some { value: b } => b == op
     None => false
   })
-  match matching |> first {
-    Some { value: spec } => spec.symbol
-    None => "__MISSING_BINOP__"
+  // Try algebra-specific match first
+  let specific = match algebra_field {
+    Some { value: af } =>
+      op_matching |> filter(spec => match spec.algebra_field { Some { value: sf } => sf == af  _ => false }) |> first
+    None => none
+  }
+  // Fall back to unconstrained spec (algebra_field: none)
+  let result = match specific {
+    Some { value: _ } => specific
+    None => op_matching |> filter(spec => spec.algebra_field == none) |> first
+  }
+  match result {
+    Some { value: spec } => Some { value: spec.symbol }
+    None => none
   }
 }
 

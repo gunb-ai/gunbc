@@ -51,7 +51,7 @@ import v2.std.core {
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   with_required_cardinality,
-  tuple_type_name,
+  tuple_type_name, find_child_named,
   Connective, Conj, Disj, NoConnective, Arrow,
 
   CardOptional
@@ -59,9 +59,9 @@ import v2.std.core {
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import std.induction { InductiveField }
-import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
+import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, binop_algebra_fields }
 import std.types { is_container_type, container_to_algebra_name }
-import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast }
+import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -837,7 +837,15 @@ fn emit_keyword(key: String, target: RenderTarget) -> String {
 fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   match value {
     LitStr { value: s } =>
-      let suffix = language_spec(target: target).items.string_literal_suffix
+      let suffix = match literal_suffix(target: target, dag_name: "String") {
+        Some { value: sfx } => sfx
+        // Dag target has no TypeCheckpoints — suffix is always empty.
+        // For real targets, missing checkpoint is fail-closed via emit_error_expr.
+        None => match target {
+          Dag => ""
+          _ => emit_error_expr(message: "missing TypeCheckpoint for String literal suffix", target: target)
+        }
+      }
       emit_string_literal(s: s, suffix: suffix)
     LitInt { value: i } => to_string(value: i)
     LitFloat { value: f } => f
@@ -846,10 +854,28 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   }
 }
 
+// Resolve which algebra field a BinOp maps to on the given operand type.
+// Returns "reciprocal" for Div on Field, "quotient" for Div on Ring, etc.
+fn resolved_binop_algebra(op: BinOp, left_type: Node, source_index: NewlineIndex?) -> String? {
+  let candidates = binop_algebra_fields(op: op)
+  let is_product = left_type.connective == Conj
+  if is_product {
+    let matching = candidates |> filter(c =>
+      match find_child_named(n: left_type, name: c, source_index: source_index) {
+        Some { value: _ } => true
+        None => false
+      })
+    matching |> first
+  } else { none }
+}
+
 // Operator symbol lookup — reads from per-language OperatorSpec in
-// extdeps/languages/*/syntax.dag. No hardcoded operator syntax.
-fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
-  binop_symbol(target: target, op: op)
+// extdeps/languages/*/syntax.dag. Type-aware: matches algebra_field when present.
+fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: String?) -> String {
+  match binop_symbol(target: target, op: op, algebra_field: algebra_field) {
+    Some { value: sym } => sym
+    None => emit_error_expr(message: "missing OperatorSpec for BinOp in target language", target: target)
+  }
 }
 
 fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
@@ -1853,6 +1879,14 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 // Cast syntax and validity derive from CastSyntax in extdeps/languages/*/types.dag.
 // Rust: `expr as type` (valid for numeric targets only, per Rust Reference §8.2.4).
 // Python/Go: `type(expr)` (constructor call, always valid).
+// Shared ExprCast — data-driven, target-parameterized.
+// Cast syntax and validity derive from CastRule in extdeps/languages/*/types.dag.
+//
+// KNOWN VIOLATION (tracked): cast legality is checked here in emit, but the
+// "emission is translation" invariant says emit should only render pre-validated
+// constructs. The fix: .dag defines its own cast rules, infer validates against
+// them, and emit renders unconditionally. Blocked on: .dag-level cast rule
+// definitions (not yet modeled) and infer-phase cast validation.
 fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, source_index: NewlineIndex?) -> String {
   let expr_str = recurse(expr)
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_index: source_index)
@@ -1863,10 +1897,12 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   }
   if src_ty != "" && src_ty == ty_str {
     expr_str
-  } else if can_cast(target: target, target_type: ty_str) {
+  } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
   } else {
-    concat("compile_error!(\"unsupported cast to ", ty_str, "\")")
+    // Unreachable in normal operation: all .dag casts are numeric and every
+    // target declares numeric cast rules. If reached, a CastRule is missing.
+    emit_error_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
   }
 }
 
@@ -1988,7 +2024,8 @@ fn emit_shared_expr(
 }
 
 // Default BinOp handler for languages without special BinOp rendering (Go, Python).
-fn emit_default_bin_op(texpr: Node, target: RenderTarget, recurse: fn(Node) -> String, wrap_result: fn(String) -> String) -> String {
+// Type-aware: resolves algebra field from left operand to select correct operator symbol.
+fn emit_default_bin_op(texpr: Node, target: RenderTarget, source_index: NewlineIndex?, recurse: fn(Node) -> String, wrap_result: fn(String) -> String) -> String {
   match texpr.expr_data {
     ExprBinOp { op: op } =>
       let left = binop_left(texpr: texpr)
@@ -1998,11 +2035,137 @@ fn emit_default_bin_op(texpr: Node, target: RenderTarget, recurse: fn(Node) -> S
       if is_null_coalesce(op: op) {
         wrap_result(emit_null_coalesce(l_str: left_str, r_str: right_str, target: target))
       } else {
-        let op_str = emit_bin_op_symbol(op: op, target: target)
+        let left_type = resolved_type(n: left)
+        let algebra = resolved_binop_algebra(op: op, left_type: left_type, source_index: source_index)
+        let op_str = emit_bin_op_symbol(op: op, target: target, algebra_field: algebra)
         wrap_result(concat("(", left_str, " ", op_str, " ", right_str, ")"))
       }
     _ => wrap_result(emit_error_expr(message: "emit_default_bin_op expected ExprBinOp", target: target))
   }
+}
+
+// =========================================================================
+// P1: Shared typed handlers — target-parameterized, callback-driven.
+//
+// These replace per-language implementations that differ only by target
+// token or recursion callback. Each language file calls these with its
+// own `target` and recursion function, eliminating duplicated structure.
+// =========================================================================
+
+// Shared block statement emitter.
+// emit_expr: renders one statement given (Node, InferScope, Int depth).
+// prepend_indent: Go prepends make_indent(depth) to each line; Py/Rust don't.
+fn emit_block_stmts_shared(
+    remaining: List<Node>, text: List<String>,
+    scope: InferScope, depth: Int,
+    prepend_indent: Bool,
+    emit_expr: fn(Node, InferScope, Int) -> String) -> BlockEmitState {
+  match remaining |> first {
+    None => BlockEmitState { text: text, scope: scope }
+    Some { value: stmt } =>
+      let raw = emit_expr(stmt, scope, depth)
+      let line = if prepend_indent { concat(make_indent(level: depth), raw) } else { raw }
+      let next_scope = scope_after_expr(texpr: stmt, scope: scope)
+      emit_block_stmts_shared(remaining: remaining |> skip(1),
+        text: list_push(text, line), scope: next_scope,
+        depth: depth, prepend_indent: prepend_indent,
+        emit_expr: emit_expr)
+  }
+}
+
+// Shared init-block statement emitter (all-but-last).
+fn emit_init_block_stmts_shared(
+    remaining: List<Node>, text: List<String>,
+    scope: InferScope, depth: Int,
+    prepend_indent: Bool,
+    emit_expr: fn(Node, InferScope, Int) -> String) -> BlockEmitState {
+  match remaining |> first {
+    None => BlockEmitState { text: text, scope: scope }
+    Some { value: stmt } =>
+      let rest = remaining |> skip(1)
+      match rest |> first {
+        None => BlockEmitState { text: text, scope: scope }
+        Some { value: _ } =>
+          let raw = emit_expr(stmt, scope, depth)
+          let line = if prepend_indent { concat(make_indent(level: depth), raw) } else { raw }
+          let next_scope = scope_after_expr(texpr: stmt, scope: scope)
+          emit_init_block_stmts_shared(remaining: rest,
+            text: list_push(text, line), scope: next_scope,
+            depth: depth, prepend_indent: prepend_indent,
+            emit_expr: emit_expr)
+      }
+  }
+}
+
+// Shared typed let — identical structure across all three backends.
+fn emit_typed_let_shared(name: String, value_str: String, body: Node?, target: RenderTarget,
+    recurse: fn(Node, InferScope) -> String, scope: InferScope, value_node: Node) -> String {
+  let let_line = emit_let_binding(name: name, value: value_str, target: target)
+  match body {
+    Some { value: bd } =>
+      let next_scope = extend_scope(scope: scope, name: name, resolved: resolved_type(n: value_node))
+      concat(let_line, "\n", recurse(bd, next_scope))
+    None => let_line
+  }
+}
+
+// Shared param rendering — for languages that use emit_node_type (Go, Python).
+fn emit_param_shared(param: Node, target: RenderTarget, source_index: NewlineIndex?) -> String {
+  let ty = emit_node_type(n: param_node_type_expr(n: param), target: target, source_index: source_index)
+  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: target), language_spec(target: target).items.param_type_sep, ty)
+}
+
+// Shared params rendering — maps emit_param_shared over param list.
+fn emit_params_shared(params: List<Node>, target: RenderTarget, source_index: NewlineIndex?) -> String {
+  let strs = params |> map(p => emit_param_shared(param: p, target: target, source_index: source_index))
+  strs |> join(separator: language_spec(target: target).items.param_separator)
+}
+
+// Shared inferred (return type) rendering.
+// Go suppresses void (Unit → "struct{}") return annotations; Python/Rust include them.
+// Go wraps this with its own void check; Python/Rust call directly.
+fn emit_inferred_shared(inferred: Node, target: RenderTarget, source_index: NewlineIndex?) -> String {
+  concat(language_spec(target: target).items.return_arrow, emit_node_type(n: inferred, target: target, source_index: source_index))
+}
+
+// Shared typed block — delegates to emit_block_stmts callback, joins with newline.
+fn emit_typed_block_join(
+    stmts: List<Node>, scope: InferScope, depth: Int,
+    emit_block_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState) -> String {
+  let state = emit_block_stmts(stmts, scope, depth)
+  state.text |> join(separator: "\n")
+}
+
+// Shared algebra method template dispatch.
+// Returns Some if a method_template matches, None if not (caller provides fallback).
+fn emit_algebra_method_template(method_name: String, recv_str: String,
+    first_arg_str: String, target: RenderTarget) -> String? {
+  let spec = language_spec(target: target)
+  match spec.method_templates {
+    Some { value: templates } => match map_get(templates, method_name) {
+      Some { value: tmpl } =>
+        let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
+        Some { value: apply_named_template(template: tmpl, bindings: bindings) }
+      None => none
+    }
+    None => none
+  }
+}
+
+// Shared typed first arg — renders first method argument or fails closed.
+fn emit_typed_first_arg_shared(args: List<Node>, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+  match args |> first {
+    Some { value: a } => recurse(arg_value(n: a))
+    None => emit_error_expr(message: "missing method argument", target: target)
+  }
+}
+
+// Shared TCO reassign — renders arg values and delegates to shared_tco_reassign.
+fn emit_typed_tco_reassign_shared(args: List<Node>, params: List<Node>,
+    target: RenderTarget, recurse: fn(Node) -> String, source_index: NewlineIndex?) -> String {
+  let ordered_args = args |> map(a => recurse(arg_value(n: a)))
+  let param_names = params |> map(p => emit_ident(name: param_node_name_at(n: p, source_index: source_index), target: target))
+  shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: language_spec(target: target))
 }
 
 // Shared typed seed for template binding maps. Used by all backend emitters

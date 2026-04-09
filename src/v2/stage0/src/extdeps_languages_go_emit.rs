@@ -151,15 +151,6 @@ pub fn go_param_type_sep() -> String {
     CACHED.with(|c| c.clone())
 }
 
-pub fn go_string_literal_suffix() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 pub fn go_module_keyword() -> String {
     thread_local! {
         static CACHED: String = {

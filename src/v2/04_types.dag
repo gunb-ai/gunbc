@@ -863,26 +863,38 @@ fn extract_optional_inner_node(n: Node) -> Node {
   else { n }
 }
 
-// Map BinOp to the algebraic field name on the receiver type.
-// This is a closed structural mapping (enum → field name), not a
-// name check on the type. The compiler knows + means "add"; it
-// doesn't know which types have "add" — that's in the DAG structure.
-fn binop_algebra_field(op: BinOp) -> String {
+// Map BinOp to candidate algebra field names on the receiver type.
+// Returns candidates in priority order — the first found on the type wins.
+// Div tries "reciprocal" (Field) then "quotient" (OrderedRing).
+// Mod maps to "remainder" (Euclidean division complement).
+fn binop_algebra_fields(op: BinOp) -> List<String> {
   match op {
-    Add => "add"
-    Sub => "add"
-    Mul => "mul"
-    Div => "reciprocal"
-    Mod => "add"
-    Eq => "compare"
-    Ne => "compare"
-    Lt => "compare"
-    Gt => "compare"
-    Le => "compare"
-    Ge => "compare"
-    And => "meet"
-    Or => "join"
-    NullCoalesce => ""
+    Add => ["add"]
+    Sub => ["add"]
+    Mul => ["mul"]
+    Div => ["reciprocal", "quotient"]
+    Mod => ["remainder"]
+    Eq => ["compare"]
+    Ne => ["compare"]
+    Lt => ["compare"]
+    Gt => ["compare"]
+    Le => ["compare"]
+    Ge => ["compare"]
+    And => ["meet"]
+    Or => ["join"]
+    NullCoalesce => []
+  }
+}
+
+// Try each candidate field name on the type, return first match.
+fn first_matching_algebra_field(n: Node, candidates: List<String>, source_index: NewlineIndex?) -> Node? {
+  match candidates |> first {
+    None => none
+    Some { value: name } =>
+      match find_child_named(n: n, name: name, source_index: source_index) {
+        Some { value: f } => Some { value: f }
+        None => first_matching_algebra_field(n: n, candidates: candidates |> skip(1), source_index: source_index)
+      }
   }
 }
 
@@ -900,12 +912,11 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, source_index: NewlineIndex?
     NullCoalesce => extract_optional_inner_node(n: left_type)
     _ =>
       // Arithmetic ops: look up the algebra method on the receiver type.
-      // Delegates to find_child_named (centralized lookup) rather than
-      // inline string scan. Falls back to left_type if no algebra found.
-      let field_name = binop_algebra_field(op: op)
+      // Tries candidate fields in priority order (e.g. Div: reciprocal then quotient).
+      let candidates = binop_algebra_fields(op: op)
       let is_product = left_type.connective == Conj
       if is_product {
-        match find_child_named(n: left_type, name: field_name, source_index: source_index) {
+        match first_matching_algebra_field(n: left_type, candidates: candidates, source_index: source_index) {
           Some { value: field } =>
             match field.inferred {
               Some { value: Resolved { node: rt } } =>

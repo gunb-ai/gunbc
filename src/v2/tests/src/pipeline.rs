@@ -4225,27 +4225,67 @@ fn process(items: List<String>) -> Accum {
 #[test]
 fn bool_is_not_valid_as_cast_target() {
     // Rust does not allow `expr as bool` — only bool→integer is valid.
-    // Verify through pipeline: casting to Bool should not produce `x as bool`.
-    let source = r#"module test_no_bool_cast
-fn to_int(b: Bool) -> Int { b as Int }
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/test_no_bool_cast.rs");
-    assert!(!content.contains("as bool"), "must not emit `as bool` — invalid Rust: {}", content);
+    // Cast validity is a (source, target) relation from extdeps/languages/rust/types.dag.
+    use v2_compiler::v2_compiler_coercion::can_cast;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+
+    // Int → Bool: invalid (Rust Reference §8.2.4)
+    assert!(!can_cast(RenderTarget::Rust, "i64".to_string(), "bool".to_string()),
+        "i64 as bool is invalid Rust");
+    // Float → Bool: invalid
+    assert!(!can_cast(RenderTarget::Rust, "f64".to_string(), "bool".to_string()),
+        "f64 as bool is invalid Rust");
 }
 
 #[test]
 fn int_and_float_are_valid_as_cast_targets() {
-    let source = r#"module test_numeric_cast
-fn float_to_int(x: Float) -> Int { x as Int }
-fn int_to_float(x: Int) -> Float { x as Float }
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/test_numeric_cast.rs");
-    assert!(content.contains("as i64"), "Int cast should produce `as i64`: {}", content);
-    assert!(content.contains("as f64"), "Float cast should produce `as f64`: {}", content);
+    use v2_compiler::v2_compiler_coercion::can_cast;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+
+    // Int → Float: valid
+    assert!(can_cast(RenderTarget::Rust, "i64".to_string(), "f64".to_string()),
+        "i64 as f64 should be valid");
+    // Float → Int: valid
+    assert!(can_cast(RenderTarget::Rust, "f64".to_string(), "i64".to_string()),
+        "f64 as i64 should be valid");
+    // Int → Int: valid (identity)
+    assert!(can_cast(RenderTarget::Rust, "i64".to_string(), "i64".to_string()),
+        "i64 as i64 should be valid");
+}
+
+#[test]
+fn bool_to_int_is_valid_cast() {
+    // Bool → Int is valid in Rust: `true as i64` = 1, `false as i64` = 0
+    use v2_compiler::v2_compiler_coercion::can_cast;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+
+    assert!(can_cast(RenderTarget::Rust, "bool".to_string(), "i64".to_string()),
+        "bool as i64 should be valid (Rust Reference §8.2.4)");
+}
+
+#[test]
+fn bool_to_float_is_invalid_cast() {
+    // Bool → Float is NOT valid in Rust (must go through Int first)
+    use v2_compiler::v2_compiler_coercion::can_cast;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+
+    assert!(!can_cast(RenderTarget::Rust, "bool".to_string(), "f64".to_string()),
+        "bool as f64 is invalid Rust — must cast bool→i64→f64");
+}
+
+#[test]
+fn python_casts_use_explicit_rules() {
+    // Python cast rules: all numeric constructor casts are explicitly declared.
+    use v2_compiler::v2_compiler_coercion::can_cast;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+
+    assert!(can_cast(RenderTarget::Python, "str".to_string(), "int".to_string()),
+        "Python str→int should be valid");
+    assert!(can_cast(RenderTarget::Python, "bool".to_string(), "float".to_string()),
+        "Python bool→float should be valid");
+    // Undeclared pair: not valid
+    assert!(!can_cast(RenderTarget::Python, "dict".to_string(), "int".to_string()),
+        "Python dict→int should not be valid (no cast rule)");
 }
 
 // ── ExprLet expected-type propagation regression tests ────────────────
@@ -4533,6 +4573,77 @@ fn process(items: List<String>) -> Map<String, Bool> {
         content.contains("HashMap<String, bool>"),
         "architecture ratchet: fold in let value should produce typed HashMap<String, bool>: {content}"
     );
+}
+
+// ── Algebra-aware operator dispatch tests ─────────────────────────────
+//
+// BinOp.Div is type-directed: Field types (Float) use reciprocal-based
+// division, OrderedRing types (Int) use quotient-based division.
+// Python distinguishes: "/" for true division, "//" for integer division.
+// Go/Rust use single "/" for both (runtime type-directed).
+
+#[test]
+fn python_div_uses_algebra_aware_dispatch() {
+    // Python: Div with algebra_field "reciprocal" → "/" (true division)
+    //         Div with algebra_field "quotient" → "//" (integer division)
+    //         Div with no algebra_field → falls back to unconstrained (none exists → error)
+    use v2_compiler::v2_compiler_languages::binop_symbol;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+    use v2_compiler::std_syntax::BinOp;
+
+    let py_recip = binop_symbol(RenderTarget::Python, BinOp::Div, Some("reciprocal".to_string()));
+    assert_eq!(py_recip, Some("/".to_string()), "Python Div+reciprocal → /");
+
+    let py_quot = binop_symbol(RenderTarget::Python, BinOp::Div, Some("quotient".to_string()));
+    assert_eq!(py_quot, Some("//".to_string()), "Python Div+quotient → //");
+}
+
+#[test]
+fn go_rust_div_ignores_algebra_field() {
+    // Go and Rust have single "/" with algebra_field: none → matches anything
+    use v2_compiler::v2_compiler_languages::binop_symbol;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+    use v2_compiler::std_syntax::BinOp;
+
+    let go_recip = binop_symbol(RenderTarget::Go, BinOp::Div, Some("reciprocal".to_string()));
+    assert_eq!(go_recip, Some("/".to_string()), "Go Div+reciprocal → / (fallback to unconstrained)");
+
+    let go_quot = binop_symbol(RenderTarget::Go, BinOp::Div, Some("quotient".to_string()));
+    assert_eq!(go_quot, Some("/".to_string()), "Go Div+quotient → / (fallback to unconstrained)");
+
+    let rust_div = binop_symbol(RenderTarget::Rust, BinOp::Div, Some("reciprocal".to_string()));
+    assert_eq!(rust_div, Some("/".to_string()), "Rust Div+reciprocal → / (fallback to unconstrained)");
+}
+
+#[test]
+fn mod_maps_to_remainder_algebra() {
+    // Mod now correctly maps to "remainder" (was incorrectly "add").
+    // All languages use "%" for Mod regardless of algebra_field.
+    use v2_compiler::v2_compiler_languages::binop_symbol;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+    use v2_compiler::std_syntax::BinOp;
+
+    let py_mod = binop_symbol(RenderTarget::Python, BinOp::Mod, None);
+    assert_eq!(py_mod, Some("%".to_string()), "Python Mod → %");
+
+    let go_mod = binop_symbol(RenderTarget::Go, BinOp::Mod, None);
+    assert_eq!(go_mod, Some("%".to_string()), "Go Mod → %");
+}
+
+#[test]
+fn binop_algebra_fields_div_tries_reciprocal_then_quotient() {
+    // Div candidates: ["reciprocal", "quotient"] — Field types match first, Ring types second.
+    use v2_compiler::v2_compiler_infer_types::binop_algebra_fields;
+    use v2_compiler::std_syntax::BinOp;
+
+    let div_fields = binop_algebra_fields(BinOp::Div);
+    assert_eq!(div_fields.len(), 2);
+    assert_eq!(div_fields[0], "reciprocal", "Div primary: reciprocal (Field)");
+    assert_eq!(div_fields[1], "quotient", "Div fallback: quotient (Ring)");
+
+    let mod_fields = binop_algebra_fields(BinOp::Mod);
+    assert_eq!(mod_fields.len(), 1);
+    assert_eq!(mod_fields[0], "remainder", "Mod: remainder (was incorrectly 'add')");
 }
 
 // ── RE-1: Transport Emission Fidelity ───────────────────────────────────
@@ -4827,11 +4938,11 @@ fn review_dag_compiles_to_rust() {
     // Cleanup
     let _ = std::fs::remove_dir_all(&out_dir);
 
-    // RE-2 ratchet: track progress toward 0 cargo check errors.
-    // Current: 3 errors (E0308 type mismatches in shell return types).
-    // Reduced from 51 → 23 → 3 via: FuncItem detection (async+service params),
-    // for-each variable fix, runtime contains/count, Rc collection wrap.
-    const RE2_ERROR_RATCHET: usize = 3;
+    // RE-2 ratchet: 0 cargo check errors.
+    // Reduced from 51 → 23 → 3 → 0 via: FuncItem detection (async+service params),
+    // for-each variable fix, runtime contains/count, Rc collection wrap,
+    // shell Optional return, op arg ordering, Optional/Json call-site coercion.
+    const RE2_ERROR_RATCHET: usize = 0;
     assert!(
         error_count <= RE2_ERROR_RATCHET,
         "RE-2: review.dag cargo check errors {} exceeds ratchet {} (regression)",
