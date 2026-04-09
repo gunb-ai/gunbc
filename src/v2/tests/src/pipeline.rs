@@ -4535,6 +4535,313 @@ fn process(items: List<String>) -> Map<String, Bool> {
     );
 }
 
+// ── RE-1: Transport Emission Fidelity ───────────────────────────────────
+// Tests that the emitter consumes transport config data from .dag service
+// definitions to produce correct Rust code for REST and shell transports.
+
+#[test]
+fn rest_emit_uses_transport_method() {
+    let source = "module re1a\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItems {\n    output { items: List<String> }\n    transport rest { method: GET, path: \"/items\" }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"a\"] \"items\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1a.rs");
+    assert!(
+        content.contains("client.get("),
+        "RE-1a: expected GET method in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_substitutes_path_template() {
+    let source = r#"module re1b
+
+service test.Svc {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation GetItem {
+    input { owner: String, repo: String }
+    output { name: String }
+    transport rest { method: GET, path: "/repos/{owner}/{repo}" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => "ok" "item"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1b.rs");
+    assert!(
+        content.contains("format!(\"{}") && content.contains("self.base_url"),
+        "RE-1b: expected path template format! with base_url in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_includes_query_params() {
+    let source = "module re1c\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation Search {\n    input { q: String, limit: Int }\n    output { results: List<String> }\n    transport rest { method: GET, path: \"/search\", query: { q: q, limit: limit } }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"r\"] \"results\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1c.rs");
+    assert!(
+        content.contains(".query("),
+        "RE-1c: expected .query() in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_uses_bearer_auth() {
+    let source = "module re1d\n\nimport std.types { AuthScheme }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Bearer\n    auth_input: token\n  }\n  operation GetData {\n    input { token: String }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1d.rs");
+    assert!(
+        content.contains("Authorization") && content.contains("Bearer"),
+        "RE-1d: expected Bearer auth in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_maps_response_codes() {
+    let source = "module re1e\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1e.rs");
+    assert!(
+        content.contains("status") && content.contains("200"),
+        "RE-1e: expected status code matching in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn shell_emit_uses_transport_argv() {
+    let source = r#"module re1f
+
+service shell.Run {
+  operation Exec {
+    input { script: String }
+    output { result: String }
+    transport shell { argv: ["sh", "-lc", "{script}"] }
+    mock_response {
+      0 => "done" "result"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1f.rs");
+    assert!(
+        content.contains("Command::new(\"sh\")") && content.contains(".arg(\"-lc\")"),
+        "RE-1f: expected sh -lc argv in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn shell_emit_checks_exit_code() {
+    let source = r#"module re1h
+
+service shell.Run {
+  operation Exec {
+    input { cmd: String }
+    output { result: String }
+    transport shell { argv: ["sh", "-c", "{cmd}"] }
+    exit {
+      0 => Unit
+      nonzero => String "command failed"
+    }
+    mock_response {
+      0 => "done" "result"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1h.rs");
+    assert!(
+        content.contains("exit_code") || content.contains("success()"),
+        "RE-1h: expected exit code handling in emitted code, got:\n{content}"
+    );
+}
+
+// ── RE-1: shell interpolation with optional params ──────────────────────
+#[test]
+fn shell_emit_optional_param_in_interp() {
+    let source = r#"module re1i
+
+service cron.Tab {
+  operation Upsert {
+    input {
+      tag: String
+      log_path: String?
+    }
+    output { success: Bool }
+    transport shell {
+      argv: ["sh", "-c", "echo {tag} >> {log_path}"]
+    }
+    mock_response {
+      0 => { success: true } "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1i.rs");
+    assert!(
+        content.contains("log_path.as_deref().unwrap_or"),
+        "RE-1i: optional param in interpolation should use unwrap_or, got:\n{content}"
+    );
+}
+
+// ── RE-1g: shell stdin emission ──────────────────────────────────────────
+#[test]
+fn shell_emit_stdin_pipes_and_writes() {
+    let source = r#"module re1g
+
+service shell.Pipe {
+  operation Send {
+    input { data: String }
+    output { result: String }
+    transport shell {
+      argv: ["cat"]
+      stdin: data
+    }
+    mock_response {
+      0 => "echoed" "result"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1g.rs");
+    assert!(
+        content.contains("Stdio::piped()") && content.contains("stdin.write_all"),
+        "RE-1g: expected stdin piping and write in emitted code, got:\n{content}"
+    );
+    assert!(
+        content.contains("stdout(std::process::Stdio::piped())"),
+        "RE-1g: expected stdout piped for output capture, got:\n{content}"
+    );
+}
+
+// ── RE-2: review.dag compiles to Rust ───────────────────────────────────
+// Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
+// This is the acceptance gate for RE-2.
+
+#[test]
+#[ignore] // Expensive: reads from disk, writes temp project, runs cargo check
+fn review_dag_compiles_to_rust() {
+    let ws = crate::helpers::workspace_root();
+    let review_path = ws.join("dsl/gunbc/tools/review.dag");
+    let review_content = std::fs::read_to_string(&review_path)
+        .expect("failed to read review.dag");
+
+    // Compile review.dag + all transitive imports
+    let result = compile_dag_named(
+        "dsl/gunbc/tools/review.dag",
+        &review_content,
+        RenderTarget::Rust,
+    );
+
+    // Check for hard diagnostics (non-complexity)
+    let hard_diags: Vec<_> = diagnostic_messages(&result)
+        .into_iter()
+        .filter(|d| !d.contains("complexity:"))
+        .collect();
+    assert!(
+        hard_diags.is_empty(),
+        "RE-2: review.dag has hard diagnostics:\n{}",
+        hard_diags.join("\n")
+    );
+
+    let paths = emitted_file_paths(&result);
+    eprintln!("RE-2: emitted {} files: {:?}", paths.len(), paths);
+    assert!(
+        !result.files.is_empty(),
+        "RE-2: review.dag produced no emitted files"
+    );
+
+    // Write emitted files to temp dir
+    let out_dir = std::env::temp_dir().join("v2-re2-review");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    std::fs::create_dir_all(&out_dir).expect("failed to create temp dir");
+
+    for file in result.files.iter() {
+        let file_path = out_dir.join(&file.path);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::write(&file_path, &file.content)
+            .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
+    }
+
+    // Run cargo check
+    let check = std::process::Command::new("cargo")
+        .arg("check")
+        .current_dir(&out_dir)
+        .output()
+        .expect("failed to run cargo check");
+
+    let check_stderr = String::from_utf8_lossy(&check.stderr);
+
+    // Count errors
+    let error_count = check_stderr
+        .lines()
+        .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
+        .count();
+
+    // Categorize
+    let mut categories: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for line in check_stderr.lines() {
+        if line.starts_with("error[") {
+            let code = line.split(']').next().unwrap_or("unknown").to_string() + "]";
+            *categories.entry(code).or_insert(0) += 1;
+        }
+    }
+    let mut cats: Vec<_> = categories.iter().collect();
+    cats.sort_by(|a, b| b.1.cmp(a.1));
+
+    eprintln!("RE-2 cargo check: {} errors", error_count);
+    for (code, count) in cats.iter().take(10) {
+        eprintln!("  {}: {}", code, count);
+    }
+
+    // Show error lines with file:line context for diagnosis
+    let error_lines: Vec<_> = check_stderr
+        .lines()
+        .filter(|l| l.starts_with("error[") || l.trim_start().starts_with("--> src/"))
+        .take(30)
+        .collect();
+    if !error_lines.is_empty() {
+        eprintln!("RE-2 errors:\n{}", error_lines.join("\n"));
+    }
+
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&out_dir);
+
+    // RE-2 ratchet: track progress toward 0 cargo check errors.
+    // Current: 3 errors (E0308 type mismatches in shell return types).
+    // Reduced from 51 → 23 → 3 via: FuncItem detection (async+service params),
+    // for-each variable fix, runtime contains/count, Rc collection wrap.
+    const RE2_ERROR_RATCHET: usize = 3;
+    assert!(
+        error_count <= RE2_ERROR_RATCHET,
+        "RE-2: review.dag cargo check errors {} exceeds ratchet {} (regression)",
+        error_count, RE2_ERROR_RATCHET
+    );
+    if error_count == 0 {
+        eprintln!("RE-2: review.dag emitted Rust passes cargo check!");
+    }
+}
+
 // ── CX-L3: Structural complexity bound regression tests ─────────────────
 //
 // End-to-end: compile .dag source → CX-L1 (InductiveField) → CX-L2
@@ -4707,21 +5014,21 @@ fn sum_tree(t: Tree) -> Int {
     // of `cs` (which is the `children` inductive field of Tree).
     // If CX-L2 doesn't handle fold lambdas yet, the bound will be absent.
     // When it works, the expected bound is O(n).
-    if !bounds.is_empty() {
-        assert_eq!(bounds[0].param, "t");
-        assert_eq!(
-            *bounds[0].time_bound,
-            v2_compiler::std_induction::CostBound::AtomicBound {
-                cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
-                    param: "t".to_string(),
-                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
-                }),
-            },
-            "fold over children should produce catamorphism O(n) bound"
-        );
-    }
-    // If bounds is empty, the test still passes — fold lambda descent is
-    // a harder pattern that may not be wired in CX-L2 yet.
+    // Fold over children: lambda element parameter is an IteratedSubValue
+    // of the receiver's collection field. CX-L2 threads context through
+    // fold/map lambdas so the self-call gets descent evidence.
+    assert!(!bounds.is_empty(), "fold over children should produce catamorphism O(n) bound");
+    assert_eq!(bounds[0].param, "t");
+    assert_eq!(
+        *bounds[0].time_bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "t".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "fold over children should produce catamorphism O(n) bound"
+    );
 }
 
 #[test]
@@ -5215,6 +5522,7 @@ fn quadratic_walk(t: Tree) -> Int {
     );
 }
 
+
 // ── KF-7: Space complexity regression tests ─────────────────────────────
 
 #[test]
@@ -5350,3 +5658,341 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
 // KF-8: Optimality gate tests removed — the lossy bound_rank/cost_dominates
 // approach violated modeling faithfulness. Will be reintroduced when structural
 // CostBound comparison (direct pattern matching) is implemented.
+
+#[test]
+fn adversarial_take_mid_mul_no_proportional() {
+    // take(mid * 2) must NOT produce ProportionalShrink.
+    // Only Add/Sub with a literal constant are valid adjustments.
+    let source = r#"module bad_shrink
+
+fn bad_split(xs: List<Int>) -> Int {
+  let n = xs |> count
+  if n == 0 { 0 }
+  else {
+    let mid = n / 2
+    1 + bad_split(xs: xs |> take(mid * 2))
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "bad_split")
+        .collect();
+    eprintln!("[adversarial] bad_split: {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    // mid * 2 is NOT a small-constant adjustment → should not get ProportionalShrink.
+    // Expect either no bound or O(n) catamorphism at most (fail-closed).
+    for b in &bounds {
+        assert_ne!(
+            *b.time_bound,
+            v2_compiler::std_induction::CostBound::AtomicBound {
+                cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
+                    param: "xs".to_string(),
+                }),
+            },
+            "take(mid * 2) must not produce O(log n) — that fabricates a false proof"
+        );
+    }
+}
+
+#[test]
+fn adversarial_lambda_hidden_recursion() {
+    // Self-call inside a fold on a LITERAL list (not a collection field).
+    // The fold receiver [1, 2] is not a field access on a parameter, so
+    // the lambda element parameter is NOT registered as IteratedSubValue.
+    // The self-call bad_walk(t: l) uses a match-bound sub-value l, which
+    // IS recognized. But this is called twice (fold over 2 elements),
+    // making it T(n) = 2T(n-1) = O(2^n). The disjointness check catches
+    // this: max_path=2 (two lambda invocations) > distinct_fields=1.
+    let source = r#"module lambda_hidden
+
+type Tree = Leaf | Branch { left: Tree, right: Tree }
+
+fn bad_walk(t: Tree) -> Int {
+  match t {
+    Leaf => 0
+    Branch { left: l, right: _ } =>
+      [1, 2] |> fold(init: 0, f: (acc, x) => acc + bad_walk(t: l))
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "bad_walk")
+        .collect();
+    eprintln!("[adversarial] bad_walk (lambda): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    // With transparent lambdas, the self-call bad_walk(t: l) IS visible.
+    // But l is used in a fold over [1, 2] (not a collection field), so
+    // the self-call gets StrictSubValue evidence for l. The fold invokes
+    // the lambda twice, so this is NOT a catamorphism. The disjointness
+    // check or the existing cost algebra should catch this.
+    // The bound should either be absent or not O(n).
+    for b in &bounds {
+        assert_ne!(
+            *b.time_bound,
+            v2_compiler::std_induction::CostBound::AtomicBound {
+                cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                    param: "t".to_string(),
+                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                }),
+            },
+            "fold-hidden recursion on same sub-value must not produce catamorphism O(n)"
+        );
+    }
+}
+
+#[test]
+fn adversarial_duplicate_same_child() {
+    // f(l) + f(l): two calls descending on the SAME child.
+    // T(n) = 2T(n-1) + O(1) = O(2^n), NOT a catamorphism.
+    let source = r#"module dup_child
+
+type Tree = Leaf | Branch { left: Tree, right: Tree }
+
+fn dup(t: Tree) -> Int {
+  match t {
+    Leaf => 1
+    Branch { left: l, right: _ } =>
+      dup(t: l) + dup(t: l)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "dup")
+        .collect();
+    eprintln!("[adversarial] dup: {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    // Two calls on the same child (left) → max_path=2 > distinct_fields=1.
+    // Disjointness check fails → should not produce catamorphism O(n).
+    for b in &bounds {
+        assert_ne!(
+            *b.time_bound,
+            v2_compiler::std_induction::CostBound::AtomicBound {
+                cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                    param: "t".to_string(),
+                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                }),
+            },
+            "duplicate same-child descent must not produce catamorphism O(n)"
+        );
+    }
+}
+
+// ── CX gap tests: patterns used in real compiler but not yet proven ────
+//
+// These tests document the MISSING PATTERNS that prevent the CX analyzer
+// from proving bounds for real compiler functions. Each test exercises a
+// pattern used heavily in the compiler (render_node_type, walk_expr, etc.)
+// that the current analyzer cannot handle. As the analyzer improves,
+// these tests should be upgraded from "assert no bound / assert not O(n)"
+// to "assert O(n)".
+//
+// All of these are iteration in different skin. The right fix is recursion
+// scheme recognition, not per-pattern special cases.
+
+#[test]
+fn gap_match_shape_recurse_children() {
+    // Pattern: match on expr_data (shape), recurse on children (structure).
+    // This is the dominant pattern in the compiler: render_node_type,
+    // walk_expr, resolve_expr_types all discriminate on node shape then
+    // recurse into sub-nodes. The match scrutinee (n.expr_data) and the
+    // recursion target (n.children) are different fields of the same Node.
+    let source = r#"module shape_recurse
+
+type Expr
+  = Lit { value: Int }
+  | Add { left: Expr, right: Expr }
+  | Neg { inner: Expr }
+
+fn eval(e: Expr) -> Int {
+  match e {
+    Lit { value: v } => v
+    Add { left: l, right: r } => eval(e: l) + eval(e: r)
+    Neg { inner: x } => 0 - eval(e: x)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "eval")
+        .collect();
+    eprintln!("[gap] eval (match-shape-recurse): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    // This IS a catamorphism — every arm recurses on strict sub-values.
+    assert!(!bounds.is_empty(), "eval should produce structural bound");
+    assert_eq!(bounds[0].param, "e");
+    assert_eq!(
+        *bounds[0].time_bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "e".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "match-shape-recurse-children is a catamorphism O(n)"
+    );
+}
+
+#[test]
+fn gap_accessor_in_fold() {
+    // Pattern: fold over a collection field, self-call passes the element directly.
+    // This already works with lambda transparency + fold context threading.
+    let source = r#"module accessor_fold
+
+type Container { items: List<Container>, label: Int }
+
+fn get_label(c: Container) -> Int { c.label }
+
+fn sum_labels(c: Container) -> Int {
+  let own = get_label(c: c)
+  own + (c.items |> fold(init: 0, f: (acc, child) => acc + sum_labels(c: child)))
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "sum_labels")
+        .collect();
+    eprintln!("[gap] sum_labels (accessor-in-fold): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    assert!(!bounds.is_empty(), "sum_labels should produce structural bound");
+    assert_eq!(bounds[0].param, "c");
+    assert_eq!(
+        *bounds[0].time_bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "c".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "fold-over-collection-field is a catamorphism O(n)"
+    );
+}
+
+#[test]
+fn gap_mixed_field_recursion() {
+    // Pattern: function recurses through MULTIPLE fields of the same node
+    // using different access patterns (direct field, optional unwrap, list fold).
+    // This is how resolve_expr_types and infer_item work.
+    let source = r#"module mixed_fields
+
+type Item {
+  children: List<Item>
+  body: Item?
+  annotation: Item?
+}
+
+fn count_items(item: Item) -> Int {
+  let child_count = item.children |> fold(init: 0, f: (acc, c) => acc + count_items(item: c))
+  let body_count = match item.body {
+    Some { value: b } => count_items(item: b)
+    None => 0
+  }
+  let anno_count = match item.annotation {
+    Some { value: a } => count_items(item: a)
+    None => 0
+  }
+  1 + child_count + body_count + anno_count
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "count_items")
+        .collect();
+    eprintln!("[gap] count_items (mixed-field-recursion): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    // Catamorphism through children (List), body (Optional), annotation (Optional).
+    assert!(!bounds.is_empty(), "count_items should produce structural bound");
+    assert_eq!(bounds[0].param, "item");
+    assert_eq!(
+        *bounds[0].time_bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "item".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "mixed-field-recursion is a catamorphism O(n)"
+    );
+}
+
+#[test]
+fn gap_accessor_chain_in_self_call() {
+    // Pattern: self-call argument is a chain of accessor functions.
+    // f(n: inner(n: outer(n: p))) — two levels of extraction.
+    // render_node_type uses this: render_node_type(n: child_type_node(ch: kn))
+    let source = r#"module accessor_chain
+
+type Wrapper { inner: Wrapper?, label: Int }
+
+fn get_inner(w: Wrapper) -> Wrapper? { w.inner }
+
+fn depth(w: Wrapper) -> Int {
+  match get_inner(w: w) {
+    Some { value: next } => 1 + depth(w: next)
+    None => 0
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "depth")
+        .collect();
+    eprintln!("[gap] depth (accessor-chain): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.time_bound); }
+    // This IS a catamorphism — get_inner extracts the Optional sub-Wrapper,
+    // match unwraps it, depth recurses. Total: visits each Wrapper once.
+    // When it works: assert O(n).
+    if !bounds.is_empty() {
+        assert_eq!(bounds[0].param, "w");
+    }
+}
+
+// ── CX complexity report dump ──────────────────────────────────────────
+
+#[test]
+#[ignore] // run with: cargo test -p v2-compiler-tests dump_complexity_report -- --ignored --nocapture
+fn dump_complexity_report() {
+    let ws = workspace_root();
+    let mut all_sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect_dag_sources(&ws, &ws.join("dsl"), &mut all_sources);
+    collect_dag_sources(&ws, &ws.join("src/v2"), &mut all_sources);
+
+    eprintln!("Compiling {} .dag files...", all_sources.len());
+    let result = v2_compiler::v2_compiler_compile::compile_sources(
+        Rc::new(all_sources), RenderTarget::Rust,
+    );
+
+    let cx = &result.complexity;
+    eprintln!("\n=== STRUCTURAL BOUNDS ({}) ===", cx.structural_bounds.len());
+    let mut bounds: Vec<_> = cx.structural_bounds.iter().collect();
+    bounds.sort_by(|a, b| a.func_name.cmp(&b.func_name));
+    for b in &bounds {
+        eprintln!("  {:50} param={:15} time={:?} stack={:?}", b.func_name, b.param, b.time_bound, b.stack_bound);
+    }
+
+    let mut classes: HashMap<String, Vec<String>> = HashMap::new();
+    for (func, class) in cx.function_classes.iter() {
+        classes.entry(class.clone()).or_default().push(func.clone());
+    }
+    let mut sorted_classes: Vec<_> = classes.iter().collect();
+    sorted_classes.sort_by(|(a, _), (b, _)| a.cmp(b));
+    eprintln!("\n=== FUNCTION CLASSES ({} functions) ===", cx.function_classes.len());
+    for (class, funcs) in &sorted_classes {
+        eprintln!("  {:20} — {} functions", class, funcs.len());
+    }
+
+    eprintln!("\n=== VIOLATIONS ({}) ===", cx.violations.len());
+    for v in cx.violations.iter().take(20) {
+        eprintln!("  {:?}", v);
+    }
+    if cx.violations.len() > 20 {
+        eprintln!("  ... and {} more", cx.violations.len() - 20);
+    }
+
+    eprintln!("\n=== SUMMARY ===");
+    eprintln!("  Total functions:    {}", cx.function_classes.len());
+    eprintln!("  Structural bounds:  {}", cx.structural_bounds.len());
+    eprintln!("  Violations:         {}", cx.violations.len());
+}

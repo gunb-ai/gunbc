@@ -18,7 +18,7 @@ use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, Arithmeti
 pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension, type_iteration_dimension};
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
 use crate::std_computation::IterationDimension::{TreeDescent, CollectionFold, ArithmeticRepeat};
-pub use crate::std_induction::{SubValueRelation, ShrinkFactor, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, catamorphism_bound, derive_bound};
+pub use crate::std_induction::{SubValueRelation, ShrinkFactor, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, sub_value_to_call_pattern, catamorphism_bound, derive_bound};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
 use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
 use crate::std_induction::CostBound::{ConstantBound, AtomicBound, ForeverBound, ErrorBound};
@@ -589,7 +589,7 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-            let own_edges = if set_has(scc_name_set.clone(), expr_call_func(body.clone())) {
+            let own_edges = if set_has(scc_name_set.clone(), expr_call_func_at(body.clone(), si.clone())) {
                 Rc::new(vec![Rc::new(ParserProgressEdge {
     caller: caller.clone(),
     callee: expr_call_func_at(body.clone(), si.clone()),
@@ -944,7 +944,7 @@ pub fn count_self_calls(body: Rc<Node>, func_name: String, si: Option<Rc<Newline
         {
             let own = match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-                let f = expr_call_func(body.clone());
+                let f = expr_call_func_at(body.clone(), si.clone());
 if (f.as_str() == func_name.clone().as_str()) {
                     1
 } else {
@@ -967,7 +967,7 @@ pub fn max_path_self_calls_with_cont(body: Rc<Node>, func_name: String, continue
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-            let f = expr_call_func(body.clone());
+            let f = expr_call_func_at(body.clone(), si.clone());
 let own = if (f.as_str() == func_name.clone().as_str()) {
                 1
 } else {
@@ -1044,7 +1044,7 @@ pub fn count_target_calls(body: Rc<Node>, target_set: Rc<HashMap<String, bool>>,
         {
             let own = match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-                let f = expr_call_func(body.clone());
+                let f = expr_call_func_at(body.clone(), si.clone());
 if set_has(target_set.clone(), f) {
                     1
 } else {
@@ -1067,7 +1067,7 @@ pub fn max_path_target_calls_with_cont(body: Rc<Node>, target_set: Rc<HashMap<St
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-            let f = expr_call_func(body.clone());
+            let f = expr_call_func_at(body.clone(), si.clone());
 let own = if set_has(target_set.clone(), f) {
                 1
 } else {
@@ -1284,7 +1284,7 @@ pub fn has_arithmetic_descent(body: Rc<Node>, func_name: String, si: Option<Rc<N
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-            let own_ok = if (expr_call_func(body.clone()).as_str() == func_name.clone().as_str()) {
+            let own_ok = if (expr_call_func_at(body.clone(), si.clone()).as_str() == func_name.clone().as_str()) {
                 { let mut __found = false; for arg_node in body.children.clone().iter().cloned() { if is_descending_expr(arg_value(arg_node.clone())) { __found = true; break; } } __found }
 } else {
                 false
@@ -1303,7 +1303,7 @@ if own_ok {
 pub fn is_accessor_of_param(expr: Rc<Node>, param_name: String, vars: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> bool {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-        let callee = expr_call_func(expr.clone());
+        let callee = expr_call_func_at(expr.clone(), si.clone());
 (is_child_accessor_in_model(callee) && { let mut __found = false; for arg_node in expr.children.clone().iter().cloned() { if match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
             let vname = expr_var_name_at(arg_value(arg_node.clone()), si.clone());
@@ -1383,7 +1383,7 @@ pub fn is_child_descent_expr(expr: Rc<Node>, param_name: String, vars: Rc<HashMa
 pub fn is_tree_size_preserving_wrapper(expr: Rc<Node>, si: Option<Rc<NewlineIndex>>) -> bool {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-        let callee = expr_call_func(expr.clone());
+        let callee = expr_call_func_at(expr.clone(), si);
 is_tree_size_preserving(callee)
 },
     _ => false,
@@ -1400,7 +1400,7 @@ pub fn wrapper_inner_arg(expr: Rc<Node>) -> Rc<Node> {
 pub fn is_sub_value_extractor(expr: Rc<Node>, si: Option<Rc<NewlineIndex>>) -> bool {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-        let callee = expr_call_func(expr.clone());
+        let callee = expr_call_func_at(expr.clone(), si);
 is_tree_size_reducing(callee)
 },
     _ => false,
@@ -1766,7 +1766,7 @@ Rc::new(DescentCheckAcc {
 result.ok.clone()
 },
     ExprData::ExprCall { .. } => {
-            let callee = expr_call_func(body.clone());
+            let callee = expr_call_func_at(body.clone(), si.clone());
 let own_ok = if (callee.as_str() == func_name.clone().as_str()) {
                 { let mut __found = false; for arg_node in body.children.clone().iter().cloned() { if {
                     let targets_param = (arg_name_at(arg_node.clone(), si.clone()).as_deref() == Some(param_name.clone()).as_deref());
@@ -2110,7 +2110,7 @@ let else_ev = if (branching_only.clone() && (else_path == 0)) {
 merge_optional_evidence(cond_ev, merge_optional_evidence(then_ev, else_ev))
 },
     ExprData::ExprCall { .. } => {
-            let callee = expr_call_func(body.clone());
+            let callee = expr_call_func_at(body.clone(), si.clone());
 let own_evidence = if (callee.as_str() == func_name.clone().as_str()) {
                 {
                     let arg_evidence = body.children.clone().iter().cloned().fold(DescentEvidence::DescentUnknown, |acc: DescentEvidence, arg_node: Rc<Node>| {
@@ -2435,12 +2435,39 @@ if (path_calls.clone() == 0) {
             lower_call_pattern(Rc::new(CallPattern::FoldBodyCall))
 } else {
             {
-                let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone(), parser_always_advancing, si.clone());
+                let all_evidence = collect_self_call_evidence(body.clone(), func_name.clone());
+let has_evidence = ((all_evidence.clone().len() as i64) > 0);
+let all_structural = (has_evidence && { let mut __all = true; for call_ev in all_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
+    _ => false,
+} { __found = true; break; } } __found }) { __all = false; break; } } __all });
+if all_structural {
+                    {
+                        let first_call = match all_evidence.clone().first().cloned() {
+    Some(call_ev) => Rc::new({ let mut __result = Vec::new(); for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
+    _ => false,
+} { __result.push(rel); } } __result }).first().cloned(),
+    None => None,
+};
+match first_call {
+    Some(rel) => match sub_value_to_call_pattern(rel.clone()) {
+    Some(cp) => lower_call_pattern(cp.clone()),
+    None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
+},
+    None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
+}
+}
+} else {
+                    {
+                        let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone(), parser_always_advancing, si.clone());
 let proof_safe_for_branching = match proof.clone() {
     Some(p) => if ((p.dimensions.clone().len() as i64) == 0) {
-                    false
+                            false
 } else {
-                    { let mut __all = true; for dim in p.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
+                            { let mut __all = true; for dim in p.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
     RankingDimension::TreeSize { .. } => true,
     RankingDimension::ListLength { .. } => true,
     _ => false,
@@ -2449,15 +2476,15 @@ let proof_safe_for_branching = match proof.clone() {
     None => false,
 };
 let branching_proof = if ((path_calls.clone() > 1) && !proof_safe_for_branching.clone()) {
-                    construct_branching_termination_proof(func_name.clone(), body.clone(), params.clone(), si.clone())
+                            construct_branching_termination_proof(func_name.clone(), body.clone(), params.clone(), si.clone())
 } else {
-                    None
+                            None
 };
 let branching_proof_safe = match branching_proof.clone() {
     Some(bp) => if ((bp.dimensions.clone().len() as i64) == 0) {
-                    false
+                            false
 } else {
-                    { let mut __all = true; for dim in bp.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
+                            { let mut __all = true; for dim in bp.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
     RankingDimension::TreeSize { .. } => true,
     RankingDimension::ListLength { .. } => true,
     _ => false,
@@ -2467,29 +2494,31 @@ let branching_proof_safe = match branching_proof.clone() {
 };
 match proof.clone() {
     Some(p) => if ((path_calls.clone() == 1) || proof_safe_for_branching.clone()) {
-                    lower_call_pattern(proof_to_call_pattern(p.clone()))
+                            lower_call_pattern(proof_to_call_pattern(p.clone()))
 } else {
-                    if branching_proof_safe {
-                        match branching_proof.clone() {
+                            if branching_proof_safe {
+                                match branching_proof.clone() {
     Some(bp) => lower_call_pattern(proof_to_call_pattern(bp.clone())),
     None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
 }
 } else {
-                        lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                                lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
 }
 },
     None => if (path_calls.clone() > 1) {
-                    match branching_proof.clone() {
+                            match branching_proof.clone() {
     Some(bp) => if branching_proof_safe {
-                        lower_call_pattern(proof_to_call_pattern(bp.clone()))
+                                lower_call_pattern(proof_to_call_pattern(bp.clone()))
 } else {
-                        lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                                lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
 },
     None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
 }
 } else {
-                    lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                            lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
 },
+}
+}
 }
 }
 }
@@ -2612,7 +2641,7 @@ pub fn collect_local_call_edges_in_expr(caller: String, body: Rc<Node>, local_fu
         {
             let this_edges = match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-                let callee = expr_call_func(body.clone());
+                let callee = expr_call_func_at(body.clone(), si.clone());
 if set_has(local_func_set.clone(), callee.clone()) {
                     Rc::new(vec![Rc::new(CallEdge {
     caller: caller.clone(),
@@ -2730,7 +2759,7 @@ pub fn collect_scc_child_edges(body: Rc<Node>, caller: String, param_name: Strin
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprLambda { .. } => Rc::new(vec![]),
     ExprData::ExprCall { .. } => {
-            let callee = expr_call_func(body.clone());
+            let callee = expr_call_func_at(body.clone(), si.clone());
 let own_edges = if set_has(target_set.clone(), callee.clone()) {
                 {
                     let callee_params = match v2_rt::map_get(&scc_measure_params, callee.clone()) {
@@ -4680,42 +4709,23 @@ pub fn merge_param_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, p
 })
 }
 
-pub fn is_catamorphism_param(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> bool {
-    { let mut __all = true; for call_evidence in all_calls.iter().cloned() { if !(match call_evidence.clone().get(param_index.clone() as usize).cloned() {
+pub fn extract_shrink_factor(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> Option<Rc<ShrinkFactor>> {
+    all_calls.iter().cloned().fold(Some(Rc::new(ShrinkFactor::UnitShrink)), |acc: Option<Rc<ShrinkFactor>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match acc.clone() {
+    None => None,
+    Some(prev) => match call_evidence.clone().get(param_index.clone() as usize).cloned() {
     Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { .. } => true,
-    SubValueRelation::IteratedSubValue { .. } => true,
-    _ => false,
-},
-    None => true,
-}) { __all = false; break; } } __all }
-}
-
-pub fn extract_shrink_factor(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> Rc<ShrinkFactor> {
-    all_calls.iter().cloned().fold(Rc::new(ShrinkFactor::UnitShrink), |acc: Rc<ShrinkFactor>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence.clone().get(param_index.clone() as usize).cloned() {
-    Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { factor: f, .. } => match (*acc.clone()).clone() {
-    ShrinkFactor::UnitShrink => f.clone(),
-    _ => if (acc.clone() == f.clone()) {
+    SubValueRelation::StrictSubValue { factor: f, .. } => match (*prev.clone()).clone() {
+    ShrinkFactor::UnitShrink => Some(f.clone()),
+    _ => if (prev.clone() == f.clone()) {
         acc.clone()
 } else {
-        Rc::new(ShrinkFactor::UnitShrink)
+        None
 },
 },
     _ => acc.clone(),
 },
     None => acc.clone(),
-})
-}
-
-pub fn count_descending_calls(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> i64 {
-    all_calls.iter().cloned().fold(0, |acc: i64, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence.clone().get(param_index.clone() as usize).cloned() {
-    Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { .. } => (acc.clone() + 1),
-    SubValueRelation::IteratedSubValue { .. } => (acc.clone() + 1),
-    _ => acc.clone(),
 },
-    None => acc.clone(),
 })
 }
 
@@ -4743,32 +4753,50 @@ let from_children = body.children.clone().iter().cloned().fold(0, |acc: i64, chi
 (own + from_children)
 },
     ExprData::ExprIf => {
-            let then_count = max_path_descending(if_then_branch(body.clone()), fn_name.clone(), param_index.clone());
+            let cond_count = max_path_descending(if_condition(body.clone()), fn_name.clone(), param_index.clone());
+let then_count = max_path_descending(if_then_branch(body.clone()), fn_name.clone(), param_index.clone());
 let else_branch = if_else_branch(body.clone());
 let else_count = match else_branch {
     Some(eb) => max_path_descending(eb.clone(), fn_name.clone(), param_index.clone()),
     None => 0,
 };
-if (then_count.clone() > else_count.clone()) {
+let branch_max = if (then_count.clone() > else_count.clone()) {
                 then_count.clone()
 } else {
                 else_count.clone()
-}
+};
+(cond_count + branch_max)
 },
     ExprData::ExprMatch => {
-            let arms = match_arm_nodes(body.clone());
-arms.iter().cloned().fold(0, |acc: i64, arm: Rc<Node>| {
+            let scrut_count = max_path_descending(match_scrutinee(body.clone()), fn_name.clone(), param_index.clone());
+let arms = match_arm_nodes(body.clone());
+let arm_max = arms.iter().cloned().fold(0, |acc: i64, arm: Rc<Node>| {
                 let arm_count = max_path_descending(arm_body(arm.clone()), fn_name.clone(), param_index.clone());
 if (arm_count.clone() > acc.clone()) {
                     arm_count.clone()
 } else {
                     acc.clone()
 }
-})
+});
+(scrut_count + arm_max)
 },
     _ => body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| (acc.clone() + max_path_descending(child.clone(), fn_name.clone(), param_index.clone()))),
 }
     })
+}
+
+pub fn distinct_descended_fields(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> i64 {
+    {
+        let field_set = all_calls.iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence.clone().get(param_index.clone() as usize).cloned() {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => v2_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true),
+    SubValueRelation::IteratedSubValue { field: f, .. } => v2_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true),
+    _ => acc.clone(),
+},
+    None => acc.clone(),
+});
+(Rc::new(v2_rt::map_keys(&field_set)).len() as i64)
+}
 }
 
 pub fn analyze_structural_bounds(func_entries: Rc<Vec<Rc<FuncEntry>>>) -> Rc<Vec<Rc<StructuralBoundResult>>> {
@@ -4785,19 +4813,33 @@ let evidence = merge_param_evidence(all_calls.clone(), param_index.clone());
 match evidence.clone() {
     DescentEvidence::Strict => {
                         let param_name = param_node_name(param_node.clone());
-let factor = extract_shrink_factor(all_calls.clone(), param_index.clone());
-let time_bound = match (*factor.clone()).clone() {
-    ShrinkFactor::UnitShrink => catamorphism_bound(param_name.clone(), 1),
-    ShrinkFactor::ConstantShrink { .. } => catamorphism_bound(param_name.clone(), 1),
-    ShrinkFactor::ProportionalShrink { .. } => {
+let factor_opt = extract_shrink_factor(all_calls.clone(), param_index.clone());
+match factor_opt.clone() {
+    Some(factor) => {
                             let branches = max_path_descending(entry.body.clone(), entry.name.clone(), param_index.clone());
-derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0)
+let time_bound = match (*factor.clone()).clone() {
+    ShrinkFactor::UnitShrink => {
+                                let distinct_fields = distinct_descended_fields(all_calls.clone(), param_index.clone());
+if (branches.clone() <= distinct_fields.clone()) {
+                                    catamorphism_bound(param_name.clone(), 1)
+} else {
+                                    derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0)
+}
 },
+    ShrinkFactor::ConstantShrink { .. } => {
+                                let distinct_fields = distinct_descended_fields(all_calls.clone(), param_index.clone());
+if (branches.clone() <= distinct_fields.clone()) {
+                                    catamorphism_bound(param_name.clone(), 1)
+} else {
+                                    derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0)
+}
+},
+    ShrinkFactor::ProportionalShrink { .. } => derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0),
 };
 let stack_bound = if entry.is_tail_recursive.clone() {
-                            Rc::new(CostBound::ConstantBound)
+                                Rc::new(CostBound::ConstantBound)
 } else {
-                            derive_bound(param_name.clone(), 1, factor.clone(), 0)
+                                derive_bound(param_name.clone(), 1, factor.clone(), 0)
 };
 v2_rt::concat(pacc.clone(), Rc::new(vec![Rc::new(StructuralBoundResult {
     func_name: entry.name.clone(),
@@ -4806,6 +4848,9 @@ v2_rt::concat(pacc.clone(), Rc::new(vec![Rc::new(StructuralBoundResult {
     stack_bound: stack_bound.clone(),
     span: entry.span.clone(),
 })]))
+},
+    None => pacc.clone(),
+}
 },
     _ => pacc.clone(),
 }

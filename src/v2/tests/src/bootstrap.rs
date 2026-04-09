@@ -61,7 +61,8 @@ fn stage0_cargo_check() {
 //   diagnostics (infer_property_values/infer_transport_node call infer_expr).
 // 2026-04-08: 528→530 — source_index threading (PR #356 merge) adds 2
 //   diagnostics from new call paths through CostUnknown functions.
-const DIAG_RATCHET: usize = 530;
+// 2026-04-09: 530→528 — merged main (CX unification -2).
+const DIAG_RATCHET: usize = 528;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
