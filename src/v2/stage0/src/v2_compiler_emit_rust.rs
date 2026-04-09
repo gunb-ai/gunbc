@@ -172,14 +172,14 @@ pub fn rust_enum_derives_copy_text() -> String {
 pub fn rust_serde_tag_attr() -> String {
     match serialization_for_target(RenderTarget::Rust).tag_attribute.clone() {
     Some(attr) => attr.clone(),
-    None => "".to_string(),
+    None => emit_error_expr("missing serde tag_attribute for Rust".to_string(), RenderTarget::Rust),
 }
 }
 
 pub fn rust_serde_rename_template_text() -> String {
     match serialization_for_target(RenderTarget::Rust).rename_attribute_template.clone() {
     Some(template) => template.clone(),
-    None => "".to_string(),
+    None => emit_error_expr("missing serde rename_attribute_template for Rust".to_string(), RenderTarget::Rust),
 }
 }
 
@@ -202,7 +202,7 @@ pub fn rust_test_name(projection: Rc<TestProjection>) -> String {
 pub fn rust_async_test_decorator() -> String {
     match test_conventions_for_target(RenderTarget::Rust).async_decorator.clone() {
     Some(decorator) => decorator.clone(),
-    None => "".to_string(),
+    None => emit_error_expr("missing async_decorator for Rust test conventions".to_string(), RenderTarget::Rust),
 }
 }
 

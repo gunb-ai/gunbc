@@ -840,7 +840,10 @@ fn emit_keyword(key: String, target: RenderTarget) -> String {
 fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   match value {
     LitStr { value: s } =>
-      let suffix = literal_suffix(target: target, dag_name: "String")
+      let suffix = match literal_suffix(target: target, dag_name: "String") {
+        Some { value: sfx } => sfx
+        None => ""
+      }
       emit_string_literal(s: s, suffix: suffix)
     LitInt { value: i } => to_string(value: i)
     LitFloat { value: f } => f
@@ -852,7 +855,10 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
 // Operator symbol lookup — reads from per-language OperatorSpec in
 // extdeps/languages/*/syntax.dag. No hardcoded operator syntax.
 fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
-  binop_symbol(target: target, op: op)
+  match binop_symbol(target: target, op: op) {
+    Some { value: sym } => sym
+    None => emit_error_expr(message: "missing OperatorSpec for BinOp in target language", target: target)
+  }
 }
 
 fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {

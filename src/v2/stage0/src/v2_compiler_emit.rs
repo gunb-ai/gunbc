@@ -799,7 +799,10 @@ pub fn emit_keyword(key: String, target: RenderTarget) -> String {
 pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
     match (*value).clone() {
     LiteralValue::LitStr { value: s, .. } => {
-        let suffix = literal_suffix(target, "String".to_string());
+        let suffix = match literal_suffix(target, "String".to_string()) {
+    Some(sfx) => sfx.clone(),
+    None => "".to_string(),
+};
 emit_string_literal(s.clone(), suffix)
 },
     LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
@@ -814,7 +817,10 @@ emit_string_literal(s.clone(), suffix)
 }
 
 pub fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
-    binop_symbol(target, op)
+    match binop_symbol(target.clone(), op) {
+    Some(sym) => sym.clone(),
+    None => emit_error_expr("missing OperatorSpec for BinOp in target language".to_string(), target.clone()),
+}
 }
 
 pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {

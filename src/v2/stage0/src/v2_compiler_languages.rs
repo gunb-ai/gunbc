@@ -193,11 +193,6 @@ pub struct BlockSyntax {
     pub arm_separator: String,
     pub stmt_terminator: String,
     pub significant_whitespace: bool,
-    pub arm_header_depth_offset: i64,
-    pub arm_body_depth_offset: i64,
-    pub if_else_expr_template: Option<String>,
-    pub func_return_suffix: String,
-    pub empty_return: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -319,11 +314,6 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     arm_separator: ",".to_string(),
     stmt_terminator: ";".to_string(),
     significant_whitespace: false,
-    arm_header_depth_offset: 0,
-    arm_body_depth_offset: 1,
-    if_else_expr_template: None,
-    func_return_suffix: "".to_string(),
-    empty_return: "".to_string(),
 }),
     tco: Rc::new(TcoSyntax {
     loop_keyword: "loop".to_string(),
@@ -425,11 +415,6 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     arm_separator: "\n".to_string(),
     stmt_terminator: "".to_string(),
     significant_whitespace: true,
-    arm_header_depth_offset: 1,
-    arm_body_depth_offset: 2,
-    if_else_expr_template: Some("({then}) if ({cond}) else ({else})".to_string()),
-    func_return_suffix: "".to_string(),
-    empty_return: "return None".to_string(),
 }),
     tco: Rc::new(TcoSyntax {
     loop_keyword: "while True".to_string(),
@@ -531,11 +516,6 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     arm_separator: "\n".to_string(),
     stmt_terminator: "".to_string(),
     significant_whitespace: false,
-    arm_header_depth_offset: 0,
-    arm_body_depth_offset: 1,
-    if_else_expr_template: None,
-    func_return_suffix: ", nil".to_string(),
-    empty_return: "return struct{}{}, nil".to_string(),
 }),
     tco: Rc::new(TcoSyntax {
     loop_keyword: "for".to_string(),
@@ -597,7 +577,7 @@ pub fn target_operators(target: RenderTarget) -> Rc<Vec<Rc<OperatorSpec>>> {
 }
 }
 
-pub fn binop_symbol(target: RenderTarget, op: BinOp) -> String {
+pub fn binop_symbol(target: RenderTarget, op: BinOp) -> Option<String> {
     {
         let ops = target_operators(target);
 let matching = Rc::new({ let mut __result = Vec::new(); for spec in ops.iter().cloned() { if match spec.binop.clone() {
@@ -605,8 +585,8 @@ let matching = Rc::new({ let mut __result = Vec::new(); for spec in ops.iter().c
     None => false,
 } { __result.push(spec); } } __result });
 match matching.first().cloned() {
-    Some(spec) => spec.symbol.clone(),
-    None => "<<MISSING_BINOP>>".to_string(),
+    Some(spec) => Some(spec.symbol.clone()),
+    None => None,
 }
 }
 }
