@@ -26,8 +26,7 @@ pub use crate::v2_compiler_languages::{scaffold_for_target, TestConventions, Ite
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{resolved_type, for_each_element_type_node, normalize_access_type_node, node_is_keyed_collection, is_unit_like};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
-pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
-use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
+pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
 pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, shared_tco_body, shared_tco_default_return, shared_tco_non_self_call, shared_tco_if, shared_tco_let, shared_tco_block, shared_tco_reassign, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, seed_bindings, emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts, emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared, emit_block_stmts_shared, emit_init_block_stmts_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, emit_inferred_shared, emit_typed_block_join, emit_typed_first_arg_shared, emit_typed_tco_reassign_shared, emit_algebra_method_template};
@@ -498,9 +497,13 @@ let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in ordered_args.it
 let callee = lookup_item(registry.clone(), func.clone());
 let extra_args = match callee {
     Some(info) => {
-            let is_func = (info.kind.clone() == ItemKind::FuncItem);
-if is_func {
-                Rc::new({ let mut __result = Vec::new(); for sn in info.service_names.clone().iter().cloned() { __result.push(service_var_name(sn.clone())); } __result })
+            let has_effects = (((info.service_names.clone().len() as i64) > 0) || ((info.resource_names.clone().len() as i64) > 0));
+if has_effects {
+                {
+                    let resource_args = Rc::new({ let mut __result = Vec::new(); for rn in info.resource_names.clone().iter().cloned() { __result.push(emit_ident(rn.clone(), RenderTarget::Go)); } __result });
+let service_args = Rc::new({ let mut __result = Vec::new(); for sn in info.service_names.clone().iter().cloned() { __result.push(service_var_name(sn.clone())); } __result });
+v2_rt::concat(resource_args, service_args)
+}
 } else {
                 Rc::new(vec![])
 }

@@ -78,7 +78,7 @@ import v2.compiler.infer_method {
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
-  ItemInfo, FuncItem
+  ItemInfo
 }
 import v2.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
@@ -663,9 +663,11 @@ fn emit_go_typed_call(func: String, args: List<Node>, registry: Map<String, Item
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
-      let is_func = info.kind == FuncItem
-      if is_func {
-        info.service_names |> map(sn => service_var_name(service_name: sn))
+      let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0
+      if has_effects {
+        let resource_args = info.resource_names |> map(rn => emit_ident(name: rn, target: Go))
+        let service_args = info.service_names |> map(sn => service_var_name(service_name: sn))
+        concat(resource_args, service_args)
       } else { [] }
     None => []
   }

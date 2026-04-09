@@ -34,7 +34,7 @@ pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_product_type, is_coproduct_type, is_unit_like};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
-use crate::v2_compiler_infer_items::ItemKind::{FuncItem, DataItem};
+use crate::v2_compiler_infer_items::ItemKind::{DataItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, build_emit_graph_info, expr_span};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
@@ -665,11 +665,11 @@ let fn_emit_info = Rc::new(EmitGraphInfo {
     fold_eligible_index: emit_info.fold_eligible_index.clone(),
     fold_eligible: fn_fold_eligible,
 });
-let has_services = match lookup_item(registry.clone(), item.name.clone()) {
-    Some(info) => ((info.service_names.clone().len() as i64) > 0),
+let is_effectful = match lookup_item(registry.clone(), item.name.clone()) {
+    Some(info) => (((info.service_names.clone().len() as i64) > 0) || ((info.resource_names.clone().len() as i64) > 0)),
     None => false,
 };
-if (((item.uses.clone().len() as i64) > 0) || has_services) {
+if is_effectful {
                                 emit_func_def(item_text.clone(), item.params.clone(), resolved_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), shared_types, fn_emit_info)
 } else {
                                 emit_fn_def(item_text.clone(), item.params.clone(), resolved_type(item.clone()), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), shared_types, fn_emit_info)
@@ -4331,16 +4331,17 @@ let from_key_count = (Rc::new({ let mut __result = Vec::new(); for ch in rt.chil
 pub fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String) -> String {
     {
         let pointer = v2_rt::concat("/".to_string(), from_path.clone());
-let accessor = if (dag_type_name.clone().as_str() == "String".to_string().as_str()) {
+let rust_type = coerce_primitive_type(RenderTarget::Rust, dag_type_name);
+let accessor = if (rust_type.clone().as_str() == "String".to_string().as_str()) {
             v2_rt::concat(v2_rt::concat(".and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())
 } else {
-            if (dag_type_name.clone().as_str() == "Int".to_string().as_str()) {
+            if (rust_type.clone().as_str() == "i64".to_string().as_str()) {
                 v2_rt::concat(v2_rt::concat(".and_then(|v| v.as_i64()).ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())
 } else {
-                if (dag_type_name.clone().as_str() == "Float".to_string().as_str()) {
+                if (rust_type.clone().as_str() == "f64".to_string().as_str()) {
                     v2_rt::concat(v2_rt::concat(".and_then(|v| v.as_f64()).ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())
 } else {
-                    if (dag_type_name.clone().as_str() == "Bool".to_string().as_str()) {
+                    if (rust_type.clone().as_str() == "bool".to_string().as_str()) {
                         v2_rt::concat(v2_rt::concat(".and_then(|v| v.as_bool()).ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())
 } else {
                         v2_rt::concat(v2_rt::concat(".cloned().map(|v| serde_json::from_value(v)).transpose()?.ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())
@@ -4362,11 +4363,10 @@ let from_path = match child_from_key(ch.clone()) {
     Some(p) => p.clone(),
     None => ch.name.clone(),
 };
-let type_name = match ch.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: tn, .. }) => tn.name.clone(),
-    _ => "String".to_string(),
-};
-emit_json_value_extract(field_name.clone(), from_path.clone(), type_name.clone())
+match ch.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: tn, .. }) => emit_json_value_extract(field_name.clone(), from_path.clone(), tn.name.clone()),
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), field_name.clone()), " = compile_error!(\"unresolved type for output field: ".to_string()), ch.name.clone()), "\");".to_string()),
+}
 }); } __result });
 let field_names = Rc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push(emit_ident(ch.name.clone(), RenderTarget::Rust)); } __result });
 let tuple_body = if ((field_names.clone().len() as i64) == 1) {

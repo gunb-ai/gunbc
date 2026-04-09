@@ -94,7 +94,7 @@ import v2.compiler.infer_method {
 import v2.compiler.infer_sigs { ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
-  ItemInfo, FuncItem, DataItem
+  ItemInfo, DataItem
 }
 import v2.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
@@ -822,12 +822,13 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       fold_eligible_index: emit_info.fold_eligible_index,
       fold_eligible: fn_fold_eligible
     }
-    // Items with uses or service calls are emitted as async workflow functions
-    let has_services = match lookup_item(registry: registry, name: item.name) {
-      Some { value: info } => info.service_names |> count > 0
+    // Items with resource uses or service calls are emitted as async workflow functions.
+    // Single authority: service_names + resource_names on ItemInfo (not uses on the Node).
+    let is_effectful = match lookup_item(registry: registry, name: item.name) {
+      Some { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
       None => false
     }
-    if item.uses |> count > 0 || has_services {
+    if is_effectful {
       emit_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
     } else {
       emit_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
@@ -4148,19 +4149,22 @@ fn has_from_key_fields(op_node: Node) -> Bool {
 }
 
 // RE-1i: Emit type-specific JSON value extraction for a single field.
-// Converts dag type name to the appropriate serde_json accessor.
+// Dispatches on the Rust target type from coercion data (TypeCheckpoint)
+// to select the appropriate serde_json::Value accessor. The accessor set
+// is closed (fixed serde_json API), not open-set string matching.
 fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String) -> String {
   let pointer = concat("/", from_path)
-  let accessor = if dag_type_name == "String" {
+  let rust_type = coerce_primitive_type(target: Rust, dag_name: dag_type_name)
+  let accessor = if rust_type == "String" {
     concat(".and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or(\"missing field: ", from_path, "\")?")
-  } else if dag_type_name == "Int" {
+  } else if rust_type == "i64" {
     concat(".and_then(|v| v.as_i64()).ok_or(\"missing field: ", from_path, "\")?")
-  } else if dag_type_name == "Float" {
+  } else if rust_type == "f64" {
     concat(".and_then(|v| v.as_f64()).ok_or(\"missing field: ", from_path, "\")?")
-  } else if dag_type_name == "Bool" {
+  } else if rust_type == "bool" {
     concat(".and_then(|v| v.as_bool()).ok_or(\"missing field: ", from_path, "\")?")
   } else {
-    // Complex types: clone and deserialize
+    // Non-primitive types: deserialize via serde
     concat(".cloned().map(|v| serde_json::from_value(v)).transpose()?.ok_or(\"missing field: ", from_path, "\")?")
   }
   concat("let ", var_name, " = json_body.pointer(\"", pointer, "\")", accessor, ";")
@@ -4177,11 +4181,12 @@ fn emit_from_key_extraction(op_node: Node) -> String {
       Some { value: p } => p
       None => ch.name
     }
-    let type_name = match ch.inferred {
-      Some { value: Resolved { node: tn } } => tn.name
-      _ => "String"
+    match ch.inferred {
+      Some { value: Resolved { node: tn } } =>
+        emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: tn.name)
+      _ =>
+        concat("let ", field_name, " = compile_error!(\"unresolved type for output field: ", ch.name, "\");")
     }
-    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: type_name)
   )
   let field_names = children |> map(ch => emit_ident(name: ch.name, target: Rust))
   let tuple_body = if field_names |> count == 1 {
