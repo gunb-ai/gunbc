@@ -18,6 +18,7 @@ module extdeps.github.pulls
 import extdeps.github.github { GitHubUser }
 import std.types { Timestamp, Url, HttpMethod, AuthScheme }
 import std.errors { GitHubErrorShape }
+import std.credentials { CredentialSource, EnvVar }
 
 // -- Pull request model -----------------------------------------------
 
@@ -58,6 +59,7 @@ service github.Pulls {
     endpoint: "https://api.github.com"
     auth: Bearer
     auth_input: auth_token
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
     // GitHub API rate limits: 5000 requests/hour for authenticated users
     rate_limit: { requests: 5000, per: hour, scope: core }
     // Retry on rate limit and server errors with exponential backoff

@@ -5083,6 +5083,367 @@ fn review_dag_compiles_to_rust() {
     }
 }
 
+// ── RE-2: review.dag acceptance tests ─────────────────────────────────────
+#[test]
+#[ignore] // Expensive: reads review.dag from disk, resolves transitive imports
+fn review_dag_has_review_subcommand() {
+    let ws = crate::helpers::workspace_root();
+    let review_path = ws.join("dsl/gunbc/tools/review.dag");
+    let review_content = std::fs::read_to_string(&review_path)
+        .expect("failed to read review.dag");
+    let result = compile_dag_named(
+        "dsl/gunbc/tools/review.dag",
+        &review_content,
+        RenderTarget::Rust,
+    );
+    let review_rs = find_file(&result, "src/gunbc_tools_review.rs");
+    assert!(
+        review_rs.contains("review_pr") && review_rs.contains("review_cycle"),
+        "RE-2: expected review_pr and review_cycle functions in emitted review module"
+    );
+}
+
+#[test]
+#[ignore] // Expensive: reads review.dag from disk, resolves transitive imports
+fn review_dag_emits_cargo_with_deps() {
+    let ws = crate::helpers::workspace_root();
+    let review_path = ws.join("dsl/gunbc/tools/review.dag");
+    let review_content = std::fs::read_to_string(&review_path)
+        .expect("failed to read review.dag");
+    let result = compile_dag_named(
+        "dsl/gunbc/tools/review.dag",
+        &review_content,
+        RenderTarget::Rust,
+    );
+    let cargo_toml = find_file(&result, "Cargo.toml");
+    assert!(
+        cargo_toml.contains("reqwest") && cargo_toml.contains("tokio"),
+        "RE-2: expected reqwest + tokio in Cargo.toml, got:\n{cargo_toml}"
+    );
+}
+
+// ── RE-1: POST body emission ──────────────────────────────────────────────
+#[test]
+fn rest_emit_post_body_single_field() {
+    let source = r#"module re1_body1
+
+service test.Svc {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation CreateItem {
+    input { name: String }
+    output { id: Int from "id" }
+    transport rest { method: POST, path: "/items", body: { name: name } }
+    response {
+      201 => Json
+    }
+    mock_response {
+      201 => { id: 1 } "created"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1_body1.rs");
+    assert!(
+        content.contains("serde_json::json!"),
+        "RE-1 POST body: expected serde_json::json! in emitted code, got:\n{content}"
+    );
+    assert!(
+        content.contains("\"name\""),
+        "RE-1 POST body: expected field name in JSON body, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_post_body_multiple_fields() {
+    let source = r#"module re1_body2
+
+service test.Svc {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation CreateReview {
+    input { body: String, event: String }
+    output { id: Int from "id" }
+    transport rest { method: POST, path: "/reviews", body: { body: body, event: event } }
+    response {
+      200 => Json
+    }
+    mock_response {
+      200 => { id: 1 } "review"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1_body2.rs");
+    assert!(
+        content.contains("serde_json::json!") && content.contains("\"body\"") && content.contains("\"event\""),
+        "RE-1 POST body: expected JSON body with both fields in emitted code, got:\n{content}"
+    );
+}
+
+// ── RE-1d: Header auth variant ─────────────────────────────────────────
+#[test]
+fn rest_emit_uses_header_auth() {
+    let source = "module re1d_header\n\nimport std.types { AuthScheme }\n\nservice test.Api {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Header(\"x-api-key\")\n    auth_input: api_key\n  }\n  operation GetData {\n    input { api_key: Secret }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1d_header.rs");
+    assert!(
+        content.contains("x-api-key"),
+        "RE-1d: expected x-api-key header in emitted code, got:\n{content}"
+    );
+    assert!(
+        !content.contains("Bearer"),
+        "RE-1d: should NOT contain Bearer for Header auth, got:\n{content}"
+    );
+}
+
+// ── RE-3b: POST body for service with auth_source ─────────────────────
+#[test]
+fn rest_emit_post_with_auth_source() {
+    let source = r#"module re3b
+
+import std.types { AuthScheme }
+import std.credentials { CredentialSource }
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+    auth: Bearer
+    auth_source: EnvVar { name: "TEST_TOKEN" }
+  }
+  operation CreateItem {
+    input { name: String }
+    output { id: Int from "id" }
+    transport rest { method: POST, path: "/items", body: { name: name } }
+    response {
+      201 => Json
+    }
+    mock_response {
+      201 => { id: 1 } "created"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3b.rs");
+    assert!(
+        content.contains("serde_json::json!") && content.contains("self.auth_token"),
+        "RE-3b: expected POST body + self.auth_token in emitted code, got:\n{content}"
+    );
+}
+
+// ── RE-3c: Shell stdout capture ──────────────────────────────────────────
+#[test]
+fn shell_emit_captures_stdout() {
+    let source = "module re3c\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { script: String }\n    output { success: Bool, stdout: String, stderr: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"{script}\"] }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true, stdout: \"hello\", stderr: \"\" } \"ok\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3c.rs");
+    assert!(
+        content.contains("from_utf8_lossy") && content.contains("stdout"),
+        "RE-3c: expected stdout capture in emitted code, got:\n{content}"
+    );
+}
+
+// ── RE-3d: Cron upsert shell script ──────────────────────────────────────
+#[test]
+fn shell_emit_cron_upsert_script() {
+    let source = "module re3d\n\nservice test.Cron {\n  config {}\n  operation Upsert {\n    input { tag: String, schedule: String, command: String }\n    output { success: Bool }\n    transport shell {\n      argv: [\"sh\", \"-c\", \"TAG='{tag}'; ENTRY='{schedule} {command}'; crontab -l | grep -v $TAG; echo $ENTRY\"]\n    }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true } \"ok\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3d.rs");
+    assert!(
+        content.contains("crontab"),
+        "RE-3d: expected crontab in emitted shell command, got:\n{content}"
+    );
+}
+
+// ── RE-4: Anthropic REST API emission ────────────────────────────────────
+#[test]
+fn anthropic_response_extracts_content_text() {
+    let source = r#"module re4a
+
+import std.types { AuthScheme }
+
+type ApiError { type: String, message: String }
+
+service test.Llm {
+  config {
+    endpoint: "https://api.anthropic.com"
+    auth: Header("x-api-key")
+    auth_input: api_key
+  }
+  operation Messages {
+    input { api_key: Secret, model: String, prompt: String }
+    output {
+      content: String from "content/0/text"
+      model: String from "model"
+    }
+    transport rest {
+      method: POST,
+      path: "/v1/messages",
+      body: { model: model, prompt: prompt }
+    }
+    response {
+      200 => Json
+      401 => ApiError
+    }
+    mock_response {
+      200 => { content: [{ type: "text", text: "hello" }], model: "test" } "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re4a.rs");
+    assert!(
+        content.contains("pointer(\"/content/0/text\")"),
+        "RE-4b: expected JSON pointer extraction for content/0/text, got:\n{content}"
+    );
+    assert!(
+        content.contains("pointer(\"/model\")"),
+        "RE-4b: expected JSON pointer extraction for model, got:\n{content}"
+    );
+}
+
+#[test]
+fn anthropic_emit_uses_custom_header_auth() {
+    let source = r#"module re4c
+
+import std.types { AuthScheme }
+
+service test.Llm {
+  config {
+    endpoint: "https://api.anthropic.com"
+    auth: Header("x-api-key")
+    auth_input: api_key
+  }
+  operation Ask {
+    input { api_key: Secret, prompt: String }
+    output { text: String }
+    transport rest { method: POST, path: "/v1/messages", body: { prompt: prompt } }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => "ok" "text"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re4c.rs");
+    assert!(
+        content.contains("x-api-key") && !content.contains("Bearer"),
+        "RE-4c: expected x-api-key header (not Bearer) in emitted code, got:\n{content}"
+    );
+    assert!(
+        content.contains("serde_json::json!"),
+        "RE-4c: expected JSON body in POST request, got:\n{content}"
+    );
+}
+
+#[test]
+#[ignore] // Expensive: reads from disk, resolves transitive imports
+fn anthropic_dag_compiles_to_rust() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path)
+        .expect("failed to read anthropic.dag");
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/anthropic.dag",
+        &source,
+        RenderTarget::Rust,
+    );
+    let hard_diags: Vec<_> = diagnostic_messages(&result)
+        .into_iter()
+        .filter(|d| !d.contains("complexity:"))
+        .collect();
+    assert!(
+        hard_diags.is_empty(),
+        "RE-4: anthropic.dag has hard diagnostics:\n{}",
+        hard_diags.join("\n")
+    );
+    assert!(
+        !result.files.is_empty(),
+        "RE-4: anthropic.dag produced no emitted files"
+    );
+}
+
+// ── RE-5: Multi-backend test ─────────────────────────────────────────────
+#[test]
+fn multi_backend_cli_and_rest_compile() {
+    let source = r#"module re5
+
+import std.types { AuthScheme }
+
+type LlmError { message: String }
+
+service shell.Runner {
+  config {}
+  operation Run {
+    input { script: String }
+    output { success: Bool, stdout: String, stderr: String }
+    transport shell { argv: ["sh", "-lc", "{script}"] }
+    exit { 0 => Unit  nonzero => String }
+    mock_response {
+      0 => { success: true, stdout: "hello", stderr: "" } "ok"
+    }
+  }
+}
+
+service api.Service {
+  config {
+    endpoint: "https://api.example.com"
+    auth: Header("x-api-key")
+    auth_input: api_key
+  }
+  operation Ask {
+    input { api_key: Secret, prompt: String }
+    output { text: String }
+    transport rest { method: POST, path: "/ask", body: { prompt: prompt } }
+    response {
+      200 => String
+      401 => LlmError
+    }
+    mock_response {
+      200 => "hello" "ok"
+    }
+  }
+}
+
+func ask_cli(prompt: String) -> String {
+  let result = shell.Runner.Run(script: prompt)
+  result.stdout
+}
+
+func ask_rest(api_key: Secret, prompt: String) -> String {
+  api.Service.Ask(api_key: api_key, prompt: prompt)
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re5.rs");
+    assert!(
+        content.contains("ask_cli") && content.contains("ask_rest"),
+        "RE-5: expected both ask_cli and ask_rest in emitted code, got:\n{content}"
+    );
+    assert!(
+        content.contains("Command::new") && content.contains("client.post"),
+        "RE-5: expected both shell Command and REST client in emitted code, got:\n{content}"
+    );
+}
+
 // ── CX-L3: Structural complexity bound regression tests ─────────────────
 //
 // End-to-end: compile .dag source → CX-L1 (InductiveField) → CX-L2

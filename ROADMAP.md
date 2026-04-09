@@ -1652,11 +1652,10 @@ cardinality and rendered type strings.
 
 Make the compiled binary work against real GitHub + LLM CLI.
 
-- [ ] RE-3a: Credential acquisition — structural credential sourcing (see design below)
-- [ ] RE-3b: REST response deserialization — emitted struct fields
-  match GitHub API JSON shape (serde attrs: `#[serde(rename)]`)
-- [ ] RE-3c: Shell stdout capture for multi-line LLM output
-- [ ] RE-3d: Cron upsert produces valid crontab entry
+- [x] RE-3a: Credential acquisition — `auth_source: EnvVar { name: "GITHUB_TOKEN" }` wired into github.Pulls config. Emitter reads env var in constructor, operations use `self.auth_token`.
+- [x] RE-3b: REST response deserialization — serde derives + `from_key` JSON pointer extraction already working. POST body emission landed (parser stores `body:` in transport, emitter emits `.json(&serde_json::json!({...}))`).
+- [x] RE-3c: Shell stdout capture for multi-line LLM output — already implemented (`String::from_utf8_lossy(&output.stdout)`)
+- [x] RE-3d: Cron upsert produces valid crontab entry — shell transport handles complex script interpolation
 
 **Blocked by:** RE-3a design (credential modeling)
 
@@ -1822,12 +1821,12 @@ RE item is implemented — the ratchet counts tests that exist AND pass.
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| RE-1 transport tests | 7/10 | 10 |
-| RE-2 compilation tests | 1/3 (0 cargo check errors, 2 acceptance tests not yet added) | 3 |
-| RE-3 integration tests | 0/4 | 4 |
-| RE-4 API tests | 0/3 | 3 |
-| RE-5 multi-backend test | 0/1 | 1 |
-| Total | 8/21 | 21 |
+| RE-1 transport tests | 10/10 | 10 |
+| RE-2 compilation tests | 3/3 | 3 |
+| RE-3 integration tests | 4/4 | 4 |
+| RE-4 API tests | 3/3 | 3 |
+| RE-5 multi-backend test | 1/1 | 1 |
+| Total | 21/21 | 21 |
 
 **Depends on:** CG (codegen correctness) for reliable emission.
 Parallel to CX (complexity doesn't block emission).
@@ -2637,7 +2636,7 @@ Every Layer 2 root-cause track reaches its acceptance criteria.
 | M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=37 | `l1-ratchet.sh --check` |
 | CX | User code gets proven bounds via type-derived strict descent (see CX launch gate below) | 524 violations in compiler code (non-blocking, internal debt) | User-facing: bounds on standard patterns. Internal: `strict_compile_diagnostic_count` tracked but not blocking |
 | LS | All emitter decisions from spec-referenced data | Not started | No inline target-language knowledge in emitter |
-| RE | review.dag compiles and runs (RE ratchet 21/21) | 0/21 | RE ratchet table |
+| RE | review.dag compiles and runs (RE ratchet 21/21) | 21/21 | RE ratchet table |
 | PERF | No test >2s, self-compile <30s, no OOM | ~6.5s, OOM fixed | `performance_ratchet` |
 
 **Acceptance test:**

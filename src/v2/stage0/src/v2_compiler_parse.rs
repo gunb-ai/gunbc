@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name, variant_node_name_at, variant_node_fields, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, expr_var_name_at, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_stdin_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, NewlineIndex, CompilerDiagnostic};
+pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name, variant_node_name_at, variant_node_fields, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, expr_var_name_at, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, NewlineIndex, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -5333,10 +5333,10 @@ Rc::new(TransportResult {
 }
 
 pub fn parse_rest_binding_body(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<TransportResult> {
-    parse_rest_fields(tokens, state, None, None, None, None)
+    parse_rest_fields(tokens, state, None, None, None, None, None)
 }
 
-pub fn parse_rest_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut base_url: Option<Rc<Node>>, mut method: Option<Rc<Node>>, mut path_template: Option<Rc<Node>>, mut query: Option<Rc<Node>>) -> Rc<TransportResult> {
+pub fn parse_rest_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut base_url: Option<Rc<Node>>, mut method: Option<Rc<Node>>, mut path_template: Option<Rc<Node>>, mut query: Option<Rc<Node>>, mut request_body: Option<Rc<Node>>) -> Rc<TransportResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 let span = current_span(tokens.clone(), s.clone());
@@ -5351,7 +5351,7 @@ if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone(
 }), Rc::new(vec![]), None, make_span(0, 0)),
 };
 break Rc::new(TransportResult {
-    transport: rest_transport_node(bu.clone(), Rc::new(vec![]), Rc::new(vec![]), method.clone(), path_template.clone(), query.clone(), span.clone()),
+    transport: rest_transport_node(bu.clone(), Rc::new(vec![]), Rc::new(vec![]), method.clone(), path_template.clone(), query.clone(), request_body.clone(), span.clone()),
     state: s.clone(),
     err: None,
 });
@@ -5395,12 +5395,14 @@ let __tco_2 = Some(r3.expr.clone());
 let __tco_3 = method;
 let __tco_4 = path_template;
 let __tco_5 = query;
+let __tco_6 = request_body;
 tokens = __tco_0;
 state = __tco_1;
 base_url = __tco_2;
 method = __tco_3;
 path_template = __tco_4;
 query = __tco_5;
+request_body = __tco_6;
 continue;
 }
 } else {
@@ -5412,12 +5414,14 @@ let __tco_2 = base_url;
 let __tco_3 = Some(r3.expr.clone());
 let __tco_4 = path_template;
 let __tco_5 = query;
+let __tco_6 = request_body;
 tokens = __tco_0;
 state = __tco_1;
 base_url = __tco_2;
 method = __tco_3;
 path_template = __tco_4;
 query = __tco_5;
+request_body = __tco_6;
 continue;
 }
 } else {
@@ -5429,12 +5433,14 @@ let __tco_2 = base_url;
 let __tco_3 = method;
 let __tco_4 = Some(r3.expr.clone());
 let __tco_5 = query;
+let __tco_6 = request_body;
 tokens = __tco_0;
 state = __tco_1;
 base_url = __tco_2;
 method = __tco_3;
 path_template = __tco_4;
 query = __tco_5;
+request_body = __tco_6;
 continue;
 }
 } else {
@@ -5446,29 +5452,53 @@ let __tco_2 = base_url;
 let __tco_3 = method;
 let __tco_4 = path_template;
 let __tco_5 = Some(r3.expr.clone());
+let __tco_6 = request_body;
 tokens = __tco_0;
 state = __tco_1;
 base_url = __tco_2;
 method = __tco_3;
 path_template = __tco_4;
 query = __tco_5;
+request_body = __tco_6;
 continue;
 }
 } else {
-                            {
-                                let __tco_0 = tokens;
+                            if (fname.clone().as_str() == transport_body_key().as_str()) {
+                                {
+                                    let __tco_0 = tokens;
 let __tco_1 = s2.clone();
 let __tco_2 = base_url;
 let __tco_3 = method;
 let __tco_4 = path_template;
 let __tco_5 = query;
+let __tco_6 = Some(r3.expr.clone());
 tokens = __tco_0;
 state = __tco_1;
 base_url = __tco_2;
 method = __tco_3;
 path_template = __tco_4;
 query = __tco_5;
+request_body = __tco_6;
 continue;
+}
+} else {
+                                {
+                                    let __tco_0 = tokens;
+let __tco_1 = s2.clone();
+let __tco_2 = base_url;
+let __tco_3 = method;
+let __tco_4 = path_template;
+let __tco_5 = query;
+let __tco_6 = request_body;
+tokens = __tco_0;
+state = __tco_1;
+base_url = __tco_2;
+method = __tco_3;
+path_template = __tco_4;
+query = __tco_5;
+request_body = __tco_6;
+continue;
+}
 }
 }
 }
