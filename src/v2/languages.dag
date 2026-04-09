@@ -17,6 +17,7 @@ import v2.std.core {
 }
 import std.syntax {
   ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
+  NamingCase, PascalCase, SnakeCase,
   OperatorSpec, SyntaxSpec,
   BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody
@@ -212,17 +213,13 @@ type ExpressionSemantics {
   wildcard_case: String?        // Go: "default", Rust/Python: none (use pattern)
 }
 
-// Naming case — identifier surface form transformations.
-type NamingCase = PascalCase | SnakeCase
-
 // Visibility specification — how each language controls export/access.
-// Ref: Rust Reference §6.1 "Visibility", Go Spec "Exported identifiers",
-// PEP 8 "Naming Conventions".
+// Ref: Rust Reference §6.1 "Visibility", Go Spec "Exported identifiers".
 // Coproduct: each variant carries the data its renderer consumes.
+// NamingCase imported from std.syntax (single authority).
 type VisibilitySpec
   = KeywordVisibility { prefix: String }          // Rust: "pub "
   | CaseVisibility { export_case: NamingCase }    // Go: PascalCase = exported
-  | ConventionVisibility { private_prefix: String } // Python: "_" = private
 
 type TcoSyntax {
   loop_keyword: String        // "loop" (Rust), "for" (Go), "while True" (Python)
@@ -419,7 +416,7 @@ fn python_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: null
     },
-    visibility: ConventionVisibility { private_prefix: "_" },
+    visibility: KeywordVisibility { prefix: "" },
     sharing: SharingStrategy {
       needs_sharing: false,
       wrap_template: "{0}",

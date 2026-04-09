@@ -598,7 +598,7 @@ fn emit_go_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 }
 
 fn emit_go_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_if(condition: if_condition(texpr: expr), then_branch: if_then_branch(texpr: expr), else_branch: if_else_branch(texpr: expr), registry: registry, scope: scope, depth: depth)
+  emit_go_typed_if(condition: if_condition(texpr: expr), then_branch: if_then_branch(texpr: expr), else_branch: if_else_branch(texpr: expr), if_result_type: Some { value: resolved_type(n: expr) }, registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_go_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -758,20 +758,23 @@ fn emit_go_typed_switch_case(arm: Node, registry: Map<String, ItemInfo>, scope: 
   let spec = language_spec(target: Go)
   let bs = spec.block_syntax
   let es = spec.expression_semantics
-  let pat_str = emit_go_pattern(pattern: arm_pattern(n: arm))
+  let pat = arm_pattern(n: arm)
   let body_str = emit_go_typed_expr(texpr: arm_body(n: arm), registry: registry, scope: scope, depth: depth + 1, fuel: 1024)
-  let case_kw = match es.wildcard_case {
-    Some { value: wc } => if pat_str == "_" { wc } else { concat(bs.case_keyword, pat_str) }
-    None => concat(bs.case_keyword, pat_str)
+  let case_kw = match pat {
+    Wildcard => match es.wildcard_case {
+      Some { value: wc } => wc
+      None => concat(bs.case_keyword, emit_go_pattern(pattern: pat))
+    }
+    _ => concat(bs.case_keyword, emit_go_pattern(pattern: pat))
   }
   concat(make_indent(level: depth), case_kw, ":\n",
     make_indent(level: depth + 1), body_str)
 }
 
-fn emit_go_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_go_typed_if(condition: Node, then_branch: Node, else_branch: Node?, if_result_type: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let cond_str = emit_go_typed_expr(texpr: condition, registry: registry, scope: scope, depth: depth, fuel: 1024)
   emit_typed_if_shared(cond_str: cond_str, then_branch: then_branch, else_branch: else_branch,
-    depth: depth, target: Go, source_index: scope.type_env.source_index,
+    if_result_type: if_result_type, depth: depth, target: Go, source_index: scope.type_env.source_index,
     recurse: (node, d) => emit_go_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, fuel: 1024))
 }
 
@@ -972,11 +975,14 @@ fn emit_go_typed_tco_switch_case(arm: Node, fn_name: String, params: List<Node>,
   let spec = language_spec(target: Go)
   let bs = spec.block_syntax
   let es = spec.expression_semantics
-  let pat_str = emit_go_pattern(pattern: arm_pattern(n: arm))
+  let pat = arm_pattern(n: arm)
   let body_str = emit_go_typed_tco_expr(texpr: arm_body(n: arm), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
-  let case_kw = match es.wildcard_case {
-    Some { value: wc } => if pat_str == "_" { wc } else { concat(bs.case_keyword, pat_str) }
-    None => concat(bs.case_keyword, pat_str)
+  let case_kw = match pat {
+    Wildcard => match es.wildcard_case {
+      Some { value: wc } => wc
+      None => concat(bs.case_keyword, emit_go_pattern(pattern: pat))
+    }
+    _ => concat(bs.case_keyword, emit_go_pattern(pattern: pat))
   }
   concat(make_indent(level: depth), case_kw, ":\n",
     make_indent(level: depth + 1), body_str)

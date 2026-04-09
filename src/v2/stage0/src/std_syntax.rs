@@ -10,6 +10,7 @@ use BinOp::*;
 use LiteralValue::*;
 use BodyKind::*;
 use ItemFormKind::*;
+use NamingCase::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -69,6 +70,13 @@ pub enum ItemFormKind {
     TypeAliasForm,
     ModuleForm,
     OtherForm,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NamingCase {
+    PascalCase,
+    SnakeCase,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -451,7 +451,7 @@ pub fn emit_go_expr_match(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
 }
 
 pub fn emit_go_expr_if(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_go_typed_if(if_condition(expr.clone()), if_then_branch(expr.clone()), if_else_branch(expr.clone()), registry, scope, depth)
+    emit_go_typed_if(if_condition(expr.clone()), if_then_branch(expr.clone()), if_else_branch(expr.clone()), Some(resolved_type(expr.clone())), registry, scope, depth)
 }
 
 pub fn emit_go_expr_let(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
@@ -609,24 +609,23 @@ pub fn emit_go_typed_switch_case(arm: Rc<Node>, registry: Rc<HashMap<String, Rc<
         let spec = language_spec(RenderTarget::Go);
 let bs = spec.block_syntax.clone();
 let es = spec.expression_semantics.clone();
-let pat_str = emit_go_pattern(arm_pattern(arm.clone()));
+let pat = arm_pattern(arm.clone());
 let body_str = emit_go_typed_expr(arm_body(arm.clone()), registry, scope, (depth.clone() + 1), 1024);
-let case_kw = match es.wildcard_case.clone() {
-    Some(wc) => if (pat_str.clone().as_str() == "_".to_string().as_str()) {
-            wc.clone()
-        } else {
-            v2_rt::concat(bs.case_keyword.clone(), pat_str.clone())
-        },
-    None => v2_rt::concat(bs.case_keyword.clone(), pat_str.clone()),
+let case_kw = match (*pat.clone()).clone() {
+    MatchPattern::Wildcard => match es.wildcard_case.clone() {
+    Some(wc) => wc.clone(),
+    None => v2_rt::concat(bs.case_keyword.clone(), emit_go_pattern(pat.clone())),
+},
+    _ => v2_rt::concat(bs.case_keyword.clone(), emit_go_pattern(pat.clone())),
 };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth.clone()), case_kw), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
 }
 }
 
-pub fn emit_go_typed_if(condition: Rc<Node>, then_branch: Rc<Node>, else_branch: Option<Rc<Node>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_go_typed_if(condition: Rc<Node>, then_branch: Rc<Node>, else_branch: Option<Rc<Node>>, if_result_type: Option<Rc<Node>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let cond_str = emit_go_typed_expr(condition, registry.clone(), scope.clone(), depth.clone(), 1024);
-emit_typed_if_shared(cond_str, then_branch, else_branch, depth.clone(), RenderTarget::Go, scope.type_env.clone().source_index.clone(), |node, d| emit_go_typed_expr(node.clone(), registry.clone(), scope.clone(), d.clone(), 1024))
+emit_typed_if_shared(cond_str, then_branch, else_branch, if_result_type, depth.clone(), RenderTarget::Go, scope.type_env.clone().source_index.clone(), |node, d| emit_go_typed_expr(node.clone(), registry.clone(), scope.clone(), d.clone(), 1024))
 }
 }
 
@@ -804,15 +803,14 @@ pub fn emit_go_typed_tco_switch_case(arm: Rc<Node>, fn_name: String, params: Rc<
         let spec = language_spec(RenderTarget::Go);
 let bs = spec.block_syntax.clone();
 let es = spec.expression_semantics.clone();
-let pat_str = emit_go_pattern(arm_pattern(arm.clone()));
+let pat = arm_pattern(arm.clone());
 let body_str = emit_go_typed_tco_expr(arm_body(arm.clone()), fn_name, params, registry, scope, (depth.clone() + 1));
-let case_kw = match es.wildcard_case.clone() {
-    Some(wc) => if (pat_str.clone().as_str() == "_".to_string().as_str()) {
-            wc.clone()
-        } else {
-            v2_rt::concat(bs.case_keyword.clone(), pat_str.clone())
-        },
-    None => v2_rt::concat(bs.case_keyword.clone(), pat_str.clone()),
+let case_kw = match (*pat.clone()).clone() {
+    MatchPattern::Wildcard => match es.wildcard_case.clone() {
+    Some(wc) => wc.clone(),
+    None => v2_rt::concat(bs.case_keyword.clone(), emit_go_pattern(pat.clone())),
+},
+    _ => v2_rt::concat(bs.case_keyword.clone(), emit_go_pattern(pat.clone())),
 };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth.clone()), case_kw), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
 }

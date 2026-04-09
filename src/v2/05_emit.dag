@@ -79,7 +79,7 @@ import v2.compiler.languages {
   LanguageSpec, TestConventions, ServiceFieldTemplates,
   BlockSyntax, TcoSyntax, ExpressionSemantics,
   IfValueForm, IfExpression, ConditionalTernary, IfStatement,
-  VisibilitySpec, KeywordVisibility, CaseVisibility, ConventionVisibility,
+  VisibilitySpec, KeywordVisibility, CaseVisibility,
   NamingCase, PascalCase, SnakeCase,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   ImportRule,
@@ -2117,6 +2117,7 @@ fn emit_typed_if_shared(
     cond_str: String,
     then_branch: Node,
     else_branch: Node?,
+    if_result_type: Node?,
     depth: Int,
     target: RenderTarget,
     source_index: NewlineIndex?,
@@ -2145,7 +2146,10 @@ fn emit_typed_if_shared(
         IfStatement => {
           let then_str = recurse(then_branch, depth)
           let else_str = recurse(eb, depth)
-          let result_type = emit_node_type(n: resolved_type(n: then_branch), target: target, source_index: source_index)
+          let result_type = match if_result_type {
+            Some { value: rt } => emit_node_type(n: rt, target: target, source_index: source_index)
+            None => emit_node_type(n: resolved_type(n: then_branch), target: target, source_index: source_index)
+          }
           concat("func() ", result_type, " { if ", cond_str, bs.block_open,
             make_indent(level: depth + 1), "return ", then_str, "\n",
             make_indent(level: depth), bs.else_clause,
