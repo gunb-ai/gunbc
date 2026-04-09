@@ -1645,27 +1645,106 @@ cardinality and rendered type strings.
 
 Make the compiled binary work against real GitHub + LLM CLI.
 
-- [ ] RE-3a: Auth token injection — `auth_token` from env var
-  (`GITHUB_TOKEN`) or secret manager
+- [ ] RE-3a: Credential acquisition — structural credential sourcing (see design below)
 - [ ] RE-3b: REST response deserialization — emitted struct fields
   match GitHub API JSON shape (serde attrs: `#[serde(rename)]`)
 - [ ] RE-3c: Shell stdout capture for multi-line LLM output
 - [ ] RE-3d: Cron upsert produces valid crontab entry
 
-**Blocked by:** RE-2
+**Blocked by:** RE-3a design (credential modeling)
+
+#### RE-3a design: Structural credential acquisition
+
+**Problem:** Services declare `auth: Bearer, auth_input: auth_token` and
+operations accept `auth_token: Secret` as input, but nothing connects
+"this service needs a GitHub token" to "here's where to get it." The
+pieces exist (`std/credentials.dag:env_credential`,
+`extdeps/github/auth.dag:github_token`) but are unwired. The emitter
+passes `""` for credentials at call sites.
+
+**Existing infrastructure:**
+- `std/types.dag:228` — `type Secret = String` (kernel type)
+- `std/credentials.dag:24` — `pattern env_credential(env_var) -> { token: Secret }`
+  reads from process environment
+- `extdeps/github/auth.dag:13` — `func github_token(project_id, secret_name)`
+  reads from GCP Secret Manager via `gcp_secret_credential`
+- `extdeps/github/pulls.dag:60` — `auth_input: auth_token` names the credential field
+- `extdeps/github/pulls.dag:69` — every operation has `auth_token: Secret` input param
+
+**Design direction — `CredentialSource` in `std/credentials.dag`:**
+
+Model WHERE a credential comes from as a structural type. The service
+config declares a source; the emitter generates acquisition code at
+service construction time. Operations use `self.auth_token` (struct
+field) instead of per-call parameters.
+
+```dag
+// std/credentials.dag — credential source declaration
+type CredentialSource =
+  | EnvVar { name: String }                        // process env var
+  | DotEnv { path: FilePath, key: String }         // .env file
+  | GcpSecret { project: String, secret: String }  // GCP Secret Manager
+  | File { path: FilePath }                        // credential file
+```
+
+Service config gains `auth_source`:
+```dag
+service github.Pulls {
+  config {
+    endpoint: "https://api.github.com"
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+  }
+}
+```
+
+**Compile-time credential tracing (endstate):**
+
+When a function calls a service, the compiler traces the credential
+dependency chain: function → service → auth_source → CredentialSource.
+At compile time, the compiler proves that every service's credential
+source is declared and reachable. This is analogous to the complexity
+analyzer proving termination — the credential analyzer proves that all
+external dependencies have acquisition strategies.
+
+The `uses` clause becomes the binding site:
+```dag
+func review_pr(owner: String, repo: String, pr_number: Int) -> ReviewResult
+  uses github: github.Pulls  // compiler resolves: needs GITHUB_TOKEN env var
+{
+  let pr = github.Pulls.Get(owner, repo, pr_number)
+  ...
+}
+```
+
+The compiler:
+1. Sees `uses github: github.Pulls`
+2. Reads `github.Pulls.config.auth_source → EnvVar { name: "GITHUB_TOKEN" }`
+3. Emits constructor that reads `std::env::var("GITHUB_TOKEN")?`
+4. Removes `auth_token` from operation call signatures (service owns it)
+5. At compile time: if no `auth_source` is declared, diagnostic error
+
+This makes the credential story provable by construction: you cannot
+compile a program that uses a service without declaring how credentials
+are acquired.
+
+**Bootstrap implementation (`.env` only):**
+
+Phase 1: `CredentialSource` type + `EnvVar` variant in `std/credentials.dag`.
+Phase 2: Service config parser accepts `auth_source` property.
+Phase 3: Emitter reads `auth_source`, generates env var read in constructor,
+removes `auth_token` from operation signatures.
+Phase 4: `auth_token: Secret` operation params become service-managed
+(callers no longer pass them — the service struct injects them).
 
 **Acceptance tests:**
 
 ```
 # RE-3a: Auth from env
 service_auth_reads_env_var
-  Input:  service with `auth_input: api_key` + func param `api_key: Secret`
-  Assert: emitted CLI reads --api-key or GITHUB_TOKEN env var
-
-# RE-3d: Cron emission
-cron_upsert_emits_valid_crontab
-  Input:  service call `cron.Tab.Upsert(tag: "x", schedule: "*/10 * * * *", ...)`
-  Assert: emitted Rust writes crontab entry with tag-based dedup
+  Input:  service with `auth_source: EnvVar { name: "TEST_TOKEN" }`
+  Assert: emitted constructor contains `std::env::var("TEST_TOKEN")`
+  Assert: operation methods do NOT have auth_token parameter
 
 # Integration (manual gate, not CI):
 review_agent_dry_run_prints_mock_json
@@ -1673,7 +1752,7 @@ review_agent_dry_run_prints_mock_json
   Assert: prints JSON with `{ "reviewed": true, "comment_url": "..." }`
 
 review_agent_live_posts_review
-  Run: `./review-agent review-pr --owner gunb-ai --repo gunbc --pr-number <N>`
+  Run: `GITHUB_TOKEN=... ./review-agent review-pr --owner gunb-ai --repo gunbc --pr-number <N>`
   Assert: GitHub PR has new review comment
   Gate: manual — requires GITHUB_TOKEN + LLM CLI installed
 ```
