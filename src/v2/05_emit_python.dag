@@ -815,17 +815,6 @@ fn emit_py_typed_record_lit(type_name: String?, fields: List<Node>, registry: Ma
 }
 
 
-fn emit_py_typed_bin_op(op: BinOp, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let l_str = emit_py_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  let r_str = emit_py_typed_expr(texpr: right, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  if is_null_coalesce(op: op) {
-    emit_null_coalesce(l_str: l_str, r_str: r_str, target: Python)
-  } else {
-    let op_str = emit_bin_op_symbol(op: op, target: Python)
-    concat("(", l_str, " ", op_str, " ", r_str, ")")
-  }
-}
-
 
 fn emit_py_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })

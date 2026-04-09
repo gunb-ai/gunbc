@@ -739,21 +739,6 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(tn.clone(), "(".to_string()), fields_s
 }
 }
 
-pub fn emit_py_typed_bin_op(op: BinOp, left: Rc<Node>, right: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    {
-        let l_str = emit_py_typed_expr(left, registry.clone(), scope.clone(), depth.clone(), 1024);
-let r_str = emit_py_typed_expr(right, registry.clone(), scope.clone(), depth.clone(), 1024);
-if is_null_coalesce(op.clone()) {
-            emit_null_coalesce(l_str, r_str, RenderTarget::Python)
-} else {
-            {
-                let op_str = emit_bin_op_symbol(op.clone(), RenderTarget::Python);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), l_str), " ".to_string()), op_str), " ".to_string()), r_str), ")".to_string())
-}
-}
-}
-}
-
 pub fn emit_py_typed_string_interp(parts: Rc<Vec<Rc<StringPart>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let has_interpolations = { let mut __found = false; for p in parts.clone().iter().cloned() { if match (*p.clone()).clone() {
