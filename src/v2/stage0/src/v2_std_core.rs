@@ -1140,6 +1140,27 @@ pub fn is_tree_size_reducing(func_name: String) -> bool {
 }
 }
 
+pub fn list_child_accessors() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("match_arm_nodes".to_string(), true);
+            __m.insert("method_arg_nodes".to_string(), true);
+            __m.insert("module_imports".to_string(), true);
+            __m.insert("module_items".to_string(), true);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn is_list_child_accessor(name: String) -> bool {
+    match v2_rt::lookup(&list_child_accessors(), name) {
+    Some(_) => true,
+    None => false,
+}
+}
+
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
     match texpr.children.clone().get(index as usize).cloned() {
     Some(v) => v.clone(),

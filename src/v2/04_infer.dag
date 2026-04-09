@@ -43,7 +43,7 @@ import v2.std.core {
   InternalError, VariantCollision,
   resource_use_name, resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
-  is_child_accessor_in_model, is_tree_size_reducing,
+  is_child_accessor_in_model, is_tree_size_reducing, is_list_child_accessor,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -2440,6 +2440,40 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
             }
           None => none
         }
+      } else if is_list_child_accessor(name: callee) {
+        // List-returning accessor: returns a sublist of an inductive field
+        let call_args = val.children
+        match call_args |> first {
+          Some { value: first_arg } =>
+            let inner = arg_value(n: first_arg)
+            match inner.expr_data {
+              ExprVar { binding_kind: _ } =>
+                let iname = expr_var_name(texpr: inner)
+                let inner_type = match map_get(ctx.param_names, iname) {
+                  Some { value: t } => t
+                  None =>
+                    match map_get(ctx.sub_value_vars, iname) {
+                      Some { value: rel } =>
+                        match rel {
+                          StrictSubValue { field: f, factor: _ } => f.type_name
+                          IteratedSubValue { field: f } => f.type_name
+                          _ => ""
+                        }
+                      None => ""
+                    }
+                }
+                if inner_type != "" {
+                  let fields = inductive_fields_for(env: ctx.type_env, type_name: inner_type)
+                  let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+                  match cf {
+                    Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
+                    None => none
+                  }
+                } else { none }
+              _ => none
+            }
+          None => none
+        }
       } else { none }
     // Arithmetic let-bindings: let rest = value / 10, let next = pos + 1, let smaller = n - 1
     ExprBinOp { op: op } =>
@@ -2505,6 +2539,19 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
           }
         _ => none
       }
+    // Collection-preserving methods: skip/filter/take/enumerate on a known collection
+    // preserve the ListRecursion property. Also: list-returning child accessors.
+    ExprMethodCall { method_semantics: _ } =>
+      let mname = expr_method_name(texpr: val)
+      let is_collection_preserving = mname == "skip" || mname == "filter" || mname == "take" || mname == "enumerate" || mname == "reverse"
+      if is_collection_preserving {
+        let receiver = method_receiver(texpr: val)
+        let coll_field = resolve_collection_field(expr: receiver, ctx: ctx)
+        match coll_field {
+          Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
+          None => none
+        }
+      } else { none }
     _ => none
   }
 }

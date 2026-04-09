@@ -891,6 +891,26 @@ fn is_tree_size_reducing(func_name: String) -> Bool {
 }
 
 // =========================================================================
+// List-returning child accessors — functions that return sublists of
+// an inductive field. The complexity analyzer uses this to register
+// fold/map receivers as ListRecursion collections.
+// =========================================================================
+
+data list_child_accessors: Map<String, Bool> = {
+  "match_arm_nodes": true,
+  "method_arg_nodes": true,
+  "module_imports": true,
+  "module_items": true
+}
+
+fn is_list_child_accessor(name: String) -> Bool {
+  match lookup(list_child_accessors, key: name) {
+    Some { value: _ } => true
+    None => false
+  }
+}
+
+// =========================================================================
 // Compositional child Node accessors (P5.11)
 //
 // Implementations of the child projections declared in expr_child_roles
