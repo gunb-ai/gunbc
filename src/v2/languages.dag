@@ -212,6 +212,20 @@ type ExpressionSemantics {
   wildcard_case: String?        // Go: "default", Rust/Python: none (use pattern)
 }
 
+// Visibility specification — how each language controls export/access.
+// Ref: Rust Reference §6.1 "Visibility", Go Spec "Exported identifiers",
+// PEP 8 "Naming Conventions".
+type VisibilityStrategy
+  = KeywordVisibility        // Rust: prepend keyword prefix to declarations
+  | CaseVisibility           // Go: uppercase first letter = exported
+  | ConventionVisibility     // Python: "_" prefix = private (convention only)
+
+type VisibilitySpec {
+  strategy: VisibilityStrategy
+  keyword_prefix: String        // Rust: "pub ", Go/Python: ""
+  export_transform: Bool        // Go: true (identifiers need PascalCase), Rust/Python: false
+}
+
 type TcoSyntax {
   loop_keyword: String        // "loop" (Rust), "for" (Go), "while True" (Python)
   break_return: String        // "break" (Rust), "return" (Go/Python)
@@ -250,7 +264,7 @@ type LanguageSpec {
   scaffold: ProjectScaffold
   serialization: SerializationSpec
   test_conventions: TestConventions
-  top_level_visibility: String
+  visibility: VisibilitySpec
   sharing: SharingStrategy
   indexing: IndexingSemantics
   annotations: AnnotationRequirements
@@ -298,7 +312,11 @@ fn rust_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: "#[tokio::test]"
     },
-    top_level_visibility: rust_visibility,
+    visibility: VisibilitySpec {
+      strategy: KeywordVisibility,
+      keyword_prefix: rust_visibility,
+      export_transform: false
+    },
     sharing: SharingStrategy {
       needs_sharing: true,
       wrap_template: "Rc<{0}>",
@@ -396,7 +414,11 @@ fn python_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: null
     },
-    top_level_visibility: "",
+    visibility: VisibilitySpec {
+      strategy: ConventionVisibility,
+      keyword_prefix: "",
+      export_transform: false
+    },
     sharing: SharingStrategy {
       needs_sharing: false,
       wrap_template: "{0}",
@@ -494,7 +516,11 @@ fn go_spec() -> LanguageSpec {
       name_style: PascalCaseTestNames,
       async_decorator: null
     },
-    top_level_visibility: "",
+    visibility: VisibilitySpec {
+      strategy: CaseVisibility,
+      keyword_prefix: "",
+      export_transform: true
+    },
     sharing: SharingStrategy {
       needs_sharing: false,
       wrap_template: "{0}",
@@ -638,8 +664,8 @@ fn test_conventions_for_target(target: RenderTarget) -> TestConventions {
   language_spec_for_target(target: target).test_conventions
 }
 
-fn top_level_visibility_for_target(target: RenderTarget) -> String {
-  language_spec_for_target(target: target).top_level_visibility
+fn visibility_for_target(target: RenderTarget) -> VisibilitySpec {
+  language_spec_for_target(target: target).visibility
 }
 
 fn sharing_for_target(target: RenderTarget) -> SharingStrategy {

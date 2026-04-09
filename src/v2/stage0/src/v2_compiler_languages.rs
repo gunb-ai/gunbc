@@ -24,6 +24,7 @@ use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
 use IfValueForm::*;
+use VisibilityStrategy::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -171,6 +172,21 @@ pub struct ExpressionSemantics {
     pub wildcard_case: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum VisibilityStrategy {
+    KeywordVisibility,
+    CaseVisibility,
+    ConventionVisibility,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct VisibilitySpec {
+    pub strategy: VisibilityStrategy,
+    pub keyword_prefix: String,
+    pub export_transform: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoSyntax {
     pub loop_keyword: String,
@@ -203,7 +219,7 @@ pub struct LanguageSpec {
     pub scaffold: Rc<ProjectScaffold>,
     pub serialization: Rc<SerializationSpec>,
     pub test_conventions: Rc<TestConventions>,
-    pub top_level_visibility: String,
+    pub visibility: Rc<VisibilitySpec>,
     pub sharing: Rc<SharingStrategy>,
     pub indexing: Rc<IndexingSemantics>,
     pub annotations: Rc<AnnotationRequirements>,
@@ -248,7 +264,11 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     name_style: TestNameStyle::SnakeCaseTestNames,
     async_decorator: Some("#[tokio::test]".to_string()),
 }),
-    top_level_visibility: rust_visibility(),
+    visibility: Rc::new(VisibilitySpec {
+    strategy: VisibilityStrategy::KeywordVisibility,
+    keyword_prefix: rust_visibility(),
+    export_transform: false,
+}),
     sharing: Rc::new(SharingStrategy {
     needs_sharing: true,
     wrap_template: "Rc<{0}>".to_string(),
@@ -354,7 +374,11 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     name_style: TestNameStyle::SnakeCaseTestNames,
     async_decorator: None,
 }),
-    top_level_visibility: "".to_string(),
+    visibility: Rc::new(VisibilitySpec {
+    strategy: VisibilityStrategy::ConventionVisibility,
+    keyword_prefix: "".to_string(),
+    export_transform: false,
+}),
     sharing: Rc::new(SharingStrategy {
     needs_sharing: false,
     wrap_template: "{0}".to_string(),
@@ -460,7 +484,11 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     name_style: TestNameStyle::PascalCaseTestNames,
     async_decorator: None,
 }),
-    top_level_visibility: "".to_string(),
+    visibility: Rc::new(VisibilitySpec {
+    strategy: VisibilityStrategy::CaseVisibility,
+    keyword_prefix: "".to_string(),
+    export_transform: true,
+}),
     sharing: Rc::new(SharingStrategy {
     needs_sharing: false,
     wrap_template: "{0}".to_string(),
@@ -615,8 +643,8 @@ pub fn test_conventions_for_target(target: RenderTarget) -> Rc<TestConventions> 
     language_spec_for_target(target).test_conventions.clone()
 }
 
-pub fn top_level_visibility_for_target(target: RenderTarget) -> String {
-    language_spec_for_target(target).top_level_visibility.clone()
+pub fn visibility_for_target(target: RenderTarget) -> Rc<VisibilitySpec> {
+    language_spec_for_target(target).visibility.clone()
 }
 
 pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {

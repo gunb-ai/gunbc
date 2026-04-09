@@ -959,13 +959,20 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("var ".to_
 
 pub fn go_export_ident(name: String) -> String {
     {
-        let parts = Rc::new(name.split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+        let vis = language_spec(RenderTarget::Go).visibility.clone();
+if vis.export_transform.clone() {
+            {
+                let parts = Rc::new(name.split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
 let pascal_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.iter().cloned() { __result.push(capitalize_first(p.clone())); } __result });
 let result = pascal_parts.join(&"".to_string());
 if { let mut __found = false; for r in go_reserved().iter().cloned() { if (r.clone().as_str() == result.clone().as_str()) { __found = true; break; } } __found } {
-            v2_rt::concat(result.clone(), go_reserved_escape_suffix())
+                    v2_rt::concat(result.clone(), go_reserved_escape_suffix())
+                } else {
+                    result.clone()
+                }
+}
         } else {
-            result.clone()
+            emit_ident(name, RenderTarget::Go)
         }
 }
 }

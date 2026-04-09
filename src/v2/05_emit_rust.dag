@@ -73,7 +73,7 @@ import extdeps.languages.rust.emit {
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
   TestConventions, ItemKeywords,
-  test_conventions_for_target, top_level_visibility_for_target,
+  test_conventions_for_target, visibility_for_target,
   sharing_for_target,
   is_string_like
 }
@@ -192,7 +192,7 @@ fn rust_source_ext() -> String {
 }
 
 fn rust_visibility_prefix() -> String {
-  top_level_visibility_for_target(target: Rust)
+  visibility_for_target(target: Rust).keyword_prefix
 }
 
 fn rust_items() -> ItemKeywords {

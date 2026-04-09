@@ -1164,16 +1164,22 @@ fn emit_go_data_def(name: String, type_node: Node, value: Node, registry: Map<St
 // =========================================================================
 
 fn go_export_ident(name: String) -> String {
-  // PascalCase: capitalize first letter of each word segment.
-  // The input might already be PascalCase (from DSL type names) or
-  // snake_case (from DSL field names). Handle both.
-  let parts = name |> split(delimiter: "_")
-  let pascal_parts = parts |> map(p => capitalize_first(s: p))
-  let result = pascal_parts |> join(separator: "")
-  if go_reserved |> any(r => r == result) {
-    concat(result, go_reserved_escape_suffix)
+  // Go uses case-based visibility: PascalCase = exported.
+  // Ref: Go Spec "Exported identifiers".
+  // Consults VisibilitySpec.export_transform — when true, converts
+  // snake_case/camelCase identifiers to PascalCase for export.
+  let vis = language_spec(target: Go).visibility
+  if vis.export_transform {
+    let parts = name |> split(delimiter: "_")
+    let pascal_parts = parts |> map(p => capitalize_first(s: p))
+    let result = pascal_parts |> join(separator: "")
+    if go_reserved |> any(r => r == result) {
+      concat(result, go_reserved_escape_suffix)
+    } else {
+      result
+    }
   } else {
-    result
+    emit_ident(name: name, target: Go)
   }
 }
 

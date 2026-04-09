@@ -25,7 +25,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, HigherOrderMethodSpec, rust_higher_order_methods};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, top_level_visibility_for_target, sharing_for_target, is_string_like};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_compiler_tests_rust::{compiler_tests_source};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy};
@@ -106,7 +106,7 @@ pub fn rust_source_ext() -> String {
 }
 
 pub fn rust_visibility_prefix() -> String {
-    top_level_visibility_for_target(RenderTarget::Rust)
+    visibility_for_target(RenderTarget::Rust).keyword_prefix.clone()
 }
 
 pub fn rust_items() -> Rc<ItemKeywords> {
