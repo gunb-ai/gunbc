@@ -756,8 +756,11 @@ tco_reassign, algebra_method_template.
 
 ### LS follow-ups (tracked for future PRs)
 
-- ~~**Cast validation → infer phase:**~~ DONE. dag_cast_rules in std/coercion.dag,
-  validate_cast in 04_infer.dag, emit renders unconditionally. (PR #mild-ram-512.)
+- **Cast validation → infer phase:** Partial. Numeric casts (Int/Float/Bool)
+  validated in infer via dag_can_cast; emit retains can_cast safety net.
+  Remaining: structural cast model (replace string-keyed tables), fail-closed
+  for non-numeric domain, cast witness on Node (make invalid casts
+  unrepresentable at emit boundary).
 - **needs_sharing flag → structural:** `SharingStrategy.needs_sharing: Bool` is
   a global codegen switch. Fix: derive sharing need per-type from structural
   facts (recursive types, container algebra). Phase 3d.
@@ -778,8 +781,9 @@ tco_reassign, algebra_method_template.
 - **resolved_binop_algebra in emit → infer:** Re-deriving algebra field in
   emit is a decision. Fix: infer resolves which algebra field Div maps to,
   stores on the Node (extend ExprBinOp or annotate), emit reads it.
-- ~~**Python/Go cast_syntax pair whitelist:**~~ DONE. Resolved by cast→infer:
-  emit now renders unconditionally via render_cast, no pair whitelist needed.
+- **Python/Go cast_syntax pair whitelist:** Open. Per-target cast_rules and
+  can_cast still active (emit safety net). Dissolves when structural cast model
+  replaces string-keyed tables. Same root cause as cast→infer.
 - **Emit file deletion phases:** Phase 2 (StringInterpSyntax, SumTypeStrategy,
   imports, service rendering), Phase 3 (dispatch strategies, ownership),
   Phase 4 (delete Py/Go), Phase 5 (delete Rust). See plan file.

@@ -20,7 +20,7 @@ pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
 pub use crate::std_induction::{InductiveField};
 pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
-pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, render_cast, literal_suffix};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name};
@@ -1873,7 +1873,11 @@ let src_ty = match expr.inferred.clone().as_deref().cloned() {
 if ((src_ty.clone().as_str() != "".to_string().as_str()) && (src_ty.clone().as_str() == ty_str.clone().as_str())) {
             expr_str
         } else {
-            render_cast(expr_str, ty_str.clone(), target.clone())
+            if can_cast(target.clone(), src_ty.clone(), ty_str.clone()) {
+                render_cast(expr_str, ty_str.clone(), target.clone())
+            } else {
+                emit_error_expr(v2_rt::concat(v2_rt::concat(v2_rt::concat("unsupported cast from ".to_string(), src_ty.clone()), " to ".to_string()), ty_str.clone()), target.clone())
+            }
         }
 }
 }
