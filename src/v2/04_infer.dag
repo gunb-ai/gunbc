@@ -913,7 +913,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             children: [base_typed],
             inferred: Some { value: Resolved { node: field_type } },
             span: span,
-            name_span: span
+            name_span: node_name_span(n: texpr)
           )
           InferResult {
             typed: fa_texpr,
@@ -928,7 +928,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               children: [base_typed],
               inferred: Some { value: TypeVariable { id: "field_of_type_var" } },
               span: span,
-              name_span: span
+              name_span: node_name_span(n: texpr)
             )
             InferResult {
               typed: fa_texpr,
@@ -943,7 +943,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                   children: [base_typed],
                   inferred: Some { value: Resolved { node: svc_type } },
                   span: span,
-                  name_span: span
+                  name_span: node_name_span(n: texpr)
                 )
                 InferResult {
                   typed: fa_texpr,
@@ -1035,7 +1035,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             children: typed_arg_nodes,
             inferred: Some { value: Resolved { node: resolved_type } },
             span: span,
-            name_span: span
+            name_span: node_name_span(n: texpr)
           ),
           diagnostics: arg_diags
         }
@@ -1125,7 +1125,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               children: concat([final_receiver], remaining_arg_nodes),
               inferred: Some { value: Resolved { node: bridge_result_type } },
               span: span,
-              name_span: span
+              name_span: node_name_span(n: texpr)
             ),
             diagnostics: arg_diags
           }
@@ -1151,7 +1151,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: empty_map_type } },
               span: span,
-              name_span: span
+              name_span: node_name_span(n: texpr)
             ),
             diagnostics: concat(arg_diags, empty_map_diags)
           }
@@ -1210,7 +1210,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: bt } },
               span: span,
-              name_span: span
+              name_span: node_name_span(n: texpr)
             ),
             diagnostics: arg_diags
           }
@@ -1234,7 +1234,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 children: typed_arg_nodes,
                 inferred: Some { value: Resolved { node: resolved_type } },
                 span: span,
-                name_span: span
+                name_span: node_name_span(n: texpr)
               ),
               diagnostics: arg_diags
             }
@@ -1259,7 +1259,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: resolved_type } },
               span: span,
-              name_span: span
+              name_span: node_name_span(n: texpr)
             ),
             diagnostics: concat(arg_diags, call_diags)
           }
@@ -1348,7 +1348,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         children: concat([recv_typed], typed_mc_arg_nodes),
         inferred: Some { value: Resolved { node: result_type } },
         span: span,
-        name_span: span
+        name_span: node_name_span(n: texpr)
       )
       InferResult {
         typed: mc_texpr,
@@ -1570,7 +1570,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let val_diags = val_result.diagnostics
       let val_type = resolved_type(n: val_typed)
       if body_expr == none {
-        let let_texpr = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Some { value: Resolved { node: val_type } }, span: span, name_span: span)
+        let let_texpr = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Some { value: Resolved { node: val_type } }, span: span, name_span: node_name_span(n: texpr))
         InferResult {
           typed: let_texpr,
           diagnostics: val_diags
@@ -1580,7 +1580,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         let body_result = infer_expr(texpr: body_expr.value, scope: extended, expected: expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
-        let let_texpr2 = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed, body_typed], inferred: body_typed.inferred, span: span, name_span: span)
+        let let_texpr2 = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed, body_typed], inferred: body_typed.inferred, span: span, name_span: node_name_span(n: texpr))
         InferResult {
           typed: let_texpr2,
           diagnostics: concat(val_diags, body_diags)
@@ -1591,7 +1591,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       // children: field init nodes
       let field_inits = texpr.children
-      infer_record_lit(type_name: record_lit_type_name(texpr: texpr), field_inits: field_inits, span: span, scope: scope)
+      infer_record_lit(type_name: record_lit_type_name(texpr: texpr), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope)
 
     ExprListLit =>
       let span = texpr.span
@@ -1819,7 +1819,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
-      let fe_texpr = make_named_expr_node(name: variable, expr_data: ExprForEach, children: [coll_typed, body_typed], inferred: body_typed.inferred, span: span, name_span: span)
+      let fe_texpr = make_named_expr_node(name: variable, expr_data: ExprForEach, children: [coll_typed, body_typed], inferred: body_typed.inferred, span: span, name_span: node_name_span(n: texpr))
       InferResult {
         typed: fe_texpr,
         diagnostics: concat(coll_diags, body_diags)
@@ -1956,7 +1956,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 // If type_name given, look up in type_env; else construct anonymous Product.
 // -------------------------------------------------------------------------
 
-fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, scope: InferScope) -> InferResult {
+fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult {
   // Look up the struct definition to propagate field types as expected context.
   // This lets empty_map()/empty_list() adopt the declared field type (e.g.
   // Map<String, Bool>) instead of producing bare containers.
@@ -2058,7 +2058,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       children: typed_field_nodes2,
       inferred: Some { value: Resolved { node: resolved_node } },
       span: span,
-      name_span: span
+      name_span: name_span
     )
     InferResult {
       typed: texpr,

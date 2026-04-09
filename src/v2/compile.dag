@@ -102,7 +102,7 @@ fn build_recursion_context(typed: ResolvedGraph) -> RecursionContext {
 fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
   typed.modules |> flat_map(m =>
     m.items |> filter(item => item.body != None) |> map(item =>
-      analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: none)
+      analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index)
     )
   )
 }

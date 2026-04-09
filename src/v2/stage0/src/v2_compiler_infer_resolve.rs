@@ -1070,7 +1070,7 @@ vr.diagnostics.clone()
 Rc::new(ExprResolveResult {
     expr: make_named_expr_node(expr_call_func_at(texpr.clone(), None), Rc::new(ExprData::ExprCall {
     call_semantics: cs.clone(),
-}), resolved_children, texpr.inferred.clone(), texpr.span.clone(), texpr.span.clone()),
+}), resolved_children, texpr.inferred.clone(), texpr.span.clone(), node_name_span(texpr.clone())),
     diagnostics: all_diags,
 })
 },
@@ -1120,7 +1120,7 @@ vr.diagnostics.clone()
 Rc::new(ExprResolveResult {
     expr: make_named_expr_node(expr_method_name_at(texpr.clone(), None), Rc::new(ExprData::ExprMethodCall {
     method_semantics: ms.clone(),
-}), resolved_children, texpr.inferred.clone(), texpr.span.clone(), texpr.span.clone()),
+}), resolved_children, texpr.inferred.clone(), texpr.span.clone(), node_name_span(texpr.clone())),
     diagnostics: all_diags,
 })
 },
@@ -1276,7 +1276,7 @@ let resolved_children = match br.clone() {
     None => Rc::new(vec![vr.expr.clone()]),
 };
 Rc::new(ExprResolveResult {
-    expr: make_named_expr_node(let_binding_name_at(texpr.clone(), None), Rc::new(ExprData::ExprLet), resolved_children, texpr.inferred.clone(), texpr.span.clone(), texpr.span.clone()),
+    expr: make_named_expr_node(let_binding_name_at(texpr.clone(), None), Rc::new(ExprData::ExprLet), resolved_children, texpr.inferred.clone(), texpr.span.clone(), node_name_span(texpr.clone())),
     diagnostics: v2_rt::concat(vr.diagnostics.clone(), match br.clone() {
     Some(r) => r.diagnostics.clone(),
     None => Rc::new(vec![]),
@@ -1303,7 +1303,7 @@ vr.diagnostics.clone()
 Rc::new(ExprResolveResult {
     expr: make_named_expr_node(texpr.name.clone(), Rc::new(ExprData::ExprRecordLit {
     parent_enum: pe.clone(),
-}), resolved_children, texpr.inferred.clone(), texpr.span.clone(), texpr.span.clone()),
+}), resolved_children, texpr.inferred.clone(), texpr.span.clone(), node_name_span(texpr.clone())),
     diagnostics: all_diags,
 })
 },
@@ -1443,7 +1443,7 @@ let br = match ch.clone().get(1 as usize).cloned() {
 }),
 };
 Rc::new(ExprResolveResult {
-    expr: make_named_expr_node(foreach_variable_at(texpr.clone(), None), Rc::new(ExprData::ExprForEach), Rc::new(vec![cr.expr.clone(), br.expr.clone()]), texpr.inferred.clone(), texpr.span.clone(), texpr.span.clone()),
+    expr: make_named_expr_node(foreach_variable_at(texpr.clone(), None), Rc::new(ExprData::ExprForEach), Rc::new(vec![cr.expr.clone(), br.expr.clone()]), texpr.inferred.clone(), texpr.span.clone(), node_name_span(texpr.clone())),
     diagnostics: v2_rt::concat(cr.diagnostics.clone(), br.diagnostics.clone()),
 })
 },
