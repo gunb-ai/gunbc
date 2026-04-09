@@ -11,6 +11,7 @@ module extdeps.cloud.gcp.iam
 
 import extdeps.cloud.gcp.gcp { GcpServiceAccount, GcpProject }
 import std.errors { GcpErrorShape }
+import std.types { HttpMethod, AuthScheme }
 
 // -- Roles ---------------------------------------------------------
 
@@ -77,7 +78,7 @@ data default_token_lifetime: TokenLifetime = {
 service gcp.IAM {
   config {
     endpoint: "https://iamcredentials.googleapis.com"
-    auth: BearerToken
+    auth: Bearer
     auth_input: access_token
     // GCP IAM Credentials rate limits: 60 requests/min per service account
     rate_limit: { requests: 60, per: minute, scope: iam_credentials }
@@ -114,7 +115,7 @@ service gcp.IAM {
 }
 
 service gcp.ResourceManager {
-  config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: BearerToken, auth_input: access_token }
+  config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
 
   operation GetIamPolicy {
     input { access_token: Secret, project_id: ProjectId }

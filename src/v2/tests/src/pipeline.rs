@@ -4622,6 +4622,313 @@ fn process(items: List<String>) -> Map<String, Bool> {
     );
 }
 
+// ── RE-1: Transport Emission Fidelity ───────────────────────────────────
+// Tests that the emitter consumes transport config data from .dag service
+// definitions to produce correct Rust code for REST and shell transports.
+
+#[test]
+fn rest_emit_uses_transport_method() {
+    let source = "module re1a\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItems {\n    output { items: List<String> }\n    transport rest { method: GET, path: \"/items\" }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"a\"] \"items\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1a.rs");
+    assert!(
+        content.contains("client.get("),
+        "RE-1a: expected GET method in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_substitutes_path_template() {
+    let source = r#"module re1b
+
+service test.Svc {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation GetItem {
+    input { owner: String, repo: String }
+    output { name: String }
+    transport rest { method: GET, path: "/repos/{owner}/{repo}" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => "ok" "item"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1b.rs");
+    assert!(
+        content.contains("format!(\"{}") && content.contains("self.base_url"),
+        "RE-1b: expected path template format! with base_url in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_includes_query_params() {
+    let source = "module re1c\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation Search {\n    input { q: String, limit: Int }\n    output { results: List<String> }\n    transport rest { method: GET, path: \"/search\", query: { q: q, limit: limit } }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"r\"] \"results\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1c.rs");
+    assert!(
+        content.contains(".query("),
+        "RE-1c: expected .query() in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_uses_bearer_auth() {
+    let source = "module re1d\n\nimport std.types { AuthScheme }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Bearer\n    auth_input: token\n  }\n  operation GetData {\n    input { token: String }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1d.rs");
+    assert!(
+        content.contains("Authorization") && content.contains("Bearer"),
+        "RE-1d: expected Bearer auth in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn rest_emit_maps_response_codes() {
+    let source = "module re1e\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1e.rs");
+    assert!(
+        content.contains("status") && content.contains("200"),
+        "RE-1e: expected status code matching in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn shell_emit_uses_transport_argv() {
+    let source = r#"module re1f
+
+service shell.Run {
+  operation Exec {
+    input { script: String }
+    output { result: String }
+    transport shell { argv: ["sh", "-lc", "{script}"] }
+    mock_response {
+      0 => "done" "result"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1f.rs");
+    assert!(
+        content.contains("Command::new(\"sh\")") && content.contains(".arg(\"-lc\")"),
+        "RE-1f: expected sh -lc argv in emitted code, got:\n{content}"
+    );
+}
+
+#[test]
+fn shell_emit_checks_exit_code() {
+    let source = r#"module re1h
+
+service shell.Run {
+  operation Exec {
+    input { cmd: String }
+    output { result: String }
+    transport shell { argv: ["sh", "-c", "{cmd}"] }
+    exit {
+      0 => Unit
+      nonzero => String "command failed"
+    }
+    mock_response {
+      0 => "done" "result"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1h.rs");
+    assert!(
+        content.contains("exit_code") || content.contains("success()"),
+        "RE-1h: expected exit code handling in emitted code, got:\n{content}"
+    );
+}
+
+// ── RE-1: shell interpolation with optional params ──────────────────────
+#[test]
+fn shell_emit_optional_param_in_interp() {
+    let source = r#"module re1i
+
+service cron.Tab {
+  operation Upsert {
+    input {
+      tag: String
+      log_path: String?
+    }
+    output { success: Bool }
+    transport shell {
+      argv: ["sh", "-c", "echo {tag} >> {log_path}"]
+    }
+    mock_response {
+      0 => { success: true } "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1i.rs");
+    assert!(
+        content.contains("log_path.as_deref().unwrap_or"),
+        "RE-1i: optional param in interpolation should use unwrap_or, got:\n{content}"
+    );
+}
+
+// ── RE-1g: shell stdin emission ──────────────────────────────────────────
+#[test]
+fn shell_emit_stdin_pipes_and_writes() {
+    let source = r#"module re1g
+
+service shell.Pipe {
+  operation Send {
+    input { data: String }
+    output { result: String }
+    transport shell {
+      argv: ["cat"]
+      stdin: data
+    }
+    mock_response {
+      0 => "echoed" "result"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1g.rs");
+    assert!(
+        content.contains("Stdio::piped()") && content.contains("stdin.write_all"),
+        "RE-1g: expected stdin piping and write in emitted code, got:\n{content}"
+    );
+    assert!(
+        content.contains("stdout(std::process::Stdio::piped())"),
+        "RE-1g: expected stdout piped for output capture, got:\n{content}"
+    );
+}
+
+// ── RE-2: review.dag compiles to Rust ───────────────────────────────────
+// Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
+// This is the acceptance gate for RE-2.
+
+#[test]
+#[ignore] // Expensive: reads from disk, writes temp project, runs cargo check
+fn review_dag_compiles_to_rust() {
+    let ws = crate::helpers::workspace_root();
+    let review_path = ws.join("dsl/gunbc/tools/review.dag");
+    let review_content = std::fs::read_to_string(&review_path)
+        .expect("failed to read review.dag");
+
+    // Compile review.dag + all transitive imports
+    let result = compile_dag_named(
+        "dsl/gunbc/tools/review.dag",
+        &review_content,
+        RenderTarget::Rust,
+    );
+
+    // Check for hard diagnostics (non-complexity)
+    let hard_diags: Vec<_> = diagnostic_messages(&result)
+        .into_iter()
+        .filter(|d| !d.contains("complexity:"))
+        .collect();
+    assert!(
+        hard_diags.is_empty(),
+        "RE-2: review.dag has hard diagnostics:\n{}",
+        hard_diags.join("\n")
+    );
+
+    let paths = emitted_file_paths(&result);
+    eprintln!("RE-2: emitted {} files: {:?}", paths.len(), paths);
+    assert!(
+        !result.files.is_empty(),
+        "RE-2: review.dag produced no emitted files"
+    );
+
+    // Write emitted files to temp dir
+    let out_dir = std::env::temp_dir().join("v2-re2-review");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    std::fs::create_dir_all(&out_dir).expect("failed to create temp dir");
+
+    for file in result.files.iter() {
+        let file_path = out_dir.join(&file.path);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::write(&file_path, &file.content)
+            .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
+    }
+
+    // Run cargo check
+    let check = std::process::Command::new("cargo")
+        .arg("check")
+        .current_dir(&out_dir)
+        .output()
+        .expect("failed to run cargo check");
+
+    let check_stderr = String::from_utf8_lossy(&check.stderr);
+
+    // Count errors
+    let error_count = check_stderr
+        .lines()
+        .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
+        .count();
+
+    // Categorize
+    let mut categories: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for line in check_stderr.lines() {
+        if line.starts_with("error[") {
+            let code = line.split(']').next().unwrap_or("unknown").to_string() + "]";
+            *categories.entry(code).or_insert(0) += 1;
+        }
+    }
+    let mut cats: Vec<_> = categories.iter().collect();
+    cats.sort_by(|a, b| b.1.cmp(a.1));
+
+    eprintln!("RE-2 cargo check: {} errors", error_count);
+    for (code, count) in cats.iter().take(10) {
+        eprintln!("  {}: {}", code, count);
+    }
+
+    // Show error lines with file:line context for diagnosis
+    let error_lines: Vec<_> = check_stderr
+        .lines()
+        .filter(|l| l.starts_with("error[") || l.trim_start().starts_with("--> src/"))
+        .take(30)
+        .collect();
+    if !error_lines.is_empty() {
+        eprintln!("RE-2 errors:\n{}", error_lines.join("\n"));
+    }
+
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&out_dir);
+
+    // RE-2 ratchet: track progress toward 0 cargo check errors.
+    // Current: 3 errors (E0308 type mismatches in shell return types).
+    // Reduced from 51 → 23 → 3 via: FuncItem detection (async+service params),
+    // for-each variable fix, runtime contains/count, Rc collection wrap.
+    const RE2_ERROR_RATCHET: usize = 3;
+    assert!(
+        error_count <= RE2_ERROR_RATCHET,
+        "RE-2: review.dag cargo check errors {} exceeds ratchet {} (regression)",
+        error_count, RE2_ERROR_RATCHET
+    );
+    if error_count == 0 {
+        eprintln!("RE-2: review.dag emitted Rust passes cargo check!");
+    }
+}
+
 // ── CX-L3: Structural complexity bound regression tests ─────────────────
 //
 // End-to-end: compile .dag source → CX-L1 (InductiveField) → CX-L2

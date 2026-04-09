@@ -57,7 +57,10 @@ fn stage0_cargo_check() {
 // 2026-04-07: 526 — honest count after restoring CostUnknown for all
 //   unresolved descent patterns. See docs/cx-violation-triage.md for
 //   the 3-fix reduction path (Node tree descent, Parser SCC, Graph DFS).
-const DIAG_RATCHET: usize = 523;
+// 2026-04-08: 526→528 — transport property inference adds 2 complexity
+//   diagnostics (infer_property_values/infer_transport_node call infer_expr).
+// 2026-04-09: 528 — merged main (transport +2, CX unification -2, net 0).
+const DIAG_RATCHET: usize = 528;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

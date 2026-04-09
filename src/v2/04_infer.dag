@@ -2786,22 +2786,89 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
 }
 
 // -------------------------------------------------------------------------
+// Transport/property inference: variant bindings (GET, POST, Bearer, etc.)
+// are already in scope.locals from imports. Running infer_expr on transport
+// property values sets binding_kind + inferred, enabling structural dispatch
+// in the emitter instead of string-name comparison.
+// -------------------------------------------------------------------------
+
+type InferPropertiesResult {
+  props: List<Node>
+  diagnostics: List<ErrorNode>
+}
+
+type InferTransportResult {
+  transport: Node?
+  diagnostics: List<ErrorNode>
+}
+
+fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertiesResult {
+  let results = props |> map(p =>
+    let val = field_init_node_value(n: p)
+    let val_result = infer_expr(texpr: val, scope: scope, expected: none)
+    {
+      prop: Node {
+        name: p.name, span: p.span, ident_span: p.ident_span,
+        children: [val_result.typed], connective: p.connective,
+        params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
+        uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
+        type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
+        has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
+        expr_data: p.expr_data
+      },
+      diagnostics: val_result.diagnostics
+    }
+  )
+  InferPropertiesResult {
+    props: results |> map(r => r.prop),
+    diagnostics: results |> flat_map(r => r.diagnostics)
+  }
+}
+
+fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportResult {
+  match transport {
+    None => InferTransportResult { transport: none, diagnostics: [] }
+    Some { value: t } =>
+      let prop_result = infer_property_values(props: t.properties, scope: scope)
+      InferTransportResult {
+        transport: Some { value: Node {
+          name: t.name, span: t.span, ident_span: t.ident_span,
+          children: t.children, connective: t.connective,
+          params: t.params, inferred: t.inferred, return_cardinality: t.return_cardinality,
+          uses: t.uses, body: t.body, transport: t.transport, properties: prop_result.props,
+          type_annotation: t.type_annotation, is_self_recursive: t.is_self_recursive,
+          has_non_tail_self_call: t.has_non_tail_self_call, match_pattern: t.match_pattern,
+          expr_data: t.expr_data
+        } },
+        diagnostics: prop_result.diagnostics
+      }
+  }
+}
+
+// -------------------------------------------------------------------------
 // infer_item: wraps each Node into its Node counterpart with inferred types
 // -------------------------------------------------------------------------
 
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let typed_anno = item.type_annotation
+  // Infer transport properties with the correct scope.
+  let transport_scope = if item.params |> count > 0 {
+    build_params_scope(scope: scope, params: item.params)
+  } else { scope }
+  let transport_result = infer_transport_node(transport: item.transport, scope: transport_scope)
+  let typed_transport = transport_result.transport
+  let transport_diags = transport_result.diagnostics
   // Type definition: has connective (record/sum) and is not a transport binding
   if item.connective != NoConnective && item.transport == none {
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: Some { value: Resolved { node: unit_type } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
-        connective: item.connective, transport: item.transport,
+        connective: item.connective, transport: typed_transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
-      diagnostics: []
+      diagnostics: transport_diags
     }
   }
   // Function with body: infer body, resolve return type
@@ -2825,13 +2892,13 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: item.uses, body: Some { value: annotated_body },
-        connective: NoConnective, transport: item.transport,
+        connective: NoConnective, transport: typed_transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: is_recursive,
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true),
         match_pattern: none, expr_data: NoExprData
       },
-      diagnostics: body_diags
+      diagnostics: concat(transport_diags, body_diags)
     }
   }
   // Zero-arg function: has body, no params, but has inferred annotation.
@@ -2845,11 +2912,11 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
         inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: Some { value: body_typed },
-        connective: NoConnective, transport: item.transport,
+        connective: NoConnective, transport: typed_transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
-      diagnostics: body_diags
+      diagnostics: concat(transport_diags, body_diags)
     }
   }
   // Data definition: has body but no params, has type_annotation
@@ -2863,11 +2930,11 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: [], body: Some { value: val_typed },
-        connective: NoConnective, transport: item.transport,
+        connective: NoConnective, transport: typed_transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
-      diagnostics: val_diags
+      diagnostics: concat(transport_diags, val_diags)
     }
   }
   // Extern func: has params but no body
@@ -2876,11 +2943,11 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Some { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
-        connective: NoConnective, transport: item.transport,
+        connective: NoConnective, transport: typed_transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
-      diagnostics: []
+      diagnostics: transport_diags
     }
   }
   // Service/Resource/other: pass through
@@ -2889,11 +2956,11 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Some { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
-        connective: item.connective, transport: item.transport,
+        connective: item.connective, transport: typed_transport,
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
-      diagnostics: []
+      diagnostics: transport_diags
     }
   }
 }

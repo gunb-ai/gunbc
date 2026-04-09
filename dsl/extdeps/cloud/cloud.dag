@@ -10,14 +10,7 @@
 
 module extdeps.cloud.cloud
 
-// -- Authentication schemes ----------------------------------------
-// How cloud APIs authenticate requests. Each provider uses a subset.
-
-type CloudAuthScheme
-  = BearerToken
-  | SigV4 { region: String, service: String }
-  | ApiKey
-  | OidcToken { audience: String }
+import std.types { AuthScheme }
 
 // -- Service endpoints ---------------------------------------------
 
@@ -34,6 +27,16 @@ type RateLimitPolicy {
   burst: Int?
   scope: String
 }
+
+// -- Cloud auth (Layer 2) ------------------------------------------
+// Composes protocol-level AuthScheme from std/ with provider-specific
+// schemes. Provider services project the subset they actually use.
+// AWS: SigV4. GCP: OidcToken. Azure: Bearer (already in std/).
+
+type CloudAuthScheme
+  = Protocol { scheme: AuthScheme }
+  | SigV4 { region: String, service: String }
+  | OidcToken { audience: String }
 
 // -- Credentials ---------------------------------------------------
 
