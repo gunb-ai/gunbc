@@ -427,6 +427,19 @@ pub fn build_item_inductive_fields(items: Rc<Vec<Rc<Node>>>, recursive_type_set:
     items.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, item: Rc<Node>| merge_inductive_fields(acc.clone(), collect_item_inductive_fields(item.clone(), recursive_type_set.clone())))
 }
 
+pub fn kernel_node_inductive_fields() -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    {
+        let fields = build_item_inductive_fields(Rc::new(vec![]), v2_rt::rc_empty_map::<bool>());
+let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "children".to_string(), RecursionShape::ListRecursion);
+let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "params".to_string(), RecursionShape::ListRecursion);
+let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "uses".to_string(), RecursionShape::ListRecursion);
+let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "properties".to_string(), RecursionShape::ListRecursion);
+let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "body".to_string(), RecursionShape::OptionalRecursion);
+let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "transport".to_string(), RecursionShape::OptionalRecursion);
+put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "type_annotation".to_string(), RecursionShape::OptionalRecursion)
+}
+}
+
 pub fn nominal_ref_node(name: String, span: Rc<SourceSpan>, ident_span: Option<Rc<SourceSpan>>) -> Rc<Node> {
     Rc::new(Node {
     name: name.clone(),
@@ -3207,11 +3220,12 @@ let kernel_bindings = v2_rt::rc_map_insert(kernel_bindings.clone(), "Optional".t
     name: "Optional".to_string(),
     resolved: kernel_optional,
 }));
+let node_fields = kernel_node_inductive_fields();
 let kernel = Rc::new(TypeEnv {
     bindings: kernel_bindings.clone(),
     recursive_types: Rc::new(vec![]),
     recursive_type_set: v2_rt::rc_empty_map::<bool>(),
-    inductive_fields: v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(),
+    inductive_fields: node_fields,
     source_index: source_index.clone(),
 });
 let imports_std_types = { let mut __found = false; for imp in module.resolved_imports.clone().iter().cloned() { if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) { __found = true; break; } } __found };

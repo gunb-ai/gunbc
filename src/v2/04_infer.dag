@@ -462,6 +462,19 @@ fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Map<String
   )
 }
 
+// Kernel seed for Node's inductive fields. Uses build_item_inductive_fields
+// with empty items to get a correctly-typed empty map, then adds entries.
+fn kernel_node_inductive_fields() -> Map<String, List<InductiveField>> {
+  let fields = build_item_inductive_fields(items: [], recursive_type_set: empty_map())
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "children", shape: ListRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "params", shape: ListRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "uses", shape: ListRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "properties", shape: ListRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "body", shape: OptionalRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "transport", shape: OptionalRecursion)
+  put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "type_annotation", shape: OptionalRecursion)
+}
+
 fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
   Node {
     name: name, span: span, ident_span: ident_span, children: [],
@@ -2840,7 +2853,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let some_variant = Node { name: "Some", span: zero_span, ident_span: Some { value: zero_span }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, ident_span: Some { value: zero_span }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
-  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_index: source_index }
+  // Node is the kernel's only recursive type. Seed its inductive fields
+  // so CX-L1 can prove tree-walk functions are O(n). Phase 1 of the
+  // Node migration path (see ROADMAP CX-NEXT).
+  let node_fields = kernel_node_inductive_fields()
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: node_fields, source_index: source_index }
 
   // Collect imported type bindings from parent modules.
   // For type resolution to work on imported types (e.g., FileClassification

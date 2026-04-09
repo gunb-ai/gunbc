@@ -5421,7 +5421,7 @@ fn dump_complexity_report() {
         classes.entry(class.clone()).or_default().push(func.clone());
     }
     let mut sorted_classes: Vec<_> = classes.iter().collect();
-    sorted_classes.sort_by_key(|(class, _)| class.clone());
+    sorted_classes.sort_by(|(a, _), (b, _)| a.cmp(b));
     eprintln!("\n=== FUNCTION CLASSES ({} functions) ===", cx.function_classes.len());
     for (class, funcs) in &sorted_classes {
         eprintln!("  {:20} — {} functions", class, funcs.len());
