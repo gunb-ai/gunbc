@@ -4597,6 +4597,7 @@ fn parse_for(tokens: List<Token>, state: ParserState) -> ExprResult {
   let r = expect_name(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let var_name = r.name
+  let var_name_span = r.span
 
   let r = expect(tokens: tokens, state: r.state, expected: ExpectKeyword { text: "in" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
@@ -4609,7 +4610,14 @@ fn parse_for(tokens: List<Token>, state: ParserState) -> ExprResult {
   if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
   let body = r.expr
 
-  let for_expr = make_named_expr_node(name: var_name, expr_data: ExprForEach, children: [collection, body], inferred: none, span: span)
+  let for_expr = Node {
+    name: var_name, span: span, ident_span: Some { value: var_name_span },
+    children: [collection, body], connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: ExprForEach
+  }
   ExprResult { expr: for_expr, state: r.state, err: none }
 }
 

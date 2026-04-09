@@ -10265,6 +10265,7 @@ if has_err(r.err.clone()) {
 })
 }
 let var_name = r.name.clone();
+let var_name_span = r.span.clone();
 let r = expect(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectKeyword {
     text: "in".to_string(),
 }));
@@ -10293,7 +10294,25 @@ if has_err(r.err.clone()) {
 })
 }
 let body = r.expr.clone();
-let for_expr = make_named_expr_node(var_name, Rc::new(ExprData::ExprForEach), Rc::new(vec![collection, body]), None, span);
+let for_expr = Rc::new(Node {
+    name: var_name,
+    span: span,
+    ident_span: Some(var_name_span),
+    children: Rc::new(vec![collection, body]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::ExprForEach),
+});
 Rc::new(ExprResult {
     expr: for_expr,
     state: r.state.clone(),

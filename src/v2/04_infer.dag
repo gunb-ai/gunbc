@@ -1804,7 +1804,14 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
-      let fe_texpr = make_named_expr_node(name: variable, expr_data: ExprForEach, children: [coll_typed, body_typed], inferred: body_typed.inferred, span: span)
+      let fe_texpr = Node {
+        name: variable, span: span, ident_span: texpr.ident_span,
+        children: [coll_typed, body_typed], connective: NoConnective,
+        params: [], inferred: body_typed.inferred, return_cardinality: Required,
+        uses: [], body: none, transport: none, properties: [],
+        type_annotation: none, is_self_recursive: false,
+        has_non_tail_self_call: false, match_pattern: none, expr_data: ExprForEach
+      }
       InferResult {
         typed: fe_texpr,
         diagnostics: concat(coll_diags, body_diags)

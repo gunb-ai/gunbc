@@ -2137,7 +2137,7 @@ fn emit_rust_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: Infer
 fn emit_rust_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprForEach =>
-      let v = foreach_variable(texpr: expr)
+      let v = foreach_variable_at(texpr: expr, source_index: scope.type_env.source_index)
       let c = foreach_collection(texpr: expr)
       let bd = foreach_body(texpr: expr)
       emit_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -3826,7 +3826,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_index: env.source_index)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_inferred = resolved_type(n: op_node)
-  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node)
+  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_index: env.source_index)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name(n: p)))
   let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry)
   let body = concat(
@@ -3863,16 +3863,16 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
   }
 }
 
-fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node) -> String {
-  if is_rest_transport(t: transport) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node) }
-  else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node) }
+fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_index: NewlineIndex?) -> String {
+  if is_rest_transport(t: transport) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_index: source_index) }
+  else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_index: source_index) }
   else if is_file_transport(t: transport) { emit_file_call(op_name: op_name, inferred: inferred) }
   else { emit_local_call(op_name: op_name) }
 }
 
-fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node) -> String {
+fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_index: NewlineIndex?) -> String {
   let client_init = "let client = reqwest::Client::new();"
-  let url_line = emit_rest_url_line(transport: transport, op_name: op_name)
+  let url_line = emit_rest_url_line(transport: transport, op_name: op_name, source_index: source_index)
   let http_method = emit_rest_http_method(transport: transport)
   let auth_line = emit_rest_auth_line(transport: transport, service_item: service_item, http_method: http_method)
   let query_line = emit_rest_query_line(transport: transport)
@@ -3916,7 +3916,7 @@ fn emit_rest_http_method(transport: Node) -> String {
 // Handles both literal paths and string interpolation (parameter substitution).
 // String interpolation paths like "/repos/{owner}/{repo}" produce ExprStringInterp
 // with structured Text + Interpolation parts — no ad-hoc template scanning needed.
-fn emit_rest_url_line(transport: Node, op_name: String) -> String {
+fn emit_rest_url_line(transport: Node, op_name: String, source_index: NewlineIndex?) -> String {
   match transport_path_template(t: transport) {
     Some { value: path_node } => match path_node.expr_data {
       ExprLiteral { value: LitStr { value: path_str } } =>
@@ -3935,7 +3935,7 @@ fn emit_rest_url_line(transport: Node, op_name: String) -> String {
         let args = parts |> flat_map(p => match p {
           Text { value: _ } => []
           Interpolation { expr: e } => {
-            let var_name = emit_ident(name: expr_var_name(texpr: e), target: Rust)
+            let var_name = emit_ident(name: expr_var_name_at(texpr: e, source_index: source_index), target: Rust)
             let is_opt = is_optional_typed_expr(e: e)
             if is_opt {
               [concat(var_name, ".as_deref().unwrap_or(\"\")")]
@@ -4113,13 +4113,13 @@ fn emit_exit_arm(prop: Node, inferred: Node) -> String {
   }
 }
 
-fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, op_node: Node) -> String {
+fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, op_node: Node, source_index: NewlineIndex?) -> String {
   // RE-1f: Shell argv — reads transport children for command + args.
   let argv = transport.children
   // Build set of optional parameter names for interpolation handling
   let optional_params = op_node.params
     |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
-    |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, p.name, true))
+    |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_index: source_index), true))
   // RE-1g: Shell stdin — if present, use spawn + write + wait_with_output
   let has_stdin = match transport_stdin(t: transport) {
     Some { value: _ } => true
@@ -4130,7 +4130,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   let cmd_line = if argv |> count > 0 {
     match argv |> first {
       Some { value: first_arg } => concat(let_kw, " = std::process::Command::new(",
-        emit_shell_argv_element(arg: first_arg, optional_params: optional_params), ")")
+        emit_shell_argv_element(arg: first_arg, optional_params: optional_params, source_index: source_index), ")")
       None => concat(let_kw, " = std::process::Command::new(\"",
         emit_ident(name: op_name, target: Rust), "\")")
     }
@@ -4140,7 +4140,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   }
   let arg_lines = if argv |> count > 1 {
     argv |> skip(1) |> map(arg =>
-      concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params), ")")
+      concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, source_index: source_index), ")")
     )
   } else { [] }
   let env_entries = transport_env(t: transport)
@@ -4181,7 +4181,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
 // (Text + Interpolation parts) — no ad-hoc template scanning.
 // Bash quoting/escaping facts from extdeps/languages/bash/emit.dag
 // will be consumed here when parameter injection safety is wired.
-fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>) -> String {
+fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source_index: NewlineIndex?) -> String {
   match arg.expr_data {
     ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", escape_string_literal_body(s: s), "\"")
@@ -4201,7 +4201,7 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>) -> Str
       let args = parts |> flat_map(p => match p {
         Text { value: _ } => []
         Interpolation { expr: e } => {
-          let name = expr_var_name(texpr: e)
+          let name = expr_var_name_at(texpr: e, source_index: source_index)
           let var_name = emit_ident(name: name, target: Rust)
           let is_opt = match map_get(optional_params, name) {
             Some { value: _ } => true
@@ -4217,7 +4217,7 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>) -> Str
       let args_str = args |> join(separator: ", ")
       concat("&format!(\"", fmt_str, "\", ", args_str, ")")
     }
-    ExprVar { binding_kind: _ } => concat("&", emit_ident(name: expr_var_name(texpr: arg), target: Rust), ".to_string()")
+    ExprVar { binding_kind: _ } => concat("&", emit_ident(name: expr_var_name_at(texpr: arg, source_index: source_index), target: Rust), ".to_string()")
     _ => emit_simple_expr(expr: arg, target: Rust, source_index: none)
   }
 }

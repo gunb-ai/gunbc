@@ -1402,8 +1402,27 @@ let br = match ch.clone().get(1 as usize).cloned() {
     diagnostics: Rc::new(vec![]),
 }),
 };
+let fe_resolved = Rc::new(Node {
+    name: foreach_variable(texpr.clone()),
+    span: texpr.span.clone(),
+    ident_span: texpr.ident_span.clone(),
+    children: Rc::new(vec![cr.expr.clone(), br.expr.clone()]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: texpr.inferred.clone(),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::ExprForEach),
+});
 Rc::new(ExprResolveResult {
-    expr: make_named_expr_node(foreach_variable(texpr.clone()), Rc::new(ExprData::ExprForEach), Rc::new(vec![cr.expr.clone(), br.expr.clone()]), texpr.inferred.clone(), texpr.span.clone()),
+    expr: fe_resolved,
     diagnostics: v2_rt::concat(cr.diagnostics.clone(), br.diagnostics.clone()),
 })
 },

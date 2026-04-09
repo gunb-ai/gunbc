@@ -859,7 +859,15 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let ch = texpr.children
       let cr = match ch |> first { Some { value: c } => resolve_expr_types(texpr: c, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let br = match ch |> skip(1) |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
-      ExprResolveResult { expr: make_named_expr_node(name: foreach_variable(texpr: texpr), expr_data: ExprForEach, children: [cr.expr, br.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(cr.diagnostics, br.diagnostics) }
+      let fe_resolved = Node {
+        name: foreach_variable(texpr: texpr), span: texpr.span, ident_span: texpr.ident_span,
+        children: [cr.expr, br.expr], connective: NoConnective,
+        params: [], inferred: texpr.inferred, return_cardinality: Required,
+        uses: [], body: none, transport: none, properties: [],
+        type_annotation: none, is_self_recursive: false,
+        has_non_tail_self_call: false, match_pattern: none, expr_data: ExprForEach
+      }
+      ExprResolveResult { expr: fe_resolved, diagnostics: concat(cr.diagnostics, br.diagnostics) }
     ExprIndex =>
       // children: [base, index]
       let ch = texpr.children

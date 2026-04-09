@@ -1817,7 +1817,25 @@ let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type_node);
 let body_result = infer_expr(body_expr.clone(), body_scope, None);
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
-let fe_texpr = make_named_expr_node(variable.clone(), Rc::new(ExprData::ExprForEach), Rc::new(vec![coll_typed.clone(), body_typed.clone()]), body_typed.inferred.clone(), span.clone());
+let fe_texpr = Rc::new(Node {
+    name: variable.clone(),
+    span: span.clone(),
+    ident_span: texpr.ident_span.clone(),
+    children: Rc::new(vec![coll_typed.clone(), body_typed.clone()]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: body_typed.inferred.clone(),
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::ExprForEach),
+});
 Rc::new(InferResult {
     typed: fe_texpr,
     diagnostics: v2_rt::concat(coll_diags, body_diags.clone()),

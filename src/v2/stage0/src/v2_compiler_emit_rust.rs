@@ -2108,10 +2108,10 @@ pub fn emit_rust_expr_cast(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemI
 pub fn emit_rust_expr_for_each(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, shared_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprForEach => {
-        let v = foreach_variable(expr.clone());
+        let v = foreach_variable_at(expr.clone(), scope.type_env.clone().source_index.clone());
 let c = foreach_collection(expr.clone());
 let bd = foreach_body(expr.clone());
-emit_typed_for_each(v, c, bd, registry, scope, depth, shared_types, emit_info)
+emit_typed_for_each(v, c, bd, registry, scope.clone(), depth, shared_types, emit_info)
 },
     _ => emit_error_expr("emit_rust_expr_for_each expected ExprForEach".to_string(), RenderTarget::Rust),
 }
@@ -4030,7 +4030,7 @@ let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
 let ret_type = render_rust_type(resolved_type(op_node.clone()), shared_types.clone(), env.source_index.clone());
 let eff_transport = effective_operation_transport(op_node.clone(), transport);
 let op_inferred = resolved_type(op_node.clone());
-let real_body = emit_transport_call(eff_transport, op_text.clone(), registry.clone(), (depth.clone() + 2), op_inferred, service_item, op_node.clone());
+let real_body = emit_transport_call(eff_transport, op_text.clone(), registry.clone(), (depth.clone() + 2), op_inferred, service_item, op_node.clone(), env.source_index.clone());
 let mock_props = Rc::new({ let mut __result = Vec::new(); for p in op_node.properties.clone().iter().cloned() { if has_mock_prefix(field_init_node_name(p.clone())) { __result.push(p); } } __result });
 let dry_run_body = emit_dry_run_branch_from_props(op_text.clone(), resolved_type(op_node.clone()), mock_props, registry.clone());
 let body = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if self.dry_run.is_dry_run() {\n".to_string(), make_indent((depth.clone() + 2))), dry_run_body), "\n".to_string()), "} else {\n".to_string()), make_indent((depth.clone() + 2))), real_body), "\n".to_string()), "}".to_string());
@@ -4060,12 +4060,12 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(log_line, 
 }
 }
 
-pub fn emit_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, inferred: Rc<Node>, service_item: Rc<Node>, op_node: Rc<Node>) -> String {
+pub fn emit_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, inferred: Rc<Node>, service_item: Rc<Node>, op_node: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     if is_rest_transport(transport.clone()) {
-        emit_rest_call(op_name, transport.clone(), registry, depth, service_item, op_node)
+        emit_rest_call(op_name, transport.clone(), registry, depth, service_item, op_node, source_index)
 } else {
         if is_shell_transport(transport.clone()) {
-            emit_shell_call(op_name, transport.clone(), registry, depth, inferred, op_node)
+            emit_shell_call(op_name, transport.clone(), registry, depth, inferred, op_node, source_index)
 } else {
             if is_file_transport(transport.clone()) {
                 emit_file_call(op_name, inferred)
@@ -4076,10 +4076,10 @@ pub fn emit_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<Ha
 }
 }
 
-pub fn emit_rest_call(op_name: String, transport: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, service_item: Rc<Node>, op_node: Rc<Node>) -> String {
+pub fn emit_rest_call(op_name: String, transport: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, service_item: Rc<Node>, op_node: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let client_init = "let client = reqwest::Client::new();".to_string();
-let url_line = emit_rest_url_line(transport.clone(), op_name);
+let url_line = emit_rest_url_line(transport.clone(), op_name, source_index);
 let http_method = emit_rest_http_method(transport.clone());
 let auth_line = emit_rest_auth_line(transport.clone(), service_item, http_method);
 let query_line = emit_rest_query_line(transport.clone());
@@ -4133,7 +4133,7 @@ if (name.clone().as_str() == "GET".to_string().as_str()) {
 }
 }
 
-pub fn emit_rest_url_line(transport: Rc<Node>, op_name: String) -> String {
+pub fn emit_rest_url_line(transport: Rc<Node>, op_name: String, source_index: Option<Rc<NewlineIndex>>) -> String {
     match transport_path_template(transport) {
     Some(path_node) => match (*path_node.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: path_str, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat("let url = format!(\"{}".to_string(), escape_string_literal_body(path_str.clone())), "\", self.base_url);".to_string()) },
@@ -4154,7 +4154,7 @@ let fmt_str = fmt_segments.join(&"".to_string());
 let args = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.extend((*match (*p.clone()).clone() {
     StringPart::Text { .. } => Rc::new(vec![]),
     StringPart::Interpolation { expr: e, .. } => {
-            let var_name = emit_ident(expr_var_name(e.clone()), RenderTarget::Rust);
+            let var_name = emit_ident(expr_var_name_at(e.clone(), source_index.clone()), RenderTarget::Rust);
 let is_opt = is_optional_typed_expr(e.clone());
 if is_opt.clone() {
                 Rc::new(vec![v2_rt::concat(var_name.clone(), ".as_deref().unwrap_or(\"\")".to_string())])
@@ -4340,10 +4340,10 @@ if is_success {
 }
 }
 
-pub fn emit_shell_call(op_name: String, transport: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, inferred: Rc<Node>, op_node: Rc<Node>) -> String {
+pub fn emit_shell_call(op_name: String, transport: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, inferred: Rc<Node>, op_node: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let argv = transport.children.clone();
-let optional_params = Rc::new({ let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { if (param_node_type_expr(p.clone()).return_cardinality.clone() == Cardinality::CardOptional) { __result.push(p); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), p.name.clone(), true));
+let optional_params = Rc::new({ let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { if (param_node_type_expr(p.clone()).return_cardinality.clone() == Cardinality::CardOptional) { __result.push(p); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name_at(p.clone(), source_index.clone()), true));
 let has_stdin = match transport_stdin(transport.clone()) {
     Some(_) => true,
     None => false,
@@ -4355,14 +4355,14 @@ let let_kw = if has_stdin.clone() {
 };
 let cmd_line = if ((argv.clone().len() as i64) > 0) {
             match argv.clone().first().cloned() {
-    Some(first_arg) => v2_rt::concat(v2_rt::concat(v2_rt::concat(let_kw, " = std::process::Command::new(".to_string()), emit_shell_argv_element(first_arg.clone(), optional_params.clone())), ")".to_string()),
+    Some(first_arg) => v2_rt::concat(v2_rt::concat(v2_rt::concat(let_kw, " = std::process::Command::new(".to_string()), emit_shell_argv_element(first_arg.clone(), optional_params.clone(), source_index.clone())), ")".to_string()),
     None => v2_rt::concat(v2_rt::concat(v2_rt::concat(let_kw, " = std::process::Command::new(\"".to_string()), emit_ident(op_name, RenderTarget::Rust)), "\")".to_string()),
 }
 } else {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(let_kw, " = std::process::Command::new(\"".to_string()), emit_ident(op_name, RenderTarget::Rust)), "\")".to_string())
 };
 let arg_lines = if ((argv.clone().len() as i64) > 1) {
-            Rc::new({ let mut __result = Vec::new(); for arg in Rc::new(argv.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat("    .arg(".to_string(), emit_shell_argv_element(arg.clone(), optional_params.clone())), ")".to_string())); } __result })
+            Rc::new({ let mut __result = Vec::new(); for arg in Rc::new(argv.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat("    .arg(".to_string(), emit_shell_argv_element(arg.clone(), optional_params.clone(), source_index.clone())), ")".to_string())); } __result })
 } else {
             Rc::new(vec![])
 };
@@ -4397,7 +4397,7 @@ all_lines.join(&"\n".to_string())
 }
 }
 
-pub fn emit_shell_argv_element(arg: Rc<Node>, optional_params: Rc<HashMap<String, bool>>) -> String {
+pub fn emit_shell_argv_element(arg: Rc<Node>, optional_params: Rc<HashMap<String, bool>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     match (*arg.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat("\"".to_string(), escape_string_literal_body(s.clone())), "\"".to_string()) },
     ExprData::ExprStringInterp => {
@@ -4417,7 +4417,7 @@ let fmt_str = fmt_segments.join(&"".to_string());
 let args = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.extend((*match (*p.clone()).clone() {
     StringPart::Text { .. } => Rc::new(vec![]),
     StringPart::Interpolation { expr: e, .. } => {
-            let name = expr_var_name(e.clone());
+            let name = expr_var_name_at(e.clone(), source_index.clone());
 let var_name = emit_ident(name.clone(), RenderTarget::Rust);
 let is_opt = match v2_rt::map_get(&optional_params, name.clone()) {
     Some(_) => true,
@@ -4433,7 +4433,7 @@ if is_opt.clone() {
 let args_str = args.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("&format!(\"".to_string(), fmt_str), "\", ".to_string()), args_str), ")".to_string())
 },
-    ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat("&".to_string(), emit_ident(expr_var_name(arg.clone()), RenderTarget::Rust)), ".to_string()".to_string()),
+    ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat("&".to_string(), emit_ident(expr_var_name_at(arg.clone(), source_index.clone()), RenderTarget::Rust)), ".to_string()".to_string()),
     _ => emit_simple_expr(arg.clone(), RenderTarget::Rust, None),
 }
 }
