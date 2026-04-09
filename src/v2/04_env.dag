@@ -103,6 +103,18 @@ fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<St
   )
 }
 
+// Convert a flat list of InductiveFields to the map format keyed by type_name.
+// Used to load compiler type declarations from std/node.dag.
+fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, List<InductiveField>> {
+  fields |> fold(init: empty_map(), f: (acc, field) =>
+    let existing = match map_get(acc, field.type_name) {
+      Some { value: fs } => fs
+      None => []
+    }
+    map_insert(acc, field.type_name, concat(existing, [field]))
+  )
+}
+
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
   let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
