@@ -4947,22 +4947,26 @@ fn max_path_descending(body: Node, fn_name: String, param_index: Int) -> Int {
         acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index)
       )
       own + from_children
-    // ExprIf: MAX over then/else branches
+    // ExprIf: condition executes on every path + MAX over then/else branches
     ExprIf =>
+      let cond_count = max_path_descending(body: if_condition(texpr: body), fn_name: fn_name, param_index: param_index)
       let then_count = max_path_descending(body: if_then_branch(texpr: body), fn_name: fn_name, param_index: param_index)
       let else_branch = if_else_branch(texpr: body)
       let else_count = match else_branch {
         Some { value: eb } => max_path_descending(body: eb, fn_name: fn_name, param_index: param_index)
         None => 0
       }
-      if then_count > else_count { then_count } else { else_count }
-    // ExprMatch: MAX over arms
+      let branch_max = if then_count > else_count { then_count } else { else_count }
+      cond_count + branch_max
+    // ExprMatch: scrutinee executes on every path + MAX over arms
     ExprMatch =>
+      let scrut_count = max_path_descending(body: match_scrutinee(texpr: body), fn_name: fn_name, param_index: param_index)
       let arms = match_arm_nodes(texpr: body)
-      arms |> fold(init: 0, f: (acc, arm) =>
+      let arm_max = arms |> fold(init: 0, f: (acc, arm) =>
         let arm_count = max_path_descending(body: arm_body(n: arm), fn_name: fn_name, param_index: param_index)
         if arm_count > acc { arm_count } else { acc }
       )
+      scrut_count + arm_max
     // Sequential: SUM of children
     _ =>
       body.children |> fold(init: 0, f: (acc, child) =>

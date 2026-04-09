@@ -4744,28 +4744,32 @@ let from_children = body.children.clone().iter().cloned().fold(0, |acc: i64, chi
 (own + from_children)
 },
     ExprData::ExprIf => {
-            let then_count = max_path_descending(if_then_branch(body.clone()), fn_name.clone(), param_index.clone());
+            let cond_count = max_path_descending(if_condition(body.clone()), fn_name.clone(), param_index.clone());
+let then_count = max_path_descending(if_then_branch(body.clone()), fn_name.clone(), param_index.clone());
 let else_branch = if_else_branch(body.clone());
 let else_count = match else_branch {
     Some(eb) => max_path_descending(eb.clone(), fn_name.clone(), param_index.clone()),
     None => 0,
 };
-if (then_count.clone() > else_count.clone()) {
+let branch_max = if (then_count.clone() > else_count.clone()) {
                 then_count.clone()
 } else {
                 else_count.clone()
-}
+};
+(cond_count + branch_max)
 },
     ExprData::ExprMatch => {
-            let arms = match_arm_nodes(body.clone());
-arms.iter().cloned().fold(0, |acc: i64, arm: Rc<Node>| {
+            let scrut_count = max_path_descending(match_scrutinee(body.clone()), fn_name.clone(), param_index.clone());
+let arms = match_arm_nodes(body.clone());
+let arm_max = arms.iter().cloned().fold(0, |acc: i64, arm: Rc<Node>| {
                 let arm_count = max_path_descending(arm_body(arm.clone()), fn_name.clone(), param_index.clone());
 if (arm_count.clone() > acc.clone()) {
                     arm_count.clone()
 } else {
                     acc.clone()
 }
-})
+});
+(scrut_count + arm_max)
 },
     _ => body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| (acc.clone() + max_path_descending(child.clone(), fn_name.clone(), param_index.clone()))),
 }
