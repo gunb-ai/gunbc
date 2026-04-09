@@ -61,6 +61,10 @@ fn rt_string_ops() -> String {
     "pub fn string_contains(s: &str, sub: String) -> bool {\n",
     "    s.contains(&*sub)\n",
     "}\n\n",
+    "pub fn contains(s: String, sub: String) -> bool {\n",
+    "    s.contains(&*sub)\n",
+    "}\n\n",
+    "pub fn count<T>(items: Rc<Vec<T>>) -> i64 { items.len() as i64 }\n\n",
     "pub fn str_eq(a: String, b: String) -> bool { a == b }\n\n",
     "pub fn to_string(value: i64) -> String { value.to_string() }\n\n")
 }
