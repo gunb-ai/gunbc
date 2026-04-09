@@ -842,7 +842,12 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
     LitStr { value: s } =>
       let suffix = match literal_suffix(target: target, dag_name: "String") {
         Some { value: sfx } => sfx
-        None => ""
+        // Dag target has no TypeCheckpoints — suffix is always empty.
+        // For real targets, missing checkpoint is fail-closed via emit_error_expr.
+        None => match target {
+          Dag => ""
+          _ => emit_error_expr(message: "missing TypeCheckpoint for String literal suffix", target: target)
+        }
       }
       emit_string_literal(s: s, suffix: suffix)
     LitInt { value: i } => to_string(value: i)

@@ -81,22 +81,27 @@ fn target_optional_template(target: RenderTarget) -> String {
 // Level 0: Cast syntax lookup
 // =========================================================================
 
-fn target_cast_syntax(target: RenderTarget) -> CastSyntax {
+fn target_cast_syntax(target: RenderTarget) -> CastSyntax? {
   match target {
-    Rust => rust_cast_syntax
-    Python => python_cast_syntax
-    Go => go_cast_syntax
-    Dag => CastSyntax { template: "\{expr\}", cast_rules: [] }
+    Rust => Some { value: rust_cast_syntax }
+    Python => Some { value: python_cast_syntax }
+    Go => Some { value: go_cast_syntax }
+    Dag => none
   }
 }
 
 fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> Bool {
-  let syntax = target_cast_syntax(target: target)
-  syntax.cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
+  match target_cast_syntax(target: target) {
+    Some { value: syntax } => syntax.cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
+    None => false
+  }
 }
 
 fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
-  let syntax = target_cast_syntax(target: target)
+  let syntax = match target_cast_syntax(target: target) {
+    Some { value: s } => s
+    None => CastSyntax { template: "\{expr\}", cast_rules: [] }
+  }
   replace(replace(syntax.template, "\{expr\}", expr_str), "\{type\}", type_str)
 }
 

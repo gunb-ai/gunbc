@@ -96,28 +96,31 @@ pub fn target_optional_template(target: RenderTarget) -> String {
 }
 }
 
-pub fn target_cast_syntax(target: RenderTarget) -> Rc<CastSyntax> {
+pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
     match target {
-    RenderTarget::Rust => rust_cast_syntax(),
-    RenderTarget::Python => python_cast_syntax(),
-    RenderTarget::Go => go_cast_syntax(),
-    RenderTarget::Dag => Rc::new(CastSyntax {
-    template: "{expr}".to_string(),
-    cast_rules: Rc::new(vec![]),
-}),
+    RenderTarget::Rust => Some(rust_cast_syntax()),
+    RenderTarget::Python => Some(python_cast_syntax()),
+    RenderTarget::Go => Some(go_cast_syntax()),
+    RenderTarget::Dag => None,
 }
 }
 
 pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> bool {
-    {
-        let syntax = target_cast_syntax(target);
-{ let mut __found = false; for r in syntax.cast_rules.clone().iter().cloned() { if ((r.from_type.clone().as_str() == source_type.clone().as_str()) && (r.to_type.clone().as_str() == target_type.clone().as_str())) { __found = true; break; } } __found }
+    match target_cast_syntax(target) {
+    Some(syntax) => { let mut __found = false; for r in syntax.cast_rules.clone().iter().cloned() { if ((r.from_type.clone().as_str() == source_type.clone().as_str()) && (r.to_type.clone().as_str() == target_type.clone().as_str())) { __found = true; break; } } __found },
+    None => false,
 }
 }
 
 pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
     {
-        let syntax = target_cast_syntax(target);
+        let syntax = match target_cast_syntax(target) {
+    Some(s) => s.clone(),
+    None => Rc::new(CastSyntax {
+    template: "{expr}".to_string(),
+    cast_rules: Rc::new(vec![]),
+}),
+};
 v2_rt::replace(v2_rt::replace(syntax.template.clone(), "{expr}".to_string(), expr_str), "{type}".to_string(), type_str)
 }
 }

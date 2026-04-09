@@ -799,20 +799,23 @@ pub fn emit_keyword(key: String, target: RenderTarget) -> String {
 pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
     match (*value).clone() {
     LiteralValue::LitStr { value: s, .. } => {
-        let suffix = match literal_suffix(target, "String".to_string()) {
+        let suffix = match literal_suffix(target.clone(), "String".to_string()) {
     Some(sfx) => sfx.clone(),
-    None => "".to_string(),
+    None => match target.clone() {
+    RenderTarget::Dag => "".to_string(),
+    _ => emit_error_expr("missing TypeCheckpoint for String literal suffix".to_string(), target.clone()),
+},
 };
 emit_string_literal(s.clone(), suffix)
 },
     LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
     LiteralValue::LitFloat { value: f, .. } => f.clone(),
     LiteralValue::LitBool { value: b, .. } => if b.clone() {
-        emit_keyword("true".to_string(), target)
+        emit_keyword("true".to_string(), target.clone())
 } else {
-        emit_keyword("false".to_string(), target)
+        emit_keyword("false".to_string(), target.clone())
 },
-    LiteralValue::LitNull => emit_keyword("null".to_string(), target),
+    LiteralValue::LitNull => emit_keyword("null".to_string(), target.clone()),
 }
 }
 
