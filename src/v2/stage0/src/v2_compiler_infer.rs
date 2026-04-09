@@ -2529,8 +2529,8 @@ let inner_type = match v2_rt::map_get(&ctx.param_names.clone(), iname.clone()) {
     Some(t) => t.clone(),
     None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), iname.clone()) {
     Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
-    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
     _ => "".to_string(),
 },
     None => "".to_string(),
@@ -2539,7 +2539,10 @@ let inner_type = match v2_rt::map_get(&ctx.param_names.clone(), iname.clone()) {
 if (inner_type.clone().as_str() != "".to_string().as_str()) {
                             {
                                 let fields = inductive_fields_for(ctx.type_env.clone(), inner_type.clone());
-let cf = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if (f.field_name.clone().as_str() == "children".to_string().as_str()) { __result.push(f); } } __result }).first().cloned();
+let cf = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if match f.shape.clone() {
+    RecursionShape::ListRecursion => true,
+    _ => false,
+} { __result.push(f); } } __result }).first().cloned();
 match cf {
     Some(ind_field) => Some(Rc::new(SubValueRelation::StrictSubValue {
     field: ind_field.clone(),
@@ -3143,8 +3146,8 @@ let new_sa = match sa.clone() {
 match val_rel.clone() {
     Some(rel) => {
                         let sub_type = match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
-    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
     _ => "".to_string(),
 };
 Rc::new(DescentContext {
@@ -3225,8 +3228,8 @@ let base_type = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
     Some(t) => t.clone(),
     None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
     Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
-    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
     _ => "".to_string(),
 },
     None => "".to_string(),

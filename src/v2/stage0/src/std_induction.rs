@@ -91,10 +91,20 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
     SubValueRelation::IteratedSubValue { field: f, .. } => Some(Rc::new(CallPattern::ChildAccessorCall {
     accessor: f.field_name.clone(),
 })),
-    SubValueRelation::ArithmeticDescent { param: p, .. } => Some(Rc::new(CallPattern::ArithmeticDescentCall {
+    SubValueRelation::ArithmeticDescent { factor: f, .. } => match (*f.clone()).clone() {
+    ShrinkFactor::ConstantShrink { amount: k, .. } => Some(Rc::new(CallPattern::ArithmeticDescentCall {
+    op: "subtract".to_string(),
+    by: k.clone(),
+})),
+    ShrinkFactor::ProportionalShrink { divisor: k, .. } => Some(Rc::new(CallPattern::ArithmeticDescentCall {
+    op: "divide".to_string(),
+    by: k.clone(),
+})),
+    ShrinkFactor::UnitShrink => Some(Rc::new(CallPattern::ArithmeticDescentCall {
     op: "subtract".to_string(),
     by: 1,
 })),
+},
     SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),
     SubValueRelation::SubValueUnknown => None,
 }

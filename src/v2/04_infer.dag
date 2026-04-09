@@ -2419,8 +2419,8 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
                     match map_get(ctx.sub_value_vars, iname) {
                       Some { value: rel } =>
                         match rel {
-                          StrictSubValue { field: f, factor: _ } => f.type_name
-                          IteratedSubValue { field: f } => f.type_name
+                          StrictSubValue { field: f, factor: _ } => f.element_type
+                          IteratedSubValue { field: f } => f.element_type
                           _ => ""
                         }
                       None => ""
@@ -2428,7 +2428,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
                 }
                 if inner_type != "" {
                   let fields = inductive_fields_for(env: ctx.type_env, type_name: inner_type)
-                  let cf = fields |> filter(f => f.field_name == "children") |> first
+                  let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
                   match cf {
                     Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
                     None => none
@@ -2925,8 +2925,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             match val_rel {
               Some { value: rel } =>
                 let sub_type = match rel {
-                  StrictSubValue { field: f, factor: _ } => f.type_name
-                  IteratedSubValue { field: f } => f.type_name
+                  StrictSubValue { field: f, factor: _ } => f.element_type
+                  IteratedSubValue { field: f } => f.element_type
                   _ => ""
                 }
                 DescentContext {
@@ -2986,8 +2986,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                     match map_get(ctx.sub_value_vars, bname) {
                       Some { value: rel } =>
                         match rel {
-                          StrictSubValue { field: f, factor: _ } => f.type_name
-                          IteratedSubValue { field: f } => f.type_name
+                          StrictSubValue { field: f, factor: _ } => f.element_type
+                          IteratedSubValue { field: f } => f.element_type
                           _ => ""
                         }
                       None => ""

@@ -3622,7 +3622,15 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
         }
         let self_edge = if self_has_calls {
           if self_all_structural {
-            [ProofEdge { caller: name, callee: name, evidence: [Strict] }]
+            // Derive evidence from actual relations: best per call, worst across calls
+            let derived = self_evidence |> fold(init: Strict, f: (worst, call_ev) =>
+              let call_best = call_ev |> fold(init: DescentUnknown, f: (best, rel) =>
+                let ev = sub_value_to_evidence(relation: rel)
+                match ev { Strict => Strict  _ => match best { Strict => Strict  _ => ev } }
+              )
+              merge_evidence(a: worst, b: call_best)
+            )
+            [ProofEdge { caller: name, callee: name, evidence: [derived] }]
           } else {
             [ProofEdge { caller: name, callee: name, evidence: [DescentUnknown] }]
           }

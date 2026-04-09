@@ -3222,11 +3222,26 @@ let descending_param = match self_evidence.clone().first().cloned() {
 };
 let self_edge = if self_has_calls.clone() {
                 if self_all_structural.clone() {
-                    Rc::new(vec![Rc::new(ProofEdge {
+                    {
+                        let derived = self_evidence.clone().iter().cloned().fold(DescentEvidence::Strict, |worst: DescentEvidence, call_ev: Rc<Vec<Rc<SubValueRelation>>>| {
+                            let call_best = call_ev.clone().iter().cloned().fold(DescentEvidence::DescentUnknown, |best: DescentEvidence, rel: Rc<SubValueRelation>| {
+                                let ev = sub_value_to_evidence(rel.clone());
+match ev.clone() {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    _ => match best.clone() {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    _ => ev.clone(),
+},
+}
+});
+merge_evidence(worst.clone(), call_best.clone())
+});
+Rc::new(vec![Rc::new(ProofEdge {
     caller: name.clone(),
     callee: name.clone(),
-    evidence: Rc::new(vec![DescentEvidence::Strict]),
+    evidence: Rc::new(vec![derived.clone()]),
 })])
+}
 } else {
                     Rc::new(vec![Rc::new(ProofEdge {
     caller: name.clone(),

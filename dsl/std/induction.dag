@@ -207,7 +207,12 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
   match relation {
     StrictSubValue { field: f, factor: _ }    => Some { value: ChildAccessorCall { accessor: f.field_name } }
     IteratedSubValue { field: f }             => Some { value: ChildAccessorCall { accessor: f.field_name } }
-    ArithmeticDescent { param: p, factor: _ } => Some { value: ArithmeticDescentCall { op: "subtract", by: 1 } }
+    ArithmeticDescent { param: _, factor: f } =>
+      match f {
+        ConstantShrink { amount: k }      => Some { value: ArithmeticDescentCall { op: "subtract", by: k } }
+        ProportionalShrink { divisor: k } => Some { value: ArithmeticDescentCall { op: "divide", by: k } }
+        UnitShrink                        => Some { value: ArithmeticDescentCall { op: "subtract", by: 1 } }
+      }
     PreservedValue                            => Some { value: SameArgumentCall }
     SubValueUnknown                           => none
   }
