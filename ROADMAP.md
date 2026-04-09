@@ -801,29 +801,33 @@ resolve uses structural identity.
 - B4 (resolve structural identity): accessor layer done, `node.name`
   still semantic authority underneath
 - D6 progress (PR #356):
-  - [x] Thread `si: NewlineIndex?` through complexity.dag (78 functions)
-    and ownership.dag (4 functions) — all name accessor calls use `_at`
-    variants. Entry points pass `si: none` (falls back to `node.name`,
-    identical behavior — prep, not completion).
-  - [x] Migrate ~90 accessor calls in emit/infer/resolve/parse/compile
-    to `_at` variants with `source_index: none`.
-  - [x] Centralize type builders: `make_container_type`,
-    `make_map_type`, `make_callable_type`, `make_tuple_type` in
-    `04_types.dag`. All use `container_param_name_required` (fail-closed).
-  - [x] Add `field_node_name_at`, `variant_node_name_at` to `00_core.dag`.
-  - **Status:** `_at` API surface is wired everywhere. `node.name`
-    is still the runtime authority (all `_at` calls pass `none`).
-    Next: fix `ident_span` on node constructors to cover only the
-    identifier, then wire real `source_index` to `_at` calls.
-- D6 open:
-  - [ ] Fix `ident_span` on `make_named_expr_node`, `make_arg_node`,
-    `make_field_binding_node`, `make_resource_use_node` to use
-    `name_span` (identifier only) instead of full expression span
-  - [ ] Wire real `source_index` through entry points (compile.dag,
-    05_emit_rust.dag) instead of `none`
-  - [ ] Update ~131 Node constructions to drop `name:`
-  - [ ] Migrate synthetic node identity to structural
-  - [ ] Delete `Node.name` field + scrambled-name tests
+  - [x] Thread `si: NewlineIndex?` through complexity + ownership
+  - [x] Migrate ~90 accessor calls to `_at` variants
+  - [x] Centralize type builders in `04_types.dag`
+  - [x] Fix `ident_span` on 4 constructors (`name_span` parameter)
+  - [x] Fix ident_span through infer/resolve node reconstruction (18 sites)
+  - [x] Fix 6 name_span widening bugs (binding.span → node_name_span)
+  - [x] Wire real `source_index` through emitter (46 calls), infer (13),
+    resolve (12), access (9), ownership (2 entry points), types (18)
+  - [x] Thread `source_index` through type utilities: `is_fully_resolved`,
+    `node_type_compatible`, `node_type_equals`, `node_type_shape`,
+    `node_type_deps`, `check_index_access_node`, etc.
+  - [x] Remove dual-si from `build_complexity_report` (FuncEntry.si only)
+  - [x] Migrate ~30 direct `n.name` reads to `authored_name_at` in emit/types
+  - [x] Revert `@synthetic:` ident_span — structural identity is correct path
+  - **Status:** 52 `source_index: none` remain in scope-free functions.
+    ~20 direct `n.name` reads remain. 115 Node construction sites need
+    `name:` removed for field deletion.
+- D6 open (structural work, not mechanical wiring):
+  - [ ] Add `NewlineIndex` to `ParserState` (14 parser calls)
+  - [ ] Thread `source_indices` through compile.dag serialization (11 calls)
+  - [ ] Thread `source_index` through mock/service/transport utilities (19 calls)
+  - [ ] Migrate remaining `n.name` reads (resolve slot_bindings, service
+    names, normalize, access `is_ordered_element_collection`)
+  - [ ] `named_collection_type` fabrication — `container_param_name` gap
+  - [ ] Kernel type identity: structural checks, not name recovery
+  - [ ] Update ~115 Node constructions to drop `name:`
+  - [ ] Delete `Node.name` field + non-`_at` accessors + scrambled-name tests
 
 Lanes share only `00_core.dag` (different functions, no conflict).
 
