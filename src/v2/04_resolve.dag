@@ -799,12 +799,12 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = el_results |> map(r => r.expr)
       let all_diags = flat_map(el_results, r => r.diagnostics)
       ExprResolveResult { expr: make_expr_node(expr_data: ExprListLit, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
-    ExprBinOp { op: op } =>
+    ExprBinOp { op: op, algebra_field: af } =>
       // children: [left, right]
       let ch = texpr.children
       let lr = match ch |> first { Some { value: l } => resolve_expr_types(texpr: l, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let rr = match ch |> skip(1) |> first { Some { value: r } => resolve_expr_types(texpr: r, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprBinOp { op: op }, children: [lr.expr, rr.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprBinOp { op: op, algebra_field: af }, children: [lr.expr, rr.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
     ExprUnaryOp { op: op } =>
       // children: [operand]
       let r = match texpr.children |> first { Some { value: o } => resolve_expr_types(texpr: o, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }

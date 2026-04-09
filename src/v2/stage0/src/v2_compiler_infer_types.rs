@@ -1297,12 +1297,21 @@ pub fn binop_algebra_fields(op: BinOp) -> Rc<Vec<String>> {
 }
 }
 
-pub fn first_matching_algebra_field(mut n: Rc<Node>, mut candidates: Rc<Vec<String>>, mut source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AlgebraFieldMatch {
+    pub field_name: String,
+    pub field_node: Rc<Node>,
+}
+
+pub fn first_matching_algebra_field(mut n: Rc<Node>, mut candidates: Rc<Vec<String>>, mut source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
         match candidates.clone().first().cloned() {
     None => { break None; },
     Some(name) => { match find_child_named(n.clone(), name.clone(), source_index.clone()) {
-    Some(f) => { break Some(f.clone()); },
+    Some(f) => { break Some(Rc::new(AlgebraFieldMatch {
+    field_name: name.clone(),
+    field_node: f.clone(),
+})); },
     None => { {
             let __tco_0 = n;
 let __tco_1 = Rc::new(candidates.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
@@ -1317,37 +1326,88 @@ continue;
 }
 }
 
-pub fn infer_binop_type_node(op: BinOp, left_type: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Node> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BinOpInferred {
+    pub result_type: Rc<Node>,
+    pub algebra_field: Option<String>,
+}
+
+pub fn infer_binop_type_node(op: BinOp, left_type: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<BinOpInferred> {
     match op.clone() {
-    BinOp::Eq => bool_type(),
-    BinOp::Ne => bool_type(),
-    BinOp::Lt => bool_type(),
-    BinOp::Gt => bool_type(),
-    BinOp::Le => bool_type(),
-    BinOp::Ge => bool_type(),
-    BinOp::And => bool_type(),
-    BinOp::Or => bool_type(),
-    BinOp::NullCoalesce => extract_optional_inner_node(left_type.clone()),
+    BinOp::Eq => Rc::new(BinOpInferred {
+    result_type: bool_type(),
+    algebra_field: None,
+}),
+    BinOp::Ne => Rc::new(BinOpInferred {
+    result_type: bool_type(),
+    algebra_field: None,
+}),
+    BinOp::Lt => Rc::new(BinOpInferred {
+    result_type: bool_type(),
+    algebra_field: None,
+}),
+    BinOp::Gt => Rc::new(BinOpInferred {
+    result_type: bool_type(),
+    algebra_field: None,
+}),
+    BinOp::Le => Rc::new(BinOpInferred {
+    result_type: bool_type(),
+    algebra_field: None,
+}),
+    BinOp::Ge => Rc::new(BinOpInferred {
+    result_type: bool_type(),
+    algebra_field: None,
+}),
+    BinOp::And => Rc::new(BinOpInferred {
+    result_type: bool_type(),
+    algebra_field: None,
+}),
+    BinOp::Or => Rc::new(BinOpInferred {
+    result_type: bool_type(),
+    algebra_field: None,
+}),
+    BinOp::NullCoalesce => Rc::new(BinOpInferred {
+    result_type: extract_optional_inner_node(left_type.clone()),
+    algebra_field: None,
+}),
     _ => {
         let candidates = binop_algebra_fields(op.clone());
 let is_product = (left_type.connective.clone() == Connective::Conj);
 if is_product {
             match first_matching_algebra_field(left_type.clone(), candidates, source_index) {
-    Some(field) => match field.inferred.clone().as_deref().cloned() {
+    Some(m) => match m.field_node.clone().inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => if ((rt.params.clone().len() as i64) > 0) {
                 match rt.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: return_type, .. }) => return_type.clone(),
-    _ => left_type.clone(),
+    Some(InferredNode::Resolved { node: return_type, .. }) => Rc::new(BinOpInferred {
+    result_type: return_type.clone(),
+    algebra_field: Some(m.field_name.clone()),
+}),
+    _ => Rc::new(BinOpInferred {
+    result_type: left_type.clone(),
+    algebra_field: Some(m.field_name.clone()),
+}),
 }
             } else {
-                rt.clone()
+                Rc::new(BinOpInferred {
+    result_type: rt.clone(),
+    algebra_field: Some(m.field_name.clone()),
+})
             },
-    _ => left_type.clone(),
+    _ => Rc::new(BinOpInferred {
+    result_type: left_type.clone(),
+    algebra_field: None,
+}),
 },
-    None => left_type.clone(),
+    None => Rc::new(BinOpInferred {
+    result_type: left_type.clone(),
+    algebra_field: None,
+}),
 }
         } else {
-            left_type.clone()
+            Rc::new(BinOpInferred {
+    result_type: left_type.clone(),
+    algebra_field: None,
+})
         }
 },
 }

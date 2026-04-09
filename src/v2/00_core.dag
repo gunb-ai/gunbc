@@ -203,7 +203,7 @@ type ExprData
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOp }
+  | ExprBinOp { op: BinOp, algebra_field: String? }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda { semantics: LambdaSemantics? }
   | ExprStringInterp

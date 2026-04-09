@@ -1727,11 +1727,12 @@ let left_diags = left_result.diagnostics.clone();
 let right_result = infer_expr(right_expr, scope.clone(), None);
 let right_typed = right_result.typed.clone();
 let right_diags = right_result.diagnostics.clone();
-let result_type = infer_binop_type_node(op.clone(), resolved_type(left_typed.clone()), scope.type_env.clone().source_index.clone());
+let binop_info = infer_binop_type_node(op.clone(), resolved_type(left_typed.clone()), scope.type_env.clone().source_index.clone());
 let bo_texpr = make_expr_node(Rc::new(ExprData::ExprBinOp {
     op: op.clone(),
+    algebra_field: binop_info.algebra_field.clone(),
 }), Rc::new(vec![left_typed.clone(), right_typed]), Some(Rc::new(InferredNode::Resolved {
-    node: result_type,
+    node: binop_info.result_type.clone(),
 })), span.clone());
 Rc::new(InferResult {
     typed: bo_texpr,

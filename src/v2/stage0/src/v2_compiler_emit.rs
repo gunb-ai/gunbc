@@ -18,7 +18,7 @@ use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
 pub use crate::std_induction::{InductiveField};
-pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, binop_algebra_fields};
+pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -791,24 +791,6 @@ emit_string_literal(s.clone(), suffix)
         emit_keyword("false".to_string(), target.clone())
     },
     LiteralValue::LitNull => emit_keyword("null".to_string(), target.clone()),
-}
-}
-
-pub fn resolved_binop_algebra(op: BinOp, left_type: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
-    {
-        let candidates = binop_algebra_fields(op);
-let is_product = (left_type.connective.clone() == Connective::Conj);
-if is_product {
-            {
-                let matching = Rc::new({ let mut __result = Vec::new(); for c in candidates.iter().cloned() { if match find_child_named(left_type.clone(), c.clone(), source_index.clone()) {
-    Some(_) => true,
-    None => false,
-} { __result.push(c); } } __result });
-matching.first().cloned()
-}
-        } else {
-            None
-        }
 }
 }
 
@@ -1972,18 +1954,16 @@ wrap_result(emit_return(recurse(ret_val), target.clone()))
 
 pub fn emit_default_bin_op(texpr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>, recurse: impl Fn(Rc<Node>) -> String + Clone, wrap_result: impl Fn(String) -> String + Clone) -> String {
     match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprBinOp { op, .. } => {
+    ExprData::ExprBinOp { op, algebra_field: algebra, .. } => {
         let left = binop_left(texpr.clone());
 let right = binop_right(texpr.clone());
-let left_str = recurse(left.clone());
+let left_str = recurse(left);
 let right_str = recurse(right);
 if is_null_coalesce(op.clone()) {
             wrap_result(emit_null_coalesce(left_str, right_str, target))
         } else {
             {
-                let left_type = resolved_type(left.clone());
-let algebra = resolved_binop_algebra(op.clone(), left_type, source_index);
-let op_str = emit_bin_op_symbol(op.clone(), target, algebra);
+                let op_str = emit_bin_op_symbol(op.clone(), target, algebra.clone());
 wrap_result(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), left_str), " ".to_string()), op_str), " ".to_string()), right_str), ")".to_string()))
 }
         }

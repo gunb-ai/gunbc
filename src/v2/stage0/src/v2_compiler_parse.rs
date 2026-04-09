@@ -8351,6 +8351,7 @@ let binop_opt = find_operator_binop(dag_syntax_spec().operators.clone(), adv.tok
 match binop_opt.clone() {
     Some(binop) => { let new_lhs = make_expr_node(Rc::new(ExprData::ExprBinOp {
     op: binop.clone(),
+    algebra_field: None,
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), None, span.clone());
 {
                                     let __tco_0 = tokens;
@@ -9491,6 +9492,7 @@ let binop_opt = find_operator_binop(dag_syntax_spec().operators.clone(), adv.tok
 match binop_opt.clone() {
     Some(binop) => { let new_lhs = make_expr_node(Rc::new(ExprData::ExprBinOp {
     op: binop.clone(),
+    algebra_field: None,
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), None, span.clone());
 {
                                     let __tco_0 = tokens;

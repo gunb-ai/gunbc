@@ -1277,7 +1277,7 @@ Rc::new(ExprResolveResult {
     diagnostics: all_diags,
 })
 },
-    ExprData::ExprBinOp { op, .. } => {
+    ExprData::ExprBinOp { op, algebra_field: af, .. } => {
             let ch = texpr.children.clone();
 let lr = match ch.clone().first().cloned() {
     Some(l) => resolve_expr_types(l.clone(), env.clone(), module_name.clone()),
@@ -1296,6 +1296,7 @@ let rr = match ch.clone().get(1 as usize).cloned() {
 Rc::new(ExprResolveResult {
     expr: make_expr_node(Rc::new(ExprData::ExprBinOp {
     op: op.clone(),
+    algebra_field: af.clone(),
 }), Rc::new(vec![lr.expr.clone(), rr.expr.clone()]), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: v2_rt::concat(lr.diagnostics.clone(), rr.diagnostics.clone()),
 })

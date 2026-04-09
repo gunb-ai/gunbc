@@ -3632,7 +3632,7 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
               let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
               match binop_opt {
                 Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
+                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: span)
                   parse_expr_loop(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
                 }
                 None => ExprResult { expr: lhs, state: r.state, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: span) } }
@@ -4212,7 +4212,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
               let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
               match binop_opt {
                 Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
+                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: span)
                   parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
                 }
                 None => ExprResult { expr: lhs, state: r.state, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: span) } }

@@ -59,7 +59,7 @@ import v2.std.core {
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import std.induction { InductiveField }
-import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, binop_algebra_fields }
+import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
 import std.types { is_container_type, container_to_algebra_name }
 import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
@@ -870,21 +870,6 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   }
 }
 
-// Resolve which algebra field a BinOp maps to on the given operand type.
-// Returns "reciprocal" for Div on Field, "quotient" for Div on Ring, etc.
-fn resolved_binop_algebra(op: BinOp, left_type: Node, source_index: NewlineIndex?) -> String? {
-  let candidates = binop_algebra_fields(op: op)
-  let is_product = left_type.connective == Conj
-  if is_product {
-    let matching = candidates |> filter(c =>
-      match find_child_named(n: left_type, name: c, source_index: source_index) {
-        Some { value: _ } => true
-        None => false
-      })
-    matching |> first
-  } else { none }
-}
-
 // Operator symbol lookup — reads from per-language OperatorSpec in
 // extdeps/languages/*/syntax.dag. Type-aware: matches algebra_field when present.
 fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: String?) -> String {
@@ -1357,7 +1342,7 @@ fn classify_expr(texpr: Node) -> ExprCategory {
     ExprMethodCall { method_semantics: _ } => ExprCatCompound
     ExprRecordLit { parent_enum: _ } => ExprCatCompound
     ExprListLit => ExprCatCompound
-    ExprBinOp { op: _ } => ExprCatCompound
+    ExprBinOp { op: _, algebra_field: _ } => ExprCatCompound
     ExprUnaryOp { op: _ } => ExprCatCompound
     ExprLambda { semantics: _ } => ExprCatCompound
     ExprStringInterp => ExprCatCompound
@@ -2010,7 +1995,7 @@ fn emit_shared_expr(
       emit_let(texpr)
     ExprRecordLit { parent_enum: _ } =>
       emit_record_lit(texpr)
-    ExprBinOp { op: _ } =>
+    ExprBinOp { op: _, algebra_field: _ } =>
       emit_bin_op(texpr)
     ExprUnaryOp { op: op } =>
       let operand = unaryop_operand(texpr: texpr)
@@ -2043,7 +2028,7 @@ fn emit_shared_expr(
 // Type-aware: resolves algebra field from left operand to select correct operator symbol.
 fn emit_default_bin_op(texpr: Node, target: RenderTarget, source_index: NewlineIndex?, recurse: fn(Node) -> String, wrap_result: fn(String) -> String) -> String {
   match texpr.expr_data {
-    ExprBinOp { op: op } =>
+    ExprBinOp { op: op, algebra_field: algebra } =>
       let left = binop_left(texpr: texpr)
       let right = binop_right(texpr: texpr)
       let left_str = recurse(left)
@@ -2051,8 +2036,6 @@ fn emit_default_bin_op(texpr: Node, target: RenderTarget, source_index: NewlineI
       if is_null_coalesce(op: op) {
         wrap_result(emit_null_coalesce(l_str: left_str, r_str: right_str, target: target))
       } else {
-        let left_type = resolved_type(n: left)
-        let algebra = resolved_binop_algebra(op: op, left_type: left_type, source_index: source_index)
         let op_str = emit_bin_op_symbol(op: op, target: target, algebra_field: algebra)
         wrap_result(concat("(", left_str, " ", op_str, " ", right_str, ")"))
       }

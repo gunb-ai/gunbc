@@ -253,6 +253,7 @@ pub enum ExprData {
     ExprListLit,
     ExprBinOp {
         op: BinOp,
+        algebra_field: Option<String>,
     },
     ExprUnaryOp {
         op: UnaryOpKind,
