@@ -5392,3 +5392,51 @@ fn dup(t: Tree) -> Int {
         );
     }
 }
+
+// ── CX complexity report dump ──────────────────────────────────────────
+
+#[test]
+#[ignore] // run with: cargo test -p v2-compiler-tests dump_complexity_report -- --ignored --nocapture
+fn dump_complexity_report() {
+    let ws = workspace_root();
+    let mut all_sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect_dag_sources(&ws, &ws.join("dsl"), &mut all_sources);
+    collect_dag_sources(&ws, &ws.join("src/v2"), &mut all_sources);
+
+    eprintln!("Compiling {} .dag files...", all_sources.len());
+    let result = v2_compiler::v2_compiler_compile::compile_sources(
+        Rc::new(all_sources), RenderTarget::Rust,
+    );
+
+    let cx = &result.complexity;
+    eprintln!("\n=== STRUCTURAL BOUNDS ({}) ===", cx.structural_bounds.len());
+    let mut bounds: Vec<_> = cx.structural_bounds.iter().collect();
+    bounds.sort_by(|a, b| a.func_name.cmp(&b.func_name));
+    for b in &bounds {
+        eprintln!("  {:50} param={:15} bound={:?}", b.func_name, b.param, b.bound);
+    }
+
+    let mut classes: HashMap<String, Vec<String>> = HashMap::new();
+    for (func, class) in cx.function_classes.iter() {
+        classes.entry(class.clone()).or_default().push(func.clone());
+    }
+    let mut sorted_classes: Vec<_> = classes.iter().collect();
+    sorted_classes.sort_by_key(|(class, _)| class.clone());
+    eprintln!("\n=== FUNCTION CLASSES ({} functions) ===", cx.function_classes.len());
+    for (class, funcs) in &sorted_classes {
+        eprintln!("  {:20} — {} functions", class, funcs.len());
+    }
+
+    eprintln!("\n=== VIOLATIONS ({}) ===", cx.violations.len());
+    for v in cx.violations.iter().take(20) {
+        eprintln!("  {:?}", v);
+    }
+    if cx.violations.len() > 20 {
+        eprintln!("  ... and {} more", cx.violations.len() - 20);
+    }
+
+    eprintln!("\n=== SUMMARY ===");
+    eprintln!("  Total functions:    {}", cx.function_classes.len());
+    eprintln!("  Structural bounds:  {}", cx.structural_bounds.len());
+    eprintln!("  Violations:         {}", cx.violations.len());
+}

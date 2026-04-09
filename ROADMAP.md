@@ -1223,19 +1223,62 @@ Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
 **Status:** 525 honest violations. Full triage in
 [`docs/cx-violation-triage.md`](docs/cx-violation-triage.md).
+17 functions already have proven structural bounds (all O(n)
+catamorphisms on CostExpr, SizeExpr, TypeTemplate, Stack).
 
 All 525 trace to 3 root causes. 280 are direct (recursive functions
 where the analyzer can't see descent). 227 are composed (callers of
 direct unknowns — resolve automatically). 3 structural fixes cover all:
 
-| Fix | Direct | Composed | Total |
-|-----|--------|----------|-------|
-| Node tree descent recognition | ~230 | ~200 | ~430 |
-| Parser SCC TokenPosition threading | ~73 | ~53 | ~126 |
-| Graph DFS worklist (I1/I2) | 2 | ~10 | ~12 |
+| Fix | Direct | Composed | Total | Migration path |
+|-----|--------|----------|-------|----------------|
+| Node tree descent recognition | ~230 | ~200 | ~430 | Phase 1→2→3 below |
+| Parser SCC TokenPosition threading | ~73 | ~53 | ~126 | SCC termination proofs (std/termination.dag) |
+| Graph DFS worklist (I1/I2) | 2 | ~10 | ~12 | Worklist iteration pattern |
 
 When all three are done, `CostUnknown` can be deleted from `CostExpr`
 — because no code path can produce it.
+
+#### Migration path: Node as inductive type (highest ROI — ~430 violations)
+
+Three phases, each independently shippable:
+
+**Phase 1: Register Node.children now (bootstrap).**
+Seed `build_type_env` with Node.children as ListRecursion. Node is
+currently a hand-written Rust struct (the kernel's only recursive type).
+Declaring its structure as a fact lets CX-L1 prove tree-walk functions
+are O(n). This is a single change in the type-env kernel seeding and
+dissolves ~230 direct + ~200 composed violations immediately.
+
+**Phase 2: Declare Node structure in std/ (.dag fact).**
+Move the Node structural declaration from Rust kernel seeding into a
+.dag file (e.g., `std/node.dag` or `std/syntax.dag`). The compiler
+reads the declaration the same way it reads any other type. Node is
+still implemented in Rust — the .dag file is a fact declaration, not
+an implementation. This aligns with M9 (DFS the concept DAG) and makes
+Node's recursive structure visible to all downstream analysis.
+
+**Phase 3: Node IS a .dag type (self-hosting).**
+Node is defined in .dag and compiled to Rust. The kernel seed disappears.
+This is the endgame where the compiler's core data structure is defined
+in its own language. Blocked by: the compiler must be able to compile
+its own Node type and bootstrap from it.
+
+#### Migration path: Parser SCC termination
+
+Parser functions form mutual recursion groups (parse_type_expr →
+parse_expr → parse_type_expr). Each call passes the same token list
+but advances position. The proof requires showing that every SCC cycle
+advances the TokenPosition measure by at least 1. Infrastructure
+partially exists in `std/termination.dag`. The key enabler is threading
+parser-always-advancing proofs through SCC edge collection.
+
+#### Migration path: Graph DFS worklist
+
+`dfs_finish_order` and `dfs_collect_component` in `std/graph.dag` use
+visited-set recursion. The proof requires showing that the worklist
+shrinks on every iteration (each node visited at most once). This is
+a bounded-iteration pattern (I1/I2 in Exploratory Directions).
 
 **Cost algebra design direction:** SizeExpr is a parallel algebra that
 should derive from std/ concepts. Sizes are structural facts, not
