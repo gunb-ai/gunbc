@@ -800,9 +800,28 @@ resolve uses structural identity.
 - B3 (emit rendering): DONE
 - B4 (resolve structural identity): accessor layer done, `node.name`
   still semantic authority underneath
+- D6 progress (PR #356):
+  - [x] Thread `si: NewlineIndex?` through complexity.dag (78 functions)
+    and ownership.dag (4 functions) — all name accessor calls use `_at`
+    variants. Entry points pass `si: none` (falls back to `node.name`,
+    identical behavior — prep, not completion).
+  - [x] Migrate ~90 accessor calls in emit/infer/resolve/parse/compile
+    to `_at` variants with `source_index: none`.
+  - [x] Centralize type builders: `make_container_type`,
+    `make_map_type`, `make_callable_type`, `make_tuple_type` in
+    `04_types.dag`. All use `container_param_name_required` (fail-closed).
+  - [x] Add `field_node_name_at`, `variant_node_name_at` to `00_core.dag`.
+  - **Status:** `_at` API surface is wired everywhere. `node.name`
+    is still the runtime authority (all `_at` calls pass `none`).
+    Next: fix `ident_span` on node constructors to cover only the
+    identifier, then wire real `source_index` to `_at` calls.
 - D6 open:
-  - [ ] Migrate remaining emit sites (Python ~5, Go ~5, shared ~5)
-  - [ ] Update ~256 Node constructions to drop `name:`
+  - [ ] Fix `ident_span` on `make_named_expr_node`, `make_arg_node`,
+    `make_field_binding_node`, `make_resource_use_node` to use
+    `name_span` (identifier only) instead of full expression span
+  - [ ] Wire real `source_index` through entry points (compile.dag,
+    05_emit_rust.dag) instead of `none`
+  - [ ] Update ~131 Node constructions to drop `name:`
   - [ ] Migrate synthetic node identity to structural
   - [ ] Delete `Node.name` field + scrambled-name tests
 
