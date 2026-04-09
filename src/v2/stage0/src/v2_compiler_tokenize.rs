@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan};
 pub use crate::v2_std_core::{make_file_span, Token, TokenShape};
 use crate::v2_std_core::TokenShape::{ShKeyword, ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket, ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow, ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe, ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr, ShQuestion, ShNullCoalesce, ShPipe, ShPipeArrow, ShLitStr, ShLitInt, ShLitFloat, ShIdent, ShStrBegin, ShStrMid, ShStrEnd, ShNewline, ShEof, ShUnknown};

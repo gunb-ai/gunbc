@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name, resource_use_name_at, resource_use_resource, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_name_at, field_binding_pattern, arg_name, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, foreach_variable, foreach_variable_at, expr_method_name, expr_method_name_at};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, OwnershipViolation};
 use crate::v2_std_core::Connective::{NoConnective, Arrow};

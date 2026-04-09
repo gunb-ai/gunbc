@@ -9,8 +9,7 @@
 
 module extdeps.cloud.gcp.sts
 
-import extdeps.cloud.cloud { CloudAuthScheme }
-import std.types { Url }
+import std.types { Url, HttpMethod, AuthScheme }
 import std.errors { GcpErrorShape, GitHubErrorShape }
 
 // -- Token types ---------------------------------------------------

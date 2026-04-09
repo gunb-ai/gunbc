@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
@@ -1481,7 +1441,43 @@ pub fn transport_auth_scheme_key() -> String {
     CACHED.with(|c| c.clone())
 }
 
-pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn transport_method_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "method".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn transport_path_template_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "path".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn transport_query_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "query".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn transport_stdin_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "stdin".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, body: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: "".to_string(),
     span: span,
@@ -1492,7 +1488,7 @@ pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<No
     inferred: None,
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
-    body: None,
+    body: body,
     transport: None,
     properties: properties,
     type_annotation: None,
@@ -1504,18 +1500,31 @@ pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<No
 }
 
 pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node(Rc::new(vec![]), Rc::new(vec![]), span)
+    make_transport_node(Rc::new(vec![]), Rc::new(vec![]), None, span)
 }
 
-pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, method: Option<Rc<Node>>, path: Option<Rc<Node>>, query: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let url_field = make_field_init_node(transport_url_key(), base_url, make_span(0, 0), make_span(0, 0));
-let props = v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), auth_props), headers);
-make_transport_node(props, Rc::new(vec![]), span)
+        let zero_span = make_span(0, 0);
+let url_field = make_field_init_node(transport_url_key(), base_url, zero_span.clone(), zero_span.clone());
+let method_props = match method {
+    Some(m) => Rc::new(vec![make_field_init_node(transport_method_key(), m.clone(), zero_span.clone(), zero_span.clone())]),
+    None => Rc::new(vec![]),
+};
+let path_props = match path {
+    Some(p) => Rc::new(vec![make_field_init_node(transport_path_template_key(), p.clone(), zero_span.clone(), zero_span.clone())]),
+    None => Rc::new(vec![]),
+};
+let query_props = match query {
+    Some(q) => Rc::new(vec![make_field_init_node(transport_query_key(), q.clone(), zero_span.clone(), zero_span.clone())]),
+    None => Rc::new(vec![]),
+};
+let props = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), method_props), path_props), query_props), auth_props), headers);
+make_transport_node(props, Rc::new(vec![]), None, span)
 }
 }
 
-pub fn shell_transport_node(argv: Rc<Vec<Rc<Node>>>, env: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn shell_transport_node(argv: Rc<Vec<Rc<Node>>>, env: Rc<Vec<Rc<Node>>>, stdin: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let shell_marker = Rc::new(Node {
     name: "".to_string(),
@@ -1536,6 +1545,12 @@ pub fn shell_transport_node(argv: Rc<Vec<Rc<Node>>>, env: Rc<Vec<Rc<Node>>>, spa
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 });
+let zero_span = make_span(0, 0);
+let stdin_props = match stdin {
+    Some(s) => Rc::new(vec![make_field_init_node(transport_stdin_key(), s.clone(), zero_span.clone(), zero_span.clone())]),
+    None => Rc::new(vec![]),
+};
+let all_props = v2_rt::concat(env, stdin_props);
 Rc::new(Node {
     name: "".to_string(),
     span: span.clone(),
@@ -1548,7 +1563,7 @@ Rc::new(Node {
     uses: Rc::new(vec![]),
     body: Some(shell_marker),
     transport: None,
-    properties: env,
+    properties: all_props,
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -1561,7 +1576,7 @@ Rc::new(Node {
 pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let path_field = make_field_init_node(transport_path_key(), base_path, make_span(0, 0), make_span(0, 0));
-make_transport_node(Rc::new(vec![path_field]), Rc::new(vec![]), span)
+make_transport_node(Rc::new(vec![path_field]), Rc::new(vec![]), None, span)
 }
 }
 
@@ -1652,8 +1667,24 @@ pub fn transport_has_auth(t: Rc<Node>) -> bool {
 }
 }
 
+pub fn transport_method(t: Rc<Node>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_method_key())
+}
+
+pub fn transport_path_template(t: Rc<Node>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_path_template_key())
+}
+
+pub fn transport_query(t: Rc<Node>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_query_key())
+}
+
+pub fn transport_stdin(t: Rc<Node>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_stdin_key())
+}
+
 pub fn is_config_reserved_key(name: String) -> bool {
-    (((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str()))
+    (((((((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str())) || (name.clone().as_str() == transport_method_key().as_str())) || (name.clone().as_str() == transport_path_template_key().as_str())) || (name.clone().as_str() == transport_query_key().as_str())) || (name.clone().as_str() == transport_stdin_key().as_str()))
 }
 
 pub fn transport_headers(t: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -1661,7 +1692,7 @@ pub fn transport_headers(t: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn transport_env(t: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    t.properties.clone()
+    Rc::new({ let mut __result = Vec::new(); for p in t.properties.clone().iter().cloned() { if !is_config_reserved_key(field_init_node_name(p.clone())) { __result.push(p); } } __result })
 }
 
 pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + Clone) -> Rc<Node> {
@@ -1761,12 +1792,16 @@ let last_bad = match ss.clone().last().cloned() {
     })
 }
 
-pub fn service_config_properties(endpoint: Rc<Node>, auth: Option<Rc<Node>>, rate_limit: Option<Rc<Node>>, retry: Option<Rc<Node>>) -> Rc<Vec<Rc<Node>>> {
+pub fn service_config_properties(endpoint: Rc<Node>, auth: Option<Rc<Node>>, auth_input: Option<Rc<Node>>, rate_limit: Option<Rc<Node>>, retry: Option<Rc<Node>>) -> Rc<Vec<Rc<Node>>> {
     {
         let zero_span = make_span(0, 0);
 let ep_prop = Rc::new(vec![make_field_init_node("svc_endpoint".to_string(), endpoint, zero_span.clone(), zero_span.clone())]);
 let auth_prop = match auth {
     Some(a) => Rc::new(vec![make_field_init_node("svc_auth".to_string(), a.clone(), zero_span.clone(), zero_span.clone())]),
+    None => Rc::new(vec![]),
+};
+let auth_input_prop = match auth_input {
+    Some(ai) => Rc::new(vec![make_field_init_node("svc_auth_input".to_string(), ai.clone(), zero_span.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
 let rate_prop = match rate_limit {
@@ -1777,7 +1812,7 @@ let retry_prop = match retry {
     Some(r) => Rc::new(vec![make_field_init_node("svc_retry".to_string(), r.clone(), zero_span.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop, auth_prop), rate_prop), retry_prop)
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop, auth_prop), auth_input_prop), rate_prop), retry_prop)
 }
 }
 
@@ -1799,6 +1834,20 @@ pub fn service_config_rate_limit(n: Rc<Node>) -> Option<Rc<Node>> {
 
 pub fn service_config_retry(n: Rc<Node>) -> Option<Rc<Node>> {
     find_property(n.properties.clone(), "svc_retry".to_string())
+}
+
+pub fn service_config_auth_input(n: Rc<Node>) -> Option<Rc<Node>> {
+    find_property(n.properties.clone(), "svc_auth_input".to_string())
+}
+
+pub fn service_config_auth_input_name(n: Rc<Node>) -> Option<String> {
+    match service_config_auth_input(n) {
+    Some(ai) => match (*ai.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => Some(expr_var_name(ai.clone())),
+    _ => None,
+},
+    None => None,
+}
 }
 
 pub fn module_node(name: String, imports: Rc<Vec<Rc<Node>>>, items: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {

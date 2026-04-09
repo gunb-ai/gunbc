@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_name_at, arg_value, field_init_node_name, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, Connective, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};

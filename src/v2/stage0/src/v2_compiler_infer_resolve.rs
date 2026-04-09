@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan, container_param_name};
 pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, make_param_node, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_var_name, field_access_field, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at, foreach_variable, foreach_variable_at, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, is_kernel_type, is_container_type, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, default_ident_span, node_name_span, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -1008,7 +968,7 @@ let child_results = Rc::new({ let mut __result = Vec::new(); for c in transport.
 let resolved_children = Rc::new({ let mut __result = Vec::new(); for cr in child_results.clone().iter().cloned() { __result.push(cr.expr.clone()); } __result });
 let child_diags = Rc::new({ let mut __result = Vec::new(); for cr in child_results.clone().iter().cloned() { __result.extend((*cr.diagnostics.clone()).iter().cloned()); } __result });
 Rc::new(TransportResolveResult {
-    transport: make_transport_node(resolved_props, resolved_children, transport.span.clone()),
+    transport: make_transport_node(resolved_props, resolved_children, transport.body.clone(), transport.span.clone()),
     diagnostics: v2_rt::concat(prop_diags, child_diags),
 })
 }

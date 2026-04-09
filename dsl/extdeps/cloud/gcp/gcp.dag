@@ -13,8 +13,8 @@
 
 module extdeps.cloud.gcp.gcp
 
-import extdeps.cloud.cloud { ServiceEndpoint, CloudAuthScheme }
-import std.types { FilePath, NonEmptyStr, Secret }
+import extdeps.cloud.cloud { ServiceEndpoint }
+import std.types { FilePath, NonEmptyStr, Secret, HttpMethod, AuthScheme }
 import std.errors { GcpErrorShape }
 
 // -- Projects ------------------------------------------------------

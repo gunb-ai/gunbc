@@ -131,7 +131,7 @@ service git.Core {
     input { base: GitRef, head: GitRef = "HEAD" }
     output { diff: String }
     readonly
-    transport shell { argv: ["git", "diff", "\{base\}", "\{head\}"] }
+    transport shell { argv: ["git", "diff", "{base}", "{head}"] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
@@ -145,7 +145,7 @@ service git.Core {
     input { since: String }
     output { commits: List<CommitSha> }
     readonly
-    transport shell { argv: ["git", "rev-list", "\{since\}..HEAD"] }
+    transport shell { argv: ["git", "rev-list", "{since}..HEAD"] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
@@ -159,7 +159,7 @@ service git.Core {
     input { before: String }
     output { base_ref: CommitSha }
     readonly
-    transport shell { argv: ["git", "rev-list", "-1", "--before=\{before\}", "HEAD"] }
+    transport shell { argv: ["git", "rev-list", "-1", "--before={before}", "HEAD"] }
     exit {
       0 => Unit
       128 => String "Invalid date expression or not a git repository"
@@ -173,7 +173,7 @@ service git.Core {
     input { ref: GitRef, path: FilePath }
     output { content: String }
     readonly
-    transport shell { argv: ["git", "show", "\{ref\}:\{path\}"] }
+    transport shell { argv: ["git", "show", "{ref}:{path}"] }
     exit {
       0 => Unit
       128 => String "File not found or invalid ref"

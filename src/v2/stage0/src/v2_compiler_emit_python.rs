@@ -4,48 +4,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyVec<T>(Vec<T>);
-
-impl<T> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
-
-impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
-    }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
 pub use crate::v2_std_core::{Node, InferredNode, VarBindingKind, import_is_all, import_specific_names, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, field_binding_name_at, MatchPattern, LiteralValue, field_binding_pattern, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, expr_field_access_summary, expr_method_call_semantics, record_lit_type_name, lambda_body, cast_expr, cast_target, return_value, foreach_variable, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, FieldAccessStyle, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::VarBindingKind::{FunctionValueBinding};
