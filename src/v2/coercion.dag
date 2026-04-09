@@ -17,19 +17,19 @@
 module v2.compiler.coercion
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
-import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr }
+import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax }
 import std.types { container_to_algebra_name, container_to_algebra }
 import extdeps.languages.rust.types {
   rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
-  rust_optional_template
+  rust_optional_template, rust_cast_syntax
 }
 import extdeps.languages.python.types {
   python_type_checkpoints, python_algebra_inhabitants, python_callable,
-  python_optional_template
+  python_optional_template, python_cast_syntax
 }
 import extdeps.languages.go.types {
   go_type_checkpoints, go_algebra_inhabitants, go_callable,
-  go_optional_template
+  go_optional_template, go_cast_syntax
 }
 
 // =========================================================================
@@ -75,6 +75,30 @@ fn target_optional_template(target: RenderTarget) -> String {
     Go => go_optional_template
     Dag => "\{0\}?"
   }
+}
+
+// =========================================================================
+// Level 0: Cast syntax lookup
+// =========================================================================
+
+fn target_cast_syntax(target: RenderTarget) -> CastSyntax {
+  match target {
+    Rust => rust_cast_syntax
+    Python => python_cast_syntax
+    Go => go_cast_syntax
+    Dag => CastSyntax { template: "\{expr\}", valid_targets: [], fail_open: true }
+  }
+}
+
+fn can_cast(target: RenderTarget, target_type: String) -> Bool {
+  let syntax = target_cast_syntax(target: target)
+  if syntax.fail_open { true }
+  else { syntax.valid_targets |> any(t => t == target_type) }
+}
+
+fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
+  let syntax = target_cast_syntax(target: target)
+  replace(replace(syntax.template, "\{expr\}", expr_str), "\{type\}", type_str)
 }
 
 // =========================================================================

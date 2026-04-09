@@ -126,7 +126,7 @@ Previously eliminated:
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (316 pass, 0 fail, 44 ignored) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN (93 dsl + 29 v2) |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 314 (0 self-compile diagnostics) |
-| L1 ratchet | `scripts/l1-ratchet.sh --check` | 37 (target: 0) |
+| L1 gate | `scripts/l1-ratchet.sh --check` | GREEN (0, hard gate — PR #352) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
 ## Ratchet Counts
@@ -134,7 +134,7 @@ Previously eliminated:
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 526 | Honest count — complexity violations surfaced, non-blocking |
-| L1 type knowledge | 27 | 0 | Down from 70; name-based workarounds tracked for M4 |
+| L1 type knowledge | 0 | 0 | GREEN — hard gate (PR #352). Constructor functions dissolved, ListOf/ReceiverCollectionOf merged into ContainerOf. |
 | Complexity violations | 325 | 526 | Honest: 526 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
@@ -406,10 +406,14 @@ on impossible states.
 - [~] **BND-4: `container_param_name` derives from algebra.** T/K/V
   parameter names now derive from `algebra_type_param_names` declared
   per-profile in `std/algebra.dag` (PR #347). Hardcoded
-  `container_type_param_names` table deleted. `container_param_name`
-  string-keyed lookup still exists (reads algebra instead of table).
-  `__MISSING_PARAM__` branches remain as fail-closed sentinels —
-  dissolve when compiler can prove all container types have profiles.
+  `container_type_param_names` table deleted. `__MISSING_PARAM__`
+  sentinels dissolved — `container_param_name_required` (non-optional)
+  centralizes the fallback in `std/types.dag` (PR #352). Remaining:
+  `container_param_name_required` falls back to `kind_name` when no
+  profile exists. Dissolves with Tier 3 (FF-9): when the compiler
+  reads type declarations at resolve time, param names come from the
+  declaration itself — the string→profile→names lookup chain and its
+  fallback become unnecessary.
 
 **Dependency:** BND-1 and BND-2 can land independently. BND-3 lands
 with whichever is first. BND-4 requires Tier 2.5 (algebra-derived
@@ -750,22 +754,20 @@ data (each rule → one test).
 ## M4: Structural Identity (L1 = 0) — follows Lanes 1+2
 
 **Root cause:** The compiler uses `Node.name` (a string) as semantic
-authority. 27 type constructors + 10 name comparisons = L1 37.
-Deletion requires declaration-driven identity and structural algebra.
-CG render path cleaned (TypeRendering dissolved, PR #331). M2
-expected threading in good shape (remaining gap: bidirectional inference).
+authority. Deletion requires declaration-driven identity and structural
+algebra.
 
-**L1 name comparisons breakdown (10):**
-- 4× Callable: `has_fn_fields` (2), resolve `n_is_special` (1), `render_node_type` (1)
-- 3× Tuple: `render_node_type` (3)
-- 2× Dynamic/Error: `pattern_subject` (2), counted as 1 line in resolve
-- 1× List: `index_access` (positional indexing check)
-
-**Structural properties needed to dissolve:**
-- Callable: needs structural discriminator (only type using `params` for type parameters + `inferred` for return type). Tier 2.6 design: model callable as concept
-- Tuple: needs either a dedicated connective or a flag. Currently indistinguishable from 2-field struct Conj without name
-- Dynamic/Error: need structural markers for "unresolved/error type"
-- List positional indexing: needs "supports positional access" algebra fact
+**Status: L1 = 0 (hard gate, PR #352).** All 10 name comparisons
+dissolved (Arrow connective for Callable, structural `is_pair` for
+Tuple, `is_compiler_error` for Dynamic/Error, `ordered_element_collections`
+for List). `ListOf` and `ReceiverCollectionOf` merged into
+`ContainerOf { source: ContainerSource, element }` in algebra.dag.
+L1-tracked constructor functions deleted from production code:
+`container_node`, `tuple_node`, `callable_node`, `map_node`, `leaf_node`.
+`bare_map_node` remains (not L1-tracked, inlined its `map_node` call).
+`unify_template` enforces `ContainerSource` (carrier name must match).
+`container_param_name_required` replaces `__MISSING_PARAM__` sentinels
+(fail-closed: visible error marker if profile missing).
 
 ### M4 Lane 1: Declaration-driven algebra (Lane A)
 
@@ -774,21 +776,21 @@ instead of hardcoding them.
 
 - Tier 1 (data tables → .dag): DONE
 - Tier 2 (factor enrich_kernel_type): DONE
-- Tier 2.5 (algebra bridge fidelity):
+- Tier 2.5 (algebra bridge fidelity): DONE
   - [x] `CallableOf` variant for higher-order callback shapes
-  - [ ] Derive T/K/V type parameter names from algebra declarations
+  - [x] T/K/V parameter names derive from algebra via `container_param_name_required`
+  - [x] `ListOf`/`ReceiverCollectionOf` merged into `ContainerOf { source, element }`
+  - [x] `unify_template` enforces `ContainerSource` (carrier name match)
 - Tier 2.6 (functional system modeling):
   - [ ] Model function application as a concept (apply/call vs function-value-ref)
   - [ ] Inference encodes "this is a call" in the IR node, not as a type-arity heuristic
-  - [ ] Dissolves `rt.name == "Callable"` L1 violations (4 sites: has_fn_fields ×2, resolve, render_node_type)
-  - Same pattern as iteration modeling (fold/descend/repeat): ad-hoc emit
-    decisions are symptoms of a missing concept layer. Once the functional
-    system is modeled, arity-based rendering questions disappear.
+  - L1 Callable name comparisons already dissolved (Arrow connective).
+    Tier 2.6 is about deeper concept modeling, not L1 violations.
 - Tier 3 (full structural algebra, requires FF-9):
   - [ ] Compiler reads type declarations + algebra edges at resolve time
   - [ ] Derive kernel/container identity from type declarations
   - [ ] CollectionKind bridge dissolves when method algebras land
-  - [ ] 27 type constructor sites → 0
+  - [x] 27 type constructor sites → 0 (PR #352)
 
 ### M4 Lane 2: Node.name deletion (D6) — Phase 2, cross-cutting
 

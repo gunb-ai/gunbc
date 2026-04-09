@@ -6,6 +6,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
+use v2_compiler::v2_std_core::{Node, leaf_node_with_span, make_span};
+
+fn leaf_node(name: String) -> Rc<Node> { leaf_node_with_span(name, make_span(0, 0)) }
 
 // ── Full DSL compilation (non-consensual: all files, no exceptions) ────
 
@@ -100,6 +103,71 @@ fn full_dsl_compiles() {
         "full_dsl_compiles: {} dsl (compiled) + {} v2 (parsed), 0 diagnostics",
         dsl_sources.len(),
         v2_count
+    );
+}
+
+// ── Operation-count contracts (PERF-5) ──────────────────────────────────
+//
+// Structural operation counts derived from compilation output. More
+// deterministic than wall-clock time — catches algorithmic regressions
+// independent of machine load. Counts can only decrease (optimization)
+// or stay the same. Any increase needs justification.
+//
+// These numbers are from the full DSL compilation (dsl/ tree → Rust).
+// Update the ratchets when a change legitimately increases/decreases output.
+
+#[test]
+#[ignore] // run with: cargo test -p v2-compiler-tests operation_count_contracts -- --ignored
+fn operation_count_contracts() {
+    let ws = workspace_root();
+    let dsl_dir = ws.join("dsl");
+    let mut dsl_sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect_dag_sources(&ws, &dsl_dir, &mut dsl_sources);
+
+    let result =
+        v2_compiler::v2_compiler_compile::compile_sources(Rc::new(dsl_sources), RenderTarget::Rust);
+
+    // -- Structural counts --
+    let file_count = result.files.len();
+    let total_lines: usize = result.files.iter()
+        .map(|f| f.content.lines().count())
+        .sum();
+    let complexity_entries = result.complexity.function_classes.len();
+
+    eprintln!("operation_count_contracts:");
+    eprintln!("  emitted files:       {}", file_count);
+    eprintln!("  total emitted lines: {}", total_lines);
+    eprintln!("  complexity entries:   {}", complexity_entries);
+
+    // -- Ratchets --
+    // These are upper bounds. A change that increases any count is a
+    // potential regression and should be investigated.
+    //
+    // File count: number of emitted .rs files from the dsl/ tree.
+    // Should only change when new modules are added or removed.
+    // Current: ~114 files. Ratchet: 130 (headroom for new modules).
+    assert!(
+        file_count <= 130,
+        "file count regression: {} > 130 (was this a new module?)",
+        file_count
+    );
+
+    // Total emitted lines: proxy for emit work. Increasing means either
+    // new code or the emitter became less efficient.
+    // Current: ~19,832 lines. Ratchet: 23,000 (~15% headroom).
+    assert!(
+        total_lines <= 23000,
+        "emitted line count regression: {} > 23000",
+        total_lines
+    );
+
+    // Complexity entries: number of functions analyzed. Should grow with
+    // new functions but not spike from re-analysis bugs.
+    // Current: ~724 entries. Ratchet: 850 (headroom for new functions).
+    assert!(
+        complexity_entries <= 850,
+        "complexity entry count regression: {} > 850",
+        complexity_entries
     );
 }
 
@@ -4049,7 +4117,7 @@ type Bar<K, V> {
 #[test]
 fn type_rendering_bare_list_not_map() {
     use v2_compiler::v2_compiler_emit::render_node_type;
-    use v2_compiler::v2_std_core::leaf_node;
+
 
     let list_node = leaf_node("List".to_string());
     let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
@@ -4063,7 +4131,7 @@ fn type_rendering_bare_list_not_map() {
 #[test]
 fn type_rendering_bare_map_stays_hashmap() {
     use v2_compiler::v2_compiler_emit::render_node_type;
-    use v2_compiler::v2_std_core::leaf_node;
+
 
     let map_node = leaf_node("Map".to_string());
     let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
@@ -4076,7 +4144,8 @@ fn type_rendering_bare_map_stays_hashmap() {
 #[test]
 fn type_rendering_named_conj_with_container_template() {
     use v2_compiler::v2_compiler_emit::render_node_type;
-    use v2_compiler::v2_std_core::{leaf_node, Connective};
+    use v2_compiler::v2_std_core::{leaf_node_with_span, make_span, Connective};
+    fn leaf_node(name: String) -> Rc<Node> { leaf_node_with_span(name, make_span(0, 0)) }
 
     let free_monoid_conj = Rc::new(v2_compiler::v2_std_core::Node {
         name: "FreeMonoid".to_string(),
@@ -4222,11 +4291,23 @@ fn zero_arg_callable_resolves_and_renders() {
     // Regression: removing n.name=="Callable" from resolve n_is_special could
     // break zero-arg callables if Arrow connective isn't set.
     use v2_compiler::v2_compiler_emit::render_node_type;
-    use v2_compiler::v2_compiler_infer_types::callable_node;
-    use v2_compiler::v2_std_core::leaf_node;
+    use v2_compiler::v2_std_core::{leaf_node_with_span, make_span, Connective, InferredNode};
+    fn leaf_node(name: String) -> Rc<Node> { leaf_node_with_span(name, make_span(0, 0)) }
 
     let ret_type = leaf_node("Int".to_string());
-    let callable = callable_node(Rc::new(vec![]), ret_type);
+    let sp = make_span(0, 0);
+    let callable = Rc::new(Node {
+        name: "Callable".to_string(), span: sp.clone(),
+        ident_span: Some(sp.clone()),
+        children: Rc::new(vec![]), connective: Connective::Arrow,
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::Resolved { node: ret_type.clone() })),
+        return_cardinality: v2_compiler::v2_std_core::Cardinality::Required,
+        uses: Rc::new(vec![]), body: None, transport: None,
+        properties: Rc::new(vec![]), type_annotation: None,
+        is_self_recursive: false, has_non_tail_self_call: false,
+        match_pattern: None, expr_data: Rc::new(v2_compiler::v2_std_core::ExprData::NoExprData),
+    });
     let shared_types = Rc::new(HashMap::new());
 
     let rendered = render_node_type(callable.clone(), RenderTarget::Rust, shared_types, None);
@@ -4237,25 +4318,21 @@ fn zero_arg_callable_resolves_and_renders() {
 #[test]
 fn bool_is_not_valid_as_cast_target() {
     // Rust does not allow `expr as bool` — only bool→integer is valid.
-    // Regression: including "bool" in is_primitive_numeric_node would
-    // make emit_typed_cast generate invalid `x as bool`.
-    use v2_compiler::v2_compiler_emit_rust::is_primitive_numeric_node;
-    use v2_compiler::v2_std_core::leaf_node;
+    // Cast validity is now data-driven via CastSyntax in extdeps/languages/rust/types.dag.
+    use v2_compiler::v2_compiler_coercion::can_cast;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
 
-    let bool_node = leaf_node("Bool".to_string());
-    assert!(!is_primitive_numeric_node(bool_node),
-        "Bool must not be a valid as-cast target — expr as bool is invalid Rust");
+    assert!(!can_cast(RenderTarget::Rust, "bool".to_string()),
+        "bool must not be a valid as-cast target — expr as bool is invalid Rust");
 }
 
 #[test]
 fn int_and_float_are_valid_as_cast_targets() {
-    use v2_compiler::v2_compiler_emit_rust::is_primitive_numeric_node;
-    use v2_compiler::v2_std_core::leaf_node;
+    use v2_compiler::v2_compiler_coercion::can_cast;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
 
-    let int_node = leaf_node("Int".to_string());
-    let float_node = leaf_node("Float".to_string());
-    assert!(is_primitive_numeric_node(int_node), "Int should be a valid as-cast target");
-    assert!(is_primitive_numeric_node(float_node), "Float should be a valid as-cast target");
+    assert!(can_cast(RenderTarget::Rust, "i64".to_string()), "i64 should be a valid as-cast target");
+    assert!(can_cast(RenderTarget::Rust, "f64".to_string()), "f64 should be a valid as-cast target");
 }
 
 // ── ExprLet expected-type propagation regression tests ────────────────

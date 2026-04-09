@@ -53,8 +53,6 @@ use crate::std_syntax::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull
 pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTemplate};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
-pub use crate::std_induction::{SubValueRelation};
-use crate::std_induction::SubValueRelation::*;
 use TokenShape::*;
 use Connective::*;
 use Cardinality::*;
@@ -82,7 +80,7 @@ pub struct Token {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TokenShape {
     ShKeyword,
     ShLBrace,
@@ -129,7 +127,7 @@ pub enum TokenShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Connective {
     Conj,
     Disj,
@@ -138,14 +136,14 @@ pub enum Connective {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Cardinality {
     Required,
     CardOptional,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum FieldAccessStyle {
     StoredField,
     EnumAccessor,
@@ -155,7 +153,7 @@ pub enum FieldAccessStyle {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum FieldValueShape {
     PlainValue,
     OptionalValue,
@@ -168,7 +166,7 @@ pub struct FieldSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum InferredNode {
     Resolved {
         node: Rc<Node>,
@@ -203,7 +201,7 @@ pub fn has_inferred(n: Rc<Node>) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum VarBindingKind {
     LocalValueBinding,
     FunctionValueBinding,
@@ -224,7 +222,7 @@ impl VarBindingKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CallSemantics {
     PlainCallSemantics,
     LookupCallSemantics,
@@ -236,7 +234,7 @@ pub struct LambdaSemantics {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum MethodSemantics {
     PlainMethodSemantics,
     AlgebraMethodSemantics {
@@ -253,7 +251,7 @@ pub enum MethodSemantics {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ExprErrorKind {
     ParseRecoveryError,
     SemanticExprError,
@@ -261,7 +259,7 @@ pub enum ExprErrorKind {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ExprData {
     NoExprData,
     ExprLiteral {
@@ -279,7 +277,6 @@ pub enum ExprData {
     },
     ExprCall {
         call_semantics: Option<CallSemantics>,
-        descent_evidence: Option<Rc<Vec<Rc<SubValueRelation>>>>,
     },
     ExprMethodCall {
         method_semantics: Option<Rc<MethodSemantics>>,
@@ -310,7 +307,7 @@ pub enum ExprData {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum MatchPattern {
     Bind {
         name: String,
@@ -327,14 +324,14 @@ pub enum MatchPattern {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum UnaryOpKind {
     Not,
     Neg,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum StringPart {
     Text {
         value: String,
@@ -345,7 +342,7 @@ pub enum StringPart {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum OperationModifier {
     Idempotent,
     Readonly,
@@ -365,7 +362,7 @@ pub struct TextFile {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CompilerDiagnostic {
     UnresolvedImport {
         module_path: String,
@@ -952,7 +949,25 @@ pub fn make_field_node(name: String, type_expr: Rc<Node>, cardinality: Cardinali
     None => Rc::new(vec![type_expr]),
 };
 let props = match from_key {
-    Some(fk) => Rc::new(vec![leaf_node(fk.clone())]),
+    Some(fk) => Rc::new(vec![Rc::new(Node {
+    name: fk.clone(),
+    span: make_span(0, 0),
+    ident_span: default_ident_span(fk.clone(), make_span(0, 0)),
+    children: Rc::new(vec![]),
+    connective: Connective::NoConnective,
+    params: Rc::new(vec![]),
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+})]),
     None => Rc::new(vec![]),
 };
 Rc::new(Node {
@@ -1082,7 +1097,7 @@ pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRo
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum NodeFieldRole {
     ChildrenListField,
     SubValueField,
@@ -1120,7 +1135,7 @@ pub fn is_sub_value_field(field_name: String) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum FunctionSizeEffect {
     TreeSizePreserving,
     TreeSizeReducing,
@@ -1289,13 +1304,6 @@ pub fn expr_call_func(texpr: Rc<Node>) -> String {
 
 pub fn expr_call_func_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     authored_name_at(source_index, texpr)
-}
-
-pub fn expr_call_descent_evidence(texpr: Rc<Node>) -> Option<Rc<Vec<Rc<SubValueRelation>>>> {
-    match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { descent_evidence: de, .. } => de.clone(),
-    _ => None,
-}
 }
 
 pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
@@ -1868,28 +1876,6 @@ pub fn module_imports(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 
 pub fn module_items(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     n.children.clone()
-}
-
-pub fn leaf_node(name: String) -> Rc<Node> {
-    Rc::new(Node {
-    name: name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(name.clone(), make_span(0, 0)),
-    children: Rc::new(vec![]),
-    connective: Connective::NoConnective,
-    params: Rc::new(vec![]),
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: Rc::new(vec![]),
-    body: None,
-    transport: None,
-    properties: Rc::new(vec![]),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
 }
 
 pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {

@@ -48,6 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 use Ordering::*;
 use AlgebraProfile::*;
+use ContainerSource::*;
 use AlgebraTypeTemplate::*;
 use CollectionSizeEffect::*;
 use CostShape::*;
@@ -189,7 +190,7 @@ pub struct PartialFunction<K, V> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum Ordering {
     Less,
     Equal,
@@ -197,7 +198,7 @@ pub enum Ordering {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum AlgebraProfile {
     OrderedRingProfile,
     ApproximateFieldProfile,
@@ -209,7 +210,24 @@ pub enum AlgebraProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ContainerSource {
+    SameAsReceiver,
+    Named {
+        name: String,
+    },
+}
+impl ContainerSource {
+    pub fn name(&self) -> String {
+        match self {
+            ContainerSource::SameAsReceiver => panic!("no name on unit variant"),
+            ContainerSource::Named { name: __val, .. } => __val.clone(),
+        }
+    }
+}
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum AlgebraTypeTemplate {
     ReceiverSelf,
     ReceiverElement,
@@ -218,10 +236,8 @@ pub enum AlgebraTypeTemplate {
     NamedTemplate {
         name: String,
     },
-    ReceiverCollectionOf {
-        element: Rc<AlgebraTypeTemplate>,
-    },
-    ListOf {
+    ContainerOf {
+        source: Rc<ContainerSource>,
         element: Rc<AlgebraTypeTemplate>,
     },
     OptionalOf {
@@ -241,7 +257,7 @@ pub enum AlgebraTypeTemplate {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CollectionSizeEffect {
     ShrinkEffect,
     ProjectionEffect,
@@ -249,7 +265,7 @@ pub enum CollectionSizeEffect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CostShape {
     ShapeConstant,
     ShapeLinearScan,
@@ -458,7 +474,8 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     id: "MappedElement".to_string(),
 }),
 })]),
-    return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::SameAsReceiver),
     element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
     id: "MappedElement".to_string(),
 }),
@@ -469,13 +486,15 @@ pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     name: "flat_map".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::CallableOf {
     params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-    return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::SameAsReceiver),
     element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
     id: "MappedElement".to_string(),
 }),
 }),
 })]),
-    return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::SameAsReceiver),
     element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
     id: "MappedElement".to_string(),
 }),
@@ -558,7 +577,10 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }), Rc::new(AlgebraFieldTemplate {
     name: "chars".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-    return_type: Rc::new(AlgebraTypeTemplate::ListOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::Named {
+    name: "List".to_string(),
+}),
     element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
     name: "Int".to_string(),
 }),
@@ -568,14 +590,20 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }), Rc::new(AlgebraFieldTemplate {
     name: "split".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-    return_type: Rc::new(AlgebraTypeTemplate::ListOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::Named {
+    name: "List".to_string(),
+}),
     element: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
 }),
     size_effect: None,
     cost_shape: Some(CostShape::ShapeLinearScan),
 }), Rc::new(AlgebraFieldTemplate {
     name: "join".to_string(),
-    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ListOf {
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::Named {
+    name: "List".to_string(),
+}),
     element: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
 }), Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
@@ -671,7 +699,8 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     id: "MappedElement".to_string(),
 }),
 })]),
-    return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::SameAsReceiver),
     element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
     id: "MappedElement".to_string(),
 }),
@@ -688,13 +717,15 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     name: "flat_map".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::CallableOf {
     params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-    return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::SameAsReceiver),
     element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
     id: "MappedElement".to_string(),
 }),
 }),
 })]),
-    return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::SameAsReceiver),
     element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
     id: "MappedElement".to_string(),
 }),
@@ -797,7 +828,8 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }), Rc::new(AlgebraFieldTemplate {
     name: "enumerate".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-    return_type: Rc::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::SameAsReceiver),
     element: Rc::new(AlgebraTypeTemplate::TupleOf {
     first: Rc::new(AlgebraTypeTemplate::NamedTemplate {
     name: "Int".to_string(),
@@ -910,7 +942,10 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }), Rc::new(AlgebraFieldTemplate {
     name: "keys".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-    return_type: Rc::new(AlgebraTypeTemplate::ListOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::Named {
+    name: "List".to_string(),
+}),
     element: Rc::new(AlgebraTypeTemplate::ReceiverKey),
 }),
     size_effect: None,
@@ -918,7 +953,10 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }), Rc::new(AlgebraFieldTemplate {
     name: "map_keys".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-    return_type: Rc::new(AlgebraTypeTemplate::ListOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::Named {
+    name: "List".to_string(),
+}),
     element: Rc::new(AlgebraTypeTemplate::ReceiverKey),
 }),
     size_effect: None,
@@ -926,7 +964,10 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }), Rc::new(AlgebraFieldTemplate {
     name: "values".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-    return_type: Rc::new(AlgebraTypeTemplate::ListOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::Named {
+    name: "List".to_string(),
+}),
     element: Rc::new(AlgebraTypeTemplate::ReceiverValue),
 }),
     size_effect: None,
@@ -934,7 +975,10 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 }), Rc::new(AlgebraFieldTemplate {
     name: "map_values".to_string(),
     param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-    return_type: Rc::new(AlgebraTypeTemplate::ListOf {
+    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+    source: Rc::new(ContainerSource::Named {
+    name: "List".to_string(),
+}),
     element: Rc::new(AlgebraTypeTemplate::ReceiverValue),
 }),
     size_effect: None,

@@ -57,7 +57,7 @@ pub struct SpanMapping {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TraceEvent {
     TraceEnter {
         node_id: String,
@@ -160,7 +160,7 @@ pub fn event_node_id(event: Rc<TraceEvent>) -> String {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TraceFilter {
     FilterByFunc {
         func_name: String,

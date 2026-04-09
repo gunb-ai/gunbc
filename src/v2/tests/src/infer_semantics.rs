@@ -6,13 +6,103 @@ use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, container_node, resolved_type, is_fully_resolved, map_node, node_is_keyed_collection,
+    bare_map_node, resolved_type, is_fully_resolved, node_is_keyed_collection,
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::{
-    leaf_node, make_arm_node, with_optional_cardinality, Cardinality, Connective, ExprData,
-    InferredNode, MatchPattern, Node, SourceSpan,
+    leaf_node_with_span, make_arm_node, make_span, with_optional_cardinality,
+    Cardinality, Connective, ExprData, InferredNode, MatchPattern, Node, SourceSpan,
+    default_ident_span,
 };
+use v2_compiler::std_types::container_param_name;
+
+// Test helpers: replicate deleted L1 constructor functions for test convenience.
+fn leaf_node(name: String) -> Rc<Node> {
+    leaf_node_with_span(name, make_span(0, 0))
+}
+
+fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
+    let param_name = match container_param_name(kind_name.clone(), 0) {
+        Some(n) => n, None => kind_name.clone(),
+    };
+    let sp = make_span(0, 0);
+    Rc::new(Node {
+        name: kind_name.clone(),
+        span: sp.clone(),
+        ident_span: default_ident_span(kind_name, sp.clone()),
+        children: Rc::new(vec![Rc::new(Node {
+            name: param_name.clone(),
+            span: sp.clone(),
+            ident_span: default_ident_span(param_name, sp.clone()),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: element })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None, transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false, has_non_tail_self_call: false,
+            match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+        })]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None, transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false, has_non_tail_self_call: false,
+        match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
+
+fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
+    let key_name = container_param_name("Map".to_string(), 0).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
+    let val_name = container_param_name("Map".to_string(), 1).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
+    let sp = make_span(0, 0);
+    Rc::new(Node {
+        name: "Map".to_string(),
+        span: sp.clone(),
+        ident_span: Some(sp.clone()),
+        children: Rc::new(vec![
+            Rc::new(Node {
+                name: key_name, span: sp.clone(),
+                ident_span: Some(sp.clone()),
+                children: Rc::new(vec![]), connective: Connective::NoConnective,
+                params: Rc::new(vec![]),
+                inferred: Some(Rc::new(InferredNode::Resolved { node: key })),
+                return_cardinality: Cardinality::Required, uses: Rc::new(vec![]),
+                body: None, transport: None, properties: Rc::new(vec![]),
+                type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false,
+                match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+            }),
+            Rc::new(Node {
+                name: val_name, span: sp.clone(),
+                ident_span: Some(sp.clone()),
+                children: Rc::new(vec![]), connective: Connective::NoConnective,
+                params: Rc::new(vec![]),
+                inferred: Some(Rc::new(InferredNode::Resolved { node: value })),
+                return_cardinality: Cardinality::Required, uses: Rc::new(vec![]),
+                body: None, transport: None, properties: Rc::new(vec![]),
+                type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false,
+                match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+            }),
+        ]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None, transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false, has_non_tail_self_call: false,
+        match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
 
 fn zero_span() -> Rc<SourceSpan> {
     Rc::new(SourceSpan { file: String::new(), start: 0, end: 0 })

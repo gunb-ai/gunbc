@@ -119,6 +119,114 @@ pub fn go_reserved_escape_suffix() -> String {
     CACHED.with(|c| c.clone())
 }
 
+pub fn go_func_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "func".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_async_prefix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_struct_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "struct".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_enum_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "type".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_type_alias_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "type".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_param_separator() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ", ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_return_arrow() -> String {
+    thread_local! {
+        static CACHED: String = {
+            " ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_param_type_sep() -> String {
+    thread_local! {
+        static CACHED: String = {
+            " ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_string_literal_suffix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_module_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "package".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_import_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "import".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_import_from_keyword() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn go_source_extension() -> String {
     thread_local! {
         static CACHED: String = {

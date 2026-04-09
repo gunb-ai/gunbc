@@ -56,7 +56,7 @@ import v2.std.core {
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right,
-  leaf_node, make_span, with_required_cardinality,
+  make_span, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
   is_rest_transport, is_shell_transport, is_file_transport
@@ -70,7 +70,7 @@ import extdeps.languages.rust.emit {
 }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
-  TestConventions,
+  TestConventions, ItemKeywords,
   test_conventions_for_target, top_level_visibility_for_target,
   sharing_for_target,
   is_string_like
@@ -78,14 +78,14 @@ import v2.compiler.languages {
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
 import v2.compiler.coercion { coerce_primitive_type, is_copy }
-import extdeps.languages.rust.types { integer_types, float_types }
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import v2.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
-  node_is_keyed_collection, node_is_element_collection, node_is_collection
+  node_is_keyed_collection, node_is_element_collection, node_is_collection,
+  is_product_type, is_coproduct_type, is_unit_like
 }
 import v2.compiler.infer_method {
 }
@@ -114,7 +114,7 @@ import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared,
   emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body,
   module_emit_scope,
   scope_after_expr,
@@ -191,6 +191,10 @@ fn rust_visibility_prefix() -> String {
   top_level_visibility_for_target(target: Rust)
 }
 
+fn rust_items() -> ItemKeywords {
+  language_spec(target: Rust).items
+}
+
 fn rust_struct_derives_text() -> String {
   rust_struct_derives
 }
@@ -210,14 +214,14 @@ fn rust_enum_derives_copy_text() -> String {
 fn rust_serde_tag_attr() -> String {
   match serialization_for_target(target: Rust).tag_attribute {
     Some { value: attr } => attr
-    None => "#[serde(tag = \"_variant\")]"
+    None => ""
   }
 }
 
 fn rust_serde_rename_template_text() -> String {
   match serialization_for_target(target: Rust).rename_attribute_template {
     Some { value: template } => template
-    None => "#[serde(rename = \"{0}\")]"
+    None => ""
   }
 }
 
@@ -238,7 +242,7 @@ fn rust_test_name(projection: TestProjection) -> String {
 fn rust_async_test_decorator() -> String {
   match test_conventions_for_target(target: Rust).async_decorator {
     Some { value: decorator } => decorator
-    None => "#[tokio::test]"
+    None => ""
   }
 }
 
@@ -325,9 +329,13 @@ fn is_simple_disj(item: Node) -> Bool {
 }
 
 // DAG-level value type names: fixed-width carriers that never need
-// indirection or heap allocation in any target language.
+// indirection or heap allocation. Reads is_copy from TypeCheckpoint
+// in extdeps/languages/rust/types.dag — no hardcoded type names.
 fn is_dag_value_type_name(name: String) -> Bool {
-  name == "Int" || name == "Bool" || name == "Float"
+  match is_copy(target: Rust, dag_name: name) {
+    Some { value: v } => v
+    None => false
+  }
 }
 
 // A type is constant (fixed-width carrier) when it needs no shared-pointer
@@ -497,7 +505,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
     // Extract mod name from path: strip "src/" prefix and ".rs" suffix.
     let path_len = string_length(s: f.path)
     let mod_name = substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
-    concat("pub mod ", mod_name, ";")
+    concat(rust_visibility_prefix(), rust_items().module_keyword, " ", mod_name, ";")
   )
   let test_mod = if has_compiler_tests {
     "\n\n#[cfg(test)]\nmod compiler_tests;"
@@ -558,7 +566,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     match map_get(svc_module_map, sn) {
       Some { value: mod_file } =>
         if mod_file == this_mod_filename { [] }
-        else { [concat("pub use crate::", mod_file, "::", sanitize_service_name(name: sn), ";")] }
+        else { [concat(rust_visibility_prefix(), "use crate::", mod_file, "::", sanitize_service_name(name: sn), ";")] }
       None => []
     }
   )
@@ -567,7 +575,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // RC1: For enums defined in this module, add `use EnumName::*;` so
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
-    |> filter(item => is_type_def_item(item: item) && item.connective == Disj)
+    |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
     |> map(item => concat("use ", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
@@ -653,7 +661,7 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
               let names_str = top_with_parents |> map(n =>
                 emit_import_name(n: n, registry: registry)
               ) |> join(separator: ", ")
-              concat("pub use crate::", mod_name, "::{", names_str, "};")
+              concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};")
             } else { "" }
             // Emit per-enum variant import lines for explicitly listed variants.
             let variant_lines = parent_list |> map(parent =>
@@ -755,7 +763,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   if is_type_def_item(item: item) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info)
   } else if is_type_alias_item(item: item) {
-    concat(rust_visibility_prefix(), "type ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_index: env.source_index), ";")
+    concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_index: env.source_index), ";")
   } else if is_type_decl_item(item: item) {
     ""
   } else if is_function_item(item: item) {
@@ -838,7 +846,7 @@ fn emit_type_params(params: List<Node>, source_index: NewlineIndex?) -> String {
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let type_params = emit_type_params(params: item.params, source_index: env.source_index)
   let item_text = authored_name(env: env, node: item)
-  let is_product = item.connective == Conj
+  let is_product = is_product_type(n: item)
   if is_product {
     emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   } else {
@@ -864,11 +872,11 @@ fn emit_struct_from_children(name: String, type_params: String, children: List<N
     rust_struct_derives_copy_text()
   }
   if children |> count == 0 {
-    concat(derives, "\n", rust_visibility_prefix(), "struct ", name, type_params, ";")
+    concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
   } else {
     let field_lines = children |> map(child => emit_struct_field_from_child(child: child, recursive_types: recursive_types, shared_types: shared_types, env: env))
     let fields_str = field_lines |> join(separator: "\n")
-    concat(derives, "\n", rust_visibility_prefix(), "struct ", name, type_params, " {\n", fields_str, "\n}")
+    concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
   }
 }
 
@@ -878,7 +886,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
   // Fix self-referential Conj types: when a field's resolved type is a full
   // type definition (Conj with many children), render Name<Params> from the
   // TypeEnv's binding params instead of letting the Conj renderer emit bare name.
-  let ty = if rt_child.connective == Conj && rt_child.ident_span != none && rt_child.children |> count > 2 {
+  let ty = if is_product_type(n: rt_child) && rt_child.ident_span != none && rt_child.children |> count > 2 {
     match map_get(env.bindings, rt_child.name) {
       Some { value: binding } =>
         if binding.resolved.params |> count > 0 {
@@ -926,7 +934,7 @@ fn emit_enum_from_children(name: String, type_params: String, children: List<Nod
   let derives = enum_derives(children: children)
   let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, shared_types: shared_types, env: env))
   let variants_str = variant_lines |> join(separator: "\n")
-  let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), "enum ", name, type_params, " {\n", variants_str, "\n}")
+  let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   // Generate accessor methods for shared fields (fields present in ALL variants).
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env)
   if accessor_impl == "" { enum_def }
@@ -1042,7 +1050,8 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   if use_tco {
     let tco_params_str = emit_tco_params(params: params, shared_types: shared_types, source_index: si)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
-    concat(rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", tco_params_str, ")", ret_str, " {\n",
+    let kw = rust_items().func_keyword
+    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), "(", tco_params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
     emit_fn_def_non_tco(name: name, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_stacker: needs_stacker)
@@ -1053,13 +1062,15 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
 fn emit_fn_def_non_tco(name: String, params_str: String, ret_str: String, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, needs_stacker: Bool) -> String {
   if needs_stacker {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    concat(rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
+    let kw = rust_items().func_keyword
+    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n",
       make_indent(level: depth + 2), body_str, "\n",
       make_indent(level: depth + 1), "})\n}")
   } else {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    concat(rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
+    let kw = rust_items().func_keyword
+    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), body_str, "\n}")
   }
 }
@@ -1092,7 +1103,8 @@ fn emit_func_def(
     extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: si), resolved: resource_use_resource(n: u))
   )
   let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
-  concat(rust_visibility_prefix(), "async fn ", emit_ident(name: name, target: Rust),
+  let items = rust_items()
+  concat(rust_visibility_prefix(), items.async_prefix, items.func_keyword, " ", emit_ident(name: name, target: Rust),
     "(", params_str, ")", ret_str, " {\n",
     make_indent(level: depth + 1),body_str, "\n}")
 }
@@ -1170,7 +1182,7 @@ fn emit_tco_params(params: List<Node>, shared_types: Map<String, Bool>, source_i
 fn emit_tco_param(param: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
   let n = param_node_type_expr(n: param)
   let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_index: source_index)
-  concat("mut ", emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), ": ", ty)
+  concat("mut ", emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
@@ -1218,11 +1230,11 @@ fn emit_param(param: Node, shared_types: Map<String, Bool>, source_index: Newlin
   // All params are owned -- Rc-wrapped types are cheap to clone, and
   // the .clone() pattern in function bodies produces owned values.
   // Adding & to params creates reference/owned mismatches.
-  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), ": ", ty)
+  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_inferred(inferred: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
-  concat(" -> ", render_rust_type(n: inferred, shared_types: shared_types, source_index: source_index))
+  concat(rust_items().return_arrow, render_rust_type(n: inferred, shared_types: shared_types, source_index: source_index))
 }
 
 // Determine if a type should be passed by reference (Node-based).
@@ -1235,7 +1247,7 @@ fn needs_reference_node(n: Node) -> Bool {
     true
   } else {
     let is_copy = is_rust_value_type(n: n)
-      || (n.connective == Conj && n.children |> count == 0)
+      || (is_product_type(n: n) && n.children |> count == 0)
     is_copy == false
   }
 }
@@ -1660,8 +1672,8 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_t
       None => inferred_node
     }
   } else { inferred_node }
-  let is_product = n.connective == Conj
-  let is_coproduct = n.connective == Disj
+  let is_product = is_product_type(n: n)
+  let is_coproduct = is_coproduct_type(n: n)
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if n.name == "__EmitTypeCacheMiss" { type_name }
     else if n_is_error { type_name }
@@ -1676,20 +1688,6 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_t
     }
 }
 
-// is_primitive_numeric_node: checks whether target type is a valid `as` target.
-// Rust `as` casts: numeric→numeric, bool→integer, u8→char. The TARGET must
-// be an integer or float type. bool is only valid as a SOURCE (bool→integer),
-// not as a target (integer→bool is invalid). Unit is Copy but not castable.
-// Ref: https://doc.rust-lang.org/reference/expressions/operator-expr.html
-fn is_primitive_numeric_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  let rust_type = coerce_primitive_type(target: Rust, dag_name: normed.name)
-  if rust_type == normed.name { false }
-  else {
-    integer_types |> any(t => t == rust_type)
-    || float_types |> any(t => t == rust_type)
-  }
-}
 fn is_simple_type_node(n: Node) -> Bool { is_rust_value_type(n: n) }
 
 // =========================================================================
@@ -1859,7 +1857,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
   // translated to the flattened representation.
   let base_is_anon_record = match base.inferred {
     Some { value: Resolved { node: bt } } =>
-      let is_product = bt.connective == Conj
+      let is_product = is_product_type(n: bt)
       if is_product && bt.ident_span == none { true } else { false }
     _ => false
   }
@@ -1914,8 +1912,8 @@ fn type_needs_rc(type_node: Node) -> Bool {
 
 fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
   let normed = normalize_access_type_node(n: type_node)
-  let is_product = normed.connective == Conj
-  let is_coproduct = normed.connective == Disj
+  let is_product = is_product_type(n: normed)
+  let is_coproduct = is_coproduct_type(n: normed)
   if is_product {
     true
   } else if is_coproduct {
@@ -2109,9 +2107,12 @@ fn emit_rust_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 fn emit_rust_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprCast =>
-      let e = cast_expr(texpr: expr)
-      let t = cast_target(texpr: expr)
-      emit_typed_cast(expr: e, target: t, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      emit_typed_cast_shared(
+        expr: cast_expr(texpr: expr),
+        cast_target_node: cast_target(texpr: expr),
+        target: Rust,
+        recurse: child => emit_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
+        source_index: scope.type_env.source_index)
     _ => emit_error_expr(message: "emit_rust_expr_cast expected ExprCast", target: Rust)
   }
 }
@@ -2586,7 +2587,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   }
   let acc_type_node = match fold_accumulator_type {
     Some { value: acc_type } =>
-      let acc_children_have_unit = acc_type.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.ident_span == none) || acc_type.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.ident_span == none))
+      let acc_children_have_unit = acc_type.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
       let is_under_resolved_map = node_is_keyed_collection(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit)
       let is_under_resolved_list = node_is_element_collection(n: acc_type) && acc_type.children |> count == 0
       let is_under_resolved_non_collection = !node_is_keyed_collection(n: acc_type) && !node_is_element_collection(n: acc_type) && !node_is_collection(n: acc_type)
@@ -2654,7 +2655,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   // resolution needs the real type for turbofish generation.
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_node.name)
   let lambda_acc_type_str = if is_bare_container { "_" } else { acc_type_str }
-  let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.ident_span == none))
+  let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
     Some { value: init_arg } =>
       match arg_value(n: init_arg).expr_data {
@@ -3291,7 +3292,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
   match qualified_name {
     None =>
       // Anonymous record literal: emit as bare value (single-field) or tuple (multi-field).
-      let is_product = resolved_type.connective == Conj
+      let is_product = is_product_type(n: resolved_type)
       if is_product && resolved_type.ident_span == none {
         if fields |> count == 1 {
           match fields |> first {
@@ -3469,24 +3470,6 @@ fn emit_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope: I
   let state = emit_rust_block_stmts(
     remaining: stmts, text: [], scope: scope, registry: registry, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
   concat("{\n", make_indent(level: depth + 1),(state.text |> join(separator: "\n")), "\n}")
-}
-
-fn emit_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let expr_str = emit_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let ty_str = render_rust_type(n: target, shared_types: shared_types, source_index: scope.type_env.source_index)
-  if is_primitive_numeric_node(n: target) {
-    concat(expr_str, " as ", ty_str)
-  } else {
-    let src_ty = match expr.inferred {
-      Some { value: Resolved { node: n } } => render_rust_type(n: n, shared_types: shared_types, source_index: scope.type_env.source_index)
-      _ => ""
-    }
-    if src_ty != "" && src_ty == ty_str {
-      expr_str
-    } else {
-      concat("compile_error!(\"unsupported cast to ", ty_str, "\")")
-    }
-  }
 }
 
 // =========================================================================
@@ -3813,7 +3796,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>) -> String {
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_index: env.source_index))
+    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_index: env.source_index))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3834,7 +3817,8 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     make_indent(level: depth + 2),real_body, "\n",
     "}")
   let modifier_doc = emit_modifier_doc_from_props(properties: op_node.properties)
-  concat(modifier_doc, rust_visibility_prefix(), "async fn ", emit_ident(name: op_text, target: Rust),
+  let items = rust_items()
+  concat(modifier_doc, rust_visibility_prefix(), items.async_prefix, items.func_keyword, " ", emit_ident(name: op_text, target: Rust),
     "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
     make_indent(level: depth + 1),body, "\n}")
 }
@@ -3915,9 +3899,9 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
 
 fn emit_shell_return(inferred: Node) -> String {
   let effective = unwrap_single_field_product(n: inferred)
-  let is_product = effective.connective == Conj
+  let is_product = is_product_type(n: effective)
   // Bool = True | False: structural check (Disj + 2 children)
-  let is_bool = effective.connective == Disj && effective.children |> count == 2
+  let is_bool = is_coproduct_type(n: effective) && effective.children |> count == 2
   if is_bool {
     "Ok(output.status.success())"
   } else {
@@ -3933,7 +3917,7 @@ fn emit_shell_return(inferred: Node) -> String {
 }
 
 fn unwrap_single_field_product(n: Node) -> Node {
-  let is_product = n.connective == Conj
+  let is_product = is_product_type(n: n)
   if is_product && n.ident_span == none && n.children |> count == 1 {
     match n.children |> first {
       Some { value: field_node } => resolved_type(n: field_node)
@@ -3944,7 +3928,7 @@ fn unwrap_single_field_product(n: Node) -> Node {
 
 fn emit_file_call(op_name: String, inferred: Node) -> String {
   let effective = unwrap_single_field_product(n: inferred)
-  let is_product = effective.connective == Conj
+  let is_product = is_product_type(n: effective)
   let parse_line = if is_product && effective.children |> count > 1 {
     "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)"
   } else {
@@ -3985,7 +3969,7 @@ fn emit_resource_def(item: Node, shared_types: Map<String, Bool>, env: TypeEnv) 
 
 fn emit_capability_method(cap_node: Node, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_index: env.source_index))
+    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_index: env.source_index))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3994,7 +3978,8 @@ fn emit_capability_method(cap_node: Node, shared_types: Map<String, Bool>, env: 
     concat("&self, ", params_str)
   }
   let ret = render_rust_type(n: resolved_type(n: cap_node), shared_types: shared_types, source_index: env.source_index)
-  concat("async fn ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
+  let items = rust_items()
+  concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
 // =========================================================================
@@ -4023,12 +4008,14 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   if is_simple_type_node(n: type_node) {
     // Copy types (Int, Bool, Float) — inline, no caching
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
+    let kw = rust_items().func_keyword
+    concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
   } else {
     // Non-Copy data defs get thread_local caching.
     // Avoids O(n) reconstruction on every call (maps, records, JSON deser).
     let body = emit_data_def_body(type_node: type_node, value: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_rc: needs_rc)
-    concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
+    let kw = rust_items().func_keyword
+    concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " {\n",
       "    thread_local! {\n",
       "        static CACHED: ", ty_str, " = {\n",
       body, "\n",

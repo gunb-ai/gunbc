@@ -36,7 +36,7 @@ import v2.std.core {
   make_transport_node, local_transport_node,
   is_local_transport,
   is_kernel_type, is_container_type,
-  leaf_node, with_optional_cardinality, with_required_cardinality,
+  with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
   unit_type, string_type,
@@ -482,9 +482,8 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
     match n.value {
       Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
       CompilerError { message: msg, span: sp } =>
-        // Preserve CompilerError structurally instead of converting to
-        // leaf_node(name: "Error"). Downstream code matches InferredNode
-        // directly — no name check needed.
+        // Preserve CompilerError structurally. Downstream code matches
+        // InferredNode directly — no name check needed.
         NodeResolveResult {
           resolved: make_expr_error_node(kind: SemanticExprError, message: msg, span: sp),
           diagnostics: [make_error_node(diagnostic: InternalError { message: msg, span: sp }, module_name: module_name)]
