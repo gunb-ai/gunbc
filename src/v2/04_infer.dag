@@ -2330,8 +2330,8 @@ fn resolve_collection_field(expr: Node, ctx: DescentContext) -> InductiveField? 
               match map_get(ctx.sub_value_vars, bname) {
                 Some { value: rel } =>
                   match rel {
-                    StrictSubValue { field: f, factor: _ } => f.type_name
-                    IteratedSubValue { field: f } => f.type_name
+                    StrictSubValue { field: f, factor: _ } => f.element_type
+                    IteratedSubValue { field: f } => f.element_type
                     _ => ""
                   }
                 None => ""
@@ -2386,8 +2386,8 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
               match map_get(ctx.sub_value_vars, bname) {
                 Some { value: rel } =>
                   match rel {
-                    StrictSubValue { field: f, factor: _ } => f.type_name
-                    IteratedSubValue { field: f } => f.type_name
+                    StrictSubValue { field: f, factor: _ } => f.element_type
+                    IteratedSubValue { field: f } => f.element_type
                     _ => ""
                   }
                 None => ""
@@ -2569,8 +2569,8 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
               match map_get(ctx.sub_value_vars, bname) {
                 Some { value: rel } =>
                   match rel {
-                    StrictSubValue { field: f, factor: _ } => f.type_name
-                    IteratedSubValue { field: f } => f.type_name
+                    StrictSubValue { field: f, factor: _ } => f.element_type
+                    IteratedSubValue { field: f } => f.element_type
                     _ => ""
                   }
                 None => ""
@@ -2754,7 +2754,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   Some { value: ind_field } =>
                     DescentContext {
                       fn_name: ctx.fn_name,
-                      param_names: map_insert(ctx.param_names, en, ind_field.type_name),
+                      param_names: map_insert(ctx.param_names, en, ind_field.element_type),
                       param_order: ctx.param_order, type_env: ctx.type_env,
                       sub_value_vars: map_insert(empty_map(), en, IteratedSubValue { field: ind_field }),
                       size_aliases: ctx.size_aliases
@@ -2899,7 +2899,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   Some { value: ind_field } =>
                     DescentContext {
                       fn_name: ctx.fn_name,
-                      param_names: map_insert(ctx.param_names, bname, ind_field.type_name),
+                      param_names: map_insert(ctx.param_names, bname, ind_field.element_type),
                       param_order: ctx.param_order, type_env: ctx.type_env,
                       sub_value_vars: map_insert(ctx.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
                       size_aliases: ctx.size_aliases
@@ -3112,7 +3112,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
               Some { value: ind_field } =>
                 DescentContext {
                   fn_name: ctx.fn_name,
-                  param_names: map_insert(ctx.param_names, elem_name, ind_field.type_name),
+                  param_names: map_insert(ctx.param_names, elem_name, ind_field.element_type),
                   param_order: ctx.param_order, type_env: ctx.type_env,
                   sub_value_vars: map_insert(empty_map(), elem_name, IteratedSubValue { field: ind_field }),
                   size_aliases: ctx.size_aliases
@@ -3164,7 +3164,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         Some { value: ind_field } =>
           DescentContext {
             fn_name: ctx.fn_name,
-            param_names: map_insert(ctx.param_names, fe_var, ind_field.type_name),
+            param_names: map_insert(ctx.param_names, fe_var, ind_field.element_type),
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(empty_map(), fe_var, IteratedSubValue { field: ind_field }),
             size_aliases: ctx.size_aliases
@@ -3497,7 +3497,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // This provides the structural facts for CX-L2 to prove tree-walk
   // functions are O(n). See ROADMAP CX-NEXT Phase 2.
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
-  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: node_fields, source_index: source_index }
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: map_keys(compiler_recursive_types), recursive_type_set: compiler_recursive_types, inductive_fields: node_fields, source_index: source_index }
 
   // Collect imported type bindings from parent modules.
   // For type resolution to work on imported types (e.g., FileClassification

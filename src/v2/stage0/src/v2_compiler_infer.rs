@@ -2423,8 +2423,8 @@ let base_type = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
     Some(t) => t.clone(),
     None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
     Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
-    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
     _ => "".to_string(),
 },
     None => "".to_string(),
@@ -2488,8 +2488,8 @@ let type_name = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
     Some(t) => t.clone(),
     None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
     Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
-    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
     _ => "".to_string(),
 },
     None => "".to_string(),
@@ -2749,8 +2749,8 @@ let type_name = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
     Some(t) => t.clone(),
     None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
     Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
-    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
     _ => "".to_string(),
 },
     None => "".to_string(),
@@ -2963,7 +2963,7 @@ let inner_ctx = match elem_name.clone() {
     Some(en) => match collection_field {
     Some(ind_field) => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
-    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), en.clone(), ind_field.type_name.clone()),
+    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), en.clone(), ind_field.element_type.clone()),
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), en.clone(), Rc::new(SubValueRelation::IteratedSubValue {
@@ -3136,7 +3136,7 @@ match matching.clone() {
                         match scrut_inducing_field.clone() {
     Some(ind_field) => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
-    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), bname.clone(), ind_field.type_name.clone()),
+    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), bname.clone(), ind_field.element_type.clone()),
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), bname.clone(), Rc::new(SubValueRelation::StrictSubValue {
@@ -3395,7 +3395,7 @@ let inner_ctx = match lambda_elem_info {
     Some(elem_name) => match receiver_field {
     Some(ind_field) => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
-    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), elem_name.clone(), ind_field.type_name.clone()),
+    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), elem_name.clone(), ind_field.element_type.clone()),
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), elem_name.clone(), Rc::new(SubValueRelation::IteratedSubValue {
@@ -3465,7 +3465,7 @@ let coll_field = resolve_collection_field(coll.clone(), ctx.clone());
 let inner_ctx = match coll_field {
     Some(ind_field) => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
-    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), fe_var.clone(), ind_field.type_name.clone()),
+    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), fe_var.clone(), ind_field.element_type.clone()),
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), fe_var.clone(), Rc::new(SubValueRelation::IteratedSubValue {
@@ -3973,8 +3973,8 @@ let kernel_bindings = v2_rt::rc_map_insert(kernel_bindings.clone(), "Optional".t
 let node_fields = inductive_fields_list_to_map(compiler_inductive_fields());
 let kernel = Rc::new(TypeEnv {
     bindings: kernel_bindings.clone(),
-    recursive_types: Rc::new(vec![]),
-    recursive_type_set: v2_rt::rc_empty_map::<bool>(),
+    recursive_types: Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
+    recursive_type_set: compiler_recursive_types(),
     inductive_fields: node_fields,
     source_index: source_index.clone(),
 });
