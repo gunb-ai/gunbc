@@ -493,58 +493,8 @@ fn floyd_warshall_bound() -> CostBound {
 }
 
 
-// =========================================================================
-// Cost ordering — structural bound gap detection (KF-8)
-// https://en.wikipedia.org/wiki/Big_O_notation#Orders_of_common_functions
-// =========================================================================
-
-// Numeric rank of a PolynomialExponent for ordering.
-// O(1)=0, O(log n)=1, O(√n)=2, O(n)=10, O(n log n)=11, O(n^2)=20, etc.
-// Uses integer scaling (×10) to order fractional exponents between 0 and 1.
-fn exponent_rank(e: PolynomialExponent) -> Int {
-  match e {
-    IntegerExp { value: v } => v * 10
-    FractionExp { numerator: n, root: r } =>
-      // n/r scaled: 1/2 → 5, 1/3 → 3, 1/4 → 2
-      if r > 0 { (n * 10) / r } else { 0 }
-    // log_b(a) is usually between 1 and 3 for practical algorithms
-    LogBasedExp { base: b, argument: a } =>
-      if a <= b { 10 }  // log_b(b) = 1 → O(n)
-      else { 15 }       // log_b(a) > 1 → between O(n) and O(n^2)
-  }
-}
-
-// Rank of an AtomicCost for a single parameter.
-// LogCost < PolyCost(n^(1/k)) < PolyCost(n^1) < ...
-fn atomic_rank(c: AtomicCost) -> Int {
-  match c {
-    LogCost { param: _ } => 1       // O(log n) — between O(1) and O(√n)
-    PolyCost { param: _, exponent: e } => exponent_rank(e: e)
-  }
-}
-
-// Rank of a CostBound. Higher = more expensive.
-// ConstantBound(0) < LogCost(1) < O(n)(10) < O(n log n)(11) < O(n^2)(20) < Forever(1000)
-fn bound_rank(b: CostBound) -> Int {
-  match b {
-    ConstantBound => 0
-    AtomicBound { cost: c } => atomic_rank(c: c)
-    ProductBound { factors: fs } =>
-      // Product: sum of ranks. O(n log n) = rank(n) + rank(log n) = 10 + 1 = 11
-      fs |> fold(init: 0, f: (acc, f) => acc + atomic_rank(c: f))
-    SumOfProductsBound { terms: ts } =>
-      // Sum: max of term ranks. O(V + E) = max(rank(V), rank(E))
-      ts |> fold(init: 0, f: (acc, term) =>
-        let term_rank = term |> fold(init: 0, f: (tacc, f) => tacc + atomic_rank(c: f))
-        if term_rank > acc { term_rank } else { acc }
-      )
-    ForeverBound => 1000
-    ErrorBound => 1001
-  }
-}
-
-// Does bound `a` strictly dominate (is cheaper than) bound `b`?
-// True when a is provably asymptotically less than b.
-fn cost_dominates(a: CostBound, b: CostBound) -> Bool {
-  bound_rank(b: a) < bound_rank(b: b)
-}
+// Cost ordering is intentionally not provided here.
+// A correct dominance relation on CostBound requires structural comparison
+// (e.g., ConstantBound < AtomicBound(LogCost) < AtomicBound(PolyCost(n^1))),
+// not a lossy Int surrogate. When the bridge (Phase 1) needs cost comparison,
+// it should pattern-match on the CostBound variants directly.
