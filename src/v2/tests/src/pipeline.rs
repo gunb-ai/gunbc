@@ -4288,6 +4288,46 @@ fn python_casts_use_explicit_rules() {
         "Python dict→int should not be valid (no cast rule)");
 }
 
+// ── Infer-phase cast validation (dag_can_cast) ──────────────────────────
+//
+// Cast validity is now checked at infer time against .dag-level rules.
+// Emit renders unconditionally — the infer phase is the single authority.
+
+#[test]
+fn int_to_float_cast_is_valid_dag_cast() {
+    let source = "module cast_test\n\nfn convert(x: Int) -> Float {\n  x as Float\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/cast_test.rs");
+    assert!(content.contains(" as f64"), "Int→Float should emit `as f64` in Rust");
+}
+
+#[test]
+fn float_to_int_cast_is_valid_dag_cast() {
+    let source = "module cast_test2\n\nfn truncate(x: Float) -> Int {\n  x as Int\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/cast_test2.rs");
+    assert!(content.contains(" as i64"), "Float→Int should emit `as i64` in Rust");
+}
+
+#[test]
+fn bool_to_int_cast_is_valid_dag_cast() {
+    let source = "module cast_test3\n\nfn flag_value(b: Bool) -> Int {\n  b as Int\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn invalid_cast_produces_diagnostic() {
+    // Bool → Float is not in dag_cast_rules.
+    let source = "module cast_test4\n\nfn bad_cast(b: Bool) -> Float {\n  b as Float\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    let cast_diags: Vec<_> = msgs.iter().filter(|m| m.contains("invalid cast")).collect();
+    assert!(!cast_diags.is_empty(), "Bool→Float should produce a cast diagnostic, got: {:?}", msgs);
+}
+
 // ── ExprLet expected-type propagation regression tests ────────────────
 //
 // The ExprLet body now receives the outer `expected` type (M2 commit

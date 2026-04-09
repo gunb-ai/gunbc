@@ -21,6 +21,7 @@
 module v2.compiler.infer
 
 import std.types { SourceSpan, container_param_name }
+import std.coercion { dag_can_cast, is_numeric_cast_type }
 import v2.std.core {
   Node,
   authored_name_at, NewlineIndex, has_child_named,
@@ -591,6 +592,25 @@ fn inference_error(message: String, span: SourceSpan, module_name: String) -> Er
 
 fn categorized_error(message: String, span: SourceSpan, module_name: String, category: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
+}
+
+// Validate a cast at the .dag level. Returns a diagnostic if the cast
+// is invalid between numeric kernel types, or none if the cast is allowed.
+fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_index: NewlineIndex?, module_name: String) -> ErrorNode? {
+  match source_inferred {
+    Some { value: Resolved { node: src_node } } =>
+      let source_name = authored_name_at(source_index: source_index, node: src_node)
+      if source_name == target_name { none }
+      else if !is_numeric_cast_type(name: source_name) { none }
+      else if !is_numeric_cast_type(name: target_name) { none }
+      else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
+      else {
+        let msg = concat("invalid cast: ", source_name, " as ", target_name)
+        let diag = InternalError { message: msg, span: span }
+        Some { value: make_error_node(diagnostic: diag, module_name: module_name) }
+      }
+    _ => none
+  }
 }
 
 fn type_variable_node(id: String) -> Node {
@@ -1873,10 +1893,20 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let inner_result = infer_expr(texpr: cast_inner, scope: scope, expected: none)
       let inner_typed = inner_result.typed
       let inner_diags = inner_result.diagnostics
+      // Validate cast at .dag level: only check when both types are in the
+      // numeric cast domain (Int, Float, Bool). Alias casts and user types
+      // are allowed unconditionally — they resolve to identity at emit time.
+      let si = scope.type_env.source_index
+      let target_name = authored_name_at(source_index: si, node: target_type)
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_index: si, module_name: scope.module_name)
+      let cast_diags = match cast_diag {
+        Some { value: d } => [d]
+        None => []
+      }
       let cast_texpr = make_expr_node(expr_data: ExprCast, children: [inner_typed, target_type], inferred: Some { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,
-        diagnostics: inner_diags
+        diagnostics: concat(inner_diags, cast_diags)
       }
 
     ExprForEach =>

@@ -60,9 +60,9 @@ import v2.std.core {
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import std.induction { InductiveField }
 // NamingCase, PascalCase, SnakeCase imported via v2.compiler.languages (bootstrap-local mirror)
-import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
+import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node }
 import std.types { is_container_type, container_to_algebra_name }
-import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
+import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, render_cast, literal_suffix }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -1878,17 +1878,9 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 }
 
 // Shared ExprCast — data-driven, target-parameterized.
-// Cast syntax and validity derive from CastSyntax in extdeps/languages/*/types.dag.
-// Rust: `expr as type` (valid for numeric targets only, per Rust Reference §8.2.4).
-// Python/Go: `type(expr)` (constructor call, always valid).
-// Shared ExprCast — data-driven, target-parameterized.
-// Cast syntax and validity derive from CastRule in extdeps/languages/*/types.dag.
-//
-// KNOWN VIOLATION (tracked): cast legality is checked here in emit, but the
-// "emission is translation" invariant says emit should only render pre-validated
-// constructs. The fix: .dag defines its own cast rules, infer validates against
-// them, and emit renders unconditionally. Blocked on: .dag-level cast rule
-// definitions (not yet modeled) and infer-phase cast validation.
+// Cast syntax derives from CastSyntax in extdeps/languages/*/types.dag.
+// Rust: `expr as type`, Python/Go: `type(expr)`.
+// Cast validity is validated in infer (dag_can_cast). Emit renders unconditionally.
 fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, source_index: NewlineIndex?) -> String {
   let expr_str = recurse(expr)
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_index: source_index)
@@ -1899,12 +1891,27 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   }
   if src_ty != "" && src_ty == ty_str {
     expr_str
-  } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
-    render_cast(expr_str: expr_str, type_str: ty_str, target: target)
   } else {
-    // Unreachable in normal operation: all .dag casts are numeric and every
-    // target declares numeric cast rules. If reached, a CastRule is missing.
-    emit_error_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
+    render_cast(expr_str: expr_str, type_str: ty_str, target: target)
+  }
+}
+
+// Shared ExprForEach — builds loop from BlockSyntax.
+// Python: `for var in coll:\n    body`  (significant whitespace, no closer)
+// Go: `for _, var := range coll {\n    body\n}`  (brace-delimited)
+fn emit_typed_for_each_shared(variable: String, collection: Node, body: Node, target: RenderTarget, depth: Int, source_index: NewlineIndex?, recurse: fn(Node, InferScope, Int) -> String, scope: InferScope) -> String {
+  let coll_str = recurse(collection, scope, depth)
+  let elem_type = for_each_element_type_node(n: resolved_type(n: collection))
+  let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
+  let body_str = recurse(body, body_scope, depth + 1)
+  let var_str = emit_ident(name: variable, target: target)
+  let bs = language_spec(target: target).block_syntax
+  let body_indent = make_indent(level: depth + 1)
+  if bs.significant_whitespace {
+    concat("for ", var_str, " in ", coll_str, bs.block_open, body_indent, body_str)
+  } else {
+    let close_indent = make_indent(level: depth)
+    concat("for _, ", var_str, " := range ", coll_str, bs.block_open, body_indent, body_str, "\n", close_indent, bs.block_close)
   }
 }
 

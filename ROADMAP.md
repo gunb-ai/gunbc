@@ -756,9 +756,8 @@ tco_reassign, algebra_method_template.
 
 ### LS follow-ups (tracked for future PRs)
 
-- **Cast validation → infer phase:** CastRule uses string type names in emit.
-  Fix: model cast semantics structurally, validate in infer, emit renders
-  unconditionally. (Known violation, documented.)
+- ~~**Cast validation → infer phase:**~~ DONE. dag_cast_rules in std/coercion.dag,
+  validate_cast in 04_infer.dag, emit renders unconditionally. (PR #mild-ram-512.)
 - **needs_sharing flag → structural:** `SharingStrategy.needs_sharing: Bool` is
   a global codegen switch. Fix: derive sharing need per-type from structural
   facts (recursive types, container algebra). Phase 3d.
@@ -779,12 +778,12 @@ tco_reassign, algebra_method_template.
 - **resolved_binop_algebra in emit → infer:** Re-deriving algebra field in
   emit is a decision. Fix: infer resolves which algebra field Div maps to,
   stores on the Node (extend ExprBinOp or annotate), emit reads it.
-- **Python/Go cast_syntax pair whitelist:** Models generic `type(expr)` as
-  hand-curated (from,to) pairs. Fix: make emit render `type(expr)`
-  unconditionally, move validation to infer. Same root cause as cast→infer.
+- ~~**Python/Go cast_syntax pair whitelist:**~~ DONE. Resolved by cast→infer:
+  emit now renders unconditionally via render_cast, no pair whitelist needed.
 - **Emit file deletion phases:** Phase 2 (StringInterpSyntax, SumTypeStrategy,
   imports, service rendering), Phase 3 (dispatch strategies, ownership),
   Phase 4 (delete Py/Go), Phase 5 (delete Rust). See plan file.
+  Progress: for_each extracted to emit_typed_for_each_shared (Py/Go unified).
 
 ### Acceptance
 
