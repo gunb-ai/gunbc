@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, InferredNode, is_compiler_error, import_is_all, import_specific_names, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at, LiteralValue, ExprData, make_expr_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_stdin, service_config_auth, service_config_auth_input_name, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, field_access_field, foreach_variable, foreach_variable_at, expr_var_name, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name, record_lit_type_name_at, arg_name, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_name_at, field_init_node_value, field_binding_name, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, lambda_param_names, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, leaf_node, make_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, is_shell_transport, is_file_transport, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, InferredNode, is_compiler_error, import_is_all, import_specific_names, module_imports, module_items, param_node_name, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at, LiteralValue, ExprData, make_expr_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_stdin, service_config_auth, service_config_auth_input, service_config_auth_input_name, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, field_access_field, foreach_variable, foreach_variable_at, expr_var_name, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name, record_lit_type_name_at, arg_name, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_name_at, field_init_node_value, field_binding_name, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, lambda_param_names, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, leaf_node, make_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, is_shell_transport, is_file_transport, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond};
@@ -4081,8 +4081,8 @@ pub fn emit_rest_call(op_name: String, transport: Rc<Node>, registry: Rc<HashMap
         let client_init = "let client = reqwest::Client::new();".to_string();
 let url_line = emit_rest_url_line(transport.clone(), op_name, source_index.clone());
 let http_method = emit_rest_http_method(transport.clone(), source_index.clone());
-let auth_line = emit_rest_auth_line(transport.clone(), service_item, http_method);
-let query_line = emit_rest_query_line(transport.clone());
+let auth_line = emit_rest_auth_line(transport.clone(), service_item, http_method, source_index.clone());
+let query_line = emit_rest_query_line(transport.clone(), source_index.clone());
 let headers = transport_headers(transport.clone());
 let header_lines = Rc::new({ let mut __result = Vec::new(); for h in headers.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = request.header(\"".to_string(), h.name.clone()), "\", ".to_string()), emit_simple_expr(field_init_node_value(h.clone()), RenderTarget::Rust, None)), ");".to_string())); } __result });
 let send_line = "let response = request.send().await?;".to_string();
@@ -4150,61 +4150,54 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let url = format!(\"{}"
 }
 }
 
-pub fn emit_rest_auth_line(transport: Rc<Node>, service_item: Rc<Node>, http_method: String) -> String {
+pub fn emit_rest_auth_line(transport: Rc<Node>, service_item: Rc<Node>, http_method: String, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let auth_scheme = service_config_auth(service_item.clone());
-let auth_input_name = service_config_auth_input_name(service_item.clone());
+let auth_input = service_config_auth_input(service_item.clone());
 match auth_scheme {
     Some(auth) => {
-            let auth_name = match (*auth.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => expr_var_name(auth.clone()),
-    _ => "".to_string(),
-};
-let token_param = match auth_input_name {
-    Some(n) => emit_ident(n.clone(), RenderTarget::Rust),
+            let token_param = match auth_input {
+    Some(ai) => emit_simple_expr(ai.clone(), RenderTarget::Rust, source_index.clone()),
     None => "compile_error!(\"service config has auth but no auth_input\")".to_string(),
 };
-if ((auth_name.clone().as_str() == "Bearer".to_string().as_str()) || (auth_name.clone().as_str() == "BearerToken".to_string().as_str())) {
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = client.".to_string(), http_method), "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ".to_string()), token_param), "));".to_string())
-} else {
-                {
-                    let header_name = match (*auth.expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => match auth.children.clone().first().cloned() {
+match (*auth.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = client.".to_string(), http_method), "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ".to_string()), token_param), "));".to_string()),
+    ExprData::ExprCall { .. } => {
+                let header_name = match auth.children.clone().first().cloned() {
     Some(arg_node) => match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; s.clone() },
-    _ => "compile_error!(\"auth Header argument must be a string literal\")".to_string(),
+    _ => emit_simple_expr(arg_value(arg_node.clone()), RenderTarget::Rust, source_index.clone()),
 },
-    None => "compile_error!(\"auth Header() requires a header name argument\")".to_string(),
-},
-    _ => "compile_error!(\"unsupported auth scheme — expected BearerToken or Header(name)\")".to_string(),
+    None => "x-api-key".to_string(),
 };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = client.".to_string(), http_method), "(&url)\n    .header(\"".to_string()), header_name), "\", ".to_string()), token_param), ");".to_string())
-}
+},
+    _ => v2_rt::concat(v2_rt::concat("compile_error!(\"unrecognized auth scheme expression shape\"); let request = client.".to_string(), http_method), "(&url);".to_string()),
 }
 },
-    None => {
-            let header_name = match transport_auth_header_name(transport.clone()) {
+    None => if transport_has_auth(transport.clone()) {
+            {
+                let header_name = match transport_auth_header_name(transport.clone()) {
     Some(h) => h.clone(),
     None => "Authorization".to_string(),
 };
 let token_node = match transport_auth_token(transport.clone()) {
-    Some(tn) => emit_simple_expr(tn.clone(), RenderTarget::Rust, None),
+    Some(tn) => emit_simple_expr(tn.clone(), RenderTarget::Rust, source_index.clone()),
     None => "\"\"".to_string(),
 };
-if transport_has_auth(transport.clone()) {
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = client.".to_string(), http_method), "(&url)\n    .header(\"".to_string()), header_name), "\", ".to_string()), token_node), ");".to_string())
-} else {
-                v2_rt::concat(v2_rt::concat("let request = client.".to_string(), http_method), "(&url);".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = client.".to_string(), http_method), "(&url)\n    .header(\"".to_string()), header_name), "\", ".to_string()), token_node), ");".to_string())
 }
+} else {
+            v2_rt::concat(v2_rt::concat("let request = client.".to_string(), http_method), "(&url);".to_string())
 },
 }
 }
 }
 
-pub fn emit_rest_query_line(transport: Rc<Node>) -> String {
+pub fn emit_rest_query_line(transport: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     match transport_query(transport) {
     Some(q) => {
-        let pairs = Rc::new({ let mut __result = Vec::new(); for fi in q.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(\"".to_string(), field_init_node_name(fi.clone())), "\", &".to_string()), emit_ident(expr_var_name(field_init_node_value(fi.clone())), RenderTarget::Rust)), ".to_string())".to_string())); } __result });
+        let pairs = Rc::new({ let mut __result = Vec::new(); for fi in q.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(\"".to_string(), field_init_node_name(fi.clone())), "\", &".to_string()), emit_simple_expr(field_init_node_value(fi.clone()), RenderTarget::Rust, source_index.clone())), ".to_string())".to_string())); } __result });
 if ((pairs.clone().len() as i64) > 0) {
             v2_rt::concat(v2_rt::concat("let request = request.query(&[".to_string(), pairs.clone().join(&", ".to_string())), "]);".to_string())
 } else {

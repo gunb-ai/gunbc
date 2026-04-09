@@ -45,7 +45,7 @@ import v2.std.core {
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
   transport_method, transport_path_template, transport_query, transport_stdin,
-  service_config_auth, service_config_auth_input_name,
+  service_config_auth, service_config_auth_input, service_config_auth_input_name,
   expr_has_self_call, expr_has_non_tail_self_call,
   field_access_base, field_access_field, foreach_variable, foreach_variable_at,
   expr_var_name, expr_call_func, expr_method_name, let_binding_name,
@@ -3874,8 +3874,8 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   let client_init = "let client = reqwest::Client::new();"
   let url_line = emit_rest_url_line(transport: transport, op_name: op_name, source_index: source_index)
   let http_method = emit_rest_http_method(transport: transport, source_index: source_index)
-  let auth_line = emit_rest_auth_line(transport: transport, service_item: service_item, http_method: http_method)
-  let query_line = emit_rest_query_line(transport: transport)
+  let auth_line = emit_rest_auth_line(transport: transport, service_item: service_item, http_method: http_method, source_index: source_index)
+  let query_line = emit_rest_query_line(transport: transport, source_index: source_index)
   let headers = transport_headers(t: transport)
   let header_lines = headers |> map(h =>
     concat("let request = request.header(\"", h.name, "\", ",
@@ -3957,48 +3957,52 @@ fn emit_rest_url_line(transport: Node, op_name: String, source_index: NewlineInd
 }
 
 // RE-1d: Auth line — uses service-level auth scheme or transport-level auth.
-fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String) -> String {
+// Structural dispatch: auth scheme is a resolved variant (Bearer, Header, etc.)
+// after transport property inference. ExprVar = unit variant, ExprCall = payload variant.
+fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String, source_index: NewlineIndex?) -> String {
   let auth_scheme = service_config_auth(n: service_item)
-  let auth_input_name = service_config_auth_input_name(n: service_item)
+  let auth_input = service_config_auth_input(n: service_item)
   // Use service-level auth scheme if available
   match auth_scheme {
     Some { value: auth } => {
-      let auth_name = match auth.expr_data {
-        ExprVar { binding_kind: _ } => expr_var_name(texpr: auth)
-        _ => ""
-      }
-      let token_param = match auth_input_name {
-        Some { value: n } => emit_ident(name: n, target: Rust)
+      // Emit the auth input parameter as an expression (structural, not name extraction)
+      let token_param = match auth_input {
+        Some { value: ai } => emit_simple_expr(expr: ai, target: Rust, source_index: source_index)
         None => "compile_error!(\"service config has auth but no auth_input\")"
       }
-      if auth_name == "Bearer" || auth_name == "BearerToken" {
-        concat("let request = client.", http_method, "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ", token_param, "));")
-      } else {
-        // Header("x-api-key") pattern — extract header name from call args
-        let header_name = match auth.expr_data {
-          ExprCall { call_semantics: _ } => match auth.children |> first {
+      // Structural dispatch on ExprData shape:
+      // ExprVar = unit variant (Bearer, ApiKey) → bearer token auth
+      // ExprCall = payload variant (Header { name }) → custom header auth
+      match auth.expr_data {
+        ExprVar { binding_kind: _ } =>
+          // Unit variant: Bearer, ApiKey — use Authorization: Bearer header
+          concat("let request = client.", http_method, "(&url)\n    .header(\"Authorization\", format!(\"Bearer {}\", ", token_param, "));")
+        ExprCall { call_semantics: _ } =>
+          // Payload variant: Header("x-api-key") — extract header name from constructor arg
+          let header_name = match auth.children |> first {
             Some { value: arg_node } => match arg_value(n: arg_node).expr_data {
               ExprLiteral { value: LitStr { value: s } } => s
-              _ => "compile_error!(\"auth Header argument must be a string literal\")"
+              _ => emit_simple_expr(expr: arg_value(n: arg_node), target: Rust, source_index: source_index)
             }
-            None => "compile_error!(\"auth Header() requires a header name argument\")"
+            None => "x-api-key"
           }
-          _ => "compile_error!(\"unsupported auth scheme — expected BearerToken or Header(name)\")"
-        }
-        concat("let request = client.", http_method, "(&url)\n    .header(\"", header_name, "\", ", token_param, ");")
+          concat("let request = client.", http_method, "(&url)\n    .header(\"", header_name, "\", ", token_param, ");")
+        _ =>
+          // Fail-closed: unknown auth shape
+          concat("compile_error!(\"unrecognized auth scheme expression shape\"); let request = client.", http_method, "(&url);")
       }
     }
     None => {
-      // Fallback: use transport-level auth (legacy behavior)
-      let header_name = match transport_auth_header_name(t: transport) {
-        Some { value: h } => h
-        None => "Authorization"
-      }
-      let token_node = match transport_auth_token(t: transport) {
-        Some { value: tn } => emit_simple_expr(expr: tn, target: Rust, source_index: none)
-        None => "\"\""
-      }
+      // No service-level auth: use transport-level auth properties
       if transport_has_auth(t: transport) {
+        let header_name = match transport_auth_header_name(t: transport) {
+          Some { value: h } => h
+          None => "Authorization"
+        }
+        let token_node = match transport_auth_token(t: transport) {
+          Some { value: tn } => emit_simple_expr(expr: tn, target: Rust, source_index: source_index)
+          None => "\"\""
+        }
         concat("let request = client.", http_method, "(&url)\n    .header(\"",
           header_name, "\", ", token_node, ");")
       } else {
@@ -4009,13 +4013,14 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String)
 }
 
 // RE-1c: Query parameters — reads transport query field.
-fn emit_rest_query_line(transport: Node) -> String {
+// Query values are emitted structurally via emit_simple_expr (not name extraction).
+fn emit_rest_query_line(transport: Node, source_index: NewlineIndex?) -> String {
   match transport_query(t: transport) {
     Some { value: q } => {
       // Query is a record-like expression whose children are field-init nodes
       let pairs = q.children |> map(fi =>
         concat("(\"", field_init_node_name(n: fi), "\", &",
-          emit_ident(name: expr_var_name(texpr: field_init_node_value(n: fi)), target: Rust),
+          emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_index: source_index),
           ".to_string())")
       )
       if pairs |> count > 0 {
@@ -4054,7 +4059,10 @@ fn emit_response_code_handling(op_node: Node) -> String {
 fn emit_response_arm(prop: Node) -> String {
   let name = field_init_node_name(n: prop)
   let code_str = substring(s: name, start: 9, end: string_length(s: name))
-  // Determine if this is a success code (2xx) or error code
+  // Success/error classification: the status code IS the structural fact
+  // (RFC 9110: 2xx = success, everything else = error). The code_str is
+  // extracted from the property name which the parser set from the authored
+  // status code — this is a boundary contract, not a heuristic.
   let is_success = if string_length(s: code_str) >= 1 {
     substring(s: code_str, start: 0, end: 1) == "2"
   } else { false }
@@ -4098,6 +4106,9 @@ fn emit_exit_code_handling(op_node: Node, inferred: Node) -> String {
   }
 }
 
+// Exit arm: the exit code IS the structural fact (POSIX: 0 = success,
+// nonzero = failure). The RHS type (Unit, String) will matter when we
+// emit typed error bodies; for now the code determines success/error.
 fn emit_exit_arm(prop: Node, inferred: Node) -> String {
   let name = field_init_node_name(n: prop)
   let code_str = substring(s: name, start: 5, end: string_length(s: name))
