@@ -2335,6 +2335,25 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           }
         _ => SubValueUnknown
       }
+    // accessor(n: sub_value) — pure Node→Node accessor applied to a known sub-value.
+    // If the first argument is a sub-value, the result is also a sub-value (deeper descent).
+    // Covers patterns like param_node_type_expr(n: p), arg_value(n: a), arm_body(n: arm).
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let call_args = arg_expr.children
+      match call_args |> first {
+        Some { value: first_arg } =>
+          let inner = arg_value(n: first_arg)
+          // Recursively classify the inner argument
+          let inner_rel = classify_argument(arg_expr: inner, param_name: param_name, ctx: ctx)
+          match inner_rel {
+            // If inner is a sub-value, the accessor result is also a sub-value
+            StrictSubValue { field: _, factor: _ } => inner_rel
+            IteratedSubValue { field: _ } => inner_rel
+            PreservedValue => PreservedValue
+            SubValueUnknown => SubValueUnknown
+          }
+        None => SubValueUnknown
+      }
     // param |> take(mid) or param |> skip(mid) → collection shrink
     ExprMethodCall { method_semantics: _ } =>
       classify_collection_shrink(arg_expr: arg_expr, param_name: param_name, ctx: ctx)

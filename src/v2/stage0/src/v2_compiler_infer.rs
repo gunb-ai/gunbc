@@ -2475,24 +2475,25 @@ pub struct BlockAnnotateAcc {
 }
 
 pub fn classify_argument(arg_expr: Rc<Node>, param_name: String, ctx: Rc<DescentContext>) -> Rc<SubValueRelation> {
-    match (*arg_expr.expr_data.clone()).clone() {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*arg_expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-        let vname = expr_var_name(arg_expr.clone());
+            let vname = expr_var_name(arg_expr.clone());
 if (vname.clone().as_str() == param_name.as_str()) {
-            Rc::new(SubValueRelation::PreservedValue)
+                Rc::new(SubValueRelation::PreservedValue)
 } else {
-            match v2_rt::map_get(&ctx.sub_value_vars.clone(), vname.clone()) {
+                match v2_rt::map_get(&ctx.sub_value_vars.clone(), vname.clone()) {
     Some(rel) => rel.clone(),
     None => Rc::new(SubValueRelation::SubValueUnknown),
 }
 }
 },
     ExprData::ExprFieldAccess { .. } => {
-        let base = field_access_base(arg_expr.clone());
+            let base = field_access_base(arg_expr.clone());
 let field = field_access_field(arg_expr.clone());
 match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-            let bname = expr_var_name(base.clone());
+                let bname = expr_var_name(base.clone());
 let type_name = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
     Some(t) => t.clone(),
     None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
@@ -2517,9 +2518,26 @@ match matching {
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
 },
+    ExprData::ExprCall { .. } => {
+            let call_args = arg_expr.children.clone();
+match call_args.first().cloned() {
+    Some(first_arg) => {
+                let inner = arg_value(first_arg.clone());
+let inner_rel = classify_argument(inner, param_name, ctx.clone());
+match (*inner_rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => inner_rel.clone(),
+    SubValueRelation::IteratedSubValue { .. } => inner_rel.clone(),
+    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
     ExprData::ExprMethodCall { .. } => classify_collection_shrink(arg_expr.clone(), param_name, ctx.clone()),
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
+    })
 }
 
 pub fn build_call_evidence(call_node: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Vec<Rc<SubValueRelation>>> {
