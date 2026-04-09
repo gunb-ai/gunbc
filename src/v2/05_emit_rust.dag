@@ -191,9 +191,11 @@ fn rust_source_ext() -> String {
 }
 
 fn rust_visibility_prefix() -> String {
+  // M5: Rust uses KeywordVisibility. Any other variant is a data bug.
+  // Fail closed with error marker instead of fabricating "".
   match visibility_for_target(target: Rust) {
     KeywordVisibility { prefix: p } => p
-    _ => ""
+    _ => "__VISIBILITY_SPEC_MISMATCH__"
   }
 }
 

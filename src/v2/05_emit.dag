@@ -2146,9 +2146,11 @@ fn emit_typed_if_shared(
         IfStatement => {
           let then_str = recurse(then_branch, depth)
           let else_str = recurse(eb, depth)
+          // M5: IfStatement requires if_result_type from the ExprIf node.
+          // Fail closed with error marker instead of fabricating from then_branch.
           let result_type = match if_result_type {
             Some { value: rt } => emit_node_type(n: rt, target: target, source_index: source_index)
-            None => emit_node_type(n: resolved_type(n: then_branch), target: target, source_index: source_index)
+            None => "__MISSING_IF_RESULT_TYPE__"
           }
           concat("func() ", result_type, " { if ", cond_str, bs.block_open,
             make_indent(level: depth + 1), "return ", then_str, "\n",
