@@ -7,7 +7,7 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan, container_param_name};
-pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, has_child_named, module_node, module_imports, module_items, import_is_all, import_specific_names, make_param_node, param_node_name, param_node_name_at, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, expr_var_name_at, field_access_base, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at, foreach_variable, foreach_variable_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name, arg_name_at, has_inferred, is_compiler_error, InferredNode, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name, resource_use_name_at, resource_use_resource, kernel_type_set, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name, field_binding_name_at, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, has_child_named, module_node, module_imports, module_items, import_is_all, import_specific_names, make_param_node, param_node_name, param_node_name_at, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, expr_var_name_at, field_access_base, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at, foreach_variable, foreach_variable_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name, arg_name_at, has_inferred, is_compiler_error, InferredNode, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name, resource_use_name_at, resource_use_resource, kernel_type_set, is_kernel_type, is_child_accessor_in_model, is_tree_size_reducing, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name, field_binding_name_at, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -28,7 +28,7 @@ pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport
 pub use crate::v2_compiler_infer_types::{nominal_type_ref, make_container_type, make_callable_type, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved, resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self, bare_map_node, callable_inferred, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, resolved_type, child_type_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type, list_of_element};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
-pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, merge_inductive_fields, inductive_fields_for};
+pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
@@ -396,7 +396,9 @@ let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_strin
 let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "properties".to_string(), RecursionShape::ListRecursion);
 let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "body".to_string(), RecursionShape::OptionalRecursion);
 let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "transport".to_string(), RecursionShape::OptionalRecursion);
-put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "type_annotation".to_string(), RecursionShape::OptionalRecursion)
+let fields = put_inductive_field(fields.clone(), "Node".to_string(), "".to_string(), "type_annotation".to_string(), RecursionShape::OptionalRecursion);
+let fields = put_inductive_field_cross(fields.clone(), "Node".to_string(), "".to_string(), "inferred".to_string(), RecursionShape::OptionalRecursion, "InferredNode".to_string());
+put_inductive_field(fields.clone(), "InferredNode".to_string(), "Resolved".to_string(), "node".to_string(), RecursionShape::DirectRecursion)
 }
 }
 
@@ -2248,6 +2250,7 @@ match v2_rt::map_get(&ctx.size_aliases.clone(), aname).as_deref().cloned() {
     variant_name: "".to_string(),
     field_name: mname.clone(),
     shape: RecursionShape::ListRecursion,
+    element_type: param_name.clone(),
 });
 Rc::new(SubValueRelation::StrictSubValue {
     field: synth_field,
@@ -2282,6 +2285,7 @@ match v2_rt::map_get(&ctx.size_aliases.clone(), lname).as_deref().cloned() {
     variant_name: "".to_string(),
     field_name: mname.clone(),
     shape: RecursionShape::ListRecursion,
+    element_type: param_name.clone(),
 });
 Rc::new(SubValueRelation::StrictSubValue {
     field: synth_field,
@@ -2321,6 +2325,7 @@ match v2_rt::map_get(&ctx.size_aliases.clone(), lname).as_deref().cloned() {
     variant_name: "".to_string(),
     field_name: mname.clone(),
     shape: RecursionShape::ListRecursion,
+    element_type: param_name.clone(),
 });
 Rc::new(SubValueRelation::StrictSubValue {
     field: synth_field,
@@ -2370,12 +2375,166 @@ pub struct BlockAnnotateAcc {
     pub children: Rc<Vec<Rc<Node>>>,
 }
 
+pub fn resolve_collection_field(mut expr: Rc<Node>, mut ctx: Rc<DescentContext>) -> Option<Rc<InductiveField>> {
+    loop {
+        match (*expr.expr_data.clone()).clone() {
+    ExprData::ExprFieldAccess { .. } => { let base = field_access_base(expr.clone());
+let fname = field_access_field(expr.clone());
+match (*base.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => { let bname = expr_var_name(base.clone());
+let base_type = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
+    Some(t) => t.clone(),
+    None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    _ => "".to_string(),
+},
+    None => "".to_string(),
+},
+};
+if (base_type.clone().as_str() != "".to_string().as_str()) {
+            break Rc::new({ let mut __result = Vec::new(); for f in Rc::new({ let mut __result = Vec::new(); for f in inductive_fields_for(ctx.type_env.clone(), base_type.clone()).iter().cloned() { if (f.field_name.clone().as_str() == fname.clone().as_str()) { __result.push(f); } } __result }).iter().cloned() { if match f.shape.clone() {
+    RecursionShape::ListRecursion => true,
+    _ => false,
+} { __result.push(f); } } __result }).first().cloned();
+} else {
+            break None;
+} },
+    _ => { break None; },
+} },
+    ExprData::ExprVar { .. } => { let rname = expr_var_name(expr.clone());
+match v2_rt::map_get(&ctx.sub_value_vars.clone(), rname.clone()) {
+    Some(rel) => { match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => { match f.shape.clone() {
+    RecursionShape::ListRecursion => { break Some(f.clone()); },
+    _ => { break None; },
+} },
+    SubValueRelation::IteratedSubValue { field: f, .. } => { match f.shape.clone() {
+    RecursionShape::ListRecursion => { break Some(f.clone()); },
+    _ => { break None; },
+} },
+    _ => { break None; },
+} },
+    None => { break None; },
+} },
+    ExprData::ExprMethodCall { .. } => { let inner_mname = expr_method_name(expr.clone());
+if (inner_mname.clone().as_str() == "enumerate".to_string().as_str()) {
+            {
+                let __tco_0 = method_receiver(expr);
+let __tco_1 = ctx;
+expr = __tco_0;
+ctx = __tco_1;
+continue;
+}
+} else {
+            break None;
+} },
+    _ => { break None; },
+}
+}
+}
+
+pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<SubValueRelation>> {
+    match (*val.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+        let vname = expr_var_name(val.clone());
+v2_rt::map_get(&ctx.sub_value_vars.clone(), vname)
+},
+    ExprData::ExprFieldAccess { .. } => {
+        let base = field_access_base(val.clone());
+let field = field_access_field(val.clone());
+match (*base.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+            let bname = expr_var_name(base.clone());
+let type_name = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
+    Some(t) => t.clone(),
+    None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    _ => "".to_string(),
+},
+    None => "".to_string(),
+},
+};
+if (type_name.clone().as_str() != "".to_string().as_str()) {
+                {
+                    let fields = inductive_fields_for(ctx.type_env.clone(), type_name.clone());
+let matching = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if (f.field_name.clone().as_str() == field.clone().as_str()) { __result.push(f); } } __result }).first().cloned();
+match matching {
+    Some(ind_field) => Some(Rc::new(SubValueRelation::StrictSubValue {
+    field: ind_field.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+})),
+    None => None,
+}
+}
+} else {
+                None
+}
+},
+    _ => None,
+}
+},
+    ExprData::ExprCall { .. } => {
+        let callee = expr_call_func(val.clone());
+if (is_child_accessor_in_model(callee.clone()) || is_tree_size_reducing(callee.clone())) {
+            {
+                let call_args = val.children.clone();
+match call_args.first().cloned() {
+    Some(first_arg) => {
+                    let inner = arg_value(first_arg.clone());
+match (*inner.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                        let iname = expr_var_name(inner.clone());
+let inner_type = match v2_rt::map_get(&ctx.param_names.clone(), iname.clone()) {
+    Some(t) => t.clone(),
+    None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), iname.clone()) {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    _ => "".to_string(),
+},
+    None => "".to_string(),
+},
+};
+if (inner_type.clone().as_str() != "".to_string().as_str()) {
+                            {
+                                let fields = inductive_fields_for(ctx.type_env.clone(), inner_type.clone());
+let cf = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if (f.field_name.clone().as_str() == "children".to_string().as_str()) { __result.push(f); } } __result }).first().cloned();
+match cf {
+    Some(ind_field) => Some(Rc::new(SubValueRelation::StrictSubValue {
+    field: ind_field.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+})),
+    None => None,
+}
+}
+} else {
+                            None
+}
+},
+    _ => None,
+}
+},
+    None => None,
+}
+}
+} else {
+            None
+}
+},
+    _ => None,
+}
+}
+
 pub fn classify_argument(arg_expr: Rc<Node>, param_name: String, ctx: Rc<DescentContext>) -> Rc<SubValueRelation> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*arg_expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
             let vname = expr_var_name(arg_expr.clone());
-if (vname.clone().as_str() == param_name.as_str()) {
+if (vname.clone().as_str() == param_name.clone().as_str()) {
                 Rc::new(SubValueRelation::PreservedValue)
 } else {
                 match v2_rt::map_get(&ctx.sub_value_vars.clone(), vname.clone()) {
@@ -2419,18 +2578,39 @@ match matching {
 match call_args.first().cloned() {
     Some(first_arg) => {
                 let inner = arg_value(first_arg.clone());
-let inner_rel = classify_argument(inner, param_name, ctx.clone());
+let inner_rel = classify_argument(inner, param_name.clone(), ctx.clone());
 match (*inner_rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => inner_rel.clone(),
     SubValueRelation::IteratedSubValue { .. } => inner_rel.clone(),
-    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
+    SubValueRelation::PreservedValue => {
+                    let callee = expr_call_func(arg_expr.clone());
+if (is_child_accessor_in_model(callee.clone()) || is_tree_size_reducing(callee.clone())) {
+                        {
+                            let type_name = match v2_rt::map_get(&ctx.param_names.clone(), param_name.clone()) {
+    Some(t) => t.clone(),
+    None => "".to_string(),
+};
+let fields = inductive_fields_for(ctx.type_env.clone(), type_name);
+let cf = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if (f.field_name.clone().as_str() == "children".to_string().as_str()) { __result.push(f); } } __result }).first().cloned();
+match cf {
+    Some(ind_field) => Rc::new(SubValueRelation::StrictSubValue {
+    field: ind_field.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+}),
+    None => Rc::new(SubValueRelation::PreservedValue),
+}
+}
+} else {
+                        Rc::new(SubValueRelation::PreservedValue)
+}
+},
     SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
 }
 },
     None => Rc::new(SubValueRelation::SubValueUnknown),
 }
 },
-    ExprData::ExprMethodCall { .. } => classify_collection_shrink(arg_expr.clone(), param_name, ctx.clone()),
+    ExprData::ExprMethodCall { .. } => classify_collection_shrink(arg_expr.clone(), param_name.clone(), ctx.clone()),
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
     })
@@ -2496,7 +2676,89 @@ Rc::new(Node {
 })
 }
 } else {
-                map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone()))
+                {
+                    let call_args = body.children.clone();
+let lambda_arg = Rc::new({ let mut __result = Vec::new(); for a in call_args.clone().iter().cloned() { if match (*arg_value(a.clone()).expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => true,
+    _ => false,
+} { __result.push(a); } } __result }).first().cloned();
+let non_lambda_args = Rc::new({ let mut __result = Vec::new(); for a in call_args.clone().iter().cloned() { if match (*arg_value(a.clone()).expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => false,
+    _ => true,
+} { __result.push(a); } } __result });
+let collection_field = match non_lambda_args.first().cloned() {
+    Some(coll_arg) => resolve_collection_field(arg_value(coll_arg.clone()), ctx.clone()),
+    None => None,
+};
+match lambda_arg {
+    Some(la) => {
+                        let lambda_node = arg_value(la.clone());
+let lparams = lambda_param_names(lambda_node);
+let elem_name = lparams.clone().get(((lparams.clone().len() as i64) - 1) as usize).cloned();
+let inner_ctx = match elem_name.clone() {
+    Some(en) => match collection_field {
+    Some(ind_field) => Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), en.clone(), ind_field.type_name.clone()),
+    param_order: ctx.param_order.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), en.clone(), Rc::new(SubValueRelation::IteratedSubValue {
+    field: ind_field.clone(),
+})),
+    size_aliases: ctx.size_aliases.clone(),
+}),
+    None => Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: ctx.param_names.clone(),
+    param_order: ctx.param_order.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+    size_aliases: ctx.size_aliases.clone(),
+}),
+},
+    None => ctx.clone(),
+};
+let annotated_children = Rc::new({ let mut __result = Vec::new(); for arg_node in call_args.clone().iter().cloned() { __result.push({
+                            let arg_val = arg_value(arg_node.clone());
+let is_lambda = match (*arg_val.expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => true,
+    _ => false,
+};
+if is_lambda.clone() {
+                                make_arg_node(match arg_name(arg_node.clone()) {
+    Some(n) => Some(n.clone()),
+    None => None,
+}, annotate_descent(arg_val.clone(), inner_ctx.clone()), arg_node.span.clone(), arg_node.span.clone())
+} else {
+                                make_arg_node(match arg_name(arg_node.clone()) {
+    Some(n) => Some(n.clone()),
+    None => None,
+}, annotate_descent(arg_val.clone(), ctx.clone()), arg_node.span.clone(), arg_node.span.clone())
+}
+}); } __result });
+Rc::new(Node {
+    name: body.name.clone(),
+    span: body.span.clone(),
+    ident_span: body.ident_span.clone(),
+    children: annotated_children,
+    connective: body.connective.clone(),
+    params: body.params.clone(),
+    inferred: body.inferred.clone(),
+    return_cardinality: body.return_cardinality.clone(),
+    uses: body.uses.clone(),
+    body: body.body.clone(),
+    transport: body.transport.clone(),
+    properties: body.properties.clone(),
+    type_annotation: body.type_annotation.clone(),
+    is_self_recursive: body.is_self_recursive.clone(),
+    has_non_tail_self_call: body.has_non_tail_self_call.clone(),
+    match_pattern: body.match_pattern.clone(),
+    expr_data: body.expr_data.clone(),
+})
+},
+    None => map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone())),
+}
+}
 }
 },
     ExprData::ExprMatch => {
@@ -2551,7 +2813,7 @@ let annotated_arms = Rc::new({ let mut __result = Vec::new(); for arm_node in ma
 if (bind_name.clone().as_str() != "".to_string().as_str()) {
                                 Rc::new(DescentContext {
     fn_name: c.fn_name.clone(),
-    param_names: c.param_names.clone(),
+    param_names: v2_rt::rc_map_insert(c.param_names.clone(), bind_name.clone(), ind_field.element_type.clone()),
     param_order: c.param_order.clone(),
     type_env: c.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(c.sub_value_vars.clone(), bind_name.clone(), Rc::new(SubValueRelation::StrictSubValue {
@@ -2653,27 +2915,32 @@ Rc::new(Node {
     ExprData::ExprLet => {
             let val = let_value(body.clone());
 let binding_name = let_binding_name(body.clone());
-let val_relation = match (*val.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                let vname = expr_var_name(val.clone());
-v2_rt::map_get(&ctx.sub_value_vars.clone(), vname.clone())
-},
-    _ => None,
-};
+let val_relation = classify_let_value(val.clone(), ctx.clone());
 let size_alias = classify_size_expr(val.clone(), ctx.clone());
 let inner_size_aliases = match size_alias {
     Some(se) => v2_rt::rc_map_insert(ctx.size_aliases.clone(), binding_name.clone(), se.clone()),
     None => ctx.size_aliases.clone(),
 };
 let inner_ctx = match val_relation {
-    Some(rel) => Rc::new(DescentContext {
+    Some(rel) => {
+                let sub_type = match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    _ => "".to_string(),
+};
+Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
-    param_names: ctx.param_names.clone(),
+    param_names: if (sub_type.clone().as_str() != "".to_string().as_str()) {
+                    v2_rt::rc_map_insert(ctx.param_names.clone(), binding_name.clone(), sub_type.clone())
+} else {
+                    ctx.param_names.clone()
+},
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), binding_name.clone(), rel.clone()),
     size_aliases: inner_size_aliases,
-}),
+})
+},
     None => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
     param_names: ctx.param_names.clone(),
@@ -2718,27 +2985,32 @@ let next_ctx = match (*child.expr_data.clone()).clone() {
     ExprData::ExprLet => {
                     let val = let_value(child.clone());
 let bname = let_binding_name(child.clone());
-let val_rel = match (*val.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                        let vname = expr_var_name(val.clone());
-v2_rt::map_get(&acc.ctx.clone().sub_value_vars.clone(), vname.clone())
-},
-    _ => None,
-};
+let val_rel = classify_let_value(val.clone(), acc.ctx.clone());
 let sa = classify_size_expr(val.clone(), acc.ctx.clone());
 let new_sa = match sa.clone() {
     Some(se) => v2_rt::rc_map_insert(acc.ctx.clone().size_aliases.clone(), bname.clone(), se.clone()),
     None => acc.ctx.clone().size_aliases.clone(),
 };
 match val_rel.clone() {
-    Some(rel) => Rc::new(DescentContext {
+    Some(rel) => {
+                        let sub_type = match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    _ => "".to_string(),
+};
+Rc::new(DescentContext {
     fn_name: acc.ctx.clone().fn_name.clone(),
-    param_names: acc.ctx.clone().param_names.clone(),
+    param_names: if (sub_type.clone().as_str() != "".to_string().as_str()) {
+                            v2_rt::rc_map_insert(acc.ctx.clone().param_names.clone(), bname.clone(), sub_type.clone())
+} else {
+                            acc.ctx.clone().param_names.clone()
+},
     param_order: acc.ctx.clone().param_order.clone(),
     type_env: acc.ctx.clone().type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(acc.ctx.clone().sub_value_vars.clone(), bname.clone(), rel.clone()),
     size_aliases: new_sa.clone(),
-}),
+})
+},
     None => Rc::new(DescentContext {
     fn_name: acc.ctx.clone().fn_name.clone(),
     param_names: acc.ctx.clone().param_names.clone(),
@@ -2781,7 +3053,18 @@ Rc::new(Node {
 let is_iteration = ((((((mname.clone().as_str() == "fold".to_string().as_str()) || (mname.clone().as_str() == "map".to_string().as_str())) || (mname.clone().as_str() == "filter".to_string().as_str())) || (mname.clone().as_str() == "flat_map".to_string().as_str())) || (mname.clone().as_str() == "any".to_string().as_str())) || (mname.clone().as_str() == "all".to_string().as_str()));
 if is_iteration {
                 {
-                    let receiver = method_receiver(body.clone());
+                    let raw_receiver = method_receiver(body.clone());
+let receiver = match (*raw_receiver.expr_data.clone()).clone() {
+    ExprData::ExprMethodCall { .. } => {
+                        let inner_mname = expr_method_name(raw_receiver.clone());
+if (inner_mname.as_str() == "enumerate".to_string().as_str()) {
+                            method_receiver(raw_receiver.clone())
+} else {
+                            raw_receiver.clone()
+}
+},
+    _ => raw_receiver.clone(),
+};
 let receiver_field = match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
                         let base = field_access_base(receiver.clone());
@@ -2909,6 +3192,53 @@ Rc::new(Node {
 } else {
                 map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone()))
 }
+},
+    ExprData::ExprForEach => {
+            let coll = foreach_collection(body.clone());
+let fe_body = foreach_body(body.clone());
+let fe_var = foreach_variable(body.clone());
+let coll_field = resolve_collection_field(coll.clone(), ctx.clone());
+let inner_ctx = match coll_field {
+    Some(ind_field) => Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), fe_var.clone(), ind_field.type_name.clone()),
+    param_order: ctx.param_order.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), fe_var.clone(), Rc::new(SubValueRelation::IteratedSubValue {
+    field: ind_field.clone(),
+})),
+    size_aliases: ctx.size_aliases.clone(),
+}),
+    None => Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: ctx.param_names.clone(),
+    param_order: ctx.param_order.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+    size_aliases: ctx.size_aliases.clone(),
+}),
+};
+let annotated_coll = annotate_descent(coll.clone(), ctx.clone());
+let annotated_body = annotate_descent(fe_body, inner_ctx.clone());
+Rc::new(Node {
+    name: body.name.clone(),
+    span: body.span.clone(),
+    ident_span: body.ident_span.clone(),
+    children: Rc::new(vec![annotated_coll, annotated_body.clone()]),
+    connective: body.connective.clone(),
+    params: body.params.clone(),
+    inferred: body.inferred.clone(),
+    return_cardinality: body.return_cardinality.clone(),
+    uses: body.uses.clone(),
+    body: body.body.clone(),
+    transport: body.transport.clone(),
+    properties: body.properties.clone(),
+    type_annotation: body.type_annotation.clone(),
+    is_self_recursive: body.is_self_recursive.clone(),
+    has_non_tail_self_call: body.has_non_tail_self_call.clone(),
+    match_pattern: body.match_pattern.clone(),
+    expr_data: body.expr_data.clone(),
+})
 },
     _ => map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone())),
 }

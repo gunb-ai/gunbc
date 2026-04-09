@@ -76,6 +76,23 @@ v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing, 
     variant_name: variant_name,
     field_name: field_name,
     shape: shape,
+    element_type: type_name.clone(),
+})])))
+}
+}
+
+pub fn put_inductive_field_cross(fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    {
+        let existing = match v2_rt::map_get(&fields, type_name.clone()) {
+    Some(fs) => fs.clone(),
+    None => Rc::new(vec![]),
+};
+v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing, Rc::new(vec![Rc::new(InductiveField {
+    type_name: type_name.clone(),
+    variant_name: variant_name,
+    field_name: field_name,
+    shape: shape,
+    element_type: element_type,
 })])))
 }
 }

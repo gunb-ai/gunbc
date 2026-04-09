@@ -34,6 +34,7 @@ pub struct InductiveField {
     pub variant_name: String,
     pub field_name: String,
     pub shape: RecursionShape,
+    pub element_type: String,
 }
 
 pub fn inductive_field_to_dimension(field: Rc<InductiveField>, param: String) -> Rc<RankingDimension> {

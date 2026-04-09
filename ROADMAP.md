@@ -135,7 +135,7 @@ Previously eliminated:
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 525 | Honest count — complexity violations surfaced, non-blocking |
 | L1 type knowledge | 0 | 0 | GREEN — hard gate (PR #352). Constructor functions dissolved, ListOf/ReceiverCollectionOf merged into ContainerOf. |
-| Complexity violations | 325 | 525 | Honest: 525 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
+| Complexity violations | 483 | 525 | Honest count. CX-L2 structural evidence (element_type, match-binding propagation, collection+lambda) active. Ratchets down as analyzer improves. |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
@@ -1341,16 +1341,37 @@ Over-retention:
 No test >2s without justification. Self-compile time tracked per-PR.
 Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
-### CX-NEXT: 525 → 0 violations (3 structural fixes)
+### CX-NEXT: 483 → 0 violations (structural CX-L2 completion)
 
-**Status:** 525 honest violations. Full triage in
+**Status:** 483 honest violations (down from 526). Full triage in
 [`docs/cx-violation-triage.md`](docs/cx-violation-triage.md).
-17 functions already have proven structural bounds (all O(n)
-catamorphisms on CostExpr, SizeExpr, TypeTemplate, Stack).
 
-All 525 trace to 3 root causes. 280 are direct (recursive functions
-where the analyzer can't see descent). 227 are composed (callers of
-direct unknowns — resolve automatically). 3 structural fixes cover all:
+**Direction:** Make CX-L2 (structural descent evidence in 04_infer.dag)
+the single authority for tree descent proofs. Delete the old pattern-based
+proof system (`collect_evidence_incremental` and friends in complexity.dag)
+once CX-L2 handles all tree descent patterns.
+
+**CX-L2 infrastructure landed (PR pending):**
+- `element_type` on InductiveField (cross-type inductive references)
+- `classify_let_value` — child accessor let-bindings → StrictSubValue
+- `resolve_collection_field` — structural collection detection
+- Collection+lambda evidence in ExprCall (function-call iteration =
+  method-call iteration, no separate handling)
+- ExprForEach handler
+- Match-binding type propagation (Optional unwrap → param_names with element_type)
+- InferredNode.Resolved.node registered as DirectRecursion
+
+**Remaining structural gaps (all in CX-L2):**
+- **Match-binding type for non-inductive fields**: When a match binding
+  comes from a field NOT in the inductive_fields map, its type isn't
+  propagated. Moving types to std/ (Phase 2 below) makes all fields
+  structurally visible.
+- **SCC descent evidence**: `classify_scc_recursion_pattern` (226
+  violations) doesn't use CX-L2 evidence. Wire it through.
+- **Remaining self-recursive gaps**: 45 functions where not all self-calls
+  have structural evidence due to complex iteration patterns.
+
+All 483 trace to 3 root causes. Direct + composed resolve automatically:
 
 | Fix | Direct | Composed | Total | Migration path |
 |-----|--------|----------|-------|----------------|
@@ -1379,6 +1400,10 @@ reads the declaration the same way it reads any other type. Node is
 still implemented in Rust — the .dag file is a fact declaration, not
 an implementation. This aligns with M9 (DFS the concept DAG) and makes
 Node's recursive structure visible to all downstream analysis.
+This also enables holistic inductive field registration for all compiler
+types (InferredNode, ErrorNode, etc.) instead of kernel-seeded constants,
+and makes cross-type references (Node.inferred → InferredNode) visible
+to CX-L2 without special `element_type` plumbing.
 
 **Phase 3: Node IS a .dag type (self-hosting).**
 Node is defined in .dag and compiled to Rust. The kernel seed disappears.

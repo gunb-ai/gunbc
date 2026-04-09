@@ -77,7 +77,16 @@ fn put_inductive_field(fields: Map<String, List<InductiveField>>, type_name: Str
     Some { value: fs } => fs
     None => []
   }
-  map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape }]))
+  map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }]))
+}
+
+// Cross-type variant: element_type differs from type_name (e.g., Node.inferred has element_type "InferredNode")
+fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Map<String, List<InductiveField>> {
+  let existing = match map_get(fields, type_name) {
+    Some { value: fs } => fs
+    None => []
+  }
+  map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }]))
 }
 
 fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {

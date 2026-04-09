@@ -64,7 +64,10 @@ fn stage0_cargo_check() {
 // 2026-04-09: 530→528 — merged main (CX unification -2).
 // 2026-04-09: 528→485 — ExprLet scope fix eliminates false descent evidence
 //   from let-value initializers seeing their own bindings.
-const DIAG_RATCHET: usize = 485;
+// 2026-04-09: 485→483 — CX-L2: element_type on InductiveField, match-binding
+//   type propagation, collection+lambda evidence in ExprCall, child accessor
+//   let-binding classification.
+const DIAG_RATCHET: usize = 483;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

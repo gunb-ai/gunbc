@@ -43,6 +43,7 @@ import v2.std.core {
   InternalError, VariantCollision,
   resource_use_name, resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
+  is_child_accessor_in_model, is_tree_size_reducing,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -98,7 +99,7 @@ import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
   is_recursive_type, lookup_type, lookup_type_for, merge_envs,
-  put_inductive_field, merge_inductive_fields, inductive_fields_for
+  put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for
 }
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
@@ -473,7 +474,11 @@ fn kernel_node_inductive_fields() -> Map<String, List<InductiveField>> {
   let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "properties", shape: ListRecursion)
   let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "body", shape: OptionalRecursion)
   let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "transport", shape: OptionalRecursion)
-  put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "type_annotation", shape: OptionalRecursion)
+  let fields = put_inductive_field(fields: fields, type_name: "Node", variant_name: "", field_name: "type_annotation", shape: OptionalRecursion)
+  // Cross-type: Node.inferred is InferredNode?, not Node?
+  let fields = put_inductive_field_cross(fields: fields, type_name: "Node", variant_name: "", field_name: "inferred", shape: OptionalRecursion, element_type: "InferredNode")
+  // InferredNode.Resolved.node is a Node (cross-type back-reference)
+  put_inductive_field(fields: fields, type_name: "InferredNode", variant_name: "Resolved", field_name: "node", shape: DirectRecursion)
 }
 
 fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
@@ -2244,7 +2249,7 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                       match map_get(ctx.size_aliases, aname) {
                         Some { value: DividedSize { param: p, divisor: d } } =>
                           if p == param_name {
-                            let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion }
+                            let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
                             StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
                           } else { SubValueUnknown }
                         _ => SubValueUnknown
@@ -2263,7 +2268,7 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                                 match map_get(ctx.size_aliases, lname) {
                                   Some { value: DividedSize { param: p, divisor: d } } =>
                                     if p == param_name {
-                                      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion }
+                                      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
                                       StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
                                     } else { SubValueUnknown }
                                   _ => SubValueUnknown
@@ -2282,7 +2287,7 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                                 match map_get(ctx.size_aliases, lname) {
                                   Some { value: DividedSize { param: p, divisor: d } } =>
                                     if p == param_name {
-                                      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion }
+                                      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
                                       StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
                                     } else { SubValueUnknown }
                                   _ => SubValueUnknown
@@ -2308,6 +2313,136 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
 type BlockAnnotateAcc {
   ctx: DescentContext
   children: List<Node>
+}
+
+// Resolve an expression to a ListRecursion InductiveField, if it represents
+// a collection of recursive sub-values. Handles field access on known types
+// (n.children), variables bound to list sub-values, and enumerate unwrapping.
+fn resolve_collection_field(expr: Node, ctx: DescentContext) -> InductiveField? {
+  match expr.expr_data {
+    ExprFieldAccess { summary: _ } =>
+      let base = field_access_base(texpr: expr)
+      let fname = field_access_field(texpr: expr)
+      match base.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let bname = expr_var_name(texpr: base)
+          let base_type = match map_get(ctx.param_names, bname) {
+            Some { value: t } => t
+            None =>
+              match map_get(ctx.sub_value_vars, bname) {
+                Some { value: rel } =>
+                  match rel {
+                    StrictSubValue { field: f, factor: _ } => f.type_name
+                    IteratedSubValue { field: f } => f.type_name
+                    _ => ""
+                  }
+                None => ""
+              }
+          }
+          if base_type != "" {
+            inductive_fields_for(env: ctx.type_env, type_name: base_type)
+              |> filter(f => f.field_name == fname)
+              |> filter(f => match f.shape { ListRecursion => true  _ => false })
+              |> first
+          } else { none }
+        _ => none
+      }
+    ExprVar { binding_kind: _ } =>
+      let rname = expr_var_name(texpr: expr)
+      match map_get(ctx.sub_value_vars, rname) {
+        Some { value: rel } =>
+          match rel {
+            StrictSubValue { field: f, factor: _ } =>
+              match f.shape { ListRecursion => Some { value: f }  _ => none }
+            IteratedSubValue { field: f } =>
+              match f.shape { ListRecursion => Some { value: f }  _ => none }
+            _ => none
+          }
+        None => none
+      }
+    ExprMethodCall { method_semantics: _ } =>
+      let inner_mname = expr_method_name(texpr: expr)
+      if inner_mname == "enumerate" {
+        resolve_collection_field(expr: method_receiver(texpr: expr), ctx: ctx)
+      } else { none }
+    _ => none
+  }
+}
+
+// Classify a let-binding value as a sub-value relation.
+// Handles ExprVar (alias), ExprFieldAccess (inductive field), and ExprCall (child accessor).
+fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
+  match val.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let vname = expr_var_name(texpr: val)
+      map_get(ctx.sub_value_vars, vname)
+    ExprFieldAccess { summary: _ } =>
+      let base = field_access_base(texpr: val)
+      let field = field_access_field(texpr: val)
+      match base.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let bname = expr_var_name(texpr: base)
+          let type_name = match map_get(ctx.param_names, bname) {
+            Some { value: t } => t
+            None =>
+              match map_get(ctx.sub_value_vars, bname) {
+                Some { value: rel } =>
+                  match rel {
+                    StrictSubValue { field: f, factor: _ } => f.type_name
+                    IteratedSubValue { field: f } => f.type_name
+                    _ => ""
+                  }
+                None => ""
+              }
+          }
+          if type_name != "" {
+            let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
+            let matching = fields |> filter(f => f.field_name == field) |> first
+            match matching {
+              Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
+              None => none
+            }
+          } else { none }
+        _ => none
+      }
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let callee = expr_call_func(texpr: val)
+      if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
+        let call_args = val.children
+        match call_args |> first {
+          Some { value: first_arg } =>
+            let inner = arg_value(n: first_arg)
+            match inner.expr_data {
+              ExprVar { binding_kind: _ } =>
+                let iname = expr_var_name(texpr: inner)
+                let inner_type = match map_get(ctx.param_names, iname) {
+                  Some { value: t } => t
+                  None =>
+                    match map_get(ctx.sub_value_vars, iname) {
+                      Some { value: rel } =>
+                        match rel {
+                          StrictSubValue { field: f, factor: _ } => f.type_name
+                          IteratedSubValue { field: f } => f.type_name
+                          _ => ""
+                        }
+                      None => ""
+                    }
+                }
+                if inner_type != "" {
+                  let fields = inductive_fields_for(env: ctx.type_env, type_name: inner_type)
+                  let cf = fields |> filter(f => f.field_name == "children") |> first
+                  match cf {
+                    Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
+                    None => none
+                  }
+                } else { none }
+              _ => none
+            }
+          None => none
+        }
+      } else { none }
+    _ => none
+  }
 }
 
 // Classify one self-call argument against its corresponding parameter.
@@ -2365,7 +2500,19 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             // If inner is a sub-value, the accessor result is also a sub-value
             StrictSubValue { field: _, factor: _ } => inner_rel
             IteratedSubValue { field: _ } => inner_rel
-            PreservedValue => PreservedValue
+            // Accessor applied to the parameter itself: if it's a child accessor,
+            // the result is a strict sub-value (extracts from Node.children).
+            PreservedValue =>
+              let callee = expr_call_func(texpr: arg_expr)
+              if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
+                let type_name = match map_get(ctx.param_names, param_name) { Some { value: t } => t  None => "" }
+                let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
+                let cf = fields |> filter(f => f.field_name == "children") |> first
+                match cf {
+                  Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+                  None => PreservedValue
+                }
+              } else { PreservedValue }
             SubValueUnknown => SubValueUnknown
           }
         None => SubValueUnknown
@@ -2434,8 +2581,72 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           expr_data: ExprCall { call_semantics: cs, descent_evidence: Some { value: evidence } }
         }
       } else {
-        // Non-self-call: just recurse into children
-        map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
+        // Non-self-call: if one argument is a collection (ListRecursion) and another
+        // is a lambda, extend the lambda's context with the element as IteratedSubValue.
+        // This is structurally the same as the ExprMethodCall iteration handler —
+        // flat_map(n.children, c => ...) and n.children |> flat_map(c => ...) are equivalent.
+        let call_args = body.children
+        // Find lambda argument and first non-lambda argument that resolves to a collection
+        let lambda_arg = call_args |> filter(a =>
+          match arg_value(n: a).expr_data { ExprLambda { semantics: _ } => true  _ => false }
+        ) |> first
+        let non_lambda_args = call_args |> filter(a =>
+          match arg_value(n: a).expr_data { ExprLambda { semantics: _ } => false  _ => true }
+        )
+        let collection_field = match non_lambda_args |> first {
+          Some { value: coll_arg } => resolve_collection_field(expr: arg_value(n: coll_arg), ctx: ctx)
+          None => none
+        }
+        match lambda_arg {
+          Some { value: la } =>
+            let lambda_node = arg_value(n: la)
+            let lparams = lambda_param_names(texpr: lambda_node)
+            let elem_name = lparams |> skip(lparams |> count - 1) |> first
+            let inner_ctx = match elem_name {
+              Some { value: en } =>
+                match collection_field {
+                  Some { value: ind_field } =>
+                    DescentContext {
+                      fn_name: ctx.fn_name,
+                      param_names: map_insert(ctx.param_names, en, ind_field.type_name),
+                      param_order: ctx.param_order, type_env: ctx.type_env,
+                      sub_value_vars: map_insert(empty_map(), en, IteratedSubValue { field: ind_field }),
+                      size_aliases: ctx.size_aliases
+                    }
+                  None =>
+                    DescentContext {
+                      fn_name: ctx.fn_name, param_names: ctx.param_names,
+                      param_order: ctx.param_order, type_env: ctx.type_env,
+                      sub_value_vars: empty_map(),
+                      size_aliases: ctx.size_aliases
+                    }
+                }
+              None => ctx
+            }
+            // Annotate: lambda args with inner (restricted) ctx, others with outer ctx
+            let annotated_children = call_args |> map(arg_node =>
+              let arg_val = arg_value(n: arg_node)
+              let is_lambda = match arg_val.expr_data { ExprLambda { semantics: _ } => true  _ => false }
+              if is_lambda {
+                make_arg_node(name: match arg_name(n: arg_node) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span, name_span: arg_node.span)
+              } else {
+                make_arg_node(name: match arg_name(n: arg_node) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: ctx), span: arg_node.span, name_span: arg_node.span)
+              }
+            )
+            Node {
+              name: body.name, span: body.span, ident_span: body.ident_span,
+              children: annotated_children, connective: body.connective, params: body.params,
+              inferred: body.inferred, return_cardinality: body.return_cardinality,
+              uses: body.uses, body: body.body, transport: body.transport,
+              properties: body.properties, type_annotation: body.type_annotation,
+              is_self_recursive: body.is_self_recursive,
+              has_non_tail_self_call: body.has_non_tail_self_call,
+              match_pattern: body.match_pattern, expr_data: body.expr_data
+            }
+          None =>
+            // No lambda argument: just recurse into children
+            map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
+        }
       }
     ExprMatch =>
       // If scrutinee is a parameter or a known sub-value, extend context
@@ -2490,8 +2701,12 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                         _ => ""
                       }
                       if bind_name != "" {
+                        // Register binding as sub-value AND in param_names with element_type
+                        // so inner matches can look up the unwrapped type's inductive fields.
                         DescentContext {
-                          fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env,
+                          fn_name: c.fn_name,
+                          param_names: map_insert(c.param_names, bind_name, ind_field.element_type),
+                          param_order: c.param_order, type_env: c.type_env,
                           sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                           size_aliases: c.size_aliases
                         }
@@ -2566,15 +2781,11 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         match_pattern: body.match_pattern, expr_data: body.expr_data
       }
     ExprLet =>
-      // If let-value is a known sub-value var, extend context for binding name
+      // If let-value is a known sub-value (variable alias, field access, or child accessor),
+      // extend context for binding name.
       let val = let_value(texpr: body)
       let binding_name = let_binding_name(texpr: body)
-      let val_relation = match val.expr_data {
-        ExprVar { binding_kind: _ } =>
-          let vname = expr_var_name(texpr: val)
-          map_get(ctx.sub_value_vars, vname)
-        _ => none
-      }
+      let val_relation = classify_let_value(val: val, ctx: ctx)
       // Track size aliases: let n = xs |> count → ParamSize, let mid = n / 2 → DividedSize
       let size_alias = classify_size_expr(val: val, ctx: ctx)
       let inner_size_aliases = match size_alias {
@@ -2583,8 +2794,16 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       }
       let inner_ctx = match val_relation {
         Some { value: rel } =>
+          // Register sub-value type in param_names so downstream field access works
+          let sub_type = match rel {
+            StrictSubValue { field: f, factor: _ } => f.type_name
+            IteratedSubValue { field: f } => f.type_name
+            _ => ""
+          }
           DescentContext {
-            fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
+            fn_name: ctx.fn_name,
+            param_names: if sub_type != "" { map_insert(ctx.param_names, binding_name, sub_type) } else { ctx.param_names },
+            param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
             size_aliases: inner_size_aliases
           }
@@ -2623,12 +2842,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           ExprLet =>
             let val = let_value(texpr: child)
             let bname = let_binding_name(texpr: child)
-            let val_rel = match val.expr_data {
-              ExprVar { binding_kind: _ } =>
-                let vname = expr_var_name(texpr: val)
-                map_get(acc.ctx.sub_value_vars, vname)
-              _ => none
-            }
+            let val_rel = classify_let_value(val: val, ctx: acc.ctx)
             let sa = classify_size_expr(val: val, ctx: acc.ctx)
             let new_sa = match sa {
               Some { value: se } => map_insert(acc.ctx.size_aliases, bname, se)
@@ -2636,8 +2850,15 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             }
             match val_rel {
               Some { value: rel } =>
+                let sub_type = match rel {
+                  StrictSubValue { field: f, factor: _ } => f.type_name
+                  IteratedSubValue { field: f } => f.type_name
+                  _ => ""
+                }
                 DescentContext {
-                  fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
+                  fn_name: acc.ctx.fn_name,
+                  param_names: if sub_type != "" { map_insert(acc.ctx.param_names, bname, sub_type) } else { acc.ctx.param_names },
+                  param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: map_insert(acc.ctx.sub_value_vars, bname, rel),
                   size_aliases: new_sa
                 }
@@ -2670,7 +2891,14 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let is_iteration = mname == "fold" || mname == "map" || mname == "filter" || mname == "flat_map" || mname == "any" || mname == "all"
       if is_iteration {
         // Check if receiver is a collection sub-value (field access or bound variable).
-        let receiver = method_receiver(texpr: body)
+        // Unwrap shape-preserving methods (enumerate) to reach the underlying collection.
+        let raw_receiver = method_receiver(texpr: body)
+        let receiver = match raw_receiver.expr_data {
+          ExprMethodCall { method_semantics: _ } =>
+            let inner_mname = expr_method_name(texpr: raw_receiver)
+            if inner_mname == "enumerate" { method_receiver(texpr: raw_receiver) } else { raw_receiver }
+          _ => raw_receiver
+        }
         let receiver_field = match receiver.expr_data {
           ExprFieldAccess { summary: _ } =>
             let base = field_access_base(texpr: receiver)
@@ -2778,6 +3006,42 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         }
       } else {
         map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
+      }
+    ExprForEach =>
+      // foreach (elem in collection) { body } — if collection is a ListRecursion
+      // field, register the element variable as IteratedSubValue.
+      let coll = foreach_collection(texpr: body)
+      let fe_body = foreach_body(texpr: body)
+      let fe_var = foreach_variable(texpr: body)
+      let coll_field = resolve_collection_field(expr: coll, ctx: ctx)
+      let inner_ctx = match coll_field {
+        Some { value: ind_field } =>
+          DescentContext {
+            fn_name: ctx.fn_name,
+            param_names: map_insert(ctx.param_names, fe_var, ind_field.type_name),
+            param_order: ctx.param_order, type_env: ctx.type_env,
+            sub_value_vars: map_insert(empty_map(), fe_var, IteratedSubValue { field: ind_field }),
+            size_aliases: ctx.size_aliases
+          }
+        None =>
+          DescentContext {
+            fn_name: ctx.fn_name, param_names: ctx.param_names,
+            param_order: ctx.param_order, type_env: ctx.type_env,
+            sub_value_vars: empty_map(),
+            size_aliases: ctx.size_aliases
+          }
+      }
+      let annotated_coll = annotate_descent(body: coll, ctx: ctx)
+      let annotated_body = annotate_descent(body: fe_body, ctx: inner_ctx)
+      Node {
+        name: body.name, span: body.span, ident_span: body.ident_span,
+        children: [annotated_coll, annotated_body], connective: body.connective, params: body.params,
+        inferred: body.inferred, return_cardinality: body.return_cardinality,
+        uses: body.uses, body: body.body, transport: body.transport,
+        properties: body.properties, type_annotation: body.type_annotation,
+        is_self_recursive: body.is_self_recursive,
+        has_non_tail_self_call: body.has_non_tail_self_call,
+        match_pattern: body.match_pattern, expr_data: body.expr_data
       }
     _ =>
       // All other expression types (including lambdas): recurse into children
