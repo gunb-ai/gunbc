@@ -5208,6 +5208,19 @@ fn quadratic_walk(t: Tree) -> Int {
         .collect();
     eprintln!("[adversarial] quadratic_walk: {} bounds", qw_bounds.len());
     for b in &qw_bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
-    // Currently reports O(n) — structural recursion only, ignoring per-node work.
-    // Future: should report O(n^2) when work_exponent detection is added.
+    // The structural bound reports O(n) — recursion structure is catamorphism.
+    // The existing cost algebra reports O(n * n) — accounts for count_left cost.
+    // Both are correct views. The structural bound should compose with per-node
+    // work to produce O(n^2). This requires reading work_exponent from the
+    // existing analyzer (CX-L3 currently uses work_exponent=0).
+    assert_eq!(
+        complexity.function_classes.get("quadratic_walk").map(|s| s.as_str()),
+        Some("O(n * n)"),
+        "existing cost algebra should classify quadratic_walk as O(n^2)"
+    );
+    assert_eq!(
+        complexity.function_classes.get("count_left").map(|s| s.as_str()),
+        Some("O(n)"),
+        "count_left should be O(n)"
+    );
 }
