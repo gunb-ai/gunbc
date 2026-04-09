@@ -4938,11 +4938,14 @@ func fetch_data() -> String {
 fn service_auth_source_reads_env_var() {
     let source = r#"module re3a
 
+import std.types { AuthScheme }
+import std.credentials { CredentialSource }
+
 service test.Api {
   config {
     endpoint: "https://api.example.com"
     auth: Bearer
-    auth_source: EnvVar("TEST_API_TOKEN")
+    auth_source: EnvVar { name: "TEST_API_TOKEN" }
   }
   operation GetData {
     output { data: String }

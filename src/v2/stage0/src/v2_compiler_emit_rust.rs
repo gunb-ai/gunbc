@@ -4070,21 +4070,21 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 
 pub fn emit_auth_source_ctor(source_expr: Rc<Node>) -> String {
     match (*source_expr.expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => {
-        let func_name = expr_call_func(source_expr.clone());
-match source_expr.children.clone().first().cloned() {
-    Some(arg) => match (*arg_value(arg.clone()).expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: source_name, .. } = value.as_ref() else { unreachable!() }; if (func_name.clone().as_str() == "EnvVar".to_string().as_str()) {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        auth_token: std::env::var(\"".to_string(), source_name.clone()), "\").expect(\"missing credential: ".to_string()), source_name.clone()), "\"),\n".to_string())
-} else {
-            v2_rt::concat(v2_rt::concat("        auth_token: compile_error!(\"unsupported credential source: ".to_string(), func_name.clone()), "\"),\n".to_string())
-} },
-    _ => "        auth_token: compile_error!(\"credential source requires a string literal argument\"),\n".to_string(),
+    ExprData::ExprRecordLit { .. } => match record_lit_type_name(source_expr.clone()) {
+    Some(variant) => if (variant.clone().as_str() == "EnvVar".to_string().as_str()) {
+        match source_expr.children.clone().first().cloned() {
+    Some(fi) => match (*field_init_node_value(fi.clone()).expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: env_name, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        auth_token: std::env::var(\"".to_string(), env_name.clone()), "\").expect(\"missing credential: ".to_string()), env_name.clone()), "\"),\n".to_string()) },
+    _ => "        auth_token: compile_error!(\"EnvVar.name must be a string literal\"),\n".to_string(),
 },
-    None => "        auth_token: compile_error!(\"credential source requires an argument\"),\n".to_string(),
+    None => "        auth_token: compile_error!(\"EnvVar requires a name field\"),\n".to_string(),
 }
+} else {
+        v2_rt::concat(v2_rt::concat("        auth_token: compile_error!(\"unsupported CredentialSource variant: ".to_string(), variant.clone()), "\"),\n".to_string())
 },
-    _ => "        auth_token: compile_error!(\"auth_source must be a credential source expression\"),\n".to_string(),
+    None => "        auth_token: compile_error!(\"auth_source record literal has no type name\"),\n".to_string(),
+},
+    _ => "        auth_token: compile_error!(\"auth_source must be a CredentialSource variant\"),\n".to_string(),
 }
 }
 

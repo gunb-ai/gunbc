@@ -3868,26 +3868,30 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
 }
 
 // Emit auth_token constructor line from a CredentialSource expression.
-// BRIDGE: dispatches on ExprCall constructor name until CredentialSource
-// lowering moves to LanguageSpec data (std/credentials.dag → extdeps).
-// Credential acquisition fails at runtime if unavailable (no fabrication).
+// The source expression is a record literal (e.g., EnvVar { name: "TOKEN" })
+// that has been through resolve + infer. Dispatch on the variant identity
+// (closed set: CredentialSource variants in std/credentials.dag) to generate
+// target-specific acquisition code.
 fn emit_auth_source_ctor(source_expr: Node) -> String {
   match source_expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
-      let func_name = expr_call_func(texpr: source_expr)
-      match source_expr.children |> first {
-        Some { value: arg } => match arg_value(n: arg).expr_data {
-          ExprLiteral { value: LitStr { value: source_name } } =>
-            if func_name == "EnvVar" {
-              concat("        auth_token: std::env::var(\"", source_name, "\").expect(\"missing credential: ", source_name, "\"),\n")
-            } else {
-              concat("        auth_token: compile_error!(\"unsupported credential source: ", func_name, "\"),\n")
-            }
-          _ => "        auth_token: compile_error!(\"credential source requires a string literal argument\"),\n"
+    ExprRecordLit => match record_lit_type_name(texpr: source_expr) {
+      Some { value: variant } =>
+      if variant == "EnvVar" {
+        // Extract the 'name' field from the record literal
+        match source_expr.children |> first {
+          Some { value: fi } => match field_init_node_value(n: fi).expr_data {
+            ExprLiteral { value: LitStr { value: env_name } } =>
+              concat("        auth_token: std::env::var(\"", env_name, "\").expect(\"missing credential: ", env_name, "\"),\n")
+            _ => "        auth_token: compile_error!(\"EnvVar.name must be a string literal\"),\n"
+          }
+          None => "        auth_token: compile_error!(\"EnvVar requires a name field\"),\n"
         }
-        None => "        auth_token: compile_error!(\"credential source requires an argument\"),\n"
+      } else {
+        concat("        auth_token: compile_error!(\"unsupported CredentialSource variant: ", variant, "\"),\n")
       }
-    _ => "        auth_token: compile_error!(\"auth_source must be a credential source expression\"),\n"
+      None => "        auth_token: compile_error!(\"auth_source record literal has no type name\"),\n"
+    }
+    _ => "        auth_token: compile_error!(\"auth_source must be a CredentialSource variant\"),\n"
   }
 }
 
