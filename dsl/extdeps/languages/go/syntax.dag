@@ -9,10 +9,32 @@
 module extdeps.languages.go.syntax
 
 import std.syntax {
+  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
+  BodyKind, BlockBody, TypeBody, NoBody,
   OperatorSpec,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce
 }
+
+// Go emission item forms — target keywords for .dag→Go compilation.
+// Ref: Go Specification "Declarations and scope"
+data go_item_forms: List<ItemForm> = [
+  ItemForm { kind: FuncForm, keyword: "func", has_type_params: false, has_params: true,
+    has_return_type: true, return_required: false,
+    has_uses: false, body_kind: BlockBody },
+  ItemForm { kind: StructForm, keyword: "struct", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: TypeBody },
+  ItemForm { kind: EnumForm, keyword: "type", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: NoBody },
+  ItemForm { kind: TypeAliasForm, keyword: "type", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: NoBody },
+  ItemForm { kind: ModuleForm, keyword: "package", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: NoBody }
+]
 
 // Go operator precedence (emission-relevant subset).
 // Go uses C-style operators: &&, ||, / for all division.

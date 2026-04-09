@@ -165,9 +165,9 @@ pub fn json_optional_span(value: Option<Rc<SourceSpan>>) -> String {
 pub fn json_bool(value: bool) -> String {
     if value {
         "true".to_string()
-} else {
+    } else {
         "false".to_string()
-}
+    }
 }
 
 pub fn connective_name(value: Connective) -> String {
@@ -261,9 +261,9 @@ pub fn serialize_import_node(imp: Rc<Node>) -> String {
     {
         let names_json = if import_is_all(imp.clone()) {
             "{\"kind\": \"ImportAll\"}".to_string()
-} else {
+        } else {
             v2_rt::concat(v2_rt::concat("{\"kind\": \"ImportSpecific\", \"names\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for v in import_specific_names(imp.clone()).iter().cloned() { __result.push(json_quote(v.clone())); } __result }))), "}".to_string())
-};
+        };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module_path\": ".to_string(), json_quote(imp.name.clone())), ", \"names\": ".to_string()), names_json), ", \"span\": ".to_string()), serialize_span(imp.span.clone())), "}".to_string())
 }
 }
@@ -408,7 +408,10 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
             let method = expr_method_name_at(expr_node.clone(), None);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMethodCall\", \"method\": ".to_string(), json_quote(method)), ", \"method_semantics\": ".to_string()), serialize_method_semantics(method_semantics.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string())
 },
-    ExprData::ExprBinOp { op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBinOp\", \"op\": ".to_string(), json_quote(bin_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
+    ExprData::ExprBinOp { op, algebra_field: af, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBinOp\", \"op\": ".to_string(), json_quote(bin_op_name(op.clone()))), ", \"algebra_field\": ".to_string()), match af.clone() {
+    Some(f) => json_quote(f.clone()),
+    None => "null".to_string(),
+}), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
     ExprData::ExprUnaryOp { op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprUnaryOp\", \"op\": ".to_string(), json_quote(unary_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone())); } __result }))), "}".to_string()),
     ExprData::ExprLambda { semantics, .. } => {
             let params = lambda_param_names_at(expr_node.clone(), None);
@@ -501,9 +504,9 @@ Rc::new(EmitResult {
 pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
     if { let mut __found = false; for n in names.iter().cloned() { if (n.clone().as_str() == ref_name.clone().as_str()) { __found = true; break; } } __found } {
         Rc::new(vec![])
-} else {
+    } else {
         Rc::new(vec![compile_bundle_error(v2_rt::concat(v2_rt::concat("boundary references unknown artifact '".to_string(), ref_name.clone()), "'".to_string()))])
-}
+    }
 }
 
 pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -520,14 +523,14 @@ pub fn emit_from_artifact_plan(typed: Rc<ResolvedGraph>, artifact_plan: Rc<Artif
     files: Rc::new(vec![]),
     diagnostics: Rc::new(vec![compile_bundle_error("compile_sources planned no artifacts".to_string())]),
 })
-}
+        }
 let boundary_diags = validate_boundaries(artifact_plan.clone());
 if ((boundary_diags.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
     files: Rc::new(vec![]),
     diagnostics: boundary_diags.clone(),
 })
-}
+        }
 let results = Rc::new({ let mut __result = Vec::new(); for artifact in artifact_plan.artifacts.clone().iter().cloned() { __result.push(emit_artifact(typed.clone(), artifact.clone())); } __result });
 let all_files = Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.files.clone()).iter().cloned()); } __result });
 let all_diags = Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.diagnostics.clone()).iter().cloned()); } __result });
@@ -556,7 +559,7 @@ if has_parse_errors {
     graph: None,
     diagnostics: parse_diagnostics,
 })
-} else {
+        } else {
             {
                 let modules = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.module.clone().clone().unwrap()); } __result });
 let graph = resolve_modules(modules);
@@ -565,7 +568,7 @@ Rc::new(FrontendResult {
     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
 })
 }
-}
+        }
 }
 }
 
@@ -604,7 +607,7 @@ if ((resolve_errors.len() as i64) > 0) {
     artifact_plan: empty_artifact_plan(),
     newline_indices: newline_indices.clone(),
 })
-}
+            }
 let norm = normalize_graph(graph.clone());
 let norm_diags = norm.diagnostics.clone();
 let norm_errors = Rc::new({ let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
@@ -617,7 +620,7 @@ if ((norm_errors.len() as i64) > 0) {
     artifact_plan: empty_artifact_plan(),
     newline_indices: newline_indices.clone(),
 })
-}
+            }
 let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), index.file.clone(), index.clone()));
 let typed = reconcile(norm.graph.clone(), source_indices);
 let typed_diags = typed.diagnostics.clone();
@@ -636,7 +639,7 @@ if ((type_errors.len() as i64) > 0) {
     artifact_plan: empty_artifact_plan(),
     newline_indices: newline_indices.clone(),
 })
-}
+            }
 let ownership = extract_ownership_proofs(typed.clone());
 let ownership_diags = ownership_diagnostics(ownership.clone());
 let ownership_errors = Rc::new({ let mut __result = Vec::new(); for d in ownership_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
@@ -649,7 +652,7 @@ if ((ownership_errors.len() as i64) > 0) {
     artifact_plan: empty_artifact_plan(),
     newline_indices: newline_indices.clone(),
 })
-}
+            }
 let artifact_plan = default_artifact_plan(Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(m.module.clone().name.clone()); } __result }), target);
 let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
 let emit_files = emit_result.files.clone();
@@ -657,9 +660,9 @@ let emit_diags = emit_result.diagnostics.clone();
 let emit_errors = Rc::new({ let mut __result = Vec::new(); for d in emit_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
 let final_files = if ((emit_errors.len() as i64) > 0) {
                 Rc::new(vec![])
-} else {
+            } else {
                 emit_files
-};
+            };
 Rc::new(PipelineResult {
     files: final_files,
     diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), all_diags.clone()), ownership_diags.clone()), emit_diags.clone()),

@@ -111,25 +111,25 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
     CoercionAssertion::ContainerAssertion { target: t, container_name: name, expected_template: expected, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(coerce_container_template(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into()), Some(\"".to_string()), expected.clone()), "\".to_string()));\n".to_string()),
     CoercionAssertion::CopyAssertion { target: t, dag_name: name, expected_copy: expected, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(is_copy(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into()), Some(".to_string()), if expected.clone() {
         "true".to_string()
-} else {
+    } else {
         "false".to_string()
-}), "));\n".to_string()),
+    }), "));\n".to_string()),
     CoercionAssertion::TemplateAssertion { template: tmpl, args: arg_list, expected, .. } => if ((arg_list.clone().len() as i64) == 1) {
         {
             let arg0 = first_or_empty(arg_list.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(apply_inhabitant_template1(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
 }
-} else {
+    } else {
         if ((arg_list.clone().len() as i64) == 2) {
             {
                 let arg0 = first_or_empty(arg_list.clone());
 let arg1 = second_or_empty(arg_list.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0), "\".into(), \"".to_string()), arg1), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
 }
-} else {
+        } else {
             "".to_string()
-}
-},
+        }
+    },
 }
 }
 

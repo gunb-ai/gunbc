@@ -57,14 +57,14 @@ if is_optional {
                     let inner = with_required_cardinality(n.clone());
 if (field_name.clone().as_str() == "value".to_string().as_str()) {
                         Some(inner)
-} else {
+                    } else {
                         match lookup_field_type_node(inner, field_name.clone(), source_index) {
     Some(inner_result) => Some(with_optional_cardinality(inner_result.clone())),
     None => None,
 }
+                    }
 }
-}
-} else {
+            } else {
                 {
                     let has_structure = (n.connective.clone() != Connective::NoConnective);
 if has_structure {
@@ -75,15 +75,15 @@ if is_product {
     Some(field_child) => Some(child_type_node(field_child.clone())),
     None => None,
 }
-} else {
+                            } else {
                                 lookup_coproduct_common_field_node(n.children.clone(), field_name.clone(), source_index)
+                            }
 }
-}
-} else {
+                    } else {
                         None
+                    }
 }
-}
-}
+            }
 }
     })
 }
@@ -96,9 +96,9 @@ let first_field = if found_in_all {
     Some(first_variant) => find_child_named(first_variant.clone(), field_name.clone(), source_index.clone()),
     None => None,
 }
-} else {
+        } else {
             None
-};
+        };
 match first_field {
     Some(field_child) => Some(child_type_node(field_child.clone())),
     None => None,
@@ -115,12 +115,12 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
         {
             let n_is_type_var = if (n.inferred.clone() != None) {
                 is_type_variable(n.inferred.clone().clone().unwrap())
-} else {
+            } else {
                 false
-};
+            };
 if n_is_type_var {
                 return n.clone()
-}
+            }
 let normed = normalize_access_type_node(n.clone());
 if ((normed.connective.clone() == Connective::NoConnective) && ((normed.children.clone().len() as i64) == 0)) {
                 {
@@ -129,51 +129,51 @@ if (normed.inferred.clone() != None) {
                         {
                             let next_seen = if (canonical.clone().as_str() == "".to_string().as_str()) {
                                 seen.clone()
-} else {
+                            } else {
                                 v2_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
-};
+                            };
 match normed.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: target, .. }) => if ((((target.name.clone().as_str() == normed.name.clone().as_str()) && (target.inferred.clone() == None)) && (target.connective.clone() == Connective::NoConnective)) && ((target.children.clone().len() as i64) == 0)) {
                                 normed.clone()
-} else {
+                            } else {
                                 resolve_scrutinee_type_node_seen(env.clone(), target.clone(), next_seen)
-},
+                            },
     _ => normed.clone(),
 }
 }
-} else {
+                    } else {
                         if ((canonical.clone().as_str() != "".to_string().as_str()) && emit_map_has(seen.clone(), canonical.clone())) {
                             nominal_type_ref(normed.name.clone())
-} else {
+                        } else {
                             {
                                 let next_seen = if (canonical.clone().as_str() == "".to_string().as_str()) {
                                     seen.clone()
-} else {
+                                } else {
                                     v2_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
-};
+                                };
 match lookup_type_for(env.clone(), normed.clone()) {
     Some(resolved) => if ((((resolved.name.clone().as_str() == normed.name.clone().as_str()) && (resolved.inferred.clone() == None)) && (resolved.connective.clone() == Connective::NoConnective)) && ((resolved.children.clone().len() as i64) == 0)) {
                                     normed.clone()
-} else {
+                                } else {
                                     {
                                         let result = resolve_scrutinee_type_node_seen(env.clone(), resolved.clone(), next_seen);
 let is_optional = (normed.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional {
                                             with_optional_cardinality(result)
-} else {
+                                        } else {
                                             result
+                                        }
 }
-}
-},
+                                },
     None => normed.clone(),
 }
 }
+                        }
+                    }
 }
-}
-}
-} else {
+            } else {
                 normed.clone()
-}
+            }
 }
     })
 }
@@ -188,9 +188,9 @@ if (node_is_keyed_collection(map_type.clone(), env.source_index.clone()) && ((ma
     Some(value_type) => Some(value_type.clone()),
     None => None,
 }
-} else {
+        } else {
             None
-}
+        }
 }
 }
 
@@ -204,9 +204,9 @@ if (node_is_keyed_collection(map_type.clone(), env.source_index.clone()) && ((ma
     Some(key_type) => Some(key_type.clone()),
     None => None,
 }
-} else {
+        } else {
             None
-}
+        }
 }
 }
 
@@ -221,7 +221,7 @@ if ((field.clone().as_str() == "value".to_string().as_str()) && normed_opt.clone
     access_style: FieldAccessStyle::OptionalUnwrap,
     value_shape: FieldValueShape::PlainValue,
 }))
-} else {
+            } else {
                 if normed_opt.clone() {
                     {
                         let inner = with_required_cardinality(normed.clone());
@@ -233,24 +233,24 @@ match field_summary_for_type(inner, env.clone(), field.clone()) {
     None => None,
 }
 }
-} else {
+                } else {
                     {
                         let no_structure = (resolved.connective.clone() == Connective::NoConnective);
 if no_structure {
                             None
-} else {
+                        } else {
                             {
                                 let is_product = (resolved.connective.clone() == Connective::Conj);
 if is_product {
                                     v2_rt::map_get(&build_struct_field_summaries(resolved.clone(), env.source_index.clone()), field.clone())
-} else {
+                                } else {
                                     v2_rt::map_get(&build_enum_field_summaries(resolved.children.clone(), env.source_index.clone()), field.clone())
+                                }
 }
+                        }
 }
-}
-}
-}
-}
+                }
+            }
 }
     })
 }
@@ -286,7 +286,7 @@ match matching.first().cloned() {
     algebra_template: None,
 })),
 }
-} else {
+        } else {
             Some(Rc::new(MethodFieldResult {
     field_node: field.clone(),
     result_type: rt.clone(),
@@ -294,7 +294,7 @@ match matching.first().cloned() {
     cost_shape: None,
     algebra_template: None,
 }))
-},
+        },
     _ => None,
 },
     None => None,
@@ -313,7 +313,7 @@ match direct.clone() {
     None => None,
 }
 }
-} else {
+        } else {
             {
                 let enriched = enrich_kernel_type(receiver_type.name.clone(), receiver_type.clone());
 if ((enriched.connective.clone() == Connective::Conj) && ((enriched.children.clone().len() as i64) > 0)) {
@@ -343,11 +343,11 @@ match template_match {
     None => None,
 }
 }
-} else {
+                } else {
                     None
+                }
 }
-}
-}
+        }
 }
 }
 

@@ -65,12 +65,12 @@ let initial_queue = Rc::new({ let mut __result = Vec::new(); for n in remaining.
 let final_state = kahn_cycle_drain(initial_queue, in_degree.clone(), reverse_adj, 0, (remaining.clone().len() as i64));
 if (final_state.removed_count.clone() == (remaining.clone().len() as i64)) {
             Rc::new(vec![])
-} else {
+        } else {
             Rc::new({ let mut __result = Vec::new(); for n in remaining.clone().iter().cloned() { if match v2_rt::map_get(&final_state.in_degree.clone(), n.clone()) {
     Some(d) => (d.clone() > 0),
     None => false,
 } { __result.push(n); } } __result })
-}
+        }
 }
 }
 
@@ -87,7 +87,7 @@ pub fn kahn_cycle_drain(mut queue: Rc<Vec<String>>, mut in_degree: Rc<HashMap<St
     in_degree: in_degree.clone(),
     removed_count: removed_count.clone(),
 })
-}
+        }
 let result = queue.clone().iter().cloned().fold(Rc::new(KahnState {
     in_degree: in_degree.clone(),
     removed_count: removed_count.clone(),
@@ -120,9 +120,9 @@ dependents.clone().iter().cloned().fold(acc.clone(), |inner_acc: _, dep: String|
 };
 if (deg.clone() == 0) {
                     v2_rt::rc_list_push(inner_acc.clone(), dep.clone())
-} else {
+                } else {
                     inner_acc.clone()
-}
+                }
 })
 });
 {

@@ -6,7 +6,8 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::std_syntax::{ItemForm, BodyKind, OperatorSpec, SyntaxSpec, BinOp, LiteralValue};
+pub use crate::std_syntax::{ItemForm, ItemFormKind, BodyKind, OperatorSpec, SyntaxSpec, BinOp, LiteralValue};
+use crate::std_syntax::ItemFormKind::{FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm};
 use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
 use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::std_syntax::LiteralValue::{LitBool, LitNull};
@@ -15,6 +16,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<ItemForm>>> = {
             Rc::new(vec![Rc::new(ItemForm {
+    kind: ItemFormKind::TypeAliasForm,
     keyword: "type".to_string(),
     has_type_params: true,
     has_params: false,
@@ -23,6 +25,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     has_uses: false,
     body_kind: BodyKind::TypeBody,
 }), Rc::new(ItemForm {
+    kind: ItemFormKind::FuncForm,
     keyword: "fn".to_string(),
     has_type_params: true,
     has_params: true,
@@ -31,6 +34,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     has_uses: false,
     body_kind: BodyKind::ExprBody,
 }), Rc::new(ItemForm {
+    kind: ItemFormKind::FuncForm,
     keyword: "func".to_string(),
     has_type_params: false,
     has_params: true,
@@ -39,6 +43,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     has_uses: true,
     body_kind: BodyKind::BlockBody,
 }), Rc::new(ItemForm {
+    kind: ItemFormKind::OtherForm,
     keyword: "service".to_string(),
     has_type_params: false,
     has_params: false,
@@ -47,6 +52,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     has_uses: false,
     body_kind: BodyKind::ServiceBody,
 }), Rc::new(ItemForm {
+    kind: ItemFormKind::OtherForm,
     keyword: "resource".to_string(),
     has_type_params: false,
     has_params: false,
@@ -55,6 +61,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     has_uses: false,
     body_kind: BodyKind::ResourceBody,
 }), Rc::new(ItemForm {
+    kind: ItemFormKind::OtherForm,
     keyword: "data".to_string(),
     has_type_params: false,
     has_params: false,
@@ -63,6 +70,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     has_uses: false,
     body_kind: BodyKind::ValueBody,
 }), Rc::new(ItemForm {
+    kind: ItemFormKind::OtherForm,
     keyword: "pattern".to_string(),
     has_type_params: false,
     has_params: true,
@@ -71,6 +79,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     has_uses: true,
     body_kind: BodyKind::BlockBody,
 }), Rc::new(ItemForm {
+    kind: ItemFormKind::OtherForm,
     keyword: "interface".to_string(),
     has_type_params: false,
     has_params: true,

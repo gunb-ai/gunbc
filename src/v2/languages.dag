@@ -16,14 +16,19 @@ import v2.std.core {
   LiteralValue
 }
 import std.syntax {
-  ItemForm, OperatorSpec, SyntaxSpec,
+  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
+  OperatorSpec, SyntaxSpec,
   BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody
 }
+// NamingCase: mirrors std.languages.NamingCase (single authority).
+// Cannot import directly — std/languages.dag contains CommentSyntax
+// with String? fields the bootstrap compiler doesn't yet emit correctly.
+// Import from std.languages once bootstrap handles optional string fields.
 
-import extdeps.languages.rust.syntax { rust_operators }
-import extdeps.languages.python.syntax { python_operators }
-import extdeps.languages.go.syntax { go_operators }
+import extdeps.languages.rust.syntax { rust_operators, rust_item_forms }
+import extdeps.languages.python.syntax { python_operators, python_item_forms }
+import extdeps.languages.go.syntax { go_operators, go_item_forms }
 import extdeps.languages.dag.syntax { dag_operators }
 
 import extdeps.languages.rust.emit {
@@ -198,6 +203,30 @@ type BlockSyntax {
   significant_whitespace: Bool  // true (Python) or false (Go/Rust)
 }
 
+// Expression semantics — whether control flow constructs produce values.
+// Ref: Rust Reference §8.2.15 "If expressions", Go Spec "If statements",
+// Python §6.12 "Conditional expressions".
+type IfValueForm
+  = IfExpression           // Rust: if/else natively produces value
+  | ConditionalTernary     // Python: (then) if (cond) else (else)
+  | IfStatement            // Go: if is statement, needs wrapper for value
+
+type ExpressionSemantics {
+  if_value_form: IfValueForm
+  wildcard_case: String?        // Go: "default", Rust/Python: none (use pattern)
+}
+
+// Naming case — bootstrap-local mirror of std.languages.NamingCase.
+// Only PascalCase is used by current visibility rendering.
+type NamingCase = PascalCase | SnakeCase
+
+// Visibility specification — how each language controls export/access.
+// Ref: Rust Reference §6.1 "Visibility", Go Spec "Exported identifiers".
+// Coproduct: each variant carries the data its renderer consumes.
+type VisibilitySpec
+  = KeywordVisibility { prefix: String }          // Rust: "pub "
+  | CaseVisibility { export_case: NamingCase }    // Go: PascalCase = exported
+
 type TcoSyntax {
   loop_keyword: String        // "loop" (Rust), "for" (Go), "while True" (Python)
   break_return: String        // "break" (Rust), "return" (Go/Python)
@@ -230,13 +259,25 @@ type ItemKeywords {
   import_from_keyword: String    // "" (Rust) / "from" (Python) / "" (Go)
 }
 
+// Look up an emission keyword by item kind from a SyntaxSpec's item_forms.
+// Fails closed with an error marker if no matching ItemForm exists.
+// M5: "No fallbacks that fabricate" — missing item form is a data bug
+// that should cause visible compilation failure, not silent "" emission.
+fn item_keyword_for_kind(forms: List<ItemForm>, kind: ItemFormKind) -> String {
+  let matching = forms |> filter(f => f.kind == kind)
+  match matching |> first {
+    Some { value: f } => f.keyword
+    None => "__MISSING_ITEM_KEYWORD__"
+  }
+}
+
 type LanguageSpec {
   target_name: String
   reserved_words: ReservedWords
   scaffold: ProjectScaffold
   serialization: SerializationSpec
   test_conventions: TestConventions
-  top_level_visibility: String
+  visibility: VisibilitySpec
   sharing: SharingStrategy
   indexing: IndexingSemantics
   annotations: AnnotationRequirements
@@ -245,6 +286,7 @@ type LanguageSpec {
   block_syntax: BlockSyntax
   tco: TcoSyntax
   items: ItemKeywords
+  expression_semantics: ExpressionSemantics
 }
 
 // =========================================================================
@@ -283,7 +325,7 @@ fn rust_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: "#[tokio::test]"
     },
-    top_level_visibility: rust_visibility,
+    visibility: KeywordVisibility { prefix: rust_visibility },
     sharing: SharingStrategy {
       needs_sharing: true,
       wrap_template: "Rc<{0}>",
@@ -333,14 +375,20 @@ fn rust_spec() -> LanguageSpec {
       temp_assign_op: " = "
     },
     items: ItemKeywords {
-      func_keyword: rust_func_keyword, async_prefix: rust_async_prefix,
-      struct_keyword: rust_struct_keyword, enum_keyword: rust_enum_keyword,
-      type_alias_keyword: rust_type_alias_keyword,
+      func_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: FuncForm),
+      async_prefix: rust_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: TypeAliasForm),
       param_separator: rust_param_separator, return_arrow: rust_return_arrow,
       param_type_sep: rust_param_type_sep,
-      module_keyword: rust_module_keyword,
+      module_keyword: item_keyword_for_kind(forms: rust_item_forms, kind: ModuleForm),
       import_keyword: rust_import_keyword,
       import_from_keyword: rust_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: IfExpression,
+      wildcard_case: None
     }
   }
 }
@@ -376,7 +424,7 @@ fn python_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: null
     },
-    top_level_visibility: "",
+    visibility: KeywordVisibility { prefix: "" },
     sharing: SharingStrategy {
       needs_sharing: false,
       wrap_template: "{0}",
@@ -426,14 +474,20 @@ fn python_spec() -> LanguageSpec {
       temp_assign_op: " = "
     },
     items: ItemKeywords {
-      func_keyword: python_func_keyword, async_prefix: python_async_prefix,
-      struct_keyword: python_struct_keyword, enum_keyword: python_enum_keyword,
-      type_alias_keyword: python_type_alias_keyword,
+      func_keyword: item_keyword_for_kind(forms: python_item_forms, kind: FuncForm),
+      async_prefix: python_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: python_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: python_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: python_item_forms, kind: TypeAliasForm),
       param_separator: python_param_separator, return_arrow: python_return_arrow,
       param_type_sep: python_param_type_sep,
-      module_keyword: python_module_keyword,
+      module_keyword: item_keyword_for_kind(forms: python_item_forms, kind: ModuleForm),
       import_keyword: python_import_keyword,
       import_from_keyword: python_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: ConditionalTernary,
+      wildcard_case: None
     }
   }
 }
@@ -469,7 +523,7 @@ fn go_spec() -> LanguageSpec {
       name_style: PascalCaseTestNames,
       async_decorator: null
     },
-    top_level_visibility: "",
+    visibility: CaseVisibility { export_case: PascalCase },
     sharing: SharingStrategy {
       needs_sharing: false,
       wrap_template: "{0}",
@@ -519,14 +573,20 @@ fn go_spec() -> LanguageSpec {
       temp_assign_op: " := "
     },
     items: ItemKeywords {
-      func_keyword: go_func_keyword, async_prefix: go_async_prefix,
-      struct_keyword: go_struct_keyword, enum_keyword: go_enum_keyword,
-      type_alias_keyword: go_type_alias_keyword,
+      func_keyword: item_keyword_for_kind(forms: go_item_forms, kind: FuncForm),
+      async_prefix: go_async_prefix,
+      struct_keyword: item_keyword_for_kind(forms: go_item_forms, kind: StructForm),
+      enum_keyword: item_keyword_for_kind(forms: go_item_forms, kind: EnumForm),
+      type_alias_keyword: item_keyword_for_kind(forms: go_item_forms, kind: TypeAliasForm),
       param_separator: go_param_separator, return_arrow: go_return_arrow,
       param_type_sep: go_param_type_sep,
-      module_keyword: go_module_keyword,
+      module_keyword: item_keyword_for_kind(forms: go_item_forms, kind: ModuleForm),
       import_keyword: go_import_keyword,
       import_from_keyword: go_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: IfStatement,
+      wildcard_case: Some { value: "default" }
     }
   }
 }
@@ -608,12 +668,16 @@ fn test_conventions_for_target(target: RenderTarget) -> TestConventions {
   language_spec_for_target(target: target).test_conventions
 }
 
-fn top_level_visibility_for_target(target: RenderTarget) -> String {
-  language_spec_for_target(target: target).top_level_visibility
+fn visibility_for_target(target: RenderTarget) -> VisibilitySpec {
+  language_spec_for_target(target: target).visibility
 }
 
 fn sharing_for_target(target: RenderTarget) -> SharingStrategy {
   language_spec_for_target(target: target).sharing
+}
+
+fn expression_semantics_for_target(target: RenderTarget) -> ExpressionSemantics {
+  language_spec_for_target(target: target).expression_semantics
 }
 
 // Apply sharing wrap template to a type string.

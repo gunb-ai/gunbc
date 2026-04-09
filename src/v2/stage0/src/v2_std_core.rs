@@ -253,6 +253,7 @@ pub enum ExprData {
     ExprListLit,
     ExprBinOp {
         op: BinOp,
+        algebra_field: Option<String>,
     },
     ExprUnaryOp {
         op: UnaryOpKind,
@@ -530,9 +531,9 @@ pub struct Node {
 pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
     if (name.as_str() == "".to_string().as_str()) {
         None
-} else {
+    } else {
         Some(span)
-}
+    }
 }
 
 pub fn node_name_span(n: Rc<Node>) -> Rc<SourceSpan> {
@@ -862,13 +863,13 @@ pub fn authored_name_at(source_index: Option<Rc<NewlineIndex>>, node: Rc<Node>) 
             let text = source_text_at(index.clone(), span.clone());
 if (text.clone().as_str() == "".to_string().as_str()) {
                 node.name.clone()
-} else {
+            } else {
                 text.clone()
+            }
 }
-}
-} else {
+    } else {
         node.name.clone()
-},
+    },
     None => node.name.clone(),
 },
     None => node.name.clone(),
@@ -896,9 +897,9 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
 pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
         n.children.clone().get(1 as usize).cloned()
-} else {
+    } else {
         None
-}
+    }
 }
 
 pub fn param_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
@@ -977,9 +978,9 @@ pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
 pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
         n.children.clone().get(1 as usize).cloned()
-} else {
+    } else {
         None
-}
+    }
 }
 
 pub fn field_node_from_key(n: Rc<Node>) -> Option<String> {
@@ -1150,9 +1151,9 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
 pub fn arg_name(n: Rc<Node>) -> Option<String> {
     if (n.ident_span.clone() == None) {
         None
-} else {
+    } else {
         Some(n.name.clone())
-}
+    }
 }
 
 pub fn arg_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
@@ -1160,9 +1161,9 @@ pub fn arg_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Optio
         let name = authored_name_at(source_index, n);
 if (name.clone().as_str() == "".to_string().as_str()) {
             None
-} else {
+        } else {
             Some(name.clone())
-}
+        }
 }
 }
 
@@ -1183,9 +1184,9 @@ pub fn arm_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
 pub fn arm_guard(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) == 2) {
         n.children.clone().first().cloned()
-} else {
+    } else {
         None
-}
+    }
 }
 
 pub fn arm_body(n: Rc<Node>) -> Rc<Node> {
@@ -1390,9 +1391,9 @@ pub fn block_stmts(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 pub fn record_lit_type_name(texpr: Rc<Node>) -> Option<String> {
     if (texpr.ident_span.clone() == None) {
         None
-} else {
+    } else {
         Some(texpr.name.clone())
-}
+    }
 }
 
 pub fn record_lit_type_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
@@ -1400,9 +1401,9 @@ pub fn record_lit_type_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineI
         let name = authored_name_at(source_index, texpr);
 if (name.clone().as_str() == "".to_string().as_str()) {
             None
-} else {
+        } else {
             Some(name.clone())
-}
+        }
 }
 }
 
@@ -1636,17 +1637,17 @@ pub fn field_init_operation_modifier(field_init: Rc<Node>) -> Option<OperationMo
         let fi_name = field_init_node_name(field_init);
 if (fi_name.clone().as_str() == "idempotent".to_string().as_str()) {
             Some(OperationModifier::Idempotent)
-} else {
+        } else {
             if (fi_name.clone().as_str() == "readonly".to_string().as_str()) {
                 Some(OperationModifier::Readonly)
-} else {
+            } else {
                 if (fi_name.clone().as_str() == "hermetic".to_string().as_str()) {
                     Some(OperationModifier::Hermetic)
-} else {
+                } else {
                     None
-}
-}
-}
+                }
+            }
+        }
 }
 }
 
@@ -1732,9 +1733,9 @@ pub fn expr_has_self_call(texpr: Rc<Node>, fn_name: String) -> bool {
         match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => if (expr_call_func(texpr.clone()).as_str() == fn_name.clone().as_str()) {
             true
-} else {
+        } else {
             { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found }
-},
+        },
     _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found },
 }
     })
@@ -1746,12 +1747,12 @@ pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: String, in_tail: bo
     ExprData::ExprCall { .. } => if (expr_call_func(texpr.clone()).as_str() == fn_name.clone().as_str()) {
             if (in_tail.clone() == false) {
                 true
-} else {
+            } else {
                 { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
-}
-} else {
+            }
+        } else {
             { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
-},
+        },
     ExprData::ExprError { .. } => false,
     ExprData::ExprVar { .. } => false,
     ExprData::ExprLiteral { .. } => false,
@@ -1784,7 +1785,7 @@ let body_bad = match let_body(texpr.clone()) {
 let ss_count = (ss.clone().len() as i64);
 if (ss_count.clone() == 0) {
                 false
-} else {
+            } else {
                 {
                     let init_bad = { let mut __found = false; for p in Rc::new({ let mut __result = Vec::new(); for p in Rc::new(ss.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }).iter().cloned() { if expr_has_non_tail_self_call(p.1.clone(), fn_name.clone(), false) { __found = true; break; } } __found };
 let last_bad = match ss.clone().last().cloned() {
@@ -1793,7 +1794,7 @@ let last_bad = match ss.clone().last().cloned() {
 };
 (init_bad || last_bad)
 }
-}
+            }
 },
     ExprData::ExprReturn => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), true) { __found = true; break; } } __found },
     ExprData::NoExprData => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found },
@@ -1894,9 +1895,9 @@ pub fn import_node(module_path: String, is_all: bool, specific_names: Rc<Vec<Rc<
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }))
-} else {
+        } else {
             None
-};
+        };
 Rc::new(Node {
     name: module_path.clone(),
     span: span.clone(),
@@ -2199,9 +2200,9 @@ pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
         let char_codes = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
 let offsets = Rc::new(char_codes.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(Rc::new(vec![]), |acc: _, pair: (i64, i64)| if (pair.1.clone() == 10) {
             v2_rt::rc_list_push(acc.clone(), pair.0.clone())
-} else {
+        } else {
             acc.clone()
-});
+        });
 Rc::new(NewlineIndex {
     file: file,
     offsets: offsets,
@@ -2214,18 +2215,18 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
     {
         let clamped = if (offset.clone() < 0) {
             0
-} else {
+        } else {
             offset.clone()
-};
+        };
 let line = ((Rc::new({ let mut __result = Vec::new(); for o in index.offsets.clone().iter().cloned() { if (o.clone() < clamped.clone()) { __result.push(o); } } __result }).len() as i64) + 1);
 let line_start = if (line.clone() <= 1) {
             0
-} else {
+        } else {
             match index.offsets.clone().get((line.clone() - 2) as usize).cloned() {
     Some(o) => (o.clone() + 1),
     None => 0,
 }
-};
+        };
 let col = ((clamped.clone() - line_start) + 1);
 LineCol {
     line: line.clone(),
@@ -2239,12 +2240,12 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
         let src_len = v2_rt::string_length(&index.source.clone());
 let line_start = if (line.clone() <= 1) {
             0
-} else {
+        } else {
             match index.offsets.clone().get((line.clone() - 2) as usize).cloned() {
     Some(o) => (o.clone() + 1),
     None => src_len.clone(),
 }
-};
+        };
 let line_end = match index.offsets.clone().get((line.clone() - 1) as usize).cloned() {
     Some(o) => o.clone(),
     None => src_len.clone(),

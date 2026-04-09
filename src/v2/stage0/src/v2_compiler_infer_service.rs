@@ -89,17 +89,17 @@ if is_typed_service_call_receiver(r.clone()) {
                     match extract_typed_service_name(r.clone()) {
     Some(service_name) => if emit_map_has(acc.seen.clone(), service_name.clone()) {
                         acc.clone()
-} else {
+                    } else {
                         Rc::new(UniqueAccum {
     seen: v2_rt::rc_map_insert(acc.seen.clone(), service_name.clone(), true),
     result: v2_rt::rc_list_push(acc.result.clone(), service_name.clone()),
 })
-},
+                    },
     None => acc.clone(),
 }
-} else {
+                } else {
                     acc.clone()
-}
+                }
 },
     _ => acc.clone(),
 };
@@ -117,12 +117,12 @@ pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> 
                 let f = expr_call_func_at(texpr.clone(), None);
 if emit_map_has(acc.seen.clone(), f.clone()) {
                     acc.clone()
-} else {
+                } else {
                     Rc::new(UniqueAccum {
     seen: v2_rt::rc_map_insert(acc.seen.clone(), f.clone(), true),
     result: v2_rt::rc_list_push(acc.result.clone(), f.clone()),
 })
-}
+                }
 },
     _ => acc.clone(),
 };
@@ -151,10 +151,10 @@ all_items.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<Ite
 let has_no_body = (item.body.clone() == None);
 if is_not_func.clone() {
                 reg.clone()
-} else {
+            } else {
                 if has_no_body.clone() {
                     reg.clone()
-} else {
+                } else {
                     {
                         let called = collect_called_func_names(item.body.clone().clone().unwrap());
 let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&reg, callee_name.clone()) {
@@ -163,13 +163,13 @@ let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.c
 }).iter().cloned()); } __result });
 let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone().as_str() == svc.clone().as_str()) { __found = true; break; } } __found } {
                             svc_list.clone()
-} else {
+                        } else {
                             v2_rt::rc_list_push(svc_list.clone(), svc.clone())
-});
+                        });
 let same_count = ((merged.clone().len() as i64) == (info.service_names.clone().len() as i64));
 if same_count.clone() {
                             reg.clone()
-} else {
+                        } else {
                             v2_rt::rc_map_insert(reg.clone(), item.name.clone(), Rc::new(ItemInfo {
     name: info.name.clone(),
     kind: info.kind.clone(),
@@ -179,10 +179,10 @@ if same_count.clone() {
     is_self_recursive: info.is_self_recursive.clone(),
     has_non_tail_self_call: info.has_non_tail_self_call.clone(),
 }))
+                        }
 }
-}
-}
-}
+                }
+            }
 },
     None => reg.clone(),
 })
@@ -227,9 +227,9 @@ match v2_rt::map_get(&service_registry, path.clone()) {
     None => None,
 }
 }
-} else {
+    } else {
         None
-}
+    }
 }
 
 pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<ServiceMethodResult>> {
@@ -243,7 +243,7 @@ match matching.first().cloned() {
     result_type: unit_type(),
     op_params: op.params.clone(),
 }))
-} else {
+            } else {
                 Some(Rc::new(ServiceMethodResult {
     result_type: Rc::new(Node {
     name: "".to_string(),
@@ -286,15 +286,15 @@ match matching.first().cloned() {
 }),
     op_params: op.params.clone(),
 }))
-},
+            },
     None => None,
 }
 },
     None => None,
 }
-} else {
+    } else {
         None
-}
+    }
 }
 
 pub fn service_op_entry(child: Rc<Node>) -> Rc<OpEntry> {

@@ -11,11 +11,12 @@ use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::v2_std_core::{BinOp, LiteralValue};
 use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::v2_std_core::LiteralValue::*;
-pub use crate::std_syntax::{ItemForm, OperatorSpec, SyntaxSpec, BodyKind};
+pub use crate::std_syntax::{ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec, BodyKind};
+use crate::std_syntax::ItemFormKind::{FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm};
 use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
-pub use crate::extdeps_languages_rust_syntax::{rust_operators};
-pub use crate::extdeps_languages_python_syntax::{python_operators};
-pub use crate::extdeps_languages_go_syntax::{go_operators};
+pub use crate::extdeps_languages_rust_syntax::{rust_operators, rust_item_forms};
+pub use crate::extdeps_languages_python_syntax::{python_operators, python_item_forms};
+pub use crate::extdeps_languages_go_syntax::{go_operators, go_item_forms};
 pub use crate::extdeps_languages_dag_syntax::{dag_operators};
 pub use crate::extdeps_languages_rust_emit::{rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_string_types, rust_method_templates, rust_func_keyword, rust_async_prefix, rust_struct_keyword, rust_enum_keyword, rust_type_alias_keyword, rust_param_separator, rust_return_arrow, rust_param_type_sep, rust_module_keyword, rust_import_keyword, rust_import_from_keyword};
 pub use crate::extdeps_languages_python_emit::{python_keywords, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates, python_string_types, python_func_keyword, python_async_prefix, python_struct_keyword, python_enum_keyword, python_type_alias_keyword, python_param_separator, python_return_arrow, python_param_type_sep, python_module_keyword, python_import_keyword, python_import_from_keyword};
@@ -23,6 +24,9 @@ pub use crate::extdeps_languages_go_emit::{go_keywords, go_reserved, go_reserved
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
+use IfValueForm::*;
+use NamingCase::*;
+use VisibilitySpec::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -155,6 +159,38 @@ pub struct BlockSyntax {
     pub significant_whitespace: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum IfValueForm {
+    IfExpression,
+    ConditionalTernary,
+    IfStatement,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ExpressionSemantics {
+    pub if_value_form: IfValueForm,
+    pub wildcard_case: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NamingCase {
+    PascalCase,
+    SnakeCase,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum VisibilitySpec {
+    KeywordVisibility {
+        prefix: String,
+    },
+    CaseVisibility {
+        export_case: NamingCase,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoSyntax {
     pub loop_keyword: String,
@@ -180,6 +216,16 @@ pub struct ItemKeywords {
     pub import_from_keyword: String,
 }
 
+pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -> String {
+    {
+        let matching = Rc::new({ let mut __result = Vec::new(); for f in forms.iter().cloned() { if (f.kind.clone() == kind.clone()) { __result.push(f); } } __result });
+match matching.first().cloned() {
+    Some(f) => f.keyword.clone(),
+    None => "__MISSING_ITEM_KEYWORD__".to_string(),
+}
+}
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
@@ -187,7 +233,7 @@ pub struct LanguageSpec {
     pub scaffold: Rc<ProjectScaffold>,
     pub serialization: Rc<SerializationSpec>,
     pub test_conventions: Rc<TestConventions>,
-    pub top_level_visibility: String,
+    pub visibility: Rc<VisibilitySpec>,
     pub sharing: Rc<SharingStrategy>,
     pub indexing: Rc<IndexingSemantics>,
     pub annotations: Rc<AnnotationRequirements>,
@@ -196,6 +242,7 @@ pub struct LanguageSpec {
     pub block_syntax: Rc<BlockSyntax>,
     pub tco: Rc<TcoSyntax>,
     pub items: Rc<ItemKeywords>,
+    pub expression_semantics: Rc<ExpressionSemantics>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -231,7 +278,9 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     name_style: TestNameStyle::SnakeCaseTestNames,
     async_decorator: Some("#[tokio::test]".to_string()),
 }),
-    top_level_visibility: rust_visibility(),
+    visibility: Rc::new(VisibilitySpec::KeywordVisibility {
+    prefix: rust_visibility(),
+}),
     sharing: Rc::new(SharingStrategy {
     needs_sharing: true,
     wrap_template: "Rc<{0}>".to_string(),
@@ -284,17 +333,21 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     temp_assign_op: " = ".to_string(),
 }),
     items: Rc::new(ItemKeywords {
-    func_keyword: rust_func_keyword(),
+    func_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::FuncForm),
     async_prefix: rust_async_prefix(),
-    struct_keyword: rust_struct_keyword(),
-    enum_keyword: rust_enum_keyword(),
-    type_alias_keyword: rust_type_alias_keyword(),
+    struct_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::StructForm),
+    enum_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::EnumForm),
+    type_alias_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::TypeAliasForm),
     param_separator: rust_param_separator(),
     return_arrow: rust_return_arrow(),
     param_type_sep: rust_param_type_sep(),
-    module_keyword: rust_module_keyword(),
+    module_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::ModuleForm),
     import_keyword: rust_import_keyword(),
     import_from_keyword: rust_import_from_keyword(),
+}),
+    expression_semantics: Rc::new(ExpressionSemantics {
+    if_value_form: IfValueForm::IfExpression,
+    wildcard_case: None,
 }),
 })
 }
@@ -332,7 +385,9 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     name_style: TestNameStyle::SnakeCaseTestNames,
     async_decorator: None,
 }),
-    top_level_visibility: "".to_string(),
+    visibility: Rc::new(VisibilitySpec::KeywordVisibility {
+    prefix: "".to_string(),
+}),
     sharing: Rc::new(SharingStrategy {
     needs_sharing: false,
     wrap_template: "{0}".to_string(),
@@ -385,17 +440,21 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     temp_assign_op: " = ".to_string(),
 }),
     items: Rc::new(ItemKeywords {
-    func_keyword: python_func_keyword(),
+    func_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::FuncForm),
     async_prefix: python_async_prefix(),
-    struct_keyword: python_struct_keyword(),
-    enum_keyword: python_enum_keyword(),
-    type_alias_keyword: python_type_alias_keyword(),
+    struct_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::StructForm),
+    enum_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::EnumForm),
+    type_alias_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::TypeAliasForm),
     param_separator: python_param_separator(),
     return_arrow: python_return_arrow(),
     param_type_sep: python_param_type_sep(),
-    module_keyword: python_module_keyword(),
+    module_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::ModuleForm),
     import_keyword: python_import_keyword(),
     import_from_keyword: python_import_from_keyword(),
+}),
+    expression_semantics: Rc::new(ExpressionSemantics {
+    if_value_form: IfValueForm::ConditionalTernary,
+    wildcard_case: None,
 }),
 })
 }
@@ -433,7 +492,9 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     name_style: TestNameStyle::PascalCaseTestNames,
     async_decorator: None,
 }),
-    top_level_visibility: "".to_string(),
+    visibility: Rc::new(VisibilitySpec::CaseVisibility {
+    export_case: NamingCase::PascalCase,
+}),
     sharing: Rc::new(SharingStrategy {
     needs_sharing: false,
     wrap_template: "{0}".to_string(),
@@ -486,17 +547,21 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     temp_assign_op: " := ".to_string(),
 }),
     items: Rc::new(ItemKeywords {
-    func_keyword: go_func_keyword(),
+    func_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::FuncForm),
     async_prefix: go_async_prefix(),
-    struct_keyword: go_struct_keyword(),
-    enum_keyword: go_enum_keyword(),
-    type_alias_keyword: go_type_alias_keyword(),
+    struct_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::StructForm),
+    enum_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::EnumForm),
+    type_alias_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::TypeAliasForm),
     param_separator: go_param_separator(),
     return_arrow: go_return_arrow(),
     param_type_sep: go_param_type_sep(),
-    module_keyword: go_module_keyword(),
+    module_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::ModuleForm),
     import_keyword: go_import_keyword(),
     import_from_keyword: go_import_from_keyword(),
+}),
+    expression_semantics: Rc::new(ExpressionSemantics {
+    if_value_form: IfValueForm::IfStatement,
+    wildcard_case: Some("default".to_string()),
 }),
 })
 }
@@ -583,12 +648,16 @@ pub fn test_conventions_for_target(target: RenderTarget) -> Rc<TestConventions> 
     language_spec_for_target(target).test_conventions.clone()
 }
 
-pub fn top_level_visibility_for_target(target: RenderTarget) -> String {
-    language_spec_for_target(target).top_level_visibility.clone()
+pub fn visibility_for_target(target: RenderTarget) -> Rc<VisibilitySpec> {
+    language_spec_for_target(target).visibility.clone()
 }
 
 pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
     language_spec_for_target(target).sharing.clone()
+}
+
+pub fn expression_semantics_for_target(target: RenderTarget) -> Rc<ExpressionSemantics> {
+    language_spec_for_target(target).expression_semantics.clone()
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
