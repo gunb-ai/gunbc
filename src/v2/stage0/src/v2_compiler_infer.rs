@@ -2562,52 +2562,87 @@ match cf {
             None
 }
 },
+    _ => {
+        let type_based = match val.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: rt, .. }) => if is_container_type(rt.name.clone()) {
+            {
+                let elem = match rt.children.clone().first().cloned() {
+    Some(c) => c.name.clone(),
+    None => "".to_string(),
+};
+if ((elem.clone().as_str() != "".to_string().as_str()) && (v2_rt::map_get(&ctx.type_env.clone().recursive_type_set.clone(), elem.clone()) != None)) {
+                    {
+                        let fields = inductive_fields_for(ctx.type_env.clone(), elem.clone());
+let cf = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if match f.shape.clone() {
+    RecursionShape::ListRecursion => true,
+    _ => false,
+} { __result.push(f); } } __result }).first().cloned();
+match cf {
+    Some(ind_field) => Some(Rc::new(SubValueRelation::StrictSubValue {
+    field: ind_field.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+})),
+    None => None,
+}
+}
+} else {
+                    None
+}
+}
+} else {
+            None
+},
+    _ => None,
+};
+match type_based.clone() {
+    Some(_) => type_based.clone(),
+    None => match (*val.expr_data.clone()).clone() {
     ExprData::ExprBinOp { op, .. } => {
-        let left = binop_left(val.clone());
+            let left = binop_left(val.clone());
 let right = binop_right(val.clone());
 match op.clone() {
     BinOp::Sub => match (*left.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-            let lname = expr_var_name(left.clone());
+                let lname = expr_var_name(left.clone());
 if ((v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), lname.clone()) != None)) {
-                match (*right.expr_data.clone()).clone() {
+                    match (*right.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
-                    Some(Rc::new(SubValueRelation::ArithmeticDescent {
+                        Some(Rc::new(SubValueRelation::ArithmeticDescent {
     param: lname.clone(),
     factor: Rc::new(ShrinkFactor::ConstantShrink {
     amount: k.clone(),
 }),
 }))
 } else {
-                    None
+                        None
 } },
     _ => None,
 }
 } else {
-                None
+                    None
 }
 },
     _ => None,
 },
     BinOp::Div => {
-            let left_name = match (*left.expr_data.clone()).clone() {
+                let left_name = match (*left.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-                let lname = expr_var_name(left.clone());
-if ((v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), lname.clone()) != None)) {
-                    lname.clone()
-} else {
-                    "".to_string()
-}
-},
-    ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
-                let inner_left = binop_left(left.clone());
-match (*inner_left.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                    let lname = expr_var_name(inner_left.clone());
+                    let lname = expr_var_name(left.clone());
 if ((v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), lname.clone()) != None)) {
                         lname.clone()
 } else {
                         "".to_string()
+}
+},
+    ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
+                    let inner_left = binop_left(left.clone());
+match (*inner_left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                        let lname = expr_var_name(inner_left.clone());
+if ((v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), lname.clone()) != None)) {
+                            lname.clone()
+} else {
+                            "".to_string()
 }
 },
     _ => "".to_string(),
@@ -2616,21 +2651,21 @@ if ((v2_rt::map_get(&ctx.param_names.clone(), lname.clone()) != None) || (v2_rt:
     _ => "".to_string(),
 };
 if (left_name.clone().as_str() != "".to_string().as_str()) {
-                match (*right.expr_data.clone()).clone() {
+                    match (*right.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 1) {
-                    Some(Rc::new(SubValueRelation::ArithmeticDescent {
+                        Some(Rc::new(SubValueRelation::ArithmeticDescent {
     param: left_name.clone(),
     factor: Rc::new(ShrinkFactor::ProportionalShrink {
     divisor: k.clone(),
 }),
 }))
 } else {
-                    None
+                        None
 } },
     _ => None,
 }
 } else {
-                None
+                    None
 }
 },
     BinOp::Add => None,
@@ -2638,11 +2673,11 @@ if (left_name.clone().as_str() != "".to_string().as_str()) {
 }
 },
     ExprData::ExprMethodCall { .. } => {
-        let mname = expr_method_name(val.clone());
+            let mname = expr_method_name(val.clone());
 let is_collection_preserving = (((((mname.clone().as_str() == "skip".to_string().as_str()) || (mname.clone().as_str() == "filter".to_string().as_str())) || (mname.clone().as_str() == "take".to_string().as_str())) || (mname.clone().as_str() == "enumerate".to_string().as_str())) || (mname.clone().as_str() == "reverse".to_string().as_str()));
 if is_collection_preserving {
-            {
-                let receiver = method_receiver(val.clone());
+                {
+                    let receiver = method_receiver(val.clone());
 let coll_field = resolve_collection_field(receiver, ctx.clone());
 match coll_field {
     Some(ind_field) => Some(Rc::new(SubValueRelation::StrictSubValue {
@@ -2653,10 +2688,13 @@ match coll_field {
 }
 }
 } else {
-            None
+                None
 }
 },
     _ => None,
+},
+}
+},
 }
 }
 

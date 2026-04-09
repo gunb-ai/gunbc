@@ -2439,6 +2439,33 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
           None => none
         }
       } else { none }
+    // Type-based collection detection: if the inferred type is List<T> where T is a
+    // recursive type, the result is a ListRecursion collection. This covers function
+    // calls like match_arm_nodes(texpr) → List<Node> without naming specific functions.
+    _ =>
+      let type_based = match val.inferred {
+        Some { value: Resolved { node: rt } } =>
+          if is_container_type(name: rt.name) {
+            let elem = match rt.children |> first {
+              Some { value: c } => c.name
+              None => ""
+            }
+            if elem != "" && map_get(ctx.type_env.recursive_type_set, elem) != none {
+              let fields = inductive_fields_for(env: ctx.type_env, type_name: elem)
+              let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+              match cf {
+                Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
+                None => none
+              }
+            } else { none }
+          } else { none }
+        _ => none
+      }
+      match type_based {
+        Some { value: _ } => type_based
+        None =>
+          // Sub-classify by expression kind for non-type-based patterns
+          match val.expr_data {
     // Arithmetic let-bindings: let rest = value / 10, let next = pos + 1, let smaller = n - 1
     ExprBinOp { op: op } =>
       let left = binop_left(texpr: val)
@@ -2503,7 +2530,9 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
           None => none
         }
       } else { none }
-    _ => none
+            _ => none
+          }
+      }
   }
 }
 
