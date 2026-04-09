@@ -1354,13 +1354,13 @@ rest_output_struct_uses_serde_rename
 Compile `review.dag` + its imports to a binary that runs with
 `--dry-run`, returning mock responses.
 
-- [ ] RE-2a: Async for-each — detect FuncItem body, emit `.await?`
+- [x] RE-2a: Async for-each — detect FuncItem body, emit `.await?`
   in collection loop body
-- [ ] RE-2b: Cross-module service resolution — review.dag imports
+- [x] RE-2b: Cross-module service resolution — review.dag imports
   from 4 modules (FF-9 handles this; verify it works for dsl/ tree)
-- [ ] RE-2c: Conditional guard — review.dag's `already_done` check
+- [x] RE-2c: Conditional guard — review.dag's `already_done` check
   needs to short-circuit (`if`/`return` or restructured nesting)
-- [ ] RE-2d: End-to-end compilation gate
+- [x] RE-2d: End-to-end compilation gate
 
 **Blocked by:** RE-1
 
@@ -1506,7 +1506,7 @@ RE item is implemented — the ratchet counts tests that exist AND pass.
 | Metric | Current | Target |
 |--------|---------|--------|
 | RE-1 transport tests | 7/10 | 10 |
-| RE-2 compilation tests | 0/3 (3 cargo check errors, ratchet at 3) | 3 |
+| RE-2 compilation tests | 3/3 (0 cargo check errors) | 3 |
 | RE-3 integration tests | 0/4 | 4 |
 | RE-4 API tests | 0/3 | 3 |
 | RE-5 multi-backend test | 0/1 | 1 |

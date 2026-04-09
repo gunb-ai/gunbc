@@ -4913,11 +4913,11 @@ fn review_dag_compiles_to_rust() {
     // Cleanup
     let _ = std::fs::remove_dir_all(&out_dir);
 
-    // RE-2 ratchet: track progress toward 0 cargo check errors.
-    // Current: 3 errors (E0308 type mismatches in shell return types).
-    // Reduced from 51 → 23 → 3 via: FuncItem detection (async+service params),
-    // for-each variable fix, runtime contains/count, Rc collection wrap.
-    const RE2_ERROR_RATCHET: usize = 3;
+    // RE-2 ratchet: 0 cargo check errors.
+    // Reduced from 51 → 23 → 3 → 0 via: FuncItem detection (async+service params),
+    // for-each variable fix, runtime contains/count, Rc collection wrap,
+    // shell Optional return, op arg ordering, Optional/Json call-site coercion.
+    const RE2_ERROR_RATCHET: usize = 0;
     assert!(
         error_count <= RE2_ERROR_RATCHET,
         "RE-2: review.dag cargo check errors {} exceeds ratchet {} (regression)",

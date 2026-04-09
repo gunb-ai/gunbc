@@ -1832,16 +1832,6 @@ pub fn service_config_auth_input(n: Rc<Node>) -> Option<Rc<Node>> {
     find_property(n.properties.clone(), "svc_auth_input".to_string())
 }
 
-pub fn service_config_auth_input_name(n: Rc<Node>) -> Option<String> {
-    match service_config_auth_input(n) {
-    Some(ai) => match (*ai.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => Some(expr_var_name(ai.clone())),
-    _ => None,
-},
-    None => None,
-}
-}
-
 pub fn module_node(name: String, imports: Rc<Vec<Rc<Node>>>, items: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: name.clone(),

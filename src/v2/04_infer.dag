@@ -2082,11 +2082,13 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
   let results = props |> map(p =>
     let val = field_init_node_value(n: p)
     let val_result = infer_expr(texpr: val, scope: scope, expected: none)
-    // Reconstruct field-init node with typed value, preserving name and spans
+    // Reconstruct property node with typed value, preserving name, spans,
+    // and any additional children beyond the first (e.g., case pattern nodes).
+    let extra_children = p.children |> skip(1)
     {
       prop: Node {
         name: p.name, span: p.span, ident_span: p.ident_span,
-        children: [val_result.typed], connective: p.connective,
+        children: concat([val_result.typed], extra_children), connective: p.connective,
         params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
         uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
         type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,

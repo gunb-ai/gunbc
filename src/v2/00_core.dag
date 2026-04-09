@@ -1390,16 +1390,6 @@ fn service_config_auth_input(n: Node) -> Node? {
   find_property(props: n.properties, prop_name: "svc_auth_input")
 }
 
-fn service_config_auth_input_name(n: Node) -> String? {
-  match service_config_auth_input(n: n) {
-    Some { value: ai } => match ai.expr_data {
-      ExprVar { binding_kind: _ } => Some { value: expr_var_name(texpr: ai) }
-      _ => none
-    }
-    None => none
-  }
-}
-
 // --- Module as Node ---
 // A Module dissolves into a Node where:
 //   name = module name, params = import nodes, children = item nodes.
