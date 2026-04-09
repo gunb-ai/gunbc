@@ -53,6 +53,8 @@ use crate::std_syntax::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull
 pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTemplate};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
+pub use crate::std_induction::{SubValueRelation};
+use crate::std_induction::SubValueRelation::*;
 use TokenShape::*;
 use Connective::*;
 use Cardinality::*;
@@ -277,6 +279,7 @@ pub enum ExprData {
     },
     ExprCall {
         call_semantics: Option<CallSemantics>,
+        descent_evidence: Option<Rc<Vec<Rc<SubValueRelation>>>>,
     },
     ExprMethodCall {
         method_semantics: Option<Rc<MethodSemantics>>,
@@ -1304,6 +1307,13 @@ pub fn expr_call_func(texpr: Rc<Node>) -> String {
 
 pub fn expr_call_func_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     authored_name_at(source_index, texpr)
+}
+
+pub fn expr_call_descent_evidence(texpr: Rc<Node>) -> Option<Rc<Vec<Rc<SubValueRelation>>>> {
+    match (*texpr.expr_data.clone()).clone() {
+    ExprData::ExprCall { descent_evidence: de, .. } => de.clone(),
+    _ => None,
+}
 }
 
 pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {

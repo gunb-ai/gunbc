@@ -59,7 +59,7 @@ use AtomicCost::*;
 use CostBound::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum RecursionShape {
     DirectRecursion,
     ListRecursion,
@@ -83,7 +83,7 @@ pub fn inductive_field_to_dimension(field: Rc<InductiveField>, param: String) ->
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum ShrinkFactor {
     UnitShrink,
     ConstantShrink {
@@ -95,7 +95,7 @@ pub enum ShrinkFactor {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum SubValueRelation {
     StrictSubValue {
         field: Rc<InductiveField>,
@@ -141,7 +141,7 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum PolynomialExponent {
     IntegerExp {
         value: i64,
@@ -157,7 +157,7 @@ pub enum PolynomialExponent {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum AtomicCost {
     PolyCost {
         param: String,
@@ -177,7 +177,7 @@ impl AtomicCost {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum CostBound {
     ConstantBound,
     AtomicBound {
