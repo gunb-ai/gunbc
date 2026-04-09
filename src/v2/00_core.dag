@@ -400,30 +400,6 @@ fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
   if name == "" { none } else { Some { value: span } }
 }
 
-// =========================================================================
-// Synthetic ident_span — names for compiler-created nodes with no source text
-//
-// Kernel types (Int, String, Unit), Optional variants (Some, None), and
-// type variables have names but no source position. After Node.name is
-// deleted, authored_name_at must recover these names from ident_span.
-//
-// Encoding: the SourceSpan.file field carries "@synthetic:<name>".
-// The "@synthetic:" prefix is impossible in real file paths, so no ambiguity.
-// authored_name_at checks for this prefix before source text lookup.
-// =========================================================================
-
-fn synthetic_ident_span(name: String) -> SourceSpan {
-  SourceSpan { file: concat("@synthetic:", name), start: 0, end: 0 }
-}
-
-fn is_synthetic_span(span: SourceSpan) -> Bool {
-  string_length(s: span.file) > 12 && substring(s: span.file, start: 0, end: 12) == "@synthetic:"
-}
-
-fn synthetic_span_name(span: SourceSpan) -> String {
-  substring(s: span.file, start: 12, end: string_length(s: span.file))
-}
-
 // Extract the identifier span from a node, falling back to the node span.
 // Use this when you need a SourceSpan (not optional) for the identifier.
 fn node_name_span(n: Node) -> SourceSpan {
@@ -627,17 +603,13 @@ fn generic_param_name_at(n: Node, source_index: NewlineIndex?) -> String { autho
 fn authored_name_at(source_index: NewlineIndex?, node: Node) -> String {
   match node.ident_span {
     Some { value: span } =>
-      if is_synthetic_span(span: span) {
-        synthetic_span_name(span: span)
-      } else {
-        match source_index {
-          Some { value: index } =>
-            if span.file == index.file {
-              let text = source_text_at(index: index, span: span)
-              if text == "" { node.name } else { text }
-            } else { node.name }
-          None => node.name
-        }
+      match source_index {
+        Some { value: index } =>
+          if span.file == index.file {
+            let text = source_text_at(index: index, span: span)
+            if text == "" { node.name } else { text }
+          } else { node.name }
+        None => node.name
       }
     None => node.name
   }
@@ -1436,12 +1408,12 @@ fn leaf_node_with_span(name: String, span: SourceSpan) -> Node {
 // Each constant encodes the structural form once; callers reference it.
 // Unit is the terminal object (empty product: Conj + 0 children).
 // All others are bare leaves until std declarations carry richer structure.
-data unit_type: Node = Node { name: "Unit", span: make_span(start: 0, end: 0), ident_span: Some { value: synthetic_ident_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data bool_type: Node = Node { name: "Bool", span: make_span(start: 0, end: 0), ident_span: Some { value: synthetic_ident_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data string_type: Node = Node { name: "String", span: make_span(start: 0, end: 0), ident_span: Some { value: synthetic_ident_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data int_type: Node = Node { name: "Int", span: make_span(start: 0, end: 0), ident_span: Some { value: synthetic_ident_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data float_type: Node = Node { name: "Float", span: make_span(start: 0, end: 0), ident_span: Some { value: synthetic_ident_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data none_type: Node = Node { name: "None", span: make_span(start: 0, end: 0), ident_span: Some { value: synthetic_ident_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data unit_type: Node = Node { name: "Unit", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data bool_type: Node = Node { name: "Bool", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data string_type: Node = Node { name: "String", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data int_type: Node = Node { name: "Int", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data float_type: Node = Node { name: "Float", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data none_type: Node = Node { name: "None", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 // Tuple type name — tuples are parameterized Conj products, no bare constant.
 data tuple_type_name: String = "Tuple"
 // Error sentinel — inference failed. CompilerError in inferred field
