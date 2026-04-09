@@ -4794,21 +4794,11 @@ fn sum_tree(t: Tree) -> Int {
     // of `cs` (which is the `children` inductive field of Tree).
     // If CX-L2 doesn't handle fold lambdas yet, the bound will be absent.
     // When it works, the expected bound is O(n).
-    if !bounds.is_empty() {
-        assert_eq!(bounds[0].param, "t");
-        assert_eq!(
-            *bounds[0].bound,
-            v2_compiler::std_induction::CostBound::AtomicBound {
-                cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
-                    param: "t".to_string(),
-                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
-                }),
-            },
-            "fold over children should produce catamorphism O(n) bound"
-        );
-    }
-    // If bounds is empty, the test still passes — fold lambda descent is
-    // a harder pattern that may not be wired in CX-L2 yet.
+    // Lambda bodies are opaque — the self-call inside the fold closure is
+    // not visible to CX-L2. Proving this pattern requires fold/method_semantics
+    // to authorize descent evidence flow. For now, correctly produces no bound.
+    assert!(bounds.is_empty(),
+        "fold-over-children should produce no bound until method_semantics authorization is implemented");
 }
 
 #[test]
@@ -5300,4 +5290,105 @@ fn quadratic_walk(t: Tree) -> Int {
         Some("O(n)"),
         "count_left should be O(n)"
     );
+}
+
+#[test]
+fn adversarial_take_mid_mul_no_proportional() {
+    // take(mid * 2) must NOT produce ProportionalShrink.
+    // Only Add/Sub with a literal constant are valid adjustments.
+    let source = r#"module bad_shrink
+
+fn bad_split(xs: List<Int>) -> Int {
+  let n = xs |> count
+  if n == 0 { 0 }
+  else {
+    let mid = n / 2
+    1 + bad_split(xs: xs |> take(mid * 2))
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "bad_split")
+        .collect();
+    eprintln!("[adversarial] bad_split: {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // mid * 2 is NOT a small-constant adjustment → should not get ProportionalShrink.
+    // Expect either no bound or O(n) catamorphism at most (fail-closed).
+    for b in &bounds {
+        assert_ne!(
+            *b.bound,
+            v2_compiler::std_induction::CostBound::AtomicBound {
+                cost: Rc::new(v2_compiler::std_induction::AtomicCost::LogCost {
+                    param: "xs".to_string(),
+                }),
+            },
+            "take(mid * 2) must not produce O(log n) — that fabricates a false proof"
+        );
+    }
+}
+
+#[test]
+fn adversarial_lambda_hidden_recursion() {
+    // Self-call hidden inside a fold lambda invoked twice must NOT get
+    // a linear bound. Lambda bodies are opaque to CX-L2.
+    let source = r#"module lambda_hidden
+
+type Tree = Leaf | Branch { left: Tree, right: Tree }
+
+fn bad_walk(t: Tree) -> Int {
+  match t {
+    Leaf => 0
+    Branch { left: l, right: _ } =>
+      [1, 2] |> fold(init: 0, f: (acc, x) => acc + bad_walk(t: l))
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "bad_walk")
+        .collect();
+    eprintln!("[adversarial] bad_walk (lambda): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // Lambda body is opaque → no descent evidence collected → no structural bound
+    assert!(bounds.is_empty(),
+        "lambda-hidden self-call must not produce a structural bound");
+}
+
+#[test]
+fn adversarial_duplicate_same_child() {
+    // f(l) + f(l): two calls descending on the SAME child.
+    // T(n) = 2T(n-1) + O(1) = O(2^n), NOT a catamorphism.
+    let source = r#"module dup_child
+
+type Tree = Leaf | Branch { left: Tree, right: Tree }
+
+fn dup(t: Tree) -> Int {
+  match t {
+    Leaf => 1
+    Branch { left: l, right: _ } =>
+      dup(t: l) + dup(t: l)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "dup")
+        .collect();
+    eprintln!("[adversarial] dup: {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // Two calls on the same child (left) → max_path=2 > distinct_fields=1.
+    // Disjointness check fails → should not produce catamorphism O(n).
+    for b in &bounds {
+        assert_ne!(
+            *b.bound,
+            v2_compiler::std_induction::CostBound::AtomicBound {
+                cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                    param: "t".to_string(),
+                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                }),
+            },
+            "duplicate same-child descent must not produce catamorphism O(n)"
+        );
+    }
 }

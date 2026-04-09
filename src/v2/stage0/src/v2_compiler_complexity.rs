@@ -4688,6 +4688,7 @@ let own = if (callee.as_str() == fn_name.clone().as_str()) {
 let from_children = body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_self_call_evidence(child.clone(), fn_name.clone())));
 v2_rt::concat(own, from_children)
 },
+    ExprData::ExprLambda { .. } => Rc::new(vec![]),
     _ => body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_self_call_evidence(child.clone(), fn_name.clone()))),
 }
     })
@@ -4698,17 +4699,6 @@ pub fn merge_param_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, p
     Some(rel) => merge_evidence(acc.clone(), sub_value_to_evidence(rel.clone())),
     None => acc.clone(),
 })
-}
-
-pub fn is_catamorphism_param(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> bool {
-    { let mut __all = true; for call_evidence in all_calls.iter().cloned() { if !(match call_evidence.clone().get(param_index.clone() as usize).cloned() {
-    Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { .. } => true,
-    SubValueRelation::IteratedSubValue { .. } => true,
-    _ => false,
-},
-    None => true,
-}) { __all = false; break; } } __all }
 }
 
 pub fn extract_shrink_factor(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> Option<Rc<ShrinkFactor>> {
@@ -4728,17 +4718,6 @@ pub fn extract_shrink_factor(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, 
 },
     None => acc.clone(),
 },
-})
-}
-
-pub fn count_descending_calls(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> i64 {
-    all_calls.iter().cloned().fold(0, |acc: i64, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence.clone().get(param_index.clone() as usize).cloned() {
-    Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { .. } => (acc.clone() + 1),
-    SubValueRelation::IteratedSubValue { .. } => (acc.clone() + 1),
-    _ => acc.clone(),
-},
-    None => acc.clone(),
 })
 }
 
@@ -4789,9 +4768,24 @@ if (arm_count.clone() > acc.clone()) {
 }
 })
 },
+    ExprData::ExprLambda { .. } => 0,
     _ => body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| (acc.clone() + max_path_descending(child.clone(), fn_name.clone(), param_index.clone()))),
 }
     })
+}
+
+pub fn distinct_descended_fields(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> i64 {
+    {
+        let field_set = all_calls.iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence.clone().get(param_index.clone() as usize).cloned() {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => v2_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true),
+    SubValueRelation::IteratedSubValue { field: f, .. } => v2_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true),
+    _ => acc.clone(),
+},
+    None => acc.clone(),
+});
+(Rc::new(v2_rt::map_keys(&field_set)).len() as i64)
+}
 }
 
 pub fn analyze_structural_bounds(func_entries: Rc<Vec<Rc<FuncEntry>>>) -> Rc<Vec<Rc<StructuralBoundResult>>> {
@@ -4811,13 +4805,25 @@ match evidence.clone() {
 let factor_opt = extract_shrink_factor(all_calls.clone(), param_index.clone());
 match factor_opt.clone() {
     Some(factor) => {
-                            let bound = match (*factor.clone()).clone() {
-    ShrinkFactor::UnitShrink => catamorphism_bound(param_name.clone(), 1),
-    ShrinkFactor::ConstantShrink { .. } => catamorphism_bound(param_name.clone(), 1),
-    ShrinkFactor::ProportionalShrink { .. } => {
-                                let branches = max_path_descending(entry.body.clone(), entry.name.clone(), param_index.clone());
-derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0)
+                            let branches = max_path_descending(entry.body.clone(), entry.name.clone(), param_index.clone());
+let bound = match (*factor.clone()).clone() {
+    ShrinkFactor::UnitShrink => {
+                                let distinct_fields = distinct_descended_fields(all_calls.clone(), param_index.clone());
+if (branches.clone() <= distinct_fields.clone()) {
+                                    catamorphism_bound(param_name.clone(), 1)
+} else {
+                                    derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0)
+}
 },
+    ShrinkFactor::ConstantShrink { .. } => {
+                                let distinct_fields = distinct_descended_fields(all_calls.clone(), param_index.clone());
+if (branches.clone() <= distinct_fields.clone()) {
+                                    catamorphism_bound(param_name.clone(), 1)
+} else {
+                                    derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0)
+}
+},
+    ShrinkFactor::ProportionalShrink { .. } => derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0),
 };
 v2_rt::concat(pacc.clone(), Rc::new(vec![Rc::new(StructuralBoundResult {
     func_name: entry.name.clone(),

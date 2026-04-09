@@ -4866,6 +4866,7 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // =========================================================================
 
 // Collect descent_evidence from all self-call ExprCall nodes in a body.
+// Lambda bodies are opaque — self-calls inside closures are not collected.
 fn collect_self_call_evidence(body: Node, fn_name: String) -> List<List<SubValueRelation>> {
   match body.expr_data {
     ExprCall { call_semantics: _, descent_evidence: de } =>
@@ -4880,6 +4881,7 @@ fn collect_self_call_evidence(body: Node, fn_name: String) -> List<List<SubValue
         concat(acc, collect_self_call_evidence(body: child, fn_name: fn_name))
       )
       concat(own, from_children)
+    ExprLambda { semantics: _ } => []
     _ =>
       body.children |> fold(init: [], f: (acc, child) =>
         concat(acc, collect_self_call_evidence(body: child, fn_name: fn_name))
@@ -4893,21 +4895,6 @@ fn merge_param_evidence(all_calls: List<List<SubValueRelation>>, param_index: In
     match call_evidence |> skip(param_index) |> first {
       Some { value: rel } => merge_evidence(a: acc, b: sub_value_to_evidence(relation: rel))
       None => acc
-    }
-  )
-}
-
-// Check if all self-calls descend on fields of the same parameter → catamorphism.
-fn is_catamorphism_param(all_calls: List<List<SubValueRelation>>, param_index: Int) -> Bool {
-  all_calls |> all(call_evidence =>
-    match call_evidence |> skip(param_index) |> first {
-      Some { value: rel } =>
-        match rel {
-          StrictSubValue { field: _, factor: _ } => true
-          IteratedSubValue { field: _ } => true
-          _ => false
-        }
-      None => true
     }
   )
 }
@@ -4931,21 +4918,6 @@ fn extract_shrink_factor(all_calls: List<List<SubValueRelation>>, param_index: I
             }
           None => acc
         }
-    }
-  )
-}
-
-// Count how many self-call sites descend on a given parameter.
-fn count_descending_calls(all_calls: List<List<SubValueRelation>>, param_index: Int) -> Int {
-  all_calls |> fold(init: 0, f: (acc, call_evidence) =>
-    match call_evidence |> skip(param_index) |> first {
-      Some { value: rel } =>
-        match rel {
-          StrictSubValue { field: _, factor: _ } => acc + 1
-          IteratedSubValue { field: _ } => acc + 1
-          _ => acc
-        }
-      None => acc
     }
   )
 }
@@ -4992,12 +4964,32 @@ fn max_path_descending(body: Node, fn_name: String, param_index: Int) -> Int {
         let arm_count = max_path_descending(body: arm_body(n: arm), fn_name: fn_name, param_index: param_index)
         if arm_count > acc { arm_count } else { acc }
       )
+    // Lambda bodies are opaque
+    ExprLambda { semantics: _ } => 0
     // Sequential: SUM of children
     _ =>
       body.children |> fold(init: 0, f: (acc, child) =>
         acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index)
       )
   }
+}
+
+// Count the number of distinct inductive fields descended on for a parameter.
+// Used for catamorphism disjointness: if max_path calls > distinct fields,
+// some field is visited multiple times per path → not a catamorphism.
+fn distinct_descended_fields(all_calls: List<List<SubValueRelation>>, param_index: Int) -> Int {
+  let field_set = all_calls |> fold(init: empty_map(), f: (acc, call_evidence) =>
+    match call_evidence |> skip(param_index) |> first {
+      Some { value: rel } =>
+        match rel {
+          StrictSubValue { field: f, factor: _ } => map_insert(acc, f.field_name, true)
+          IteratedSubValue { field: f } => map_insert(acc, f.field_name, true)
+          _ => acc
+        }
+      None => acc
+    }
+  )
+  map_keys(field_set) |> count
 }
 
 // Analyze structural bounds for all self-recursive functions.
@@ -5021,13 +5013,28 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBo
             let factor_opt = extract_shrink_factor(all_calls: all_calls, param_index: param_index)
             match factor_opt {
               Some { value: factor } =>
+                let branches = max_path_descending(body: entry.body, fn_name: entry.name, param_index: param_index)
                 let bound = match factor {
-                  // Structural recursion: each step removes one constructor → O(n)
-                  UnitShrink => catamorphism_bound(param: param_name, nesting_depth: 1)
-                  ConstantShrink { amount: _ } => catamorphism_bound(param: param_name, nesting_depth: 1)
+                  // Structural recursion: catamorphism O(n) only if each sub-value
+                  // is used at most once per path (disjointness check).
+                  UnitShrink =>
+                    let distinct_fields = distinct_descended_fields(all_calls: all_calls, param_index: param_index)
+                    if branches <= distinct_fields {
+                      catamorphism_bound(param: param_name, nesting_depth: 1)
+                    } else {
+                      // Same field visited multiple times per path → use derive_bound
+                      // (UnitShrink with branches > 1 → ForeverBound in derive_bound)
+                      derive_bound(param: param_name, branches: branches, factor: factor, work_exponent: 0)
+                    }
+                  ConstantShrink { amount: _ } =>
+                    let distinct_fields = distinct_descended_fields(all_calls: all_calls, param_index: param_index)
+                    if branches <= distinct_fields {
+                      catamorphism_bound(param: param_name, nesting_depth: 1)
+                    } else {
+                      derive_bound(param: param_name, branches: branches, factor: factor, work_exponent: 0)
+                    }
                   // Divide-and-conquer: use derive_bound → master_theorem
                   ProportionalShrink { divisor: _ } =>
-                    let branches = max_path_descending(body: entry.body, fn_name: entry.name, param_index: param_index)
                     derive_bound(param: param_name, branches: branches, factor: factor, work_exponent: 0)
                 }
                 concat(pacc, [StructuralBoundResult { func_name: entry.name, param: param_name, bound: bound }])

@@ -386,10 +386,12 @@ let value_type = match type_expr.children.clone().get(value_index as usize).clon
 };
 if (value_type.as_str() == parent_name.clone().as_str()) {
                         match field_type_name.clone().as_str() {
+    "List" => Some(RecursionShape::ListRecursion),
+    "NonEmptyList" => Some(RecursionShape::ListRecursion),
     "Set" => Some(RecursionShape::SetRecursion),
     "NonEmptySet" => Some(RecursionShape::SetRecursion),
     "Map" => Some(RecursionShape::MapValueRecursion),
-    _ => Some(RecursionShape::ListRecursion),
+    _ => None,
 }
 } else {
                         None
@@ -2351,15 +2353,22 @@ Rc::new(SubValueRelation::StrictSubValue {
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
 },
-    ExprData::ExprBinOp { .. } => {
+    ExprData::ExprBinOp { op, .. } => match op.clone() {
+    BinOp::Add => {
                                     let left = binop_left(arg_val.clone());
-match (*left.expr_data.clone()).clone() {
+let right = binop_right(arg_val.clone());
+let rhs_is_literal = match (*right.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { .. } = value.as_ref() else { unreachable!() }; true },
+    _ => false,
+};
+if rhs_is_literal {
+                                        match (*left.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-                                        let lname = expr_var_name(left.clone());
+                                            let lname = expr_var_name(left.clone());
 match v2_rt::map_get(&ctx.size_aliases.clone(), lname).as_deref().cloned() {
     Some(SizeExpr::DividedSize { param: p, divisor: d, .. }) => if (p.clone().as_str() == param_name.clone().as_str()) {
-                                            {
-                                                let synth_field = Rc::new(InductiveField {
+                                                {
+                                                    let synth_field = Rc::new(InductiveField {
     type_name: param_name.clone(),
     variant_name: "".to_string(),
     field_name: mname.clone(),
@@ -2373,13 +2382,57 @@ Rc::new(SubValueRelation::StrictSubValue {
 })
 }
 } else {
-                                            Rc::new(SubValueRelation::SubValueUnknown)
+                                                Rc::new(SubValueRelation::SubValueUnknown)
 },
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
 },
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
+} else {
+                                        Rc::new(SubValueRelation::SubValueUnknown)
+}
+},
+    BinOp::Sub => {
+                                    let left = binop_left(arg_val.clone());
+let right = binop_right(arg_val.clone());
+let rhs_is_literal = match (*right.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { .. } = value.as_ref() else { unreachable!() }; true },
+    _ => false,
+};
+if rhs_is_literal {
+                                        match (*left.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                                            let lname = expr_var_name(left.clone());
+match v2_rt::map_get(&ctx.size_aliases.clone(), lname).as_deref().cloned() {
+    Some(SizeExpr::DividedSize { param: p, divisor: d, .. }) => if (p.clone().as_str() == param_name.clone().as_str()) {
+                                                {
+                                                    let synth_field = Rc::new(InductiveField {
+    type_name: param_name.clone(),
+    variant_name: "".to_string(),
+    field_name: mname.clone(),
+    shape: RecursionShape::ListRecursion,
+});
+Rc::new(SubValueRelation::StrictSubValue {
+    field: synth_field,
+    factor: Rc::new(ShrinkFactor::ProportionalShrink {
+    divisor: d.clone(),
+}),
+})
+}
+} else {
+                                                Rc::new(SubValueRelation::SubValueUnknown)
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+} else {
+                                        Rc::new(SubValueRelation::SubValueUnknown)
+}
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
 },
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
@@ -2773,6 +2826,7 @@ Rc::new(Node {
     expr_data: body.expr_data.clone(),
 })
 },
+    ExprData::ExprLambda { .. } => body.clone(),
     _ => map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone())),
 }
     })

@@ -413,12 +413,14 @@ fn classify_field_recursion(field_node: Node, parent_name: String) -> RecursionS
         None => ""
       }
       if value_type == parent_name {
-        // Dispatch on container identity, not arity — Set<X> ≠ List<X>
+        // Dispatch on container identity — fail-closed for unrecognized containers
         match field_type_name {
+          "List" => Some { value: ListRecursion }
+          "NonEmptyList" => Some { value: ListRecursion }
           "Set" => Some { value: SetRecursion }
           "NonEmptySet" => Some { value: SetRecursion }
           "Map" => Some { value: MapValueRecursion }
-          _ => Some { value: ListRecursion }
+          _ => none
         }
       } else { none }
     } else { none }
@@ -2218,20 +2220,47 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                           } else { SubValueUnknown }
                         _ => SubValueUnknown
                       }
-                    // mid + 1 or mid - 1: if mid is a DividedSize, the +/- 1 doesn't change the proportion
-                    ExprBinOp { op: _ } =>
-                      let left = binop_left(texpr: arg_val)
-                      match left.expr_data {
-                        ExprVar { binding_kind: _ } =>
-                          let lname = expr_var_name(texpr: left)
-                          match map_get(ctx.size_aliases, lname) {
-                            Some { value: DividedSize { param: p, divisor: d } } =>
-                              if p == param_name {
-                                let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion }
-                                StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
-                              } else { SubValueUnknown }
-                            _ => SubValueUnknown
-                          }
+                    // mid + 1 or mid - 1: only Add/Sub with a literal integer RHS
+                    ExprBinOp { op: op } =>
+                      match op {
+                        Add =>
+                          let left = binop_left(texpr: arg_val)
+                          let right = binop_right(texpr: arg_val)
+                          let rhs_is_literal = match right.expr_data { ExprLiteral { value: LitInt { value: _ } } => true  _ => false }
+                          if rhs_is_literal {
+                            match left.expr_data {
+                              ExprVar { binding_kind: _ } =>
+                                let lname = expr_var_name(texpr: left)
+                                match map_get(ctx.size_aliases, lname) {
+                                  Some { value: DividedSize { param: p, divisor: d } } =>
+                                    if p == param_name {
+                                      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion }
+                                      StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
+                                    } else { SubValueUnknown }
+                                  _ => SubValueUnknown
+                                }
+                              _ => SubValueUnknown
+                            }
+                          } else { SubValueUnknown }
+                        Sub =>
+                          let left = binop_left(texpr: arg_val)
+                          let right = binop_right(texpr: arg_val)
+                          let rhs_is_literal = match right.expr_data { ExprLiteral { value: LitInt { value: _ } } => true  _ => false }
+                          if rhs_is_literal {
+                            match left.expr_data {
+                              ExprVar { binding_kind: _ } =>
+                                let lname = expr_var_name(texpr: left)
+                                match map_get(ctx.size_aliases, lname) {
+                                  Some { value: DividedSize { param: p, divisor: d } } =>
+                                    if p == param_name {
+                                      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion }
+                                      StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
+                                    } else { SubValueUnknown }
+                                  _ => SubValueUnknown
+                                }
+                              _ => SubValueUnknown
+                            }
+                          } else { SubValueUnknown }
                         _ => SubValueUnknown
                       }
                     _ => SubValueUnknown
@@ -2569,6 +2598,11 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         has_non_tail_self_call: body.has_non_tail_self_call,
         match_pattern: body.match_pattern, expr_data: body.expr_data
       }
+    // Lambda bodies are opaque: self-calls inside closures do not contribute
+    // descent evidence to the enclosing function. The closure may be invoked
+    // zero, one, or many times — that multiplicity must come from method_semantics,
+    // not from generic child recursion.
+    ExprLambda { semantics: _ } => body
     _ =>
       // All other expression types: recurse into children
       map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))

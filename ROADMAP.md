@@ -57,7 +57,7 @@ Bootstrap D │                                                         ├→ M
 |------|--------|-----|--------------|
 | A | M2 (BND-1..4), M4-L1 (declaration algebra, Tier 2.5/2.6/3) | — | Gate 1 (M2, M4) |
 | B | CG (TLC-4, P1-B), LS (spec data), RE-1 (transport fidelity), KF-6 (Verilog) | KF-6 | Gates 1 (CG,LS,RE), 3 (parity), 4 (hardware) |
-| C | CX-NEXT (526→0), KF-1 (complexity proof), KF-2 (reject suboptimal), KF-7 (space complexity), KF-8 (optimality gate) | KF-1, KF-2, KF-7, KF-8 | Gates 1 (CX), 4 (complexity) |
+| C | CX-NEXT (525→0), KF-1 (complexity proof), KF-2 (reject suboptimal), KF-7 (space complexity), KF-8 (optimality gate) | KF-1, KF-2, KF-7, KF-8 | Gates 1 (CX), 4 (complexity) |
 | D | RE-2..5 (review.dag, gist.dag), BC-1..4, service extdep models | — | Gates 1 (RE), 5 (business cases) |
 | E | M3 (test generation), KF-3 (witnesses), KF-4 (cross-language) | KF-3, KF-4 | Gates 3 (parity), 6 (test gen) |
 
@@ -133,9 +133,9 @@ Previously eliminated:
 
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
-| Self-compile diagnostics | 314 | 526 | Honest count — complexity violations surfaced, non-blocking |
+| Self-compile diagnostics | 314 | 525 | Honest count — complexity violations surfaced, non-blocking |
 | L1 type knowledge | 0 | 0 | GREEN — hard gate (PR #352). Constructor functions dissolved, ListOf/ReceiverCollectionOf merged into ContainerOf. |
-| Complexity violations | 325 | 526 | Honest: 526 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
+| Complexity violations | 325 | 525 | Honest: 525 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
@@ -817,11 +817,11 @@ then deleted. `Node.name` field deleted.
 
 ## CX: Complexity Analyzer (Lane C)
 
-**Status:** 526 honest violations (non-blocking gate).
+**Status:** 525 honest violations (non-blocking gate).
 PR #354: structural induction model (std/induction.dag), CX-L1/L2/L3 pipeline,
 master theorem integration, 13 end-to-end regression tests.
 **Binary search proven O(log n) from source code.** Catamorphisms proven O(n).
-Next: space complexity (KF-7), optimality gate (KF-8), 526→0 violations.
+Next: space complexity (KF-7), optimality gate (KF-8), 525→0 violations.
 
 **Root cause:** The analyzer maintains parallel heuristic classifiers
 instead of consuming the structural facts already modeled in std/.
@@ -1003,7 +1003,7 @@ CX-D (model facts in std/)
   un-ignore 14 complexity tests (10 `complexity_*`, 3 `soundness_*`,
   1 `structural_classify_*`; all `#[ignore]` with "CX track" comment).
   **Blocked-by: CX-A, CX-B, CX-C** (0 violations required).
-  **Current: 526 violations (non-blocking gate). See CX-NEXT.**
+  **Current: 525 violations (non-blocking gate). See CX-NEXT.**
 
 ### Acceptance (endgame — Gate 4)
 
@@ -1025,7 +1025,9 @@ language proves algorithmic complexity from source code at compile time.
 
 13 end-to-end regression tests pass:
 - **Catamorphisms proven O(n):** linked list, binary tree, BST search/insert,
-  tree depth, optional chain, fold-over-children, flatten+search, forest+tree
+  tree depth, optional chain, flatten+search, forest+tree
+- **Known limitation:** fold-over-children (lambda body) correctly produces
+  no bound — lambda bodies are opaque until method_semantics authorizes descent
 - **Divide-and-conquer proven O(log n):** binary search via master theorem
 - **Composition:** nested algorithms produce independent bounds (filter O(n)
   calling binary search O(log n) on a different data structure)
@@ -1139,7 +1141,7 @@ lanes — any lane can introduce a regression.
   Two-pass self-hosting gate: builds stage1, uses it to produce stage2,
   diffs for idempotence. Subsumes `bootstrap_stage0_to_stage1`.
   Complexity early-return removed — test is unconditional.
-- **PERF-3**: Self-compile complexity analysis. 526 honest violations
+- **PERF-3**: Self-compile complexity analysis. 525 honest violations
   (CostUnknown restored). OOM resolved by lambda recursion detection fix
   (PR #336). Complexity analysis re-enabled in compile.dag (non-blocking).
   Original OOM root causes (PR #336):
@@ -1217,12 +1219,12 @@ Over-retention:
 No test >2s without justification. Self-compile time tracked per-PR.
 Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
-### CX-NEXT: 526 → 0 violations (3 structural fixes)
+### CX-NEXT: 525 → 0 violations (3 structural fixes)
 
-**Status:** 526 honest violations. Full triage in
+**Status:** 525 honest violations. Full triage in
 [`docs/cx-violation-triage.md`](docs/cx-violation-triage.md).
 
-All 526 trace to 3 root causes. 280 are direct (recursive functions
+All 525 trace to 3 root causes. 280 are direct (recursive functions
 where the analyzer can't see descent). 227 are composed (callers of
 direct unknowns — resolve automatically). 3 structural fixes cover all:
 
@@ -1934,7 +1936,7 @@ fn find_duplicates(items: List<String>) -> List<String> {
 ```
 
 **Status:** Partially working. The analyzer computes CostExpr for
-all 1600 compiler functions. 526 get CostUnknown because descent
+all 1600 compiler functions. 525 get CostUnknown because descent
 evidence doesn't propagate through Node trees and parser SCCs.
 When the 3 structural fixes land (CX-NEXT), every function has a
 proven bound and CostUnknown is deleted from the type system.
@@ -2557,7 +2559,7 @@ polish depends on stable features.
 | 1. Active lanes | IN PROGRESS | All lane ratchets green |
 | 2. Structural debt | 1,115 → 0 | `structural-debt-count.sh` = 0 |
 | 3. Language parity (KF-4) | PARTIAL | 3-target `full_dsl_compiles` + cross-language equivalence |
-| 4. Complexity + suboptimality + hardware (KF-1, KF-2, KF-6) | 526 → 0 | `CostUnknown` deleted + catalog ships + Verilog emits |
+| 4. Complexity + suboptimality + hardware (KF-1, KF-2, KF-6) | 525 → 0 | `CostUnknown` deleted + catalog ships + Verilog emits |
 | 5. Business cases | 0/4 | BC-1..4 acceptance met |
 | 6. Test generation (KF-3) | NOT STARTED | Generated tests all pass |
 | 7. Demo polish (KF-5) | NOT STARTED | 5-minute onboarding, decidability front-and-center |
@@ -2567,7 +2569,7 @@ polish depends on stable features.
 | Feature | Status | Gate |
 |---------|--------|------|
 | KF-5: Decidable high-level language | DONE (language property) | Landing page explains it |
-| KF-1: Complexity proof on every compile | 526 unknown → 0 | CostUnknown deleted |
+| KF-1: Complexity proof on every compile | 525 unknown → 0 | CostUnknown deleted |
 | KF-2: Reject suboptimal algorithms | NOT STARTED | 5+ rules in equivalence catalog |
 | KF-3: Test generation from types | Level 0 done | Levels 4-6 implemented |
 | KF-4: Cross-language equivalence proof | NOT STARTED | Differential test suite green |
