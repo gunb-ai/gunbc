@@ -2889,8 +2889,11 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // both channels — no dual representation.
     let all_evidence = collect_self_call_evidence(body: body, fn_name: func_name)
     let has_evidence = all_evidence |> count > 0
-    // Check if ALL self-calls have structural evidence on at least one param
-    let all_structural = has_evidence && all_evidence |> all(call_ev =>
+    // Two conditions for structural proof:
+    // 1. At least one self-call strictly descends (makes progress)
+    // 2. All self-calls are non-growing (Strict, Iterated, Arithmetic, or Preserved)
+    //    — no call has SubValueUnknown on ALL parameters
+    let has_any_strict = has_evidence && all_evidence |> any(call_ev =>
       call_ev |> any(rel =>
         match rel {
           StrictSubValue { field: _, factor: _ } => true
@@ -2900,14 +2903,28 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
         }
       )
     )
+    let all_non_growing = has_evidence && all_evidence |> all(call_ev =>
+      call_ev |> any(rel =>
+        match rel {
+          StrictSubValue { field: _, factor: _ } => true
+          IteratedSubValue { field: _ } => true
+          ArithmeticDescent { param: _, factor: _ } => true
+          PreservedValue => true
+          _ => false
+        }
+      )
+    )
+    let all_structural = has_any_strict && all_non_growing
     if all_structural {
-      // Find the first structural call pattern from the evidence
+      // Find the first structural relation from the evidence.
+      // Must include ArithmeticDescent (accepted by all_structural).
       let first_call = match all_evidence |> first {
         Some { value: call_ev } =>
           call_ev |> filter(rel =>
             match rel {
               StrictSubValue { field: _, factor: _ } => true
               IteratedSubValue { field: _ } => true
+              ArithmeticDescent { param: _, factor: _ } => true
               _ => false
             }
           ) |> first

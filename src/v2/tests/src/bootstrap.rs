@@ -82,9 +82,10 @@ fn stage0_cargo_check() {
 //   measure (std/termination.dag), not synthetic arithmetic descent.
 // 2026-04-09: 480→524 — Delete heuristic tables (list_child_accessors, ExprCall
 //   collection+lambda positional guess), replace _arith synthetic InductiveField
-//   with ArithmeticDescent variant, fix SCC parameter name. Honest increase:
-//   heuristics removed, types-in-std/ is the structural path to dissolve.
-const DIAG_RATCHET: usize = 524;
+//   524→435: ArithmeticDescent in first_call filter, PreservedValue in
+//   all_structural check (non-growing calls allowed when some call descends).
+//   render_node_type fully dissolved (140 violations). make_indent dissolved (44).
+const DIAG_RATCHET: usize = 435;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

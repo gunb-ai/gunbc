@@ -2764,7 +2764,10 @@ if (is_child_accessor_in_model(callee.clone()) || is_tree_size_reducing(callee.c
     None => "".to_string(),
 };
 let fields = inductive_fields_for(ctx.type_env.clone(), type_name);
-let cf = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if (f.field_name.clone().as_str() == "children".to_string().as_str()) { __result.push(f); } } __result }).first().cloned();
+let cf = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if match f.shape.clone() {
+    RecursionShape::ListRecursion => true,
+    _ => false,
+} { __result.push(f); } } __result }).first().cloned();
 match cf {
     Some(ind_field) => Rc::new(SubValueRelation::StrictSubValue {
     field: ind_field.clone(),

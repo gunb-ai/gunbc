@@ -2599,7 +2599,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
               if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
                 let type_name = match map_get(ctx.param_names, param_name) { Some { value: t } => t  None => "" }
                 let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
-                let cf = fields |> filter(f => f.field_name == "children") |> first
+                let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
                 match cf {
                   Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
                   None => PreservedValue

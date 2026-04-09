@@ -2437,18 +2437,27 @@ if (path_calls.clone() == 0) {
             {
                 let all_evidence = collect_self_call_evidence(body.clone(), func_name.clone());
 let has_evidence = ((all_evidence.clone().len() as i64) > 0);
-let all_structural = (has_evidence && { let mut __all = true; for call_ev in all_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+let has_any_strict = (has_evidence.clone() && { let mut __found = false; for call_ev in all_evidence.clone().iter().cloned() { if { let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
     SubValueRelation::IteratedSubValue { .. } => true,
     SubValueRelation::ArithmeticDescent { .. } => true,
     _ => false,
+} { __found = true; break; } } __found } { __found = true; break; } } __found });
+let all_non_growing = (has_evidence.clone() && { let mut __all = true; for call_ev in all_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
+    SubValueRelation::ArithmeticDescent { .. } => true,
+    SubValueRelation::PreservedValue => true,
+    _ => false,
 } { __found = true; break; } } __found }) { __all = false; break; } } __all });
+let all_structural = (has_any_strict && all_non_growing);
 if all_structural {
                     {
                         let first_call = match all_evidence.clone().first().cloned() {
     Some(call_ev) => Rc::new({ let mut __result = Vec::new(); for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
     SubValueRelation::IteratedSubValue { .. } => true,
+    SubValueRelation::ArithmeticDescent { .. } => true,
     _ => false,
 } { __result.push(rel); } } __result }).first().cloned(),
     None => None,
