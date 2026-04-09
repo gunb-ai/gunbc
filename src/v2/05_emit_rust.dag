@@ -45,7 +45,7 @@ import v2.std.core {
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
   transport_method, transport_path_template, transport_query, transport_stdin,
-  service_config_auth, service_config_auth_input, service_config_auth_input_name,
+  service_config_auth, service_config_auth_input,
   expr_has_self_call, expr_has_non_tail_self_call,
   field_access_base, field_access_field, foreach_variable, foreach_variable_at,
   expr_var_name, expr_var_name_at, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at,
@@ -2401,21 +2401,28 @@ fn fill_default_args(ordered: List<Node>, callee: ItemInfo?, registry: Map<Strin
 }
 
 fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> List<Node> {
-  // op_params come from ServiceMethodSemantics (04_lookup.dag) — currently
-  // always same-module (services are defined in the func's module). If
-  // cross-module services are added, this has the same boundary shape as
-  // fill_default_args and needs the same param_node_name fallback.
+  // Walk op_params in declaration order to ensure defaults are interleaved
+  // at the correct position rather than appended at the end.
+  // Unnamed (positional) args are appended after the ordered list.
   let si = scope.type_env.source_index
-  let provided_names = ordered |> map(a => match arg_name_at(n: a, source_index: si) { Some { value: n } => n  None => "" })
-  let missing_with_defaults = op_params |> filter(p =>
-    let is_provided = provided_names |> any(n => n == param_node_name_at(n: p, source_index: si))
-    if is_provided { false }
-    else { param_node_default_value(n: p) != none }
+  let arg_map = ordered |> fold(init: empty_map(), f: (acc, a) =>
+    match arg_name_at(n: a, source_index: si) {
+      Some { value: n } => map_insert(acc, n, a)
+      None => acc
+    }
   )
-  let default_args = missing_with_defaults |> map(p =>
-    make_arg_node(name: Some { value: param_node_name_at(n: p, source_index: si) }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)
+  let unnamed_args = ordered |> filter(a => arg_name_at(n: a, source_index: si) == none)
+  let named_ordered = op_params |> flat_map(p =>
+    let pname = param_node_name_at(n: p, source_index: si)
+    match map_get(arg_map, pname) {
+      Some { value: arg } => [arg]
+      None =>
+        if param_node_default_value(n: p) != none {
+          [make_arg_node(name: Some { value: pname }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)]
+        } else { [] }
+    }
   )
-  concat(ordered, default_args)
+  concat(named_ordered, unnamed_args)
 }
 
 // Left-fold helper for nesting binary concat calls.
@@ -2905,8 +2912,32 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
   if method_semantics != none { match method_semantics.value {
     ServiceMethodSemantics { service_name: svc_name, op_params: op_params } => {
       let var_name = service_var_name(service_name: svc_name)
+      let si = scope.type_env.source_index
       let filled_args = fill_op_default_args(ordered: args, op_params: op_params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      let arg_strs = filled_args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
+      let optional_param_set = op_params
+        |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
+        |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_index: si), true))
+      let json_param_set = op_params
+        |> filter(p => coerce_primitive_type(target: Rust, dag_name: param_node_type_expr(n: p).name) == "serde_json::Value")
+        |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_index: si), true))
+      let arg_strs = filled_args |> map(a =>
+        let arg_str = emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+        let aname = match arg_name_at(n: a, source_index: si) { Some { value: n } => n  None => "" }
+        let param_is_json = match map_get(json_param_set, aname) { Some { value: _ } => true  None => false }
+        let param_is_optional = match map_get(optional_param_set, aname) { Some { value: _ } => true  None => false }
+        let needs_optional = param_is_optional && is_already_optional(texpr: arg_value(n: a), emit_info: emit_info, scope: scope) == false
+        // Apply coercions: Json first, then Optional wrapping (handles Json? correctly)
+        let coerced = if param_is_json && is_string_typed_expr(e: arg_value(n: a)) {
+          concat("serde_json::from_str(&", arg_str, ").unwrap()")
+        } else {
+          arg_str
+        }
+        if needs_optional {
+          concat("Some(", coerced, ")")
+        } else {
+          coerced
+        }
+      )
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", emit_ident(name: method, target: Rust), "(", args_str, ").await?")
     }
@@ -4048,13 +4079,9 @@ fn has_response_prefix(name: String) -> Bool {
 fn emit_response_code_handling(op_node: Node) -> String {
   let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name(n: p)))
   if response_props |> count == 0 {
-    // No response block: default to response.json().await?
     "let result = response.json().await?;\nOk(result)"
   } else {
-    // Emit match on status code
-    let arms = response_props |> map(p =>
-      emit_response_arm(prop: p)
-    )
+    let arms = response_props |> map(p => emit_response_arm(prop: p))
     concat(
       "let status = response.status().as_u16();\n",
       "match status {\n",
@@ -4067,14 +4094,10 @@ fn emit_response_code_handling(op_node: Node) -> String {
 fn emit_response_arm(prop: Node) -> String {
   let name = field_init_node_name(n: prop)
   let code_str = substring(s: name, start: 9, end: string_length(s: name))
-  // Success/error classification: the status code IS the structural fact
-  // (RFC 9110: 2xx = success, everything else = error). The code_str is
-  // extracted from the property name which the parser set from the authored
-  // status code — this is a boundary contract, not a heuristic.
+  // RFC 9110: 2xx = success, everything else = error
   let is_success = if string_length(s: code_str) >= 1 {
     substring(s: code_str, start: 0, end: 1) == "2"
   } else { false }
-  // Build the match pattern — handle wildcards like 5xx → 500..=599
   let pattern = if code_str == "nonzero" { "_" }
     else if string_length(s: code_str) == 3 && substring(s: code_str, start: 1, end: 3) == "xx" {
       let prefix = substring(s: code_str, start: 0, end: 1)
@@ -4097,10 +4120,8 @@ fn has_exit_prefix(name: String) -> Bool {
 fn emit_exit_code_handling(op_node: Node, inferred: Node) -> String {
   let exit_props = op_node.properties |> filter(p => has_exit_prefix(name: field_init_node_name(n: p)))
   if exit_props |> count == 0 {
-    // No exit block: use default heuristic
     emit_shell_return(inferred: inferred)
   } else {
-    // Map declared exit codes to specific handling
     let has_nonzero = exit_props |> any(p => field_init_node_name(n: p) == "exit_nonzero")
     let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred))
     let default_arm = if has_nonzero { "" }
@@ -4114,9 +4135,6 @@ fn emit_exit_code_handling(op_node: Node, inferred: Node) -> String {
   }
 }
 
-// Exit arm: the exit code IS the structural fact (POSIX: 0 = success,
-// nonzero = failure). The RHS type (Unit, String) will matter when we
-// emit typed error bodies; for now the code determines success/error.
 fn emit_exit_arm(prop: Node, inferred: Node) -> String {
   let name = field_init_node_name(n: prop)
   let code_str = substring(s: name, start: 5, end: string_length(s: name))
@@ -4203,9 +4221,11 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
     ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", escape_string_literal_body(s: s), "\"")
     ExprStringInterp => {
-      // Structured interpolation: emit format! with parts
-      // Each child is either a text node (ExprLiteral) or an interp wrapper
-      // (NoExprData with the actual var expr as its first child via arg_value).
+      // Structured interpolation: emit format! with parts.
+      // Uses emit_simple_expr for each interpolation expression (handles
+      // variables, field access, and arbitrary expressions structurally).
+      // Optional detection uses optional_params (operation parameter types)
+      // because inference doesn't reach transport argv sub-expressions.
       let parts = arg.children |> map(child => match child.expr_data {
         ExprLiteral { value: LitStr { value: text } } => Text { value: text }
         _ => Interpolation { expr: arg_value(n: child) }
@@ -4220,7 +4240,7 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
         Interpolation { expr: e } => {
           let name = expr_var_name_at(texpr: e, source_index: source_index)
           let var_name = emit_ident(name: name, target: Rust)
-          let is_opt = match map_get(optional_params, name) {
+          let is_opt = is_optional_typed_expr(e: e) || match map_get(optional_params, name) {
             Some { value: _ } => true
             None => false
           }
@@ -4235,9 +4255,9 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
       concat("&format!(\"", fmt_str, "\", ", args_str, ")")
     }
     ExprVar { binding_kind: _ } => {
-      let var_name = emit_ident(name: expr_var_name_at(texpr: arg, source_index: source_index), target: Rust)
       let name = expr_var_name_at(texpr: arg, source_index: source_index)
-      let is_opt = match map_get(optional_params, name) {
+      let var_name = emit_ident(name: name, target: Rust)
+      let is_opt = is_optional_typed_expr(e: arg) || match map_get(optional_params, name) {
         Some { value: _ } => true
         None => false
       }
@@ -4247,7 +4267,7 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
         concat("&", var_name, ".to_string()")
       }
     }
-    _ => emit_simple_expr(expr: arg, target: Rust, source_index: none)
+    _ => emit_simple_expr(expr: arg, target: Rust, source_index: source_index)
   }
 }
 
@@ -4265,7 +4285,12 @@ fn emit_shell_return(inferred: Node) -> String {
     } else if is_product && effective.children |> count > 1 {
       concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
     } else {
-      "Ok(stdout)"
+      let is_optional = effective.return_cardinality == CardOptional
+      if is_optional {
+        "Ok(Some(stdout))"
+      } else {
+        "Ok(stdout)"
+      }
     }
   }
 }
