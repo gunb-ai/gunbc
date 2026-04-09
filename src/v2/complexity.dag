@@ -3611,7 +3611,8 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
         // Self-edge: read CX-L2 descent_evidence from annotated self-calls
         let self_evidence = collect_self_call_evidence(body: entry.body, fn_name: name)
         let self_has_calls = self_evidence |> count > 0
-        let self_all_structural = self_has_calls && self_evidence |> all(call_ev =>
+        // Two conditions: at least one call descends, all calls are non-growing
+        let has_any_strict = self_has_calls && self_evidence |> any(call_ev =>
           call_ev |> any(rel =>
             match rel {
               StrictSubValue { field: _, factor: _ } => true
@@ -3621,6 +3622,18 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
             }
           )
         )
+        let all_non_growing = self_has_calls && self_evidence |> all(call_ev =>
+          call_ev |> any(rel =>
+            match rel {
+              StrictSubValue { field: _, factor: _ } => true
+              IteratedSubValue { field: _ } => true
+              ArithmeticDescent { param: _, factor: _ } => true
+              PreservedValue => true
+              _ => false
+            }
+          )
+        )
+        let self_all_structural = has_any_strict && all_non_growing
         // Extract the actual descending parameter name from evidence
         let descending_param = match self_evidence |> first {
           Some { value: call_ev } =>

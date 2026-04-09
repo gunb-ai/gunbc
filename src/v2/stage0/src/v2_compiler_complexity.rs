@@ -3210,12 +3210,20 @@ Rc::new({ let mut __result = Vec::new(); for name in members.clone().iter().clon
     Some(entry) => {
             let self_evidence = collect_self_call_evidence(entry.body.clone(), name.clone());
 let self_has_calls = ((self_evidence.clone().len() as i64) > 0);
-let self_all_structural = (self_has_calls.clone() && { let mut __all = true; for call_ev in self_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+let has_any_strict = (self_has_calls.clone() && { let mut __found = false; for call_ev in self_evidence.clone().iter().cloned() { if { let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
     SubValueRelation::IteratedSubValue { .. } => true,
     SubValueRelation::ArithmeticDescent { .. } => true,
     _ => false,
+} { __found = true; break; } } __found } { __found = true; break; } } __found });
+let all_non_growing = (self_has_calls.clone() && { let mut __all = true; for call_ev in self_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
+    SubValueRelation::ArithmeticDescent { .. } => true,
+    SubValueRelation::PreservedValue => true,
+    _ => false,
 } { __found = true; break; } } __found }) { __all = false; break; } } __all });
+let self_all_structural = (has_any_strict.clone() && all_non_growing.clone());
 let descending_param = match self_evidence.clone().first().cloned() {
     Some(call_ev) => call_ev.clone().iter().cloned().fold("".to_string(), |found: String, rel: Rc<SubValueRelation>| if (found.clone().as_str() != "".to_string().as_str()) {
                 found.clone()
