@@ -656,7 +656,11 @@ let fn_emit_info = Rc::new(EmitGraphInfo {
     fold_eligible_index: emit_info.fold_eligible_index.clone(),
     fold_eligible: fn_fold_eligible,
 });
-if ((item.uses.clone().len() as i64) > 0) {
+let is_func_item = match lookup_item(registry.clone(), item.name.clone()) {
+    Some(info) => (info.kind.clone() == ItemKind::FuncItem),
+    None => false,
+};
+if (((item.uses.clone().len() as i64) > 0) || is_func_item) {
                                 emit_func_def(item_text.clone(), item.params.clone(), resolved_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), shared_types, fn_emit_info)
 } else {
                                 emit_fn_def(item_text.clone(), item.params.clone(), resolved_type(item.clone()), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), shared_types, fn_emit_info)

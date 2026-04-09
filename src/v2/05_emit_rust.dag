@@ -797,7 +797,12 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       fold_eligible_index: emit_info.fold_eligible_index,
       fold_eligible: fn_fold_eligible
     }
-    if item.uses |> count > 0 {
+    // func items (FuncItem) are async even without explicit use clauses
+    let is_func_item = match lookup_item(registry: registry, name: item.name) {
+      Some { value: info } => info.kind == FuncItem
+      None => false
+    }
+    if item.uses |> count > 0 || is_func_item {
       emit_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
     } else {
       emit_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)

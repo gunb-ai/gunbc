@@ -2866,23 +2866,35 @@ match kind.clone() {
     is_self_recursive: false,
     has_non_tail_self_call: false,
 }),
-    ItemKind::FnItem => Rc::new(ItemInfo {
+    ItemKind::FnItem => {
+            let svc_names = if (item.body.clone() == None) {
+                Rc::new(vec![])
+} else {
+                collect_typed_service_calls(item.body.clone().clone().unwrap())
+};
+let effective_kind = if ((svc_names.clone().len() as i64) > 0) {
+                ItemKind::FuncItem
+} else {
+                ItemKind::FnItem
+};
+Rc::new(ItemInfo {
     name: item.name.clone(),
-    kind: kind.clone(),
-    service_names: Rc::new(vec![]),
+    kind: effective_kind,
+    service_names: svc_names.clone(),
     resource_names: res_names,
     params: item.params.clone(),
     is_self_recursive: if (item.body.clone() == None) {
-            false
+                false
 } else {
-            expr_has_self_call(item.body.clone().clone().unwrap(), item.name.clone())
+                expr_has_self_call(item.body.clone().clone().unwrap(), item.name.clone())
 },
     has_non_tail_self_call: if (item.body.clone() == None) {
-            false
+                false
 } else {
-            expr_has_non_tail_self_call(item.body.clone().clone().unwrap(), item.name.clone(), true)
+                expr_has_non_tail_self_call(item.body.clone().clone().unwrap(), item.name.clone(), true)
 },
-}),
+})
+},
     _ => Rc::new(ItemInfo {
     name: item.name.clone(),
     kind: kind.clone(),
