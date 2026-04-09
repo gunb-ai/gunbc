@@ -42,7 +42,7 @@ import std.induction {
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent, IntegerExp,
-  sub_value_to_evidence, catamorphism_bound, derive_bound
+  sub_value_to_evidence, sub_value_to_call_pattern, catamorphism_bound, derive_bound
 }
 import v2.std.core {
   Node,
@@ -2880,85 +2880,108 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
   if path_calls == 0 {
     lower_call_pattern(pattern: FoldBodyCall)
   } else {
-    // Try proof constructor FIRST — if ALL self-calls descend on children
-    // (TreeSize/ListLength), the function is O(n) regardless of path_calls,
-    // because children are disjoint subtrees (each node visited once).
-    // ArithmeticValue descent (param - N) is only safe for single-call paths;
-    // with multiple calls (e.g., fib(n-1) + fib(n-2)) it's O(2^n).
-    let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
-    // Branching safety: ALL dimensions must be structural (TreeSize/ListLength).
-    // A mixed proof like [TreeSize(t), ArithmeticParam(k)] is unsafe for
-    // branching: a branch can revisit the same structural node while only
-    // the secondary dimension decreases, leading to exponential blowup.
-    // Only purely structural proofs guarantee O(n) for branching recursion,
-    // because disjoint subtrees bound the total number of recursive entries.
-    let proof_safe_for_branching = match proof {
-      Some { value: p } =>
-        if p.dimensions |> count == 0 { false }
-        else {
-          p.dimensions |> all(dim =>
-            match dim {
-              TreeSize { param: _ } => true
-              ListLength { param: _ } => true
+    // ── Step 1: Try descent_evidence (single authority) ──────────────
+    // Read the evidence that CX-L2 annotated on ExprCall nodes.
+    // This is the same source of truth that analyze_structural_bounds uses.
+    // If ALL self-calls have structural descent evidence (StrictSubValue
+    // or IteratedSubValue), convert to CallPattern directly. This unifies
+    // both channels — no dual representation.
+    let all_evidence = collect_self_call_evidence(body: body, fn_name: func_name)
+    let has_evidence = all_evidence |> count > 0
+    // Check if ALL self-calls have structural evidence on at least one param
+    let all_structural = has_evidence && all_evidence |> all(call_ev =>
+      call_ev |> any(rel =>
+        match rel {
+          StrictSubValue { field: _, factor: _ } => true
+          IteratedSubValue { field: _ } => true
+          _ => false
+        }
+      )
+    )
+    if all_structural {
+      // Find the first structural call pattern from the evidence
+      let first_call = match all_evidence |> first {
+        Some { value: call_ev } =>
+          call_ev |> filter(rel =>
+            match rel {
+              StrictSubValue { field: _, factor: _ } => true
+              IteratedSubValue { field: _ } => true
               _ => false
             }
-          )
-        }
-      None => false
-    }
-    // CX-N: branching proof fallback — when the all-branches proof fails for
-    // branching functions, try again collecting evidence only from the heaviest
-    // branches. If that yields TreeSize/ListLength, the function is still O(n)
-    // because children are disjoint subtrees.
-    let branching_proof = if path_calls > 1 && !proof_safe_for_branching {
-      construct_branching_termination_proof(func_name: func_name, body: body, params: params)
-    } else { none }
-    // Validate ALL dimensions of the branching proof are structural.
-    // A lexicographic proof [Structural, NonStructural] would under-approximate
-    // if we only checked the first dimension.
-    let branching_proof_safe = match branching_proof {
-      Some { value: bp } =>
-        if bp.dimensions |> count == 0 { false }
-        else {
-          bp.dimensions |> all(dim =>
-            match dim {
-              TreeSize { param: _ } => true
-              ListLength { param: _ } => true
-              _ => false
-            }
-          )
-        }
-      None => false
-    }
-    match proof {
-      Some { value: p } =>
-        if path_calls == 1 || proof_safe_for_branching {
-          lower_call_pattern(pattern: proof_to_call_pattern(proof: p))
-        } else if branching_proof_safe {
-          match branching_proof {
-            Some { value: bp } => lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
+          ) |> first
+        None => none
+      }
+      match first_call {
+        Some { value: rel } =>
+          match sub_value_to_call_pattern(relation: rel) {
+            Some { value: cp } => lower_call_pattern(pattern: cp)
             None => lower_call_pattern(pattern: SameArgumentCall)
           }
-        } else {
-          lower_call_pattern(pattern: SameArgumentCall)
-        }
-      None =>
-        // Proof constructor tried all dimensions (TreeSize, ListLength,
-        // ArithmeticValue, TokenPosition) and found nothing.
-        // For branching recursion, try the branching-only proof.
-        if path_calls > 1 {
-          match branching_proof {
-            Some { value: bp } =>
-              if branching_proof_safe {
-                lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
-              } else {
-                lower_call_pattern(pattern: SameArgumentCall)
+        None => lower_call_pattern(pattern: SameArgumentCall)
+      }
+    } else {
+      // ── Step 2: Fall back to existing proof constructors ────────────
+      // For non-structural patterns (arithmetic descent, token position
+      // advancement, set removal), the old proof system still applies.
+      let proof = construct_termination_proof(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
+      let proof_safe_for_branching = match proof {
+        Some { value: p } =>
+          if p.dimensions |> count == 0 { false }
+          else {
+            p.dimensions |> all(dim =>
+              match dim {
+                TreeSize { param: _ } => true
+                ListLength { param: _ } => true
+                _ => false
               }
-            None => lower_call_pattern(pattern: SameArgumentCall)
+            )
           }
-        } else {
-          lower_call_pattern(pattern: SameArgumentCall)
-        }
+        None => false
+      }
+      let branching_proof = if path_calls > 1 && !proof_safe_for_branching {
+        construct_branching_termination_proof(func_name: func_name, body: body, params: params)
+      } else { none }
+      let branching_proof_safe = match branching_proof {
+        Some { value: bp } =>
+          if bp.dimensions |> count == 0 { false }
+          else {
+            bp.dimensions |> all(dim =>
+              match dim {
+                TreeSize { param: _ } => true
+                ListLength { param: _ } => true
+                _ => false
+              }
+            )
+          }
+        None => false
+      }
+      match proof {
+        Some { value: p } =>
+          if path_calls == 1 || proof_safe_for_branching {
+            lower_call_pattern(pattern: proof_to_call_pattern(proof: p))
+          } else if branching_proof_safe {
+            match branching_proof {
+              Some { value: bp } => lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
+              None => lower_call_pattern(pattern: SameArgumentCall)
+            }
+          } else {
+            lower_call_pattern(pattern: SameArgumentCall)
+          }
+        None =>
+          if path_calls > 1 {
+            match branching_proof {
+              Some { value: bp } =>
+                if branching_proof_safe {
+                  lower_call_pattern(pattern: proof_to_call_pattern(proof: bp))
+                } else {
+                  lower_call_pattern(pattern: SameArgumentCall)
+                }
+              None => lower_call_pattern(pattern: SameArgumentCall)
+            }
+          } else {
+            lower_call_pattern(pattern: SameArgumentCall)
+          }
+      }
     }
   }
 }

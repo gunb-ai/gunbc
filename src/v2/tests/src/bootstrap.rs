@@ -57,7 +57,7 @@ fn stage0_cargo_check() {
 // 2026-04-07: 526 — honest count after restoring CostUnknown for all
 //   unresolved descent patterns. See docs/cx-violation-triage.md for
 //   the 3-fix reduction path (Node tree descent, Parser SCC, Graph DFS).
-const DIAG_RATCHET: usize = 525;
+const DIAG_RATCHET: usize = 523;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

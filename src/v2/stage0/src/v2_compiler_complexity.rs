@@ -58,7 +58,7 @@ use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, Arithmeti
 pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension, type_iteration_dimension};
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
 use crate::std_computation::IterationDimension::{TreeDescent, CollectionFold, ArithmeticRepeat};
-pub use crate::std_induction::{SubValueRelation, ShrinkFactor, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, catamorphism_bound, derive_bound};
+pub use crate::std_induction::{SubValueRelation, ShrinkFactor, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, sub_value_to_call_pattern, catamorphism_bound, derive_bound};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown};
 use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
 use crate::std_induction::CostBound::{ConstantBound, AtomicBound, ForeverBound, ErrorBound};
@@ -2460,12 +2460,39 @@ if (path_calls.clone() == 0) {
             lower_call_pattern(Rc::new(CallPattern::FoldBodyCall))
 } else {
             {
-                let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone(), parser_always_advancing);
+                let all_evidence = collect_self_call_evidence(body.clone(), func_name.clone());
+let has_evidence = ((all_evidence.clone().len() as i64) > 0);
+let all_structural = (has_evidence && { let mut __all = true; for call_ev in all_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
+    _ => false,
+} { __found = true; break; } } __found }) { __all = false; break; } } __all });
+if all_structural {
+                    {
+                        let first_call = match all_evidence.clone().first().cloned() {
+    Some(call_ev) => Rc::new({ let mut __result = Vec::new(); for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
+    _ => false,
+} { __result.push(rel); } } __result }).first().cloned(),
+    None => None,
+};
+match first_call {
+    Some(rel) => match sub_value_to_call_pattern(rel.clone()) {
+    Some(cp) => lower_call_pattern(cp.clone()),
+    None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
+},
+    None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
+}
+}
+} else {
+                    {
+                        let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone(), parser_always_advancing);
 let proof_safe_for_branching = match proof.clone() {
     Some(p) => if ((p.dimensions.clone().len() as i64) == 0) {
-                    false
+                            false
 } else {
-                    { let mut __all = true; for dim in p.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
+                            { let mut __all = true; for dim in p.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
     RankingDimension::TreeSize { .. } => true,
     RankingDimension::ListLength { .. } => true,
     _ => false,
@@ -2474,15 +2501,15 @@ let proof_safe_for_branching = match proof.clone() {
     None => false,
 };
 let branching_proof = if ((path_calls.clone() > 1) && !proof_safe_for_branching.clone()) {
-                    construct_branching_termination_proof(func_name.clone(), body.clone(), params.clone())
+                            construct_branching_termination_proof(func_name.clone(), body.clone(), params.clone())
 } else {
-                    None
+                            None
 };
 let branching_proof_safe = match branching_proof.clone() {
     Some(bp) => if ((bp.dimensions.clone().len() as i64) == 0) {
-                    false
+                            false
 } else {
-                    { let mut __all = true; for dim in bp.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
+                            { let mut __all = true; for dim in bp.dimensions.clone().iter().cloned() { if !(match (*dim.clone()).clone() {
     RankingDimension::TreeSize { .. } => true,
     RankingDimension::ListLength { .. } => true,
     _ => false,
@@ -2492,29 +2519,31 @@ let branching_proof_safe = match branching_proof.clone() {
 };
 match proof.clone() {
     Some(p) => if ((path_calls.clone() == 1) || proof_safe_for_branching.clone()) {
-                    lower_call_pattern(proof_to_call_pattern(p.clone()))
+                            lower_call_pattern(proof_to_call_pattern(p.clone()))
 } else {
-                    if branching_proof_safe {
-                        match branching_proof.clone() {
+                            if branching_proof_safe {
+                                match branching_proof.clone() {
     Some(bp) => lower_call_pattern(proof_to_call_pattern(bp.clone())),
     None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
 }
 } else {
-                        lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                                lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
 }
 },
     None => if (path_calls.clone() > 1) {
-                    match branching_proof.clone() {
+                            match branching_proof.clone() {
     Some(bp) => if branching_proof_safe {
-                        lower_call_pattern(proof_to_call_pattern(bp.clone()))
+                                lower_call_pattern(proof_to_call_pattern(bp.clone()))
 } else {
-                        lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                                lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
 },
     None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
 }
 } else {
-                    lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                            lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
 },
+}
+}
 }
 }
 }
