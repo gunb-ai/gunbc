@@ -21,7 +21,7 @@ import v2.std.core {
   VariantNotFound, FieldNotFound, NonExhaustiveMatch,
   MatchPattern, LitPattern, arm_pattern,
   LiteralValue, LitBool,
-  leaf_node, with_optional_cardinality,
+  with_optional_cardinality,
   none_type, error_type, no_span
 }
 import v2.compiler.infer_types {

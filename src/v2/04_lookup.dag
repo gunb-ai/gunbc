@@ -25,7 +25,7 @@ import v2.std.core {
 }
 import std.algebra {
   CollectionSizeEffect, CostShape, AlgebraFieldTemplate,
-  AlgebraTypeTemplate, ReceiverSelf, ReceiverCollectionOf, ListOf,
+  AlgebraTypeTemplate, ReceiverSelf, ContainerOf, ContainerSource, SameAsReceiver, Named,
   kernel_algebra_profile, algebra_templates_for_profile
 }
 import v2.compiler.infer_types {

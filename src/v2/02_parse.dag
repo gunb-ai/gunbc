@@ -23,7 +23,7 @@ import v2.std.core {
   Cardinality, Required, CardOptional,
   make_param_node, param_node_name, param_node_type_expr, param_node_default_value,
   make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
-  make_variant_node, variant_node_name, variant_node_fields, leaf_node, leaf_node_with_span,
+  make_variant_node, variant_node_name, variant_node_fields, leaf_node_with_span,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
