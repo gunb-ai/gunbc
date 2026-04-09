@@ -911,7 +911,7 @@ pub fn resolve_resource_use(ru: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
 let type_resolved = type_result.resolved.clone();
 let type_diags = type_result.diagnostics.clone();
 Rc::new(ResourceUseResult {
-    resource_use: make_resource_use_node(resource_use_name_at(ru.clone(), None), type_resolved, ru.span.clone()),
+    resource_use: make_resource_use_node(resource_use_name_at(ru.clone(), None), type_resolved, ru.span.clone(), ru.span.clone()),
     diagnostics: type_diags,
 })
 }
@@ -923,7 +923,7 @@ pub fn resolve_named_arg(arg: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -
 let value_expr = value_result.expr.clone();
 let value_diags = value_result.diagnostics.clone();
 Rc::new(NamedArgResolveResult {
-    arg: make_arg_node(arg_name(arg.clone()), value_expr, arg.span.clone()),
+    arg: make_arg_node(arg_name(arg.clone()), value_expr, arg.span.clone(), arg.span.clone()),
     diagnostics: value_diags,
 })
 }
@@ -1057,7 +1057,7 @@ make_arg_node(if (arg_node.ident_span.clone() == None) {
                     None
 } else {
                     Some(arg_node.name.clone())
-}, vr.expr.clone(), arg_node.span.clone())
+}, vr.expr.clone(), arg_node.span.clone(), arg_node.span.clone())
 }); } __result });
 let all_diags = Rc::new({ let mut __result = Vec::new(); for arg_node in texpr.children.clone().iter().cloned() { __result.extend((*{
                 let val = match arg_node.children.clone().first().cloned() {
@@ -1070,7 +1070,7 @@ vr.diagnostics.clone()
 Rc::new(ExprResolveResult {
     expr: make_named_expr_node(expr_call_func_at(texpr.clone(), None), Rc::new(ExprData::ExprCall {
     call_semantics: cs.clone(),
-}), resolved_children, texpr.inferred.clone(), texpr.span.clone()),
+}), resolved_children, texpr.inferred.clone(), texpr.span.clone(), texpr.span.clone()),
     diagnostics: all_diags,
 })
 },
@@ -1094,7 +1094,7 @@ make_arg_node(if (child.ident_span.clone() == None) {
                             None
 } else {
                             Some(child.name.clone())
-}, vr.expr.clone(), child.span.clone())
+}, vr.expr.clone(), child.span.clone(), child.span.clone())
 }
 }
 }); } __result });
@@ -1120,7 +1120,7 @@ vr.diagnostics.clone()
 Rc::new(ExprResolveResult {
     expr: make_named_expr_node(expr_method_name_at(texpr.clone(), None), Rc::new(ExprData::ExprMethodCall {
     method_semantics: ms.clone(),
-}), resolved_children, texpr.inferred.clone(), texpr.span.clone()),
+}), resolved_children, texpr.inferred.clone(), texpr.span.clone(), texpr.span.clone()),
     diagnostics: all_diags,
 })
 },
@@ -1276,7 +1276,7 @@ let resolved_children = match br.clone() {
     None => Rc::new(vec![vr.expr.clone()]),
 };
 Rc::new(ExprResolveResult {
-    expr: make_named_expr_node(let_binding_name_at(texpr.clone(), None), Rc::new(ExprData::ExprLet), resolved_children, texpr.inferred.clone(), texpr.span.clone()),
+    expr: make_named_expr_node(let_binding_name_at(texpr.clone(), None), Rc::new(ExprData::ExprLet), resolved_children, texpr.inferred.clone(), texpr.span.clone(), texpr.span.clone()),
     diagnostics: v2_rt::concat(vr.diagnostics.clone(), match br.clone() {
     Some(r) => r.diagnostics.clone(),
     None => Rc::new(vec![]),
@@ -1303,7 +1303,7 @@ vr.diagnostics.clone()
 Rc::new(ExprResolveResult {
     expr: make_named_expr_node(texpr.name.clone(), Rc::new(ExprData::ExprRecordLit {
     parent_enum: pe.clone(),
-}), resolved_children, texpr.inferred.clone(), texpr.span.clone()),
+}), resolved_children, texpr.inferred.clone(), texpr.span.clone(), texpr.span.clone()),
     diagnostics: all_diags,
 })
 },
@@ -1443,7 +1443,7 @@ let br = match ch.clone().get(1 as usize).cloned() {
 }),
 };
 Rc::new(ExprResolveResult {
-    expr: make_named_expr_node(foreach_variable_at(texpr.clone(), None), Rc::new(ExprData::ExprForEach), Rc::new(vec![cr.expr.clone(), br.expr.clone()]), texpr.inferred.clone(), texpr.span.clone()),
+    expr: make_named_expr_node(foreach_variable_at(texpr.clone(), None), Rc::new(ExprData::ExprForEach), Rc::new(vec![cr.expr.clone(), br.expr.clone()]), texpr.inferred.clone(), texpr.span.clone(), texpr.span.clone()),
     diagnostics: v2_rt::concat(cr.diagnostics.clone(), br.diagnostics.clone()),
 })
 },

@@ -2368,7 +2368,7 @@ fn fill_default_args(ordered: List<Node>, callee: ItemInfo?, registry: Map<Strin
         else { param_node_default_value(n: p) != none }
       )
       let default_args = missing_with_defaults |> map(p =>
-        make_arg_node(name: Some { value: param_node_name(n: p) }, value: param_node_default_value(n: p).value, span: p.span)
+        make_arg_node(name: Some { value: param_node_name(n: p) }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)
       )
       concat(ordered, default_args)
     None => ordered
@@ -2388,7 +2388,7 @@ fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Ma
     else { param_node_default_value(n: p) != none }
   )
   let default_args = missing_with_defaults |> map(p =>
-    make_arg_node(name: Some { value: param_node_name_at(n: p, source_index: si) }, value: param_node_default_value(n: p).value, span: p.span)
+    make_arg_node(name: Some { value: param_node_name_at(n: p, source_index: si) }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)
   )
   concat(ordered, default_args)
 }

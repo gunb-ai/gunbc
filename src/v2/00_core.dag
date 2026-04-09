@@ -422,9 +422,9 @@ fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredN
 
 // Construct a Node carrying expression data with a dissolved identifier (D3).
 // The name field carries the identifier that was formerly in ExprData.
-fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
+fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: children,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children,
     connective: NoConnective,
 
     params: [], inferred: inferred, return_cardinality: Required,
@@ -456,10 +456,10 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 
 // Argument node: the call-site dual of Param. Name carries the arg name
 // (empty string for positional args), child is the value expression.
-fn make_arg_node(name: String?, value: Node, span: SourceSpan) -> Node {
+fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   let arg_name = match name { Some { value: n } => n  None => "" }
   Node {
-    name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: span), children: [value], connective: NoConnective,
+    name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: name_span), children: [value], connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -484,9 +484,9 @@ fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSp
 }
 
 // Resource use node: name carries the resource binding name, child is the resource type node.
-fn make_resource_use_node(name: String, resource: Node, span: SourceSpan) -> Node {
+fn make_resource_use_node(name: String, resource: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [resource], connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [resource], connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -518,9 +518,9 @@ fn make_field_init_node(name: String, value: Node, span: SourceSpan, name_span: 
 }
 
 // Field binding node (D2c): name carries the field name, match_pattern carries the binding pattern.
-fn make_field_binding_node(field_name: String, binding: MatchPattern, span: SourceSpan) -> Node {
+fn make_field_binding_node(field_name: String, binding: MatchPattern, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
-    name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: span), children: [], connective: NoConnective,
+    name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: name_span), children: [], connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,

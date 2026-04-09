@@ -575,7 +575,7 @@ let variant_subject = lookup_result_subject(variant_lookup);
 let annotated_bindings = Rc::new({ let mut __result = Vec::new(); for binding in bindings.clone().iter().cloned() { __result.push({
                 let field_lookup = lookup_field_in_variant(variant_subject.clone(), field_binding_name_at(binding.clone(), None), scope.module_name.clone(), scope.type_env.clone().source_index.clone());
 let field_subject = lookup_result_subject(field_lookup.clone());
-make_field_binding_node(field_binding_name_at(binding.clone(), None), annotate_pattern_parent_enums(field_binding_pattern(binding.clone()), field_subject.clone(), scope.clone()), binding.span.clone())
+make_field_binding_node(field_binding_name_at(binding.clone(), None), annotate_pattern_parent_enums(field_binding_pattern(binding.clone()), field_subject.clone(), scope.clone()), binding.span.clone(), binding.span.clone())
 }); } __result });
 match inferred_parent {
     Some(parent_name) => Rc::new(MatchPattern::VariantPattern {
@@ -751,7 +751,7 @@ match init_arg {
     Some(ia) => {
                     let init_result = infer_expr(arg_value(ia.clone()), scope, expected);
 Some(Rc::new(ArgInferResult {
-    typed_arg: make_arg_node(arg_name(ia.clone()), init_result.typed.clone(), ia.span.clone()),
+    typed_arg: make_arg_node(arg_name(ia.clone()), init_result.typed.clone(), ia.span.clone(), ia.span.clone()),
     diagnostics: init_result.diagnostics.clone(),
 }))
 },
@@ -801,7 +801,7 @@ let fold_callable = Rc::new(Node {
 });
 let ar = infer_expr(arg_value(a.clone()), scope.clone(), Some(fold_callable.clone()));
 Rc::new(ArgInferResult {
-    typed_arg: make_arg_node(arg_name(a.clone()), ar.typed.clone(), a.span.clone()),
+    typed_arg: make_arg_node(arg_name(a.clone()), ar.typed.clone(), a.span.clone(), a.span.clone()),
     diagnostics: ar.diagnostics.clone(),
 })
 }
@@ -836,7 +836,7 @@ pub fn infer_arg_with_element_type(arg: Rc<Node>, element_type: Rc<Node>, scope:
     {
         let ar = infer_expr(arg_value(arg.clone()), scope, Some(element_type));
 Rc::new(ArgInferResult {
-    typed_arg: make_arg_node(arg_name(arg.clone()), ar.typed.clone(), arg.span.clone()),
+    typed_arg: make_arg_node(arg_name(arg.clone()), ar.typed.clone(), arg.span.clone(), arg.span.clone()),
     diagnostics: ar.diagnostics.clone(),
 })
 }
@@ -870,7 +870,7 @@ ok_infer(make_named_expr_node(name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(binding_kind),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: binding.resolved.clone(),
-})), span.clone()))
+})), span.clone(), span.clone()))
 },
     None => match lookup_func_sig(scope.func_env.clone(), name.clone()) {
     Some(fsig) => if ((fsig.params.clone().len() as i64) == 0) {
@@ -878,20 +878,20 @@ ok_infer(make_named_expr_node(name.clone(), Rc::new(ExprData::ExprVar {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: fsig.inferred.clone(),
-})), span.clone()))
+})), span.clone(), span.clone()))
 } else {
                 ok_infer(make_named_expr_node(name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(Rc::new(VarBindingKind::FunctionValueBinding)),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: resolved_callable_type(fsig.params.clone(), fsig.inferred.clone()),
-})), span.clone()))
+})), span.clone(), span.clone()))
 },
     None => {
                 let err_texpr = make_named_expr_node(name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: None,
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: error_type(),
-})), span.clone());
+})), span.clone(), span.clone());
 Rc::new(InferResult {
     typed: err_texpr,
     diagnostics: Rc::new(vec![inference_error(v2_rt::concat(v2_rt::concat("undefined variable '".to_string(), name.clone()), "'".to_string()), span.clone(), scope.module_name.clone())]),
@@ -927,7 +927,7 @@ let fa_texpr = make_named_expr_node(field_name.clone(), Rc::new(ExprData::ExprFi
     summary: field_summary,
 }), Rc::new(vec![base_typed.clone()]), Some(Rc::new(InferredNode::Resolved {
     node: field_type.clone(),
-})), span.clone());
+})), span.clone(), span.clone());
 Rc::new(InferResult {
     typed: fa_texpr,
     diagnostics: base_diags,
@@ -948,7 +948,7 @@ if base_is_type_var {
 })),
 }), Rc::new(vec![base_typed.clone()]), Some(Rc::new(InferredNode::TypeVariable {
     id: "field_of_type_var".to_string(),
-})), span.clone());
+})), span.clone(), span.clone());
 Rc::new(InferResult {
     typed: fa_texpr,
     diagnostics: base_diags,
@@ -964,7 +964,7 @@ Rc::new(InferResult {
 })),
 }), Rc::new(vec![base_typed.clone()]), Some(Rc::new(InferredNode::Resolved {
     node: svc_type.clone(),
-})), span.clone());
+})), span.clone(), span.clone());
 Rc::new(InferResult {
     typed: fa_texpr,
     diagnostics: base_diags,
@@ -1009,7 +1009,7 @@ let first_type = resolved_type(first_result.typed.clone());
 let elem_type = for_each_element_type_node(first_type);
 let remaining_results = infer_method_args_with_fold(call_method_name.clone(), call_method_args.clone(), call_fold_info.clone(), call_fold_acc_type.clone(), elem_type, scope.clone());
 v2_rt::concat(Rc::new(vec![Rc::new(ArgInferResult {
-    typed_arg: make_arg_node(arg_name(first_arg.clone()), first_result.typed.clone(), first_arg.span.clone()),
+    typed_arg: make_arg_node(arg_name(first_arg.clone()), first_result.typed.clone(), first_arg.span.clone(), first_arg.span.clone()),
     diagnostics: first_result.diagnostics.clone(),
 })]), remaining_results)
 },
@@ -1033,7 +1033,7 @@ let expected = if has_formal.clone() {
 };
 let ar = infer_expr(arg_value(a.clone()), scope.clone(), expected.clone());
 Rc::new(ArgInferResult {
-    typed_arg: make_arg_node(arg_name(a.clone()), ar.typed.clone(), a.span.clone()),
+    typed_arg: make_arg_node(arg_name(a.clone()), ar.typed.clone(), a.span.clone(), a.span.clone()),
     diagnostics: ar.diagnostics.clone(),
 })
 }); } __result })
@@ -1052,7 +1052,7 @@ Rc::new(InferResult {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
 }), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
     node: resolved_type,
-})), span.clone()),
+})), span.clone(), span.clone()),
     diagnostics: arg_diags,
 })
 }
@@ -1148,13 +1148,13 @@ let final_receiver = if ((returns_receiver_self && is_fully_resolved(bridge_resu
 } else {
                                 receiver.clone()
 };
-let remaining_arg_nodes = Rc::new({ let mut __result = Vec::new(); for ta in remaining.clone().iter().cloned() { __result.push(make_arg_node(arg_name(ta.clone()), arg_value(ta.clone()), span.clone())); } __result });
+let remaining_arg_nodes = Rc::new({ let mut __result = Vec::new(); for ta in remaining.clone().iter().cloned() { __result.push(make_arg_node(arg_name(ta.clone()), arg_value(ta.clone()), span.clone(), span.clone())); } __result });
 Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprMethodCall {
     method_semantics: method_resolution.semantics.clone(),
 }), v2_rt::concat(Rc::new(vec![final_receiver]), remaining_arg_nodes), Some(Rc::new(InferredNode::Resolved {
     node: bridge_result_type.clone(),
-})), span.clone()),
+})), span.clone(), span.clone()),
     diagnostics: arg_diags,
 })
 }
@@ -1182,7 +1182,7 @@ Rc::new(InferResult {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
 }), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
     node: empty_map_type,
-})), span.clone()),
+})), span.clone(), span.clone()),
     diagnostics: v2_rt::concat(arg_diags, empty_map_diags),
 })
 }
@@ -1239,7 +1239,7 @@ Rc::new(InferResult {
     call_semantics: call_semantics,
 }), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
     node: bt,
-})), span.clone()),
+})), span.clone(), span.clone()),
     diagnostics: arg_diags,
 })
 }
@@ -1265,7 +1265,7 @@ Rc::new(InferResult {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
 }), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
     node: resolved_type,
-})), span.clone()),
+})), span.clone(), span.clone()),
     diagnostics: arg_diags,
 })
 }
@@ -1285,7 +1285,7 @@ Rc::new(InferResult {
     call_semantics: Some(CallSemantics::PlainCallSemantics),
 }), typed_arg_nodes, Some(Rc::new(InferredNode::Resolved {
     node: resolved_type,
-})), span.clone()),
+})), span.clone(), span.clone()),
     diagnostics: v2_rt::concat(arg_diags, call_diags),
 })
 }
@@ -1381,7 +1381,7 @@ let mc_texpr = make_named_expr_node(method_name.clone(), Rc::new(ExprData::ExprM
     method_semantics: method_semantics,
 }), v2_rt::concat(Rc::new(vec![recv_typed.clone()]), typed_mc_arg_nodes), Some(Rc::new(InferredNode::Resolved {
     node: result_type,
-})), span.clone());
+})), span.clone(), span.clone());
 Rc::new(InferResult {
     typed: mc_texpr,
     diagnostics: v2_rt::concat(recv_diags, mc_arg_diags),
@@ -1601,7 +1601,7 @@ if (body_expr.clone() == None) {
                 {
                     let let_texpr = make_named_expr_node(let_name.clone(), Rc::new(ExprData::ExprLet), Rc::new(vec![val_typed.clone()]), Some(Rc::new(InferredNode::Resolved {
     node: val_type,
-})), span.clone());
+})), span.clone(), span.clone());
 Rc::new(InferResult {
     typed: let_texpr,
     diagnostics: val_diags,
@@ -1613,7 +1613,7 @@ Rc::new(InferResult {
 let body_result = infer_expr(body_expr.clone().unwrap(), extended, expected.clone());
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
-let let_texpr2 = make_named_expr_node(let_name.clone(), Rc::new(ExprData::ExprLet), Rc::new(vec![val_typed.clone(), body_typed.clone()]), body_typed.inferred.clone(), span.clone());
+let let_texpr2 = make_named_expr_node(let_name.clone(), Rc::new(ExprData::ExprLet), Rc::new(vec![val_typed.clone(), body_typed.clone()]), body_typed.inferred.clone(), span.clone(), span.clone());
 Rc::new(InferResult {
     typed: let_texpr2,
     diagnostics: v2_rt::concat(val_diags, body_diags.clone()),
@@ -1857,7 +1857,7 @@ let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type_node);
 let body_result = infer_expr(body_expr.clone(), body_scope, None);
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
-let fe_texpr = make_named_expr_node(variable.clone(), Rc::new(ExprData::ExprForEach), Rc::new(vec![coll_typed.clone(), body_typed.clone()]), body_typed.inferred.clone(), span.clone());
+let fe_texpr = make_named_expr_node(variable.clone(), Rc::new(ExprData::ExprForEach), Rc::new(vec![coll_typed.clone(), body_typed.clone()]), body_typed.inferred.clone(), span.clone(), span.clone());
 Rc::new(InferResult {
     typed: fe_texpr,
     diagnostics: v2_rt::concat(coll_diags, body_diags.clone()),
@@ -2093,7 +2093,7 @@ let texpr = make_named_expr_node(rl_name, Rc::new(ExprData::ExprRecordLit {
     parent_enum: local_variant_parent.clone(),
 }), typed_field_nodes2, Some(Rc::new(InferredNode::Resolved {
     node: resolved_node,
-})), span.clone());
+})), span.clone(), span.clone());
 Rc::new(InferResult {
     typed: texpr,
     diagnostics: v2_rt::concat(fi_diags, type_diags),

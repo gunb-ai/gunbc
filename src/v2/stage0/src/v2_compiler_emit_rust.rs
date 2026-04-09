@@ -2392,7 +2392,7 @@ if is_provided.clone() {
                 (param_node_default_value(p.clone()) != None)
 }
 } { __result.push(p); } } __result });
-let default_args = Rc::new({ let mut __result = Vec::new(); for p in missing_with_defaults.iter().cloned() { __result.push(make_arg_node(Some(param_node_name(p.clone())), param_node_default_value(p.clone()).clone().unwrap(), p.span.clone())); } __result });
+let default_args = Rc::new({ let mut __result = Vec::new(); for p in missing_with_defaults.iter().cloned() { __result.push(make_arg_node(Some(param_node_name(p.clone())), param_node_default_value(p.clone()).clone().unwrap(), p.span.clone(), p.span.clone())); } __result });
 v2_rt::concat(ordered.clone(), default_args)
 },
     None => ordered.clone(),
@@ -2414,7 +2414,7 @@ if is_provided.clone() {
                 (param_node_default_value(p.clone()) != None)
 }
 } { __result.push(p); } } __result });
-let default_args = Rc::new({ let mut __result = Vec::new(); for p in missing_with_defaults.iter().cloned() { __result.push(make_arg_node(Some(param_node_name_at(p.clone(), si.clone())), param_node_default_value(p.clone()).clone().unwrap(), p.span.clone())); } __result });
+let default_args = Rc::new({ let mut __result = Vec::new(); for p in missing_with_defaults.iter().cloned() { __result.push(make_arg_node(Some(param_node_name_at(p.clone(), si.clone())), param_node_default_value(p.clone()).clone().unwrap(), p.span.clone(), p.span.clone())); } __result });
 v2_rt::concat(ordered.clone(), default_args)
 }
 }

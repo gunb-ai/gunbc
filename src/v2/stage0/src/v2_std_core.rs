@@ -601,11 +601,11 @@ pub fn make_expr_node(expr_data: Rc<ExprData>, children: Rc<Vec<Rc<Node>>>, infe
 })
 }
 
-pub fn make_named_expr_node(name: String, expr_data: Rc<ExprData>, children: Rc<Vec<Rc<Node>>>, inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_named_expr_node(name: String, expr_data: Rc<ExprData>, children: Rc<Vec<Rc<Node>>>, inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>, name_span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: name.clone(),
-    span: span.clone(),
-    ident_span: default_ident_span(name.clone(), span.clone()),
+    span: span,
+    ident_span: default_ident_span(name.clone(), name_span),
     children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -651,7 +651,7 @@ pub fn make_expr_error_node(kind: ExprErrorKind, message: String, span: Rc<Sourc
 })
 }
 
-pub fn make_arg_node(name: Option<String>, value: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_arg_node(name: Option<String>, value: Rc<Node>, span: Rc<SourceSpan>, name_span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let arg_name = match name {
     Some(n) => n.clone(),
@@ -659,8 +659,8 @@ pub fn make_arg_node(name: Option<String>, value: Rc<Node>, span: Rc<SourceSpan>
 };
 Rc::new(Node {
     name: arg_name.clone(),
-    span: span.clone(),
-    ident_span: default_ident_span(arg_name.clone(), span.clone()),
+    span: span,
+    ident_span: default_ident_span(arg_name.clone(), name_span),
     children: Rc::new(vec![value]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -707,11 +707,11 @@ Rc::new(Node {
 }
 }
 
-pub fn make_resource_use_node(name: String, resource: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_resource_use_node(name: String, resource: Rc<Node>, span: Rc<SourceSpan>, name_span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: name.clone(),
-    span: span.clone(),
-    ident_span: default_ident_span(name.clone(), span.clone()),
+    span: span,
+    ident_span: default_ident_span(name.clone(), name_span),
     children: Rc::new(vec![resource]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -766,11 +766,11 @@ pub fn make_field_init_node(name: String, value: Rc<Node>, span: Rc<SourceSpan>,
 })
 }
 
-pub fn make_field_binding_node(field_name: String, binding: Rc<MatchPattern>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_field_binding_node(field_name: String, binding: Rc<MatchPattern>, span: Rc<SourceSpan>, name_span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: field_name.clone(),
-    span: span.clone(),
-    ident_span: default_ident_span(field_name.clone(), span.clone()),
+    span: span,
+    ident_span: default_ident_span(field_name.clone(), name_span),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
