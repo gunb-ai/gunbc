@@ -5039,3 +5039,175 @@ fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
     assert!(!filter_bounds.is_empty(), "expected structural bound for filter_by_membership");
     assert_eq!(filter_bounds[0].param, "items");
 }
+
+// ── CX adversarial tests: stress the analyzer with weird/hostile patterns ───
+
+#[test]
+fn adversarial_infinite_loop() {
+    // self(same_arg) — infinite loop. Should produce NO structural bound
+    // (fail-closed). The existing complexity analyzer classifies this as
+    // "same-argument recursion" (Forever/repeat(max_int)).
+    let source = r#"module inf_loop
+
+fn spin(x: Int) -> Int {
+  spin(x: x)
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "spin")
+        .collect();
+    eprintln!("[adversarial] spin: {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // spin(x: x) passes x unchanged → PreservedValue → NonIncreasing evidence.
+    // merge_param_evidence → NonIncreasing (not Strict) → no structural bound.
+    assert!(bounds.is_empty(), "infinite loop should produce no structural bound (fail-closed)");
+}
+
+#[test]
+fn adversarial_mutual_recursion() {
+    // A calls B calls A — mutual recursion. CX-L2 only tracks self-calls,
+    // not cross-function calls. Should fail-closed.
+    let source = r#"module mutual_rec
+
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn even_count(xs: MyList<Int>) -> Int {
+  match xs {
+    Nil => 0
+    Cons { head: _, tail: rest } => odd_count(xs: rest)
+  }
+}
+
+fn odd_count(xs: MyList<Int>) -> Int {
+  match xs {
+    Nil => 0
+    Cons { head: _, tail: rest } => 1 + even_count(xs: rest)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let even_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "even_count")
+        .collect();
+    let odd_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "odd_count")
+        .collect();
+    eprintln!("[adversarial] even_count: {} bounds, odd_count: {} bounds", even_bounds.len(), odd_bounds.len());
+    // Neither function self-calls — they call each other.
+    // CX-L2 only annotates self-calls. No descent evidence → no bounds.
+    assert!(even_bounds.is_empty(), "mutual recursion should produce no structural bound");
+    assert!(odd_bounds.is_empty(), "mutual recursion should produce no structural bound");
+}
+
+#[test]
+fn adversarial_exponential_blowup() {
+    // Naive fibonacci: f(n-1) + f(n-2). Two recursive calls on non-structural
+    // arguments (Int, no InductiveField). Should produce no bound.
+    let source = r#"module fib
+
+fn fib(n: Int) -> Int {
+  if n <= 1 { n }
+  else { fib(n: n - 1) + fib(n: n - 2) }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "fib")
+        .collect();
+    eprintln!("[adversarial] fib: {} bounds", bounds.len());
+    // Int is not an inductive type → no InductiveField → SubValueUnknown → no bound.
+    assert!(bounds.is_empty(), "fibonacci on Int should produce no structural bound");
+}
+
+#[test]
+fn adversarial_hidden_nontermination() {
+    // Looks structural but sneaks in a growing argument.
+    // Each call to walk passes a LARGER tree (wraps in Branch).
+    let source = r#"module sneaky
+
+type Tree = Leaf | Branch { left: Tree, right: Tree }
+
+fn walk(t: Tree) -> Int {
+  match t {
+    Leaf => 0
+    Branch { left: l, right: _ } => walk(t: Branch { left: l, right: l })
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "walk")
+        .collect();
+    eprintln!("[adversarial] walk (growing arg): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // The self-call passes `Branch { left: l, right: l }` — a CONSTRUCTOR,
+    // not a sub-value. classify_argument sees ExprRecordLit, returns SubValueUnknown.
+    assert!(bounds.is_empty(), "growing argument should produce no structural bound (fail-closed)");
+}
+
+#[test]
+fn adversarial_ackermann() {
+    // Ackermann function: nested recursion on two parameters.
+    // Neither parameter has InductiveField (both Int).
+    let source = r#"module ackermann
+
+fn ack(m: Int, n: Int) -> Int {
+  if m == 0 { n + 1 }
+  else if n == 0 { ack(m: m - 1, n: 1) }
+  else { ack(m: m - 1, n: ack(m: m, n: n - 1)) }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "ack")
+        .collect();
+    eprintln!("[adversarial] ackermann: {} bounds", bounds.len());
+    // Int has no InductiveField → all arguments are SubValueUnknown → no bound.
+    assert!(bounds.is_empty(), "ackermann on Int should produce no structural bound");
+}
+
+#[test]
+fn adversarial_quadratic_nested_walk() {
+    // O(n^2): for each node in a tree, walks the entire left subtree.
+    // The inner call is on a sub-value, but it's called N times.
+    let source = r#"module quadratic
+
+type Tree = Leaf { value: Int } | Branch { left: Tree, right: Tree }
+
+fn count_left(t: Tree) -> Int {
+  match t {
+    Leaf { value: _ } => 1
+    Branch { left: l, right: _ } => count_left(t: l)
+  }
+}
+
+fn quadratic_walk(t: Tree) -> Int {
+  match t {
+    Leaf { value: _ } => 0
+    Branch { left: l, right: r } =>
+      let left_count = count_left(t: l)
+      left_count + quadratic_walk(t: l) + quadratic_walk(t: r)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    // count_left is a catamorphism → O(n)
+    let cl_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "count_left")
+        .collect();
+    assert!(!cl_bounds.is_empty(), "count_left should be O(n)");
+    // quadratic_walk: both branches descend → merged Strict → catamorphism O(n).
+    // NOTE: The actual complexity is O(n^2) because count_left is called
+    // at each node. But CX-L3 only analyzes the STRUCTURAL recursion of
+    // quadratic_walk itself (which is a catamorphism). The O(n) per-node
+    // work from count_left is not yet factored in (work_exponent = 0).
+    // This is a known limitation: work_exponent detection is future work.
+    let qw_bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "quadratic_walk")
+        .collect();
+    eprintln!("[adversarial] quadratic_walk: {} bounds", qw_bounds.len());
+    for b in &qw_bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // Currently reports O(n) — structural recursion only, ignoring per-node work.
+    // Future: should report O(n^2) when work_exponent detection is added.
+}
