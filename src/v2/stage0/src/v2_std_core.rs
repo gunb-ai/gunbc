@@ -572,6 +572,22 @@ pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<Sourc
 }
 }
 
+pub fn synthetic_ident_span(name: String) -> Rc<SourceSpan> {
+    Rc::new(SourceSpan {
+    file: v2_rt::concat("@synthetic:".to_string(), name),
+    start: 0,
+    end: 0,
+})
+}
+
+pub fn is_synthetic_span(span: Rc<SourceSpan>) -> bool {
+    ((v2_rt::string_length(&span.file.clone()) > 12) && (v2_rt::substring(&span.file.clone(), 0, 12).as_str() == "@synthetic:".to_string().as_str()))
+}
+
+pub fn synthetic_span_name(span: Rc<SourceSpan>) -> String {
+    v2_rt::substring(&span.file.clone(), 12, v2_rt::string_length(&span.file.clone()))
+}
+
 pub fn node_name_span(n: Rc<Node>) -> Rc<SourceSpan> {
     match n.ident_span.clone() {
     Some(s) => s.clone(),
@@ -893,20 +909,24 @@ pub fn generic_param_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>
 
 pub fn authored_name_at(source_index: Option<Rc<NewlineIndex>>, node: Rc<Node>) -> String {
     match node.ident_span.clone() {
-    Some(span) => match source_index {
+    Some(span) => if is_synthetic_span(span.clone()) {
+        synthetic_span_name(span.clone())
+} else {
+        match source_index {
     Some(index) => if (span.file.clone().as_str() == index.file.clone().as_str()) {
-        {
-            let text = source_text_at(index.clone(), span.clone());
+            {
+                let text = source_text_at(index.clone(), span.clone());
 if (text.clone().as_str() == "".to_string().as_str()) {
-                node.name.clone()
+                    node.name.clone()
 } else {
-                text.clone()
+                    text.clone()
 }
 }
 } else {
-        node.name.clone()
+            node.name.clone()
 },
     None => node.name.clone(),
+}
 },
     None => node.name.clone(),
 }
@@ -1914,7 +1934,7 @@ pub fn unit_type() -> Rc<Node> {
             Rc::new(Node {
     name: "Unit".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: Some(synthetic_ident_span("Unit".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
@@ -1941,7 +1961,7 @@ pub fn bool_type() -> Rc<Node> {
             Rc::new(Node {
     name: "Bool".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: Some(synthetic_ident_span("Bool".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1968,7 +1988,7 @@ pub fn string_type() -> Rc<Node> {
             Rc::new(Node {
     name: "String".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: Some(synthetic_ident_span("String".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1995,7 +2015,7 @@ pub fn int_type() -> Rc<Node> {
             Rc::new(Node {
     name: "Int".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: Some(synthetic_ident_span("Int".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2022,7 +2042,7 @@ pub fn float_type() -> Rc<Node> {
             Rc::new(Node {
     name: "Float".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: Some(synthetic_ident_span("Float".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2049,7 +2069,7 @@ pub fn none_type() -> Rc<Node> {
             Rc::new(Node {
     name: "None".to_string(),
     span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    ident_span: Some(synthetic_ident_span("None".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
