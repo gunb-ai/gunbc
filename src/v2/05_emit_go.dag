@@ -50,14 +50,14 @@ import v2.std.core {
   FieldSummary, FieldAccessStyle,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   arg_name, arg_value, arm_body, arm_pattern, arm_guard,
-  field_init_node_name, field_init_node_value,
+  field_init_node_name, field_init_node_name_at, field_init_node_value,
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
   field_access_base, method_receiver, expr_field_access_summary, expr_method_call_semantics,
   record_lit_type_name,
   lambda_body, cast_expr, cast_target, return_value,
-  foreach_variable, foreach_collection, foreach_body, method_arg_nodes,
+  foreach_variable, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
   index_base, index_expr, slice_base, slice_start, slice_end,
   with_required_cardinality,
   Connective, Conj, Disj,
@@ -286,7 +286,7 @@ fn emit_go_operation_test(projection: TestProjection, depth: Int) -> String {
 
 fn emit_go_mock_prop_setup(mock_prop: Node, depth: Int) -> String {
   concat(
-    emit_ident(name: field_init_node_name(n: mock_prop), target: Go),
+    emit_ident(name: field_init_node_name_at(n: mock_prop, source_index: none), target: Go),
     " := ",
     emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Go, source_index: none))
 }
@@ -368,9 +368,9 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
     emit_go_type_def_from_connective(item: item, env: env)
-  } else if is_type_alias_item(item: item) {
+  } else if is_type_alias_item(item: item, source_index: env.source_index) {
     emit_go_type_alias(name: item_text, base: resolved_type(n: item), source_index: env.source_index)
-  } else if is_type_decl_item(item: item) {
+  } else if is_type_decl_item(item: item, source_index: env.source_index) {
     ""
   } else if is_function_item(item: item) {
     if item.uses |> count > 0 {
@@ -641,15 +641,15 @@ fn emit_go_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 }
 
 fn emit_go_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_for_each(variable: foreach_variable(texpr: expr), collection: foreach_collection(texpr: expr), body: foreach_body(texpr: expr), registry: registry, scope: scope, depth: depth)
+  emit_go_typed_for_each(variable: foreach_variable_at(texpr: expr, source_index: scope.type_env.source_index), collection: foreach_collection(texpr: expr), body: foreach_body(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_go_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024))
+  emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_index: scope.type_env.source_index)
 }
 
 fn emit_go_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_slice_shared(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024))
+  emit_typed_slice_shared(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_index: scope.type_env.source_index)
 }
 
 fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int) -> String {
@@ -830,7 +830,7 @@ fn emit_go_typed_record_lit(type_name: String?, fields: List<Node>, registry: Ma
         "map[string]interface{}{}"
       } else {
         let field_strs = fields |> map(f =>
-          concat("\t\"", field_init_node_name(n: f), "\": ", emit_go_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024), ",")
+          concat("\t\"", field_init_node_name_at(n: f, source_index: scope.type_env.source_index), "\": ", emit_go_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024), ",")
         )
         let fields_str = field_strs |> join(separator: "\n")
         concat("map[string]interface{}{\n", fields_str, "\n}")
@@ -841,7 +841,7 @@ fn emit_go_typed_record_lit(type_name: String?, fields: List<Node>, registry: Ma
         concat(tn, "{}")
       } else {
         let field_strs = fields |> map(f =>
-          concat(go_export_ident(name: field_init_node_name(n: f)), ": ", emit_go_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024))
+          concat(go_export_ident(name: field_init_node_name_at(n: f, source_index: scope.type_env.source_index)), ": ", emit_go_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024))
         )
         let fields_str = field_strs |> join(separator: ", ")
         concat(tn, "{", fields_str, "}")

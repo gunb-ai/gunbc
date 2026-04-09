@@ -10,7 +10,7 @@ module v2.compiler.infer_items
 import std.types { SourceSpan }
 import v2.std.core {
   Node, ErrorNode,
-  make_param_node, param_node_name, param_node_type_expr,
+  make_param_node, param_node_name, param_node_name_at, param_node_type_expr,
   make_field_node,
   InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required,
