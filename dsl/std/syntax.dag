@@ -44,12 +44,25 @@ type BodyKind
   | ServiceBody
   | ResourceBody
 
+// -- Item kind --------------------------------------------------------
+// Discriminator for item forms — identifies which semantic role
+// an item serves. Used to derive emission keywords from SyntaxSpec.
+
+type ItemFormKind
+  = FuncForm
+  | StructForm
+  | EnumForm
+  | TypeAliasForm
+  | ModuleForm
+  | OtherForm        // trait, impl, const, static, service, resource, etc.
+
 // -- Item form --------------------------------------------------------
 // Describes one kind of declaration (fn, type, service, etc.)
 // as data. The parser reads this to decide what structural
 // components to expect after the keyword.
 
 type ItemForm {
+  kind: ItemFormKind
   keyword: String
   has_type_params: Bool
   has_params: Bool

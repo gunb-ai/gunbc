@@ -7,7 +7,8 @@
 module extdeps.languages.dag.syntax
 
 import std.syntax {
-  ItemForm, BodyKind,
+  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
+  BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
   OperatorSpec, SyntaxSpec,
@@ -22,28 +23,28 @@ import std.syntax {
 // and delegates to the appropriate body parser.
 
 data dag_item_forms: List<ItemForm> = [
-  ItemForm { keyword: "type", has_type_params: true, has_params: false,
+  ItemForm { kind: TypeAliasForm, keyword: "type", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: TypeBody },
-  ItemForm { keyword: "fn", has_type_params: true, has_params: true,
+  ItemForm { kind: FuncForm, keyword: "fn", has_type_params: true, has_params: true,
     has_return_type: true, return_required: true,
     has_uses: false, body_kind: ExprBody },
-  ItemForm { keyword: "func", has_type_params: false, has_params: true,
+  ItemForm { kind: FuncForm, keyword: "func", has_type_params: false, has_params: true,
     has_return_type: true, return_required: false,
     has_uses: true, body_kind: BlockBody },
-  ItemForm { keyword: "service", has_type_params: false, has_params: false,
+  ItemForm { kind: OtherForm, keyword: "service", has_type_params: false, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: ServiceBody },
-  ItemForm { keyword: "resource", has_type_params: false, has_params: false,
+  ItemForm { kind: OtherForm, keyword: "resource", has_type_params: false, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: ResourceBody },
-  ItemForm { keyword: "data", has_type_params: false, has_params: false,
+  ItemForm { kind: OtherForm, keyword: "data", has_type_params: false, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: ValueBody },
-  ItemForm { keyword: "pattern", has_type_params: false, has_params: true,
+  ItemForm { kind: OtherForm, keyword: "pattern", has_type_params: false, has_params: true,
     has_return_type: true, return_required: false,
     has_uses: true, body_kind: BlockBody },
-  ItemForm { keyword: "interface", has_type_params: false, has_params: true,
+  ItemForm { kind: OtherForm, keyword: "interface", has_type_params: false, has_params: true,
     has_return_type: true, return_required: false,
     has_uses: false, body_kind: BlockBody }
 ]

@@ -32,8 +32,13 @@ pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
 }
 
 pub fn parse_source(source: &str) -> Rc<ParseResult> {
-    let tokens = tokenize(source);
-    v2_compiler::v2_compiler_parse::parse(tokens)
+    parse_source_named("test.dag", source)
+}
+
+pub fn parse_source_named(filename: &str, source: &str) -> Rc<ParseResult> {
+    let tokens = v2_compiler::v2_compiler_tokenize::tokenize(source.to_string(), filename.to_string());
+    let source_index = v2_compiler::v2_std_core::build_newline_index(filename.to_string(), source.to_string());
+    v2_compiler::v2_compiler_parse::parse(tokens, Some(source_index))
 }
 
 pub fn assert_parses(source: &str, label: &str) {

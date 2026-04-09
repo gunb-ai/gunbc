@@ -463,11 +463,11 @@ fn parser_scales_linearly_with_token_count() {
     let large_tokens = tokenize(&large_source);
 
     let start = Instant::now();
-    let _small_result = v2_compiler::v2_compiler_parse::parse(small_tokens.clone());
+    let _small_result = v2_compiler::v2_compiler_parse::parse(small_tokens.clone(), None);
     let small_time = start.elapsed();
 
     let start = Instant::now();
-    let _large_result = v2_compiler::v2_compiler_parse::parse(large_tokens.clone());
+    let _large_result = v2_compiler::v2_compiler_parse::parse(large_tokens.clone(), None);
     let large_time = start.elapsed();
 
     let token_ratio = large_tokens.len() as f64 / small_tokens.len() as f64;

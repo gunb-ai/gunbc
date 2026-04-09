@@ -34,9 +34,9 @@ let self_diags = match container_expected_arity(n.name.clone()) {
     got: 0,
     span: n.span.clone(),
 }), module_name.clone())])
-} else {
+            } else {
                 Rc::new(vec![])
-},
+            },
     None => Rc::new(vec![]),
 };
 let child_diags = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.extend((*check_bare_containers(c.clone(), module_name.clone())).iter().cloned()); } __result });
@@ -51,7 +51,7 @@ let body_diags = match n.body.clone() {
 };
 let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
                 Rc::new(vec![])
-} else {
+            } else {
                 match n.inferred.clone() {
     Some(inf) => match (*inf.clone()).clone() {
     InferredNode::Resolved { node: rn, .. } => check_bare_containers(rn.clone(), module_name.clone()),
@@ -59,7 +59,7 @@ let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
 },
     None => Rc::new(vec![]),
 }
-};
+            };
 let uses_diags = Rc::new({ let mut __result = Vec::new(); for u in n.uses.clone().iter().cloned() { __result.extend((*check_bare_containers(u.clone(), module_name.clone())).iter().cloned()); } __result });
 let prop_diags = Rc::new({ let mut __result = Vec::new(); for p in n.properties.clone().iter().cloned() { __result.extend((*check_bare_containers(p.clone(), module_name.clone())).iter().cloned()); } __result });
 Rc::new({ let mut __result = Vec::new(); for d in Rc::new(vec![self_diags, child_diags, param_diags, type_ann_diags, inferred_diags, body_diags, uses_diags, prop_diags]).iter().cloned() { __result.extend((*d.clone()).iter().cloned()); } __result })

@@ -173,10 +173,10 @@ pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<Iteration
 pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension> {
     if (type_name.clone().as_str() == "Node".to_string().as_str()) {
         Some(IterationDimension::TreeDescent)
-} else {
+    } else {
         match v2_rt::map_get(&kernel_algebra_profile(), type_name.clone()) {
     Some(p) => algebra_profile_to_dimension(p.clone()),
     None => None,
 }
-}
+    }
 }

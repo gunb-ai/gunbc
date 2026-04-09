@@ -94,12 +94,12 @@ if (n.clone() <= 1) {
     events: trace.events.clone(),
     stack: Rc::new(vec![]),
 })
-} else {
+        } else {
             Rc::new(Trace {
     events: trace.events.clone(),
     stack: Rc::new(trace.stack.clone().iter().cloned().take((n.clone() - 1) as usize).collect::<Vec<_>>()),
 })
-}
+        }
 }
 }
 

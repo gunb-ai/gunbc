@@ -190,6 +190,14 @@ type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
 // ExprData: pure operator metadata tag (P5.11 dissolution).
 // All child Nodes live in node.children. ExprData retains only
 // non-Node metadata that identifies the expression kind.
+//
+// KNOWN DEBT (M8/M9): ExprBinOp.algebra_field uses String? for dispatch
+// (values: "add", "mul", "quotient", "reciprocal", "remainder"). This
+// should be a coproduct AlgebraFieldKind for structural dispatch. Fix path:
+//   1. Define AlgebraFieldKind in std/syntax.dag alongside OperatorSpec
+//   2. Update OperatorSpec.algebra_field: AlgebraFieldKind?
+//   3. Update ExprBinOp.algebra_field: AlgebraFieldKind?
+//   4. Update binop_algebra_fields, binop_symbol, first_matching_algebra_field
 type ExprData
   = NoExprData
   | ExprLiteral { value: LiteralValue }
@@ -203,7 +211,7 @@ type ExprData
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOp }
+  | ExprBinOp { op: BinOp, algebra_field: String? }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda { semantics: LambdaSemantics? }
   | ExprStringInterp

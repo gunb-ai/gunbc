@@ -8,7 +8,8 @@
 module extdeps.languages.rust.syntax
 
 import std.syntax {
-  ItemForm, BodyKind,
+  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
+  BodyKind,
   ExprBody, BlockBody, TypeBody, NoBody,
   OperatorSpec, SyntaxSpec,
   BinOp, Add, Sub, Mul, Div, Mod,
@@ -20,31 +21,31 @@ import std.syntax {
 // fn, struct, enum, type, trait, impl, const, static, use, mod
 
 data rust_item_forms: List<ItemForm> = [
-  ItemForm { keyword: "fn", has_type_params: true, has_params: true,
+  ItemForm { kind: FuncForm, keyword: "fn", has_type_params: true, has_params: true,
     has_return_type: true, return_required: false,
     has_uses: false, body_kind: BlockBody },
-  ItemForm { keyword: "struct", has_type_params: true, has_params: false,
+  ItemForm { kind: StructForm, keyword: "struct", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: TypeBody },
-  ItemForm { keyword: "enum", has_type_params: true, has_params: false,
+  ItemForm { kind: EnumForm, keyword: "enum", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: TypeBody },
-  ItemForm { keyword: "type", has_type_params: true, has_params: false,
+  ItemForm { kind: TypeAliasForm, keyword: "type", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: NoBody },
-  ItemForm { keyword: "trait", has_type_params: true, has_params: false,
+  ItemForm { kind: OtherForm, keyword: "trait", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: BlockBody },
-  ItemForm { keyword: "impl", has_type_params: true, has_params: false,
+  ItemForm { kind: OtherForm, keyword: "impl", has_type_params: true, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: BlockBody },
-  ItemForm { keyword: "const", has_type_params: false, has_params: false,
+  ItemForm { kind: OtherForm, keyword: "const", has_type_params: false, has_params: false,
     has_return_type: true, return_required: true,
     has_uses: false, body_kind: ExprBody },
-  ItemForm { keyword: "static", has_type_params: false, has_params: false,
+  ItemForm { kind: OtherForm, keyword: "static", has_type_params: false, has_params: false,
     has_return_type: true, return_required: true,
     has_uses: false, body_kind: ExprBody },
-  ItemForm { keyword: "mod", has_type_params: false, has_params: false,
+  ItemForm { kind: ModuleForm, keyword: "mod", has_type_params: false, has_params: false,
     has_return_type: false, return_required: false,
     has_uses: false, body_kind: BlockBody }
 ]

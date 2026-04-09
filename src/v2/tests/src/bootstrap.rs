@@ -64,7 +64,9 @@ fn stage0_cargo_check() {
 // 2026-04-09: 530→528 — merged main (CX unification -2).
 // 2026-04-09: 528→485 — ExprLet scope fix eliminates false descent evidence
 //   from let-value initializers seeing their own bindings.
-const DIAG_RATCHET: usize = 485;
+// 2026-04-09: 485→487 — LS-3/5 follow-ups (ItemKeywords/SyntaxSpec merge,
+//   binop algebra move to infer) add 2 call paths through CostUnknown functions.
+const DIAG_RATCHET: usize = 487;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
