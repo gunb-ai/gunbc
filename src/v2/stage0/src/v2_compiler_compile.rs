@@ -66,6 +66,12 @@ pub struct FrontendResult {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontendAccum {
+    pub parse_results: Rc<Vec<Rc<ParseResult>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+}
+
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
     Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(Rc::new(FuncEntry {
     name: item.name.clone(),
@@ -551,12 +557,20 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
 
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
-        let newline_indices = Rc::new({ let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push(build_newline_index(s.path.clone(), s.content.clone())); } __result });
-let parse_results = Rc::new({ let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push({
+        let acc = sources.iter().cloned().fold(Rc::new(FrontendAccum {
+    parse_results: Rc::new(vec![]),
+    newline_indices: Rc::new(vec![]),
+}), |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
             let tokens = tokenize(s.content.clone(), s.path.clone());
 let si = build_newline_index(s.path.clone(), s.content.clone());
-parse(tokens.clone(), Some(si.clone()))
-}); } __result });
+let pr = parse(tokens.clone(), Some(si.clone()));
+Rc::new(FrontendAccum {
+    parse_results: v2_rt::rc_list_push(acc.parse_results, pr.clone()),
+    newline_indices: v2_rt::rc_list_push(acc.newline_indices, si.clone()),
+})
+} });
+let parse_results = acc.parse_results.clone();
+let newline_indices = acc.newline_indices.clone();
 let parse_diagnostics = collect_diagnostics(parse_results.clone());
 let has_parse_errors = { let mut __found = false; for p in parse_results.clone().iter().cloned() { if (p.error.clone() != None) { __found = true; break; } } __found };
 if has_parse_errors {

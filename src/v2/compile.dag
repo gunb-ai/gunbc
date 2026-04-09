@@ -73,6 +73,11 @@ type FrontendResult {
   newline_indices: List<NewlineIndex>
 }
 
+type FrontendAccum {
+  parse_results: List<ParseResult>
+  newline_indices: List<NewlineIndex>
+}
+
 // =========================================================================
 // Function extraction for pipeline analyses
 // =========================================================================
@@ -773,12 +778,15 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
 // Shared frontend path: tokenize -> parse -> resolve.
 // If parse fails, graph is None and diagnostics contains only parse diagnostics.
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
-  let newline_indices = sources |> map(s => build_newline_index(file: s.path, source: s.content))
-  let parse_results = sources |> map(s =>
+  // Single pass: build newline index once per source, feed into parse and accumulate both.
+  let acc = sources |> fold(init: FrontendAccum { parse_results: [], newline_indices: [] }, f: (acc, s) =>
     let tokens = tokenize(source: s.content, file: s.path)
     let si = build_newline_index(file: s.path, source: s.content)
-    parse(tokens: tokens, source_index: Some { value: si })
+    let pr = parse(tokens: tokens, source_index: Some { value: si })
+    FrontendAccum { parse_results: list_push(acc.parse_results, pr), newline_indices: list_push(acc.newline_indices, si) }
   )
+  let parse_results = acc.parse_results
+  let newline_indices = acc.newline_indices
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let has_parse_errors = parse_results |> any(p => p.error != None)
   if has_parse_errors {
