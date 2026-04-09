@@ -4799,7 +4799,7 @@ let ns_prop = make_field_init_node("namespace_root".to_string(), make_expr_node(
     value: Rc::new(LiteralValue::LitStr {
     value: namespace_root.clone(),
 }),
-}), Rc::new(vec![]), None, start_span.clone()), start_span.clone(), start_span.clone());
+}), Rc::new(vec![]), None, start_span.clone()), start_span.clone(), no_span());
 let svc_props = match r.config.clone() {
     Some(cfg) => service_config_properties(cfg.endpoint.clone(), cfg.auth.clone(), cfg.auth_input.clone(), cfg.rate_limit.clone(), cfg.retry.clone()),
     None => Rc::new(vec![]),

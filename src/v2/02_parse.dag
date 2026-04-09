@@ -2239,7 +2239,7 @@ fn parse_service_after_kw(tokens: List<Token>, state: ParserState, start_span: S
   // Operations are already Nodes (D2d dissolution) -- use directly as children
   // Preserve namespace root as a structural property so downstream stages
   // don't need to reverse-engineer it by string-splitting.
-  let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: start_span)
+  let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let svc_props = match r.config {
     Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, rate_limit: cfg.rate_limit, retry: cfg.retry)
     None => []
