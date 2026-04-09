@@ -1441,42 +1441,68 @@ construct_termination_proof, collect_scc_child_edges).
 - SCC evidence derived through sub_value_to_evidence (not fabricated)
 - ArithmeticDescentCall derives op/by from actual ShrinkFactor
 
-#### Migration path: Node as inductive type
+#### Structural completeness: no edge cases
 
-**Phase 1: DONE.** Node.children registered as ListRecursion. All 8
-recursive fields + InferredNode cross-type reference declared in
-std/node.dag. recursive_type_set bridged into build_type_env.
-kernel_node_inductive_fields dissolved.
+The pipeline has 4 stages. Each stage must be exhaustive over its
+input type — every variant handled, fail-closed on unknowns. This
+is the guarantee that no new syntactic pattern creates an "edge case."
+
+**Exhaustive (no gaps):**
+- SubValueRelation → CallPattern: 5/5 variants (sub_value_to_call_pattern)
+- CallPattern → LoweringTarget: 7/7 variants (lower_call_pattern)
+- annotate_descent: 21/21 ExprData variants (special handling or map_children)
+
+**Gap 1: classify_argument — transparent wrapper propagation.**
+6/21 ExprData variants handled. The 15 unhandled split into:
+- Value constructors (9): ExprLiteral, ExprRecordLit, ExprListLit,
+  ExprStringInterp, ExprLambda, ExprForEach, ExprUnaryOp, ExprError,
+  NoExprData — CORRECTLY SubValueUnknown (new values aren't sub-values).
+- Transparent wrappers (6): ExprMatch, ExprIf, ExprBlock, ExprLet,
+  ExprCast, ExprReturn — SHOULD propagate evidence through to result.
+  ExprMatch: worst-case across arms. ExprIf: worst-case across branches.
+  ExprBlock/ExprLet: propagate body. ExprCast/ExprReturn: propagate inner.
+Fix: handle transparent wrappers. Any NEW ExprData variant is either
+a value constructor (→ SubValueUnknown) or a control flow wrapper
+(→ propagate). The classification is structurally determined by whether
+the variant produces a NEW value or passes through an existing one.
+
+**Gap 2: SCC proof dimensionality.**
+Only 2 lexicographic combinations tried ([TreeSize, ListLength] and
+[TreeSize, TokenPosition]). Should construct proofs systematically:
+for each SCC member, determine which RankingDimensions have evidence,
+then search for a dimension ordering where every cycle has at least
+one Strict edge. This is standard lexicographic termination analysis.
+5 dimensions × small SCCs = tractable search.
+
+**Gap 3: SetCardinality dimension unused.**
+WorklistDrainCall exists in CallPattern but no evidence path produces
+it. Fix: in classify_argument, recognize `set |> remove(x)` and
+`map |> remove(key)` patterns as SetCardinality descent. Or: model
+visited-set growth as fold over a finite universe.
+
+**Gap 4: ArithmeticValue not in SCC proofs.**
+Only used for single-function recursion. Fix: include ArithmeticValue
+in the SCC proof dimension search (Gap 2 fix covers this).
+
+**Completeness guarantee:** When all 4 gaps are closed:
+- Every ExprData variant → SubValueRelation (exhaustive)
+- Every SubValueRelation → CallPattern (exhaustive)
+- Every CallPattern → LoweringTarget (exhaustive)
+- Every SCC topology → lexicographic proof search (exhaustive)
+- New code either maps to a proven primitive or gets CostUnknown
+  (fail-closed). CostUnknown means "declare the missing fact" —
+  not "add a new heuristic."
+
+#### Node as inductive type
+
+**Phase 1: DONE.** Node's 8 recursive fields + InferredNode cross-type
+reference declared in std/node.dag.
 
 **Phase 2: DONE.** Compiler types declared in std/node.dag as .dag
-fact declarations. Types still implemented in Rust — the .dag file
-is a fact declaration, not an implementation.
+fact declarations. Types still implemented in Rust.
 
 **Phase 3: Node IS a .dag type (self-hosting).** Endgame.
-Node is defined in .dag and compiled to Rust. The kernel seed
-disappears. Blocked by: the compiler must be able to compile its own
-Node type and bootstrap from it.
-
-#### Migration path: Parser SCC termination
-
-Parser functions form mutual recursion groups (parse_type_expr →
-parse_expr → parse_type_expr). Each call passes the same token list
-but advances position. The proof requires showing that every SCC cycle
-advances the TokenPosition measure by at least 1. Infrastructure
-partially exists in `std/termination.dag`. The key enabler is threading
-parser-always-advancing proofs through SCC edge collection.
-
-#### Migration path: Graph DFS worklist
-
-`dfs_finish_order` and `dfs_collect_component` in `std/graph.dag` use
-visited-set recursion. The proof requires showing that the worklist
-shrinks on every iteration (each node visited at most once). This is
-a bounded-iteration pattern (I1/I2 in Exploratory Directions).
-
-**Cost algebra design direction:** SizeExpr is a parallel algebra that
-should derive from std/ concepts. Sizes are structural facts, not
-symbolic expressions. CostLog should emerge from iteration structure.
-See triage doc for details.
+Blocked by: compiler must compile its own Node type.
 
 **Deferred CX design improvements:**
 - ComplexityReport stores rendered class strings; should keep typed
