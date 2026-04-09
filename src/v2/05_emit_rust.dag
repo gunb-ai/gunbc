@@ -1505,7 +1505,7 @@ fn field_needs_rc_ref(field_name: String, rc_analysis: RcPatternAnalysis) -> Boo
   rc_analysis.ref_bound_fields |> any(name => name == field_name)
 }
 
-fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> RcPatternAnalysis {
+fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, source_index: NewlineIndex?) -> RcPatternAnalysis {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
       // Some/None are handled by .as_deref().cloned() on the scrutinee --
@@ -1515,7 +1515,7 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: M
         if fbs |> count == 1 {
           match fbs |> first {
             Some { value: fb } =>
-              let inner = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info)
+              let inner = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_index: source_index)
               RcPatternAnalysis {
                 matches_rc_variant: false,
                 matches_option_rc_variant: n == "Some" && inner.matches_rc_variant,
@@ -1531,8 +1531,8 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: M
           None => false
         }
         let ref_bound_fields = fbs |> flat_map(fb =>
-          if analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info).matches_rc_variant {
-            [field_binding_name_at(n: fb, source_index: none)]
+          if analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_index: source_index).matches_rc_variant {
+            [field_binding_name_at(n: fb, source_index: source_index)]
           } else { [] }
         )
         RcPatternAnalysis {
@@ -1546,9 +1546,9 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: M
   }
 }
 
-fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> RcMatchAnalysis {
+fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, source_index: NewlineIndex?) -> RcMatchAnalysis {
   let arm_analyses = arms |> map(arm =>
-    analyze_rc_pattern(pattern: arm_pattern(n: arm), scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info)
+    analyze_rc_pattern(pattern: arm_pattern(n: arm), scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_index: source_index)
   )
   let scrutinee_is_optional = match scrutinee.inferred {
     Some { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
@@ -1597,7 +1597,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         if is_string_lit_pattern(p: fb_pat) {
           "Some(ref __some_val)"
         } else {
-          let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info)
+          let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_index: source_index)
           let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
@@ -1652,7 +1652,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
             let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
             else {
-              let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info)
+              let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_index: source_index)
               let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_index: source_index, emit_info: emit_info)
               concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
             }
@@ -1673,7 +1673,7 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
           match fbs |> first {
             Some { value: fb } =>
               let fb_pat = field_binding_pattern(n: fb)
-              let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info)
+              let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_index: source_index)
               rc_pattern_preludes(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, source_index: source_index, emit_info: emit_info)
             None => ""
           }
@@ -2039,8 +2039,8 @@ fn emit_rust_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scop
     ExprFieldAccess { summary: summary } =>
       let f = expr.name
       let b = field_access_base(texpr: expr)
-      if is_typed_service_call_receiver(receiver: expr) {
-        match extract_typed_service_name(receiver: expr) {
+      if is_typed_service_call_receiver(receiver: expr, source_index: scope.type_env.source_index) {
+        match extract_typed_service_name(receiver: expr, source_index: scope.type_env.source_index) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)
           None => emit_typed_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
         }
@@ -2244,9 +2244,9 @@ fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolve
   }
 }
 
-fn is_map_typed_expr(texpr: Node) -> Bool {
+fn is_map_typed_expr(texpr: Node, source_index: NewlineIndex?) -> Bool {
   match texpr.inferred {
-    Some { value: Resolved { node: n } } => node_is_keyed_collection(n: n, source_index: none)
+    Some { value: Resolved { node: n } } => node_is_keyed_collection(n: n, source_index: source_index)
     _ => false
   }
 }
@@ -2850,7 +2850,7 @@ fn emit_rust_get_method_call(receiver: Node, args: List<Node>, registry: Map<Str
     Some { value: Resolved { node: _ } } => true
     _ => false
   }
-  if is_map_typed_expr(texpr: receiver) {
+  if is_map_typed_expr(texpr: receiver, source_index: scope.type_env.source_index) {
     concat("v2_rt::map_get(&", recv_str, ", ", index_str, ")")
   } else if receiver_resolved {
     concat(recv_str, ".get((", index_str, ") as usize)", clone_iterator_suffix())
@@ -3038,7 +3038,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
       } else { rt.name }
     _ => ""
   }
-  let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info)
+  let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_index: scope.type_env.source_index)
   let match_result_type = match arms |> first {
     Some { value: first_arm } => resolved_type(n: arm_body(n: first_arm))
     None => type_variable_node(id: "match_result")
@@ -3073,7 +3073,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
   let si = scope.type_env.source_index
-  let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info)
+  let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_index: si)
   // In string_from_mode, LitStr patterns use ref-guard syntax: ref __s if __s == "..."
   // This avoids .as_str() on the scrutinee which would make Bind arms receive &str instead of String.
   let pat_str = if string_from_mode {
@@ -3632,7 +3632,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           } else { rt.name }
         _ => ""
       }
-      let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info)
+      let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info, source_index: frame.scope.type_env.source_index)
       let arm_strs = arm_list |> map(arm =>
         emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type))
       let arms_str = arm_strs |> join(separator: "\n")
@@ -3713,7 +3713,7 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
   let si = scope.type_env.source_index
-  let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info)
+  let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_index: si)
   let pat_str = if rc_analysis.needs_rc_pattern {
     emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
   } else {
@@ -3742,10 +3742,10 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
 }
 
 // Check if an expression tree contains a reference to a variable name.
-fn expr_references_var(node: Node, var_name: String) -> Bool {
+fn expr_references_var(node: Node, var_name: String, source_index: NewlineIndex?) -> Bool {
   match node.expr_data {
-    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: node, source_index: none) == var_name
-    _ => node.children |> any(c => expr_references_var(node: c, var_name: var_name))
+    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: node, source_index: source_index) == var_name
+    _ => node.children |> any(c => expr_references_var(node: c, var_name: var_name, source_index: source_index))
   }
 }
 
@@ -3758,7 +3758,7 @@ fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<S
   let tco_movable = params |> fold(acc: emit_info.movable, f: (m, p) =>
     let pname = param_node_name_at(n: p, source_index: si)
     let ref_count = arg_values |> fold(acc: 0, f: (n, av) =>
-      if expr_references_var(node: av, var_name: pname) { n + 1 } else { n })
+      if expr_references_var(node: av, var_name: pname, source_index: si) { n + 1 } else { n })
     if ref_count <= 1 { map_insert(m, pname, true) } else { m })
   let tco_emit_info = with(emit_info, { movable: tco_movable })
   let ordered_args = arg_values |> map(av => emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: tco_emit_info, fuel: 1024))
@@ -3877,7 +3877,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let op_inferred = resolved_type(n: op_node)
   let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_index: env.source_index)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_index: env.source_index)))
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_index: env.source_index)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     make_indent(level: depth + 2),dry_run_body, "\n",
@@ -3893,14 +3893,14 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
 
 // Emit the dry-run branch for an operation method.
 // If mock data is available, use it. Otherwise, emit compile_error!().
-fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>) -> String {
+fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
     // Use the first mock property body as the dry-run return value
     let first_mock = mock_props |> first
     match first_mock {
       Some { value: mp } => {
-        let mock_json = emit_data_value_json(value: field_init_node_value(n: mp), source_index: none)
+        let mock_json = emit_data_value_json(value: field_init_node_value(n: mp), source_index: source_index)
         concat(log_line, "\n",
           "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
           "Ok(serde_json::from_value(mock_value)?)")
@@ -3928,7 +3928,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   let headers = transport_headers(t: transport)
   let header_lines = headers |> map(h =>
     concat("let request = request.header(\"", h.name, "\", ",
-      emit_simple_expr(expr: field_init_node_value(n: h), target: Rust, source_index: none), ");")
+      emit_simple_expr(expr: field_init_node_value(n: h), target: Rust, source_index: source_index), ");")
   )
   let send_line = "let response = request.send().await?;"
   // RE-1e: Response code mapping
@@ -4127,13 +4127,13 @@ fn has_exit_prefix(name: String) -> Bool {
   else { substring(s: name, start: 0, end: 5) == "exit_" }
 }
 
-fn emit_exit_code_handling(op_node: Node, inferred: Node) -> String {
+fn emit_exit_code_handling(op_node: Node, inferred: Node, source_index: NewlineIndex?) -> String {
   let exit_props = op_node.properties |> filter(p => has_exit_prefix(name: field_init_node_name(n: p)))
   if exit_props |> count == 0 {
-    emit_shell_return(inferred: inferred)
+    emit_shell_return(inferred: inferred, source_index: source_index)
   } else {
     let has_nonzero = exit_props |> any(p => field_init_node_name(n: p) == "exit_nonzero")
-    let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred))
+    let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred, source_index: source_index))
     let default_arm = if has_nonzero { "" }
       else { "\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(stderr.into()) }," }
     concat(
@@ -4145,14 +4145,14 @@ fn emit_exit_code_handling(op_node: Node, inferred: Node) -> String {
   }
 }
 
-fn emit_exit_arm(prop: Node, inferred: Node) -> String {
+fn emit_exit_arm(prop: Node, inferred: Node, source_index: NewlineIndex?) -> String {
   let name = field_init_node_name(n: prop)
   let code_str = substring(s: name, start: 5, end: string_length(s: name))
   let pattern = if code_str == "nonzero" { "_" }
     else { code_str }
   let is_success = code_str == "0"
   if is_success {
-    concat("    ", pattern, " => { ", emit_shell_return(inferred: inferred), " },")
+    concat("    ", pattern, " => { ", emit_shell_return(inferred: inferred, source_index: source_index), " },")
   } else {
     concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(stderr.into()) },")
   }
@@ -4190,27 +4190,27 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   } else { [] }
   let env_entries = transport_env(t: transport)
   let env_lines = env_entries |> map(e =>
-    concat("    .env(\"", field_init_node_name(n: e), "\", ", emit_simple_expr(expr: field_init_node_value(n: e), target: Rust, source_index: none), ")")
+    concat("    .env(\"", field_init_node_name(n: e), "\", ", emit_simple_expr(expr: field_init_node_value(n: e), target: Rust, source_index: source_index), ")")
   )
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"
   if has_stdin {
     let stdin_expr = transport_stdin(t: transport).value
     let stdin_var = match stdin_expr.expr_data {
       ExprVar { binding_kind: _ } => emit_ident(name: expr_var_name(texpr: stdin_expr), target: Rust)
-      _ => emit_simple_expr(expr: stdin_expr, target: Rust, source_index: none)
+      _ => emit_simple_expr(expr: stdin_expr, target: Rust, source_index: source_index)
     }
     let spawn_line = "    .stdin(std::process::Stdio::piped())\n    .stdout(std::process::Stdio::piped())\n    .stderr(std::process::Stdio::piped())"
     let spawn_exec = "    .spawn()?;"
     let write_block = concat("{\n    use std::io::Write;\n    if let Some(mut stdin) = output.stdin.take() {\n        stdin.write_all(", stdin_var, ".as_bytes())?;\n    }\n}")
     let wait_line = "let output = output.wait_with_output()?;"
     let check_line = "let stdout = String::from_utf8_lossy(&output.stdout).to_string();"
-    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred)
+    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred, source_index: source_index)
     let all_lines = concat([cmd_line], arg_lines, env_lines, [wd_line, spawn_line, spawn_exec, write_block, wait_line, check_line, return_line])
     all_lines |> join(separator: "\n")
   } else {
     let output_line = "    .output()?;"
     let check_line = "let stdout = String::from_utf8_lossy(&output.stdout).to_string();"
-    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred)
+    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred, source_index: source_index)
     let all_lines = concat([cmd_line], arg_lines, env_lines, [wd_line, output_line, check_line, return_line])
     all_lines |> join(separator: "\n")
   }
@@ -4281,7 +4281,7 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
   }
 }
 
-fn emit_shell_return(inferred: Node) -> String {
+fn emit_shell_return(inferred: Node, source_index: NewlineIndex?) -> String {
   let effective = unwrap_single_field_product(n: inferred)
   let is_product = is_product_type(n: effective)
   // Bool = True | False: structural check (Disj + 2 children)
@@ -4289,7 +4289,7 @@ fn emit_shell_return(inferred: Node) -> String {
   if is_bool {
     "Ok(output.status.success())"
   } else {
-    let __eff_is_container = node_is_element_collection(n: effective, source_index: none)
+    let __eff_is_container = node_is_element_collection(n: effective, source_index: source_index)
     if __eff_is_container {
       "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))"
     } else if is_product && effective.children |> count > 1 {
@@ -4416,7 +4416,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
 }
 
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
-  if has_nested_records_node(n: type_node) && !data_value_has_cross_refs(value: value) {
+  if has_nested_records_node(n: type_node, source_index: scope.type_env.source_index) && !data_value_has_cross_refs(value: value) {
     let json_str = emit_data_value_json(value: value, source_index: scope.type_env.source_index)
     concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "                .expect(\"valid data definition\")")
@@ -4523,9 +4523,9 @@ fn emit_rust_default_value(param: Node) -> String {
   }
 }
 
-fn emit_mock_prop_setup(mock_prop: Node, depth: Int) -> String {
-  let body_str = emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Rust, source_index: none)
-  concat("let ", field_init_node_name_at(n: mock_prop, source_index: none), " = ", body_str, ";")
+fn emit_mock_prop_setup(mock_prop: Node, depth: Int, source_index: NewlineIndex?) -> String {
+  let body_str = emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Rust, source_index: source_index)
+  concat("let ", field_init_node_name_at(n: mock_prop, source_index: source_index), " = ", body_str, ";")
 }
 
 // =========================================================================

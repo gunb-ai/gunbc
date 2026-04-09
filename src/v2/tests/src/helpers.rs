@@ -33,7 +33,7 @@ pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
 
 pub fn parse_source(source: &str) -> Rc<ParseResult> {
     let tokens = tokenize(source);
-    v2_compiler::v2_compiler_parse::parse(tokens)
+    v2_compiler::v2_compiler_parse::parse(tokens, None)
 }
 
 pub fn assert_parses(source: &str, label: &str) {

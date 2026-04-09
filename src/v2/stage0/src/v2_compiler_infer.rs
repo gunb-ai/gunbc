@@ -3834,7 +3834,7 @@ match kind.clone() {
     service_names: if (item.body.clone() == None) {
             Rc::new(vec![])
 } else {
-            collect_typed_service_calls(item.body.clone().clone().unwrap())
+            collect_typed_service_calls(item.body.clone().clone().unwrap(), source_index.clone())
 },
     resource_names: res_names,
     params: item.params.clone(),
@@ -4020,7 +4020,7 @@ let variant_collision_errors = variant_fold.collision_errors.clone();
 let env_variant_locals = variant_locals_from_items(local.resolved_items.clone(), imported_variant_locals);
 let merged_scope = merge_scope_from_imports(resolved_imports.clone(), parent_index, env.clone(), v2_rt::rc_empty_map::<Rc<DeclaredFuncSig>>(), local.svc_registry.clone(), local.svc_locals.clone());
 let all_declared_sigs = v2_rt::rc_map_merge(merged_scope.func_sigs.clone(), local.func_sigs.clone());
-let resolve_result = resolve_func_sigs(all_declared_sigs, local.resolved_items.clone(), module_name.clone());
+let resolve_result = resolve_func_sigs(all_declared_sigs, local.resolved_items.clone(), module_name.clone(), env.source_index.clone());
 let all_locals = Rc::new(v2_rt::map_values(&merged_scope.svc_locals.clone())).iter().cloned().fold(env_variant_locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), binding.name.clone(), binding.clone()));
 Rc::new(ModuleContext {
     resolved_items: local.resolved_items.clone(),

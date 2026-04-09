@@ -70,7 +70,7 @@ fn full_dsl_compiles() {
                 v2_compiler::v2_compiler_parse::parse(v2_compiler::v2_compiler_tokenize::tokenize(
                     content,
                     path.to_string_lossy().to_string(),
-                ));
+                ), None);
             if let Some(ref err) = result.error {
                 v2_errors.push(format!(
                     "{}: {}",

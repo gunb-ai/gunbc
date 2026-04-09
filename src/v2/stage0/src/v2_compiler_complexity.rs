@@ -428,13 +428,13 @@ if (name.clone().as_str() == state_param.name.clone().as_str()) {
 } else {
             ProgressKind::ProgressUnknown
 },
-    ExprData::ExprCall { .. } => match parser_passthrough_state_expr(expr.clone()) {
+    ExprData::ExprCall { .. } => match parser_passthrough_state_expr(expr.clone(), si.clone()) {
     Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()),
     None => ProgressKind::ProgressUnknown,
 },
     ExprData::ExprIf => {
             let cond = if_condition(expr.clone());
-let then_consumed = match parser_progress_flag_var(cond) {
+let then_consumed = match parser_progress_flag_var(cond, si.clone()) {
     Some(name) => v2_rt::rc_map_insert(consumed_true_set.clone(), name.clone(), true),
     None => consumed_true_set.clone(),
 };
@@ -489,7 +489,7 @@ pub fn parser_result_source_for_expr(expr: Rc<Node>, state_param: Rc<ParserState
     Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env, parser_always_advancing, consumed_true_set, si.clone()),
     None => ProgressKind::ProgressUnknown,
 };
-match (*parser_result_witness(expr.clone())).clone() {
+match (*parser_result_witness(expr.clone(), si.clone())).clone() {
     ParserResultWitness::ParserWitnessAdvance => Rc::new(ParserResultSource::ParserResultAdvance {
     input: input_progress.clone(),
 }),
@@ -604,7 +604,7 @@ v2_rt::concat(own_edges, child_edges)
     ExprData::ExprIf => {
             let cond = if_condition(body.clone());
 let cond_edges = collect_parser_progress_edges(caller.clone(), cond.clone(), state_param.clone(), scc_name_set.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone());
-let then_consumed = match parser_progress_flag_var(cond.clone()) {
+let then_consumed = match parser_progress_flag_var(cond.clone(), si.clone()) {
     Some(name) => v2_rt::rc_map_insert(consumed_true_set.clone(), name.clone(), true),
     None => consumed_true_set.clone(),
 };
@@ -672,7 +672,7 @@ pub fn parser_success_progress(expr: Rc<Node>, state_param: Rc<ParserStateParam>
 },
     ExprData::ExprIf => {
             let cond = if_condition(expr.clone());
-let then_consumed = match parser_progress_flag_var(cond) {
+let then_consumed = match parser_progress_flag_var(cond, si.clone()) {
     Some(name) => v2_rt::rc_map_insert(consumed_true_set.clone(), name.clone(), true),
     None => consumed_true_set.clone(),
 };

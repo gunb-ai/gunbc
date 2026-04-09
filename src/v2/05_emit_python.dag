@@ -254,7 +254,7 @@ fn emit_py_operation_test(projection: TestProjection, depth: Int) -> String {
   let test_name = py_test_name(projection: projection)
   let indent = make_indent(level: depth + 1)
   let mock_setup = projection.mock_field_inits
-    |> map(mp => emit_py_mock_prop_setup(mock_prop: mp, depth: depth + 1))
+    |> map(mp => emit_py_mock_prop_setup(mock_prop: mp, depth: depth + 1, source_index: projection.source_index))
     |> join(separator: "\n")
   concat(
     language_spec(target: Python).items.func_keyword, " ", test_name, "() -> None:\n",
@@ -264,11 +264,11 @@ fn emit_py_operation_test(projection: TestProjection, depth: Int) -> String {
     indent, "assert True  # mock data setup verified\n")
 }
 
-fn emit_py_mock_prop_setup(mock_prop: Node, depth: Int) -> String {
+fn emit_py_mock_prop_setup(mock_prop: Node, depth: Int, source_index: NewlineIndex?) -> String {
   concat(
-    emit_ident(name: field_init_node_name_at(n: mock_prop, source_index: none), target: Python),
+    emit_ident(name: field_init_node_name_at(n: mock_prop, source_index: source_index), target: Python),
     " = ",
-    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Python, source_index: none))
+    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Python, source_index: source_index))
 }
 
 // =========================================================================
@@ -572,7 +572,7 @@ fn emit_py_expr_var(expr: Node, source_index: NewlineIndex?) -> String {
 }
 
 fn emit_py_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_expr_field_access_shared(expr: expr, target: Python, emit_field: e => emit_py_field_access(base: field_access_base(texpr: e), field: e.name, summary: expr_field_access_summary(texpr: e), registry: registry, scope: scope, depth: depth))
+  emit_expr_field_access_shared(expr: expr, target: Python, emit_field: e => emit_py_field_access(base: field_access_base(texpr: e), field: e.name, summary: expr_field_access_summary(texpr: e), registry: registry, scope: scope, depth: depth), source_index: scope.type_env.source_index)
 }
 
 fn emit_py_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -719,8 +719,8 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
   } }
   else {
-      if is_typed_service_call_receiver(receiver: receiver) {
-        match extract_typed_service_name(receiver: receiver) {
+      if is_typed_service_call_receiver(receiver: receiver, source_index: scope.type_env.source_index) {
+        match extract_typed_service_name(receiver: receiver, source_index: scope.type_env.source_index) {
           Some { value: svc_name } =>
             let var_name = service_var_name(service_name: svc_name)
             let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024))
@@ -1024,24 +1024,24 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
   }
   let ret_type = emit_node_type(n: resolved_type(n: op_node), target: Python, source_index: env.source_index)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
-  let body = emit_py_transport_call(transport: eff_transport, op_name: op_text, registry: registry)
+  let body = emit_py_transport_call(transport: eff_transport, op_name: op_text, registry: registry, source_index: env.source_index)
   let items = language_spec(target: Python).items
   concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: op_text, target: Python),
     "(", all_params, ") -> ", ret_type, ":\n",
     make_indent(level: depth + 1), body)
 }
 
-fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>) -> String {
-  if is_rest_transport(t: transport) { emit_py_rest_call(op_name: op_name, transport: transport) }
-  else if is_shell_transport(t: transport) { emit_py_shell_call(op_name: op_name, transport: transport) }
+fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> String {
+  if is_rest_transport(t: transport) { emit_py_rest_call(op_name: op_name, transport: transport, source_index: source_index) }
+  else if is_shell_transport(t: transport) { emit_py_shell_call(op_name: op_name, transport: transport, source_index: source_index) }
   else if is_file_transport(t: transport) { emit_py_file_call(op_name: op_name) }
   else { emit_py_local_call(op_name: op_name) }
 }
 
-fn emit_py_rest_call(op_name: String, transport: Node) -> String {
+fn emit_py_rest_call(op_name: String, transport: Node, source_index: NewlineIndex?) -> String {
   let self_base_url = concat("{", "self.base_url", "}")
   let url_line = concat("url = f\"", self_base_url, "/", emit_ident(name: op_name, target: Python), "\"")
-  let headers_dict = emit_py_headers_dict(transport: transport)
+  let headers_dict = emit_py_headers_dict(transport: transport, source_index: source_index)
   let session_lines = concat(
     "async with aiohttp.ClientSession() as session:\n",
     "    async with session.post(url, headers=headers) as response:\n",
@@ -1050,7 +1050,7 @@ fn emit_py_rest_call(op_name: String, transport: Node) -> String {
   concat(url_line, "\n", headers_dict, "\n", session_lines)
 }
 
-fn emit_py_headers_dict(transport: Node) -> String {
+fn emit_py_headers_dict(transport: Node, source_index: NewlineIndex?) -> String {
   let auth_entry = if transport_has_auth(t: transport) {
     let header_name = match transport_auth_header_name(t: transport) {
       Some { value: h } => h
@@ -1060,7 +1060,7 @@ fn emit_py_headers_dict(transport: Node) -> String {
   } else { "" }
   let hdrs = transport_headers(t: transport)
   let header_entries = hdrs |> map(h =>
-    concat("\"", h.name, "\": ", emit_simple_expr(expr: field_init_node_value(n: h), target: Python, source_index: none))
+    concat("\"", h.name, "\": ", emit_simple_expr(expr: field_init_node_value(n: h), target: Python, source_index: source_index))
   )
   let all_entries = if auth_entry == "" {
     header_entries |> join(separator: ", ")
@@ -1070,10 +1070,10 @@ fn emit_py_headers_dict(transport: Node) -> String {
   concat("headers = {", all_entries, "}")
 }
 
-fn emit_py_shell_call(op_name: String, transport: Node) -> String {
+fn emit_py_shell_call(op_name: String, transport: Node, source_index: NewlineIndex?) -> String {
   let envs = transport_env(t: transport)
   let env_dict_entries = envs |> map(e =>
-    concat("\"", e.name, "\": ", emit_simple_expr(expr: field_init_node_value(n: e), target: Python, source_index: none))
+    concat("\"", e.name, "\": ", emit_simple_expr(expr: field_init_node_value(n: e), target: Python, source_index: source_index))
   )
   let env_str = concat("{", env_dict_entries |> join(separator: ", "), "}")
   concat(
