@@ -74,7 +74,13 @@ fn stage0_cargo_check() {
 // 2026-04-09: 459→460 — CX-L2 SCC hybrid: self-edges from descent_evidence,
 //   cross-edges from old system. Dissolves 10 SCC violations but new function
 //   adds 11 direct. Net +1, but infrastructure for further CX-L2 gains.
-const DIAG_RATCHET: usize = 460;
+// 2026-04-09: 460→480 — CX-NEXT Phase 2: compiler types in std/node.dag.
+//   Fix: Remove Add handler from classify_argument (n+1 grows, not descent).
+//   This is a soundness fix: count_up(n: n+1) is unbounded, not O(n).
+//   +20 violations are parser/emit functions that incorrectly benefited from
+//   the unsound Add handler. Proper fix: parser position uses TokenPosition
+//   measure (std/termination.dag), not synthetic arithmetic descent.
+const DIAG_RATCHET: usize = 480;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
