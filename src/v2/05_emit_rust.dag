@@ -4129,17 +4129,20 @@ fn emit_rest_query_line(transport: Node, source_index: NewlineIndex?) -> String 
 }
 
 // RE-1 POST body: emit .json() with serde_json::json! macro for request body.
-// Body is a record expression whose children are field-init nodes (same shape as query).
+// Body must be a record expression (field-init children). Fail-closed: non-record
+// body shapes produce compile_error! — no silent drop.
 fn emit_rest_body_line(transport: Node, source_index: NewlineIndex?) -> String {
   match transport_request_body(t: transport) {
     Some { value: b } => {
-      let fields = b.children |> map(fi =>
-        concat("\"", field_init_node_name(n: fi), "\": ",
-          emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_index: source_index))
-      )
-      if fields |> count > 0 {
+      if b.children |> count == 0 {
+        "compile_error!(\"transport body must be a record expression with named fields\");"
+      } else {
+        let fields = b.children |> map(fi =>
+          concat("\"", field_init_node_name(n: fi), "\": ",
+            emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_index: source_index))
+        )
         concat("let request = request.json(&serde_json::json!({ ", fields |> join(separator: ", "), " }));")
-      } else { "" }
+      }
     }
     None => ""
   }

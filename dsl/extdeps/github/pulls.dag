@@ -58,7 +58,6 @@ service github.Pulls {
   config {
     endpoint: "https://api.github.com"
     auth: Bearer
-    auth_input: auth_token
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
     // GitHub API rate limits: 5000 requests/hour for authenticated users
     rate_limit: { requests: 5000, per: hour, scope: core }
