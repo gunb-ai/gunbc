@@ -57,7 +57,7 @@ Bootstrap D │                                                         ├→ M
 |------|--------|-----|--------------|
 | A | M2 (BND-1..4), M4-L1 (declaration algebra, Tier 2.5/2.6/3) | — | Gate 1 (M2, M4) |
 | B | CG (TLC-4, P1-B), LS (spec data), RE-1 (transport fidelity), KF-6 (Verilog) | KF-6 | Gates 1 (CG,LS,RE), 3 (parity), 4 (hardware) |
-| C | CX-NEXT (526→0), KF-1 (complexity proof), KF-2 (reject suboptimal) | KF-1, KF-2 | Gates 1 (CX), 4 (complexity) |
+| C | CX-NEXT (526→0), KF-1 (complexity proof), KF-2 (reject suboptimal), KF-7 (space complexity), KF-8 (optimality gate) | KF-1, KF-2, KF-7, KF-8 | Gates 1 (CX), 4 (complexity) |
 | D | RE-2..5 (review.dag, gist.dag), BC-1..4, service extdep models | — | Gates 1 (RE), 5 (business cases) |
 | E | M3 (test generation), KF-3 (witnesses), KF-4 (cross-language) | KF-3, KF-4 | Gates 3 (parity), 6 (test gen) |
 
@@ -815,13 +815,11 @@ then deleted. `Node.name` field deleted.
 
 ## CX: Complexity Analyzer (Lane C)
 
-**Status:** Down from 315 → 164 (main) → 76 after PR #318 → 526 honest (PR #336).
-Phase 1-2 complete (RecursionPattern deleted, all classifiers return LoweringTarget).
-CX-N: var threading, type-directed dimension selection, algebra-to-dimension bridge.
-526 honest violations — CostUnknown restored for unresolved descent patterns.
-Complexity analysis re-enabled in compile pipeline (non-blocking gate).
-PR #336: soundness fixes, graph extraction, is_valid_proof, honest CostUnknown.
-See `docs/cx-violation-triage.md` for the 3-fix reduction path.
+**Status:** 526 honest violations (non-blocking gate).
+PR #354: structural induction model (std/induction.dag), CX-L1/L2/L3 pipeline,
+master theorem integration, 13 end-to-end regression tests.
+**Binary search proven O(log n) from source code.** Catamorphisms proven O(n).
+Next: space complexity (KF-7), optimality gate (KF-8), 526→0 violations.
 
 **Root cause:** The analyzer maintains parallel heuristic classifiers
 instead of consuming the structural facts already modeled in std/.
@@ -955,7 +953,10 @@ CX-D (model facts in std/)
       derived at consumer from expression return type. `size_effect`/`cost_shape` on `MethodSemantics`
       is a bridge; endgame: facts on the resolved method Node. **(PR #328)**
   (2) **Type structure facts** — field sub-value relationships
-      (child access produces a smaller tree). Not started.
+      (child access produces a smaller tree). **Done (PR #354).**
+      InductiveField + SubValueRelation + ShrinkFactor in std/induction.dag.
+      CX-L1 detects recursive fields, CX-L2 annotates descent evidence,
+      CX-L3 reads evidence to produce CostBound via derive_bound/master_theorem.
   (3) **Coproduct projection facts** — match arms narrow the type,
       producing strictly smaller data. Not started.
   The lowering table in `std/computation.dag` (CallPattern → LoweringTarget)
@@ -1010,40 +1011,103 @@ reads structural facts — no heuristic name-matching in the analyzer.
 
 ### CX Launch Gate (public release)
 
-**Goal:** User-written .dag functions get proven complexity bounds.
-Built on type-derived strict descent (not heuristic pattern-matching).
+**Goal:** User-written .dag functions get proven time AND space complexity
+bounds. Suboptimal algorithms are rejected at compile time. Built on
+type-derived strict descent (not heuristic pattern-matching).
 Fail-closed: unknown complexity is a hard error (INVARIANTS.md).
 
-**Hard gate:**
-- Strict descent on standard patterns: tree walks (recursive type
-  fields), list consumption (`List |> fold/map`), arithmetic decrease
-- Descent derived from type declarations (`recursive_type_set`,
-  `RecursiveVariantFieldWitness`), not hand-maintained tables
-- Fail-closed: if the analyzer cannot prove a bound, compilation
-  fails with a hard error telling the user to restructure
-- Bounds reported as user-facing diagnostics (`info: f is O(n) in tree_size`)
-- Architecture consistent with `docs/cx-design.md` (P1-P6)
+**This is a language-differentiating feature.** No other production
+language proves algorithmic complexity from source code at compile time.
 
-**Aspirational (not blocking launch):**
-- Suboptimality rejection: small hand-curated equivalence catalog
-  (e.g., `filter |> count > 0` → error, suggest `any()`)
-- Compiler self-analysis: internal violations → 0
-- CostUnknown variant deleted
+#### Current state (PR #354)
 
-**What this does NOT require:**
+13 end-to-end regression tests pass:
+- **Catamorphisms proven O(n):** linked list, binary tree, BST search/insert,
+  tree depth, optional chain, fold-over-children, flatten+search, forest+tree
+- **Divide-and-conquer proven O(log n):** binary search via master theorem
+- **Composition:** nested algorithms produce independent bounds (filter O(n)
+  calling binary search O(log n) on a different data structure)
+- **Fail-closed:** arithmetic descent (no bound), bad recursion (no bound)
+
+Infrastructure: CX-L1 (InductiveField), CX-L2 (descent_evidence with
+ProportionalShrink), CX-L3 (analyze_structural_bounds → derive_bound →
+master_theorem), all in std/induction.dag.
+
+#### Hard gate: Time complexity (KF-1)
+
+- Strict descent on standard patterns: tree walks, list folds, arithmetic
+- Divide-and-conquer via master theorem (binary search, mergesort)
+- Descent derived from InductiveField + SizeExpr (not hand-maintained tables)
+- Fail-closed: unknown complexity → hard error
+- Bounds reported as user-facing diagnostics
+
+#### Hard gate: Space complexity (KF-7)
+
+Same SubValueRelation evidence, peer dimension alongside time:
+
+- **Stack space**: Derived from `has_non_tail_self_call` (already on Node).
+  Tail-recursive → O(1) stack. Non-tail with depth d → O(d) stack.
+  Depth from descent evidence: catamorphism → O(n), binary search → O(log n).
+- **Heap space**: Derived from output construction analysis. A function
+  that builds a new list of same size → O(n) heap. A function that
+  returns a scalar → O(1) heap. `ComplexitySummary.output_size` already
+  tracks collection cardinalities — extend to feed into heap bound.
+
+Both dimensions use the same `CostBound` type. `StructuralBoundResult`
+extends to `{ func_name, param, time_bound: CostBound, stack_bound: CostBound }`.
+
+#### Hard gate: Optimality checking (KF-8)
+
+If the compiler proves a function is O(n^2) and can determine that the
+same computation is achievable in O(n), it's a compiler error. Two parts:
+
+1. **Operation-level:** The algorithm specifications in `std/induction.dag`
+   define known optimal bounds for common operations (search on sorted =
+   O(log n), traversal = O(n)). If a function performs a sorted search
+   in O(n) instead of O(log n), the compiler emits an error with the
+   optimal alternative.
+
+2. **Pattern-level:** Equivalence catalog of suboptimal patterns.
+   `filter |> count > 0` → error: use `any()` (O(n) short-circuit vs
+   O(n) full iteration + count). `sort |> take(1)` → error: use `min()`
+   (O(n) vs O(n log n)). Catalog grows over time.
+
+3. **Structural-level:** If two functions have the same type signature
+   and the compiler can prove one has a strictly tighter bound, the
+   looser one is flagged. This is the full vision — requires semantic
+   equivalence classification (what is the function computing?).
+
+Launch requires (1) and (2). Item (3) is aspirational.
+
+#### Not blocking launch
+
 - Proving the compiler's own 1600 functions (internal debt, not user-facing)
 - Exotic patterns: worklists, condition-dependent, parser SCCs
 - Global descent (strict descent is sufficient for launch)
 - The full Gate 4 architecture
+- Structural equivalence classification (KF-8 item 3)
 
-**Acceptance test:**
+#### Acceptance tests
+
 ```
-cx_launch_user_code_bounds
-  Input: .dag program with tree-recursive, list-fold, and arithmetic functions
-  Assert: each function gets a proven bound in diagnostics
+cx_launch_time_bounds
+  Input: .dag program with tree-recursive, list-fold, divide-and-conquer
+  Assert: each function gets a proven time bound in diagnostics
+  Assert: binary_search → O(log n), tree_walk → O(n)
   Assert: no heuristic pattern-matching in the analysis path
-  Assert: descent facts derived from type declarations
-  Assert: function with unresolvable recursion produces hard error
+  Assert: function with unresolvable recursion → hard error
+
+cx_launch_space_bounds
+  Input: same program
+  Assert: tail-recursive → stack O(1), non-tail tree walk → stack O(n)
+  Assert: binary search → stack O(log n)
+  Assert: output-building function → heap O(n)
+
+cx_launch_optimality_gate
+  Input: .dag program with suboptimal patterns
+  Assert: linear scan on sorted list → error: use binary search O(log n)
+  Assert: filter |> count > 0 → error: use any()
+  Assert: sort |> take(1) → error: use min()
 ```
 
 ---
