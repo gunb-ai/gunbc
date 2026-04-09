@@ -2870,8 +2870,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         Some { value: rel } =>
           // Register sub-value type in param_names so downstream field access works
           let sub_type = match rel {
-            StrictSubValue { field: f, factor: _ } => f.type_name
-            IteratedSubValue { field: f } => f.type_name
+            StrictSubValue { field: f, factor: _ } => f.element_type
+            IteratedSubValue { field: f } => f.element_type
             _ => ""
           }
           DescentContext {
@@ -3563,7 +3563,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let cross_type_set = map_merge(cycle_map, compiler_recursive_types)
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
-  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, inductive_fields: merged_inductive_fields, source_index: source_index }
+  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_index: source_index }
   // Resolve only LOCAL type bindings. Imported bindings are already resolved.
   // (local_name_set computed above, before param_bindings merge.)
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module.module.name, local_names: local_name_set, deps_map: all_deps_map)
@@ -3661,7 +3661,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let cross_type_set = map_merge(cycle_map, compiler_recursive_types)
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
-  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, inductive_fields: merged_inductive_fields, source_index: source_index }
+  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_index: source_index }
   BuildTypeEnvResult { env: unresolved_env, diagnostics: [] }
 }
 

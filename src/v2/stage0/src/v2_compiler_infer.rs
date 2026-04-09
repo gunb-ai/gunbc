@@ -3076,8 +3076,8 @@ let inner_size_aliases = match size_alias {
 let inner_ctx = match val_relation {
     Some(rel) => {
                 let sub_type = match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
-    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
     _ => "".to_string(),
 };
 Rc::new(DescentContext {
@@ -4042,13 +4042,13 @@ let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
 let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone(), source_index.clone())));
 let cycle_set = detect_type_cycles_kahn(all_deps_map.clone(), merged.bindings.clone());
 let cycle_map = cycle_set.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
-let cross_type_set = v2_rt::rc_map_merge(cycle_map.clone(), compiler_recursive_types());
-let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set);
+let cross_type_set = v2_rt::rc_map_merge(cycle_map, compiler_recursive_types());
+let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set.clone());
 let merged_inductive_fields = merge_inductive_fields(merged.inductive_fields.clone(), local_inductive_fields);
 let unresolved_env = Rc::new(TypeEnv {
     bindings: merged.bindings.clone(),
     recursive_types: cycle_set.clone(),
-    recursive_type_set: cycle_map.clone(),
+    recursive_type_set: cross_type_set.clone(),
     inductive_fields: merged_inductive_fields,
     source_index: source_index.clone(),
 });
@@ -4290,13 +4290,13 @@ let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
 let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone(), source_index.clone())));
 let cycle_set = detect_type_cycles_kahn(all_deps_map, merged.bindings.clone());
 let cycle_map = cycle_set.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
-let cross_type_set = v2_rt::rc_map_merge(cycle_map.clone(), compiler_recursive_types());
-let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set);
+let cross_type_set = v2_rt::rc_map_merge(cycle_map, compiler_recursive_types());
+let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set.clone());
 let merged_inductive_fields = merge_inductive_fields(merged.inductive_fields.clone(), local_inductive_fields);
 let unresolved_env = Rc::new(TypeEnv {
     bindings: merged.bindings.clone(),
     recursive_types: cycle_set.clone(),
-    recursive_type_set: cycle_map.clone(),
+    recursive_type_set: cross_type_set.clone(),
     inductive_fields: merged_inductive_fields,
     source_index: source_index.clone(),
 });
