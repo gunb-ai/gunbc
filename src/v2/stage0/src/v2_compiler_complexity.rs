@@ -4711,20 +4711,23 @@ pub fn is_catamorphism_param(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, 
 }) { __all = false; break; } } __all }
 }
 
-pub fn extract_shrink_factor(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> Rc<ShrinkFactor> {
-    all_calls.iter().cloned().fold(Rc::new(ShrinkFactor::UnitShrink), |acc: Rc<ShrinkFactor>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence.clone().get(param_index.clone() as usize).cloned() {
+pub fn extract_shrink_factor(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, param_index: i64) -> Option<Rc<ShrinkFactor>> {
+    all_calls.iter().cloned().fold(Some(Rc::new(ShrinkFactor::UnitShrink)), |acc: Option<Rc<ShrinkFactor>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match acc.clone() {
+    None => None,
+    Some(prev) => match call_evidence.clone().get(param_index.clone() as usize).cloned() {
     Some(rel) => match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { factor: f, .. } => match (*acc.clone()).clone() {
-    ShrinkFactor::UnitShrink => f.clone(),
-    _ => if (acc.clone() == f.clone()) {
+    SubValueRelation::StrictSubValue { factor: f, .. } => match (*prev.clone()).clone() {
+    ShrinkFactor::UnitShrink => Some(f.clone()),
+    _ => if (prev.clone() == f.clone()) {
         acc.clone()
 } else {
-        Rc::new(ShrinkFactor::UnitShrink)
+        None
 },
 },
     _ => acc.clone(),
 },
     None => acc.clone(),
+},
 })
 }
 
@@ -4805,12 +4808,14 @@ let evidence = merge_param_evidence(all_calls.clone(), param_index.clone());
 match evidence.clone() {
     DescentEvidence::Strict => {
                         let param_name = param_node_name(param_node.clone());
-let factor = extract_shrink_factor(all_calls.clone(), param_index.clone());
-let bound = match (*factor.clone()).clone() {
+let factor_opt = extract_shrink_factor(all_calls.clone(), param_index.clone());
+match factor_opt.clone() {
+    Some(factor) => {
+                            let bound = match (*factor.clone()).clone() {
     ShrinkFactor::UnitShrink => catamorphism_bound(param_name.clone(), 1),
     ShrinkFactor::ConstantShrink { .. } => catamorphism_bound(param_name.clone(), 1),
     ShrinkFactor::ProportionalShrink { .. } => {
-                            let branches = max_path_descending(entry.body.clone(), entry.name.clone(), param_index.clone());
+                                let branches = max_path_descending(entry.body.clone(), entry.name.clone(), param_index.clone());
 derive_bound(param_name.clone(), branches.clone(), factor.clone(), 0)
 },
 };
@@ -4819,6 +4824,9 @@ v2_rt::concat(pacc.clone(), Rc::new(vec![Rc::new(StructuralBoundResult {
     param: param_name.clone(),
     bound: bound.clone(),
 })]))
+},
+    None => pacc.clone(),
+}
 },
     _ => pacc.clone(),
 }

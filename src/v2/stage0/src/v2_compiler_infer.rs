@@ -2249,6 +2249,7 @@ impl SizeExpr {
 pub struct DescentContext {
     pub fn_name: String,
     pub param_names: Rc<HashMap<String, String>>,
+    pub param_order: Rc<Vec<String>>,
     pub type_env: Rc<TypeEnv>,
     pub sub_value_vars: Rc<HashMap<String, Rc<SubValueRelation>>>,
     pub size_aliases: Rc<HashMap<String, Rc<SizeExpr>>>,
@@ -2426,9 +2427,16 @@ let field = field_access_field(arg_expr.clone());
 match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
             let bname = expr_var_name(base.clone());
-let type_name = match v2_rt::map_get(&ctx.param_names.clone(), bname) {
+let type_name = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
     Some(t) => t.clone(),
+    None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    _ => "".to_string(),
+},
     None => "".to_string(),
+},
 };
 let fields = inductive_fields_for(ctx.type_env.clone(), type_name);
 let matching = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if (f.field_name.clone().as_str() == field.clone().as_str()) { __result.push(f); } } __result }).first().cloned();
@@ -2449,17 +2457,30 @@ match matching {
 }
 
 pub fn build_call_evidence(call_node: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Vec<Rc<SubValueRelation>>> {
-    Rc::new({ let mut __result = Vec::new(); for arg_node in call_node.children.clone().iter().cloned() { __result.push({
-        let aname = arg_name(arg_node.clone());
-let arg_val = arg_value(arg_node.clone());
+    {
+        let arg_map = Rc::new(call_node.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+            let idx = pair.0.clone();
+let arg_node = pair.1.clone();
+let aname = arg_name(arg_node.clone());
 match aname.clone() {
-    Some(pname) => match v2_rt::map_get(&ctx.param_names.clone(), pname.clone()) {
-    Some(_) => classify_argument(arg_val.clone(), pname.clone(), ctx.clone()),
+    Some(pname) => v2_rt::rc_map_insert(acc.clone(), pname.clone(), arg_value(arg_node.clone())),
+    None => acc.clone(),
+}
+});
+let positional_args = Rc::new({ let mut __result = Vec::new(); for arg_node in Rc::new({ let mut __result = Vec::new(); for arg_node in call_node.children.clone().iter().cloned() { if (arg_name(arg_node.clone()) == None) { __result.push(arg_node); } } __result }).iter().cloned() { __result.push(arg_value(arg_node.clone())); } __result });
+let positional_idx = 0;
+Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(ctx.param_order.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
+            let def_idx = pair.0.clone();
+let pname = pair.1.clone();
+match v2_rt::map_get(&arg_map, pname.clone()) {
+    Some(arg_val) => classify_argument(arg_val.clone(), pname.clone(), ctx.clone()),
+    None => match positional_args.clone().get(def_idx.clone() as usize).cloned() {
+    Some(arg_val) => classify_argument(arg_val.clone(), pname.clone(), ctx.clone()),
     None => Rc::new(SubValueRelation::SubValueUnknown),
 },
-    None => Rc::new(SubValueRelation::SubValueUnknown),
 }
 }); } __result })
+}
 }
 
 pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
@@ -2551,6 +2572,7 @@ if (bind_name.clone().as_str() != "".to_string().as_str()) {
                                 Rc::new(DescentContext {
     fn_name: c.fn_name.clone(),
     param_names: c.param_names.clone(),
+    param_order: c.param_order.clone(),
     type_env: c.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(c.sub_value_vars.clone(), bind_name.clone(), Rc::new(SubValueRelation::StrictSubValue {
     field: ind_field.clone(),
@@ -2579,6 +2601,7 @@ match matching.clone() {
                                 Rc::new(DescentContext {
     fn_name: c.fn_name.clone(),
     param_names: c.param_names.clone(),
+    param_order: c.param_order.clone(),
     type_env: c.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(c.sub_value_vars.clone(), bind_name.clone(), Rc::new(SubValueRelation::StrictSubValue {
     field: ind_field.clone(),
@@ -2594,7 +2617,31 @@ match matching.clone() {
 })
 },
 },
-    MatchPattern::Bind { name: bname, .. } => ctx.clone(),
+    MatchPattern::Bind { name: bname, .. } => if (scrut_type.clone().as_str() != "".to_string().as_str()) {
+                        Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), bname.clone(), scrut_type.clone()),
+    param_order: ctx.param_order.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), bname.clone(), Rc::new(SubValueRelation::PreservedValue)),
+    size_aliases: ctx.size_aliases.clone(),
+})
+} else {
+                        match scrut_inducing_field.clone() {
+    Some(ind_field) => Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), bname.clone(), ind_field.type_name.clone()),
+    param_order: ctx.param_order.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), bname.clone(), Rc::new(SubValueRelation::StrictSubValue {
+    field: ind_field.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+})),
+    size_aliases: ctx.size_aliases.clone(),
+}),
+    None => ctx.clone(),
+}
+},
     _ => ctx.clone(),
 }
 } else {
@@ -2642,6 +2689,7 @@ let inner_ctx = match val_relation {
     Some(rel) => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
     param_names: ctx.param_names.clone(),
+    param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), binding_name.clone(), rel.clone()),
     size_aliases: inner_size_aliases,
@@ -2649,6 +2697,7 @@ let inner_ctx = match val_relation {
     None => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
     param_names: ctx.param_names.clone(),
+    param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
     sub_value_vars: ctx.sub_value_vars.clone(),
     size_aliases: inner_size_aliases,
@@ -2682,6 +2731,7 @@ match val_rel.clone() {
     Some(rel) => Rc::new(DescentContext {
     fn_name: acc.ctx.clone().fn_name.clone(),
     param_names: acc.ctx.clone().param_names.clone(),
+    param_order: acc.ctx.clone().param_order.clone(),
     type_env: acc.ctx.clone().type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(acc.ctx.clone().sub_value_vars.clone(), bname.clone(), rel.clone()),
     size_aliases: new_sa.clone(),
@@ -2689,6 +2739,7 @@ match val_rel.clone() {
     None => Rc::new(DescentContext {
     fn_name: acc.ctx.clone().fn_name.clone(),
     param_names: acc.ctx.clone().param_names.clone(),
+    param_order: acc.ctx.clone().param_order.clone(),
     type_env: acc.ctx.clone().type_env.clone(),
     sub_value_vars: acc.ctx.clone().sub_value_vars.clone(),
     size_aliases: new_sa.clone(),
@@ -2739,14 +2790,16 @@ pub fn resolved_type_name(n: Rc<Node>) -> String {
 
 pub fn annotate_descent_evidence(body: Rc<Node>, fn_name: String, params: Rc<Vec<Rc<Node>>>, type_env: Rc<TypeEnv>) -> Rc<Node> {
     {
-        let param_name_map = params.iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
+        let param_name_map = params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
             let pname = param_node_name(p.clone());
 let ptype = resolved_type_name(p.clone());
 v2_rt::rc_map_insert(acc.clone(), pname.clone(), ptype.clone())
 });
+let param_order_list = Rc::new({ let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result });
 let ctx = Rc::new(DescentContext {
     fn_name: fn_name,
     param_names: param_name_map,
+    param_order: param_order_list,
     type_env: type_env,
     sub_value_vars: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
     size_aliases: v2_rt::rc_empty_map::<Rc<SizeExpr>>(),

@@ -1046,7 +1046,7 @@ Rc::new(ExprResolveResult {
     diagnostics: r.diagnostics.clone(),
 })
 },
-    ExprData::ExprCall { call_semantics: cs, .. } => {
+    ExprData::ExprCall { call_semantics: cs, descent_evidence: de, .. } => {
             let resolved_children = Rc::new({ let mut __result = Vec::new(); for arg_node in texpr.children.clone().iter().cloned() { __result.push({
                 let val = match arg_node.children.clone().first().cloned() {
     Some(v) => v.clone(),
@@ -1070,7 +1070,7 @@ vr.diagnostics.clone()
 Rc::new(ExprResolveResult {
     expr: make_named_expr_node(expr_call_func(texpr.clone()), Rc::new(ExprData::ExprCall {
     call_semantics: cs.clone(),
-    descent_evidence: None,
+    descent_evidence: de.clone(),
 }), resolved_children, texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: all_diags,
 })

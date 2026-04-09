@@ -2137,6 +2137,7 @@ type SizeExpr
 type DescentContext {
   fn_name: String
   param_names: Map<String, String>  // param_name → type_name (M4: String proxy)
+  param_order: List<String>         // param names in definition order
   type_env: TypeEnv
   sub_value_vars: Map<String, SubValueRelation>
   size_aliases: Map<String, SizeExpr>
@@ -2263,16 +2264,26 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           None => SubValueUnknown
         }
       }
-    // param.field where field is an inductive field → StrictSubValue
+    // base.field where base is a param or bound sub-value, and field is inductive → StrictSubValue
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: arg_expr)
       let field = field_access_field(texpr: arg_expr)
       match base.expr_data {
         ExprVar { binding_kind: _ } =>
           let bname = expr_var_name(texpr: base)
+          // Look up type from params first, then from bound sub-values
           let type_name = match map_get(ctx.param_names, bname) {
             Some { value: t } => t
-            None => ""
+            None =>
+              match map_get(ctx.sub_value_vars, bname) {
+                Some { value: rel } =>
+                  match rel {
+                    StrictSubValue { field: f, factor: _ } => f.type_name
+                    IteratedSubValue { field: f } => f.type_name
+                    _ => ""
+                  }
+                None => ""
+              }
           }
           let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
           let matching = fields |> filter(f => f.field_name == field) |> first
@@ -2289,18 +2300,35 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
   }
 }
 
-// Build descent_evidence for a self-call: one SubValueRelation per argument.
+// Build descent_evidence for a self-call: one SubValueRelation per parameter
+// in definition order. Named args are matched by name; unnamed args fall back
+// to positional alignment.
 fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRelation> {
-  call_node.children |> map(arg_node =>
+  // Build map from arg name → (index, arg_value_node)
+  let arg_map = call_node.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+    let idx = pair.first
+    let arg_node = pair.second
     let aname = arg_name(n: arg_node)
-    let arg_val = arg_value(n: arg_node)
     match aname {
-      Some { value: pname } =>
-        match map_get(ctx.param_names, pname) {
-          Some { value: _ } => classify_argument(arg_expr: arg_val, param_name: pname, ctx: ctx)
+      Some { value: pname } => map_insert(acc, pname, arg_value(n: arg_node))
+      None => acc
+    }
+  )
+  // Build positional list for unnamed args
+  let positional_args = call_node.children |> filter(arg_node => arg_name(n: arg_node) == none) |> map(arg_node => arg_value(n: arg_node))
+  // Produce evidence in param definition order
+  let positional_idx = 0
+  ctx.param_order |> enumerate |> map(pair =>
+    let def_idx = pair.first
+    let pname = pair.second
+    match map_get(arg_map, pname) {
+      Some { value: arg_val } => classify_argument(arg_expr: arg_val, param_name: pname, ctx: ctx)
+      None =>
+        // Positional fallback: use position in unnamed arg list
+        match positional_args |> skip(def_idx) |> first {
+          Some { value: arg_val } => classify_argument(arg_expr: arg_val, param_name: pname, ctx: ctx)
           None => SubValueUnknown
         }
-      None => SubValueUnknown
     }
   )
 }
@@ -2386,7 +2414,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                       }
                       if bind_name != "" {
                         DescentContext {
-                          fn_name: c.fn_name, param_names: c.param_names, type_env: c.type_env,
+                          fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env,
                           sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                           size_aliases: c.size_aliases
                         }
@@ -2407,7 +2435,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                       Some { value: ind_field } =>
                         if bind_name != "" {
                           DescentContext {
-                            fn_name: c.fn_name, param_names: c.param_names, type_env: c.type_env,
+                            fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env,
                             sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases
                           }
@@ -2417,7 +2445,30 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   )
               }
             Bind { name: bname } =>
-              ctx
+              // Catch-all binds the entire scrutinee value.
+              // If scrutinee is a parameter, register alias in param_names (for field access)
+              // and sub_value_vars (for PreservedValue classification).
+              if scrut_type != "" {
+                DescentContext {
+                  fn_name: ctx.fn_name,
+                  param_names: map_insert(ctx.param_names, bname, scrut_type),
+                  param_order: ctx.param_order, type_env: ctx.type_env,
+                  sub_value_vars: map_insert(ctx.sub_value_vars, bname, PreservedValue),
+                  size_aliases: ctx.size_aliases
+                }
+              } else {
+                match scrut_inducing_field {
+                  Some { value: ind_field } =>
+                    DescentContext {
+                      fn_name: ctx.fn_name,
+                      param_names: map_insert(ctx.param_names, bname, ind_field.type_name),
+                      param_order: ctx.param_order, type_env: ctx.type_env,
+                      sub_value_vars: map_insert(ctx.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
+                      size_aliases: ctx.size_aliases
+                    }
+                  None => ctx
+                }
+              }
             _ => ctx
           }
         } else { ctx }
@@ -2456,13 +2507,13 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let inner_ctx = match val_relation {
         Some { value: rel } =>
           DescentContext {
-            fn_name: ctx.fn_name, param_names: ctx.param_names, type_env: ctx.type_env,
+            fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
             size_aliases: inner_size_aliases
           }
         None =>
           DescentContext {
-            fn_name: ctx.fn_name, param_names: ctx.param_names, type_env: ctx.type_env,
+            fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: ctx.sub_value_vars,
             size_aliases: inner_size_aliases
           }
@@ -2493,13 +2544,13 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             match val_rel {
               Some { value: rel } =>
                 DescentContext {
-                  fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, type_env: acc.ctx.type_env,
+                  fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: map_insert(acc.ctx.sub_value_vars, bname, rel),
                   size_aliases: new_sa
                 }
               None =>
                 DescentContext {
-                  fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, type_env: acc.ctx.type_env,
+                  fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: acc.ctx.sub_value_vars,
                   size_aliases: new_sa
                 }
@@ -2544,9 +2595,11 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
     let ptype = resolved_type_name(n: p)
     map_insert(acc, pname, ptype)
   )
+  let param_order_list = params |> map(p => param_node_name(n: p))
   let ctx = DescentContext {
     fn_name: fn_name,
     param_names: param_name_map,
+    param_order: param_order_list,
     type_env: type_env,
     sub_value_vars: empty_map(),
     size_aliases: empty_map()
