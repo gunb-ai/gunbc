@@ -4328,6 +4328,23 @@ fn invalid_cast_produces_diagnostic() {
     assert!(!cast_diags.is_empty(), "Bool→Float should produce a cast diagnostic, got: {:?}", msgs);
 }
 
+#[test]
+fn identity_cast_is_valid() {
+    // Int as Int is a no-op identity cast — must not produce diagnostics.
+    let source = "module cast_test5\n\nfn identity(x: Int) -> Int {\n  x as Int\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn non_numeric_cast_bypasses_validation() {
+    // String → String (alias or same type) is outside the numeric domain,
+    // so validate_cast allows it unconditionally.
+    let source = "module cast_test6\n\nfn passthrough(s: String) -> String {\n  s as String\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
 // ── ExprLet expected-type propagation regression tests ────────────────
 //
 // The ExprLet body now receives the outer `expected` type (M2 commit
