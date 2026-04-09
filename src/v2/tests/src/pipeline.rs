@@ -4780,6 +4780,30 @@ service shell.Run {
     );
 }
 
+#[test]
+fn shell_emit_pipes_stdin() {
+    let source = r#"module stdin_test
+
+service test.Shell {
+  config {
+    endpoint: "local"
+  }
+  operation Run {
+    input { prompt: String }
+    output { result: String }
+    transport shell { argv: ["cat"], stdin: prompt }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/stdin_test.rs");
+    assert!(
+        content.contains("Stdio::piped") || content.contains("stdin"),
+        "RE-1g: expected stdin handling, got:\n{content}"
+    );
+}
+
 // ── RE-1: shell interpolation with optional params ──────────────────────
 #[test]
 fn shell_emit_optional_param_in_interp() {
@@ -4879,6 +4903,33 @@ service test.Api {
     assert!(
         content.contains("/usage/total_tokens"),
         "RE-1i: expected nested JSON pointer for Int field, got:\n{content}"
+    );
+}
+
+#[test]
+fn func_with_service_calls_classified_effectful() {
+    let source = r#"module re2_test
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation Fetch {
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+  }
+}
+
+func fetch_data() -> String {
+  test.Api.Fetch().data
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re2_test.rs");
+    assert!(
+        content.contains("async fn fetch_data"),
+        "RE-2: func with service calls must be async, got:\n{content}"
     );
 }
 

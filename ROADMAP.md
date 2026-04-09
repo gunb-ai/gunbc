@@ -1496,9 +1496,9 @@ config they already receive. No new .dag modeling needed.
   — emitter detects `from_key` on output fields, deserializes to `serde_json::Value`,
   extracts via `json_body.pointer()` with type-specific accessors (`.as_str()`,
   `.as_i64()`, etc.). Flat paths use same mechanism. Test: `rest_output_from_clause_extracts_path`.
-- [x] RE-1j: Nested output struct field mapping via serde rename
-  — flat `from_key` paths already used serde rename on struct fields (line 947-957).
-  Nested paths now handled via JSON pointer extraction (RE-1i).
+- [x] RE-1j: Nested output field extraction via JSON pointer
+  — `from_key` paths use JSON pointer extraction at response time (same mechanism
+  as RE-1i). Struct serde rename remains for flat field name mapping.
 
 **Blocked by:** Nothing — all data already flows to the emitter.
 
@@ -1550,10 +1550,10 @@ rest_output_from_clause_extracts_path
   Input:  operation with `output { value: String from "data/items/0/name" }`
   Assert: emitted Rust uses serde_json pointer or index chain to extract
 
-# RE-1j: Nested output field mapping
-rest_output_struct_uses_serde_rename
-  Input:  operation with output fields whose JSON names differ from Rust names
-  Assert: emitted struct has `#[serde(rename = "...")]` attributes
+# RE-1j: Nested output field extraction (uses RE-1i mechanism)
+rest_output_nested_from_extracts_path
+  Input:  operation with output fields using nested `from "a/b/c"` paths
+  Assert: emitted Rust uses `json_body.pointer("/a/b/c")` extraction
 ```
 
 ### RE-2: review.dag dry-run compilation
@@ -1561,18 +1561,20 @@ rest_output_struct_uses_serde_rename
 Compile `review.dag` + its imports to a binary that runs with
 `--dry-run`, returning mock responses.
 
-**Root cause (fixed):** `func` vs `fn` keyword distinction was lost at
-parse time. `item_kind()` used `uses |> count > 0` as sole FuncItem
-criterion, so `func` without explicit `use` clauses → FnItem → no
-async, no service params, no `.await?` injection. Fix: store keyword
-as structural property (`item_keyword_key`) on Node at parse time;
-`item_kind()` reads `is_effectful_item()`. 18 cargo errors → 0.
+**Root cause (fixed):** Effectfulness was not propagated transitively.
+`item_kind()` used `uses |> count > 0` as sole FuncItem criterion, so
+items calling effectful functions (but without direct `use` clauses)
+were classified as FnItem → no async, no service params, no `.await?`.
+Fix: `ItemInfo.service_names` now populated via `collect_typed_service_calls`
+for all body-bearing items, and `expand_transitive_services` propagates
+service dependencies from callees to callers. Emit decides async/effectful
+from `service_names |> count > 0 || resource_names |> count > 0`.
+18 cargo errors → 0.
 
-- [x] RE-2a: Async for-each — `func` items now classified as FuncItem
-  via keyword property; `.await?` emitted in collection loop body
-- [x] RE-2b: Cross-module service resolution — service call detection
-  via `collect_typed_service_calls` now runs for all `func` items
-  (previously skipped when `uses` empty)
+- [x] RE-2a: Async for-each — items with transitive service calls emit
+  async functions; `.await?` emitted in collection loop body
+- [x] RE-2b: Cross-module service resolution — `service_names` propagation
+  via `expand_transitive_services` flows across module boundaries
 - [x] RE-2c: Conditional guard — review.dag's `already_done` check
   compiles correctly (bool short-circuit in emitted Rust)
 - [x] RE-2d: End-to-end compilation gate (0 cargo check errors)

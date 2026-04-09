@@ -4309,7 +4309,7 @@ pub fn has_response_prefix(name: String) -> bool {
 pub fn child_from_key(ch: Rc<Node>) -> Option<String> {
     match Rc::new({ let mut __result = Vec::new(); for p in ch.properties.clone().iter().cloned() { if (field_init_node_name(p.clone()).as_str() == "from_key".to_string().as_str()) { __result.push(p); } } __result }).first().cloned() {
     Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; Some(s.clone()) },
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { return None; }; Some(s.clone()) },
     _ => None,
 },
     None => None,
@@ -4328,9 +4328,14 @@ let from_key_count = (Rc::new({ let mut __result = Vec::new(); for ch in rt.chil
 }
 }
 
+pub fn escape_json_pointer_segment(seg: String) -> String {
+    v2_rt::replace(v2_rt::replace(seg, "~".to_string(), "~0".to_string()), "/".to_string(), "~1".to_string())
+}
+
 pub fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String) -> String {
     {
-        let pointer = v2_rt::concat("/".to_string(), from_path.clone());
+        let escaped_path = from_path.split('/').map(|s| escape_json_pointer_segment(s.to_string())).collect::<Vec<_>>().join("/");
+        let pointer = v2_rt::concat("/".to_string(), escaped_path.clone());
 let rust_type = coerce_primitive_type(RenderTarget::Rust, dag_type_name);
 let accessor = if (rust_type.clone().as_str() == "String".to_string().as_str()) {
             v2_rt::concat(v2_rt::concat(".and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())

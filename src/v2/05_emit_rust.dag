@@ -4148,12 +4148,18 @@ fn has_from_key_fields(op_node: Node) -> Bool {
   is_conj && from_key_count > 0
 }
 
+// RFC 6901 JSON Pointer escaping: ~ becomes ~0, / becomes ~1
+fn escape_json_pointer_segment(seg: String) -> String {
+  seg |> replace("~", "~0") |> replace("/", "~1")
+}
+
 // RE-1i: Emit type-specific JSON value extraction for a single field.
 // Dispatches on the Rust target type from coercion data (TypeCheckpoint)
 // to select the appropriate serde_json::Value accessor. The accessor set
 // is closed (fixed serde_json API), not open-set string matching.
 fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String) -> String {
-  let pointer = concat("/", from_path)
+  let escaped_path = from_path |> split("/") |> map(seg => escape_json_pointer_segment(seg: seg)) |> join(separator: "/")
+  let pointer = concat("/", escaped_path)
   let rust_type = coerce_primitive_type(target: Rust, dag_name: dag_type_name)
   let accessor = if rust_type == "String" {
     concat(".and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or(\"missing field: ", from_path, "\")?")
