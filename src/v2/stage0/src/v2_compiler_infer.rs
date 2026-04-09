@@ -2162,12 +2162,11 @@ pub fn infer_property_values(props: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) ->
         let results = Rc::new({ let mut __result = Vec::new(); for p in props.iter().cloned() { __result.push({
             let val = field_init_node_value(p.clone());
 let val_result = infer_expr(val.clone(), scope.clone(), None);
-let extra_children = Rc::new(p.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 (Rc::new(Node {
     name: p.name.clone(),
     span: p.span.clone(),
     ident_span: p.ident_span.clone(),
-    children: v2_rt::concat(Rc::new(vec![val_result.typed.clone()]), extra_children.clone()),
+    children: Rc::new(vec![val_result.typed.clone()]),
     connective: p.connective.clone(),
     params: p.params.clone(),
     inferred: p.inferred.clone(),

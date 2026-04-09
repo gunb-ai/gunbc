@@ -2395,6 +2395,7 @@ fn fill_default_args(ordered: List<Node>, callee: ItemInfo?, registry: Map<Strin
 fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> List<Node> {
   // Walk op_params in declaration order to ensure defaults are interleaved
   // at the correct position rather than appended at the end.
+  // Unnamed (positional) args are appended after the ordered list.
   let si = scope.type_env.source_index
   let arg_map = ordered |> fold(init: empty_map(), f: (acc, a) =>
     match arg_name_at(n: a, source_index: si) {
@@ -2402,7 +2403,8 @@ fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Ma
       None => acc
     }
   )
-  op_params |> flat_map(p =>
+  let unnamed_args = ordered |> filter(a => arg_name_at(n: a, source_index: si) == none)
+  let named_ordered = op_params |> flat_map(p =>
     let pname = param_node_name_at(n: p, source_index: si)
     match map_get(arg_map, pname) {
       Some { value: arg } => [arg]
@@ -2412,6 +2414,7 @@ fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Ma
         } else { [] }
     }
   )
+  concat(named_ordered, unnamed_args)
 }
 
 // Left-fold helper for nesting binary concat calls.
@@ -2914,12 +2917,17 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
         let aname = match arg_name_at(n: a, source_index: si) { Some { value: n } => n  None => "" }
         let param_is_json = match map_get(json_param_set, aname) { Some { value: _ } => true  None => false }
         let param_is_optional = match map_get(optional_param_set, aname) { Some { value: _ } => true  None => false }
-        if param_is_json && is_string_typed_expr(e: arg_value(n: a)) {
+        let needs_optional = param_is_optional && is_already_optional(texpr: arg_value(n: a), emit_info: emit_info, scope: scope) == false
+        // Apply coercions: Json first, then Optional wrapping (handles Json? correctly)
+        let coerced = if param_is_json && is_string_typed_expr(e: arg_value(n: a)) {
           concat("serde_json::from_str(&", arg_str, ").unwrap()")
-        } else if param_is_optional && is_already_optional(texpr: arg_value(n: a), emit_info: emit_info, scope: scope) == false {
-          concat("Some(", arg_str, ")")
         } else {
           arg_str
+        }
+        if needs_optional {
+          concat("Some(", coerced, ")")
+        } else {
+          coerced
         }
       )
       let args_str = arg_strs |> join(separator: ", ")
@@ -3956,12 +3964,12 @@ fn emit_rest_url_line(transport: Node, op_name: String, source_index: NewlineInd
         let args = parts |> flat_map(p => match p {
           Text { value: _ } => []
           Interpolation { expr: e } => {
-            let expr_str = emit_simple_expr(expr: e, target: Rust, source_index: source_index)
+            let var_name = emit_ident(name: expr_var_name_at(texpr: e, source_index: source_index), target: Rust)
             let is_opt = is_optional_typed_expr(e: e)
             if is_opt {
-              [concat(expr_str, ".as_deref().unwrap_or(\"\")")]
+              [concat(var_name, ".as_deref().unwrap_or(\"\")")]
             } else {
-              [expr_str]
+              [var_name]
             }
           }
         })
@@ -4222,15 +4230,16 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
       let args = parts |> flat_map(p => match p {
         Text { value: _ } => []
         Interpolation { expr: e } => {
-          let expr_str = emit_simple_expr(expr: e, target: Rust, source_index: source_index)
-          let is_opt = is_optional_typed_expr(e: e) || match map_get(optional_params, expr_var_name_at(texpr: e, source_index: source_index)) {
+          let name = expr_var_name_at(texpr: e, source_index: source_index)
+          let var_name = emit_ident(name: name, target: Rust)
+          let is_opt = is_optional_typed_expr(e: e) || match map_get(optional_params, name) {
             Some { value: _ } => true
             None => false
           }
           if is_opt {
-            [concat(expr_str, ".as_deref().unwrap_or(\"\")")]
+            [concat(var_name, ".as_deref().unwrap_or(\"\")")]
           } else {
-            [expr_str]
+            [var_name]
           }
         }
       })
@@ -4238,15 +4247,16 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
       concat("&format!(\"", fmt_str, "\", ", args_str, ")")
     }
     ExprVar { binding_kind: _ } => {
-      let expr_str = emit_simple_expr(expr: arg, target: Rust, source_index: source_index)
-      let is_opt = is_optional_typed_expr(e: arg) || match map_get(optional_params, expr_var_name_at(texpr: arg, source_index: source_index)) {
+      let name = expr_var_name_at(texpr: arg, source_index: source_index)
+      let var_name = emit_ident(name: name, target: Rust)
+      let is_opt = is_optional_typed_expr(e: arg) || match map_get(optional_params, name) {
         Some { value: _ } => true
         None => false
       }
       if is_opt {
-        concat("&", expr_str, ".as_deref().unwrap_or(\"\").to_string()")
+        concat("&", var_name, ".as_deref().unwrap_or(\"\").to_string()")
       } else {
-        concat("&", expr_str, ".to_string()")
+        concat("&", var_name, ".to_string()")
       }
     }
     _ => emit_simple_expr(expr: arg, target: Rust, source_index: source_index)

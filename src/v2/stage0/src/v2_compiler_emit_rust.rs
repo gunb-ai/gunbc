@@ -2377,11 +2377,12 @@ v2_rt::concat(ordered.clone(), default_args)
 pub fn fill_op_default_args(ordered: Rc<Vec<Rc<Node>>>, op_params: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, shared_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> Rc<Vec<Rc<Node>>> {
     {
         let si = scope.type_env.clone().source_index.clone();
-let arg_map = ordered.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, a: Rc<Node>| match arg_name_at(a.clone(), si.clone()) {
+let arg_map = ordered.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, a: Rc<Node>| match arg_name_at(a.clone(), si.clone()) {
     Some(n) => v2_rt::rc_map_insert(acc.clone(), n.clone(), a.clone()),
     None => acc.clone(),
 });
-Rc::new({ let mut __result = Vec::new(); for p in op_params.iter().cloned() { __result.extend((*{
+let unnamed_args = Rc::new({ let mut __result = Vec::new(); for a in ordered.clone().iter().cloned() { if (arg_name_at(a.clone(), si.clone()) == None) { __result.push(a); } } __result });
+let named_ordered = Rc::new({ let mut __result = Vec::new(); for p in op_params.iter().cloned() { __result.extend((*{
             let pname = param_node_name_at(p.clone(), si.clone());
 match v2_rt::map_get(&arg_map, pname.clone()) {
     Some(arg) => Rc::new(vec![arg.clone()]),
@@ -2391,7 +2392,8 @@ match v2_rt::map_get(&arg_map, pname.clone()) {
                 Rc::new(vec![])
 },
 }
-}).iter().cloned()); } __result })
+}).iter().cloned()); } __result });
+v2_rt::concat(named_ordered, unnamed_args)
 }
 }
 
@@ -3010,14 +3012,16 @@ let param_is_optional = match v2_rt::map_get(&optional_param_set, aname.clone())
     Some(_) => true,
     None => false,
 };
-if (param_is_json.clone() && is_string_typed_expr(arg_value(a.clone()))) {
+let needs_optional = (param_is_optional.clone() && (is_already_optional(arg_value(a.clone()), emit_info.clone(), scope.clone()) == false));
+let coerced = if (param_is_json.clone() && is_string_typed_expr(arg_value(a.clone()))) {
                     v2_rt::concat(v2_rt::concat("serde_json::from_str(&".to_string(), arg_str.clone()), ").unwrap()".to_string())
 } else {
-                    if (param_is_optional.clone() && (is_already_optional(arg_value(a.clone()), emit_info.clone(), scope.clone()) == false)) {
-                        v2_rt::concat(v2_rt::concat("Some(".to_string(), arg_str.clone()), ")".to_string())
+                    arg_str.clone()
+};
+if needs_optional.clone() {
+                    v2_rt::concat(v2_rt::concat("Some(".to_string(), coerced.clone()), ")".to_string())
 } else {
-                        arg_str.clone()
-}
+                    coerced.clone()
 }
 }); } __result });
 let args_str = arg_strs.join(&", ".to_string());
@@ -4153,12 +4157,12 @@ let fmt_str = fmt_segments.join(&"".to_string());
 let args = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.extend((*match (*p.clone()).clone() {
     StringPart::Text { .. } => Rc::new(vec![]),
     StringPart::Interpolation { expr: e, .. } => {
-            let expr_str = emit_simple_expr(e.clone(), RenderTarget::Rust, source_index.clone());
+            let var_name = emit_ident(expr_var_name_at(e.clone(), source_index.clone()), RenderTarget::Rust);
 let is_opt = is_optional_typed_expr(e.clone());
 if is_opt.clone() {
-                Rc::new(vec![v2_rt::concat(expr_str.clone(), ".as_deref().unwrap_or(\"\")".to_string())])
+                Rc::new(vec![v2_rt::concat(var_name.clone(), ".as_deref().unwrap_or(\"\")".to_string())])
 } else {
-                Rc::new(vec![expr_str.clone()])
+                Rc::new(vec![var_name.clone()])
 }
 },
 }).iter().cloned()); } __result });
@@ -4409,15 +4413,16 @@ let fmt_str = fmt_segments.join(&"".to_string());
 let args = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.extend((*match (*p.clone()).clone() {
     StringPart::Text { .. } => Rc::new(vec![]),
     StringPart::Interpolation { expr: e, .. } => {
-            let expr_str = emit_simple_expr(e.clone(), RenderTarget::Rust, source_index.clone());
-let is_opt = (is_optional_typed_expr(e.clone()) || match v2_rt::map_get(&optional_params, expr_var_name_at(e.clone(), source_index.clone())) {
+            let name = expr_var_name_at(e.clone(), source_index.clone());
+let var_name = emit_ident(name.clone(), RenderTarget::Rust);
+let is_opt = (is_optional_typed_expr(e.clone()) || match v2_rt::map_get(&optional_params, name.clone()) {
     Some(_) => true,
     None => false,
 });
 if is_opt.clone() {
-                Rc::new(vec![v2_rt::concat(expr_str.clone(), ".as_deref().unwrap_or(\"\")".to_string())])
+                Rc::new(vec![v2_rt::concat(var_name.clone(), ".as_deref().unwrap_or(\"\")".to_string())])
 } else {
-                Rc::new(vec![expr_str.clone()])
+                Rc::new(vec![var_name.clone()])
 }
 },
 }).iter().cloned()); } __result });
@@ -4425,15 +4430,16 @@ let args_str = args.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("&format!(\"".to_string(), fmt_str), "\", ".to_string()), args_str), ")".to_string())
 },
     ExprData::ExprVar { .. } => {
-        let expr_str = emit_simple_expr(arg.clone(), RenderTarget::Rust, source_index.clone());
-let is_opt = (is_optional_typed_expr(arg.clone()) || match v2_rt::map_get(&optional_params, expr_var_name_at(arg.clone(), source_index.clone())) {
+        let name = expr_var_name_at(arg.clone(), source_index.clone());
+let var_name = emit_ident(name.clone(), RenderTarget::Rust);
+let is_opt = (is_optional_typed_expr(arg.clone()) || match v2_rt::map_get(&optional_params, name.clone()) {
     Some(_) => true,
     None => false,
 });
 if is_opt.clone() {
-            v2_rt::concat(v2_rt::concat("&".to_string(), expr_str.clone()), ".as_deref().unwrap_or(\"\").to_string()".to_string())
+            v2_rt::concat(v2_rt::concat("&".to_string(), var_name.clone()), ".as_deref().unwrap_or(\"\").to_string()".to_string())
 } else {
-            v2_rt::concat(v2_rt::concat("&".to_string(), expr_str.clone()), ".to_string()".to_string())
+            v2_rt::concat(v2_rt::concat("&".to_string(), var_name.clone()), ".to_string()".to_string())
 }
 },
     _ => emit_simple_expr(arg.clone(), RenderTarget::Rust, source_index.clone()),
