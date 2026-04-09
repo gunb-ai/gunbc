@@ -139,7 +139,8 @@ import v2.compiler.emit {
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   extract_modifier_names,
   seed_bindings,
-  emit_typed_let_shared
+  emit_typed_let_shared,
+  resolved_binop_algebra
 }
 
 fn render_rust_type(n: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
@@ -3401,7 +3402,9 @@ fn emit_typed_bin_op(op: BinOp, left: Node, right: Node, registry: Map<String, I
   if is_null_coalesce(op: op) {
     emit_null_coalesce(l_str: l_str, r_str: r_str, target: Rust)
   } else {
-    let op_str = emit_bin_op_symbol(op: op, target: Rust)
+    let left_type = resolved_type(n: left)
+    let algebra = resolved_binop_algebra(op: op, left_type: left_type, source_index: scope.type_env.source_index)
+    let op_str = emit_bin_op_symbol(op: op, target: Rust, algebra_field: algebra)
     if is_string_comparison(op: op, left: left, right: right) {
       // When either side is Optional<String>, use .as_deref() to get Option<&str>
       // instead of .as_str() which doesn't exist on Option<String>.

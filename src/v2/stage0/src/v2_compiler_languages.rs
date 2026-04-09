@@ -577,14 +577,25 @@ pub fn target_operators(target: RenderTarget) -> Rc<Vec<Rc<OperatorSpec>>> {
 }
 }
 
-pub fn binop_symbol(target: RenderTarget, op: BinOp) -> Option<String> {
+pub fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: Option<String>) -> Option<String> {
     {
         let ops = target_operators(target);
-let matching = Rc::new({ let mut __result = Vec::new(); for spec in ops.iter().cloned() { if match spec.binop.clone() {
+let op_matching = Rc::new({ let mut __result = Vec::new(); for spec in ops.iter().cloned() { if match spec.binop.clone() {
     Some(b) => (b.clone() == op.clone()),
     None => false,
 } { __result.push(spec); } } __result });
-match matching.first().cloned() {
+let specific = match algebra_field {
+    Some(af) => Rc::new({ let mut __result = Vec::new(); for spec in op_matching.clone().iter().cloned() { if match spec.algebra_field.clone() {
+    Some(sf) => (sf.clone().as_str() == af.clone().as_str()),
+    _ => false,
+} { __result.push(spec); } } __result }).first().cloned(),
+    None => None,
+};
+let result = match specific.clone() {
+    Some(_) => specific.clone(),
+    None => Rc::new({ let mut __result = Vec::new(); for spec in op_matching.clone().iter().cloned() { if (spec.algebra_field.clone() == None) { __result.push(spec); } } __result }).first().cloned(),
+};
+match result {
     Some(spec) => Some(spec.symbol.clone()),
     None => None,
 }

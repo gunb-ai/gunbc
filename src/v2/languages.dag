@@ -560,13 +560,27 @@ fn target_operators(target: RenderTarget) -> List<OperatorSpec> {
 
 // Look up the target language's symbol for a BinOp.
 // Reads from per-language OperatorSpec in extdeps/languages/*/syntax.dag.
-fn binop_symbol(target: RenderTarget, op: BinOp) -> String? {
+// Type-aware: when algebra_field is provided, prefers specs matching that field.
+// Falls back to unconstrained specs (algebra_field: none) for languages like
+// Go/Rust where a single operator handles both int and float division.
+fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: String?) -> String? {
   let ops = target_operators(target: target)
-  let matching = ops |> filter(spec => match spec.binop {
+  let op_matching = ops |> filter(spec => match spec.binop {
     Some { value: b } => b == op
     None => false
   })
-  match matching |> first {
+  // Try algebra-specific match first
+  let specific = match algebra_field {
+    Some { value: af } =>
+      op_matching |> filter(spec => match spec.algebra_field { Some { value: sf } => sf == af  _ => false }) |> first
+    None => none
+  }
+  // Fall back to unconstrained spec (algebra_field: none)
+  let result = match specific {
+    Some { value: _ } => specific
+    None => op_matching |> filter(spec => spec.algebra_field == none) |> first
+  }
+  match result {
     Some { value: spec } => Some { value: spec.symbol }
     None => none
   }

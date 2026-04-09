@@ -116,6 +116,7 @@ pub struct OperatorSpec {
     pub left_bp: i64,
     pub right_bp: i64,
     pub binop: Option<BinOp>,
+    pub algebra_field: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -46,7 +46,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, Connective, Cardinality};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, expr_var_name_at, expr_call_func_at, let_binding_name_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, with_required_cardinality, tuple_type_name, find_child_named, Connective, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
@@ -57,7 +57,7 @@ use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, RecursiveVariantFieldWitness};
-pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
+pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, binop_algebra_fields};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -816,8 +816,26 @@ emit_string_literal(s.clone(), suffix)
 }
 }
 
-pub fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
-    match binop_symbol(target.clone(), op) {
+pub fn resolved_binop_algebra(op: BinOp, left_type: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
+    {
+        let candidates = binop_algebra_fields(op);
+let is_product = (left_type.connective.clone() == Connective::Conj);
+if is_product {
+            {
+                let matching = Rc::new({ let mut __result = Vec::new(); for c in candidates.iter().cloned() { if match find_child_named(left_type.clone(), c.clone(), source_index.clone()) {
+    Some(_) => true,
+    None => false,
+} { __result.push(c); } } __result });
+matching.first().cloned()
+}
+} else {
+            None
+}
+}
+}
+
+pub fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: Option<String>) -> String {
+    match binop_symbol(target.clone(), op, algebra_field) {
     Some(sym) => sym.clone(),
     None => emit_error_expr("missing OperatorSpec for BinOp in target language".to_string(), target.clone()),
 }
@@ -1973,18 +1991,20 @@ wrap_result(emit_return(recurse(ret_val), target.clone()))
 }
 }
 
-pub fn emit_default_bin_op(texpr: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, wrap_result: impl Fn(String) -> String + Clone) -> String {
+pub fn emit_default_bin_op(texpr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>, recurse: impl Fn(Rc<Node>) -> String + Clone, wrap_result: impl Fn(String) -> String + Clone) -> String {
     match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprBinOp { op, .. } => {
         let left = binop_left(texpr.clone());
 let right = binop_right(texpr.clone());
-let left_str = recurse(left);
+let left_str = recurse(left.clone());
 let right_str = recurse(right);
 if is_null_coalesce(op.clone()) {
             wrap_result(emit_null_coalesce(left_str, right_str, target))
 } else {
             {
-                let op_str = emit_bin_op_symbol(op.clone(), target);
+                let left_type = resolved_type(left.clone());
+let algebra = resolved_binop_algebra(op.clone(), left_type, source_index);
+let op_str = emit_bin_op_symbol(op.clone(), target, algebra);
 wrap_result(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), left_str), " ".to_string()), op_str), " ".to_string()), right_str), ")".to_string()))
 }
 }
