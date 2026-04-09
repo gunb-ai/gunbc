@@ -4001,7 +4001,8 @@ let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
 let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone(), source_index.clone())));
 let cycle_set = detect_type_cycles_kahn(all_deps_map.clone(), merged.bindings.clone());
 let cycle_map = cycle_set.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
-let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cycle_map.clone());
+let cross_type_set = v2_rt::rc_map_merge(cycle_map.clone(), compiler_recursive_types());
+let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set);
 let merged_inductive_fields = merge_inductive_fields(merged.inductive_fields.clone(), local_inductive_fields);
 let unresolved_env = Rc::new(TypeEnv {
     bindings: merged.bindings.clone(),
@@ -4248,7 +4249,8 @@ let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
 let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone(), source_index.clone())));
 let cycle_set = detect_type_cycles_kahn(all_deps_map, merged.bindings.clone());
 let cycle_map = cycle_set.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
-let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cycle_map.clone());
+let cross_type_set = v2_rt::rc_map_merge(cycle_map.clone(), compiler_recursive_types());
+let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set);
 let merged_inductive_fields = merge_inductive_fields(merged.inductive_fields.clone(), local_inductive_fields);
 let unresolved_env = Rc::new(TypeEnv {
     bindings: merged.bindings.clone(),

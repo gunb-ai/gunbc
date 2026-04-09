@@ -3529,7 +3529,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Build recursive variant fields AFTER cycle detection so the structural
   // cycle_map gates which types are considered recursive, replacing the
   // raw-name identity check with a structurally validated one.
-  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_map)
+  // Merge compiler_recursive_types so cross-type detection finds Node-referencing fields
+  // in module-local types (e.g., MatchPattern.VariantPattern.field_bindings: List<Node>).
+  let cross_type_set = map_merge(cycle_map, compiler_recursive_types)
+  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, inductive_fields: merged_inductive_fields, source_index: source_index }
   // Resolve only LOCAL type bindings. Imported bindings are already resolved.
@@ -3624,7 +3627,10 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   )
   let cycle_set = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: merged.bindings)
   let cycle_map = fold(cycle_set, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
-  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_map)
+  // Merge compiler_recursive_types so cross-type detection finds Node-referencing fields
+  // in module-local types (e.g., MatchPattern.VariantPattern.field_bindings: List<Node>).
+  let cross_type_set = map_merge(cycle_map, compiler_recursive_types)
+  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map, inductive_fields: merged_inductive_fields, source_index: source_index }
   BuildTypeEnvResult { env: unresolved_env, diagnostics: [] }
