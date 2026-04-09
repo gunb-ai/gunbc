@@ -2611,13 +2611,125 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         has_non_tail_self_call: body.has_non_tail_self_call,
         match_pattern: body.match_pattern, expr_data: body.expr_data
       }
-    // Lambda bodies are opaque: self-calls inside closures do not contribute
-    // descent evidence to the enclosing function. The closure may be invoked
-    // zero, one, or many times — that multiplicity must come from method_semantics,
-    // not from generic child recursion.
-    ExprLambda { semantics: _ } => body
+    // Method calls on collections: thread descent context into fold/map/filter
+    // lambda bodies. The lambda element parameter is an IteratedSubValue of
+    // the receiver's collection field.
+    ExprMethodCall { method_semantics: _ } =>
+      let mname = expr_method_name(texpr: body)
+      let is_iteration = mname == "fold" || mname == "map" || mname == "filter" || mname == "flat_map" || mname == "any" || mname == "all"
+      if is_iteration {
+        // Check if receiver is a collection sub-value (field access or bound variable).
+        let receiver = method_receiver(texpr: body)
+        let receiver_field = match receiver.expr_data {
+          ExprFieldAccess { summary: _ } =>
+            let base = field_access_base(texpr: receiver)
+            let fname = field_access_field(texpr: receiver)
+            match base.expr_data {
+              ExprVar { binding_kind: _ } =>
+                let bname = expr_var_name(texpr: base)
+                let base_type = match map_get(ctx.param_names, bname) {
+                  Some { value: t } => t
+                  None =>
+                    match map_get(ctx.sub_value_vars, bname) {
+                      Some { value: rel } =>
+                        match rel {
+                          StrictSubValue { field: f, factor: _ } => f.type_name
+                          IteratedSubValue { field: f } => f.type_name
+                          _ => ""
+                        }
+                      None => ""
+                    }
+                }
+                if base_type != "" {
+                  inductive_fields_for(env: ctx.type_env, type_name: base_type) |> filter(f => f.field_name == fname) |> first
+                } else { none }
+              _ => none
+            }
+          // Receiver is a variable bound as a sub-value (e.g., cs from match children: cs)
+          ExprVar { binding_kind: _ } =>
+            let rname = expr_var_name(texpr: receiver)
+            match map_get(ctx.sub_value_vars, rname) {
+              Some { value: rel } =>
+                match rel {
+                  StrictSubValue { field: f, factor: _ } =>
+                    match f.shape { ListRecursion => Some { value: f }  _ => none }
+                  IteratedSubValue { field: f } =>
+                    match f.shape { ListRecursion => Some { value: f }  _ => none }
+                  _ => none
+                }
+              None => none
+            }
+          _ => none
+        }
+        // Find the lambda argument and extend context for its element parameter
+        let method_args = method_arg_nodes(texpr: body)
+        let lambda_arg = method_args |> filter(a =>
+          match arg_value(n: a).expr_data { ExprLambda { semantics: _ } => true  _ => false }
+        ) |> first
+        // Inside a fold/map lambda, captured sub_value_vars are cleared.
+        // Captured variables have their descent multiplied by the fold
+        // iteration count (unknown), so they cannot produce valid evidence.
+        // Only the element parameter (if the receiver is a known collection
+        // field) gets registered as IteratedSubValue.
+        let lambda_elem_info = match lambda_arg {
+          Some { value: la } =>
+            let lambda_node = arg_value(n: la)
+            let lparams = lambda_param_names(texpr: lambda_node)
+            match lparams |> skip(lparams |> count - 1) |> first {
+              Some { value: n } => Some { value: n }
+              None => none
+            }
+          None => none
+        }
+        let inner_ctx = match lambda_elem_info {
+          Some { value: elem_name } =>
+            match receiver_field {
+              Some { value: ind_field } =>
+                DescentContext {
+                  fn_name: ctx.fn_name,
+                  param_names: map_insert(ctx.param_names, elem_name, ind_field.type_name),
+                  param_order: ctx.param_order, type_env: ctx.type_env,
+                  sub_value_vars: map_insert(empty_map(), elem_name, IteratedSubValue { field: ind_field }),
+                  size_aliases: ctx.size_aliases
+                }
+              None =>
+                // Fold on non-recognized collection: clear sub_value_vars entirely
+                DescentContext {
+                  fn_name: ctx.fn_name, param_names: ctx.param_names,
+                  param_order: ctx.param_order, type_env: ctx.type_env,
+                  sub_value_vars: empty_map(),
+                  size_aliases: ctx.size_aliases
+                }
+            }
+          None => ctx
+        }
+        // Annotate receiver with outer context, lambda args with inner (restricted) context
+        let annotated_receiver = annotate_descent(body: method_receiver(texpr: body), ctx: ctx)
+        let annotated_args = method_arg_nodes(texpr: body) |> map(arg_node =>
+          let arg_val = arg_value(n: arg_node)
+          let is_lambda = match arg_val.expr_data { ExprLambda { semantics: _ } => true  _ => false }
+          if is_lambda {
+            make_arg_node(name: match arg_name(n: arg_node) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span)
+          } else {
+            make_arg_node(name: match arg_name(n: arg_node) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: ctx), span: arg_node.span)
+          }
+        )
+        Node {
+          name: body.name, span: body.span, ident_span: body.ident_span,
+          children: concat([annotated_receiver], annotated_args),
+          connective: body.connective, params: body.params,
+          inferred: body.inferred, return_cardinality: body.return_cardinality,
+          uses: body.uses, body: body.body, transport: body.transport,
+          properties: body.properties, type_annotation: body.type_annotation,
+          is_self_recursive: body.is_self_recursive,
+          has_non_tail_self_call: body.has_non_tail_self_call,
+          match_pattern: body.match_pattern, expr_data: body.expr_data
+        }
+      } else {
+        map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
+      }
     _ =>
-      // All other expression types: recurse into children
+      // All other expression types (including lambdas): recurse into children
       map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
   }
 }

@@ -4881,7 +4881,6 @@ fn collect_self_call_evidence(body: Node, fn_name: String) -> List<List<SubValue
         concat(acc, collect_self_call_evidence(body: child, fn_name: fn_name))
       )
       concat(own, from_children)
-    ExprLambda { semantics: _ } => []
     _ =>
       body.children |> fold(init: [], f: (acc, child) =>
         concat(acc, collect_self_call_evidence(body: child, fn_name: fn_name))
@@ -4964,8 +4963,6 @@ fn max_path_descending(body: Node, fn_name: String, param_index: Int) -> Int {
         let arm_count = max_path_descending(body: arm_body(n: arm), fn_name: fn_name, param_index: param_index)
         if arm_count > acc { arm_count } else { acc }
       )
-    // Lambda bodies are opaque
-    ExprLambda { semantics: _ } => 0
     // Sequential: SUM of children
     _ =>
       body.children |> fold(init: 0, f: (acc, child) =>

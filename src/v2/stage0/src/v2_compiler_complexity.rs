@@ -4688,7 +4688,6 @@ let own = if (callee.as_str() == fn_name.clone().as_str()) {
 let from_children = body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_self_call_evidence(child.clone(), fn_name.clone())));
 v2_rt::concat(own, from_children)
 },
-    ExprData::ExprLambda { .. } => Rc::new(vec![]),
     _ => body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_self_call_evidence(child.clone(), fn_name.clone()))),
 }
     })
@@ -4768,7 +4767,6 @@ if (arm_count.clone() > acc.clone()) {
 }
 })
 },
-    ExprData::ExprLambda { .. } => 0,
     _ => body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| (acc.clone() + max_path_descending(child.clone(), fn_name.clone(), param_index.clone()))),
 }
     })

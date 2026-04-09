@@ -2839,7 +2839,140 @@ Rc::new(Node {
     expr_data: body.expr_data.clone(),
 })
 },
-    ExprData::ExprLambda { .. } => body.clone(),
+    ExprData::ExprMethodCall { .. } => {
+            let mname = expr_method_name(body.clone());
+let is_iteration = ((((((mname.clone().as_str() == "fold".to_string().as_str()) || (mname.clone().as_str() == "map".to_string().as_str())) || (mname.clone().as_str() == "filter".to_string().as_str())) || (mname.clone().as_str() == "flat_map".to_string().as_str())) || (mname.clone().as_str() == "any".to_string().as_str())) || (mname.clone().as_str() == "all".to_string().as_str()));
+if is_iteration {
+                {
+                    let receiver = method_receiver(body.clone());
+let receiver_field = match (*receiver.expr_data.clone()).clone() {
+    ExprData::ExprFieldAccess { .. } => {
+                        let base = field_access_base(receiver.clone());
+let fname = field_access_field(receiver.clone());
+match (*base.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                            let bname = expr_var_name(base.clone());
+let base_type = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
+    Some(t) => t.clone(),
+    None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.type_name.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.type_name.clone(),
+    _ => "".to_string(),
+},
+    None => "".to_string(),
+},
+};
+if (base_type.clone().as_str() != "".to_string().as_str()) {
+                                Rc::new({ let mut __result = Vec::new(); for f in inductive_fields_for(ctx.type_env.clone(), base_type.clone()).iter().cloned() { if (f.field_name.clone().as_str() == fname.clone().as_str()) { __result.push(f); } } __result }).first().cloned()
+} else {
+                                None
+}
+},
+    _ => None,
+}
+},
+    ExprData::ExprVar { .. } => {
+                        let rname = expr_var_name(receiver.clone());
+match v2_rt::map_get(&ctx.sub_value_vars.clone(), rname) {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => match f.shape.clone() {
+    RecursionShape::ListRecursion => Some(f.clone()),
+    _ => None,
+},
+    SubValueRelation::IteratedSubValue { field: f, .. } => match f.shape.clone() {
+    RecursionShape::ListRecursion => Some(f.clone()),
+    _ => None,
+},
+    _ => None,
+},
+    None => None,
+}
+},
+    _ => None,
+};
+let method_args = method_arg_nodes(body.clone());
+let lambda_arg = Rc::new({ let mut __result = Vec::new(); for a in method_args.iter().cloned() { if match (*arg_value(a.clone()).expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => true,
+    _ => false,
+} { __result.push(a); } } __result }).first().cloned();
+let lambda_elem_info = match lambda_arg {
+    Some(la) => {
+                        let lambda_node = arg_value(la.clone());
+let lparams = lambda_param_names(lambda_node);
+match lparams.clone().get(((lparams.clone().len() as i64) - 1) as usize).cloned() {
+    Some(n) => Some(n.clone()),
+    None => None,
+}
+},
+    None => None,
+};
+let inner_ctx = match lambda_elem_info {
+    Some(elem_name) => match receiver_field {
+    Some(ind_field) => Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), elem_name.clone(), ind_field.type_name.clone()),
+    param_order: ctx.param_order.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), elem_name.clone(), Rc::new(SubValueRelation::IteratedSubValue {
+    field: ind_field.clone(),
+})),
+    size_aliases: ctx.size_aliases.clone(),
+}),
+    None => Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: ctx.param_names.clone(),
+    param_order: ctx.param_order.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+    size_aliases: ctx.size_aliases.clone(),
+}),
+},
+    None => ctx.clone(),
+};
+let annotated_receiver = annotate_descent(method_receiver(body.clone()), ctx.clone());
+let annotated_args = Rc::new({ let mut __result = Vec::new(); for arg_node in method_arg_nodes(body.clone()).iter().cloned() { __result.push({
+                        let arg_val = arg_value(arg_node.clone());
+let is_lambda = match (*arg_val.expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => true,
+    _ => false,
+};
+if is_lambda.clone() {
+                            make_arg_node(match arg_name(arg_node.clone()) {
+    Some(n) => Some(n.clone()),
+    None => None,
+}, annotate_descent(arg_val.clone(), inner_ctx.clone()), arg_node.span.clone())
+} else {
+                            make_arg_node(match arg_name(arg_node.clone()) {
+    Some(n) => Some(n.clone()),
+    None => None,
+}, annotate_descent(arg_val.clone(), ctx.clone()), arg_node.span.clone())
+}
+}); } __result });
+Rc::new(Node {
+    name: body.name.clone(),
+    span: body.span.clone(),
+    ident_span: body.ident_span.clone(),
+    children: v2_rt::concat(Rc::new(vec![annotated_receiver]), annotated_args),
+    connective: body.connective.clone(),
+    params: body.params.clone(),
+    inferred: body.inferred.clone(),
+    return_cardinality: body.return_cardinality.clone(),
+    uses: body.uses.clone(),
+    body: body.body.clone(),
+    transport: body.transport.clone(),
+    properties: body.properties.clone(),
+    type_annotation: body.type_annotation.clone(),
+    is_self_recursive: body.is_self_recursive.clone(),
+    has_non_tail_self_call: body.has_non_tail_self_call.clone(),
+    match_pattern: body.match_pattern.clone(),
+    expr_data: body.expr_data.clone(),
+})
+}
+} else {
+                map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone()))
+}
+},
     _ => map_children(body.clone(), |child| annotate_descent(child.clone(), ctx.clone())),
 }
     })
