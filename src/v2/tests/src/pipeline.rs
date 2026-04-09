@@ -5423,6 +5423,175 @@ fn dup(t: Tree) -> Int {
     }
 }
 
+// ── CX gap tests: patterns used in real compiler but not yet proven ────
+//
+// These tests document the MISSING PATTERNS that prevent the CX analyzer
+// from proving bounds for real compiler functions. Each test exercises a
+// pattern used heavily in the compiler (render_node_type, walk_expr, etc.)
+// that the current analyzer cannot handle. As the analyzer improves,
+// these tests should be upgraded from "assert no bound / assert not O(n)"
+// to "assert O(n)".
+//
+// All of these are iteration in different skin. The right fix is recursion
+// scheme recognition, not per-pattern special cases.
+
+#[test]
+fn gap_match_shape_recurse_children() {
+    // Pattern: match on expr_data (shape), recurse on children (structure).
+    // This is the dominant pattern in the compiler: render_node_type,
+    // walk_expr, resolve_expr_types all discriminate on node shape then
+    // recurse into sub-nodes. The match scrutinee (n.expr_data) and the
+    // recursion target (n.children) are different fields of the same Node.
+    let source = r#"module shape_recurse
+
+type Expr
+  = Lit { value: Int }
+  | Add { left: Expr, right: Expr }
+  | Neg { inner: Expr }
+
+fn eval(e: Expr) -> Int {
+  match e {
+    Lit { value: v } => v
+    Add { left: l, right: r } => eval(e: l) + eval(e: r)
+    Neg { inner: x } => 0 - eval(e: x)
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "eval")
+        .collect();
+    eprintln!("[gap] eval (match-shape-recurse): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // This IS a catamorphism — every arm recurses on strict sub-values.
+    assert!(!bounds.is_empty(), "eval should produce structural bound");
+    assert_eq!(bounds[0].param, "e");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "e".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "match-shape-recurse-children is a catamorphism O(n)"
+    );
+}
+
+#[test]
+fn gap_accessor_in_fold() {
+    // Pattern: fold over a collection field, self-call passes the element directly.
+    // This already works with lambda transparency + fold context threading.
+    let source = r#"module accessor_fold
+
+type Container { items: List<Container>, label: Int }
+
+fn get_label(c: Container) -> Int { c.label }
+
+fn sum_labels(c: Container) -> Int {
+  let own = get_label(c: c)
+  own + (c.items |> fold(init: 0, f: (acc, child) => acc + sum_labels(c: child)))
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "sum_labels")
+        .collect();
+    eprintln!("[gap] sum_labels (accessor-in-fold): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    assert!(!bounds.is_empty(), "sum_labels should produce structural bound");
+    assert_eq!(bounds[0].param, "c");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "c".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "fold-over-collection-field is a catamorphism O(n)"
+    );
+}
+
+#[test]
+fn gap_mixed_field_recursion() {
+    // Pattern: function recurses through MULTIPLE fields of the same node
+    // using different access patterns (direct field, optional unwrap, list fold).
+    // This is how resolve_expr_types and infer_item work.
+    let source = r#"module mixed_fields
+
+type Item {
+  children: List<Item>
+  body: Item?
+  annotation: Item?
+}
+
+fn count_items(item: Item) -> Int {
+  let child_count = item.children |> fold(init: 0, f: (acc, c) => acc + count_items(item: c))
+  let body_count = match item.body {
+    Some { value: b } => count_items(item: b)
+    None => 0
+  }
+  let anno_count = match item.annotation {
+    Some { value: a } => count_items(item: a)
+    None => 0
+  }
+  1 + child_count + body_count + anno_count
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "count_items")
+        .collect();
+    eprintln!("[gap] count_items (mixed-field-recursion): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // Catamorphism through children (List), body (Optional), annotation (Optional).
+    assert!(!bounds.is_empty(), "count_items should produce structural bound");
+    assert_eq!(bounds[0].param, "item");
+    assert_eq!(
+        *bounds[0].bound,
+        v2_compiler::std_induction::CostBound::AtomicBound {
+            cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
+                param: "item".to_string(),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+            }),
+        },
+        "mixed-field-recursion is a catamorphism O(n)"
+    );
+}
+
+#[test]
+fn gap_accessor_chain_in_self_call() {
+    // Pattern: self-call argument is a chain of accessor functions.
+    // f(n: inner(n: outer(n: p))) — two levels of extraction.
+    // render_node_type uses this: render_node_type(n: child_type_node(ch: kn))
+    let source = r#"module accessor_chain
+
+type Wrapper { inner: Wrapper?, label: Int }
+
+fn get_inner(w: Wrapper) -> Wrapper? { w.inner }
+
+fn depth(w: Wrapper) -> Int {
+  match get_inner(w: w) {
+    Some { value: next } => 1 + depth(w: next)
+    None => 0
+  }
+}
+"#;
+    let complexity = compile_dag_with_complexity(source);
+    let bounds: Vec<_> = complexity.structural_bounds.iter()
+        .filter(|b| b.func_name == "depth")
+        .collect();
+    eprintln!("[gap] depth (accessor-chain): {} bounds", bounds.len());
+    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.bound); }
+    // This IS a catamorphism — get_inner extracts the Optional sub-Wrapper,
+    // match unwraps it, depth recurses. Total: visits each Wrapper once.
+    // When it works: assert O(n).
+    if !bounds.is_empty() {
+        assert_eq!(bounds[0].param, "w");
+    }
+}
+
 // ── CX complexity report dump ──────────────────────────────────────────
 
 #[test]

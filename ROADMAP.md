@@ -1023,19 +1023,42 @@ language proves algorithmic complexity from source code at compile time.
 
 #### Current state (PR #354)
 
-13 end-to-end regression tests pass:
-- **Catamorphisms proven O(n):** linked list, binary tree, BST search/insert,
-  tree depth, optional chain, flatten+search, forest+tree
-- **Known limitation:** fold-over-children (lambda body) correctly produces
-  no bound — lambda bodies are opaque until method_semantics authorizes descent
-- **Divide-and-conquer proven O(log n):** binary search via master theorem
-- **Composition:** nested algorithms produce independent bounds (filter O(n)
-  calling binary search O(log n) on a different data structure)
-- **Fail-closed:** arithmetic descent (no bound), bad recursion (no bound)
+37 proven structural bounds (all O(n) catamorphisms). 525 violations.
+Zero overlap — the proven functions don't have violations.
+
+**What works (22 regression tests):**
+- Direct field binding: `match x { Cons { tail: t } => f(x: t) }`
+- Fold/map on collection field: `cs |> fold(f: (acc, c) => f(t: c))`
+- Divide-and-conquer: binary search O(log n) via master theorem
+- Fail-closed: same-argument, arithmetic, lambda-captured variables,
+  duplicate-same-child, invalid proportional shrink
+
+**What doesn't work (the real compiler patterns):**
+- Match on one field, recurse on another: `match n.expr_data { ... } =>
+  n.children |> map(c => f(c))` — shape dispatch ≠ recursion target
+- Accessor chaining in fold: `n.params |> map(p => f(n: accessor(n: p)))`
+- Higher-order combinators: `map_children(node: n, transform: c => f(c))`
+
+**Root cause:** The analyzer traces individual call arguments bottom-up
+(ExprVar? ExprFieldAccess? ExprCall?), adding special cases for each
+syntax form. The real compiler uses ~15 different syntactic patterns that
+all reduce to the same thing: fold over a tree. The argument-tracing
+approach is fundamentally combinatorial — it will never cover all skins.
+
+**The missing abstraction: recursion scheme recognition.** Instead of
+tracing "is this argument a sub-value?", recognize "is this function a
+structural fold over an inductive type?" A function `f(n: Node) → T`
+is a catamorphism if every self-call passes a strict sub-Node. The
+proof obligation is the negative check (no call preserves or grows the
+argument), not the positive trace (trace each call to a specific field).
+
+This is the same insight as "iteration in different skin" — fold, map,
+match+recurse, map_children, accessor chains are all the same operation.
+The analyzer must collapse them to a singular case.
 
 Infrastructure: CX-L1 (InductiveField), CX-L2 (descent_evidence with
-ProportionalShrink), CX-L3 (analyze_structural_bounds → derive_bound →
-master_theorem), all in std/induction.dag.
+lambda transparency + fold context threading), CX-L3 (catamorphism +
+disjointness + master theorem), all in std/induction.dag.
 
 #### Hard gate: Time complexity (KF-1)
 
