@@ -320,7 +320,7 @@ fn build_type_summary(item: Node, source_index: NewlineIndex?) -> TypeSummary? {
   if item.connective == NoConnective || item.connective == Arrow || item.transport != none {
     return none
   }
-  let gpn = item.params |> map(p => param_node_name_at(n: p, source_index: none))
+  let gpn = item.params |> map(p => param_node_name_at(n: p, source_index: source_index))
   let is_product = item.connective == Conj
   let has_fn = item.children |> any(child =>
     match child.inferred {

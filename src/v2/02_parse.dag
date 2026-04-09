@@ -4668,12 +4668,12 @@ fn parse_field_init(tokens: List<Token>, state: ParserState) -> FieldInitResult 
     let adv2 = advance(tokens: tokens, state: adv.state)
     let r = parse_expr(tokens: tokens, state: adv2.state)
     if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, state: r.state, err: r.err } }
-    let fi = make_field_init_node(name: str_name, value: r.expr, span: current_span(tokens: tokens, state: state), name_span: current_span(tokens: tokens, state: state))
+    let fi = make_field_init_node(name: str_name, value: r.expr, span: current_span(tokens: tokens, state: state), name_span: no_span())
     FieldInitResult { field: fi, state: r.state, err: none }
   } else {
     let r = parse_expr(tokens: tokens, state: state)
     if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, state: r.state, err: r.err } }
-    let fi = make_field_init_node(name: "_", value: r.expr, span: current_span(tokens: tokens, state: state), name_span: current_span(tokens: tokens, state: state))
+    let fi = make_field_init_node(name: "_", value: r.expr, span: current_span(tokens: tokens, state: state), name_span: no_span())
     FieldInitResult { field: fi, state: r.state, err: none }
   }
 }

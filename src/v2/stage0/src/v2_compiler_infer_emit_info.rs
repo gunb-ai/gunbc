@@ -292,7 +292,7 @@ pub fn build_type_summary(item: Rc<Node>, source_index: Option<Rc<NewlineIndex>>
         if (((item.connective.clone() == Connective::NoConnective) || (item.connective.clone() == Connective::Arrow)) || (item.transport.clone() != None)) {
             return None
 }
-let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name_at(p.clone(), None)); } __result });
+let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name_at(p.clone(), source_index.clone())); } __result });
 let is_product = (item.connective.clone() == Connective::Conj);
 let has_fn = { let mut __found = false; for child in item.children.clone().iter().cloned() { if match child.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => (rt.connective.clone() == Connective::Arrow),

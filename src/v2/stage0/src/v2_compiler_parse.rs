@@ -10361,7 +10361,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let fi = make_field_init_node(str_name, r.expr.clone(), current_span(tokens.clone(), state.clone()), current_span(tokens.clone(), state.clone()));
+let fi = make_field_init_node(str_name, r.expr.clone(), current_span(tokens.clone(), state.clone()), no_span());
 Rc::new(FieldInitResult {
     field: fi,
     state: r.state.clone(),
@@ -10378,7 +10378,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let fi = make_field_init_node("_".to_string(), r.expr.clone(), current_span(tokens.clone(), state.clone()), current_span(tokens.clone(), state.clone()));
+let fi = make_field_init_node("_".to_string(), r.expr.clone(), current_span(tokens.clone(), state.clone()), no_span());
 Rc::new(FieldInitResult {
     field: fi,
     state: r.state.clone(),
