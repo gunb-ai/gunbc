@@ -4072,19 +4072,19 @@ pub fn emit_auth_source_ctor(source_expr: Rc<Node>) -> String {
     match (*source_expr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
         let func_name = expr_call_func(source_expr.clone());
-if (func_name.clone().as_str() == "EnvVar".to_string().as_str()) {
-            match source_expr.children.clone().first().cloned() {
+match source_expr.children.clone().first().cloned() {
     Some(arg) => match (*arg_value(arg.clone()).expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: env_name, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat("        auth_token: std::env::var(\"".to_string(), env_name.clone()), "\").unwrap_or_default(),\n".to_string()) },
-    _ => "        auth_token: compile_error!(\"EnvVar auth_source requires a string literal\"),\n".to_string(),
-},
-    None => "        auth_token: compile_error!(\"EnvVar auth_source requires an argument\"),\n".to_string(),
-}
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: source_name, .. } = value.as_ref() else { unreachable!() }; if (func_name.clone().as_str() == "EnvVar".to_string().as_str()) {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        auth_token: std::env::var(\"".to_string(), source_name.clone()), "\").expect(\"missing credential: ".to_string()), source_name.clone()), "\"),\n".to_string())
 } else {
-            v2_rt::concat(v2_rt::concat("        auth_token: compile_error!(\"unsupported auth_source: ".to_string(), func_name.clone()), "\"),\n".to_string())
+            v2_rt::concat(v2_rt::concat("        auth_token: compile_error!(\"unsupported credential source: ".to_string(), func_name.clone()), "\"),\n".to_string())
+} },
+    _ => "        auth_token: compile_error!(\"credential source requires a string literal argument\"),\n".to_string(),
+},
+    None => "        auth_token: compile_error!(\"credential source requires an argument\"),\n".to_string(),
 }
 },
-    _ => "        auth_token: compile_error!(\"auth_source must be a CredentialSource variant\"),\n".to_string(),
+    _ => "        auth_token: compile_error!(\"auth_source must be a credential source expression\"),\n".to_string(),
 }
 }
 
@@ -4309,7 +4309,7 @@ pub fn has_response_prefix(name: String) -> bool {
 pub fn child_from_key(ch: Rc<Node>) -> Option<String> {
     match Rc::new({ let mut __result = Vec::new(); for p in ch.properties.clone().iter().cloned() { if (field_init_node_name(p.clone()).as_str() == "from_key".to_string().as_str()) { __result.push(p); } } __result }).first().cloned() {
     Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { return None; }; Some(s.clone()) },
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; Some(s.clone()) },
     _ => None,
 },
     None => None,
@@ -4334,8 +4334,8 @@ pub fn escape_json_pointer_segment(seg: String) -> String {
 
 pub fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String) -> String {
     {
-        let escaped_path = from_path.split('/').map(|s| escape_json_pointer_segment(s.to_string())).collect::<Vec<_>>().join("/");
-        let pointer = v2_rt::concat("/".to_string(), escaped_path.clone());
+        let escaped_path = Rc::new({ let mut __result = Vec::new(); for seg in Rc::new(from_path.clone().split(&"/".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned() { __result.push(escape_json_pointer_segment(seg.clone())); } __result }).join(&"/".to_string());
+let pointer = v2_rt::concat("/".to_string(), escaped_path);
 let rust_type = coerce_primitive_type(RenderTarget::Rust, dag_type_name);
 let accessor = if (rust_type.clone().as_str() == "String".to_string().as_str()) {
             v2_rt::concat(v2_rt::concat(".and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or(\"missing field: ".to_string(), from_path.clone()), "\")?".to_string())

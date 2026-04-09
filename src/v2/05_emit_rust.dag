@@ -3868,24 +3868,26 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
 }
 
 // Emit auth_token constructor line from a CredentialSource expression.
-// Dispatches on expression shape: ExprCall("EnvVar", "TOKEN_NAME") → env var read.
+// BRIDGE: dispatches on ExprCall constructor name until CredentialSource
+// lowering moves to LanguageSpec data (std/credentials.dag → extdeps).
+// Credential acquisition fails at runtime if unavailable (no fabrication).
 fn emit_auth_source_ctor(source_expr: Node) -> String {
   match source_expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let func_name = expr_call_func(texpr: source_expr)
-      if func_name == "EnvVar" {
-        match source_expr.children |> first {
-          Some { value: arg } => match arg_value(n: arg).expr_data {
-            ExprLiteral { value: LitStr { value: env_name } } =>
-              concat("        auth_token: std::env::var(\"", env_name, "\").unwrap_or_default(),\n")
-            _ => "        auth_token: compile_error!(\"EnvVar auth_source requires a string literal\"),\n"
-          }
-          None => "        auth_token: compile_error!(\"EnvVar auth_source requires an argument\"),\n"
+      match source_expr.children |> first {
+        Some { value: arg } => match arg_value(n: arg).expr_data {
+          ExprLiteral { value: LitStr { value: source_name } } =>
+            if func_name == "EnvVar" {
+              concat("        auth_token: std::env::var(\"", source_name, "\").expect(\"missing credential: ", source_name, "\"),\n")
+            } else {
+              concat("        auth_token: compile_error!(\"unsupported credential source: ", func_name, "\"),\n")
+            }
+          _ => "        auth_token: compile_error!(\"credential source requires a string literal argument\"),\n"
         }
-      } else {
-        concat("        auth_token: compile_error!(\"unsupported auth_source: ", func_name, "\"),\n")
+        None => "        auth_token: compile_error!(\"credential source requires an argument\"),\n"
       }
-    _ => "        auth_token: compile_error!(\"auth_source must be a CredentialSource variant\"),\n"
+    _ => "        auth_token: compile_error!(\"auth_source must be a credential source expression\"),\n"
   }
 }
 
@@ -4052,8 +4054,13 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
   // Use service-level auth scheme if available
   match auth_scheme {
     Some { value: auth } => {
-      // When auth_source is declared, the credential lives in self.auth_token
-      // (acquired at construction time). Otherwise, use auth_input expression.
+      // Single authority: when auth_source is declared, the credential lives
+      // in self.auth_token (acquired at construction time) and auth_input is
+      // not consulted. When auth_source is absent, auth_input names the
+      // per-call parameter. The operation input parameter (auth_token: Secret)
+      // still appears in the .dag definition for both cases — filtering it
+      // from the emitted signature when auth_source is present requires
+      // operation parameter pruning at emit time (tracked as RE follow-up #10).
       let has_auth_source = match service_config_auth_source(n: service_item) { Some { value: _ } => true  None => false }
       let token_param = if has_auth_source { "self.auth_token" }
       else {
