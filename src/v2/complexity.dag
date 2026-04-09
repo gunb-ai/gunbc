@@ -2808,7 +2808,7 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
     Some { value: _ } => single_dim_proof
     None =>
       let self_set = seed_bool_map(key: func_name)
-      let func_entry = FuncEntry { name: func_name, body: body, params: params, span: body.span }
+      let func_entry = FuncEntry { name: func_name, body: body, params: params, span: body.span, si: si }
       let func_index = seed_func_entry_map(key: func_name, value: func_entry)
       construct_scc_termination_proof(members: [func_name], func_index: func_index, scc_name_set: self_set, si: si)
   }
@@ -4353,6 +4353,7 @@ type FuncEntry {
   body: Node
   params: List<Node>
   span: SourceSpan
+  si: NewlineIndex?
 }
 
 // Module-owned recursion facts: shared authority for all functions.

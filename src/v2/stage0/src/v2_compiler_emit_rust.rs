@@ -353,20 +353,21 @@ pub fn build_fold_eligible_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, 
 })
 }
 
-pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
-    {
-        let items = Rc::new({ let mut __result = Vec::new(); for m in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result })).iter().cloned()); } __result });
-items.iter().cloned().fold(Rc::new(OwnershipBuildResult {
-    ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
-    fold_eligible_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
-}), |acc: Rc<OwnershipBuildResult>, item: Rc<Node>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
-            let proof = analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), None);
+pub fn build_ownership_for_module(acc: Rc<OwnershipBuildResult>, m: Rc<TypedModule>) -> Rc<OwnershipBuildResult> {
+    Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned().fold(acc.clone(), |acc: Rc<OwnershipBuildResult>, item: Rc<Node>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
+        let proof = analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), m.type_env.clone().source_index.clone());
 Rc::new(OwnershipBuildResult {
     ownership_index: v2_rt::rc_map_insert(acc.ownership_index, item.name.clone(), build_movable_set(proof.clone())),
     fold_eligible_index: v2_rt::rc_map_insert(acc.fold_eligible_index, item.name.clone(), build_fold_eligible_set(proof.clone())),
 })
 } })
 }
+
+pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
+    modules.iter().cloned().fold(Rc::new(OwnershipBuildResult {
+    ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
+    fold_eligible_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
+}), |acc: Rc<OwnershipBuildResult>, m: Rc<TypedModule>| build_ownership_for_module(acc.clone(), m.clone()))
 }
 
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {

@@ -2379,6 +2379,7 @@ let func_entry = Rc::new(FuncEntry {
     body: body.clone(),
     params: params.clone(),
     span: body.span.clone(),
+    si: si.clone(),
 });
 let func_index = seed_func_entry_map(func_name.clone(), func_entry);
 construct_scc_termination_proof(Rc::new(vec![func_name.clone()]), func_index, self_set.clone(), si.clone())
@@ -4149,6 +4150,7 @@ pub struct FuncEntry {
     pub body: Rc<Node>,
     pub params: Rc<Vec<Rc<Node>>>,
     pub span: Rc<SourceSpan>,
+    pub si: Option<Rc<NewlineIndex>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

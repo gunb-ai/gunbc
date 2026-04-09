@@ -107,6 +107,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
     body: item.body.clone().clone().unwrap(),
     params: item.params.clone(),
     span: item.span.clone(),
+    si: m.type_env.clone().source_index.clone(),
 })); } __result })).iter().cloned()); } __result })
 }
 
