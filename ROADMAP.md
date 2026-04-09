@@ -1380,6 +1380,30 @@ review_dag_emitted_rust_builds
   Note: same pattern as bootstrap_stage0_to_stage1
 ```
 
+### RE follow-up: structural gaps from PR #353 review
+
+Three design-level issues surfaced during review that need follow-up work:
+
+**1. First-class response/exit case nodes (M4/M8/M9)**
+The parser encodes `response { 200 => List<PullRequest> }` as synthetic property
+names (`response_200`). The emitter re-parses these strings to rediscover patterns.
+Fix: model as structural case arms — `ResponseCase { pattern: StatusPattern, body: Node }`
+and `ExitCase { pattern: ExitPattern, body: Node }` — thread through parse/resolve/infer,
+let emit consume directly. This removes the entire name-slicing class.
+
+**2. Generic diagnostics/result carrier (M6/M9)**
+Transport property inference introduced ad-hoc `InferPropertiesResult` and
+`InferTransportResult` types. These should collapse into a generic result carrier
+from `std/` that all inference helpers parametrize on, eliminating per-pass
+boilerplate. Depends on std pattern work.
+
+**3. Typed transport/auth accessors at infer/emit boundary (M4/M8)**
+The emitter dispatches on expression shape (ExprVar vs ExprCall) and lowercased
+variant names rather than resolved variant identity. The upstream fix: add typed
+accessors or transport case nodes at the infer/emit boundary that preserve the
+exact `HttpMethod` and `AuthScheme` alternative, so emit translates those directly
+without reclassifying expressions.
+
 ### RE-3: review.dag live integration
 
 Make the compiled binary work against real GitHub + LLM CLI.
