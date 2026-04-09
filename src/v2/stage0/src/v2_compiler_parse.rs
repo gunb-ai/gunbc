@@ -4666,7 +4666,7 @@ if has_err(r3.err.clone()) {
     err: r3.err.clone(),
 })
 }
-let fi = make_field_init_node(field_name.clone(), r3.expr.clone(), zero_span.clone(), zero_span.clone());
+let fi = make_field_init_node(field_name.clone(), r3.expr.clone(), zero_span.clone(), r.span.clone());
 acc = v2_rt::rc_list_push(acc.clone(), fi.clone());
 let e = eat(tokens.clone(), r3.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
@@ -8359,7 +8359,7 @@ if has_err(r2.err.clone()) {
 Rc::new(ExprResult {
     expr: make_named_expr_node(method, Rc::new(ExprData::ExprMethodCall {
     method_semantics: None,
-}), v2_rt::concat(Rc::new(vec![receiver]), Rc::new({ let mut __result = Vec::new(); for na in r2.args.clone().iter().cloned() { __result.push(make_arg_node(arg_name_at(na.clone(), None), arg_value(na.clone()), span.clone(), span.clone())); } __result })), None, span.clone(), r.span.clone()),
+}), v2_rt::concat(Rc::new(vec![receiver]), Rc::new({ let mut __result = Vec::new(); for na in r2.args.clone().iter().cloned() { __result.push(make_arg_node(arg_name_at(na.clone(), None), arg_value(na.clone()), na.span.clone(), node_name_span(na.clone()))); } __result })), None, span, r.span.clone()),
     state: r2.state.clone(),
     err: None,
 })
@@ -8368,7 +8368,7 @@ Rc::new(ExprResult {
             Rc::new(ExprResult {
     expr: make_named_expr_node(method, Rc::new(ExprData::ExprMethodCall {
     method_semantics: None,
-}), Rc::new(vec![receiver]), None, span.clone(), r.span.clone()),
+}), Rc::new(vec![receiver]), None, span, r.span.clone()),
     state: s.clone(),
     err: None,
 })
@@ -8947,13 +8947,13 @@ pub fn make_call_expr(lhs: Rc<Node>, args: Rc<Vec<Rc<Node>>>, span: Rc<SourceSpa
     match (*lhs.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => make_named_expr_node(expr_var_name_at(lhs.clone(), None), Rc::new(ExprData::ExprCall {
     call_semantics: None,
-}), args, None, lhs.span.clone(), lhs.span.clone()),
+}), args, None, lhs.span.clone(), node_name_span(lhs.clone())),
     ExprData::ExprFieldAccess { .. } => make_named_expr_node(field_access_field_at(lhs.clone(), None), Rc::new(ExprData::ExprMethodCall {
     method_semantics: None,
-}), v2_rt::concat(Rc::new(vec![lhs.children.clone().first().cloned().clone().unwrap()]), args), None, lhs.span.clone(), lhs.span.clone()),
+}), v2_rt::concat(Rc::new(vec![lhs.children.clone().first().cloned().clone().unwrap()]), args), None, lhs.span.clone(), node_name_span(lhs.clone())),
     _ => make_named_expr_node("<expr>".to_string(), Rc::new(ExprData::ExprCall {
     call_semantics: None,
-}), args, None, lhs.span.clone(), lhs.span.clone()),
+}), args, None, lhs.span.clone(), no_span()),
 }
 }
 

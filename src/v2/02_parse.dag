@@ -2179,7 +2179,7 @@ fn parse_resource_config_acc(tokens: List<Token>, state: ParserState, acc: List<
   if has_err(err: r2.err) { return ResConfigResult { fields: [], state: r2.state, err: r2.err } }
   let r3 = parse_expr(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return ResConfigResult { fields: [], state: r3.state, err: r3.err } }
-  let fi = make_field_init_node(name: field_name, value: r3.expr, span: zero_span, name_span: zero_span)
+  let fi = make_field_init_node(name: field_name, value: r3.expr, span: zero_span, name_span: r.span)
   let acc = list_push(acc, fi)
   let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
   if e.consumed {
@@ -3678,7 +3678,7 @@ fn parse_pipe_rhs(tokens: List<Token>, state: ParserState, receiver: Node, span:
   if peek_is_lparen(tokens: tokens, state: s) {
     let r2 = parse_call_args(tokens: tokens, state: s)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_index: none), value: arg_value(n: na), span: span, name_span: span))), inferred: none, span: span, name_span: r.span), state: r2.state, err: none }
+    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_index: none), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: r.span), state: r2.state, err: none }
   } else {
     ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: [receiver], inferred: none, span: span, name_span: r.span), state: s, err: none }
   }
@@ -3990,9 +3990,9 @@ fn make_call_expr(lhs: Node, args: List<Node>, span: SourceSpan) -> Node {
   // Use lhs.span so ident_span points to the function/method name,
   // not the opening paren. Required for authored_name_at recovery.
   match lhs.expr_data {
-    ExprVar { binding_kind: _ } => make_named_expr_node(name: expr_var_name_at(texpr: lhs, source_index: none), expr_data: ExprCall { call_semantics: none }, children: args, inferred: none, span: lhs.span, name_span: lhs.span)
-    ExprFieldAccess { summary: _ } => make_named_expr_node(name: field_access_field_at(texpr: lhs, source_index: none), expr_data: ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span, name_span: lhs.span)
-    _ => make_named_expr_node(name: "<expr>", expr_data: ExprCall { call_semantics: none }, children: args, inferred: none, span: lhs.span, name_span: lhs.span)
+    ExprVar { binding_kind: _ } => make_named_expr_node(name: expr_var_name_at(texpr: lhs, source_index: none), expr_data: ExprCall { call_semantics: none }, children: args, inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
+    ExprFieldAccess { summary: _ } => make_named_expr_node(name: field_access_field_at(texpr: lhs, source_index: none), expr_data: ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
+    _ => make_named_expr_node(name: "<expr>", expr_data: ExprCall { call_semantics: none }, children: args, inferred: none, span: lhs.span, name_span: no_span())
   }
 }
 

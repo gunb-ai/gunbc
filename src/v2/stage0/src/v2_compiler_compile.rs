@@ -115,7 +115,7 @@ pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
 }
 
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
-    Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), None)); } __result })).iter().cloned()); } __result })
+    Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), m.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
 }
 
 pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
