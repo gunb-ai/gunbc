@@ -911,7 +911,7 @@ pub fn resolve_resource_use(ru: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
 let type_resolved = type_result.resolved.clone();
 let type_diags = type_result.diagnostics.clone();
 Rc::new(ResourceUseResult {
-    resource_use: make_resource_use_node(resource_use_name_at(ru.clone(), env.source_index.clone()), type_resolved, ru.span.clone(), ru.span.clone()),
+    resource_use: make_resource_use_node(resource_use_name_at(ru.clone(), env.source_index.clone()), type_resolved, ru.span.clone(), node_name_span(ru.clone())),
     diagnostics: type_diags,
 })
 }
@@ -923,7 +923,7 @@ pub fn resolve_named_arg(arg: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -
 let value_expr = value_result.expr.clone();
 let value_diags = value_result.diagnostics.clone();
 Rc::new(NamedArgResolveResult {
-    arg: make_arg_node(arg_name(arg.clone()), value_expr, arg.span.clone(), arg.span.clone()),
+    arg: make_arg_node(arg_name(arg.clone()), value_expr, arg.span.clone(), node_name_span(arg.clone())),
     diagnostics: value_diags,
 })
 }

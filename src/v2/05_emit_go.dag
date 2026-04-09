@@ -830,7 +830,7 @@ fn emit_go_typed_record_lit(type_name: String?, fields: List<Node>, registry: Ma
         "map[string]interface{}{}"
       } else {
         let field_strs = fields |> map(f =>
-          concat("\t\"", field_init_node_name_at(n: f, source_index: none), "\": ", emit_go_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024), ",")
+          concat("\t\"", field_init_node_name_at(n: f, source_index: scope.type_env.source_index), "\": ", emit_go_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024), ",")
         )
         let fields_str = field_strs |> join(separator: "\n")
         concat("map[string]interface{}{\n", fields_str, "\n}")
@@ -841,7 +841,7 @@ fn emit_go_typed_record_lit(type_name: String?, fields: List<Node>, registry: Ma
         concat(tn, "{}")
       } else {
         let field_strs = fields |> map(f =>
-          concat(go_export_ident(name: field_init_node_name_at(n: f, source_index: none)), ": ", emit_go_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024))
+          concat(go_export_ident(name: field_init_node_name_at(n: f, source_index: scope.type_env.source_index)), ": ", emit_go_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024))
         )
         let fields_str = field_strs |> join(separator: ", ")
         concat(tn, "{", fields_str, "}")

@@ -582,9 +582,9 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, source_index: scope.type_env.source_index)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let annotated_bindings = bindings |> map(binding =>
-        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_index: none), module_name: scope.module_name, source_index: scope.type_env.source_index)
+        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_index: scope.type_env.source_index), module_name: scope.module_name, source_index: scope.type_env.source_index)
         let field_subject = lookup_result_subject(result: field_lookup)
-        make_field_binding_node(field_name: field_binding_name_at(n: binding, source_index: none), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, scope: scope), span: binding.span, name_span: binding.span)
+        make_field_binding_node(field_name: field_binding_name_at(n: binding, source_index: scope.type_env.source_index), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, scope: scope), span: binding.span, name_span: node_name_span(n: binding))
       )
       match inferred_parent {
         Some { value: parent_name } =>
@@ -683,7 +683,7 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
       fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
-        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: fb, source_index: none), module_name: scope.module_name, source_index: scope.type_env.source_index)
+        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: fb, source_index: scope.type_env.source_index), module_name: scope.module_name, source_index: scope.type_env.source_index)
         let field_subject = lookup_result_subject(result: field_lookup)
         let field_type = pattern_binding_type(subject: field_subject)
         let fb_pattern = field_binding_pattern(n: fb)

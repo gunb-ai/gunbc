@@ -907,7 +907,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
     concat("Box<", ty, ">")
   } else { ty }
   // Check for from_key in child properties
-  let rename_attr = match child.properties |> filter(p => field_init_node_name_at(n: p, source_index: none) == "from_key") |> first {
+  let rename_attr = match child.properties |> filter(p => field_init_node_name_at(n: p, source_index: env.source_index) == "from_key") |> first {
     Some { value: prop } => match field_init_node_value(n: prop).expr_data {
       ExprLiteral { value: lv } => match lv {
         LitStr { value: key } => concat("    ", apply_type_template1(template: rust_serde_rename_template_text(), arg0: key), "\n")
@@ -1292,7 +1292,7 @@ fn collect_pattern_string_guards(pattern: MatchPattern, source_index: NewlineInd
         let guards = str_bindings |> map(fb =>
           match field_binding_pattern(n: fb) {
             LitPattern { value: LitStr { value: s } } =>
-              concat(emit_ident(name: field_binding_name_at(n: fb, source_index: none), target: Rust), " == ", emit_string_literal(s: s, suffix: ""))
+              concat(emit_ident(name: field_binding_name_at(n: fb, source_index: source_index), target: Rust), " == ", emit_string_literal(s: s, suffix: ""))
             _ => ""
           }
         )
@@ -1414,7 +1414,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
-        let fb_name = field_binding_name_at(n: fb, source_index: none)
+        let fb_name = field_binding_name_at(n: fb, source_index: source_index)
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
           concat("ref ", emit_ident(name: fb_name, target: Rust))
@@ -1603,7 +1603,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
-        let fb_name = field_binding_name_at(n: fb, source_index: none)
+        let fb_name = field_binding_name_at(n: fb, source_index: source_index)
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
           concat("ref ", emit_ident(name: fb_name, target: Rust))
@@ -1642,8 +1642,8 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
         } else { "" }
       } else {
         let preludes = fbs |> flat_map(fb =>
-          if field_needs_rc_ref(field_name: field_binding_name_at(n: fb, source_index: none), rc_analysis: rc_analysis) {
-            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), shared_types: shared_types, scrut_type: "", source_index: source_index, emit_info: emit_info), " = ", emit_ident(name: field_binding_name_at(n: fb, source_index: none), target: Rust), ".as_ref() else { unreachable!() };")]
+          if field_needs_rc_ref(field_name: field_binding_name_at(n: fb, source_index: source_index), rc_analysis: rc_analysis) {
+            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), shared_types: shared_types, scrut_type: "", source_index: source_index, emit_info: emit_info), " = ", emit_ident(name: field_binding_name_at(n: fb, source_index: source_index), target: Rust), ".as_ref() else { unreachable!() };")]
           } else { [] }
         )
         preludes |> join(separator: " ")
@@ -2274,7 +2274,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     // Extract field inits from the update argument (ExprRecordLit).
     let field_strs = match update_arg.expr_data {
       ExprRecordLit { parent_enum: _ } =>
-        update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name_at(n: f, source_index: none), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)))
+        update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name_at(n: f, source_index: scope.type_env.source_index), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)))
       _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)]
     }
     let fields_str = field_strs |> join(separator: ", ")
@@ -2828,7 +2828,7 @@ fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<St
   let update_arg = arg_value(n: (args |> first).value)
   let field_strs = match update_arg.expr_data {
     ExprRecordLit { parent_enum: _ } =>
-      update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name_at(n: f, source_index: none), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)))
+      update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name_at(n: f, source_index: scope.type_env.source_index), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)))
     _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)]
   }
   let fields_str = field_strs |> join(separator: ", ")
@@ -3302,11 +3302,11 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           }
         } else {
           // Multi-field anonymous record: try struct name resolution by field matching.
-          let lit_field_names = fields |> map(f => field_init_node_name_at(n: f, source_index: none))
+          let lit_field_names = fields |> map(f => field_init_node_name_at(n: f, source_index: scope.type_env.source_index))
           match find_struct_name_by_fields(field_names: lit_field_names, type_summaries: emit_info.type_summaries) {
             Some { value: resolved_sn } =>
               let field_strs = fields |> map(f =>
-                let fname = field_init_node_name_at(n: f, source_index: none)
+                let fname = field_init_node_name_at(n: f, source_index: scope.type_env.source_index)
                 let fval = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
                 concat("    ", emit_ident(name: fname, target: Rust), ": ", fval, ",")
               )
@@ -3367,7 +3367,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         empty_raw
       } else {
         let field_strs = fields |> map(f =>
-          let f_name = field_init_node_name_at(n: f, source_index: none)
+          let f_name = field_init_node_name_at(n: f, source_index: scope.type_env.source_index)
           let f_value = field_init_node_value(n: f)
           let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: f_name)
@@ -3808,7 +3808,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_inferred = resolved_type(n: op_node)
   let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred)
-  let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_index: none)))
+  let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_index: env.source_index)))
   let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
@@ -4038,7 +4038,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
         ExprRecordLit { parent_enum: _ } =>
           let inserts = value.children |> map(f =>
             let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-            concat("            __m.insert(\"", field_init_node_name_at(n: f, source_index: none), "\".to_string(), ", val_str, ");")
+            concat("            __m.insert(\"", field_init_node_name_at(n: f, source_index: scope.type_env.source_index), "\".to_string(), ", val_str, ");")
           )
           let inserts_str = inserts |> join(separator: "\n")
           concat("            let mut __m = HashMap::new();\n",

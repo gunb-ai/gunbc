@@ -570,7 +570,7 @@ fn resolve_resource_use(ru: Node, env: TypeEnv, module_name: String) -> Resource
   let type_resolved = type_result.resolved
   let type_diags = type_result.diagnostics
   ResourceUseResult {
-    resource_use: make_resource_use_node(name: resource_use_name_at(n: ru, source_index: env.source_index), resource: type_resolved, span: ru.span, name_span: ru.span),
+    resource_use: make_resource_use_node(name: resource_use_name_at(n: ru, source_index: env.source_index), resource: type_resolved, span: ru.span, name_span: node_name_span(n: ru)),
     diagnostics: type_diags
   }
 }
@@ -580,7 +580,7 @@ fn resolve_named_arg(arg: Node, env: TypeEnv, module_name: String) -> NamedArgRe
   let value_expr = value_result.expr
   let value_diags = value_result.diagnostics
   NamedArgResolveResult {
-    arg: make_arg_node(name: arg_name(n: arg), value: value_expr, span: arg.span, name_span: arg.span),
+    arg: make_arg_node(name: arg_name(n: arg), value: value_expr, span: arg.span, name_span: node_name_span(n: arg)),
     diagnostics: value_diags
   }
 }
