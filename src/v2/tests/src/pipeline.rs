@@ -4870,7 +4870,7 @@ fn review_dag_compiles_to_rust() {
     // Categories: E0592 (13 conflicting impls), E0425 (12 not in scope),
     //   E0119 (10 conflicting trait impls), E0728 (9 await in non-async),
     //   E0428 (5 duplicate defs), syntax (5xx patterns, raw idents).
-    const RE2_ERROR_RATCHET: usize = 7;
+    const RE2_ERROR_RATCHET: usize = 6;
     assert!(
         error_count <= RE2_ERROR_RATCHET,
         "RE-2: review.dag cargo check errors {} exceeds ratchet {} (regression)",
