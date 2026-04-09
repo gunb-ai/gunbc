@@ -60,7 +60,7 @@ import v2.std.core {
 import v2.compiler.infer_env { TypeEnv, TypeBinding, RecursiveVariantFieldWitness }
 import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
 import std.types { is_container_type, container_to_algebra_name }
-import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable }
+import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -83,7 +83,7 @@ import v2.compiler.languages {
   ContainerUsageTrigger, AsyncUsageTrigger,
   language_spec_for_target, is_string_like,
   test_conventions_for_target,
-  target_keyword,
+  target_keyword, binop_symbol,
   wrap_shared_type
 }
 
@@ -840,7 +840,7 @@ fn emit_keyword(key: String, target: RenderTarget) -> String {
 fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   match value {
     LitStr { value: s } =>
-      let suffix = match target { Rust => ".to_string()"  _ => "" }
+      let suffix = language_spec(target: target).items.string_literal_suffix
       emit_string_literal(s: s, suffix: suffix)
     LitInt { value: i } => to_string(value: i)
     LitFloat { value: f } => f
@@ -849,12 +849,10 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   }
 }
 
+// Operator symbol lookup — reads from per-language OperatorSpec in
+// extdeps/languages/*/syntax.dag. No hardcoded operator syntax.
 fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
-  match op {
-    Add => "+"  Sub => "-"  Mul => "*"  Div => emit_keyword(key: "div", target: target)  Mod => "%"
-    Eq => "=="  Ne => "!="  Lt => "<"  Gt => ">"  Le => "<="  Ge => ">="
-    And => emit_keyword(key: "and", target: target)  Or => emit_keyword(key: "or", target: target)  NullCoalesce => "??"
-  }
+  binop_symbol(target: target, op: op)
 }
 
 fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
@@ -1853,11 +1851,25 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
   })
 }
 
-// Shared ExprCast — target-parameterized, recurse for sub-expression.
+// Shared ExprCast — data-driven, target-parameterized.
+// Cast syntax and validity derive from CastSyntax in extdeps/languages/*/types.dag.
+// Rust: `expr as type` (valid for numeric targets only, per Rust Reference §8.2.4).
+// Python/Go: `type(expr)` (constructor call, always valid).
 fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, source_index: NewlineIndex?) -> String {
   let expr_str = recurse(expr)
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_index: source_index)
-  concat(ty_str, "(", expr_str, ")")
+  // Identity cast: if source and target render to the same type, pass through.
+  let src_ty = match expr.inferred {
+    Some { value: Resolved { node: n } } => emit_node_type(n: n, target: target, source_index: source_index)
+    _ => ""
+  }
+  if src_ty != "" && src_ty == ty_str {
+    expr_str
+  } else if can_cast(target: target, target_type: ty_str) {
+    render_cast(expr_str: expr_str, type_str: ty_str, target: target)
+  } else {
+    concat("compile_error!(\"unsupported cast to ", ty_str, "\")")
+  }
 }
 
 // Shared ExprIndex — dispatches on string/map/list via LanguageSpec.indexing.

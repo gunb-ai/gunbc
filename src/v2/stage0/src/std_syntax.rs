@@ -51,7 +51,7 @@ use LiteralValue::*;
 use BodyKind::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum BinOp {
     Add,
     Sub,
@@ -70,7 +70,7 @@ pub enum BinOp {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum LiteralValue {
     LitStr {
         value: String,
@@ -88,7 +88,7 @@ pub enum LiteralValue {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum BodyKind {
     ExprBody,
     BlockBody,

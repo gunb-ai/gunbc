@@ -63,7 +63,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-
+#[serde(tag = "_variant")]
 pub enum TypeRepr {
     StructRepr,
     EnumRepr {

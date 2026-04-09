@@ -107,6 +107,18 @@ fn node_is_element_collection(n: Node) -> Bool {
   node_is_collection(n: n) && (n.children |> count) == 1
 }
 
+// =========================================================================
+// Type structure predicates (MM-2)
+//
+// Shared predicates for product/coproduct/unit queries. These read the
+// existing connective authority directly — no re-interpretation.
+// =========================================================================
+
+fn is_product_type(n: Node) -> Bool { n.connective == Conj }
+fn is_coproduct_type(n: Node) -> Bool { n.connective == Disj }
+fn is_leaf_type(n: Node) -> Bool { n.connective == NoConnective }
+fn is_unit_like(n: Node) -> Bool { n.connective == Conj && n.children |> count == 0 }
+
 fn is_fully_resolved(n: Node) -> Bool {
   let self_is_type_var = match n.inferred { Some { value: inf } => is_type_variable(inferred: inf)  None => false }
   if self_is_type_var { false }
@@ -561,8 +573,8 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
   let left_opt = left.return_cardinality == CardOptional
   let right_opt = right.return_cardinality == CardOptional
-  let right_is_unit = right.connective == Conj && right.children |> count == 0
-  let left_is_unit = left.connective == Conj && left.children |> count == 0
+  let right_is_unit = is_unit_like(n: right)
+  let left_is_unit = is_unit_like(n: left)
   if left_err || right_err { true }
   else if left_tv || right_tv { true }
   else if left_opt && right_is_unit { true }
@@ -579,8 +591,8 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
               Some { value: right_ch } =>
                 let left_el = child_type_node(ch: left_ch)
                 let right_el = child_type_node(ch: right_ch)
-                let left_el_is_unit = left_el.connective == Conj && left_el.children |> count == 0
-                let right_el_is_unit = right_el.connective == Conj && right_el.children |> count == 0
+                let left_el_is_unit = is_unit_like(n: left_el)
+                let right_el_is_unit = is_unit_like(n: right_el)
                 if left_el_is_unit || right_el_is_unit { true }
                 else { node_type_compatible(left: left_el, right: right_el) }
               None => true
@@ -592,8 +604,8 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
     else if left_opt && right_opt {
       let left_inner = with_required_cardinality(n: left)
       let right_inner = with_required_cardinality(n: right)
-      let left_inner_is_unit = left_inner.connective == Conj && left_inner.children |> count == 0
-      let right_inner_is_unit = right_inner.connective == Conj && right_inner.children |> count == 0
+      let left_inner_is_unit = is_unit_like(n: left_inner)
+      let right_inner_is_unit = is_unit_like(n: right_inner)
       if left_inner_is_unit || right_inner_is_unit { true }
       else { node_type_compatible(left: left_inner, right: right_inner) }
     }
@@ -611,12 +623,12 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     match left_first_child {
       Some { value: ch } =>
         let el = child_type_node(ch: ch)
-        let el_is_unit = el.connective == Conj && el.children |> count == 0
+        let el_is_unit = is_unit_like(n: el)
         el_is_unit
       None => false
     }
   } else if left_is_optional {
-    let left_is_unit = left.connective == Conj && left.children |> count == 0
+    let left_is_unit = is_unit_like(n: left)
     left_is_unit
   } else { false }
   let right_is_container = node_is_element_collection(n: right)
@@ -641,8 +653,8 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
   let left_opt = left.return_cardinality == CardOptional
   let right_opt = right.return_cardinality == CardOptional
-  let right_is_unit_eq = right.connective == Conj && right.children |> count == 0
-  let left_is_unit_eq = left.connective == Conj && left.children |> count == 0
+  let right_is_unit_eq = is_unit_like(n: right)
+  let left_is_unit_eq = is_unit_like(n: left)
   if left_err || right_err { true }
   else if left_tv && right_tv { true }
   else if left_tv || right_tv { false }
