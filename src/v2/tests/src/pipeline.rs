@@ -1030,7 +1030,7 @@ fn compile_dag_with_complexity(source: &str) -> Rc<v2_compiler::v2_compiler_comp
     let typed = reconcile(norm.graph.clone(), source_indices);
     let func_entries = extract_func_entries(typed.clone());
     let recursion_ctx = build_recursion_context(typed);
-    build_complexity_report(func_entries, recursion_ctx, None)
+    build_complexity_report(func_entries, recursion_ctx)
 }
 
 #[test]

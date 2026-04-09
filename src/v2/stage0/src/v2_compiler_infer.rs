@@ -1975,7 +1975,7 @@ let struct_fields = match struct_def {
     None => Rc::new(vec![]),
 };
 let fi_infer_results = Rc::new({ let mut __result = Vec::new(); for fi in field_inits.iter().cloned() { __result.push({
-            let fi_name = field_init_node_name_at(fi.clone(), None);
+            let fi_name = field_init_node_name_at(fi.clone(), scope.type_env.clone().source_index.clone());
 let field_expected = match Rc::new({ let mut __result = Vec::new(); for sf in struct_fields.clone().iter().cloned() { if (authored_name_at(scope.type_env.clone().source_index.clone(), sf.clone()).as_str() == fi_name.clone().as_str()) { __result.push(sf); } } __result }).first().cloned() {
     Some(sf) => {
                 let ft = resolved_type(sf.clone());
@@ -2001,9 +2001,9 @@ let fi_diags = Rc::new({ let mut __result = Vec::new(); for fir in fi_infer_resu
 if (type_name.clone() == None) {
             {
                 let child_nodes = Rc::new({ let mut __result = Vec::new(); for fir in fi_infer_results.clone().iter().cloned() { __result.push(Rc::new(Node {
-    name: field_init_node_name_at(fir.typed_field.clone(), None),
+    name: field_init_node_name_at(fir.typed_field.clone(), scope.type_env.clone().source_index.clone()),
     span: no_span(),
-    ident_span: default_ident_span(field_init_node_name_at(fir.typed_field.clone(), None), no_span()),
+    ident_span: default_ident_span(field_init_node_name_at(fir.typed_field.clone(), scope.type_env.clone().source_index.clone()), no_span()),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2071,7 +2071,7 @@ let expected_optional_parent = Some("Optional".to_string());
 let is_some_ctor = ((type_name.clone().unwrap().as_str() == "Some".to_string().as_str()) && (local_variant_parent.clone().as_deref() == expected_optional_parent.as_deref()));
 let resolved_node = if is_some_ctor {
                     {
-                        let val_field = Rc::new({ let mut __result = Vec::new(); for fir in fi_infer_results.clone().iter().cloned() { if (field_init_node_name_at(fir.typed_field.clone(), None).as_str() == "value".to_string().as_str()) { __result.push(fir); } } __result }).first().cloned();
+                        let val_field = Rc::new({ let mut __result = Vec::new(); for fir in fi_infer_results.clone().iter().cloned() { if (field_init_node_name_at(fir.typed_field.clone(), scope.type_env.clone().source_index.clone()).as_str() == "value".to_string().as_str()) { __result.push(fir); } } __result }).first().cloned();
 match val_field {
     Some(val_fir) => with_optional_cardinality(resolved_type(val_fir.infer_result.clone().typed.clone())),
     None => raw_resolved,

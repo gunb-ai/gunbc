@@ -817,7 +817,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       // to the call graph frontier width, not total function count.
       let func_entries = extract_func_entries(typed: typed)
       let recursion_ctx = build_recursion_context(typed: typed)
-      let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, si: none)
+      let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx)
       let complexity_diags = complexity_diagnostics(complexity: complexity)
 
       // Gate: type errors block emission. Complexity violations are surfaced

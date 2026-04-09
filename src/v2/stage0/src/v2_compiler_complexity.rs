@@ -4675,9 +4675,10 @@ Rc::new(SummaryResult {
 }
 }
 
-pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>, recursion_ctx: RecursionContext, si: Option<Rc<NewlineIndex>>) -> Rc<ComplexityReport> {
+pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>, recursion_ctx: RecursionContext) -> Rc<ComplexityReport> {
     {
-        let func_index = func_entries.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FuncEntry>>(), |acc: Rc<HashMap<String, Rc<FuncEntry>>>, entry: Rc<FuncEntry>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), entry.clone()));
+        let si = None;
+let func_index = func_entries.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FuncEntry>>(), |acc: Rc<HashMap<String, Rc<FuncEntry>>>, entry: Rc<FuncEntry>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), entry.clone()));
 let scc_result = build_scc_index(func_entries.clone(), func_index.clone(), si.clone());
 let parser_always_advancing = infer_all_parser_always_advancing(func_index.clone(), si.clone());
 let full_scc_index = func_entries.clone().iter().cloned().fold(scc_result.index.clone(), |acc: Rc<HashMap<String, Rc<SccInfo>>>, entry: Rc<FuncEntry>| match v2_rt::map_get(&acc, entry.name.clone()) {

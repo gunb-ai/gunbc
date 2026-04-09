@@ -1969,7 +1969,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     None => []
   }
   let fi_infer_results = map(field_inits, fi =>
-    let fi_name = field_init_node_name_at(n: fi, source_index: none)
+    let fi_name = field_init_node_name_at(n: fi, source_index: scope.type_env.source_index)
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_index: scope.type_env.source_index, node: sf) == fi_name) |> first {
       Some { value: sf } =>
         // Struct definition children store type in inferred (via field_to_child_node),
@@ -1993,7 +1993,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     // Anonymous record -- construct Conj node from field inits
     let child_nodes = fi_infer_results |> map(fir =>
       Node {
-        name: field_init_node_name_at(n: fir.typed_field, source_index: none), span: no_span(), ident_span: default_ident_span(name: field_init_node_name_at(n: fir.typed_field, source_index: none), span: no_span()),
+        name: field_init_node_name_at(n: fir.typed_field, source_index: scope.type_env.source_index), span: no_span(), ident_span: default_ident_span(name: field_init_node_name_at(n: fir.typed_field, source_index: scope.type_env.source_index), span: no_span()),
         children: [], connective: NoConnective,
                params: [], inferred: fir.infer_result.typed.inferred, return_cardinality: Required, uses: [],
         body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
@@ -2036,7 +2036,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let expected_optional_parent = Some { value: "Optional" }
     let is_some_ctor = type_name.value == "Some" && local_variant_parent == expected_optional_parent
     let resolved_node = if is_some_ctor {
-      let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_index: none) == "value") |> first
+      let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_index: scope.type_env.source_index) == "value") |> first
       match val_field {
         Some { value: val_fir } => with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
         None => raw_resolved

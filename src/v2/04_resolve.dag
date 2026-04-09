@@ -590,7 +590,7 @@ fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> Fi
   let value_expr = value_result.expr
   let value_diags = value_result.diagnostics
   FieldInitResolveResult {
-    field_init: make_field_init_node(name: field_init_node_name_at(n: field_init, source_index: none), value: value_expr, span: field_init.span, name_span: node_name_span(n: field_init)),
+    field_init: make_field_init_node(name: field_init_node_name_at(n: field_init, source_index: env.source_index), value: value_expr, span: field_init.span, name_span: node_name_span(n: field_init)),
     diagnostics: value_diags
   }
 }
@@ -651,7 +651,7 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
     // Generic resolution: resolve all property values and children
     let prop_results = map(transport.properties, p =>
       let val_result = resolve_expr_types(texpr: field_init_node_value(n: p), env: env, module_name: module_name)
-      FieldInitResolveResult { field_init: make_field_init_node(name: field_init_node_name_at(n: p, source_index: none), value: val_result.expr, span: p.span, name_span: node_name_span(n: p)), diagnostics: val_result.diagnostics }
+      FieldInitResolveResult { field_init: make_field_init_node(name: field_init_node_name_at(n: p, source_index: env.source_index), value: val_result.expr, span: p.span, name_span: node_name_span(n: p)), diagnostics: val_result.diagnostics }
     )
     let resolved_props = map(prop_results, pr => pr.field_init)
     let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
@@ -688,7 +688,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = texpr.children |> map(arg_node =>
         let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-        make_arg_node(name: if arg_node.ident_span == none { none } else { Some { value: arg_node.name } }, value: vr.expr, span: arg_node.span, name_span: arg_node.span)
+        make_arg_node(name: if arg_node.ident_span == none { none } else { Some { value: arg_node.name } }, value: vr.expr, span: arg_node.span, name_span: node_name_span(n: arg_node))
       )
       let all_diags = texpr.children |> flat_map(arg_node =>
         let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
@@ -707,7 +707,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         } else {
           let val = match child.children |> first { Some { value: v } => v  None => child }
           let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-          make_arg_node(name: if child.ident_span == none { none } else { Some { value: child.name } }, value: vr.expr, span: child.span, name_span: child.span)
+          make_arg_node(name: if child.ident_span == none { none } else { Some { value: child.name } }, value: vr.expr, span: child.span, name_span: node_name_span(n: child))
         }
       )
       let all_diags = texpr.children |> enumerate |> flat_map(pair =>

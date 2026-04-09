@@ -931,11 +931,11 @@ Rc::new(NamedArgResolveResult {
 
 pub fn resolve_field_init(field_init: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<FieldInitResolveResult> {
     {
-        let value_result = resolve_expr_types(field_init_node_value(field_init.clone()), env, module_name);
+        let value_result = resolve_expr_types(field_init_node_value(field_init.clone()), env.clone(), module_name);
 let value_expr = value_result.expr.clone();
 let value_diags = value_result.diagnostics.clone();
 Rc::new(FieldInitResolveResult {
-    field_init: make_field_init_node(field_init_node_name_at(field_init.clone(), None), value_expr, field_init.span.clone(), node_name_span(field_init.clone())),
+    field_init: make_field_init_node(field_init_node_name_at(field_init.clone(), env.source_index.clone()), value_expr, field_init.span.clone(), node_name_span(field_init.clone())),
     diagnostics: value_diags,
 })
 }
@@ -998,7 +998,7 @@ pub fn resolve_transport_binding(transport: Rc<Node>, env: Rc<TypeEnv>, module_n
             let prop_results = Rc::new({ let mut __result = Vec::new(); for p in transport.properties.clone().iter().cloned() { __result.push({
                 let val_result = resolve_expr_types(field_init_node_value(p.clone()), env.clone(), module_name.clone());
 Rc::new(FieldInitResolveResult {
-    field_init: make_field_init_node(field_init_node_name_at(p.clone(), None), val_result.expr.clone(), p.span.clone(), node_name_span(p.clone())),
+    field_init: make_field_init_node(field_init_node_name_at(p.clone(), env.source_index.clone()), val_result.expr.clone(), p.span.clone(), node_name_span(p.clone())),
     diagnostics: val_result.diagnostics.clone(),
 })
 }); } __result });
@@ -1057,7 +1057,7 @@ make_arg_node(if (arg_node.ident_span.clone() == None) {
                     None
 } else {
                     Some(arg_node.name.clone())
-}, vr.expr.clone(), arg_node.span.clone(), arg_node.span.clone())
+}, vr.expr.clone(), arg_node.span.clone(), node_name_span(arg_node.clone()))
 }); } __result });
 let all_diags = Rc::new({ let mut __result = Vec::new(); for arg_node in texpr.children.clone().iter().cloned() { __result.extend((*{
                 let val = match arg_node.children.clone().first().cloned() {
@@ -1094,7 +1094,7 @@ make_arg_node(if (child.ident_span.clone() == None) {
                             None
 } else {
                             Some(child.name.clone())
-}, vr.expr.clone(), child.span.clone(), child.span.clone())
+}, vr.expr.clone(), child.span.clone(), node_name_span(child.clone()))
 }
 }
 }); } __result });

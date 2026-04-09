@@ -4853,7 +4853,11 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // for each. Every function gets a concrete cost — no violations possible.
 // =========================================================================
 
-fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: RecursionContext, si: NewlineIndex?) -> ComplexityReport {
+fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: RecursionContext) -> ComplexityReport {
+  // Per-entry source_index lives on FuncEntry.si — no ambient si parameter.
+  // Cross-entry operations (SCC, pattern classification) pass entry.si from
+  // the specific entry being analyzed.
+  let si = none
   // Build function index for callee lookups
   let func_index = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
     map_insert(acc, entry.name, entry)

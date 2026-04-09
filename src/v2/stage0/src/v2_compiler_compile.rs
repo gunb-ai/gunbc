@@ -621,7 +621,7 @@ let typed = reconcile(norm.graph.clone(), source_indices);
 let typed_diags = typed.diagnostics.clone();
 let func_entries = extract_func_entries(typed.clone());
 let recursion_ctx = build_recursion_context(typed.clone());
-let complexity = build_complexity_report(func_entries, recursion_ctx, None);
+let complexity = build_complexity_report(func_entries, recursion_ctx);
 let complexity_diags = complexity_diagnostics(complexity.clone());
 let all_diags = v2_rt::concat(typed_diags.clone(), complexity_diags);
 let type_errors = Rc::new({ let mut __result = Vec::new(); for d in typed_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
