@@ -2913,16 +2913,43 @@ Some(Rc::new(SubValueRelation::StrictSubValue {
 }
 }
 
-pub fn svr_evidence_rank(rel: Rc<SubValueRelation>) -> i64 {
-    evidence_rank(sub_value_to_evidence(rel))
+pub fn svr_total_rank(rel: Rc<SubValueRelation>) -> i64 {
+    match (*rel).clone() {
+    SubValueRelation::SubValueUnknown => 0,
+    SubValueRelation::PreservedValue => 10,
+    SubValueRelation::ArithmeticDescent { .. } => 20,
+    SubValueRelation::IteratedSubValue { .. } => 30,
+    SubValueRelation::StrictSubValue { .. } => 40,
+}
+}
+
+pub fn svr_detail_key(rel: Rc<SubValueRelation>) -> String {
+    match (*rel).clone() {
+    SubValueRelation::StrictSubValue { field: f, .. } => f.field_name.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.field_name.clone(),
+    SubValueRelation::ArithmeticDescent { param: p, .. } => p.clone(),
+    _ => "".to_string(),
+}
 }
 
 pub fn svr_min_by_rank(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
-    if (svr_evidence_rank(b.clone()) < svr_evidence_rank(a.clone())) {
-        b.clone()
-    } else {
-        a.clone()
-    }
+    {
+        let ra = svr_total_rank(a.clone());
+let rb = svr_total_rank(b.clone());
+if (rb.clone() < ra.clone()) {
+            b.clone()
+        } else {
+            if (ra.clone() < rb.clone()) {
+                a.clone()
+            } else {
+                if (svr_detail_key(b.clone()) < svr_detail_key(a.clone())) {
+                    b.clone()
+                } else {
+                    a.clone()
+                }
+            }
+        }
+}
 }
 
 pub fn merge_argument_relations(rels: Rc<Vec<Rc<SubValueRelation>>>) -> Rc<SubValueRelation> {

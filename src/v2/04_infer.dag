@@ -2693,20 +2693,45 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   }
 }
 
-// Lattice meet on SubValueRelation via projection to DescentEvidence.
-// Orders by evidence_rank(sub_value_to_evidence(x)) and keeps the weaker
-// (more conservative) of two values. Commutative: branch order does not
-// affect the result.
+// Lattice meet on SubValueRelation. Total order ensures commutativity:
+// meet(a, b) = meet(b, a) for all a, b.
 //
-// SubValueUnknown (rank 0) absorbs everything.
-// PreservedValue  (rank 1) < structural variants (rank 2).
-// Equal-rank ties keep the first (stable tiebreaker for structural kind).
-fn svr_evidence_rank(rel: SubValueRelation) -> Int {
-  evidence_rank(e: sub_value_to_evidence(relation: rel))
+// Primary rank (evidence level):
+//   SubValueUnknown (0) < PreservedValue (10) < ArithmeticDescent (20)
+//   < IteratedSubValue (30) < StrictSubValue (40)
+//
+// Secondary tiebreaker (within same variant kind):
+//   Canonical string comparison on field_name/param_name.
+//   Ensures meet(StrictSubValue{children}, StrictSubValue{body}) is
+//   commutative — the same field wins regardless of argument order.
+fn svr_total_rank(rel: SubValueRelation) -> Int {
+  match rel {
+    SubValueUnknown => 0
+    PreservedValue => 10
+    ArithmeticDescent { param: _, factor: _ } => 20
+    IteratedSubValue { field: _ } => 30
+    StrictSubValue { field: _, factor: _ } => 40
+  }
+}
+
+fn svr_detail_key(rel: SubValueRelation) -> String {
+  match rel {
+    StrictSubValue { field: f, factor: _ } => f.field_name
+    IteratedSubValue { field: f } => f.field_name
+    ArithmeticDescent { param: p, factor: _ } => p
+    _ => ""
+  }
 }
 
 fn svr_min_by_rank(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
-  if svr_evidence_rank(rel: b) < svr_evidence_rank(rel: a) { b } else { a }
+  let ra = svr_total_rank(rel: a)
+  let rb = svr_total_rank(rel: b)
+  if rb < ra { b }
+  else if ra < rb { a }
+  else {
+    // Same variant kind: canonical field/param name ordering for commutativity.
+    if svr_detail_key(rel: b) < svr_detail_key(rel: a) { b } else { a }
+  }
 }
 
 fn merge_argument_relations(rels: List<SubValueRelation>) -> SubValueRelation {
