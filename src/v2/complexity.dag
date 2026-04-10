@@ -2874,28 +2874,35 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
       )
     )
     if all_structural {
-      // Find the first structural relation from the evidence.
-      // Find the best structural evidence across ALL self-calls.
-      // Prefer tree descent (StrictSubValue/IteratedSubValue) over arithmetic,
-      // since arithmetic descent with branching (e.g., fib) triggers the
-      // unsoundness guard, while tree descent with branching is always sound.
-      let all_strict_rels = all_evidence |> flat_map(call_ev =>
-        call_ev |> filter(rel =>
-          match rel {
-            StrictSubValue { field: _, factor: _ } => true
-            IteratedSubValue { field: _ } => true
-            ArithmeticDescent { param: _, factor: _ } => true
-            _ => false
-          }
+      // Per-call best evidence. Do NOT flatten across calls — different
+      // calls may descend on different params. If any call's best is
+      // arithmetic-only (no tree), the overall must be arithmetic so
+      // the branching guard applies correctly.
+      let any_call_arithmetic_only = all_evidence |> any(call_ev =>
+        let has_tree = call_ev |> any(rel =>
+          match rel { StrictSubValue { field: _, factor: _ } => true  IteratedSubValue { field: _ } => true  _ => false }
         )
+        let has_arith = call_ev |> any(rel =>
+          match rel { ArithmeticDescent { param: _, factor: _ } => true  _ => false }
+        )
+        has_arith && !has_tree
       )
-      // Prefer tree descent over arithmetic
-      let first_call = all_strict_rels |> filter(rel =>
-        match rel { StrictSubValue { field: _, factor: _ } => true  IteratedSubValue { field: _ } => true  _ => false }
-      ) |> first
-      let first_call = match first_call {
-        Some { value: _ } => first_call
-        None => all_strict_rels |> first  // fall back to arithmetic if no tree descent
+      // If any call is arithmetic-only, use the first arithmetic evidence.
+      // Otherwise use the first tree evidence found.
+      let first_call = if any_call_arithmetic_only {
+        all_evidence |> flat_map(call_ev =>
+          call_ev |> filter(rel => match rel { ArithmeticDescent { param: _, factor: _ } => true  _ => false })
+        ) |> first
+      } else {
+        let tree_rels = all_evidence |> flat_map(call_ev =>
+          call_ev |> filter(rel => match rel { StrictSubValue { field: _, factor: _ } => true  IteratedSubValue { field: _ } => true  _ => false })
+        )
+        match tree_rels |> first {
+          Some { value: _ } => tree_rels |> first
+          None => all_evidence |> flat_map(call_ev =>
+            call_ev |> filter(rel => match rel { ArithmeticDescent { param: _, factor: _ } => true  _ => false })
+          ) |> first
+        }
       }
       // Guard: ArithmeticDescent with branching (multiple self-calls per path)
       // is UNSOUND as O(n). Example: fib(n-1) + fib(n-2) = O(2^n), not O(n).

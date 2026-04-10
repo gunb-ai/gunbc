@@ -2935,14 +2935,10 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
               }
           }
         _ =>
-          // For ExprCall / other scrutinees, use inferred type if available
-          match scrut.inferred {
-            Some { value: Resolved { node: rt } } =>
-              if inductive_fields_for(env: ctx.type_env, type_name: rt.name) |> count > 0 {
-                rt.name
-              } else { "" }
-            _ => ""
-          }
+          // Fail closed: non-variable scrutinees have no proven provenance
+          // from the caller's parameters. Using inferred type alone would
+          // fabricate sub-value evidence for arm bindings.
+          ""
       }
       // For field-access scrutinees (e.g., c.next), find the inducing InductiveField
       let scrut_inducing_field = match scrut.expr_data {

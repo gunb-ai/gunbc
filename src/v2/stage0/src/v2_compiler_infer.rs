@@ -3163,14 +3163,7 @@ match v2_rt::map_get(&ctx.param_names.clone(), sname.clone()) {
 },
 }
 },
-    _ => match scrut.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => if ((inductive_fields_for(ctx.type_env.clone(), rt.name.clone()).len() as i64) > 0) {
-                rt.name.clone()
-            } else {
-                "".to_string()
-            },
     _ => "".to_string(),
-},
 };
 let scrut_inducing_field = match (*scrut.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
