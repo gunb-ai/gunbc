@@ -75,11 +75,13 @@ SubValueRelation already has the right vocabulary (StrictSubValue,
 IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown)
 with InductiveField and ShrinkFactor. No new type — single authority.
 
-**Estimated impact:** ~1100-1200 lines net dissolution in CX (~200
-lines of classification logic moves to binding sites; the
-reconstruction pass and threading infrastructure dissolve).
-Ownership name-matching dissolves (~65 lines). Emission heuristics
-reduce. Total estimated net dissolution: ~1500+ lines across stages.
+**Estimated impact (projections, not measurements):** ~1100-1200
+lines net dissolution in CX (~200 lines of classification logic
+moves to binding sites; the reconstruction pass and threading
+infrastructure dissolve). Ownership name-matching dissolves (~65
+lines). Emission heuristics reduce. Total estimated net dissolution:
+~1500+ lines across stages. See cx-design.md cleanup catalog for
+per-function accounting.
 
 Implementation plan: [docs/cx-design.md §Option B](docs/cx-design.md).
 
@@ -121,7 +123,7 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (316 pass) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (388 pass) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 424 (honest, non-blocking) |
 | L1 gate | `scripts/l1-ratchet.sh --check` | GREEN (0, hard gate) |
@@ -132,48 +134,43 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 ## Active work: close the model
 
 All active tracks are facets of one problem: the IR doesn't carry
-enough structure. Four parallel work lanes, zero file conflicts.
+enough structure. Three parallel streams now, one phase after.
 
 ```
-Lane A (inference)    S1→S2→S3→S4→S5→S6→S7
-                                              ↘
-Lane B (emit+own)     O1→O2→O3  O4→O5  O6→O7→O8→O9→O10
-                                              ↗
-Lane C (complexity)   ·····waiting····· C2→C3→C4→C5→C6
-                                              ↑
-Lane D (std/)         C1  S8                  │
-                       └───┘──────────────────┘
-                       (both unblocked now)
+Stream A (provenance)   S1→S2→S3→S4→S5 ─→ C2→C3→C4→C5→C6
+                                                  ↑
+Stream B (ownership)    O1→O2→O3→O4→O5            │  (independent)
+                                                  │
+Stream C (std/)         C1  S8 ───────────────────┘
+                        (both feed into CX consumer)
 ```
 
-**Lane A: Shared provenance infra** (04_infer.dag, 04_env.dag)
-Thread SubValueRelation through TypeBinding. Items S1-S7.
-S1 (add field) is the gate — everything else follows.
+**Stream A: Provenance pipeline** (04_infer.dag, 04_env.dag, complexity.dag)
+The critical path. S1-S5 build binding provenance. Then C2-C6 switch
+CX to read it. S6-S7 (lambda provenance) need callee contract design
+and are deferred within this stream.
 
-**Lane B: Ownership + emission** (ownership.dag, 05_emit_rust.dag)
-Clone elision layers 1-3. Items O1-O10.
-Layers 1+2 (O1-O5) are **unblocked now** — no dependency on Lane A.
-Layer 3 (O6-O10) needs LS-4 design from Lane D.
+**Stream B: Clone elision** (ownership.dag, 05_emit_rust.dag)
+Layers 1+2 (O1-O5). Last-use elision and post-TCO ownership.
+**Fully independent** — no dependency on Stream A.
+Layer 3 (O6-O10, borrow propagation) is a separate design phase
+blocked on LS-4.
 
-**Lane C: Complexity consumer** (complexity.dag)
-Switch CX to read provenance. Items C2-C6.
-**Blocked on Lane A** (needs binding provenance to exist first).
-
-**Lane D: std/ modeling** (std/induction.dag, std/algebra.dag)
+**Stream C: std/ foundation** (std/induction.dag, std/algebra.dag, std/termination.dag)
 C1 (direct SubValueRelation→LoweringTarget) and S8 (lattice
-consolidation) are both **unblocked now**.
+inhabitant declarations). Both small, both unblocked. C1 enables
+better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
 
-### What to start now (4 parallel streams)
+### What to start now
 
-| Stream | Lane | Items | Files touched |
-|--------|------|-------|--------------|
-| Provenance field + first binding sites | A | S1, S2, S3 | 04_env.dag, 04_infer.dag |
-| Last-use elision + post-TCO | B | O1-O5 | ownership.dag, 05_emit_rust.dag |
-| Direct lowering (bypass CallPattern) | D | C1 | std/induction.dag |
-| Lattice inhabitant declarations | D | S8 | std/algebra.dag, std/termination.dag |
+| Stream | Items | Files |
+|--------|-------|-------|
+| A: Provenance infra | S1, S2, S3, S4, S5 | 04_env.dag, 04_infer.dag |
+| B: Clone elision | O1-O5 | ownership.dag, 05_emit_rust.dag |
+| C: std/ foundation | C1, S8 | std/induction.dag, std/algebra.dag, std/termination.dag |
 
-All four streams touch different files. They can run as separate
-worktrees with zero merge conflicts.
+Zero file overlap between streams. After Stream A (S1-S5), CX
+consumer items C2-C6 can start (same files as Stream A, sequential).
 
 ### Active workboards
 
@@ -201,7 +198,7 @@ spec-referenced data lookups instead of inline logic.
 
 **LS-4: Ownership — three layers to clone elimination**
 
-Stage0 emits 23,267 `.clone()` calls (~0.545 clones/line). The
+Stage0 emits 23,324 `.clone()` calls (~0.546 clones/line). The
 ownership analysis (PR #313) already computes the facts needed to
 eliminate most of them. The gap: the emitter doesn't consume all
 the facts it has.
@@ -357,9 +354,11 @@ KF-3 (test generation can verify lattice laws automatically).
 
 ## Bootstrap
 
-**Status: COMPLETE.** All stage0 content is 100% generated. Zero
-hand-maintained files. Regenerated binary produces identical output
-when it self-compiles (fixed-point convergence).
+**Status: COMPLETE.** Stage0 content is generated from .dag source.
+One non-generated file remains: `compiler_tests.rs` (test harness,
+`#[cfg(test)]` only — not part of the compiler binary). Regenerated
+binary produces identical output when it self-compiles (fixed-point
+convergence).
 
 ```
 .dag source ──(v2-compiler)──▶ stage0 .rs ──(cargo/rustc)──▶ v2-compiler binary
