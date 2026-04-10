@@ -369,8 +369,7 @@ let emit_info = Rc::new(EmitGraphInfo {
 let shared_types = emit_info.shared_types.clone();
 let registry = typed.item_registry.clone();
 let workflow_funcs = collect_workflow_funcs(typed.modules.clone(), registry.clone());
-let data_values = collect_data_literal_values(typed.modules.clone());
-let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone(), data_values.clone());
+let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone());
 if ((workflow_default_diags.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
     files: Rc::new(vec![]),
@@ -393,7 +392,7 @@ let crate_name = if has_pipeline.clone() {
             "v2_compiled".to_string()
         };
 let cargo = emit_cargo_toml(crate_name.clone(), has_services.clone());
-let main_file = emit_main_rs(workflow_funcs.clone(), typed.modules.clone(), has_services.clone(), crate_name.clone(), svc_module_map.clone(), data_values.clone());
+let main_file = emit_main_rs(workflow_funcs.clone(), typed.modules.clone(), has_services.clone(), crate_name.clone(), svc_module_map.clone());
 let rt_file = emit_v2_rt_module();
 let compiler_tests_file = if has_pipeline.clone() {
             Rc::new(vec![emit_compiler_tests_module()])
@@ -4895,15 +4894,58 @@ pub struct WorkflowFunc {
     pub inferred: Rc<Node>,
     pub uses: Rc<Vec<Rc<Node>>>,
     pub service_names: Rc<Vec<String>>,
+    pub resolved_defaults: Rc<HashMap<String, String>>,
     pub source_index: Option<Rc<NewlineIndex>>,
 }
 
-pub fn to_workflow_func(item: Rc<Node>, module_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<WorkflowFunc> {
+pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
+    match (*expr.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
+    LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
+    LiteralValue::LitBool { value: b, .. } => Some(if b.clone() {
+        "true".to_string()
+    } else {
+        "false".to_string()
+    }),
+    _ => None,
+},
+    _ => None,
+}
+}
+
+pub fn resolve_param_default(param: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, module_items: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
+    match param_node_default_value(param) {
+    Some(dv) => match (*dv.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { .. } => extract_literal_string(dv.clone()),
+    ExprData::ExprVar { .. } => match lookup_item(registry, dv.name.clone()) {
+    Some(info) => match info.kind.clone() {
+    ItemKind::DataItem => match Rc::new({ let mut __result = Vec::new(); for i in module_items.iter().cloned() { if (i.name.clone().as_str() == dv.name.clone().as_str()) { __result.push(i); } } __result }).first().cloned() {
+    Some(data_item) => match data_item.body.clone() {
+    Some(body) => extract_literal_string(body.clone()),
+    None => None,
+},
+    None => None,
+},
+    _ => None,
+},
+    None => None,
+},
+    _ => None,
+},
+    None => None,
+}
+}
+
+pub fn to_workflow_func(item: Rc<Node>, module_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, module_items: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<WorkflowFunc> {
     {
-        let svc_names = match lookup_item(registry, item.name.clone()) {
+        let svc_names = match lookup_item(registry.clone(), item.name.clone()) {
     Some(info) => info.service_names.clone(),
     None => Rc::new(vec![]),
 };
+let defaults = item.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, p: Rc<Node>| match resolve_param_default(p.clone(), registry.clone(), module_items.clone(), source_index.clone()) {
+    Some(lit) => v2_rt::rc_map_insert(acc.clone(), param_node_name_at(p.clone(), source_index.clone()), lit.clone()),
+    None => acc.clone(),
+});
 Rc::new(WorkflowFunc {
     name: item.name.clone(),
     module_name: module_name,
@@ -4911,7 +4953,8 @@ Rc::new(WorkflowFunc {
     inferred: resolved_type(item.clone()),
     uses: item.uses.clone(),
     service_names: svc_names,
-    source_index: source_index,
+    resolved_defaults: defaults,
+    source_index: source_index.clone(),
 })
 }
 }
@@ -4920,10 +4963,10 @@ pub fn collect_workflow_funcs(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<Ha
     Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if ((item.body.clone() != None) && (((item.uses.clone().len() as i64) > 0) || match lookup_item(registry.clone(), item.name.clone()) {
     Some(info) => (((info.service_names.clone().len() as i64) > 0) || ((info.resource_names.clone().len() as i64) > 0)),
     None => false,
-})) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(item.clone(), tm.module.clone().name.clone(), registry.clone(), tm.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
+})) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(item.clone(), tm.module.clone().name.clone(), registry.clone(), tm.items.clone(), tm.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
 }
 
-pub fn cli_default_literal_value(expr: Rc<Node>, data_values: Rc<HashMap<String, String>>) -> Option<String> {
+pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
     LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
@@ -4936,41 +4979,29 @@ pub fn cli_default_literal_value(expr: Rc<Node>, data_values: Rc<HashMap<String,
     }),
     LiteralValue::LitNull => None,
 },
-    ExprData::ExprVar { .. } => v2_rt::map_get(&data_values, expr.name.clone()),
     _ => None,
 }
 }
 
-pub fn collect_data_literal_values(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, String>> {
-    modules.iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| tm.items.clone().iter().cloned().fold(acc.clone(), |a: Rc<HashMap<String, String>>, item: Rc<Node>| if (((item.body.clone() != None) && (item.type_annotation.clone() != None)) && ((item.params.clone().len() as i64) == 0)) {
-        match item.body.clone() {
-    Some(body) => match (*body.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
-    LiteralValue::LitStr { value: s, .. } => v2_rt::rc_map_insert(a.clone(), item.name.clone(), s.clone()),
-    LiteralValue::LitBool { value: b, .. } => v2_rt::rc_map_insert(a.clone(), item.name.clone(), if b.clone() {
-            "true".to_string()
-        } else {
-            "false".to_string()
-        }),
-    _ => a.clone(),
-},
-    _ => a.clone(),
-},
-    None => a.clone(),
-}
-    } else {
-        a.clone()
-    }))
-}
-
-pub fn validate_workflow_param_defaults(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, data_values: Rc<HashMap<String, String>>) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn validate_workflow_param_defaults(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({ let mut __result = Vec::new(); for wf in workflow_funcs.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for param in wf.params.clone().iter().cloned() { __result.extend((*match param_node_default_value(param.clone()) {
-    Some(dv) => match cli_default_literal_value(dv.clone(), data_values.clone()) {
-    Some(_) => Rc::new(vec![]),
-    None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v2_rt::concat(v2_rt::concat("workflow CLI default for parameter `".to_string(), authored_name_at(wf.source_index.clone(), param.clone())), "` must be a string, int, float, bool literal, or data reference".to_string()),
+    Some(dv) => {
+        let param_name = authored_name_at(wf.source_index.clone(), param.clone());
+let resolved = match v2_rt::map_get(&wf.resolved_defaults.clone(), param_name.clone()) {
+    Some(_) => true,
+    None => match cli_default_literal_value(dv.clone()) {
+    Some(_) => true,
+    None => false,
+},
+};
+if resolved.clone() {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v2_rt::concat(v2_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` must be a string, int, float, bool literal, or data reference".to_string()),
     span: param.span.clone(),
-}), wf.module_name.clone())]),
+}), wf.module_name.clone())])
+        }
 },
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result })).iter().cloned()); } __result })
@@ -4987,7 +5018,7 @@ result
 }
 }
 
-pub fn emit_main_rs(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, modules: Rc<Vec<Rc<TypedModule>>>, has_services: bool, crate_name: String, svc_module_map: Rc<HashMap<String, String>>, data_values: Rc<HashMap<String, String>>) -> Rc<TextFile> {
+pub fn emit_main_rs(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, modules: Rc<Vec<Rc<TypedModule>>>, has_services: bool, crate_name: String, svc_module_map: Rc<HashMap<String, String>>) -> Rc<TextFile> {
     {
         let has_pipeline = { let mut __found = false; for m in modules.clone().iter().cloned() { if (m.module.clone().name.clone().as_str() == "v2.compiler.compile".to_string().as_str()) { __found = true; break; } } __found };
 let resource_type_names = Rc::new({ let mut __result = Vec::new(); for wf in workflow_funcs.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for u in wf.uses.clone().iter().cloned() { __result.push(resource_use_resource(u.clone()).name.clone()); } __result })).iter().cloned()); } __result });
@@ -5029,7 +5060,7 @@ let svc_use = if (svc_imports_str.clone().as_str() != "".to_string().as_str()) {
         };
 let mod_uses = emit_main_mod_uses(workflow_funcs.clone(), has_pipeline.clone(), crate_name.clone());
 let cli_struct = emit_cli_struct(workflow_funcs.clone());
-let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone(), data_values);
+let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone());
 let pipeline_fns = if has_pipeline.clone() {
             emit_main_pipeline_fns(crate_name.clone())
         } else {
@@ -5072,10 +5103,10 @@ pub fn emit_cli_struct(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"v2-compiled\", about = \"Generated CLI from DAG compiler\")]\n".to_string()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    dry_run: bool,\n".to_string()), "}".to_string())
 }
 
-pub fn emit_subcommand_enum(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, has_pipeline: bool, data_values: Rc<HashMap<String, String>>) -> String {
+pub fn emit_subcommand_enum(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, has_pipeline: bool) -> String {
     {
         let depth = 0;
-let variants = Rc::new({ let mut __result = Vec::new(); for wf in workflow_funcs.iter().cloned() { __result.push(emit_subcommand_variant(wf.clone(), (depth.clone() + 1), data_values.clone())); } __result });
+let variants = Rc::new({ let mut __result = Vec::new(); for wf in workflow_funcs.iter().cloned() { __result.push(emit_subcommand_variant(wf.clone(), (depth.clone() + 1))); } __result });
 let compile_variant = if has_pipeline.clone() {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("/// Compile .dag source files to a target language\n".to_string(), make_indent((depth.clone() + 1))), "Compile {\n".to_string()), make_indent((depth.clone() + 2))), "/// Source root directories (searched recursively for .dag files).\n".to_string()), make_indent((depth.clone() + 2))), "/// Module imports are resolved transitively from these roots.\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-root\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_roots: Vec<String>,\n".to_string()), make_indent((depth.clone() + 2))), "/// Legacy: single source directory (all .dag files loaded, no import resolution)\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-dir\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_dir: Option<String>,\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long)]\n".to_string()), make_indent((depth.clone() + 2))), "output_dir: String,\n".to_string()), make_indent((depth.clone() + 2))), "/// Target language: rust, python, go, dag\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long, default_value = \"rust\")]\n".to_string()), make_indent((depth.clone() + 2))), "target: String,\n".to_string()), make_indent((depth.clone() + 1))), "},".to_string())
         } else {
@@ -5091,7 +5122,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(
 }
 }
 
-pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64, data_values: Rc<HashMap<String, String>>) -> String {
+pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> String {
     {
         let variant_name = to_pascal(wf.name.clone());
 let doc_line = v2_rt::concat(v2_rt::concat("/// Run the ".to_string(), wf.name.clone()), " workflow".to_string());
@@ -5099,7 +5130,7 @@ if ((wf.params.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(doc_line, "\n".to_string()), variant_name), ",".to_string())
         } else {
             {
-                let fields = Rc::new({ let mut __result = Vec::new(); for p in wf.params.clone().iter().cloned() { __result.push(emit_subcommand_field(p.clone(), wf.source_index.clone(), data_values.clone())); } __result });
+                let fields = Rc::new({ let mut __result = Vec::new(); for p in wf.params.clone().iter().cloned() { __result.push(emit_subcommand_field(p.clone(), wf.source_index.clone(), wf.resolved_defaults.clone())); } __result });
 let fields_str = fields.join(&"\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(doc_line, "\n".to_string()), variant_name), " {\n".to_string()), make_indent((depth + 1))), fields_str), "\n".to_string()), "},".to_string())
 }
@@ -5107,16 +5138,20 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 }
 
-pub fn emit_subcommand_field(param: Rc<Node>, source_index: Option<Rc<NewlineIndex>>, data_values: Rc<HashMap<String, String>>) -> String {
+pub fn emit_subcommand_field(param: Rc<Node>, source_index: Option<Rc<NewlineIndex>>, resolved_defaults: Rc<HashMap<String, String>>) -> String {
     {
-        let field_name = emit_ident(param_node_name_at(param.clone(), source_index), RenderTarget::Rust);
+        let field_name = emit_ident(param_node_name_at(param.clone(), source_index.clone()), RenderTarget::Rust);
+let param_name = param_node_name_at(param.clone(), source_index.clone());
 let field_type = emit_cli_param_type_node(param_node_type_expr(param.clone()));
-let default_attr = match param_node_default_value(param.clone()) {
-    Some(dv) => match cli_default_literal_value(dv.clone(), data_values) {
+let default_attr = match v2_rt::map_get(&resolved_defaults, param_name) {
+    Some(resolved) => v2_rt::concat(v2_rt::concat("#[arg(long, default_value = \"".to_string(), resolved.clone()), "\")]\n".to_string()),
+    None => match param_node_default_value(param.clone()) {
+    Some(dv) => match cli_default_literal_value(dv.clone()) {
     Some(default_value) => v2_rt::concat(v2_rt::concat("#[arg(long, default_value = \"".to_string(), default_value.clone()), "\")]\n".to_string()),
     None => "#[arg(long)]\n".to_string(),
 },
     None => "#[arg(long)]\n".to_string(),
+},
 };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(default_attr, field_name), ": ".to_string()), field_type), ",".to_string())
 }
