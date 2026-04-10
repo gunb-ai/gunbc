@@ -698,7 +698,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
 
 fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, param_node_name_at(n: p, source_index: scope.type_env.source_index), TypeBinding { name: param_node_name_at(n: p, source_index: scope.type_env.source_index), resolved: param_node_type_expr(n: p), provenance: SubValueUnknown })
+    map_insert(acc, param_node_name_at(n: p, source_index: scope.type_env.source_index), TypeBinding { name: param_node_name_at(n: p, source_index: scope.type_env.source_index), resolved: param_node_type_expr(n: p), provenance: PreservedValue })
   )
   InferScope {
     type_env: scope.type_env,
