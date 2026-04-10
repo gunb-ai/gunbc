@@ -190,6 +190,14 @@ type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
 // ExprData: pure operator metadata tag (P5.11 dissolution).
 // All child Nodes live in node.children. ExprData retains only
 // non-Node metadata that identifies the expression kind.
+//
+// KNOWN DEBT (M8/M9): ExprBinOp.algebra_field uses String? for dispatch
+// (values: "add", "mul", "quotient", "reciprocal", "remainder"). This
+// should be a coproduct AlgebraFieldKind for structural dispatch. Fix path:
+//   1. Define AlgebraFieldKind in std/syntax.dag alongside OperatorSpec
+//   2. Update OperatorSpec.algebra_field: AlgebraFieldKind?
+//   3. Update ExprBinOp.algebra_field: AlgebraFieldKind?
+//   4. Update binop_algebra_fields, binop_symbol, first_matching_algebra_field
 type ExprData
   = NoExprData
   | ExprLiteral { value: LiteralValue }
@@ -203,7 +211,7 @@ type ExprData
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOp }
+  | ExprBinOp { op: BinOp, algebra_field: String? }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda { semantics: LambdaSemantics? }
   | ExprStringInterp
@@ -1354,7 +1362,7 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
 //   "svc_rate_limit" = rate_limit Node, "svc_retry" = retry Node.
 // Only non-none fields are included.
 
-fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
+fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
   let zero_span = make_span(start: 0, end: 0)
   let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
   let auth_prop = match auth {
@@ -1365,6 +1373,10 @@ fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, rat
     Some { value: ai } => [make_field_init_node(name: "svc_auth_input", value: ai, span: zero_span, name_span: zero_span)]
     None => []
   }
+  let auth_source_prop = match auth_source {
+    Some { value: src } => [make_field_init_node(name: "svc_auth_source", value: src, span: zero_span, name_span: zero_span)]
+    None => []
+  }
   let rate_prop = match rate_limit {
     Some { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span, name_span: zero_span)]
     None => []
@@ -1373,7 +1385,7 @@ fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, rat
     Some { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span, name_span: zero_span)]
     None => []
   }
-  concat(ep_prop, auth_prop, auth_input_prop, rate_prop, retry_prop)
+  concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop, retry_prop)
 }
 
 fn has_service_config(n: Node) -> Bool {
@@ -1398,6 +1410,10 @@ fn service_config_retry(n: Node) -> Node? {
 
 fn service_config_auth_input(n: Node) -> Node? {
   find_property(props: n.properties, prop_name: "svc_auth_input")
+}
+
+fn service_config_auth_source(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth_source")
 }
 
 // --- Module as Node ---

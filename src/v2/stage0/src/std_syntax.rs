@@ -9,6 +9,7 @@ use crate::NonEmptyBTreeSet;
 use BinOp::*;
 use LiteralValue::*;
 use BodyKind::*;
+use ItemFormKind::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -59,8 +60,20 @@ pub enum BodyKind {
     ResourceBody,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ItemFormKind {
+    FuncForm,
+    StructForm,
+    EnumForm,
+    TypeAliasForm,
+    ModuleForm,
+    OtherForm,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemForm {
+    pub kind: ItemFormKind,
     pub keyword: String,
     pub has_type_params: bool,
     pub has_params: bool,

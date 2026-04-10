@@ -62,31 +62,15 @@ fn stage0_cargo_check() {
 // 2026-04-08: 528→530 — source_index threading (PR #356 merge) adds 2
 //   diagnostics from new call paths through CostUnknown functions.
 // 2026-04-09: 530→528 — merged main (CX unification -2).
-// 2026-04-09: 528→485 — ExprLet scope fix eliminates false descent evidence
-//   from let-value initializers seeing their own bindings.
-// 2026-04-09: 485→483 — CX-L2: element_type on InductiveField, match-binding
-//   type propagation, collection+lambda evidence in ExprCall, child accessor
-//   let-binding classification.
-// 2026-04-09: 483→459 — CX-L2: arithmetic descent (Sub/Div/Add in
-//   classify_argument + classify_let_value). Dissolves ceil_log_iter,
-//   to_string_helper, int_to_string_acc, tokenizer position advancement,
-//   + composed callers.
-// 2026-04-09: 459→460 — CX-L2 SCC hybrid: self-edges from descent_evidence,
-//   cross-edges from old system. Dissolves 10 SCC violations but new function
-//   adds 11 direct. Net +1, but infrastructure for further CX-L2 gains.
-// 2026-04-09: 460→480 — CX-NEXT Phase 2: compiler types in std/node.dag.
-//   Fix: Remove Add handler from classify_argument (n+1 grows, not descent).
-//   This is a soundness fix: count_up(n: n+1) is unbounded, not O(n).
-//   +20 violations are parser/emit functions that incorrectly benefited from
-//   the unsound Add handler. Proper fix: parser position uses TokenPosition
-//   measure (std/termination.dag), not synthetic arithmetic descent.
-// 2026-04-09: 480→524 — Delete heuristic tables (list_child_accessors, ExprCall
-//   collection+lambda positional guess), replace _arith synthetic InductiveField
-//   524→476: centralized evidence, PreservedValue, ArithmeticDescent, transparent
-//   wrappers, collection element extraction. Lambda body boundary enforced
-//   (soundness: 411→476 because lambda leakage gave false evidence).
+// 2026-04-09: 528→485 — ExprLet scope fix eliminates false descent evidence.
+// 2026-04-09: PR #361 — CX-L2 infrastructure + structural completeness work:
+//   ArithmeticDescent, element_type threading, type-based collection detection,
+//   std/node.dag declarations, centralized evidence (all calls annotated),
+//   PreservedValue in structural check, transparent wrapper propagation,
+//   collection element extraction (match list |> first), lambda boundary fix.
 //   render_node_type dissolved (140). make_indent dissolved (44).
-const DIAG_RATCHET: usize = 476;
+//   488→469 after merge with main.
+const DIAG_RATCHET: usize = 469;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

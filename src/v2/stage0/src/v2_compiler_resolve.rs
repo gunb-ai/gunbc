@@ -153,14 +153,14 @@ Rc::new(ImportResolveResult {
 };
 let name_diags = if import_is_all(import.clone()) {
                 Rc::new(vec![])
-} else {
+            } else {
                 Rc::new({ let mut __result = Vec::new(); for child in Rc::new({ let mut __result = Vec::new(); for child in import.children.clone().iter().cloned() { if (v2_rt::map_has(&exported_set, child.name.clone()) == false) { __result.push(child); } } __result }).iter().cloned() { __result.push(make_error_node(Rc::new(CompilerDiagnostic::MissingExport {
     name: child.name.clone(),
     module_path: import.name.clone(),
     importing_module: importing_module.clone(),
     span: child.span.clone(),
 }), importing_module.clone())); } __result })
-};
+            };
 Rc::new(ImportResolveResult {
     resolved: Rc::new(ResolvedImport {
     module_path: import.name.clone(),
@@ -181,9 +181,9 @@ pub fn get_exported_names(module: Rc<Node>) -> Rc<Vec<String>> {
 let variant_names = Rc::new({ let mut __result = Vec::new(); for item in module_items(module.clone()).iter().cloned() { __result.extend((*get_variant_names(item.clone())).iter().cloned()); } __result });
 let imported_names = Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.extend((*if import_is_all(imp.clone()) {
             Rc::new(vec![])
-} else {
+        } else {
             import_specific_names(imp.clone())
-}).iter().cloned()); } __result });
+        }).iter().cloned()); } __result });
 v2_rt::concat(v2_rt::concat(v2_rt::concat(item_names, variant_names), imported_names), Rc::new(v2_rt::map_keys(&kernel_type_set())))
 }
 }
@@ -197,9 +197,9 @@ pub fn get_variant_names(item: Rc<Node>) -> Rc<Vec<String>> {
         let is_coproduct = (item.connective.clone() == Connective::Disj);
 if is_coproduct {
             Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { __result.push(c.name.clone()); } __result })
-} else {
+        } else {
             Rc::new(vec![])
-}
+        }
 }
 }
 
@@ -224,12 +224,12 @@ if is_dup.clone() {
     span: m.span.clone(),
 }), m.name.clone())])),
 })
-} else {
+            } else {
                 Rc::new(DuplicateCheckState {
     seen_names: v2_rt::rc_map_insert(state.seen_names.clone(), m.name.clone(), true),
     diagnostics: state.diagnostics.clone(),
 })
-}
+            }
 });
 result.diagnostics.clone()
 }
@@ -254,9 +254,9 @@ v2_rt::rc_map_insert(adjacency.clone(), from_module.clone(), v2_rt::rc_list_push
 pub fn topo_sort_key(name: String) -> String {
     if (name.clone().as_str() == "std.types".to_string().as_str()) {
         "".to_string()
-} else {
+    } else {
         name.clone()
-}
+    }
 }
 
 pub fn topological_sort(modules: Rc<Vec<Rc<Node>>>) -> Rc<TopoResult> {
@@ -275,21 +275,21 @@ if (((m.name.clone().as_str() != "std.types".to_string().as_str()) && (m.name.cl
     from_module: "std.types".to_string(),
     to_module: m.name.clone(),
 })])
-} else {
+                } else {
                     Rc::new(vec![])
-}
+                }
 }).iter().cloned()); } __result })
-} else {
+        } else {
             Rc::new(vec![])
-};
+        };
 let adjacency = v2_rt::concat(explicit_edges, implicit_std_types_edges).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| adjacency_add_edge(acc.clone(), edge.from_module.clone(), edge.to_module.clone()));
 let in_degree_map = modules.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64>(), |acc: Rc<HashMap<String, i64>>, m: Rc<Node>| {
             let imports_std_types = { let mut __found = false; for imp in module_imports(m.clone()).iter().cloned() { if (imp.name.clone().as_str() == "std.types".to_string().as_str()) { __found = true; break; } } __found };
 let implicit_std_types_in_degree = if (((has_std_types.clone() && (m.name.clone().as_str() != "std.types".to_string().as_str())) && (m.name.clone().as_str() != "std.algebra".to_string().as_str())) && (imports_std_types.clone() == false)) {
                 1
-} else {
+            } else {
                 0
-};
+            };
 v2_rt::rc_map_insert(acc.clone(), m.name.clone(), ((module_imports(m.clone()).len() as i64) + implicit_std_types_in_degree.clone()))
 });
 let initial_queue = Rc::new({ let mut __sorted: Vec<_> = Rc::new({ let mut __result = Vec::new(); for name in module_names.clone().iter().cloned() { if match v2_rt::map_get(&in_degree_map, name.clone()) {
@@ -303,7 +303,7 @@ if ((result.sorted.clone().len() as i64) == module_count.clone()) {
     sorted: result.sorted.clone(),
     cycle_error: None,
 })
-} else {
+        } else {
             {
                 let sorted_set = result.sorted.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let cycle_members = Rc::new({ let mut __result = Vec::new(); for name in module_names.clone().iter().cloned() { if (v2_rt::map_has(&sorted_set, name.clone()) == false) { __result.push(name); } } __result });
@@ -316,7 +316,7 @@ Rc::new(TopoResult {
 }), "".to_string())),
 })
 }
-}
+        }
 }
 }
 
@@ -333,7 +333,7 @@ pub fn kahn_drain(mut queue: Rc<Vec<String>>, mut sorted: Rc<Vec<String>>, mut i
     sorted: sorted.clone(),
     in_degree_map: in_degree_map.clone(),
 })
-}
+        }
 let batch_result = queue.clone().iter().cloned().fold(Rc::new(KahnDrainState {
     sorted: sorted.clone(),
     in_degree_map: in_degree_map.clone(),

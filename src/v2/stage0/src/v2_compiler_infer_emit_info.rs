@@ -145,9 +145,9 @@ pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape 
 let is_optional = (normed.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional {
             FieldValueShape::OptionalValue
-} else {
+        } else {
             FieldValueShape::PlainValue
-}
+        }
 }
 }
 
@@ -163,24 +163,24 @@ Rc::new(parent.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i
 let child = pair.1.clone();
 if (child.inferred.clone() == None) {
                 acc.clone()
-} else {
+            } else {
                 {
                     let style = if is_pair.clone() {
                         if (idx.clone() == 0) {
                             FieldAccessStyle::TupleFirst
-} else {
+                        } else {
                             FieldAccessStyle::TupleSecond
-}
-} else {
+                        }
+                    } else {
                         FieldAccessStyle::StoredField
-};
+                    };
 let key = authored_name_at(source_index.clone(), child.clone());
 v2_rt::rc_map_insert(acc.clone(), key.clone(), Rc::new(FieldSummary {
     access_style: style.clone(),
     value_shape: field_value_shape_from_type_node(child_type_node(child.clone())),
 }))
 }
-}
+            }
 })
 }
 }
@@ -233,15 +233,15 @@ pub fn build_field_type_map(children: Rc<Vec<Rc<Node>>>, source_index: Option<Rc
         let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
 let ft_is_type_var = if (ft.inferred.clone() != None) {
             is_type_variable(ft.inferred.clone().clone().unwrap())
-} else {
+        } else {
             false
-};
+        };
 let key = authored_name_at(source_index.clone(), child.clone());
 if (((resolved_name.clone().as_str() != "".to_string().as_str()) && !ft_is_type_var.clone()) && (resolved_name.clone().as_str() != "Dynamic".to_string().as_str())) {
             v2_rt::rc_map_insert(acc.clone(), key.clone(), resolved_name.clone())
-} else {
+        } else {
             acc.clone()
-}
+        }
 },
     _ => acc.clone(),
 })
@@ -251,7 +251,7 @@ pub fn build_type_summary(item: Rc<Node>, source_index: Option<Rc<NewlineIndex>>
     {
         if (((item.connective.clone() == Connective::NoConnective) || (item.connective.clone() == Connective::Arrow)) || (item.transport.clone() != None)) {
             return None
-}
+        }
 let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name_at(p.clone(), source_index.clone())); } __result });
 let is_product = (item.connective.clone() == Connective::Conj);
 let has_fn = { let mut __found = false; for child in item.children.clone().iter().cloned() { if match child.inferred.clone().as_deref().cloned() {
@@ -268,7 +268,7 @@ if is_product {
     generic_param_names: gpn,
     has_fn_fields: has_fn,
 }))
-} else {
+        } else {
             {
                 let unit_only = { let mut __all = true; for child in item.children.clone().iter().cloned() { if !(((child.children.clone().len() as i64) == 0)) { __all = false; break; } } __all };
 Some(Rc::new(TypeSummary {
@@ -283,7 +283,7 @@ Some(Rc::new(TypeSummary {
     has_fn_fields: has_fn,
 }))
 }
-}
+        }
 }
 }
 
@@ -308,9 +308,9 @@ v2_rt::rc_map_insert(acc.clone(), vname.clone(), Rc::new(TypeSummary {
     has_fn_fields: v_has_fn.clone(),
 }))
 }
-} else {
+        } else {
             acc.clone()
-}),
+        }),
     _ => state.type_summaries.clone(),
 };
 let next_summaries = v2_rt::rc_map_insert(with_variants, summary.name.clone(), summary.clone());

@@ -128,9 +128,9 @@ let merged_recursive_set = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map
 let merged_inductive_fields = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc.clone(), env.inductive_fields.clone()));
 let source_index = envs.clone().iter().cloned().fold(None, |acc: _, env: Rc<TypeEnv>| if (env.source_index.clone() != None) {
             env.source_index.clone()
-} else {
+        } else {
             acc.clone()
-});
+        });
 Rc::new(TypeEnv {
     bindings: merged_bindings,
     recursive_types: merged_recursive,

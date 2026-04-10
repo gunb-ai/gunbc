@@ -177,7 +177,7 @@ if (ch.clone().as_str() == "\n".to_string().as_str()) {
     token: make_token("\n".to_string(), make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)), TokenShape::ShNewline),
     interp_depth: pos.interp_depth.clone(),
 })
-}
+        }
 if ((ch.clone().as_str() == "}".to_string().as_str()) && ((pos.interp_depth.clone().len() as i64) > 0)) {
             {
                 let top = pos.interp_depth.clone().last().cloned().clone().unwrap();
@@ -190,15 +190,15 @@ let cont_pos = Rc::new(TokPos {
 });
 return scan_str_cont(source.clone(), cont_pos, pos.pos.clone())
 }
-} else {
+                } else {
                     return Rc::new(ScanResult {
     pos: (pos.pos.clone() + 1),
     token: make_token("}".to_string(), make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)), TokenShape::ShRBrace),
     interp_depth: replace_last(pos.interp_depth.clone(), (top.clone() - 1)),
 })
+                }
 }
-}
-}
+        }
 scan_token(source.clone(), pos.clone(), ch.clone())
 }
 }
@@ -212,7 +212,7 @@ if (s.pos.clone() >= source_len(source.clone())) {
     tokens: tokens.clone(),
     interp_depth: s.interp_depth.clone(),
 })
-}
+        }
 let result = scan_next_token(source.clone(), s.clone());
 {
             let __tco_0 = source;
@@ -235,79 +235,79 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: String) -> Rc<Scan
     {
         if (ch.clone().as_str() == "\"".to_string().as_str()) {
             return scan_string(source.clone(), pos.clone())
-}
+        }
 if is_digit(ch.clone()) {
             return scan_number(source.clone(), pos.clone())
-}
+        }
 if is_ident_start(ch.clone()) {
             return scan_ident(source.clone(), pos.clone())
-}
+        }
 let next_ch = if ((pos.pos.clone() + 1) < source_len(source.clone())) {
             source_char(source.clone(), (pos.pos.clone() + 1))
-} else {
+        } else {
             "".to_string()
-};
+        };
 if ((ch.clone().as_str() == "=".to_string().as_str()) && (next_ch.clone().as_str() == ">".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShFatArrow, "=>".to_string(), 2, source.file.clone())
-}
+        }
 if ((ch.clone().as_str() == "-".to_string().as_str()) && (next_ch.clone().as_str() == ">".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShArrow, "->".to_string(), 2, source.file.clone())
-}
+        }
 if ((ch.clone().as_str() == "=".to_string().as_str()) && (next_ch.clone().as_str() == "=".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShEqEq, "==".to_string(), 2, source.file.clone())
-}
+        }
 if ((ch.clone().as_str() == "!".to_string().as_str()) && (next_ch.clone().as_str() == "=".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShNe, "!=".to_string(), 2, source.file.clone())
-}
+        }
 if ((ch.clone().as_str() == "<".to_string().as_str()) && (next_ch.clone().as_str() == "=".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShLe, "<=".to_string(), 2, source.file.clone())
-}
+        }
 if ((ch.clone().as_str() == ">".to_string().as_str()) && (next_ch.clone().as_str() == "=".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShGe, ">=".to_string(), 2, source.file.clone())
-}
+        }
 if ((ch.clone().as_str() == "&".to_string().as_str()) && (next_ch.clone().as_str() == "&".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShAnd, "&&".to_string(), 2, source.file.clone())
-}
+        }
 if ((ch.clone().as_str() == "|".to_string().as_str()) && (next_ch.clone().as_str() == "|".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShOr, "||".to_string(), 2, source.file.clone())
-}
+        }
 if ((ch.clone().as_str() == "|".to_string().as_str()) && (next_ch.clone().as_str() == ">".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShPipeArrow, "|>".to_string(), 2, source.file.clone())
-}
+        }
 if (ch.clone().as_str() == "|".to_string().as_str()) {
             return emit(pos.clone(), TokenShape::ShPipe, "|".to_string(), 1, source.file.clone())
-}
+        }
 if ((ch.clone().as_str() == "?".to_string().as_str()) && (next_ch.clone().as_str() == "?".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShNullCoalesce, "??".to_string(), 2, source.file.clone())
-}
+        }
 if ((ch.clone().as_str() == ".".to_string().as_str()) && (next_ch.clone().as_str() == ".".to_string().as_str())) {
             return emit(pos.clone(), TokenShape::ShDotDot, "..".to_string(), 2, source.file.clone())
-}
+        }
 if (ch.clone().as_str() == "=".to_string().as_str()) {
             return emit(pos.clone(), TokenShape::ShEq, "=".to_string(), 1, source.file.clone())
-}
+        }
 if (ch.clone().as_str() == "<".to_string().as_str()) {
             return emit(pos.clone(), TokenShape::ShLt, "<".to_string(), 1, source.file.clone())
-}
+        }
 if (ch.clone().as_str() == ">".to_string().as_str()) {
             return emit(pos.clone(), TokenShape::ShGt, ">".to_string(), 1, source.file.clone())
-}
+        }
 if (ch.clone().as_str() == "-".to_string().as_str()) {
             return emit(pos.clone(), TokenShape::ShMinus, "-".to_string(), 1, source.file.clone())
-}
+        }
 if (ch.clone().as_str() == "!".to_string().as_str()) {
             return emit(pos.clone(), TokenShape::ShBang, "!".to_string(), 1, source.file.clone())
-}
+        }
 if (ch.clone().as_str() == "?".to_string().as_str()) {
             return emit(pos.clone(), TokenShape::ShQuestion, "?".to_string(), 1, source.file.clone())
-}
+        }
 if (ch.clone().as_str() == "{".to_string().as_str()) {
             {
                 let new_depth = if ((pos.interp_depth.clone().len() as i64) > 0) {
                     replace_last(pos.interp_depth.clone(), (pos.interp_depth.clone().last().cloned().clone().unwrap() + 1))
-} else {
+                } else {
                     pos.interp_depth.clone()
-};
+                };
 let tok = make_token("{".to_string(), make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)), TokenShape::ShLBrace);
 return Rc::new(ScanResult {
     pos: (pos.pos.clone() + 1),
@@ -315,7 +315,7 @@ return Rc::new(ScanResult {
     interp_depth: new_depth,
 })
 }
-}
+        }
 if (ch.clone().as_str() == "}".to_string().as_str()) {
             {
                 let tok = make_token("}".to_string(), make_file_span(source.file.clone(), pos.pos.clone(), (pos.pos.clone() + 1)), TokenShape::ShRBrace);
@@ -325,7 +325,7 @@ return Rc::new(ScanResult {
     interp_depth: pos.interp_depth.clone(),
 })
 }
-}
+        }
 match v2_rt::lookup(&single_punct(), ch.clone()) {
     Some(sh) => emit(pos.clone(), sh.clone(), ch.clone(), 1, source.file.clone()),
     None => emit(pos.clone(), TokenShape::ShUnknown, ch.clone(), 1, source.file.clone()),
@@ -350,9 +350,9 @@ pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
 let text = source_substring(source.clone(), pos.pos.clone(), end.clone());
 let shape = if is_keyword_text(text.clone()) {
             TokenShape::ShKeyword
-} else {
+        } else {
             TokenShape::ShIdent
-};
+        };
 let token = make_token(text.clone(), make_file_span(source.file.clone(), pos.pos.clone(), end.clone()), shape);
 Rc::new(ScanResult {
     pos: end.clone(),
@@ -376,7 +376,7 @@ return Rc::new(ScanResult {
     interp_depth: pos.interp_depth.clone(),
 })
 }
-}
+        }
 let text = source_substring(source.clone(), pos.pos.clone(), int_end.clone());
 let parsed = v2_rt::parse_int(text.clone());
 let shape = match parsed {
@@ -568,12 +568,12 @@ continue;
 pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
     if ((pos.clone() + 1) >= source_len(source.clone())) {
         false
-} else {
+    } else {
         {
             let next = source_char(source.clone(), (pos.clone() + 1));
 (((is_ident_start(next.clone()) || (next.clone().as_str() == "(".to_string().as_str())) || (next.clone().as_str() == "!".to_string().as_str())) || (next.clone().as_str() == "-".to_string().as_str()))
 }
-}
+    }
 }
 
 pub fn process_escapes(raw: String) -> String {
@@ -590,29 +590,29 @@ if ((ch.clone().as_str() == "\\".to_string().as_str()) && ((pos.clone() + 1) < v
                 let next = v2_rt::char_at(&source, (pos.clone() + 1));
 let resolved = if (next.clone().as_str() == "\"".to_string().as_str()) {
                     "\"".to_string()
-} else {
+                } else {
                     if (next.clone().as_str() == "\\".to_string().as_str()) {
                         "\\".to_string()
-} else {
+                    } else {
                         if (next.clone().as_str() == "n".to_string().as_str()) {
                             "\n".to_string()
-} else {
+                        } else {
                             if (next.clone().as_str() == "t".to_string().as_str()) {
                                 "\t".to_string()
-} else {
+                            } else {
                                 if (next.clone().as_str() == "{".to_string().as_str()) {
                                     "{".to_string()
-} else {
+                                } else {
                                     if (next.clone().as_str() == "}".to_string().as_str()) {
                                         "}".to_string()
-} else {
+                                    } else {
                                         v2_rt::concat("\\".to_string(), next.clone())
-}
-}
-}
-}
-}
-};
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
 {
                     let __tco_0 = source;
 let __tco_1 = (pos + 2);
@@ -642,9 +642,9 @@ pub fn drop_last(stack: Rc<Vec<i64>>) -> Rc<Vec<i64>> {
         let len = (stack.clone().len() as i64);
 Rc::new(stack.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(Rc::new(vec![]), |result: Rc<Vec<i64>>, pair: (i64, i64)| if (pair.0.clone() < (len.clone() - 1)) {
             Rc::new(v2_rt::append(result.clone(), pair.1.clone()))
-} else {
+        } else {
             result.clone()
-})
+        })
 }
 }
 
@@ -666,7 +666,7 @@ return skip_spaces_and_comments(source.clone(), Rc::new(TokPos {
     interp_depth: pos.interp_depth.clone(),
 }), (fuel.clone() - 1))
 }
-}
+        }
 break Rc::new(TokPos {
     pos: p.clone(),
     interp_depth: pos.interp_depth.clone(),

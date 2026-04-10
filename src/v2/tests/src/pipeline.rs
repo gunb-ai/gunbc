@@ -70,7 +70,7 @@ fn full_dsl_compiles() {
                 v2_compiler::v2_compiler_parse::parse(v2_compiler::v2_compiler_tokenize::tokenize(
                     content,
                     path.to_string_lossy().to_string(),
-                ));
+                ), None);
             if let Some(ref err) = result.error {
                 v2_errors.push(format!(
                     "{}: {}",
@@ -4787,6 +4787,30 @@ service shell.Run {
     );
 }
 
+#[test]
+fn shell_emit_pipes_stdin() {
+    let source = r#"module stdin_test
+
+service test.Shell {
+  config {
+    endpoint: "local"
+  }
+  operation Run {
+    input { prompt: String }
+    output { result: String }
+    transport shell { argv: ["cat"], stdin: prompt }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/stdin_test.rs");
+    assert!(
+        content.contains("Stdio::piped") || content.contains("stdin"),
+        "RE-1g: expected stdin handling, got:\n{content}"
+    );
+}
+
 // ── RE-1: shell interpolation with optional params ──────────────────────
 #[test]
 fn shell_emit_optional_param_in_interp() {
@@ -4846,6 +4870,112 @@ service shell.Pipe {
     assert!(
         content.contains("stdout(std::process::Stdio::piped())"),
         "RE-1g: expected stdout piped for output capture, got:\n{content}"
+    );
+}
+
+// ── RE-1i: from clause JSON path extraction ─────────────────────────────
+#[test]
+fn rest_output_from_clause_extracts_path() {
+    let source = r#"module re1i
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation Query {
+    input { prompt: String }
+    output {
+      content: String from "choices/0/message/content"
+      model: String from "model"
+      tokens: Int from "usage/total_tokens"
+    }
+    transport rest { method: POST, path: "/v1/completions" }
+    mock_response {
+      200 => "ok" "content"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1i.rs");
+    assert!(
+        content.contains("json_body.pointer("),
+        "RE-1i: expected json_body.pointer() for nested from path, got:\n{content}"
+    );
+    assert!(
+        content.contains("/choices/0/message/content"),
+        "RE-1i: expected nested JSON pointer path, got:\n{content}"
+    );
+    assert!(
+        content.contains("/usage/total_tokens"),
+        "RE-1i: expected nested JSON pointer for Int field, got:\n{content}"
+    );
+}
+
+#[test]
+fn func_with_service_calls_classified_effectful() {
+    let source = r#"module re2_test
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation Fetch {
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+  }
+}
+
+func fetch_data() -> String {
+  test.Api.Fetch().data
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re2_test.rs");
+    assert!(
+        content.contains("async fn fetch_data"),
+        "RE-2: func with service calls must be async, got:\n{content}"
+    );
+}
+
+// ── RE-3a: auth_source credential acquisition ──────────────────────────
+#[test]
+fn service_auth_source_reads_env_var() {
+    let source = r#"module re3a
+
+import std.types { AuthScheme }
+import std.credentials { CredentialSource }
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+    auth: Bearer
+    auth_source: EnvVar { name: "TEST_API_TOKEN" }
+  }
+  operation GetData {
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => "ok" "data"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3a.rs");
+    assert!(
+        content.contains("env::var(\"TEST_API_TOKEN\")"),
+        "RE-3a: expected env var read in constructor, got:\n{content}"
+    );
+    assert!(
+        content.contains("self.auth_token"),
+        "RE-3a: expected self.auth_token in auth header, got:\n{content}"
     );
 }
 

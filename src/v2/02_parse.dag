@@ -59,11 +59,12 @@ import v2.std.core {
   ErrorNode, make_error_node, ParseError,
   with_required_cardinality,
   error_type, is_compiler_error,
-  node_name_span, no_span
+  node_name_span, no_span,
+  NewlineIndex
 }
 
 import v2.compiler.languages {
-  ItemForm, BodyKind,
+  ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
   OperatorSpec, SyntaxSpec
@@ -77,6 +78,7 @@ import extdeps.languages.dag.syntax { dag_syntax_spec }
 
 type ParserState {
   pos: Int
+  source_index: NewlineIndex?
 }
 
 type ParseResult {
@@ -127,7 +129,7 @@ type ItemPrefixResult {
 
 // Parser-local intermediate: ServiceConfig is dissolved into Node properties at the
 // service Node construction boundary. This type exists only inside the parser.
-type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, rate_limit: Node?, retry: Node? }
+type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node? }
 type ConfigResult { config: ServiceConfig, state: ParserState, err: ErrorNode? }
 
 // Pratt parser binding power
@@ -804,13 +806,13 @@ fn eat(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> EatR
   }
 }
 
-fn parser_result_base_var(expr: Node) -> String? {
+fn parser_result_base_var(expr: Node, source_index: NewlineIndex?) -> String? {
   match expr.expr_data {
     ExprFieldAccess =>
       match expr.children |> first {
         Some { value: base } =>
           match base.expr_data {
-            ExprVar { binding_kind: _ } => Some { value: expr_var_name_at(texpr: base, source_index: none) }
+            ExprVar { binding_kind: _ } => Some { value: expr_var_name_at(texpr: base, source_index: source_index) }
             _ => none
           }
         None => none
@@ -819,14 +821,14 @@ fn parser_result_base_var(expr: Node) -> String? {
   }
 }
 
-fn parser_helper_state_arg_expr(call_node: Node) -> Node? {
+fn parser_helper_state_arg_expr(call_node: Node, source_index: NewlineIndex?) -> Node? {
   call_node.children |> enumerate |> fold(init: none, f: (acc, pair) =>
     if acc != none {
       acc
     } else {
       let idx = pair.first
       let arg_node = pair.second
-      let matches_state = match arg_name_at(n: arg_node, source_index: none) {
+      let matches_state = match arg_name_at(n: arg_node, source_index: source_index) {
         Some { value: name } => name == "state"
         None => idx == 1
       }
@@ -839,12 +841,12 @@ fn parser_helper_state_arg_expr(call_node: Node) -> Node? {
   )
 }
 
-fn parser_progress_flag_var(expr: Node) -> String? {
+fn parser_progress_flag_var(expr: Node, source_index: NewlineIndex?) -> String? {
   match expr.expr_data {
     ExprFieldAccess =>
-      let field = field_access_field_at(texpr: expr, source_index: none)
+      let field = field_access_field_at(texpr: expr, source_index: source_index)
       if field == "consumed" || field == "changed" {
-        parser_result_base_var(expr: expr)
+        parser_result_base_var(expr: expr, source_index: source_index)
       } else {
         none
       }
@@ -864,14 +866,14 @@ fn parser_helper_identity(callee: String) -> ParserHelperIdentity? {
   }
 }
 
-fn parser_passthrough_state_expr(expr: Node) -> Node? {
+fn parser_passthrough_state_expr(expr: Node, source_index: NewlineIndex?) -> Node? {
   match expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      match parser_helper_identity(callee: expr_call_func_at(texpr: expr, source_index: none)) {
+      match parser_helper_identity(callee: expr_call_func_at(texpr: expr, source_index: source_index)) {
         Some { value: ParserHelperSkipNewlines } =>
-          parser_helper_state_arg_expr(call_node: expr)
+          parser_helper_state_arg_expr(call_node: expr, source_index: source_index)
         Some { value: ParserHelperSkipContinuationNewlines } =>
-          parser_helper_state_arg_expr(call_node: expr)
+          parser_helper_state_arg_expr(call_node: expr, source_index: source_index)
         Some { value: ParserHelperWith } =>
           match expr.children |> first {
             Some { value: base_arg } => Some { value: arg_value(n: base_arg) }
@@ -883,10 +885,10 @@ fn parser_passthrough_state_expr(expr: Node) -> Node? {
   }
 }
 
-fn parser_result_witness(expr: Node) -> ParserResultWitness {
+fn parser_result_witness(expr: Node, source_index: NewlineIndex?) -> ParserResultWitness {
   match expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      match expr_call_func_at(texpr: expr, source_index: none) {
+      match expr_call_func_at(texpr: expr, source_index: source_index) {
         "advance" => ParserWitnessAdvance
         "expect" => ParserWitnessExpect
         "eat" => ParserWitnessEat
@@ -979,8 +981,8 @@ fn parse_dotted_ident_rest(tokens: List<Token>, state: ParserState, acc: String,
 // 1. Entry point
 // =========================================================================
 
-fn parse(tokens: List<Token>) -> ParseResult {
-  let state = ParserState { pos: 0 }
+fn parse(tokens: List<Token>, source_index: NewlineIndex?) -> ParseResult {
+  let state = ParserState { pos: 0, source_index: source_index }
   let r = parse_module(tokens: tokens, state: state)
   if has_err(err: r.err) {
     ParseResult { module: none, error: r.err }
@@ -1237,13 +1239,13 @@ fn parse_item_by_form(tokens: List<Token>, state: ParserState, form: ItemForm) -
 // Default values: Field.default_value -> body on the child Node
 // =========================================================================
 
-fn field_to_child_node(field: Node) -> Node {
+fn field_to_child_node(field: Node, source_index: NewlineIndex?) -> Node {
   let ret_type = field_node_type_expr(n: field)
   let props = match field_node_from_key(n: field) {
     Some { value: key } => [make_field_init_node(name: "from_key", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: key } }, children: [], inferred: none, span: field.span), span: field.span, name_span: no_span())]
     None => []
   }
-  Node { name: field_node_name_at(n: field, source_index: none), span: field.span, ident_span: field.ident_span,
+  Node { name: field_node_name_at(n: field, source_index: source_index), span: field.span, ident_span: field.ident_span,
     children: [], connective: NoConnective,
     params: [], inferred: Some { value: Resolved { node: ret_type } }, return_cardinality: field_node_cardinality(n: field),
     uses: [], body: field_node_default_value(n: field),
@@ -1251,10 +1253,10 @@ fn field_to_child_node(field: Node) -> Node {
     type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-fn variant_to_child_node(variant: Node) -> Node {
+fn variant_to_child_node(variant: Node, source_index: NewlineIndex?) -> Node {
   let fields = variant_node_fields(n: variant)
-  let children = fields |> map(f => field_to_child_node(field: f))
-  Node { name: variant_node_name_at(n: variant, source_index: none), span: variant.span, ident_span: variant.ident_span,
+  let children = fields |> map(f => field_to_child_node(field: f, source_index: source_index))
+  Node { name: variant_node_name_at(n: variant, source_index: source_index), span: variant.span, ident_span: variant.ident_span,
     children: children,
     connective: if fields |> count > 0 { Conj } else { NoConnective },
     params: [], inferred: none, return_cardinality: Required,
@@ -1265,11 +1267,11 @@ fn variant_to_child_node(variant: Node) -> Node {
 
 // Derive inferred from an output field list.
 // Single output -> its type (Node). Multiple -> anonymous Conj node. None -> none.
-fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan) -> InferredNode? {
+fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan, source_index: NewlineIndex?) -> InferredNode? {
   if outputs |> count > 0 {
     // Always create an anonymous Conj record, even for single-output operations,
     // so field names are preserved (e.g., output { branch: String } -> { branch: String }).
-    Some { value: Resolved { node: Node { name: "", span: span, ident_span: none, children: map(outputs, f => field_to_child_node(field: f)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } } }
+    Some { value: Resolved { node: Node { name: "", span: span, ident_span: none, children: map(outputs, f => field_to_child_node(field: f, source_index: source_index)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } } }
   } else {
     none
   }
@@ -1283,29 +1285,29 @@ fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan) -> InferredNode? {
 // construct Node directly using these constructors.
 // =========================================================================
 
-fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, response_props: List<Node>, mock_props: List<Node>, exit_props: List<Node>, modifier_props: List<Node>, transport: Node?, span: SourceSpan) -> Node {
+fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, response_props: List<Node>, mock_props: List<Node>, exit_props: List<Node>, modifier_props: List<Node>, transport: Node?, span: SourceSpan, source_index: NewlineIndex?) -> Node {
   let all_props = concat(modifier_props, response_props, exit_props, mock_props)
   Node { name: name, span: span, ident_span: ident_span,
     children: [],
     params: inputs |> map(f => make_param_node(
-      name: field_node_name_at(n: f, source_index: none), type_expr: field_node_type_expr(n: f),
+      name: field_node_name_at(n: f, source_index: source_index), type_expr: field_node_type_expr(n: f),
       default_value: field_node_default_value(n: f), span: f.span, name_span: node_name_span(n: f)
     )),
-    inferred: outputs_to_inferred(outputs: outputs, span: span), return_cardinality: Required,
+    inferred: outputs_to_inferred(outputs: outputs, span: span, source_index: source_index), return_cardinality: Required,
     uses: [], body: none, connective: NoConnective,
     transport: transport,
     properties: all_props, type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-fn make_capability_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, span: SourceSpan) -> Node {
+fn make_capability_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, span: SourceSpan, source_index: NewlineIndex?) -> Node {
   Node { name: name, span: span, ident_span: ident_span,
     children: [],
     params: inputs |> map(f => make_param_node(
-      name: field_node_name_at(n: f, source_index: none), type_expr: field_node_type_expr(n: f),
+      name: field_node_name_at(n: f, source_index: source_index), type_expr: field_node_type_expr(n: f),
       default_value: field_node_default_value(n: f), span: f.span, name_span: node_name_span(n: f)
     )),
-    inferred: outputs_to_inferred(outputs: outputs, span: span), return_cardinality: Required,
+    inferred: outputs_to_inferred(outputs: outputs, span: span, source_index: source_index), return_cardinality: Required,
     uses: [], body: none, connective: NoConnective,
     transport: none,
     properties: [], type_annotation: none,
@@ -1346,7 +1348,7 @@ fn parse_type_after_kw(tokens: List<Token>, state: ParserState, start_span: Sour
     let s = skip_newlines(tokens: tokens, state: r.state)
     let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
-    let type_children = r.fields |> map(f => field_to_child_node(field: f))
+    let type_children = r.fields |> map(f => field_to_child_node(field: f, source_index: state.source_index))
     let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r2.state), err: none }
   } else {
@@ -1381,7 +1383,7 @@ fn parse_type_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, st
     let s = skip_newlines(tokens: tokens, state: r.state)
     let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
-    let type_children = r.fields |> map(f => field_to_child_node(field: f))
+    let type_children = r.fields |> map(f => field_to_child_node(field: f, source_index: prefix.state.source_index))
     let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r2.state), err: none }
   } else {
@@ -1420,7 +1422,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
       let rest = parse_more_variants_acc(tokens: tokens, state: r.state, acc: [first_variant])
       if has_err(err: rest.err) { return ItemResult { item: dummy, state: rest.state, err: rest.err } }
       let variants = rest.variants
-      let type_children = variants |> map(v => variant_to_child_node(variant: v))
+      let type_children = variants |> map(v => variant_to_child_node(variant: v, source_index: state.source_index))
       let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       ItemResult { item: item, state: skip_newlines(tokens: tokens, state: rest.state), err: none }
     } else {
@@ -1653,7 +1655,7 @@ fn parse_type_expr(tokens: List<Token>, state: ParserState) -> TypeResult {
       let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
       if has_err(err: r2.err) { return TypeResult { type_expr: leaf_type_node(name: "", span: inline_start), state: r2.state, err: r2.err } }
       let span = current_span(tokens: tokens, state: s)
-      let te = Node { name: "", span: span, ident_span: none, children: map(r.fields, f => field_to_child_node(field: f)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let te = Node { name: "", span: span, ident_span: none, children: map(r.fields, f => field_to_child_node(field: f, source_index: state.source_index)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       TypeResult { type_expr: te, state: r2.state, err: none }
     }
     // Callable type: fn(T1, T2) -> R
@@ -2013,7 +2015,7 @@ fn parse_func_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   // All three keywords use BlockBody with has_uses varying per form
   let has_uses = kw == "func"
-  let form = ItemForm { keyword: kw, has_type_params: false, has_params: true, has_return_type: true, return_required: false, has_uses: has_uses, body_kind: BlockBody }
+  let form = ItemForm { kind: OtherForm, keyword: kw, has_type_params: false, has_params: true, has_return_type: true, return_required: false, has_uses: has_uses, body_kind: BlockBody }
   let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
   if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
   parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
@@ -2241,7 +2243,7 @@ fn parse_service_after_kw(tokens: List<Token>, state: ParserState, start_span: S
   // don't need to reverse-engineer it by string-splitting.
   let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let svc_props = match r.config {
-    Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, rate_limit: cfg.rate_limit, retry: cfg.retry)
+    Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit, retry: cfg.retry)
     None => []
   }
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span },
@@ -2309,10 +2311,10 @@ fn parse_service_entries(tokens: List<Token>, state: ParserState, config: Servic
 
 fn parse_service_config_block(tokens: List<Token>, state: ParserState) -> ConfigResult {
   // Parse key: value pairs for config
-  parse_config_fields(tokens: tokens, state: state, endpoint: none, auth: none, auth_input: none, rate_limit: none, retry: none)
+  parse_config_fields(tokens: tokens, state: state, endpoint: none, auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none)
 }
 
-fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?, auth: Node?, auth_input: Node?, rate_limit: Node?, retry: Node?) -> ConfigResult {
+fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> ConfigResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if peek_is_rbrace(tokens: tokens, state: s) || at_end(tokens: tokens, state: s) {
     let cfg = ServiceConfig {
@@ -2322,12 +2324,13 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
       },
       auth: auth,
       auth_input: auth_input,
+      auth_source: auth_source,
       rate_limit: rate_limit,
       retry: retry
     }
     ConfigResult { config: cfg, state: s, err: none }
   } else {
-    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), auth: none, auth_input: none, rate_limit: none, retry: none }
+    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none }
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return ConfigResult { config: dummy_cfg, state: r.state, err: r.err } }
     let fname = r.name
@@ -2340,12 +2343,13 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
     let s3 = if e.consumed { e.state } else { s2 }
 
     match fname {
-      "endpoint" => parse_config_fields(tokens: tokens, state: s3, endpoint: Some { value: r3.expr }, auth: auth, auth_input: auth_input, rate_limit: rate_limit, retry: retry)
-      "auth" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: Some { value: r3.expr }, auth_input: auth_input, rate_limit: rate_limit, retry: retry)
-      "auth_input" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: Some { value: r3.expr }, rate_limit: rate_limit, retry: retry)
-      "rate_limit" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, rate_limit: Some { value: r3.expr }, retry: retry)
-      "retry" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, rate_limit: rate_limit, retry: Some { value: r3.expr })
-      _ => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, rate_limit: rate_limit, retry: retry)
+      "endpoint" => parse_config_fields(tokens: tokens, state: s3, endpoint: Some { value: r3.expr }, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "auth" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: Some { value: r3.expr }, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "auth_input" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: Some { value: r3.expr }, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "auth_source" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: Some { value: r3.expr }, rate_limit: rate_limit, retry: retry)
+      "rate_limit" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: Some { value: r3.expr }, retry: retry)
+      "retry" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: Some { value: r3.expr })
+      _ => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
     }
   }
 }
@@ -2512,7 +2516,7 @@ fn parse_file_fields(tokens: List<Token>, state: ParserState, base_path: Node?) 
 
 fn parse_operation_def(tokens: List<Token>, state: ParserState) -> OpResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
+  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_index: state.source_index)
   let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "operation" })
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
 
@@ -2532,7 +2536,7 @@ fn parse_operation_def(tokens: List<Token>, state: ParserState) -> OpResult {
 
 // v2 inline: operation Name modifiers? (params) -> RetType response? mock_response?
 fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
-  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
+  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_index: state.source_index)
   let mods_r = parse_operation_modifiers(tokens: tokens, state: state)
   let modifiers = mods_r.modifiers
   let mod_props = modifiers_to_props(modifiers: modifiers, span: start_span)
@@ -2566,14 +2570,15 @@ fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: Stri
   let op = make_operation_node(
     name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs,
     response_props: resp_r.responses, mock_props: mock_r.mocks,
-    exit_props: [], modifier_props: mod_props, transport: none, span: start_span
+    exit_props: [], modifier_props: mod_props, transport: none, span: start_span,
+    source_index: state.source_index
   )
   OpResult { operation: op, state: s, err: none }
 }
 
 // v1 block: operation Name { input {} output {} modifiers transport exit response mock_response }
 fn parse_operation_v1_body(tokens: List<Token>, state: ParserState, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
-  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
+  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_index: state.source_index)
   let r = expect(tokens: tokens, state: state, expected: ExpectLBrace)
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
@@ -2591,7 +2596,8 @@ fn parse_operation_v1_body(tokens: List<Token>, state: ParserState, name: String
     name: name, ident_span: Some { value: name_span }, inputs: r2.inputs, outputs: r2.outputs,
     response_props: r2.response_props, mock_props: r2.mock_props,
     exit_props: r2.exit_props, modifier_props: r2.modifier_props,
-    transport: r2.transport, span: start_span
+    transport: r2.transport, span: start_span,
+    source_index: state.source_index
   )
   OpResult { operation: op, state: skip_newlines(tokens: tokens, state: r3.state), err: none }
 }
@@ -2714,14 +2720,14 @@ fn modifiers_to_props(modifiers: List<OperationModifier>, span: SourceSpan) -> L
 }
 
 // Extract a string key from a status/exit code expression.
-fn status_expr_to_str(expr: Node) -> String {
+fn status_expr_to_str(expr: Node, source_index: NewlineIndex?) -> String {
   match expr.expr_data {
     ExprLiteral { value: v } => match v {
       LitInt { value: n } => int_to_string(value: n)
       LitStr { value: s } => s
       _ => "_"
     }
-    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: expr, source_index: none)
+    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: expr, source_index: source_index)
     _ => "_"
   }
 }
@@ -2833,7 +2839,7 @@ fn parse_exit_entries_acc(tokens: List<Token>, state: ParserState, acc: List<Nod
       _ => DescResult { desc: none, state: r3.state }
     }
     // Convert to property: exit_<code> = type_name
-    let code_str = status_expr_to_str(expr: code)
+    let code_str = status_expr_to_str(expr: code, source_index: state.source_index)
     let type_name = node_to_name_str(n: r3.type_expr)
     let prop_name = concat("exit_", code_str)
     let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
@@ -2956,7 +2962,7 @@ fn parse_response_entries_acc(tokens: List<Token>, state: ParserState, acc: List
     let r3 = parse_type_expr(tokens: tokens, state: r2.state)
     if has_err(err: r3.err) { return RespEntriesResult { entries: [], state: r3.state, err: r3.err } }
     // Convert to property: response_<status> = type_name
-    let status_str = status_expr_to_str(expr: status)
+    let status_str = status_expr_to_str(expr: status, source_index: state.source_index)
     let type_name = node_to_name_str(n: r3.type_expr)
     let prop_name = concat("response_", status_str)
     let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
@@ -3016,7 +3022,7 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, state: ParserState, acc:
       _ => DescResult { desc: none, state: r3.state }
     }
     // Convert to property: mock_<status> = body_expr
-    let status_str = status_expr_to_str(expr: status)
+    let status_str = status_expr_to_str(expr: status, source_index: state.source_index)
     let prop_name = concat("mock_", status_str)
     let entry = make_field_init_node(name: prop_name, value: body, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
     let e = eat(tokens: tokens, state: desc_r.state, expected: ExpectComma)
@@ -3145,7 +3151,7 @@ fn skip_until_rbrace(tokens: List<Token>, state: ParserState) -> UnitResult {
 // Parse capability in v1 block or v2 inline form.
 fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let dummy_cap = make_capability_node(name: "", ident_span: none, inputs: [], outputs: [], span: start_span)
+  let dummy_cap = make_capability_node(name: "", ident_span: none, inputs: [], outputs: [], span: start_span, source_index: state.source_index)
   let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "capability" })
   if has_err(err: r.err) { return CapResult { capability: dummy_cap, state: r.state, err: r.err } }
 
@@ -3163,7 +3169,7 @@ fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
     if has_err(err: io.err) { return CapResult { capability: dummy_cap, state: io.state, err: io.err } }
     let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: io.state), expected: ExpectRBrace)
     if has_err(err: r3.err) { return CapResult { capability: dummy_cap, state: r3.state, err: r3.err } }
-    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: io.inputs, outputs: io.outputs, span: start_span)
+    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: io.inputs, outputs: io.outputs, span: start_span, source_index: state.source_index)
     CapResult { capability: cap, state: skip_newlines(tokens: tokens, state: r3.state), err: none }
   } else if peek_is_lparen(tokens: tokens, state: s) {
     let r2 = expect(tokens: tokens, state: s, expected: ExpectLParen)
@@ -3179,10 +3185,10 @@ fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
       Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt)
       _ => []
     }
-    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs, span: start_span)
+    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs, span: start_span, source_index: state.source_index)
     CapResult { capability: cap, state: skip_newlines(tokens: tokens, state: ret.state), err: none }
   } else {
-    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: [], outputs: [], span: start_span)
+    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: [], outputs: [], span: start_span, source_index: state.source_index)
     CapResult { capability: cap, state: skip_newlines(tokens: tokens, state: s), err: none }
   }
 }
@@ -3458,7 +3464,7 @@ fn is_constraint_bracket_after_ident(tokens: List<Token>, state: ParserState) ->
   if state.pos + 1 < count(tokens) {
     let t1 = tokens |> skip(state.pos + 1) |> first
     match t1 {
-      Some { value: t } => is_lbracket_shape(shape: t.shape) && is_constraint_bracket(tokens: tokens, state: ParserState { pos: state.pos + 1 })
+      Some { value: t } => is_lbracket_shape(shape: t.shape) && is_constraint_bracket(tokens: tokens, state: ParserState { pos: state.pos + 1, source_index: state.source_index })
       None => false
     }
   } else { false }
@@ -3632,7 +3638,7 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
               let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
               match binop_opt {
                 Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
+                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: span)
                   parse_expr_loop(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
                 }
                 None => ExprResult { expr: lhs, state: r.state, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: span) } }
@@ -3692,7 +3698,7 @@ fn parse_pipe_rhs(tokens: List<Token>, state: ParserState, receiver: Node, span:
   if peek_is_lparen(tokens: tokens, state: s) {
     let r2 = parse_call_args(tokens: tokens, state: s)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_index: none), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: r.span), state: r2.state, err: none }
+    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_index: state.source_index), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: r.span), state: r2.state, err: none }
   } else {
     ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: [receiver], inferred: none, span: span, name_span: r.span), state: s, err: none }
   }
@@ -3877,7 +3883,7 @@ fn try_postfix(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: Int) 
       } else {
         let r = parse_call_args(tokens: tokens, state: state)
         if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, state: r.state, err: r.err } }
-        let call_expr = make_call_expr(lhs: lhs, args: r.args, span: span)
+        let call_expr = make_call_expr(lhs: lhs, args: r.args, span: span, source_index: state.source_index)
         PostfixResult { expr: call_expr, changed: true, state: r.state, err: none }
       }
     }
@@ -3912,7 +3918,7 @@ fn try_postfix(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: Int) 
     Some { value: ShLBrace } => {
       match lhs.expr_data {
         ExprVar { binding_kind: _ } => {
-          let n = expr_var_name_at(texpr: lhs, source_index: none)
+          let n = expr_var_name_at(texpr: lhs, source_index: state.source_index)
           if is_uppercase_start(name: n) && 14 <= min_bp {
             PostfixResult { expr: lhs, changed: false, state: state, err: none }
           } else {
@@ -4000,12 +4006,12 @@ fn try_constraint_annotations(tokens: List<Token>, state: ParserState) -> Constr
   }
 }
 
-fn make_call_expr(lhs: Node, args: List<Node>, span: SourceSpan) -> Node {
+fn make_call_expr(lhs: Node, args: List<Node>, span: SourceSpan, source_index: NewlineIndex?) -> Node {
   // Use lhs.span so ident_span points to the function/method name,
   // not the opening paren. Required for authored_name_at recovery.
   match lhs.expr_data {
-    ExprVar { binding_kind: _ } => make_named_expr_node(name: expr_var_name_at(texpr: lhs, source_index: none), expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
-    ExprFieldAccess { summary: _ } => make_named_expr_node(name: field_access_field_at(texpr: lhs, source_index: none), expr_data: ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
+    ExprVar { binding_kind: _ } => make_named_expr_node(name: expr_var_name_at(texpr: lhs, source_index: source_index), expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
+    ExprFieldAccess { summary: _ } => make_named_expr_node(name: field_access_field_at(texpr: lhs, source_index: source_index), expr_data: ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
     _ => make_named_expr_node(name: "<expr>", expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: no_span())
   }
 }
@@ -4177,7 +4183,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
       let r = parse_call_args(tokens: tokens, state: s)
       if has_err(err: r.err) { return ExprResult { expr: lhs, state: r.state, err: r.err } }
       let span = current_span(tokens: tokens, state: s)
-      let new_lhs = make_call_expr(lhs: lhs, args: r.args, span: span)
+      let new_lhs = make_call_expr(lhs: lhs, args: r.args, span: span, source_index: state.source_index)
       parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
     } else if peek_is_lbracket(tokens: tokens, state: s) && 14 >= min_bp {
       let span = current_span(tokens: tokens, state: s)
@@ -4212,7 +4218,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
               let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
               match binop_opt {
                 Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
+                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: span)
                   parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
                 }
                 None => ExprResult { expr: lhs, state: r.state, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: span) } }

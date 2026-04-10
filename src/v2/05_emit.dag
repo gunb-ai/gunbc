@@ -59,7 +59,8 @@ import v2.std.core {
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import std.induction { InductiveField }
-import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, binop_algebra_fields }
+// NamingCase, PascalCase, SnakeCase imported via v2.compiler.languages (bootstrap-local mirror)
+import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node }
 import std.types { is_container_type, container_to_algebra_name }
 import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
@@ -77,7 +78,10 @@ import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
   LanguageSpec, TestConventions, ServiceFieldTemplates,
-  BlockSyntax, TcoSyntax,
+  BlockSyntax, TcoSyntax, ExpressionSemantics,
+  IfValueForm, IfExpression, ConditionalTernary, IfStatement,
+  VisibilitySpec, KeywordVisibility, CaseVisibility,
+  NamingCase, PascalCase, SnakeCase,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
@@ -224,8 +228,8 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_index: NewlineIndex
     ExprFieldAccess { summary: _ } =>
       let f = field_access_field_at(texpr: expr, source_index: source_index)
       let b = field_access_base(texpr: expr)
-      if is_typed_service_call_receiver(receiver: expr) {
-        match extract_typed_service_name(receiver: expr) {
+      if is_typed_service_call_receiver(receiver: expr, source_index: source_index) {
+        match extract_typed_service_name(receiver: expr, source_index: source_index) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)
           None => concat(emit_simple_expr(expr: b, target: target, source_index: source_index), ".", emit_ident(name: f, target: target))
         }
@@ -347,8 +351,8 @@ fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig?
   map_get(scope.func_env.signatures, name)
 }
 
-fn typed_named_arg_matches(arg: Node, name: String) -> Bool {
-  let n = arg_name_at(n: arg, source_index: none)
+fn typed_named_arg_matches(arg: Node, name: String, source_index: NewlineIndex?) -> Bool {
+  let n = arg_name_at(n: arg, source_index: source_index)
   if n == none {
     false
   } else {
@@ -412,7 +416,7 @@ fn unique_strings(items: List<String>) -> List<String> {
 
 // Nested record detection -- for data definition edge cases.
 // Anonymous product = Conj connective with empty name.
-fn has_nested_records_node(n: Node) -> Bool {
+fn has_nested_records_node(n: Node, source_index: NewlineIndex?) -> Bool {
   let is_product = n.connective == Conj
   let is_coproduct = n.connective == Disj
   if is_product {
@@ -423,18 +427,18 @@ fn has_nested_records_node(n: Node) -> Bool {
   } else if is_coproduct {
     let is_optional = n.return_cardinality == CardOptional
     if is_optional {
-      has_nested_records_node(n: with_required_cardinality(n: n))
+      has_nested_records_node(n: with_required_cardinality(n: n), source_index: source_index)
     } else { false }
   } else {
-    let is_map = node_is_keyed_collection(n: n, source_index: none)
+    let is_map = node_is_keyed_collection(n: n, source_index: source_index)
     if is_map {
       match skip(n.children, 1) |> first {
-        Some { value: val_child } => has_nested_records_node(n: child_type_node(ch: val_child))
+        Some { value: val_child } => has_nested_records_node(n: child_type_node(ch: val_child), source_index: source_index)
         None => false
       }
     } else if n.children |> count == 1 {
       match n.children |> first {
-        Some { value: el } => has_nested_records_node(n: child_type_node(ch: el))
+        Some { value: el } => has_nested_records_node(n: child_type_node(ch: el), source_index: source_index)
         None => false
       }
     } else {
@@ -623,6 +627,19 @@ fn to_pascal(name: String) -> String {
   let parts = snake |> split(delimiter: "_")
   let pascal_parts = parts |> map(p => capitalize_first(s: p))
   pascal_parts |> join(separator: "")
+}
+
+// Apply a naming case transformation to an identifier.
+// Used by CaseVisibility to convert identifiers for export.
+fn apply_naming_case(name: String, case_style: NamingCase) -> String {
+  match case_style {
+    PascalCase => {
+      let parts = name |> split(delimiter: "_")
+      let pascal_parts = parts |> map(p => capitalize_first(s: p))
+      pascal_parts |> join(separator: "")
+    }
+    SnakeCase => to_snake(name: name)
+  }
 }
 
 // Derive the variable name for a service: "git.Core" -> "git_core"
@@ -852,21 +869,6 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
     LitBool { value: b } => if b { emit_keyword(key: "true", target: target) } else { emit_keyword(key: "false", target: target) }
     LitNull => emit_keyword(key: "null", target: target)
   }
-}
-
-// Resolve which algebra field a BinOp maps to on the given operand type.
-// Returns "reciprocal" for Div on Field, "quotient" for Div on Ring, etc.
-fn resolved_binop_algebra(op: BinOp, left_type: Node, source_index: NewlineIndex?) -> String? {
-  let candidates = binop_algebra_fields(op: op)
-  let is_product = left_type.connective == Conj
-  if is_product {
-    let matching = candidates |> filter(c =>
-      match find_child_named(n: left_type, name: c, source_index: source_index) {
-        Some { value: _ } => true
-        None => false
-      })
-    matching |> first
-  } else { none }
 }
 
 // Operator symbol lookup — reads from per-language OperatorSpec in
@@ -1341,7 +1343,7 @@ fn classify_expr(texpr: Node) -> ExprCategory {
     ExprMethodCall { method_semantics: _ } => ExprCatCompound
     ExprRecordLit { parent_enum: _ } => ExprCatCompound
     ExprListLit => ExprCatCompound
-    ExprBinOp { op: _ } => ExprCatCompound
+    ExprBinOp { op: _, algebra_field: _ } => ExprCatCompound
     ExprUnaryOp { op: _ } => ExprCatCompound
     ExprLambda { semantics: _ } => ExprCatCompound
     ExprStringInterp => ExprCatCompound
@@ -1856,9 +1858,9 @@ fn emit_expr_var_shared(expr: Node, target: RenderTarget, source_index: NewlineI
 
 // Shared ExprFieldAccess service-receiver check. Delegates to emit_field
 // for the backend-specific field access rendering.
-fn emit_expr_field_access_shared(expr: Node, target: RenderTarget, emit_field: fn(Node) -> String) -> String {
-  if is_typed_service_call_receiver(receiver: expr) {
-    match extract_typed_service_name(receiver: expr) {
+fn emit_expr_field_access_shared(expr: Node, target: RenderTarget, emit_field: fn(Node) -> String, source_index: NewlineIndex?) -> String {
+  if is_typed_service_call_receiver(receiver: expr, source_index: source_index) {
+    match extract_typed_service_name(receiver: expr, source_index: source_index) {
       Some { value: svc_name } => service_var_name(service_name: svc_name)
       None => emit_field(expr)
     }
@@ -1994,7 +1996,7 @@ fn emit_shared_expr(
       emit_let(texpr)
     ExprRecordLit { parent_enum: _ } =>
       emit_record_lit(texpr)
-    ExprBinOp { op: _ } =>
+    ExprBinOp { op: _, algebra_field: _ } =>
       emit_bin_op(texpr)
     ExprUnaryOp { op: op } =>
       let operand = unaryop_operand(texpr: texpr)
@@ -2027,7 +2029,7 @@ fn emit_shared_expr(
 // Type-aware: resolves algebra field from left operand to select correct operator symbol.
 fn emit_default_bin_op(texpr: Node, target: RenderTarget, source_index: NewlineIndex?, recurse: fn(Node) -> String, wrap_result: fn(String) -> String) -> String {
   match texpr.expr_data {
-    ExprBinOp { op: op } =>
+    ExprBinOp { op: op, algebra_field: algebra } =>
       let left = binop_left(texpr: texpr)
       let right = binop_right(texpr: texpr)
       let left_str = recurse(left)
@@ -2035,8 +2037,6 @@ fn emit_default_bin_op(texpr: Node, target: RenderTarget, source_index: NewlineI
       if is_null_coalesce(op: op) {
         wrap_result(emit_null_coalesce(l_str: left_str, r_str: right_str, target: target))
       } else {
-        let left_type = resolved_type(n: left)
-        let algebra = resolved_binop_algebra(op: op, left_type: left_type, source_index: source_index)
         let op_str = emit_bin_op_symbol(op: op, target: target, algebra_field: algebra)
         wrap_result(concat("(", left_str, " ", op_str, " ", right_str, ")"))
       }
@@ -2106,6 +2106,70 @@ fn emit_typed_let_shared(name: String, value_str: String, body: Node?, target: R
       let next_scope = extend_scope(scope: scope, name: name, resolved: resolved_type(n: value_node))
       concat(let_line, "\n", recurse(bd, next_scope))
     None => let_line
+  }
+}
+
+// Shared typed if — data-driven expression vs statement dispatch.
+// IfExpression (Rust): if/else natively produces value, branches at depth+1.
+// ConditionalTernary (Python): (then) if (cond) else (else), branches at depth.
+// IfStatement (Go): IIFE wrapper for value position, branches at depth.
+// Without else: statement form for all — significant_whitespace controls body depth.
+fn emit_typed_if_shared(
+    cond_str: String,
+    then_branch: Node,
+    else_branch: Node?,
+    if_result_type: Node?,
+    depth: Int,
+    target: RenderTarget,
+    source_index: NewlineIndex?,
+    recurse: fn(Node, Int) -> String
+) -> String {
+  let spec = language_spec(target: target)
+  let es = spec.expression_semantics
+  let bs = spec.block_syntax
+  match else_branch {
+    Some { value: eb } =>
+      match es.if_value_form {
+        IfExpression => {
+          let then_str = recurse(then_branch, depth + 1)
+          let else_str = recurse(eb, depth + 1)
+          concat("if ", cond_str, bs.block_open,
+            make_indent(level: depth + 1), then_str, "\n",
+            make_indent(level: depth), bs.else_clause,
+            make_indent(level: depth + 1), else_str, "\n",
+            make_indent(level: depth), bs.block_close)
+        }
+        ConditionalTernary => {
+          let then_str = recurse(then_branch, depth)
+          let else_str = recurse(eb, depth)
+          concat("(", then_str, ") if (", cond_str, ") else (", else_str, ")")
+        }
+        IfStatement => {
+          // Compute result type before recursing — then_branch is consumed by recurse.
+          let result_type = match if_result_type {
+            Some { value: rt } => emit_node_type(n: rt, target: target, source_index: source_index)
+            None => emit_node_type(n: resolved_type(n: then_branch), target: target, source_index: source_index)
+          }
+          let then_str = recurse(then_branch, depth)
+          let else_str = recurse(eb, depth)
+          concat("func() ", result_type, " { if ", cond_str, bs.block_open,
+            make_indent(level: depth + 1), "return ", then_str, "\n",
+            make_indent(level: depth), bs.else_clause,
+            make_indent(level: depth + 1), "return ", else_str, "\n",
+            make_indent(level: depth), bs.block_close, " }()")
+        }
+      }
+    None =>
+      if bs.significant_whitespace {
+        let then_str = recurse(then_branch, depth)
+        concat("if ", cond_str, bs.block_open,
+          make_indent(level: depth + 1), then_str)
+      } else {
+        let then_str = recurse(then_branch, depth + 1)
+        concat("if ", cond_str, bs.block_open,
+          make_indent(level: depth + 1), then_str, "\n",
+          make_indent(level: depth), bs.block_close)
+      }
   }
 }
 

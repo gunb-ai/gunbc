@@ -192,7 +192,7 @@ pub fn cost_poly(param: String, degree: i64) -> Rc<CostBound> {
 pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
     if (k.clone() <= 0) {
         Rc::new(CostBound::ErrorBound)
-} else {
+    } else {
         Rc::new(CostBound::AtomicBound {
     cost: Rc::new(AtomicCost::PolyCost {
     param: param,
@@ -202,7 +202,7 @@ pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
 }),
 }),
 })
-}
+    }
 }
 
 pub fn cost_sqrt(param: String) -> Rc<CostBound> {
@@ -262,12 +262,12 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (exp.clone() <= 0) {
             1
-} else {
+        } else {
             {
                 let prev = int_pow_bounded(base.clone(), (exp.clone() - 1));
 (base.clone() * prev)
 }
-}
+        }
     })
 }
 
@@ -303,7 +303,7 @@ let d = form.work_exponent.clone();
 let n = form.param.clone();
 if ((a.clone() < 1) || (b.clone() < 2)) {
             Rc::new(CostBound::ErrorBound)
-} else {
+        } else {
             {
                 let b_to_d = int_pow_bounded(b.clone(), d.clone());
 if (a.clone() < b_to_d.clone()) {
@@ -311,7 +311,7 @@ if (a.clone() < b_to_d.clone()) {
     0 => Rc::new(CostBound::ConstantBound),
     _ => cost_poly(n.clone(), d.clone()),
 }
-} else {
+                } else {
                     if (a.clone() == b_to_d.clone()) {
                         match d.clone() {
     0 => cost_log(n.clone()),
@@ -326,7 +326,7 @@ if (a.clone() < b_to_d.clone()) {
 })]),
 }),
 }
-} else {
+                    } else {
                         Rc::new(CostBound::AtomicBound {
     cost: Rc::new(AtomicCost::PolyCost {
     param: n.clone(),
@@ -336,10 +336,10 @@ if (a.clone() < b_to_d.clone()) {
 }),
 }),
 })
+                    }
+                }
 }
-}
-}
-}
+        }
 }
 }
 
@@ -354,14 +354,14 @@ pub fn derive_bound(param: String, branches: i64, factor: Rc<ShrinkFactor>, work
     match (*factor).clone() {
     ShrinkFactor::UnitShrink => if (branches <= 1) {
         cost_linear(param)
-} else {
+    } else {
         Rc::new(CostBound::ForeverBound)
-},
+    },
     ShrinkFactor::ConstantShrink { .. } => if (branches <= 1) {
         cost_linear(param)
-} else {
+    } else {
         Rc::new(CostBound::ForeverBound)
-},
+    },
     ShrinkFactor::ProportionalShrink { divisor: d, .. } => master_theorem(Rc::new(RecurrenceForm {
     param: param,
     branches: branches,

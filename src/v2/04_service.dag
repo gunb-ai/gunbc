@@ -16,6 +16,7 @@ import v2.std.core {
   ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
   Cardinality, Required,
   InferredNode, Resolved,
+  NewlineIndex,
   no_span,
   unit_type,
   expr_var_name, expr_var_name_at, expr_call_func, expr_call_func_at, field_access_field, field_access_field_at, field_access_base,
@@ -55,10 +56,10 @@ type ServiceMethodResult {
 // Typed-receiver service call detection
 // =========================================================================
 
-fn is_typed_service_call_receiver(receiver: Node) -> Bool {
+fn is_typed_service_call_receiver(receiver: Node, source_index: NewlineIndex?) -> Bool {
   match receiver.expr_data {
     ExprFieldAccess { summary: _ } =>
-      let f = field_access_field_at(texpr: receiver, source_index: none)
+      let f = field_access_field_at(texpr: receiver, source_index: source_index)
       let b = field_access_base(texpr: receiver)
       match b.expr_data {
         ExprVar { binding_kind: _ } => {
@@ -74,14 +75,14 @@ fn is_typed_service_call_receiver(receiver: Node) -> Bool {
   }
 }
 
-fn extract_typed_service_name(receiver: Node) -> String? {
+fn extract_typed_service_name(receiver: Node, source_index: NewlineIndex?) -> String? {
   match receiver.expr_data {
     ExprFieldAccess { summary: _ } =>
-      let f = field_access_field_at(texpr: receiver, source_index: none)
+      let f = field_access_field_at(texpr: receiver, source_index: source_index)
       let b = field_access_base(texpr: receiver)
       match b.expr_data {
         ExprVar { binding_kind: _ } =>
-          let ns = expr_var_name_at(texpr: b, source_index: none)
+          let ns = expr_var_name_at(texpr: b, source_index: source_index)
           Some { value: concat(ns, ".", f) }
         _ => none
       }
@@ -89,18 +90,18 @@ fn extract_typed_service_name(receiver: Node) -> String? {
   }
 }
 
-fn collect_typed_service_calls(texpr: Node) -> List<String> {
-  let result = collect_typed_service_calls_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] })
+fn collect_typed_service_calls(texpr: Node, source_index: NewlineIndex?) -> List<String> {
+  let result = collect_typed_service_calls_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] }, source_index: source_index)
   result.result
 }
 
-fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum {
+fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum, source_index: NewlineIndex?) -> UniqueAccum {
   // Per-node logic: detect service method calls on typed receivers.
   let this_acc = match texpr.expr_data {
     ExprMethodCall { method_semantics: _ } =>
       let r = method_receiver(texpr: texpr)
-      if is_typed_service_call_receiver(receiver: r) {
-        match extract_typed_service_name(receiver: r) {
+      if is_typed_service_call_receiver(receiver: r, source_index: source_index) {
+        match extract_typed_service_name(receiver: r, source_index: source_index) {
           Some { value: service_name } =>
             if emit_map_has(m: acc.seen, key: service_name) { acc }
             else { UniqueAccum { seen: map_insert(acc.seen, service_name, true), result: list_push(acc.result, service_name) } }
@@ -111,45 +112,43 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum) -> UniqueAccu
   }
   // Structural recursion into all child expressions.
   let result = texpr.children |> fold(init: this_acc, f: (a, child) =>
-    collect_typed_service_calls_into(texpr: child, acc: a)
+    collect_typed_service_calls_into(texpr: child, acc: a, source_index: source_index)
   )
   result
 }
 
-fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum {
+fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum, source_index: NewlineIndex?) -> UniqueAccum {
   // Per-node logic: detect function calls and accumulate unique names.
   let this_acc = match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      let f = expr_call_func_at(texpr: texpr, source_index: none)
+      let f = expr_call_func_at(texpr: texpr, source_index: source_index)
       if emit_map_has(m: acc.seen, key: f) { acc }
       else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }
     _ => acc
   }
   // Structural recursion into all child expressions.
   let result = texpr.children |> fold(init: this_acc, f: (a, child) =>
-    collect_called_func_names_into(texpr: child, acc: a)
+    collect_called_func_names_into(texpr: child, acc: a, source_index: source_index)
   )
   result
 }
 
-fn collect_called_func_names(texpr: Node) -> List<String> {
-  let result = collect_called_func_names_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] })
+fn collect_called_func_names(texpr: Node, source_index: NewlineIndex?) -> List<String> {
+  let result = collect_called_func_names_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] }, source_index: source_index)
   result.result
 }
 
 fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> Map<String, ItemInfo> {
-  let all_items = modules |> flat_map(m => m.items)
-  all_items |> fold(init: registry, f: (reg, item) =>
-    match map_get(reg, item.name) {
+  modules |> fold(init: registry, f: (reg, m) =>
+    m.items |> fold(init: reg, f: (reg2, item) =>
+    match map_get(reg2, item.name) {
       Some { value: info } =>
-        let is_not_func = info.kind != FuncItem
         let has_no_body = item.body == none
-        if is_not_func { reg }
-        else if has_no_body { reg }
+        if has_no_body { reg2 }
         else {
-          let called = collect_called_func_names(texpr: item.body.value)
+          let called = collect_called_func_names(texpr: item.body.value, source_index: m.type_env.source_index)
           let extra = called |> flat_map(callee_name =>
-            match map_get(reg, callee_name) {
+            match map_get(reg2, callee_name) {
               Some { value: callee_info } => callee_info.service_names
               None => []
             }
@@ -159,9 +158,9 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
             else { list_push(svc_list, svc) }
           )
           let same_count = merged |> count == info.service_names |> count
-          if same_count { reg }
+          if same_count { reg2 }
           else {
-            map_insert(reg, item.name, ItemInfo {
+            map_insert(reg2, item.name, ItemInfo {
               name: info.name,
               kind: info.kind,
               service_names: merged,
@@ -172,9 +171,9 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
             })
           }
         }
-      None => reg
+      None => reg2
     }
-  )
+  ))
 }
 
 fn total_service_count(registry: Map<String, ItemInfo>) -> Int {

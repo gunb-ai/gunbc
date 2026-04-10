@@ -859,13 +859,18 @@ resolve uses structural identity.
   - [x] Remove dual-si from `build_complexity_report` (FuncEntry.si only)
   - [x] Migrate ~30 direct `n.name` reads to `authored_name_at` in emit/types
   - [x] Revert `@synthetic:` ident_span — structural identity is correct path
-  - **Status:** 52 `source_index: none` remain in scope-free functions.
-    ~20 direct `n.name` reads remain. 115 Node construction sites need
-    `name:` removed for field deletion.
+  - **Status:** 1 `source_index: none` remains (empty_emit_scope struct init —
+    semantically correct). ~20 direct `n.name` reads remain. 115 Node
+    construction sites need `name:` removed for field deletion.
+- D6 progress (PR #362):
+  - [x] Add `NewlineIndex` to `ParserState` (14 parser calls)
+  - [x] Thread `source_indices` through compile.dag serialization (11 calls)
+  - [x] Thread `source_index` through mock/service/transport utilities (27 calls)
+  - [x] Thread `source_index` through sigs/service callers in 04_infer.dag
+  - [x] Thread `source_index` through complexity.dag callers (5 calls)
+  - [x] Build newline indices in `front_end_sources` before parsing
+  - [x] Add `newline_indices` to `FrontendResult` (deduplicate with compile_sources)
 - D6 open (structural work, not mechanical wiring):
-  - [ ] Add `NewlineIndex` to `ParserState` (14 parser calls)
-  - [ ] Thread `source_indices` through compile.dag serialization (11 calls)
-  - [ ] Thread `source_index` through mock/service/transport utilities (19 calls)
   - [ ] Migrate remaining `n.name` reads (resolve slot_bindings, service
     names, normalize, access `is_ordered_element_collection`)
   - [ ] `named_collection_type` fabrication — `container_param_name` gap
@@ -1484,11 +1489,31 @@ visited-set growth as fold over a finite universe.
 Only used for single-function recursion. Fix: include ArithmeticValue
 in the SCC proof dimension search (Gap 2 fix covers this).
 
-**Completeness guarantee:** When all 4 gaps are closed:
+**Gap 5: Lambda transparency.**
+Higher-order dispatch (e.g., `emit_shared_expr` with callback parameters)
+is opaque. When `f(callback: expr => g(expr))` calls `callback(child)`,
+the CX system sees a call to a lambda parameter — not `g(child)`. The
+information drops at `build_params_scope` (04_infer.dag:681): TypeBinding
+stores the Callable type, not the lambda body. In a decidable language,
+all lambdas are statically known. Fix: preserve lambda body in TypeBinding
+or inline at call sites. Dissolves emitter SCC violations (~112).
+
+**Deferred to types-in-std:**
+- `compiler_recursive_types` parallel fact table — dissolves when all
+  types move to std/ and recursive_type_set derives from inductive_fields.
+- Non-Node types in recursive set — intentional for cross-type detection;
+  bounded-kernel applies to the language, not the compiler's own types.
+- Hardcoded collection-preserving method names (skip/filter/take/etc.) —
+  dissolves when method semantics come from std/ type declarations.
+- `classify_let_value` takes first ListRecursion field by order — dissolves
+  when types declare projection facts (which field a function accesses).
+
+**Completeness guarantee:** When all 5 gaps are closed:
 - Every ExprData variant → SubValueRelation (exhaustive)
 - Every SubValueRelation → CallPattern (exhaustive)
 - Every CallPattern → LoweringTarget (exhaustive)
 - Every SCC topology → lexicographic proof search (exhaustive)
+- Lambda callbacks → transparent (inline at call site)
 - New code either maps to a proven primitive or gets CostUnknown
   (fail-closed). CostUnknown means "declare the missing fact" —
   not "add a new heuristic."
@@ -1573,24 +1598,29 @@ Make `emit_rest_call` and `emit_shell_call` consume the transport
 config they already receive. No new .dag modeling needed.
 
 **REST:**
-- [ ] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
-- [ ] RE-1b: Path template from `transport.path` with param substitution
+- [x] RE-1a: HTTP method from `transport.method` → `.get()`/`.post()`/etc.
+- [x] RE-1b: Path template from `transport.path` with param substitution
   → `format!("/repos/{}/{}/pulls", owner, repo)`
-- [ ] RE-1c: Query parameters from `transport.query`
+- [x] RE-1c: Query parameters from `transport.query`
   → `.query(&[("state", &state)])`
-- [ ] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
-- [ ] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
+- [x] RE-1d: Auth scheme from `config.auth` (Bearer vs Header("x-api-key"))
+- [x] RE-1e: Response code mapping from `response { 200 => ..., 401 => ... }`
 
 **Shell:**
-- [ ] RE-1f: argv from `transport.argv` with param substitution
+- [x] RE-1f: argv from `transport.argv` with param substitution
   → `Command::new("sh").arg("-lc").arg(&script)`
-- [ ] RE-1g: stdin from `transport.stdin`
+- [x] RE-1g: stdin from `transport.stdin`
   → `.stdin(Stdio::piped())` + write
-- [ ] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
+- [x] RE-1h: Exit code handling from `exit { 0 => ..., nonzero => ... }`
 
 **Response:**
-- [ ] RE-1i: `from "content/0/text"` JSON path extraction on response
-- [ ] RE-1j: Nested output struct field mapping via serde rename
+- [x] RE-1i: `from "content/0/text"` JSON path extraction on response
+  — emitter detects `from_key` on output fields, deserializes to `serde_json::Value`,
+  extracts via `json_body.pointer()` with type-specific accessors (`.as_str()`,
+  `.as_i64()`, etc.). Flat paths use same mechanism. Test: `rest_output_from_clause_extracts_path`.
+- [x] RE-1j: Nested output field extraction via JSON pointer
+  — `from_key` paths use JSON pointer extraction at response time (same mechanism
+  as RE-1i). Struct serde rename remains for flat field name mapping.
 
 **Blocked by:** Nothing — all data already flows to the emitter.
 
@@ -1642,10 +1672,10 @@ rest_output_from_clause_extracts_path
   Input:  operation with `output { value: String from "data/items/0/name" }`
   Assert: emitted Rust uses serde_json pointer or index chain to extract
 
-# RE-1j: Nested output field mapping
-rest_output_struct_uses_serde_rename
-  Input:  operation with output fields whose JSON names differ from Rust names
-  Assert: emitted struct has `#[serde(rename = "...")]` attributes
+# RE-1j: Nested output field extraction (uses RE-1i mechanism)
+rest_output_nested_from_extracts_path
+  Input:  operation with output fields using nested `from "a/b/c"` paths
+  Assert: emitted Rust uses `json_body.pointer("/a/b/c")` extraction
 ```
 
 ### RE-2: review.dag dry-run compilation
@@ -1653,15 +1683,25 @@ rest_output_struct_uses_serde_rename
 Compile `review.dag` + its imports to a binary that runs with
 `--dry-run`, returning mock responses.
 
-- [ ] RE-2a: Async for-each — detect FuncItem body, emit `.await?`
-  in collection loop body (emitter support exists; acceptance test not yet added)
-- [ ] RE-2b: Cross-module service resolution — review.dag imports
-  from 4 modules (FF-9 handles this; acceptance test not yet added)
-- [ ] RE-2c: Conditional guard — review.dag's `already_done` check
-  needs to short-circuit (acceptance test not yet added)
+**Root cause (fixed):** Effectfulness was not propagated transitively.
+`item_kind()` used `uses |> count > 0` as sole FuncItem criterion, so
+items calling effectful functions (but without direct `use` clauses)
+were classified as FnItem → no async, no service params, no `.await?`.
+Fix: `ItemInfo.service_names` now populated via `collect_typed_service_calls`
+for all body-bearing items, and `expand_transitive_services` propagates
+service dependencies from callees to callers. Emit decides async/effectful
+from `service_names |> count > 0 || resource_names |> count > 0`.
+18 cargo errors → 0.
+
+- [x] RE-2a: Async for-each — items with transitive service calls emit
+  async functions; `.await?` emitted in collection loop body
+- [x] RE-2b: Cross-module service resolution — `service_names` propagation
+  via `expand_transitive_services` flows across module boundaries
+- [x] RE-2c: Conditional guard — review.dag's `already_done` check
+  compiles correctly (bool short-circuit in emitted Rust)
 - [x] RE-2d: End-to-end compilation gate (0 cargo check errors)
 
-**Blocked by:** RE-1
+**Blocked by:** RE-1 (done)
 
 **Acceptance tests:**
 
@@ -1729,27 +1769,106 @@ cardinality and rendered type strings.
 
 Make the compiled binary work against real GitHub + LLM CLI.
 
-- [ ] RE-3a: Auth token injection — `auth_token` from env var
-  (`GITHUB_TOKEN`) or secret manager
+- [ ] RE-3a: Credential acquisition — structural credential sourcing (see design below)
 - [ ] RE-3b: REST response deserialization — emitted struct fields
   match GitHub API JSON shape (serde attrs: `#[serde(rename)]`)
 - [ ] RE-3c: Shell stdout capture for multi-line LLM output
 - [ ] RE-3d: Cron upsert produces valid crontab entry
 
-**Blocked by:** RE-2
+**Blocked by:** RE-3a design (credential modeling)
+
+#### RE-3a design: Structural credential acquisition
+
+**Problem:** Services declare `auth: Bearer, auth_input: auth_token` and
+operations accept `auth_token: Secret` as input, but nothing connects
+"this service needs a GitHub token" to "here's where to get it." The
+pieces exist (`std/credentials.dag:env_credential`,
+`extdeps/github/auth.dag:github_token`) but are unwired. The emitter
+passes `""` for credentials at call sites.
+
+**Existing infrastructure:**
+- `std/types.dag:228` — `type Secret = String` (kernel type)
+- `std/credentials.dag:24` — `pattern env_credential(env_var) -> { token: Secret }`
+  reads from process environment
+- `extdeps/github/auth.dag:13` — `func github_token(project_id, secret_name)`
+  reads from GCP Secret Manager via `gcp_secret_credential`
+- `extdeps/github/pulls.dag:60` — `auth_input: auth_token` names the credential field
+- `extdeps/github/pulls.dag:69` — every operation has `auth_token: Secret` input param
+
+**Design direction — `CredentialSource` in `std/credentials.dag`:**
+
+Model WHERE a credential comes from as a structural type. The service
+config declares a source; the emitter generates acquisition code at
+service construction time. Operations use `self.auth_token` (struct
+field) instead of per-call parameters.
+
+```dag
+// std/credentials.dag — credential source declaration
+type CredentialSource =
+  | EnvVar { name: String }                        // process env var
+  | DotEnv { path: FilePath, key: String }         // .env file
+  | GcpSecret { project: String, secret: String }  // GCP Secret Manager
+  | File { path: FilePath }                        // credential file
+```
+
+Service config gains `auth_source`:
+```dag
+service github.Pulls {
+  config {
+    endpoint: "https://api.github.com"
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+  }
+}
+```
+
+**Compile-time credential tracing (endstate):**
+
+When a function calls a service, the compiler traces the credential
+dependency chain: function → service → auth_source → CredentialSource.
+At compile time, the compiler proves that every service's credential
+source is declared and reachable. This is analogous to the complexity
+analyzer proving termination — the credential analyzer proves that all
+external dependencies have acquisition strategies.
+
+The `uses` clause becomes the binding site:
+```dag
+func review_pr(owner: String, repo: String, pr_number: Int) -> ReviewResult
+  uses github: github.Pulls  // compiler resolves: needs GITHUB_TOKEN env var
+{
+  let pr = github.Pulls.Get(owner, repo, pr_number)
+  ...
+}
+```
+
+The compiler:
+1. Sees `uses github: github.Pulls`
+2. Reads `github.Pulls.config.auth_source → EnvVar { name: "GITHUB_TOKEN" }`
+3. Emits constructor that reads `std::env::var("GITHUB_TOKEN")?`
+4. Removes `auth_token` from operation call signatures (service owns it)
+5. At compile time: if no `auth_source` is declared, diagnostic error
+
+This makes the credential story provable by construction: you cannot
+compile a program that uses a service without declaring how credentials
+are acquired.
+
+**Bootstrap implementation (`.env` only):**
+
+Phase 1: `CredentialSource` type + `EnvVar` variant in `std/credentials.dag`.
+Phase 2: Service config parser accepts `auth_source` property.
+Phase 3: Emitter reads `auth_source`, generates env var read in constructor,
+removes `auth_token` from operation signatures.
+Phase 4: `auth_token: Secret` operation params become service-managed
+(callers no longer pass them — the service struct injects them).
 
 **Acceptance tests:**
 
 ```
 # RE-3a: Auth from env
 service_auth_reads_env_var
-  Input:  service with `auth_input: api_key` + func param `api_key: Secret`
-  Assert: emitted CLI reads --api-key or GITHUB_TOKEN env var
-
-# RE-3d: Cron emission
-cron_upsert_emits_valid_crontab
-  Input:  service call `cron.Tab.Upsert(tag: "x", schedule: "*/10 * * * *", ...)`
-  Assert: emitted Rust writes crontab entry with tag-based dedup
+  Input:  service with `auth_source: EnvVar { name: "TEST_TOKEN" }`
+  Assert: emitted constructor contains `std::env::var("TEST_TOKEN")`
+  Assert: operation methods do NOT have auth_token parameter
 
 # Integration (manual gate, not CI):
 review_agent_dry_run_prints_mock_json
@@ -1757,7 +1876,7 @@ review_agent_dry_run_prints_mock_json
   Assert: prints JSON with `{ "reviewed": true, "comment_url": "..." }`
 
 review_agent_live_posts_review
-  Run: `./review-agent review-pr --owner gunb-ai --repo gunbc --pr-number <N>`
+  Run: `GITHUB_TOKEN=... ./review-agent review-pr --owner gunb-ai --repo gunbc --pr-number <N>`
   Assert: GitHub PR has new review comment
   Gate: manual — requires GITHUB_TOKEN + LLM CLI installed
 ```

@@ -886,30 +886,42 @@ fn binop_algebra_fields(op: BinOp) -> List<String> {
   }
 }
 
-// Try each candidate field name on the type, return first match.
-fn first_matching_algebra_field(n: Node, candidates: List<String>, source_index: NewlineIndex?) -> Node? {
+// Algebra field match — returns both the field name and node.
+type AlgebraFieldMatch {
+  field_name: String
+  field_node: Node
+}
+
+// Try each candidate field name on the type, return first match with name.
+fn first_matching_algebra_field(n: Node, candidates: List<String>, source_index: NewlineIndex?) -> AlgebraFieldMatch? {
   match candidates |> first {
     None => none
     Some { value: name } =>
       match find_child_named(n: n, name: name, source_index: source_index) {
-        Some { value: f } => Some { value: f }
+        Some { value: f } => Some { value: AlgebraFieldMatch { field_name: name, field_node: f } }
         None => first_matching_algebra_field(n: n, candidates: candidates |> skip(1), source_index: source_index)
       }
   }
 }
 
-fn infer_binop_type_node(op: BinOp, left_type: Node, source_index: NewlineIndex?) -> Node {
+// BinOp inference result — carries both result type and resolved algebra field.
+type BinOpInferred {
+  result_type: Node
+  algebra_field: String?
+}
+
+fn infer_binop_type_node(op: BinOp, left_type: Node, source_index: NewlineIndex?) -> BinOpInferred {
   // Comparison and boolean ops always return Bool
   match op {
-    Eq => bool_type
-    Ne => bool_type
-    Lt => bool_type
-    Gt => bool_type
-    Le => bool_type
-    Ge => bool_type
-    And => bool_type
-    Or => bool_type
-    NullCoalesce => extract_optional_inner_node(n: left_type)
+    Eq => BinOpInferred { result_type: bool_type, algebra_field: none }
+    Ne => BinOpInferred { result_type: bool_type, algebra_field: none }
+    Lt => BinOpInferred { result_type: bool_type, algebra_field: none }
+    Gt => BinOpInferred { result_type: bool_type, algebra_field: none }
+    Le => BinOpInferred { result_type: bool_type, algebra_field: none }
+    Ge => BinOpInferred { result_type: bool_type, algebra_field: none }
+    And => BinOpInferred { result_type: bool_type, algebra_field: none }
+    Or => BinOpInferred { result_type: bool_type, algebra_field: none }
+    NullCoalesce => BinOpInferred { result_type: extract_optional_inner_node(n: left_type), algebra_field: none }
     _ =>
       // Arithmetic ops: look up the algebra method on the receiver type.
       // Tries candidate fields in priority order (e.g. Div: reciprocal then quotient).
@@ -917,21 +929,21 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, source_index: NewlineIndex?
       let is_product = left_type.connective == Conj
       if is_product {
         match first_matching_algebra_field(n: left_type, candidates: candidates, source_index: source_index) {
-          Some { value: field } =>
-            match field.inferred {
+          Some { value: m } =>
+            match m.field_node.inferred {
               Some { value: Resolved { node: rt } } =>
                 // Extract the callable's return type, not the callable itself
                 if rt.params |> count > 0 {
                   match rt.inferred {
-                    Some { value: Resolved { node: return_type } } => return_type
-                    _ => left_type
+                    Some { value: Resolved { node: return_type } } => BinOpInferred { result_type: return_type, algebra_field: Some { value: m.field_name } }
+                    _ => BinOpInferred { result_type: left_type, algebra_field: Some { value: m.field_name } }
                   }
-                } else { rt }
-              _ => left_type
+                } else { BinOpInferred { result_type: rt, algebra_field: Some { value: m.field_name } } }
+              _ => BinOpInferred { result_type: left_type, algebra_field: none }
             }
-          None => left_type
+          None => BinOpInferred { result_type: left_type, algebra_field: none }
         }
-      } else { left_type }
+      } else { BinOpInferred { result_type: left_type, algebra_field: none } }
   }
 }
 
