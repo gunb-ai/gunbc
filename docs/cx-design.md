@@ -339,6 +339,16 @@ type Provenance
   | Unknown             // fail-closed
 ```
 
+**Note on `source: String`:** This uses string names as identity
+proxies — the same M4 constraint that exists throughout the compiler
+today. String sources are a known limitation: shadowing, renaming,
+or cross-call remapping can make them ambiguous. When Node.name is
+deleted (Track 3) and structural identity lands, `source` should
+become a stable binding ID or parameter index. The provenance design
+does not depend on names — it depends on the structural fact "this
+binding traces to that parameter." String names are the bootstrap
+proxy, not the endgame.
+
 **What dissolves:**
 
 | Current reconstruction | Why it dissolves |
