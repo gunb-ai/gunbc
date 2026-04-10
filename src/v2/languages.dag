@@ -203,6 +203,13 @@ type BlockSyntax {
   significant_whitespace: Bool  // true (Python) or false (Go/Rust)
 }
 
+// ForEachSyntax: structural authority for iteration rendering.
+// Emit reads prefix/separator directly — no branching on target identity.
+type ForEachSyntax {
+  prefix: String                   // "for " (Rust/Python) or "for _, " (Go)
+  separator: String                // " in " (Rust/Python) or " := range " (Go)
+}
+
 // Expression semantics — whether control flow constructs produce values.
 // Ref: Rust Reference §8.2.15 "If expressions", Go Spec "If statements",
 // Python §6.12 "Conditional expressions".
@@ -284,6 +291,7 @@ type LanguageSpec {
   method_templates: Map<String, String>?
   service_fields: ServiceFieldTemplates
   block_syntax: BlockSyntax
+  for_each_syntax: ForEachSyntax
   tco: TcoSyntax
   items: ItemKeywords
   expression_semantics: ExpressionSemantics
@@ -366,6 +374,7 @@ fn rust_spec() -> LanguageSpec {
       arm_separator: ",", stmt_terminator: ";",
       significant_whitespace: false
     },
+    for_each_syntax: ForEachSyntax { prefix: "for ", separator: " in " },
     tco: TcoSyntax {
       loop_keyword: "loop",
       break_return: "break",
@@ -465,6 +474,7 @@ fn python_spec() -> LanguageSpec {
       arm_separator: "\n", stmt_terminator: "",
       significant_whitespace: true
     },
+    for_each_syntax: ForEachSyntax { prefix: "for ", separator: " in " },
     tco: TcoSyntax {
       loop_keyword: "while True",
       break_return: "return",
@@ -564,6 +574,7 @@ fn go_spec() -> LanguageSpec {
       arm_separator: "\n", stmt_terminator: "",
       significant_whitespace: false
     },
+    for_each_syntax: ForEachSyntax { prefix: "for _, ", separator: " := range " },
     tco: TcoSyntax {
       loop_keyword: "for",
       break_return: "return",

@@ -130,6 +130,17 @@ type ExpressionSyntax {
   closure: String                  // e.g. "|\{params\}| \{body\}" or "lambda \{params\}: \{body\}"
 }
 
+// ForEachSyntax: structural authority for iteration rendering.
+// The emitter reads these fields directly — no branching on target identity.
+//   Rust:   "for {item} in {iter}"         (prefix="for ", sep=" in ", discard="")
+//   Go:     "for _, {item} := range {iter}" (prefix="for _, ", sep=" := range ", discard="_")
+//   Python: "for {item} in {iter}"         (prefix="for ", sep=" in ", discard="")
+// Block delimiters come from BlockSyntax (block_open/block_close).
+type ForEachSyntax {
+  prefix: String                   // "for " or "for _, "
+  separator: String                // " in " or " := range "
+}
+
 // "How does a language write control flow?"
 // Ref: Rust Reference 8.2.16, Go Spec "Statements",
 //      Python Reference 8 "Compound statements"
@@ -138,7 +149,8 @@ type ControlFlowSyntax {
   if_else: String                  // e.g. "if \{cond\} { \{then\} } else { \{else\} }"
   match_header: String             // e.g. "match \{expr\} {" or "switch \{expr\} {"
   match_arm: String                // e.g. "\{pattern\} => \{body\},"
-  for_each: String                 // e.g. "for \{item\} in \{iter\} { \{body\} }"
+  for_each: String                 // e.g. "for \{item\} in \{iter\} { \{body\} }" (flat template, not used for rendering)
+  for_each_syntax: ForEachSyntax   // structural authority for iteration rendering
   while_loop: String               // e.g. "while \{cond\} { \{body\} }"
   loop_infinite: String?           // e.g. "loop { \{body\} }" or null
   break_keyword: String            // e.g. "break"
@@ -638,6 +650,7 @@ data rust_control_flow: ControlFlowSyntax = {
   match_header: "match \{expr\} {",
   match_arm: "\{pattern\} => \{body\},",
   for_each: "for \{item\} in \{iter\} { \{body\} }",
+  for_each_syntax: { prefix: "for ", separator: " in " },
   while_loop: "while \{cond\} { \{body\} }",
   loop_infinite: "loop { \{body\} }",
   break_keyword: "break",
@@ -757,6 +770,7 @@ data go_control_flow: ControlFlowSyntax = {
   match_header: "switch \{expr\} {",
   match_arm: "case \{pattern\}: \{body\}",
   for_each: "for \{item\} := range \{iter\} { \{body\} }",
+  for_each_syntax: { prefix: "for _, ", separator: " := range " },
   while_loop: "for \{cond\} { \{body\} }",
   loop_infinite: "for { \{body\} }",
   break_keyword: "break",
@@ -877,6 +891,7 @@ data python_control_flow: ControlFlowSyntax = {
   match_header: "match \{expr\}:",
   match_arm: "case \{pattern\}: \{body\}",
   for_each: "for \{item\} in \{iter\}:\n    \{body\}",
+  for_each_syntax: { prefix: "for ", separator: " in " },
   while_loop: "while \{cond\}:\n    \{body\}",
   loop_infinite: "while True:\n    \{body\}",
   break_keyword: "break",

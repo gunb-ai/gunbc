@@ -159,6 +159,12 @@ pub struct BlockSyntax {
     pub significant_whitespace: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ForEachSyntax {
+    pub prefix: String,
+    pub separator: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum IfValueForm {
@@ -240,6 +246,7 @@ pub struct LanguageSpec {
     pub method_templates: Option<Rc<HashMap<String, String>>>,
     pub service_fields: Rc<ServiceFieldTemplates>,
     pub block_syntax: Rc<BlockSyntax>,
+    pub for_each_syntax: Rc<ForEachSyntax>,
     pub tco: Rc<TcoSyntax>,
     pub items: Rc<ItemKeywords>,
     pub expression_semantics: Rc<ExpressionSemantics>,
@@ -323,6 +330,10 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     arm_separator: ",".to_string(),
     stmt_terminator: ";".to_string(),
     significant_whitespace: false,
+}),
+    for_each_syntax: Rc::new(ForEachSyntax {
+    prefix: "for ".to_string(),
+    separator: " in ".to_string(),
 }),
     tco: Rc::new(TcoSyntax {
     loop_keyword: "loop".to_string(),
@@ -431,6 +442,10 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     stmt_terminator: "".to_string(),
     significant_whitespace: true,
 }),
+    for_each_syntax: Rc::new(ForEachSyntax {
+    prefix: "for ".to_string(),
+    separator: " in ".to_string(),
+}),
     tco: Rc::new(TcoSyntax {
     loop_keyword: "while True".to_string(),
     break_return: "return".to_string(),
@@ -537,6 +552,10 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     arm_separator: "\n".to_string(),
     stmt_terminator: "".to_string(),
     significant_whitespace: false,
+}),
+    for_each_syntax: Rc::new(ForEachSyntax {
+    prefix: "for _, ".to_string(),
+    separator: " := range ".to_string(),
 }),
     tco: Rc::new(TcoSyntax {
     loop_keyword: "for".to_string(),

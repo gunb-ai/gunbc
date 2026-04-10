@@ -1902,22 +1902,24 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   }
 }
 
-// Shared ExprForEach — builds loop from BlockSyntax.
-// Python: `for var in coll:\n    body`  (significant whitespace, no closer)
-// Go: `for _, var := range coll {\n    body\n}`  (brace-delimited)
+// Shared ExprForEach — reads ForEachSyntax + BlockSyntax, no target branching.
+// ForEachSyntax.prefix/separator declare the loop header; BlockSyntax declares
+// block delimiters. Emit translates, does not decide.
 fn emit_typed_for_each_shared(variable: String, collection: Node, body: Node, target: RenderTarget, depth: Int, source_index: NewlineIndex?, recurse: fn(Node, InferScope, Int) -> String, scope: InferScope) -> String {
   let coll_str = recurse(collection, scope, depth)
   let elem_type = for_each_element_type_node(n: resolved_type(n: collection))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = recurse(body, body_scope, depth + 1)
   let var_str = emit_ident(name: variable, target: target)
-  let bs = language_spec(target: target).block_syntax
+  let spec = language_spec(target: target)
+  let fes = spec.for_each_syntax
+  let bs = spec.block_syntax
   let body_indent = make_indent(level: depth + 1)
   if bs.significant_whitespace {
-    concat("for ", var_str, " in ", coll_str, bs.block_open, body_indent, body_str)
+    concat(fes.prefix, var_str, fes.separator, coll_str, bs.block_open, body_indent, body_str)
   } else {
     let close_indent = make_indent(level: depth)
-    concat("for _, ", var_str, " := range ", coll_str, bs.block_open, body_indent, body_str, "\n", close_indent, bs.block_close)
+    concat(fes.prefix, var_str, fes.separator, coll_str, bs.block_open, body_indent, body_str, "\n", close_indent, bs.block_close)
   }
 }
 

@@ -1889,14 +1889,16 @@ let elem_type = for_each_element_type_node(resolved_type(collection.clone()));
 let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type);
 let body_str = recurse(body, body_scope, (depth.clone() + 1));
 let var_str = emit_ident(variable.clone(), target.clone());
-let bs = language_spec(target.clone()).block_syntax.clone();
+let spec = language_spec(target.clone());
+let fes = spec.for_each_syntax.clone();
+let bs = spec.block_syntax.clone();
 let body_indent = make_indent((depth.clone() + 1));
 if bs.significant_whitespace.clone() {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("for ".to_string(), var_str), " in ".to_string()), coll_str), bs.block_open.clone()), body_indent), body_str)
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(fes.prefix.clone(), var_str), fes.separator.clone()), coll_str), bs.block_open.clone()), body_indent), body_str)
         } else {
             {
                 let close_indent = make_indent(depth.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("for _, ".to_string(), var_str), " := range ".to_string()), coll_str), bs.block_open.clone()), body_indent), body_str), "\n".to_string()), close_indent), bs.block_close.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(fes.prefix.clone(), var_str), fes.separator.clone()), coll_str), bs.block_open.clone()), body_indent), body_str), "\n".to_string()), close_indent), bs.block_close.clone())
 }
         }
 }
