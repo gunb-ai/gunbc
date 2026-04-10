@@ -15,9 +15,9 @@ tables. This makes descent provable by construction: any function
 that walks Node.children is structurally bounded.
 
 Full thesis: [docs/architecture.md](docs/architecture.md)
-Compiler laws and coercion model: [docs/compiler-laws.md](docs/compiler-laws.md)
+Compiler laws and coercion model: [src/v2/compiler-laws.md](src/v2/compiler-laws.md)
 Coercion design (algebra-keyed inhabitants): [docs/coercion-design.md](docs/coercion-design.md)
-Testing strategy: [docs/testing-strategy.md](docs/testing-strategy.md)
+Testing strategy: [src/v2/tests/testing-strategy.md](src/v2/tests/testing-strategy.md)
 Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 Modeling guidelines: [MODELING.md](MODELING.md)
 
@@ -38,7 +38,7 @@ the TypeBinding boundary, then reconstructed downstream via heuristics.
 This construct-discard-reconstruct pattern is the root cause of most
 active work items.
 
-See [docs/cx-design.md](docs/cx-design.md) for the full diagnosis,
+See [src/v2/cx-design.md](src/v2/cx-design.md) for the full diagnosis,
 including 6 confirmed instances across all compiler stages.
 
 ### The gap: TypeBinding is too narrow
@@ -83,7 +83,7 @@ lines). Emission heuristics reduce. Total estimated net dissolution:
 ~1500+ lines across stages. See cx-design.md cleanup catalog for
 per-function accounting.
 
-Implementation plan: [docs/cx-design.md §Option B](docs/cx-design.md).
+Implementation plan: [src/v2/cx-design.md §Option B](src/v2/cx-design.md).
 
 ---
 
@@ -112,9 +112,9 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 |------|------|--------------|
 | **A: Inference** | 00_core, 02_parse, 04_resolve, 04_infer, 04_types, 04_patterns, 04_lookup, 04_items, 04_access, 04_service | 05_emit*, complexity, dsl/, tests/ |
 | **B: Emission** | 05_emit, 05_emit_rust, 05_emit_go, 05_emit_python, 04_emit_info, dsl/extdeps/languages/*, dsl/extdeps/transports/* | 04_infer, 04_types, complexity, dsl/std/, tests/ |
-| **C: Complexity** | complexity.dag, docs/cx-*, docs/cost-* | 04_*, 05_*, dsl/, tests/ |
+| **C: Complexity** | complexity.dag, src/v2/cx-*.md | 04_*, 05_*, dsl/, tests/ |
 | **D: DSL Modeling** | dsl/std/, dsl/extdeps/{llm,github,shell,cron,cloud,git}/, dsl/gunbc/, dsl/tools/, dsl/config/ | src/v2/*.dag (compiler sources) |
-| **E: Testing** | src/v2/tests/, scripts/, docs/testing-*, std/verification.dag, compiler_tests_rust.dag, coercion.dag (test extraction) | 04_*, 05_emit*, complexity |
+| **E: Testing** | src/v2/tests/, scripts/, std/verification.dag, compiler_tests_rust.dag, coercion.dag (test extraction) | 04_*, 05_emit*, complexity |
 
 ---
 
@@ -174,9 +174,9 @@ consumer items C2-C6 can start (same files as Stream A, sequential).
 
 ### Active workboards
 
-- **CX:** [docs/cx-design.md §Workboard](docs/cx-design.md)
+- **CX:** [src/v2/cx-design.md §Workboard](src/v2/cx-design.md)
   — S1-S8 shared, C1-C6 CX-specific, TDD plan, cleanup catalog
-- **Ownership:** [docs/ownership-design.md §Workboard](docs/ownership-design.md)
+- **Ownership:** [src/v2/ownership-design.md §Workboard](src/v2/ownership-design.md)
   — O1-O10, violation classes, 3 layers, TDD plan, cleanup catalog
 
 ### Track 2: Language spec modeling + ownership (Lane B)
@@ -192,7 +192,7 @@ spec-referenced data lookups instead of inline logic.
 | LS-1: Type cast rules | Partial (numeric casts validated in infer) |
 | LS-2: Operator semantics | DONE (PR #355) |
 | LS-3: Expression syntax | Not started |
-| LS-4: Ownership/borrowing | See [ownership-design.md](docs/ownership-design.md) |
+| LS-4: Ownership/borrowing | See [ownership-design.md](src/v2/ownership-design.md) |
 | LS-5: Visibility/module system | Not started |
 | LS-6: Shared typed handlers | DONE (PR #355) |
 

@@ -1,3 +1,5 @@
+> Part of: [THESIS.md](../THESIS.md) > [docs/architecture.md](architecture.md)
+
 # Algebraic Type Specification
 
 This document pins the denotational semantics, algebraic representations,

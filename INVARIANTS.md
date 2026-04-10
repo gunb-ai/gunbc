@@ -545,7 +545,7 @@ for the compiler to derive its verification obligations.
 TypeCheckpoint/InhabitantDecl declarations (L0). Weather.dag L4 PoC
 proves emitted code runs with structural witnesses. Witness generation,
 algebraic law testing, and constraint oracle evaluation are not yet
-implemented. See `docs/testing-strategy.md` for the full level map.
+implemented. See `src/v2/tests/testing-strategy.md` for the full level map.
 
 This is the testing analog of the Decidability Invariant. Decidability
 says: the structure makes unbounded computation impossible. Verifiability

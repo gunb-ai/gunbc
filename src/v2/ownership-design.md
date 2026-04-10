@@ -1,10 +1,10 @@
+> Part of: [THESIS.md](../../THESIS.md) > [ROADMAP.md](../../ROADMAP.md) > **Tier 1 + Free consequences** (parallelism prerequisite)
+> See also: [cx-design.md](cx-design.md), [ROADMAP.md](../../ROADMAP.md) (Track 2: LS-4)
+
 # Ownership Analysis Design
 
 Design and workboard for the ownership pipeline. Covers clone
 elision, borrow propagation, and fold accumulator optimization.
-
-See also: `cx-design.md` (shared infrastructure: provenance on
-bindings), `ROADMAP.md` (Track 2: LS-4 ownership layers).
 
 ---
 

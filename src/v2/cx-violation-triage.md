@@ -1,3 +1,6 @@
+> Part of: [THESIS.md](../../THESIS.md) > [ROADMAP.md](../../ROADMAP.md) > **Tier 1: Structural** (CX gate)
+> See also: [cx-design.md](cx-design.md), [cx-computation-model.md](cx-computation-model.md)
+
 # CX Violation Triage: 526 → 0
 
 ## Current state

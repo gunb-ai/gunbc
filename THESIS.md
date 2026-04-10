@@ -150,29 +150,34 @@ can choose target-specific strategies:
 ## How the docs connect
 
 ```
-THESIS.md (this file)
-  ├── WHY: zero bugs by construction
-  │
-  ├── INVARIANTS.md — rules that protect the thesis
-  │     (modeling faithfulness, root-cause depth, decidability, ...)
-  │
-  ├── MODELING.md — how to extend the language without breaking the thesis
-  │     (concept DAG, DFS before defining, compositional modeling, ...)
-  │
-  ├── ROADMAP.md — current state and work plan
-  │     (lanes, streams, tracks — all serving the thesis)
-  │
-  └── docs/
-        ├── architecture.md — substrate design (Node + Edge)
-        ├── cx-design.md — complexity analysis (Tier 1 gating item)
-        ├── ownership-design.md — ownership proofs (Tier 1 + parallelism)
-        ├── coercion-design.md — type coercion (Tier 1, DONE)
-        ├── testing-strategy.md — generated tests (Tier 3)
-        └── compiler-laws.md — algebraic laws (Tier 3 + parallelism)
+/ (direction — start here)
+  THESIS.md .............. this file — the goal
+  ROADMAP.md ............. current state and work plan
+  INVARIANTS.md .......... rules that protect the thesis
+  MODELING.md ............ how to extend the language safely
+
+docs/ (project-wide design — read for understanding)
+  architecture.md ........ substrate design (Node + Edge)
+  algebraic-type-spec.md . type system semantics
+  coercion-design.md ..... type coercion algebra (Tier 1, DONE)
+
+src/v2/ (compiler implementation — read when working)
+  DESIGN.md .............. compiler design principles
+  cx-design.md ........... complexity analysis (Tier 1 gating item)
+  cx-computation-model.md  CX core model and evidence system
+  cx-violation-triage.md . CX violation snapshot
+  ownership-design.md .... ownership proofs (Tier 1 + parallelism)
+  compiler-laws.md ....... compiler structural laws
+  CM.md .................. concept model gaps
+  CM-inventory.md ........ heuristic inventory
+
+src/v2/tests/ (testing — read for verification)
+  testing-strategy.md .... generated tests (Tier 3)
 ```
 
-Every design doc should state which tier it serves and what
-"zero bugs" claim it advances.
+Every doc has a "Part of" header linking up to this file.
+Browse top-down: start at THESIS, drill into ROADMAP for
+current state, then into the relevant design doc for details.
 
 ---
 

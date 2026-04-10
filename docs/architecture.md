@@ -1,3 +1,6 @@
+> Part of: [THESIS.md](../THESIS.md) > [ROADMAP.md](../ROADMAP.md)
+> Drill down: [src/v2/DESIGN.md](../src/v2/DESIGN.md), [algebraic-type-spec.md](algebraic-type-spec.md)
+
 # gunbc Architecture
 
 This document describes the architectural thesis. See

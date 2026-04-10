@@ -1,11 +1,11 @@
+> Part of: [THESIS.md](../../THESIS.md) > [ROADMAP.md](../../ROADMAP.md) > **Tier 1: Structural** (CX gate)
+> See also: [cx-computation-model.md](cx-computation-model.md), [cx-violation-triage.md](cx-violation-triage.md), [ownership-design.md](ownership-design.md)
+
 # CX: Complexity Analysis Design
 
 Stable principles for complexity analysis. If a change violates
 one of these, stop and update this doc first — then assess the impact
 on the codebase to determine if the direction is viable.
-
-See also: `cx-computation-model.md` (migration state),
-`cx-violation-triage.md` (current violation snapshot).
 
 ---
 
