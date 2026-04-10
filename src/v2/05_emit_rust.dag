@@ -802,13 +802,9 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   } else if is_type_decl_item(item: item, source_index: env.source_index) {
     ""
   } else if is_function_item(item: item) {
-    let fn_movable = if is_tco_eligible(name: item_text, body: item.body.value, registry: registry) {
-      empty_map()
-    } else {
-      match map_get(emit_info.ownership_index, item.name) {
-        Some { value: m } => m
-        None => empty_map()
-      }
+    let fn_movable = match map_get(emit_info.ownership_index, item.name) {
+      Some { value: m } => m
+      None => empty_map()
     }
     let fn_fold_eligible = match map_get(emit_info.fold_eligible_index, item.name) {
       Some { value: m } => m
