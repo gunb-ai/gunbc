@@ -238,7 +238,7 @@ categories.
 
 ## Current state (2026-04-10)
 
-**Ratchet: 472 → 250 (47% dissolved). PR #370.**
+**Ratchet: 472 → 168 (64% dissolved). PR #370.**
 
 | Phase | From→To | Key insight |
 |-------|---------|-------------|
@@ -247,22 +247,79 @@ categories.
 | Phase 3: Parser SCC | 425→315 | SCC-wide advancement assumption breaks circular dependency |
 | Phase 4a: PropertyContraction | 315→308 | Finite-domain property changes bound condition-guarded recursion |
 | Phase 4b: Collection methods | 308→250 | resolve_collection_field for skip/take/filter/reverse |
+| Phase 5a: Lattice-max bug | 250→208 | derive_edge_evidence fold took last value, not best |
+| Phase 5b: Map lambda evidence | 208→168 | Preserve outer sub_value_vars through map/filter (not fold) |
 
-### Remaining 250 by category
+### Remaining 168 by category
 
 | Category | Count | Root cause | Design direction |
 |----------|-------|------------|-----------------|
-| Emitter SCCs | ~80 | Lambda transparency — emit_shared_expr callback | Callee contracts or state-transition |
-| Inference SCC | ~10 | Same — infer_block_stmts pattern | Same |
-| Complexity SCCs | ~15 | Same — parser_state_expr_progress, cost_of_expr | Same |
-| apply_named_template_nested | ~21 | Multi-dimension (keys shrink, template varies inside fold) | Cross-parameter evidence |
-| Remaining parser | ~27 | Separate SCCs or missing state params | Investigation needed |
-| render_node_type remaining | ~17 | Still some SubValueUnknown call sites | More patterns in classify_argument |
-| resolve_node_bounded | ~16 | Depth parameter + condition guards | PropertyContraction or depth modeling |
-| Tokenizer | ~20 | Bounded ascent (pos + 1 < source_len) | Cross-parameter evidence |
-| dfs_finish_order | ~10 | Visited set recursion | WorklistDrainCall (SetCardinality) |
-| resolve_scrutinee_type_node_seen | ~7 | Cycle detection via seen map | Finite-domain contraction |
-| Other scattered | ~27 | Various individual patterns | Case-by-case |
+| TCO emitter SCCs | 33 | TcoFrame wraps texpr, breaking direct param relationship | Compositional evidence through constructors |
+| CX self-analysis SCCs | 25 | walk_expr, resolve_expr_types, parser_state_expr_progress | Same — cross-call names don't match |
+| Tokenizer | 20 | Bounded ascent (pos + 1 < source_len) | BoundedAscent evidence or fold-over-stream |
+| Parser worklist | 18 | parse_exit_entries_acc, parse_mock_response_entries_acc | State advancement not modeled |
+| resolve_node_bounded | 16 | depth + 1 bounded by hard limit (100) | BoundedAscent or tree descent on n param |
+| Inference SCC | 11 | infer_block_stmts — heterogeneous SCC (list + tree) | Compositional evidence |
+| dfs/graph | 11 | dfs_finish_order — visited set bounds recursion | WorklistDrainCall (SetCardinality) |
+| resolve_scrutinee_type_node_seen | 7 | Cycle detection via seen map growing toward finite domain | Finite-domain contraction |
+| infer_parser worklist | 7 | Worklist pattern — infer_parser_always_advancing_members | State advancement |
+| node_to_name_str | 5 | String/tree recursion on Node structure | Likely needs tree descent evidence |
+| Scattered | 15 | type_needs_rc_seen(2), process_escapes_loop(2), ceil_log_iter(2), etc. | Various |
+
+### Why the remaining 168 won't dissolve from targeted patches
+
+The remaining violations cluster into patterns that all share the same
+root cause: **the evidence system is point-wise** (one parameter, one
+call site, matched by name) when the proofs require compositional
+reasoning.
+
+**Specific structural gaps:**
+
+1. **Cross-call name mismatch.** `build_call_evidence` aligns evidence
+   to the caller's `param_order` by matching arg names. Cross-calls use
+   different names (e.g., caller has `texpr`, callee expects `expr`), so
+   the evidence is SubValueUnknown even when the VALUE is a sub-value.
+   A scan-all-args fallback was attempted and reverted — it's a
+   heuristic that fabricates evidence. The right fix is compositional:
+   evidence should compose through the call boundary, not scan for
+   structural coincidences.
+
+2. **Constructor wrapping.** TCO functions wrap `texpr` in `TcoFrame`
+   before passing to callbacks. The evidence system can't see through
+   the constructor to the wrapped parameter.
+
+3. **Bounded ascent.** Tokenizer/parser functions advance `pos + 1`
+   bounded by `source_len`. The evidence system models descent
+   (param - k) but not ascent bounded by an external parameter.
+
+4. **Heterogeneous SCCs.** Some SCC members descend on tree (texpr),
+   others on list (remaining). The lexicographic proof requires the
+   leading dimension to be known on ALL edges. A cycle through both
+   dimensions has NonIncreasing on both at the cross-edges.
+
+**Do NOT attempt to fix these with more patterns in classify_argument
+or more entries in function_size_effects.** Each remaining violation
+represents a genuine gap in the compositional model. Targeted patches
+will either violate invariants (fail-closed, no fallbacks) or create
+unsound evidence.
+
+### What to do instead
+
+The gate-first strategy: get to 0 by modeling the right concepts, then
+let gate violations guide refinement. The remaining 168 need one or
+more of:
+
+- **Callee contracts** — higher-order functions declare what they pass
+  to callbacks (dissolves lambda transparency + constructor wrapping)
+- **State-transition evidence** — combined (param1, param2, ...)
+  transitions, not per-param (dissolves heterogeneous SCCs)
+- **BoundedAscent** — ascending position bounded by external param
+  (dissolves tokenizer + parser worklist)
+- **Lambda desugaring** — long-term: dissolve ExprLambda into regular
+  functions (deferred — 35 handlers, 927+ usages, large scope)
+
+See "Compositional deficit" and "Design direction" sections above for
+the full analysis.
 
 ### Exhaustive lowering pipeline status
 
@@ -274,7 +331,7 @@ categories.
 | SCC proof dimensions | 2 lexicographic combos + 5 single | Gap 2 partially addressed |
 | SetCardinality evidence | 0 paths produce it | Gap 3 open |
 | ArithmeticValue in SCC proofs | Single-function only | Gap 4 open |
-| Lambda transparency | Iteration lambdas only | Gap 5 — the big one |
+| Lambda transparency | Iteration + callback lambdas | Gap 5 — partially addressed, needs callee contracts |
 
 ---
 
@@ -283,5 +340,5 @@ categories.
 - **ROADMAP.md §CX** — work items, sequencing, acceptance criteria
 - **INVARIANTS.md** — bounded kernel, fail-closed, decidability
 - **MODELING.md** — DSL modeling philosophy (shared facts, concept DAG)
-- **docs/cx-violation-triage.md** — violation breakdown by callee (stale: based on 526, current is 250)
+- **docs/cx-violation-triage.md** — violation breakdown by callee (stale: based on 526, current is 168)
 - **src/v2/DESIGN.md** — compiler design principles
