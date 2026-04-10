@@ -6920,110 +6920,69 @@ fn count_pattern(haystack: &str, needle: &str) -> usize {
     haystack.match_indices(needle).count()
 }
 
-/// Count provable ownership violations from the pipeline result.
+/// Count ownership violations by cross-referencing the ownership proof
+/// (the authority for which bindings are movable) against the emitted
+/// Rust code (the authority for what the emitter actually did).
 ///
-/// Returns (last_use_violations, tco_gated_violations, fold_fallback_violations, read_as_clone_violations).
+/// A violation is: build_movable_set says the binding can move, but
+/// the emitted code contains `name.clone()`.  This is the only fact
+/// we have complete authority for — the proof says "move" and the
+/// emitter says "clone".
+///
+/// Returns (movable_but_cloned, try_unwrap_fallbacks).
 fn count_ownership_violations(
     result: &v2_compiler::v2_compiler_compile::PipelineResult,
-) -> (usize, usize, usize, usize) {
-    use v2_compiler::v2_compiler_ownership::{
-        binding_fan_out, EdgeKind,
-    };
-    use v2_compiler::v2_std_core::VarBindingKind;
+) -> (usize, usize) {
+    use v2_compiler::v2_compiler_ownership::build_movable_set;
 
-    // Detect TCO-eligible functions by scanning emitted code for the
-    // __tco_ rewriting pattern (TCO transforms use __tco_ temporaries).
-    let tco_functions: std::collections::HashSet<String> = result
+    // Collect all emitted Rust into one string for searching.
+    let emitted: String = result
         .files
         .iter()
         .filter(|f| f.path.ends_with(".rs"))
-        .flat_map(|f| {
-            // TCO-rewritten functions contain the "loop {" + "__tco_" pattern.
-            // Find function names by scanning for "pub fn NAME(" before a
-            // block containing "__tco_".
-            let content = &*f.content;
-            let mut names = Vec::new();
-            let mut current_fn = String::new();
-            for line in content.lines() {
-                if line.contains("pub fn ") && line.contains("(") {
-                    let after = line.split("pub fn ").nth(1).unwrap_or("");
-                    current_fn = after.split('(').next().unwrap_or("").to_string();
-                }
-                if line.contains("__tco_") && !current_fn.is_empty() {
-                    names.push(current_fn.clone());
-                    current_fn.clear();
-                }
-            }
-            names
-        })
+        .map(|f| (*f.content).clone())
         .collect();
 
-    let mut last_use = 0usize;      // V1
-    let mut tco_gated = 0usize;     // V2
-    let mut fold_fallback = 0usize; // V3
-    let mut read_as_clone = 0usize; // V4
+    let mut movable_but_cloned = 0usize;
+    let mut try_unwrap_fallbacks = count_pattern(&emitted, "unwrap_or_else(|rc| (*rc).clone())");
 
     for proof in result.ownership.iter() {
-        let is_tco = tco_functions.contains(&proof.func_name);
-
-        for (_, usage) in proof.bindings.iter() {
-            let fan_out = binding_fan_out(usage.clone());
-            let is_owned = matches!(
-                usage.binding_kind.as_deref(),
-                Some(VarBindingKind::LocalValueBinding)
-            );
-
-            // V1: last-use clone — every fan-out > 1 binding has 1 use
-            // that could move instead of clone.
-            if fan_out > 1 {
-                last_use += 1;
-            }
-
-            // V2: TCO-gated move — fan-out=1 + owned-local, but function
-            // is TCO-eligible so emitter zeros the movable set.
-            if is_tco && fan_out == 1 && is_owned {
-                tco_gated += 1;
-            }
-
-            // V4: read-as-clone — each Read edge is a borrow opportunity.
-            for edge in usage.consumers.iter() {
-                if matches!(edge.kind, EdgeKind::Read) {
-                    read_as_clone += 1;
-                }
-            }
-        }
-
-        // V3: fold fallback — proof says eligible but emitter emits fallback.
-        for fold_proof in proof.fold_acc_unwrap.iter() {
-            if fold_proof.eligible {
-                fold_fallback += 1;
-            }
+        let movable = build_movable_set(proof.clone());
+        for (name, _) in movable.iter() {
+            // The proof says this binding should move.
+            // Check if the emitted code clones it instead.
+            let clone_pattern = format!("{}.clone()", name);
+            let clones_in_emitted = count_pattern(&emitted, &clone_pattern);
+            movable_but_cloned += clones_in_emitted;
         }
     }
 
-    (last_use, tco_gated, fold_fallback, read_as_clone)
+    (movable_but_cloned, try_unwrap_fallbacks)
 }
 
 // ── Focused .dag programs with known ownership properties ──
 
-/// Fan-out = 1, is_owned_local → MUST move.  0 violations expected.
+/// Fan-out = 1, is_owned_local → proof says movable → must not clone.
 #[test]
 fn ownership_v_single_use_moves() {
     let source = "module ov1\nfn pass_through(items: List<Int>) -> List<Int> { items }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
+    let (movable_but_cloned, _) = count_ownership_violations(&result);
+    eprintln!("single_use: movable_but_cloned={}", movable_but_cloned);
     let content = find_file(&result, "src/ov1.rs");
     assert!(
         !content.contains("items.clone()"),
-        "V0: single-use param must move, not clone:\n{}", content,
+        "single-use param must move, not clone:\n{}", content,
     );
 }
 
-/// Fan-out = 2 → 1 necessary clone + 1 last-use violation.
+/// Fan-out = 2 → not in movable set → clones are necessary.
+/// Track total clones to see if last-use analysis improves this.
 #[test]
-fn ownership_v_last_use_clone() {
+fn ownership_v_multi_use_clones() {
     let source = r#"
-module ov_last
+module ov_multi
 import std.types { List }
 fn use_twice(items: List<Int>) -> List<Int> {
   let a = items |> count
@@ -7032,54 +6991,13 @@ fn use_twice(items: List<Int>) -> List<Int> {
 "#;
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let (v1, _, _, _) = count_ownership_violations(&result);
-    eprintln!("V1 last-use violations: {}", v1);
-
-    let content = find_file(&result, "src/ov_last.rs");
+    let content = find_file(&result, "src/ov_multi.rs");
     let clones = count_pattern(&content, "items.clone()");
-    eprintln!("  items.clone() emitted: {} (ideal: 1, worst: 2)", clones);
-    // Ratchet: currently 2 (both uses clone). Target: 1 (last use moves).
+    eprintln!("multi_use: items.clone()={} (ideal: 1, current: 2)", clones);
     assert!(clones <= 2, "items.clone() {} > ratchet 2", clones);
 }
 
-/// TCO-eligible function — ownership analysis is zeroed by the emitter.
-#[test]
-fn ownership_v_tco_gate() {
-    let source = r#"
-module ov_tco
-import std.types { List }
-fn sum_list(items: List<Int>, acc: Int) -> Int {
-  match items |> first {
-    Some { value: head } => sum_list(items: items |> skip(1), acc: acc + head)
-    None => acc
-  }
-}
-"#;
-    let result = compile_dag(source);
-    let (_, _, _, _) = count_ownership_violations(&result);
-
-    // In TCO functions, the emitter zeros the movable set.
-    // Check if any fan-out=1 owned-local bindings exist (they'd be gated).
-    let mut tco_gated = 0usize;
-    for proof in result.ownership.iter() {
-        if proof.func_name == "sum_list" {
-            for (name, usage) in proof.bindings.iter() {
-                let fan_out = v2_compiler::v2_compiler_ownership::binding_fan_out(usage.clone());
-                let is_owned = matches!(
-                    usage.binding_kind.as_deref(),
-                    Some(v2_compiler::v2_std_core::VarBindingKind::LocalValueBinding)
-                );
-                if fan_out == 1 && is_owned {
-                    eprintln!("  V2: TCO-gated move for `{}` (fan-out=1, owned)", name);
-                    tco_gated += 1;
-                }
-            }
-        }
-    }
-    eprintln!("V2 TCO-gated violations: {}", tco_gated);
-}
-
-/// Fold accumulator — analysis proves sole ownership.
+/// Fold accumulator — check try_unwrap fallbacks in emitted code.
 #[test]
 fn ownership_v_fold_fallback() {
     let source = r#"
@@ -7091,49 +7009,26 @@ fn sum_all(items: List<Int>) -> Int {
 "#;
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let (_, _, v3, _) = count_ownership_violations(&result);
-    eprintln!("V3 fold-fallback violations: {}", v3);
-
+    let (_, try_unwrap) = count_ownership_violations(&result);
+    eprintln!("fold: try_unwrap_fallbacks={}", try_unwrap);
     let content = find_file(&result, "src/ov_fold.rs");
     let fallbacks = count_pattern(&content, "unwrap_or_else(|rc| (*rc).clone())");
-    eprintln!("  try_unwrap fallbacks emitted: {}", fallbacks);
-}
-
-/// Read-only uses — each is a borrow opportunity currently emitted as clone.
-#[test]
-fn ownership_v_read_as_clone() {
-    let source = r#"
-module ov_read
-import std.types { List }
-fn total_and_count(items: List<Int>) -> Int {
-  let s = items |> fold(init: 0, f: (acc, x) => acc + x)
-  let c = items |> count
-  s + c
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let (_, _, _, v4) = count_ownership_violations(&result);
-    eprintln!("V4 read-as-clone violations: {}", v4);
-
-    let content = find_file(&result, "src/ov_read.rs");
-    let clones = count_pattern(&content, "items.clone()");
-    eprintln!("  items.clone() emitted: {} (each is V4 or V1)", clones);
+    eprintln!("  in ov_fold.rs: {}", fallbacks);
 }
 
 // ── Aggregate violation ratchet ──────────────────────────────────────────
 
 /// Compile a representative .dag program through the full pipeline and
-/// count provable ownership violations.  This is the metric that tracks
-/// whether the ownership modeling is improving.
+/// count ownership violations by cross-referencing the ownership proof
+/// against the emitted code.
 ///
-/// Unlike the stage0 clone count (which mixes necessary + unnecessary
-/// clones), this counts ONLY clones we KNOW are wrong.
+/// A violation: build_movable_set says "move", emitted code says ".clone()".
+/// This is the only metric grounded in two authorities — the ownership
+/// proof and the emitter output.
 ///
 /// Run with: cargo test -p v2-compiler-tests ownership_violation_ratchet -- --nocapture
 #[test]
 fn ownership_violation_ratchet() {
-    // Compile a .dag program that exercises all violation classes.
     let source = r#"
 module ov_ratchet
 import std.types { List }
@@ -7164,38 +7059,35 @@ fn process(data: List<Int>) -> List<Int> {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 
-    let (v1, v2, v3, v4) = count_ownership_violations(&result);
+    let (movable_but_cloned, try_unwrap_fallbacks) = count_ownership_violations(&result);
 
     eprintln!("\n=== OWNERSHIP VIOLATION RATCHET ===\n");
-    eprintln!("  V1 — last-use clones:     {:>3}", v1);
-    eprintln!("  V2 — TCO-gated moves:     {:>3}", v2);
-    eprintln!("  V3 — fold fallbacks:       {:>3}", v3);
-    eprintln!("  V4 — read-as-clone:       {:>3}", v4);
-    let total = v1 + v2 + v3 + v4;
+    eprintln!("  movable_but_cloned:    {:>3}  (proof says move, emitter says clone)", movable_but_cloned);
+    eprintln!("  try_unwrap_fallbacks:  {:>3}  (fabrication fallback in emitted code)", try_unwrap_fallbacks);
+    let total = movable_but_cloned + try_unwrap_fallbacks;
     eprintln!("  ────────────────────────");
-    eprintln!("  TOTAL violations:         {:>3}", total);
+    eprintln!("  TOTAL violations:      {:>3}", total);
 
     // ── Ratchets (only move DOWN) ──
     //
-    // 2026-04-10: baseline.
-    // These violations are provable from the .dag source semantics.
-    // Each class maps to a specific ownership pipeline improvement:
-    //   V1 → last-use analysis in the emitter
-    //   V3 → fold accumulator unwrap (already partially implemented)
-    //   V4 → LS-4 borrow rules in LanguageSpec
+    // 2026-04-10: baseline.  Each violation is grounded in two authorities:
+    //   - build_movable_set (ownership proof) says the binding can move
+    //   - emitted Rust code contains `name.clone()` for that binding
     //
-    // Baseline: V1=32, V2=0, V3=0, V4=273, total=305
+    // As ownership modeling improves, these counts drop.
 
-    const V1_RATCHET: usize = 35;  // last-use (needs last-use analysis)
-    const V2_RATCHET: usize = 5;   // TCO-gated (needs post-TCO ownership)
-    const V3_RATCHET: usize = 5;   // fold fallback (needs fold unwrap)
-    const V4_RATCHET: usize = 280; // read-as-clone (needs LS-4 borrows)
-    const TOTAL_RATCHET: usize = 320;
+    const MOVABLE_CLONED_RATCHET: usize = 10;
+    const TRY_UNWRAP_RATCHET: usize = 5;
+    const TOTAL_RATCHET: usize = 15;
 
-    assert!(v1 <= V1_RATCHET, "V1 last-use violations {} > ratchet {}", v1, V1_RATCHET);
-    assert!(v2 <= V2_RATCHET, "V2 TCO-gated violations {} > ratchet {}", v2, V2_RATCHET);
-    assert!(v3 <= V3_RATCHET, "V3 fold-fallback violations {} > ratchet {}", v3, V3_RATCHET);
-    assert!(v4 <= V4_RATCHET, "V4 read-as-clone violations {} > ratchet {}", v4, V4_RATCHET);
+    assert!(
+        movable_but_cloned <= MOVABLE_CLONED_RATCHET,
+        "movable_but_cloned {} > ratchet {}", movable_but_cloned, MOVABLE_CLONED_RATCHET,
+    );
+    assert!(
+        try_unwrap_fallbacks <= TRY_UNWRAP_RATCHET,
+        "try_unwrap_fallbacks {} > ratchet {}", try_unwrap_fallbacks, TRY_UNWRAP_RATCHET,
+    );
     assert!(total <= TOTAL_RATCHET, "total violations {} > ratchet {}", total, TOTAL_RATCHET);
 }
 
