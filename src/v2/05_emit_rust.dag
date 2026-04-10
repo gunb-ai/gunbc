@@ -79,7 +79,7 @@ import v2.compiler.languages {
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.compiler_tests_rust { compiler_tests_source }
-import v2.compiler.coercion { coerce_primitive_type, is_copy }
+import v2.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 
 import std.types { is_container_type }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
@@ -4665,18 +4665,13 @@ fn emit_operation_test(projection: TestProjection, depth: Int) -> String {
 
 fn emit_rust_default_value(param: Node) -> String {
   let type_name = param_node_type_expr(n: param).name
-  // Use DAG names for comparison (these are stable), target names for output.
-  if type_name == "String" || type_name == "Secret" { "String::new()" }
-  else if type_name == "Int" { "0" }
-  else if type_name == "Bool" { emit_keyword(key: "false", target: Rust) }
-  else if type_name == "Float" { "0.0" }
-  else if type_name == "Unit" { "()" }
-  else if type_name == "Json" { "serde_json::Value::Null" }
-  else if type_name == "Bytes" { "Vec::new()" }
-  else {
-    // No default value known for this type. Emit a compile_error! so the
-    // generated test fails clearly instead of fabricating a valid-looking value.
-    concat("compile_error!(\"no test default for type: ", type_name, "\")")
+  match lookup_checkpoint(target: Rust, dag_name: type_name) {
+    Some { value: cp } =>
+      match cp.default_expr {
+        Some { value: expr } => expr
+        None => concat("compile_error!(\"no test default for type: ", type_name, "\")")
+      }
+    None => concat("compile_error!(\"no test default for type: ", type_name, "\")")
   }
 }
 

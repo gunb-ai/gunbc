@@ -11,14 +11,6 @@
 
 module extdeps.languages.go.emit
 
-// -- Type mapping --------------------------------------------------------
-// DAG abstract type -> Go concrete type.
-// Ref: Go Spec, Types
-data go_type_map: Map<String, String> = {
-  "String": "string", "Int": "int64", "Float": "float64", "Bool": "bool",
-  "Bytes": "[]byte", "Unit": "struct{}", "Secret": "string", "Json": "interface{}"
-}
-
 // -- Keyword/operator translation ----------------------------------------
 // DAG keywords/operators -> Go syntax.
 // Ref: Go Spec, Operators and punctuation

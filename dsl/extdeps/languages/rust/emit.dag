@@ -12,14 +12,6 @@
 
 module extdeps.languages.rust.emit
 
-// -- Type mapping --------------------------------------------------------
-// DAG abstract type -> Rust concrete type.
-// Ref: Rust Reference 10.1 "Types"
-data rust_type_map: Map<String, String> = {
-  "String": "String", "Int": "i64", "Float": "f64", "Bool": "bool",
-  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
-}
-
 // -- Keyword/operator translation ----------------------------------------
 // DAG keywords/operators -> Rust syntax.
 // Ref: Rust Reference 8.2 "Expressions"
