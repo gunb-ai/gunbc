@@ -11,14 +11,6 @@
 
 module extdeps.languages.python.emit
 
-// -- Type mapping --------------------------------------------------------
-// DAG abstract type -> Python concrete type.
-// Ref: Python Reference, Built-in Types
-data python_type_map: Map<String, String> = {
-  "String": "str", "Int": "int", "Float": "float", "Bool": "bool",
-  "Bytes": "bytes", "Unit": "None", "Secret": "str", "Json": "dict"
-}
-
 // -- Keyword/operator translation ----------------------------------------
 // DAG keywords/operators -> Python syntax.
 // Ref: Python Reference 6.10-6.12 "Comparisons", "Boolean operations"

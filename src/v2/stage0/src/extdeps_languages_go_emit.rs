@@ -7,24 +7,6 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 
-pub fn go_type_map() -> Rc<HashMap<String, String>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("String".to_string(), "string".to_string());
-            __m.insert("Int".to_string(), "int64".to_string());
-            __m.insert("Float".to_string(), "float64".to_string());
-            __m.insert("Bool".to_string(), "bool".to_string());
-            __m.insert("Bytes".to_string(), "[]byte".to_string());
-            __m.insert("Unit".to_string(), "struct{}".to_string());
-            __m.insert("Secret".to_string(), "string".to_string());
-            __m.insert("Json".to_string(), "interface{}".to_string());
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 pub fn go_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {

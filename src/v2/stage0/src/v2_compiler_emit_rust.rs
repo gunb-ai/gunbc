@@ -29,7 +29,7 @@ pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_ta
 use crate::v2_compiler_languages::VisibilitySpec::{KeywordVisibility};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_compiler_tests_rust::{compiler_tests_source};
-pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy};
+pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
 pub use crate::std_types::{is_container_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_product_type, is_coproduct_type, is_unit_like};
@@ -4813,35 +4813,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_rust_default_value(param: Rc<Node>) -> String {
     {
         let type_name = param_node_type_expr(param).name.clone();
-if ((type_name.clone().as_str() == "String".to_string().as_str()) || (type_name.clone().as_str() == "Secret".to_string().as_str())) {
-            "String::new()".to_string()
-        } else {
-            if (type_name.clone().as_str() == "Int".to_string().as_str()) {
-                "0".to_string()
-            } else {
-                if (type_name.clone().as_str() == "Bool".to_string().as_str()) {
-                    emit_keyword("false".to_string(), RenderTarget::Rust)
-                } else {
-                    if (type_name.clone().as_str() == "Float".to_string().as_str()) {
-                        "0.0".to_string()
-                    } else {
-                        if (type_name.clone().as_str() == "Unit".to_string().as_str()) {
-                            "()".to_string()
-                        } else {
-                            if (type_name.clone().as_str() == "Json".to_string().as_str()) {
-                                "serde_json::Value::Null".to_string()
-                            } else {
-                                if (type_name.clone().as_str() == "Bytes".to_string().as_str()) {
-                                    "Vec::new()".to_string()
-                                } else {
-                                    v2_rt::concat(v2_rt::concat("compile_error!(\"no test default for type: ".to_string(), type_name.clone()), "\")".to_string())
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+match lookup_checkpoint(RenderTarget::Rust, type_name.clone()) {
+    Some(cp) => match cp.default_expr.clone() {
+    Some(expr) => expr.clone(),
+    None => v2_rt::concat(v2_rt::concat("compile_error!(\"no test default for type: ".to_string(), type_name.clone()), "\")".to_string()),
+},
+    None => v2_rt::concat(v2_rt::concat("compile_error!(\"no test default for type: ".to_string(), type_name.clone()), "\")".to_string()),
+}
 }
 }
 

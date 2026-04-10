@@ -7,24 +7,6 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 
-pub fn rust_type_map() -> Rc<HashMap<String, String>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("String".to_string(), "String".to_string());
-            __m.insert("Int".to_string(), "i64".to_string());
-            __m.insert("Float".to_string(), "f64".to_string());
-            __m.insert("Bool".to_string(), "bool".to_string());
-            __m.insert("Bytes".to_string(), "Vec<u8>".to_string());
-            __m.insert("Unit".to_string(), "()".to_string());
-            __m.insert("Secret".to_string(), "String".to_string());
-            __m.insert("Json".to_string(), "serde_json::Value".to_string());
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 pub fn rust_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
