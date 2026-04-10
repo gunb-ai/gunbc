@@ -129,21 +129,56 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 
 ## Active work: close the model
 
-All active tracks are now understood as facets of one problem: the IR
-doesn't carry enough structure. Each track closes a specific gap.
+All active tracks are facets of one problem: the IR doesn't carry
+enough structure. Four parallel work lanes, zero file conflicts.
 
-### Track 1: Provenance on bindings (Lane A + C)
+```
+Lane A (inference)    S1→S2→S3→S4→S5→S6→S7
+                                              ↘
+Lane B (emit+own)     O1→O2→O3  O4→O5  O6→O7→O8→O9→O10
+                                              ↗
+Lane C (complexity)   ·····waiting····· C2→C3→C4→C5→C6
+                                              ↑
+Lane D (std/)         C1  S8                  │
+                       └───┘──────────────────┘
+                       (both unblocked now)
+```
 
-**The highest-leverage fix.** Thread existing SubValueRelation
-through TypeBinding. Dissolves CX reconstruction (33 heuristics, 424
-violations) and ownership name-matching.
+**Lane A: Shared provenance infra** (04_infer.dag, 04_env.dag)
+Thread SubValueRelation through TypeBinding. Items S1-S7.
+S1 (add field) is the gate — everything else follows.
 
-Shared items S1-S8 serve both CX and ownership. CX-specific items
-C1-C6 build on top. Ownership-specific items O1-O10 build on top.
+**Lane B: Ownership + emission** (ownership.dag, 05_emit_rust.dag)
+Clone elision layers 1-3. Items O1-O10.
+Layers 1+2 (O1-O5) are **unblocked now** — no dependency on Lane A.
+Layer 3 (O6-O10) needs LS-4 design from Lane D.
 
-Active workboards with TDD plans and cleanup catalogs:
+**Lane C: Complexity consumer** (complexity.dag)
+Switch CX to read provenance. Items C2-C6.
+**Blocked on Lane A** (needs binding provenance to exist first).
+
+**Lane D: std/ modeling** (std/induction.dag, std/algebra.dag)
+C1 (direct SubValueRelation→LoweringTarget) and S8 (lattice
+consolidation) are both **unblocked now**.
+
+### What to start now (4 parallel streams)
+
+| Stream | Lane | Items | Files touched |
+|--------|------|-------|--------------|
+| Provenance field + first binding sites | A | S1, S2, S3 | 04_env.dag, 04_infer.dag |
+| Last-use elision + post-TCO | B | O1-O5 | ownership.dag, 05_emit_rust.dag |
+| Direct lowering (bypass CallPattern) | D | C1 | std/induction.dag |
+| Lattice inhabitant declarations | D | S8 | std/algebra.dag, std/termination.dag |
+
+All four streams touch different files. They can run as separate
+worktrees with zero merge conflicts.
+
+### Active workboards
+
 - **CX:** [docs/cx-design.md §Workboard](docs/cx-design.md)
+  — S1-S8 shared, C1-C6 CX-specific, TDD plan, cleanup catalog
 - **Ownership:** [docs/ownership-design.md §Workboard](docs/ownership-design.md)
+  — O1-O10, violation classes, 3 layers, TDD plan, cleanup catalog
 
 ### Track 2: Language spec modeling + ownership (Lane B)
 
