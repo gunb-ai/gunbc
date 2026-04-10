@@ -133,9 +133,9 @@ Previously eliminated:
 
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
-| Self-compile diagnostics | 314 | 525 | Honest count — complexity violations surfaced, non-blocking |
+| Self-compile diagnostics | 424 | 525 | Honest count — complexity violations surfaced, non-blocking |
 | L1 type knowledge | 0 | 0 | GREEN — hard gate (PR #352). Constructor functions dissolved, ListOf/ReceiverCollectionOf merged into ContainerOf. |
-| Complexity violations | 524 | 525 | Honest count. CX-L2 structural evidence active. Gate: wire LoweringTarget pipeline + types in std/. |
+| Complexity violations | 424 | 525 | Honest count (PR #370). ProgressKind deleted, lattice-max bug fixed, unsound shortcuts reverted. Gate: compositional evidence model needed. |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
@@ -180,7 +180,8 @@ Stabilization rules:
 - CI gate: `check-stage0-freshness.sh` (regenerate → diff → empty).
 - Stage0 generated `.rs` files use `-merge` in `.gitattributes` (no line-level merge).
 - CX gate disabled in both stage0 and `compile.dag` — emission not blocked by complexity violations. Re-enable when CX violations reach 0.
-- CLI exit code filters complexity diagnostics: `main.rs` exits non-zero only for hard errors (non-`ComplexityUnknown`). Without this filter, the 522 pre-existing complexity violations make the freshness gate fatal. Remove the filter when CX reaches 0 (same gate as CX-E).
+- CLI exit code filters complexity diagnostics: `main.rs` exits non-zero only for hard errors (non-`ComplexityUnknown`). Without this filter, the 424 pre-existing complexity violations make the freshness gate fatal. Remove the filter when CX reaches 0 (same gate as CX-E).
+- CX ratchet at 424 (PR #370). Sound fixes only — unsound shortcuts reverted. Remaining violations need compositional evidence model (see `docs/cx-computation-model.md`).
 
 ### Self-Hosting Gap (discovered 2026-04-08, fixed PR #346)
 
@@ -1983,14 +1984,12 @@ and `transport_hermetic` use `_ => ...` wildcard branches. On a closed
 enum, wildcard fallback hides whether `Unknown` is handled intentionally
 or accidentally. Replace with exhaustive matches.
 
-### D-STD-4: ProgressKind → inhabit DescentEvidence lattice (CX-A)
+### D-STD-4: ProgressKind → inhabit DescentEvidence lattice (CX-A) ✅
 
-`ProgressKind` (ProgressUnknown | ProgressSame | ProgressStrict) is a
-second implementation of the same bounded lattice as `DescentEvidence`
-(DescentUnknown | NonIncreasing | Strict). Bridge functions
-`progress_to_evidence` / `evidence_to_progress` confirm they are
-isomorphic. Collapse to one type. Already noted in Pipeline Algebraic
-Grounding (Layer 3) — promoting to Lane D scope as concrete next step.
+**Done (PR #370).** `ProgressKind` deleted. Bridge functions
+`progress_to_evidence` / `evidence_to_progress` deleted. Parser
+progress now grounded directly in `DescentEvidence` from
+`std/termination.dag`. `promote_to_strict` added to the lattice.
 
 ### Acceptance
 

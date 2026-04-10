@@ -238,7 +238,11 @@ categories.
 
 ## Current state (2026-04-10)
 
-**Ratchet: 472 → 168 (64% dissolved). PR #370.**
+**Ratchet: 472 → 424 (10% dissolved, honest). PR #370.**
+
+Note: ratchet was at 168 before reverting 5 unsound evidence shortcuts
+(review feedback). The 424 count is honest — all remaining violations
+represent genuine gaps in the compositional evidence model.
 
 | Phase | From→To | Key insight |
 |-------|---------|-------------|
