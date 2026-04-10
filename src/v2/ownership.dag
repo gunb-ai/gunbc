@@ -154,27 +154,30 @@ fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, bin
 // the worst-case branch per binding.
 // =========================================================================
 
+// Product merge: bindings via pointwise max_by(binding_fan_out),
+// fold_call_nodes via list concat (FreeMonoid).
+fn max_usage_by_fan_out(a: BindingUsage, b: BindingUsage) -> BindingUsage {
+  if binding_fan_out(usage: b) > binding_fan_out(usage: a) { b } else { a }
+}
+
+fn map_usage_merge_at(base: Map<String, BindingUsage>, key: String, new_val: BindingUsage) -> Map<String, BindingUsage> {
+  match map_get(base, key) {
+    Some { value: existing } => map_insert(base, key, max_usage_by_fan_out(a: existing, b: new_val))
+    None => map_insert(base, key, new_val)
+  }
+}
+
 fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAccum {
-  // Each branch accumulator already includes the base's edges (since branches
-  // are walked starting from the base). We keep the worst-case branch per
-  // binding, using binding_fan_out (the emit metric) for comparison — not
-  // semantic_consumer_count, which ignores Read edges and would undercount.
-  let binding_merged = branches |> fold(init: base, f: (merged, branch) =>
+  // Bindings: keep worst-case branch per binding (max fan-out wins).
+  let binding_merged = branches |> fold(init: base.bindings, f: (merged, branch) =>
     branch.bindings |> map_values |> fold(init: merged, f: (acc, usage) =>
-      let current_count = match map_get(acc.bindings, usage.name) {
-        Some { value: existing } => binding_fan_out(usage: existing)
-        None => 0
-      }
-      let branch_count = binding_fan_out(usage: usage)
-      if branch_count > current_count {
-        UsageAccum { bindings: map_insert(acc.bindings, usage.name, usage), fold_call_nodes: acc.fold_call_nodes }
-      } else { acc }
+      map_usage_merge_at(base: acc, key: usage.name, new_val: usage)
     )
   )
-  // Merge fold_call_nodes: base nodes + new nodes discovered in each branch
+  // fold_call_nodes: base nodes + new nodes discovered in each branch (FreeMonoid concat).
   let base_fold_count = base.fold_call_nodes |> count
   let branch_fold_nodes = branches |> flat_map(b => b.fold_call_nodes |> skip(base_fold_count))
-  UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: base.fold_call_nodes |> concat(branch_fold_nodes) }
+  UsageAccum { bindings: binding_merged, fold_call_nodes: base.fold_call_nodes |> concat(branch_fold_nodes) }
 }
 
 // =========================================================================

@@ -31,10 +31,11 @@ pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_built
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for, inductive_fields_list_to_map};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
-pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor};
+pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor, sub_value_to_evidence};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown};
 use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
+pub use crate::std_termination::{evidence_rank};
 pub use crate::v2_compiler_infer_resolve::{resolve_node, resolve_item_types, NodeResolveResult, ItemResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult, resolve_func_sigs};
 pub use crate::v2_compiler_infer_emit_info::{TypeRepr, TypeSummary, EmitGraphInfo, EmitInfoBuildState, empty_emit_graph_info, lookup_emit_type_summary, build_struct_field_summaries, build_enum_field_summaries, add_emit_item_summary, derive_variant_to_enum};
@@ -2882,21 +2883,23 @@ Some(Rc::new(SubValueRelation::StrictSubValue {
 }
 }
 
+pub fn svr_evidence_rank(rel: Rc<SubValueRelation>) -> i64 {
+    evidence_rank(sub_value_to_evidence(rel))
+}
+
+pub fn svr_min_by_rank(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
+    if (svr_evidence_rank(b.clone()) < svr_evidence_rank(a.clone())) {
+        b.clone()
+    } else {
+        a.clone()
+    }
+}
+
 pub fn merge_argument_relations(rels: Rc<Vec<Rc<SubValueRelation>>>) -> Rc<SubValueRelation> {
-    rels.iter().cloned().fold(Rc::new(SubValueRelation::PreservedValue), |acc: Rc<SubValueRelation>, rel: Rc<SubValueRelation>| match (*rel.clone()).clone() {
-    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-    _ => match (*acc.clone()).clone() {
-    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-    SubValueRelation::PreservedValue => match (*rel.clone()).clone() {
-    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
-    _ => rel.clone(),
-},
-    _ => match (*rel.clone()).clone() {
-    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
-    _ => acc.clone(),
-},
-},
-})
+    match rels.clone().first().cloned() {
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+    Some(first_rel) => Rc::new(rels.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned().fold(first_rel.clone(), |acc: Rc<SubValueRelation>, rel: Rc<SubValueRelation>| svr_min_by_rank(acc.clone(), rel.clone())),
+}
 }
 
 pub fn classify_argument(arg_expr: Rc<Node>, param_name: String, ctx: Rc<DescentContext>) -> Rc<SubValueRelation> {

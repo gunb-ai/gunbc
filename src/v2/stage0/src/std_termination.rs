@@ -20,6 +20,14 @@ pub enum DescentEvidence {
     DescentUnknown,
 }
 
+pub fn evidence_rank(e: DescentEvidence) -> i64 {
+    match e {
+    DescentEvidence::Strict => 2,
+    DescentEvidence::NonIncreasing => 1,
+    DescentEvidence::DescentUnknown => 0,
+}
+}
+
 pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
     match a {
     DescentEvidence::Strict => match b {
@@ -38,12 +46,12 @@ pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence
 
 pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
     match a {
-    DescentEvidence::Strict => DescentEvidence::Strict,
+    DescentEvidence::DescentUnknown => b,
     DescentEvidence::NonIncreasing => match b {
     DescentEvidence::Strict => DescentEvidence::Strict,
     _ => DescentEvidence::NonIncreasing,
 },
-    _ => b,
+    DescentEvidence::Strict => DescentEvidence::Strict,
 }
 }
 
@@ -52,6 +60,23 @@ pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     DescentEvidence::NonIncreasing => DescentEvidence::Strict,
     DescentEvidence::Strict => DescentEvidence::Strict,
     _ => DescentEvidence::DescentUnknown,
+}
+}
+
+pub fn optional_evidence_meet(a: Option<DescentEvidence>, b: Option<DescentEvidence>) -> Option<DescentEvidence> {
+    match a.clone() {
+    None => b,
+    Some(va) => match b {
+    None => a.clone(),
+    Some(vb) => Some(merge_evidence(va.clone(), vb.clone())),
+},
+}
+}
+
+pub fn map_evidence_merge_at(base: Rc<HashMap<String, DescentEvidence>>, key: String, new_val: DescentEvidence) -> Rc<HashMap<String, DescentEvidence>> {
+    match v2_rt::map_get(&base, key.clone()) {
+    Some(existing) => v2_rt::rc_map_insert(base.clone(), key.clone(), merge_evidence(existing.clone(), new_val)),
+    None => v2_rt::rc_map_insert(base.clone(), key.clone(), new_val),
 }
 }
 

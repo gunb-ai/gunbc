@@ -57,27 +57,37 @@ import std.algebra { Ordering }
 //   NonIncreasing  → Equal   (value stays the same — may decrease but not proven)
 //   DescentUnknown → Greater (conservatively treated as potentially increasing)
 
+// DescentEvidence inhabits BoundedLattice<DescentEvidence>
+//
+// The lattice ordering is a total order: DescentUnknown < NonIncreasing < Strict
+//   top    = Strict         (best evidence — value provably decreases)
+//   bottom = DescentUnknown (no evidence — fail-closed)
+//   meet   = min            (conservative: worst of two branches)
+//   join   = max            (optimistic: best of two branches)
+//
+// This is the single authority for merging descent evidence across
+// control flow (if/match branches, multiple call sites). All lifted
+// forms (Optional, Map pointwise, fold-over-list) compose through
+// the generic lifters in std/algebra.dag.
+
 type DescentEvidence
   = Strict           // value provably decreases (Less)
   | NonIncreasing    // value does not increase (Equal or Less)
   | DescentUnknown   // cannot determine (fail-closed: Greater)
 
-// Merge two descent evidences (e.g., from two branches of an if/match).
-// The merge is conservative: if EITHER branch is DescentUnknown, result is DescentUnknown.
-// If both are Strict, result is Strict. Otherwise NonIncreasing.
-//
-// This forms a bounded lattice:
-//   top    = Strict         (best evidence)
-//   bottom = DescentUnknown (no evidence)
-//   meet(a, b) = min(a, b)  (conservative merge)
-//
-// The lattice ordering is: DescentUnknown < NonIncreasing < Strict
-// meet(Strict, Strict) = Strict
-// meet(Strict, NonIncreasing) = NonIncreasing
-// meet(Strict, DescentUnknown) = DescentUnknown
-// meet(NonIncreasing, NonIncreasing) = NonIncreasing
-// meet(NonIncreasing, DescentUnknown) = DescentUnknown
+// Numeric rank for the lattice ordering. Higher = stronger evidence.
+// Used by generic lifters (min_by, max_by) that compare via projection.
+fn evidence_rank(e: DescentEvidence) -> Int {
+  match e {
+    Strict => 2
+    NonIncreasing => 1
+    DescentUnknown => 0
+  }
+}
 
+// BoundedLattice.meet: conservative merge (min in the ordering).
+// If EITHER branch is DescentUnknown, result is DescentUnknown.
+// If both are Strict, result is Strict. Otherwise NonIncreasing.
 fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   match a {
     Strict => match b {
@@ -94,23 +104,21 @@ fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   }
 }
 
-// Join two descent evidences: the OPTIMISTIC merge. Returns the BEST
-// evidence from either branch. Dual of merge_evidence (meet).
+// BoundedLattice.join: optimistic merge (max in the ordering).
+// Dual of merge_evidence (meet). Returns the BEST evidence.
 //
-// The lattice ordering is: DescentUnknown < NonIncreasing < Strict
 // join(DescentUnknown, X) = X
 // join(NonIncreasing, Strict) = Strict
 // join(NonIncreasing, NonIncreasing) = NonIncreasing
 // join(Strict, X) = Strict
-
 fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   match a {
-    Strict => Strict
+    DescentUnknown => b
     NonIncreasing => match b {
       Strict => Strict
       _ => NonIncreasing
     }
-    _ => b
+    Strict => Strict
   }
 }
 
@@ -120,6 +128,7 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 // Data declaration deferred: compiler does not yet emit generic type
 // parameters for data constants (BoundedLattice<DescentEvidence>).
 
+
 // Promote NonIncreasing to Strict (e.g., when a callee is known to always advance).
 // DescentUnknown stays unknown — can't promote what we don't know.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
@@ -127,6 +136,30 @@ fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     NonIncreasing => Strict
     Strict => Strict
     _ => DescentUnknown
+  }
+}
+
+// =========================================================================
+// Lifted lattice operations (concrete instances of algebra.dag patterns)
+// =========================================================================
+
+// optional_meet for DescentEvidence: None is identity (top).
+fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
+  match a {
+    None => b
+    Some { value: va } =>
+      match b {
+        None => a
+        Some { value: vb } => Some { value: merge_evidence(a: va, b: vb) }
+      }
+  }
+}
+
+// map_merge_at for DescentEvidence: pointwise meet keyed by String.
+fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_val: DescentEvidence) -> Map<String, DescentEvidence> {
+  match map_get(base, key) {
+    Some { value: existing } => map_insert(base, key, merge_evidence(a: existing, b: new_val))
+    None => map_insert(base, key, new_val)
   }
 }
 

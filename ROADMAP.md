@@ -167,7 +167,7 @@ better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
 |--------|-------|-------|
 | A: Provenance infra | S1, S2, S3, S4, S5 | 04_env.dag, 04_infer.dag |
 | B: Clone elision | O1-O5 | ownership.dag, 05_emit_rust.dag |
-| C: std/ foundation | C1, S8 | std/induction.dag, std/algebra.dag, std/termination.dag |
+| C: std/ foundation | C1, ~~S8~~ (DONE) | std/induction.dag, std/algebra.dag, std/termination.dag |
 
 Zero file overlap between streams. After Stream A (S1-S5), CX
 consumer items C2-C6 can start (same files as Stream A, sequential).
@@ -317,44 +317,78 @@ These dissolve as types move to `std/` and carry structural facts
 (type definitions, algebra witnesses, operation contracts) — not
 metadata or annotations.
 
-Additional duplication surfaced by review (PR #371):
+Additional duplication surfaced by review (PR #371, external audit):
 - `emit_rust_default_value` (05_emit_rust.dag) is a hand-written
   if-forest over type names. `TypeCheckpoint.default_expr` already
   carries the same defaults. Fix: read from checkpoint data.
 - `rust_type_map` (extdeps/languages/rust/emit.dag) duplicates the
   primitive mapping in `rust_type_checkpoints`. Same for Go/Python.
   Fix: derive from TypeCheckpoint only.
+- `go_source_extension` in extdeps/languages/go/emit.dag duplicates
+  `go_scaffold.source_file_extension` in std/languages.dag.
+- `keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
+  table. Reconcile to single authority.
 - CallableOf coverage incomplete: `filter`, `any`, `all`, `sort_by`
   still omit CallableOf from their param_types in algebra templates.
   Completing this dissolves downstream string dispatch in emit + CX.
+  Ignored tests in compiler_tests_rust.dag (wrong-callback-arity,
+  wrong-return-type) are blocked on this.
 
 ### Track 8: Lattice inhabitant consolidation (Lane D)
 
 `std/algebra.dag` defines `Lattice<T>` and `BoundedLattice<T>` as
-types, but no concrete type declares that it inhabits them. Instead,
-6+ ad-hoc merge functions across the codebase hand-implement lattice
-meets without naming the concept:
+types, but no concrete type declares that it inhabits them.
 
-| Ad-hoc merge function | Type | Lattice it IS |
-|-----------------------|------|--------------|
-| `merge_evidence` | DescentEvidence | BoundedLattice (top=Strict, bottom=Unknown) |
-| `merge_argument_relations` | SubValueRelation | BoundedLattice (top=StrictSubValue, bottom=Unknown) |
-| `merge_optional_evidence` | DescentEvidence? | Lifted BoundedLattice |
-| `merge_param_evidence` | SubValueRelation → DescentEvidence | Composed projection + merge |
-| `merge_edge_evidence` | Map<String, DescentEvidence> | Pointwise BoundedLattice |
-| `merge_branch_usages` | UsageAccum | Pointwise merge over binding fan-out |
+**Status: Phase 1 DONE.** DescentEvidence declared as BoundedLattice
+inhabitant with `evidence_rank`, `merge_evidence` (meet),
+`join_evidence` (join), `optional_evidence_meet`, and
+`map_evidence_merge_at`. All 6 ad-hoc merge functions now compose
+through these primitives:
 
-**Fix:** Declare lattice inhabitants in `std/`. DescentEvidence
-inhabits BoundedLattice. SubValueRelation inhabits BoundedLattice.
-The merge operation IS the lattice meet — declared once at authority,
-consumed everywhere.
+| Function | Was | Now |
+|----------|-----|-----|
+| `merge_evidence` | 9-line match | BoundedLattice.meet (canonical, unchanged) |
+| `merge_optional_evidence` | 10-line match | `optional_evidence_meet(a, b)` |
+| `merge_edge_evidence` | 14-line match | `map_evidence_merge_at(base, key, val)` |
+| `merge_param_evidence` | 7-line fold | fold + projection + meet (comment only) |
+| `merge_argument_relations` | 20-line non-commutative fold | `svr_min_by_rank` — now commutative |
+| `merge_branch_usages` | 22-line inline merge | `map_usage_merge_at` + list concat |
 
-**What dissolves:** All 6 ad-hoc merge functions. Pointwise lifting
-(Map, List, Optional) follows automatically from the element lattice.
-New analysis types get merging for free by declaring their lattice.
+**Phase 2 (blocked on user-defined generics in emission):** The
+concrete lifters follow the generic pattern documented in
+`std/algebra.dag` (optional_meet, map_merge_at, min_by, max_by).
+When the emitter supports user-defined generics, these monomorphized
+functions collapse into generic lifters parameterized by the element
+meet.
 
 **Connects to:** Track 1 (provenance composition uses lattice meet),
 KF-3 (test generation can verify lattice laws automatically).
+
+### Track 9: Missed algebraic structures in std/ (Lane D)
+
+Surfaced by external audit (2026-04-10). Types or concepts that are
+described but not structurally modeled in .dag:
+
+| Item | Current state | Fix |
+|------|--------------|-----|
+| Encoding lattice | `dsl/std/encoding.dag` names the lattice but delegates to Rust's `ContentEncoding` | Model join/meet in .dag; reconcile `Encoding` and `ContentEncoding` to one authority |
+| Stack<T> → FreeMonoid | `dsl/std/stack.dag` defines bespoke push/pop/fold_stack instead of attaching to FreeMonoid | Import algebra.dag; Stack IS FreeMonoid |
+| User-defined generic emission | Generic functions (T, V, K params) parse and type-check but emit unresolved type variables in Rust | Emitter needs monomorphization or generic Rust output |
+
+### Track 10: Extdeps modeling fidelity (Lane D)
+
+Stringly-typed fields that should be structural, surfaced by external
+audit (2026-04-10):
+
+| Item | File | Fix |
+|------|------|-----|
+| `GitHubAuthToken.scopes: List<String>` | extdeps/github/github.dag | Use existing `GitHubScope` enum in same file |
+| `ThinkingConfig.type: String` | extdeps/llm/anthropic.dag | Structural coproduct |
+| `LlmMessage.content: String` | extdeps/llm/llm.dag | Richer multimodal block structure (M1) |
+| `Gist.files: List<GistFile>` | extdeps/github/gists.dag | `Map<String, GistFile>` per API shape |
+| OpenAI string-path extraction | extdeps/llm/openai.dag | Structural field access (M8) |
+| Policy defaults in `CloudSecretConfig` | std/types.dag | Move `"latest"`, `"sigstore"`, `Bearer` to call sites |
+| `ProjectId` vs `GcpProjectId` | std/types.dag | Reconcile to one branded type |
 
 ---
 

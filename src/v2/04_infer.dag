@@ -107,8 +107,10 @@ import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
-  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
+  sub_value_to_evidence
 }
+import std.termination { evidence_rank }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
   NodeResolveResult, ItemResult
@@ -2664,31 +2666,30 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   }
 }
 
-// Classify one self-call argument against its corresponding parameter.
-// Merge SubValueRelations across branches (match arms, if branches).
-// Conservative: if ALL are the same structural kind, keep it.
-// If ANY is SubValueUnknown, result is SubValueUnknown.
-// PreservedValue is weaker than Strict — mixed Strict+Preserved → PreservedValue.
+// Lattice meet on SubValueRelation via projection to DescentEvidence.
+// Orders by evidence_rank(sub_value_to_evidence(x)) and keeps the weaker
+// (more conservative) of two values. Commutative: branch order does not
+// affect the result.
+//
+// SubValueUnknown (rank 0) absorbs everything.
+// PreservedValue  (rank 1) < structural variants (rank 2).
+// Equal-rank ties keep the first (stable tiebreaker for structural kind).
+fn svr_evidence_rank(rel: SubValueRelation) -> Int {
+  evidence_rank(e: sub_value_to_evidence(relation: rel))
+}
+
+fn svr_min_by_rank(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
+  if svr_evidence_rank(rel: b) < svr_evidence_rank(rel: a) { b } else { a }
+}
+
 fn merge_argument_relations(rels: List<SubValueRelation>) -> SubValueRelation {
-  rels |> fold(init: PreservedValue, f: (acc, rel) =>
-    match rel {
-      SubValueUnknown => SubValueUnknown
-      _ =>
-        match acc {
-          SubValueUnknown => SubValueUnknown
-          PreservedValue =>
-            match rel {
-              PreservedValue => PreservedValue
-              _ => rel  // first non-Preserved sets the structural kind
-            }
-          _ =>
-            match rel {
-              PreservedValue => PreservedValue  // Preserved weakens to Preserved
-              _ => acc  // keep existing structural kind (conservative: first wins)
-            }
-        }
-    }
-  )
+  match rels |> first {
+    None => SubValueUnknown
+    Some { value: first_rel } =>
+      rels |> skip(1) |> fold(init: first_rel, f: (acc, rel) =>
+        svr_min_by_rank(a: acc, b: rel)
+      )
+  }
 }
 
 fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {

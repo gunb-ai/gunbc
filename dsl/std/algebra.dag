@@ -219,6 +219,24 @@ type BooleanAlgebra<T> {
 }
 
 // =========================================================================
+// Lattice lifting — compositional patterns for BoundedLattice inhabitants
+// =========================================================================
+//
+// Every BoundedLattice inhabitant gets lifted operations for free:
+//
+//   optional_meet(meet, a, b):  None is identity (top).
+//   map_merge_at(merge, m, k, v): pointwise per key, absent = identity.
+//   min_by(project, a, b):  compare via projection, keep lesser.
+//   max_by(project, a, b):  compare via projection, keep greater.
+//
+// These are generic patterns. Concrete instances live next to their
+// lattice declarations (e.g., std/termination.dag has optional_evidence_meet).
+//
+// When the emitter supports user-defined generics, these can become
+// executable generic functions. Until then, they serve as the
+// specification that concrete instances must follow.
+
+// =========================================================================
 // Sequence/collection structures
 // =========================================================================
 
