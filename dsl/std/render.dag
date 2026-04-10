@@ -74,41 +74,58 @@ fn span_width(span: Span, tier: Tier) -> Int? {
   }
 }
 
-fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span> {
+fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span>? {
   let state = fold(spans,
-    init: { kept: [], remaining: budget },
-    f: (acc, span) => if acc.remaining <= 0 {
-      acc
-    } else {
-      let w = match span_width(span: span, tier: tier) {
-        Some { value: w } => w
-        None => string_display_width(s: span.text)
-      }
-      if w <= acc.remaining {
-        { kept: concat(acc.kept, [span]), remaining: acc.remaining - w }
-      } else {
-        { kept: concat(acc.kept, [Span { text: truncate_text(text: span.text, max_width: acc.remaining), style: span.style }]), remaining: 0 }
-      }
+    init: Some { value: { kept: [], remaining: budget } },
+    f: (acc, span) => match acc {
+      None => none
+      Some { value: st } =>
+        if st.remaining <= 0 {
+          acc
+        } else {
+          match span_width(span: span, tier: tier) {
+            Some { value: w } =>
+              if w <= st.remaining {
+                Some { value: { kept: concat(st.kept, [span]), remaining: st.remaining - w } }
+              } else {
+                Some { value: { kept: concat(st.kept, [Span { text: truncate_text(text: span.text, max_width: st.remaining), style: span.style }]), remaining: 0 } }
+              }
+            None => none
+          }
+        }
     }
   )
-  state.kept
-}
-
-fn constrain_line(line: Line, max_width: Int, tier: Tier) -> Line {
-  let indent_width = line.indent * 4
-  let budget = max_width - indent_width
-  if budget <= 0 { return Line { spans: [], indent: line.indent, max_width: max_width } }
-  Line {
-    spans: truncate_spans(spans: line.spans, budget: budget, tier: tier),
-    indent: line.indent,
-    max_width: max_width
+  match state {
+    Some { value: s } => Some { value: s.kept }
+    None => none
   }
 }
 
-fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame {
-  Frame {
-    lines: map(frame.lines, line => constrain_line(line: line, max_width: viewport.width, tier: tier)),
-    cursor_action: frame.cursor_action
+fn constrain_line(line: Line, max_width: Int, tier: Tier) -> Line? {
+  let indent_width = line.indent * 4
+  let budget = max_width - indent_width
+  if budget <= 0 { return Some { value: Line { spans: [], indent: line.indent, max_width: max_width } } }
+  match truncate_spans(spans: line.spans, budget: budget, tier: tier) {
+    Some { value: spans } => Some { value: Line { spans: spans, indent: line.indent, max_width: max_width } }
+    None => none
+  }
+}
+
+fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame? {
+  let result = fold(frame.lines,
+    init: Some { value: [] },
+    f: (acc, line) => match acc {
+      None => none
+      Some { value: lines } =>
+        match constrain_line(line: line, max_width: viewport.width, tier: tier) {
+          Some { value: l } => Some { value: concat(lines, [l]) }
+          None => none
+        }
+    }
+  )
+  match result {
+    Some { value: lines } => Some { value: Frame { lines: lines, cursor_action: frame.cursor_action } }
+    None => none
   }
 }
 
