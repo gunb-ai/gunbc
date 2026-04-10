@@ -1974,12 +1974,17 @@ that reduce ontology drift and make the compiler simpler to model
 against. Each item is a concrete MODELING.md M4–M9 violation in
 existing std/ code.
 
-### D-STD-1: `standard_symbols` → Optional returns — DONE
+### D-STD-1: `standard_symbols` — Optional returns (partial)
 
 `resolve_symbol`, `symbol_color`, `ansi_code` now return Optional types
 (`String?`, `SemanticColor?`, `String?`) using `filter |> first` pattern.
 Fabricated defaults (empty strings, `Default` color, reset ANSI code)
-eliminated. Consumer `span_width` in `render.dag` updated to handle `None`.
+eliminated. Consumer `span_width` in `render.dag` returns `Int?` so
+symbol miss propagates to callers (no silent width fabrication).
+
+**Remaining:** Migrate `standard_symbols` from `List<SymbolEntry>` to
+`PartialFunction<SymbolId, SymbolEntry>` or `Map<SymbolId, SymbolEntry>`
+so lookup and uniqueness are structural per M9.
 
 ### D-STD-2: `fermi_timeouts` — single authority — DONE
 
@@ -2847,7 +2852,7 @@ Every Layer 2 root-cause track reaches its acceptance criteria.
 |------|---------------|---------|---------|
 | M2 | No fabricated types, no BRIDGE, BND-1..4 landed | 0 real BRIDGEs, no fabrication, `resolved_type` boundary API; BND-1..4 open | `full_dsl_compiles` 0 diagnostics |
 | CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_fixed_point` passes |
-| M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=0 (hard gate), Node.name deletion in progress (PR #367) | `l1-ratchet.sh --check` |
+| M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=0 (hard gate PR #352), Node.name deletion in progress | `l1-ratchet.sh --check` |
 | CX | User code gets proven bounds via type-derived strict descent (see CX launch gate below) | 524 violations in compiler code (non-blocking, internal debt) | User-facing: bounds on standard patterns. Internal: `strict_compile_diagnostic_count` tracked but not blocking |
 | LS | All emitter decisions from spec-referenced data | Not started | No inline target-language knowledge in emitter |
 | RE | review.dag compiles and runs (RE ratchet 21/21) | 21/21 | RE ratchet table |

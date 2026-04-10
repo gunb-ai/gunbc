@@ -63,13 +63,13 @@ type Viewport {
 
 // -- Width-constrained composition ----------------------------------
 
-fn span_width(span: Span, tier: Tier) -> Int {
+fn span_width(span: Span, tier: Tier) -> Int? {
   let text_w = string_display_width(s: span.text)
   match span.style.symbol {
-    null => text_w
+    null => Some { value: text_w }
     sym  => match resolve_symbol(id: sym, tier: tier) {
-      Some { value: s } => text_w + string_display_width(s: s)
-      None => text_w
+      Some { value: s } => Some { value: text_w + string_display_width(s: s) }
+      None => none
     }
   }
 }
@@ -80,10 +80,14 @@ fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span> {
     f: (acc, span) => if acc.remaining <= 0 {
       acc
     } else {
-      if span_width(span: span, tier: tier) <= acc.remaining {
-        { kept: concat(acc.kept, [span]), remaining: acc.remaining - span_width(span: span, tier: tier) }
-      } else {
-        { kept: concat(acc.kept, [Span { text: truncate_text(text: span.text, max_width: acc.remaining), style: span.style }]), remaining: 0 }
+      match span_width(span: span, tier: tier) {
+        Some { value: w } =>
+          if w <= acc.remaining {
+            { kept: concat(acc.kept, [span]), remaining: acc.remaining - w }
+          } else {
+            { kept: concat(acc.kept, [Span { text: truncate_text(text: span.text, max_width: acc.remaining), style: span.style }]), remaining: 0 }
+          }
+        None => acc
       }
     }
   )
