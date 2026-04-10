@@ -1097,14 +1097,14 @@ Active work items. Each has a TDD test and a cleanup target.
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| S1 | Add `provenance: SubValueRelation` to TypeBinding (default SubValueUnknown) | All existing tests pass, no behavior change | — (no-op step) | Not started |
-| S2 | Instrument function params → PreservedValue | Test: compile known .dag, assert param bindings have PreservedValue | — | Not started |
-| S3 | Instrument let-bindings → classify from value expr | Test: `let child = node.left` produces StrictSubValue | `classify_let_value` (04_infer.dag:2413, ~170 lines) | Not started |
-| S4 | Instrument match arms → StrictSubValue from variant field | Test: `match param { Cons { tail } => ... }` produces StrictSubValue on `tail` | Match-related heuristics in classify_argument | Not started |
-| S5 | Instrument for-each variable → IteratedSubValue | Test: `children \|> map(c => ...)` produces IteratedSubValue on `c` | For-each handling in annotate_descent | Not started |
+| S1 | Add `provenance: SubValueRelation` to TypeBinding (default SubValueUnknown) | All existing tests pass, no behavior change | — (no-op step) | DONE (04_env.dag:24-28) |
+| S2 | Instrument function params → PreservedValue | Test: compile known .dag, assert param bindings have PreservedValue | — | DONE (04_infer.dag:703) |
+| S3 | Instrument let-bindings → classify from value expr | Test: `let child = node.left` produces StrictSubValue | `classify_binding_provenance` (04_infer.dag:2438) | DONE (04_infer.dag:769, 1682) |
+| S4 | Instrument match arms → StrictSubValue from variant field | Test: `match param { Cons { tail } => ... }` produces StrictSubValue on `tail` | `extend_scope_match_bound` (04_infer.dag:732) | Not started |
+| S5 | Instrument for-each variable → IteratedSubValue | Test: `children \|> map(c => ...)` produces IteratedSubValue on `c` | For-each handling in annotate_descent | DONE (04_infer.dag:1934-1947) |
 | S6 | Lambda params with element expected → IteratedSubValue | Test: fold/map callback param gets IteratedSubValue | Lambda heuristic (04_infer.dag:2870-2897) | Not started |
 | S7 | Lambda params with Callable expected (callee contracts) | Test: user-defined HOF callback param gets correct SVR | Full lambda transparency heuristic | Not started |
-| S8 | Declare SubValueRelation as BoundedLattice inhabitant | Test: lattice laws (idempotent, commutative, absorptive) | `merge_argument_relations` (04_infer.dag:2611) | Not started |
+| S8 | Declare DescentEvidence as BoundedLattice inhabitant | Test: lattice laws (idempotent, commutative, absorptive) | `merge_argument_relations` (04_infer.dag:2611) | DONE (PR #379) |
 
 ### CX-specific
 

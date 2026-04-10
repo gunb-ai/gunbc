@@ -733,14 +733,14 @@ pub fn extend_scope(scope: Rc<InferScope>, name: String, resolved: Rc<Node>, pro
 })
 }
 
-pub fn extend_scope_match_bound(scope: Rc<InferScope>, name: String, resolved: Rc<Node>) -> Rc<InferScope> {
+pub fn extend_scope_match_bound(scope: Rc<InferScope>, name: String, resolved: Rc<Node>, provenance: Rc<SubValueRelation>) -> Rc<InferScope> {
     Rc::new(InferScope {
     type_env: scope.type_env.clone(),
     func_env: scope.func_env.clone(),
     locals: v2_rt::rc_map_insert(scope.locals.clone(), name.clone(), Rc::new(TypeBinding {
     name: name.clone(),
     resolved: resolved,
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+    provenance: provenance,
 })),
     match_bound_names: v2_rt::rc_map_insert(scope.match_bound_names.clone(), name.clone(), true),
     module_name: scope.module_name.clone(),
@@ -785,11 +785,38 @@ extend_scope(scope.clone(), let_binding_name_at(stmt.clone(), scope.type_env.clo
 }
 }
 
-pub fn extend_scope_with_pattern_node(scope: Rc<InferScope>, pattern: Rc<MatchPattern>, scrutinee_subject: Rc<PatternSubject>) -> Rc<PatternScopeResult> {
+pub fn derive_field_provenance(scope: Rc<InferScope>, scrutinee_provenance: Rc<SubValueRelation>, scrutinee_subject: Rc<PatternSubject>, variant_name: String, field_name: String) -> Rc<SubValueRelation> {
+    match (*scrutinee_provenance).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    _ => {
+        let scrut_type_name = match (*scrutinee_subject).clone() {
+    PatternSubject::PatternResolved { node: n, .. } => resolved_type(n.clone()).name.clone(),
+    _ => "".to_string(),
+};
+if (scrut_type_name.clone().as_str() == "".to_string().as_str()) {
+            Rc::new(SubValueRelation::SubValueUnknown)
+        } else {
+            {
+                let ind_fields = inductive_fields_for(scope.type_env.clone(), scrut_type_name.clone());
+let matching = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.iter().cloned() { if ((f.variant_name.clone().as_str() == variant_name.clone().as_str()) && (f.field_name.clone().as_str() == field_name.clone().as_str())) { __result.push(f); } } __result }).first().cloned();
+match matching {
+    Some(ind_field) => Rc::new(SubValueRelation::StrictSubValue {
+    field: ind_field.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+}),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
+}
+        }
+},
+}
+}
+
+pub fn extend_scope_with_pattern_node(scope: Rc<InferScope>, pattern: Rc<MatchPattern>, scrutinee_subject: Rc<PatternSubject>, scrutinee_provenance: Rc<SubValueRelation>) -> Rc<PatternScopeResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern).clone() {
     MatchPattern::Bind { name: n, .. } => Rc::new(PatternScopeResult {
-    scope: extend_scope_match_bound(scope.clone(), n.clone(), pattern_binding_type(scrutinee_subject)),
+    scope: extend_scope_match_bound(scope.clone(), n.clone(), pattern_binding_type(scrutinee_subject.clone()), scrutinee_provenance.clone()),
     diagnostics: Rc::new(vec![]),
 }),
     MatchPattern::Wildcard => Rc::new(PatternScopeResult {
@@ -801,7 +828,7 @@ pub fn extend_scope_with_pattern_node(scope: Rc<InferScope>, pattern: Rc<MatchPa
     diagnostics: Rc::new(vec![]),
 }),
     MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => {
-            let resolved_scrut = resolve_pattern_subject(scope.clone(), scrutinee_subject);
+            let resolved_scrut = resolve_pattern_subject(scope.clone(), scrutinee_subject.clone());
 let variant_lookup = lookup_variant_in_type(resolved_scrut, vname.clone(), scope.module_name.clone(), scope.type_env.clone().source_index.clone());
 let variant_subject = lookup_result_subject(variant_lookup.clone());
 let variant_diags = variant_lookup.diagnostics.clone();
@@ -809,17 +836,19 @@ bindings.clone().iter().cloned().fold(Rc::new(PatternScopeResult {
     scope: scope.clone(),
     diagnostics: variant_diags,
 }), |acc: Rc<PatternScopeResult>, fb: Rc<Node>| {
-                let field_lookup = lookup_field_in_variant(variant_subject.clone(), field_binding_name_at(fb.clone(), scope.type_env.clone().source_index.clone()), scope.module_name.clone(), scope.type_env.clone().source_index.clone());
+                let field_name = field_binding_name_at(fb.clone(), scope.type_env.clone().source_index.clone());
+let field_lookup = lookup_field_in_variant(variant_subject.clone(), field_name.clone(), scope.module_name.clone(), scope.type_env.clone().source_index.clone());
 let field_subject = lookup_result_subject(field_lookup.clone());
 let field_type = pattern_binding_type(field_subject.clone());
+let field_provenance = derive_field_provenance(scope.clone(), scrutinee_provenance.clone(), scrutinee_subject.clone(), vname.clone(), field_name.clone());
 let fb_pattern = field_binding_pattern(fb.clone());
 match (*fb_pattern.clone()).clone() {
     MatchPattern::Bind { name: n, .. } => Rc::new(PatternScopeResult {
-    scope: extend_scope_match_bound(acc.scope.clone(), n.clone(), field_type.clone()),
+    scope: extend_scope_match_bound(acc.scope.clone(), n.clone(), field_type.clone(), field_provenance.clone()),
     diagnostics: v2_rt::concat(acc.diagnostics.clone(), field_lookup.diagnostics.clone()),
 }),
     _ => {
-                    let nested = extend_scope_with_pattern_node(acc.scope.clone(), fb_pattern.clone(), field_subject.clone());
+                    let nested = extend_scope_with_pattern_node(acc.scope.clone(), fb_pattern.clone(), field_subject.clone(), field_provenance.clone());
 Rc::new(PatternScopeResult {
     scope: nested.scope.clone(),
     diagnostics: v2_rt::concat(acc.diagnostics.clone(), v2_rt::concat(field_lookup.diagnostics.clone(), nested.diagnostics.clone())),
@@ -1510,17 +1539,18 @@ Rc::new(InferResult {
             let span = texpr.span.clone();
 let scrut = match_scrutinee(texpr.clone());
 let arm_nodes = match_arm_nodes(texpr.clone());
-let scrut_result = infer_expr(scrut, scope.clone(), None);
+let scrut_result = infer_expr(scrut.clone(), scope.clone(), None);
 let scrut_typed = scrut_result.typed.clone();
 let scrut_diags = scrut_result.diagnostics.clone();
 let scrut_rt = resolved_type(scrut_typed.clone());
 let scrut_subject = pattern_subject_from_inferred(scrut_typed.inferred.clone());
+let scrut_provenance = classify_binding_provenance(scrut.clone(), scope.clone());
 let arm_infer_results = Rc::new({ let mut __result = Vec::new(); for arm_node in arm_nodes.clone().iter().cloned() { __result.push({
                 let arm_pat = arm_pattern(arm_node.clone());
 let arm_g = arm_guard(arm_node.clone());
 let arm_b = arm_body(arm_node.clone());
 let typed_pattern = annotate_pattern_parent_enums(arm_pat.clone(), scrut_subject.clone(), scope.clone());
-let pattern_result = extend_scope_with_pattern_node(scope.clone(), typed_pattern.clone(), scrut_subject.clone());
+let pattern_result = extend_scope_with_pattern_node(scope.clone(), typed_pattern.clone(), scrut_subject.clone(), scrut_provenance.clone());
 let arm_scope = pattern_result.scope.clone();
 let pattern_diags = pattern_result.diagnostics.clone();
 let guard_result = if (arm_g.clone() != None) {
@@ -1577,7 +1607,7 @@ if !is_fully_resolved(original.body_type.clone(), scope.type_env.clone().source_
 let arm_g = arm_guard(arm_node.clone());
 let arm_b = arm_body(arm_node.clone());
 let typed_pattern = annotate_pattern_parent_enums(arm_pat.clone(), scrut_subject.clone(), scope.clone());
-let pattern_result = extend_scope_with_pattern_node(scope.clone(), typed_pattern.clone(), scrut_subject.clone());
+let pattern_result = extend_scope_with_pattern_node(scope.clone(), typed_pattern.clone(), scrut_subject.clone(), scrut_provenance.clone());
 let arm_scope = pattern_result.scope.clone();
 let pattern_diags = pattern_result.diagnostics.clone();
 let guard_result = if (arm_g.clone() != None) {
