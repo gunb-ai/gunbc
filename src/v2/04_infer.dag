@@ -21,7 +21,7 @@
 module v2.compiler.infer
 
 import std.types { SourceSpan, container_param_name }
-import std.coercion { dag_can_cast, is_numeric_cast_type }
+import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node,
   authored_name_at, NewlineIndex, has_child_named,
@@ -601,8 +601,8 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
     Some { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_index: source_index, node: src_node)
       if source_name == target_name { none }
-      else if !is_numeric_cast_type(name: source_name) { none }
-      else if !is_numeric_cast_type(name: target_name) { none }
+      else if !is_dag_cast_domain_type(name: source_name) { none }
+      else if !is_dag_cast_domain_type(name: target_name) { none }
       else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
       else {
         let msg = concat("invalid cast: ", source_name, " as ", target_name)

@@ -124,7 +124,9 @@ fn dag_can_cast(source_type: String, target_type: String) -> Bool {
   dag_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
 }
 
-// Types in the numeric cast domain — only these are validated by dag_can_cast.
-fn is_numeric_cast_type(name: String) -> Bool {
-  name == "Int" || name == "Float" || name == "Bool"
+// Whether a type appears in the dag cast domain — derived from dag_cast_rules
+// (single authority). Types outside this domain bypass infer-phase cast
+// validation; emit's per-target can_cast is the fail-closed safety net.
+fn is_dag_cast_domain_type(name: String) -> Bool {
+  dag_cast_rules |> any(r => r.from_type == name || r.to_type == name)
 }

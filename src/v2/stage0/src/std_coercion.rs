@@ -60,6 +60,6 @@ pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
     { let mut __found = false; for r in dag_cast_rules().iter().cloned() { if ((r.from_type.clone().as_str() == source_type.clone().as_str()) && (r.to_type.clone().as_str() == target_type.clone().as_str())) { __found = true; break; } } __found }
 }
 
-pub fn is_numeric_cast_type(name: String) -> bool {
-    (((name.clone().as_str() == "Int".to_string().as_str()) || (name.clone().as_str() == "Float".to_string().as_str())) || (name.clone().as_str() == "Bool".to_string().as_str()))
+pub fn is_dag_cast_domain_type(name: String) -> bool {
+    { let mut __found = false; for r in dag_cast_rules().iter().cloned() { if ((r.from_type.clone().as_str() == name.clone().as_str()) || (r.to_type.clone().as_str() == name.clone().as_str())) { __found = true; break; } } __found }
 }

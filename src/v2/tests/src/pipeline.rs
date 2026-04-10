@@ -4337,9 +4337,11 @@ fn identity_cast_is_valid() {
 }
 
 #[test]
-fn non_numeric_cast_bypasses_validation() {
-    // String → String (alias or same type) is outside the numeric domain,
-    // so validate_cast allows it unconditionally.
+fn string_identity_cast_is_valid() {
+    // String → String is identity at emit level (same target type).
+    // Emit's can_cast safety net handles non-domain casts; infer only
+    // validates types in dag_cast_rules. See ROADMAP: structural cast
+    // model will make infer fail-closed for all domains.
     let source = "module cast_test6\n\nfn passthrough(s: String) -> String {\n  s as String\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
