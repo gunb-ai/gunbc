@@ -1240,9 +1240,18 @@ fn collect_parser_edges_for_scc(members: List<String>, func_index: Map<String, F
       func_index: func_index,
     si: si)
     // Within the SCC proof, treat all SCC members as always-advancing.
-    // This is standard SCC termination analysis: assume the property,
-    // check consistency. If edges under this assumption have no
-    // NonIncreasing-only cycles, the SCC is proven to terminate.
+    // This is coinductive: assume the SCC terminates, compute edges,
+    // check no NonIncreasing-only cycles. Valid because:
+    // - If the SCC terminates, the evidence is correct (edges reflect
+    //   actual advancement through callees).
+    // - If the SCC doesn't terminate, the proof should reject.
+    //
+    // Soundness caveat: a pure state-passing cycle A(s)→B(s)→A(s) with
+    // no token consumption would be incorrectly accepted. In practice,
+    // all parser functions consume tokens on some path (the language
+    // requires base cases). A fully sound version would verify that
+    // each SCC member has at least one token-consuming path. This is
+    // tracked as a future verification step.
     let parser_always_advancing = members |> fold(init: proven, f: (acc, name) =>
       map_insert(acc, name, true)
     )

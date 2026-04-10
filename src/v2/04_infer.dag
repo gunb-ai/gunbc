@@ -2272,9 +2272,12 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                 Some { value: arg_node } =>
                   let arg_val = arg_value(n: arg_node)
                   match arg_val.expr_data {
-                    // skip(1), take(k): literal integer → ConstantShrink
+                    // skip(k): literal integer k > 0 → ConstantShrink.
+                    // skip(k) on a non-empty list of length n produces max(0, n-k) < n.
+                    // The base case (empty list) must be handled by the function.
+                    // take(k) is NOT strict — take(k) on a list ≤ k is unchanged.
                     ExprLiteral { value: LitInt { value: k } } =>
-                      if k > 0 {
+                      if k > 0 && mname == "skip" {
                         let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
                         StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } }
                       } else { SubValueUnknown }
@@ -2566,19 +2569,31 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
         match coll_field {
           Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
           None =>
-            // For skip/take on a parameter of any List type (even non-recursive elements),
-            // the collection itself shrinks. Synthesize an InductiveField for the list shrink.
-            let is_shrink = mname == "skip" || mname == "take"
-            if is_shrink {
-              match receiver.expr_data {
-                ExprVar { binding_kind: _ } =>
-                  let rname = expr_var_name(texpr: receiver)
-                  if map_get(ctx.param_names, rname) != none || map_get(ctx.sub_value_vars, rname) != none {
-                    let synth_field = InductiveField { type_name: rname, variant_name: "", field_name: mname, shape: ListRecursion, element_type: rname }
-                    Some { value: StrictSubValue { field: synth_field, factor: ConstantShrink { amount: 1 } } }
-                  } else { none }
-                _ => none
+            // For skip on a parameter of any List type (even non-recursive elements),
+            // the collection itself shrinks. Synthesize an InductiveField.
+            // Only skip is strictly decreasing; take(k) is NonIncreasing (unchanged when list ≤ k).
+            // Inspect the actual argument to get the shrink amount.
+            if mname == "skip" {
+              let skip_args = method_arg_nodes(texpr: val)
+              let skip_amount = match skip_args |> first {
+                Some { value: a } =>
+                  match arg_value(n: a).expr_data {
+                    ExprLiteral { value: LitInt { value: k } } => if k > 0 { k } else { 0 }
+                    _ => 1  // conservative: assume skip of at least 1 for non-literal args
+                  }
+                None => 0
               }
+              if skip_amount > 0 {
+                match receiver.expr_data {
+                  ExprVar { binding_kind: _ } =>
+                    let rname = expr_var_name(texpr: receiver)
+                    if map_get(ctx.param_names, rname) != none || map_get(ctx.sub_value_vars, rname) != none {
+                      let synth_field = InductiveField { type_name: rname, variant_name: "", field_name: mname, shape: ListRecursion, element_type: rname }
+                      Some { value: StrictSubValue { field: synth_field, factor: ConstantShrink { amount: skip_amount } } }
+                    } else { none }
+                  _ => none
+                }
+              } else { none }
             } else { none }
         }
       } else { none }

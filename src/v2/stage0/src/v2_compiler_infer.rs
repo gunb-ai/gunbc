@@ -2319,7 +2319,7 @@ match args.first().cloned() {
     Some(arg_node) => {
                                 let arg_val = arg_value(arg_node.clone());
 match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if ((k.clone() > 0) && (mname.clone().as_str() == "skip".to_string().as_str())) {
                                     {
                                         let synth_field = Rc::new(InductiveField {
     type_name: param_name.clone(),
@@ -2749,15 +2749,27 @@ match coll_field {
     field: ind_field.clone(),
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
-    None => {
-                        let is_shrink = ((mname.clone().as_str() == "skip".to_string().as_str()) || (mname.clone().as_str() == "take".to_string().as_str()));
-if is_shrink {
-                            match (*receiver.expr_data.clone()).clone() {
+    None => if (mname.clone().as_str() == "skip".to_string().as_str()) {
+                        {
+                            let skip_args = method_arg_nodes(val.clone());
+let skip_amount = match skip_args.first().cloned() {
+    Some(a) => match (*arg_value(a.clone()).expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: k, .. } = value.as_ref() else { unreachable!() }; if (k.clone() > 0) {
+                                k.clone()
+                            } else {
+                                0
+                            } },
+    _ => 1,
+},
+    None => 0,
+};
+if (skip_amount.clone() > 0) {
+                                match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-                                let rname = expr_var_name(receiver.clone());
+                                    let rname = expr_var_name(receiver.clone());
 if ((v2_rt::map_get(&ctx.param_names.clone(), rname.clone()) != None) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), rname.clone()) != None)) {
-                                    {
-                                        let synth_field = Rc::new(InductiveField {
+                                        {
+                                            let synth_field = Rc::new(InductiveField {
     type_name: rname.clone(),
     variant_name: "".to_string(),
     field_name: mname.clone(),
@@ -2767,20 +2779,23 @@ if ((v2_rt::map_get(&ctx.param_names.clone(), rname.clone()) != None) || (v2_rt:
 Some(Rc::new(SubValueRelation::StrictSubValue {
     field: synth_field,
     factor: Rc::new(ShrinkFactor::ConstantShrink {
-    amount: 1,
+    amount: skip_amount.clone(),
 }),
 }))
 }
-                                } else {
-                                    None
-                                }
+                                    } else {
+                                        None
+                                    }
 },
     _ => None,
 }
-                        } else {
-                            None
-                        }
-},
+                            } else {
+                                None
+                            }
+}
+                    } else {
+                        None
+                    },
 }
 }
             } else {
