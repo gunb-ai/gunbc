@@ -536,33 +536,392 @@ CX       ──> Read primitive: descend → O(|tree|). Done.
 
 ---
 
-## Open design questions
+## Option B implementation plan
 
-1. **Provenance composition through control flow.** When `let x =
-   if cond { a.left } else { b }`, what is x's provenance?
-   Worst-case: `SubValueOf(a)` meet `Unknown` = `Unknown`.
-   Is this too conservative? Should we track both branches?
+### Key insight: SubValueRelation IS provenance
+
+`SubValueRelation` (std/induction.dag) already models the right
+vocabulary: StrictSubValue, IteratedSubValue, ArithmeticDescent,
+PreservedValue, SubValueUnknown. It carries InductiveField and
+ShrinkFactor. The only things missing are:
+
+1. A `ConstructedValue` variant (new value, not derived from input)
+2. A `source` field on each variant naming which parameter this
+   traces back to
+3. Placement on TypeBinding instead of as a separate reconstruction
+
+Rather than inventing a new Provenance type, extend SubValueRelation
+with source tracking and put it on TypeBinding:
+
+```
+type TypeBinding {
+  name: String
+  resolved: Node
+  provenance: SubValueRelation   // NEW — structural relationship to inputs
+  source_param: String           // NEW — which function parameter this traces to ("" if none)
+}
+```
+
+This reuses the existing type, its lattice operations
+(`merge_argument_relations`, `sub_value_to_evidence`), and its
+lowering path (`sub_value_to_call_pattern`, `lower_call_pattern`).
+No new parallel type system.
+
+### Binding-site audit: what each site produces
+
+There are 7 binding-creation sites in `04_infer.dag` that matter
+for function-body provenance. Type environment setup (~15 more sites
+at lines 3684-3923) creates bindings for type names — these are
+always `ConstructedValue` and can be ignored.
+
+**Site 1: Function parameters** (`build_params_scope`, line 699)
+
+```
+TypeBinding { name: p, resolved: type_expr, provenance: PreservedValue, source_param: p }
+```
+
+Parameters are themselves. `PreservedValue` is correct — the
+parameter IS the input. `source_param` is the parameter's own name.
+This is the root of the provenance chain.
+
+Available: param name, param type, param index.
+Change: add `provenance: PreservedValue, source_param: param_name`.
+
+**Site 2: Let-bindings** (`extend_scope`, line 1676)
+
+The full typed value expression `val_typed` is available. Provenance
+is determined by the value expression's structure:
+
+| Value expression | Provenance | Source |
+|------------------|-----------|--------|
+| `ExprVar` matching a param | `PreservedValue` | inherited from var |
+| `ExprVar` matching a local | inherited from local's binding | inherited |
+| `base.field` where base has provenance | `StrictSubValue { field, factor: UnitShrink }` | base's source |
+| `param - k` (arithmetic) | `ArithmeticDescent { factor: ConstantShrink(k) }` | param's source |
+| `param / k` (arithmetic) | `ArithmeticDescent { factor: ProportionalShrink(k) }` | param's source |
+| `list \|> skip(k)` | `StrictSubValue { field, factor: ConstantShrink(k) }` | list's source |
+| `list \|> take(mid)` with DividedSize | `StrictSubValue { field, factor: ProportionalShrink(d) }` | list's source |
+| Constructor / literal | `ConstructedValue` | "" |
+| Function call (unknown) | `SubValueUnknown` | "" |
+
+Available: `val_typed` (full inferred expression), scope with all
+prior bindings and their provenance.
+Change: compute provenance from `val_typed` before calling
+`extend_scope`. This is the same classification that
+`classify_let_value` (line 2413) currently does in CX-L2 — but done
+once, at binding time, with the result stored.
+
+**Site 3: Match arm bindings** (`extend_scope_match_bound`, line 788)
+
+```
+TypeBinding { 
+  name: field_name, 
+  resolved: field_type,
+  provenance: StrictSubValue { field: inductive_field, factor: UnitShrink },
+  source_param: scrutinee_source_param
+}
+```
+
+Available: variant name (`vname`, line 776), field name
+(`field_binding_name_at`, line 782), field type, parent enum,
+scrutinee expression. The scrutinee's binding has provenance —
+propagate it.
+Change: look up scrutinee's provenance from scope, compose with
+field access to get variant field's provenance.
+
+**Site 4: Lambda params with Callable expected** (line 1792-1796)
+
+```
+TypeBinding {
+  name: param_name,
+  resolved: callable_param_type,
+  provenance: <depends on callee contract>,
+  source_param: <depends on callee contract>
+}
+```
+
+This is the hard case (see Lambda provenance section below).
+Available: expected Callable type with param types. What's NOT
+available: which input parameter this lambda param corresponds to.
+Change: requires callee contracts or lambda inlining.
+
+**Site 5: Lambda params with element expected** (line 1798-1812)
+
+```
+TypeBinding {
+  name: param_name,
+  resolved: element_type,
+  provenance: IteratedSubValue { field: collection_inductive_field },
+  source_param: collection_source_param
+}
+```
+
+Available: expected element type, the collection being iterated
+(it's the method receiver — available from the call context).
+Change: thread the collection's provenance from the method call
+context to the lambda param binding.
+
+**Site 6: Lambda params with no expected** (line 742-755)
+
+```
+TypeBinding { name: p, resolved: type_variable, provenance: SubValueUnknown, source_param: "" }
+```
+
+Fail-closed: if there's no type context, there's no provenance
+context either. `SubValueUnknown` is honest.
+
+**Site 7: For-each variable** (line 1925)
+
+```
+TypeBinding {
+  name: variable,
+  resolved: elem_type_node,
+  provenance: IteratedSubValue { field: collection_inductive_field },
+  source_param: collection_source_param
+}
+```
+
+Available: `coll_typed` (inferred collection expression), element
+type. The collection expression has a binding with provenance.
+Change: look up collection's provenance from scope, create
+`IteratedSubValue`.
+
+### Provenance composition algebra
+
+Provenance composes through control flow. The merge operation already
+exists: `merge_argument_relations` (04_infer.dag:2611). The rules:
+
+**Let-chain (sequential):**
+```
+let a = node.left       → a: StrictSubValue(node, left)
+let b = a.children      → b: StrictSubValue(node, left.children)  // transitive
+```
+Implementation: when computing b's provenance, look up a's
+provenance from scope. If a is `StrictSubValue` of some source,
+and b accesses a field of a, b is `StrictSubValue` of the same
+source (deeper descent).
+
+**If/match (branching):**
+```
+let x = if cond { a.left } else { b }
+→ merge(StrictSubValue(a, left), PreservedValue(b))
+→ PreservedValue (conservative — weakest branch wins)
+```
+Implementation: compute provenance for each branch, merge via
+lattice. This is what `merge_argument_relations` already does.
+
+**Block (sequential):**
+```
+{ let tmp = f(x); tmp.field }
+→ provenance of last expression in block
+```
+Implementation: provenance of a block is provenance of its last
+expression.
+
+**Lattice order (from strongest to weakest):**
+```
+StrictSubValue > IteratedSubValue > ArithmeticDescent > PreservedValue > SubValueUnknown
+```
+Merge always takes the weaker (more conservative) of two provenances.
+`SubValueUnknown` is absorbing — any branch producing Unknown makes
+the whole thing Unknown.
+
+### Lambda provenance: the hard case
+
+When `f(texpr: texpr, callback: child => self(texpr: child))` is
+called, the lambda param `child` should carry provenance tracing
+back to `texpr`. Two approaches:
+
+**Approach 1: Callee contracts (recommended)**
+
+Higher-order functions declare what they pass to callbacks:
+
+```
+// In std/ or as method semantics:
+type CallbackContract {
+  callback_param: String       // "f" in fold(xs, init, f: ...)
+  source_param: String         // "xs" — the collection being iterated
+  relation: SubValueRelation   // IteratedSubValue for fold/map/filter
+}
+```
+
+Collection methods already have algebra semantics
+(`AlgebraMethodSemantics`). Extend with callback contracts:
+- `fold(collection, init, f)`: f's element param gets
+  `IteratedSubValue` of collection
+- `map(collection, f)`: f's param gets `IteratedSubValue`
+- `descend(tree, f)`: f's node param gets `StrictSubValue` of tree
+
+For user-defined higher-order functions (e.g., `emit_shared_expr`):
+the compiler can INFER the contract by analyzing what the function
+does with its callback parameter. In a decidable language, this
+analysis terminates. The contract is computed once at definition
+time and attached to the function's signature.
+
+**Approach 2: Lambda inlining (simpler, less modular)**
+
+Since all lambdas are statically known, inline the lambda body at
+the call site and propagate provenance through the body directly.
+This avoids contracts but doesn't work for separate compilation.
+
+**Recommendation:** Start with contracts for collection methods
+(these are the common case and already have algebra semantics).
+Defer user-defined higher-order function contracts — use
+`SubValueUnknown` for those call sites initially. The ~105 lambda
+transparency violations are dominated by collection methods; the
+user-defined cases are the long tail.
+
+### ShrinkFactor preservation
+
+The current pipeline loses ShrinkFactor at `sub_value_to_call_pattern`
+(std/induction.dag:208). The fix: **bypass CallPattern entirely.**
+
+SubValueRelation already carries ShrinkFactor. LoweringTarget needs
+ShrinkFactor for the Master theorem. The bridge through CallPattern
+is lossy and unnecessary.
+
+New lowering path:
+```
+SubValueRelation → LoweringTarget  (direct, preserving ShrinkFactor)
+```
+
+Instead of:
+```
+SubValueRelation → CallPattern → LoweringTarget  (lossy bridge)
+```
+
+This means adding a new function `sub_value_to_lowering_target` in
+std/induction.dag that maps directly:
+
+| SubValueRelation | LoweringTarget |
+|------------------|---------------|
+| StrictSubValue { field, UnitShrink } | Descend, TreeSize, Strict |
+| StrictSubValue { field, ProportionalShrink(d) } | Descend, TreeSize, Strict + factor d |
+| IteratedSubValue { field } | Fold, CollectionSize, Strict |
+| ArithmeticDescent { param, ConstantShrink(k) } | Repeat, ArithmeticParam, Strict |
+| ArithmeticDescent { param, ProportionalShrink(d) } | Repeat, ArithmeticParam, Strict + factor d |
+| PreservedValue | Repeat, Forever, NonIncreasing |
+| SubValueUnknown | fail-closed: hard error |
+
+The factor reaches LoweringTarget, so `derive_bound` /
+`master_theorem` can compute O(log n) vs O(n) correctly.
+
+### Final-state CX consumer
+
+Under Option B, the complexity consumer becomes:
+
+```
+fn bound_for_recursive_function(entry: FuncEntry) -> CostBound {
+  let self_calls = find_self_calls(body: entry.body, fn_name: entry.name)
+  let per_call_provenance = self_calls |> map(call =>
+    // Read provenance from each argument's binding — already there
+    call.arguments |> map(arg => lookup_binding(arg).provenance)
+  )
+  // All self-calls must have Strict on at least one param
+  let all_have_strict = per_call_provenance |> all(call_ev =>
+    call_ev |> any(p => is_strict(p))
+  )
+  if all_have_strict {
+    let best_evidence = select_best_evidence(per_call_provenance)
+    let target = sub_value_to_lowering_target(best_evidence)
+    bounded_cost(target, per_iter: cost_of_body(entry.body))
+  } else {
+    CostUnknown { reason: "..." }
+  }
+}
+```
+
+**What dissolves:**
+
+| Current code | Lines | Status |
+|-------------|-------|--------|
+| `annotate_descent_evidence` + helpers | ~400 | Dissolves entirely |
+| `classify_argument` (13 heuristics) | ~200 | Dissolves — read binding.provenance |
+| `classify_let_value` (5 heuristics) | ~170 | Dissolves — provenance set at bind time |
+| `classify_collection_shrink` | ~90 | Dissolves — method semantics carry shrink |
+| `build_call_evidence` | ~30 | Dissolves — read argument provenance |
+| `annotate_descent` lambda heuristic | ~50 | Dissolves — callee contracts |
+| `is_child_accessor_in_model` table | ~10 | Dissolves — type-derived |
+| `function_size_effects` table | ~40 | Dissolves — type-derived |
+| `construct_termination_proof` (old system) | ~200 | Dissolves — single authority |
+| `classify_scc_call_progress` | ~60 | Dissolves — read annotated provenance |
+| `sub_value_to_call_pattern` (lossy bridge) | ~15 | Dissolves — direct lowering |
+| Thread-through maps (param_names, sub_value_vars, size_aliases) | ~100 | Dissolves — provenance on binding |
+| **Total dissolved** | **~1365** | |
+
+**What remains:**
+
+| Code | Lines | Role |
+|------|-------|------|
+| SCC detection | ~200 | Still needed: call graph cycle detection |
+| `sub_value_to_lowering_target` | ~30 | New: direct lowering preserving ShrinkFactor |
+| `bound_for_recursive_function` | ~50 | New: read provenance, compute bound |
+| `bounded_cost` / cost composition | ~100 | Keep: composition algebra is sound |
+| `master_theorem` / `derive_bound` | ~80 | Keep: bound computation is sound |
+| Reporting / violation collection | ~100 | Keep: output formatting |
+| **Total remaining** | **~560** | |
+
+Estimated reduction: ~5000 lines → ~560 lines (89% dissolution).
+
+### Migration path
+
+Provenance can be added to TypeBinding **incrementally**:
+
+1. **Add field with default.** Add `provenance: SubValueRelation` to
+   TypeBinding. Default to `SubValueUnknown` at all creation sites.
+   This is a no-op change — all existing behavior preserved, all tests
+   pass.
+
+2. **Instrument one site at a time.** Starting with the easiest
+   (function parameters → `PreservedValue`), update each binding site
+   to compute provenance. After each site, the downstream CX code can
+   optionally READ provenance instead of reconstructing — but doesn't
+   have to yet.
+
+3. **Add direct lowering.** Write `sub_value_to_lowering_target` in
+   std/induction.dag. This preserves ShrinkFactor.
+
+4. **Switch CX to read provenance.** Replace `classify_recursion_pattern`
+   to read `binding.provenance` from self-call arguments instead of
+   calling `collect_self_call_evidence` → `classify_argument`. This
+   is the switchover point.
+
+5. **Delete reconstruction code.** Once CX reads provenance, the
+   entire `annotate_descent_evidence` pass and its 33 heuristic
+   functions can be deleted. The hardcoded tables dissolve.
+
+Steps 1-2 can run in parallel with existing CX code (provenance is
+computed but not consumed yet). Step 4 is the switchover. Step 5 is
+cleanup.
+
+### Open design questions
+
+1. **Provenance composition through control flow.** The conservative
+   merge (weakest branch wins) may be too aggressive — a function that
+   returns `a.left` in one branch and `a.right` in another should
+   still be `StrictSubValue`, not `PreservedValue`. The merge should
+   check: are both branches sub-values of the same source? If so,
+   keep `StrictSubValue` with the weaker factor.
 
 2. **Lambda parameter provenance: contracts vs inline.** Callee
-   contracts are more modular. Inlining is simpler. The decidability
-   invariant guarantees all lambdas are statically known, so inlining
-   is always possible. But contracts scale better to separate
-   compilation.
+   contracts are recommended for collection methods (already have
+   algebra semantics). User-defined higher-order functions deferred
+   to `SubValueUnknown` initially. The decidability invariant
+   guarantees inlining is always possible as a future fallback.
 
-3. **ShrinkFactor preservation.** Should CallPattern carry
-   ShrinkFactor? Or should SubValueRelation lower directly to
-   LoweringTarget (bypassing CallPattern)? The latter is simpler
-   and avoids the lossy bridge.
+3. **Function return provenance.** For cross-call provenance
+   (function f calls accessor g), does g's signature need to declare
+   its return provenance? E.g., `param_node_type_expr(n: p)` returns
+   a sub-value of `p`. This would dissolve the
+   `is_child_accessor_in_model` table. Deferred until the basic
+   provenance pipeline is working.
 
-4. **Provenance on function signatures.** For cross-call provenance
-   (function f calls function g), does g's signature need to declare
-   its return provenance? E.g., `fn accessor(n: Node) -> Node
-   @returns SubValueOf(n, field: left)`.
-
-5. **Migration path.** Can provenance be added to TypeBinding
-   incrementally (start with `ConstructedValue` everywhere, then
-   refine each binding site), or does it require a single coordinated
-   change?
+4. **Interaction with Node.name deletion (M4-L2).** TypeBinding
+   currently uses string names for source_param. When Node.name is
+   deleted, this must use structural identity. The provenance design
+   does not depend on names — it depends on the structural fact that
+   "this binding traces to that parameter." String names are the
+   current proxy (same M4 constraint as existing code).
 
 ---
 
