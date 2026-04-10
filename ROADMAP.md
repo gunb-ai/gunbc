@@ -274,9 +274,11 @@ from type declarations in `std/`:
 |-------|-------------|-----|
 | `expr_child_roles` | ExprData variants → accessor functions | Derive from type definition |
 | `node_field_roles` | Node fields → structural roles | Derive from type definition |
-| `function_size_effects` | Function names → size effects | Function signature metadata |
+| `function_size_effects` | Function names → size effects | Structural contracts in std/ (like CallbackContract) |
 
-These dissolve as types move to `std/` and carry their own metadata.
+These dissolve as types move to `std/` and carry structural facts
+(type definitions, algebra witnesses, operation contracts) — not
+metadata or annotations.
 
 Additional duplication surfaced by review (PR #371):
 - `emit_rust_default_value` (05_emit_rust.dag) is a hand-written

@@ -818,9 +818,14 @@ Under Option B, the complexity consumer becomes:
 ```
 fn bound_for_recursive_function(entry: FuncEntry) -> CostBound {
   let self_calls = find_self_calls(body: entry.body, fn_name: entry.name)
+  // Each self-call's arguments already carry SubValueRelation from
+  // inference (on ExprCall.descent_evidence). The difference from today:
+  // inference computes this at expression-typing time, not as a
+  // separate reconstruction pass. Call arguments are expressions,
+  // not bindings — the provenance is on the expression node, not
+  // looked up from a scope.
   let per_call_provenance = self_calls |> map(call =>
-    // Read provenance from each argument's binding — already there
-    call.arguments |> map(arg => lookup_binding(arg).provenance)
+    call.descent_evidence  // already on ExprCall, computed during inference
   )
   // All self-calls must have Strict on at least one param
   let all_have_strict = per_call_provenance |> all(call_ev =>
