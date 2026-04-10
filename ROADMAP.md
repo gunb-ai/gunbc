@@ -1951,6 +1951,52 @@ Parallel to CX (complexity doesn't block emission).
 
 ---
 
+## Lane D: std/ Modeling Hygiene
+
+**Scope:** `dsl/std/`, `dsl/extdeps/`. Low-risk, high-clarity changes
+that reduce ontology drift and make the compiler simpler to model
+against. Each item is a concrete MODELING.md M4–M9 violation in
+existing std/ code.
+
+### D-STD-1: `standard_symbols` → PartialFunction model
+
+`dsl/std/symbols.dag` models `standard_symbols` as `List<SymbolEntry>`
+and resolves via filter + fold with fabricated defaults (`resolve_symbol`
+falls back to empty strings, `symbol_color` falls back to Default).
+`std/algebra.dag` already defines `PartialFunction<K,V>`. The symbol
+table should inhabit PartialFunction — list scan with sentinels is
+both a missed algebraic structure and a live M5 fabrication.
+
+### D-STD-2: `fermi_timeouts` — derive function from data (M7)
+
+`dsl/std/transport.dag`: `fermi_timeouts` data table and
+`timeout_for_depth` function encode the same mapping twice. M7 says
+if a fact exists both as data and as a function body, derive the
+function from the data.
+
+### D-STD-3: TransportClass — eliminate wildcard branches on closed enum
+
+`TransportClass` is a fixed sum type (6 variants). `transport_depth`
+and `transport_hermetic` use `_ => ...` wildcard branches. On a closed
+enum, wildcard fallback hides whether `Unknown` is handled intentionally
+or accidentally. Replace with exhaustive matches.
+
+### D-STD-4: ProgressKind → inhabit DescentEvidence lattice (CX-A)
+
+`ProgressKind` (ProgressUnknown | ProgressSame | ProgressStrict) is a
+second implementation of the same bounded lattice as `DescentEvidence`
+(DescentUnknown | NonIncreasing | Strict). Bridge functions
+`progress_to_evidence` / `evidence_to_progress` confirm they are
+isomorphic. Collapse to one type. Already noted in Pipeline Algebraic
+Grounding (Layer 3) — promoting to Lane D scope as concrete next step.
+
+### Acceptance
+
+Each item deletes a parallel representation or fabrication in std/.
+No new types introduced. Compiler behavior unchanged (std/ facts only).
+
+---
+
 # CM: Compiler Concept Modeling (cross-cutting retrospective)
 
 **Analysis:** [`src/v2/CM.md`](src/v2/CM.md),
