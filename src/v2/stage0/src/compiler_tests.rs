@@ -724,11 +724,11 @@ mod compiler_tests {
 
     #[test]
     fn emission_algebra_enumeration_complete() {
-        // The emission algebra has 4 categories x 5 type forms x 2 cardinalities
-        let total = 40;
-        let valid = 40;
-        assert_eq!(total, 4 * 5 * 2,
-            "emission algebra should be 4 categories x 5 type forms x 2 cardinalities");
+        // The emission algebra has 6 categories x 5 type forms x 2 cardinalities
+        let total = 60;
+        let valid = 60;
+        assert_eq!(total, 6 * 5 * 2,
+            "emission algebra should be 6 categories x 5 type forms x 2 cardinalities");
         assert_eq!(valid, total, "phase 1: all triples marked valid");
     }
 

@@ -10,7 +10,7 @@ pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go};
 pub use crate::v2_compiler_coercion::{target_checkpoints, target_inhabitants, target_label};
 pub use crate::v2_compiler_emit::{ExprCategory};
-use crate::v2_compiler_emit::ExprCategory::{ExprCatLeaf, ExprCatCompound, ExprCatControlFlow, ExprCatBinding};
+use crate::v2_compiler_emit::ExprCategory::{ExprCatLeaf, ExprCatCompound, ExprCatControlFlow, ExprCatBinding, ExprCatService, ExprCatNone};
 pub use crate::v2_std_core::{Cardinality};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl};
@@ -134,7 +134,7 @@ pub struct EmissionAlgebraElement {
 pub fn all_expr_categories() -> Rc<Vec<ExprCategory>> {
     thread_local! {
         static CACHED: Rc<Vec<ExprCategory>> = {
-            Rc::new(vec![ExprCategory::ExprCatLeaf, ExprCategory::ExprCatCompound, ExprCategory::ExprCatControlFlow, ExprCategory::ExprCatBinding])
+            Rc::new(vec![ExprCategory::ExprCatLeaf, ExprCategory::ExprCatCompound, ExprCategory::ExprCatControlFlow, ExprCategory::ExprCatBinding, ExprCategory::ExprCatService, ExprCategory::ExprCatNone])
         };
     }
     CACHED.with(|c| c.clone())

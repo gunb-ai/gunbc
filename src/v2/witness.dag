@@ -18,7 +18,7 @@ module v2.compiler.witness
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go }
 import v2.compiler.coercion { target_checkpoints, target_inhabitants, target_label }
-import v2.compiler.emit { ExprCategory, ExprCatLeaf, ExprCatCompound, ExprCatControlFlow, ExprCatBinding }
+import v2.compiler.emit { ExprCategory, ExprCatLeaf, ExprCatCompound, ExprCatControlFlow, ExprCatBinding, ExprCatService, ExprCatNone }
 import v2.std.core { Cardinality, Required, CardOptional }
 import std.coercion { TypeCheckpoint, InhabitantDecl }
 import std.types { TypeForm, FormPrimitive, FormProduct, FormCoproduct, FormCollection, FormCallable }
@@ -137,7 +137,7 @@ type EmissionAlgebraElement {
 }
 
 data all_expr_categories: List<ExprCategory> = [
-  ExprCatLeaf, ExprCatCompound, ExprCatControlFlow, ExprCatBinding
+  ExprCatLeaf, ExprCatCompound, ExprCatControlFlow, ExprCatBinding, ExprCatService, ExprCatNone
 ]
 
 data all_type_forms: List<TypeForm> = [

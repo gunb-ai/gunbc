@@ -1144,11 +1144,11 @@ fn ct_emission_algebra_tests() -> String {
     "    // =========================================================================\n\n",
     "    #[test]\n",
     "    fn emission_algebra_enumeration_complete() {\n",
-    "        // The emission algebra has 4 categories x 5 type forms x 2 cardinalities\n",
+    "        // The emission algebra has 6 categories x 5 type forms x 2 cardinalities\n",
     "        let total = ", to_string(value: total), ";\n",
     "        let valid = ", to_string(value: valid_count), ";\n",
-    "        assert_eq!(total, 4 * 5 * 2,\n",
-    "            \"emission algebra should be 4 categories x 5 type forms x 2 cardinalities\");\n",
+    "        assert_eq!(total, 6 * 5 * 2,\n",
+    "            \"emission algebra should be 6 categories x 5 type forms x 2 cardinalities\");\n",
     "        assert_eq!(valid, total, \"phase 1: all triples marked valid\");\n",
     "    }\n\n")
 }
