@@ -7,6 +7,7 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan, container_param_name};
+pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, has_child_named, module_node, module_imports, module_items, import_is_all, import_specific_names, make_param_node, param_node_name, param_node_name_at, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, expr_var_name_at, field_access_base, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at, foreach_variable, foreach_variable_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name, arg_name_at, has_inferred, is_compiler_error, InferredNode, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name, resource_use_name_at, resource_use_resource, kernel_type_set, is_kernel_type, is_child_accessor_in_model, is_tree_size_reducing, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name, field_binding_name_at, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
@@ -549,6 +550,39 @@ pub fn categorized_error(message: String, span: Rc<SourceSpan>, module_name: Str
     message: message,
     span: span,
 }), module_name)
+}
+
+pub fn validate_cast(source_inferred: Option<Rc<InferredNode>>, target_name: String, span: Rc<SourceSpan>, source_index: Option<Rc<NewlineIndex>>, module_name: String) -> Option<Rc<ErrorNode>> {
+    match source_inferred.as_deref().cloned() {
+    Some(InferredNode::Resolved { node: src_node, .. }) => {
+        let source_name = authored_name_at(source_index, src_node.clone());
+if (source_name.clone().as_str() == target_name.clone().as_str()) {
+            None
+        } else {
+            if !is_dag_cast_domain_type(source_name.clone()) {
+                None
+            } else {
+                if !is_dag_cast_domain_type(target_name.clone()) {
+                    None
+                } else {
+                    if dag_can_cast(source_name.clone(), target_name.clone()) {
+                        None
+                    } else {
+                        {
+                            let msg = v2_rt::concat(v2_rt::concat(v2_rt::concat("invalid cast: ".to_string(), source_name.clone()), " as ".to_string()), target_name.clone());
+let diag = Rc::new(CompilerDiagnostic::InternalError {
+    message: msg,
+    span: span,
+});
+Some(make_error_node(diag, module_name))
+}
+                    }
+                }
+            }
+        }
+},
+    _ => None,
+}
 }
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
@@ -1909,12 +1943,19 @@ let target_type = cast_target(texpr.clone());
 let inner_result = infer_expr(cast_inner, scope.clone(), None);
 let inner_typed = inner_result.typed.clone();
 let inner_diags = inner_result.diagnostics.clone();
-let cast_texpr = make_expr_node(Rc::new(ExprData::ExprCast), Rc::new(vec![inner_typed, target_type.clone()]), Some(Rc::new(InferredNode::Resolved {
+let si = scope.type_env.clone().source_index.clone();
+let target_name = authored_name_at(si.clone(), target_type.clone());
+let cast_diag = validate_cast(inner_typed.inferred.clone(), target_name, span.clone(), si.clone(), scope.module_name.clone());
+let cast_diags = match cast_diag {
+    Some(d) => Rc::new(vec![d.clone()]),
+    None => Rc::new(vec![]),
+};
+let cast_texpr = make_expr_node(Rc::new(ExprData::ExprCast), Rc::new(vec![inner_typed.clone(), target_type.clone()]), Some(Rc::new(InferredNode::Resolved {
     node: target_type.clone(),
 })), span.clone());
 Rc::new(InferResult {
     typed: cast_texpr,
-    diagnostics: inner_diags,
+    diagnostics: v2_rt::concat(inner_diags, cast_diags),
 })
 },
     ExprData::ExprForEach => {
