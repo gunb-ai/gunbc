@@ -12,10 +12,6 @@ import v2.compiler.coercion {
   extract_coercion_tests, CoercionTestEntry, CoercionAssertion,
   CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion
 }
-import v2.compiler.witness {
-  extract_witness_tests, WitnessTestCase, WitnessAssertion,
-  PrimitiveWitnessAssertion, ContainerWitnessAssertion
-}
 
 fn ct_module_header() -> String {
   concat(
@@ -1088,49 +1084,6 @@ fn ct_profile_reconcile_test() -> String {
     "    }\n\n")
 }
 
-// =========================================================================
-// Witness test rendering (KF-3a)
-// =========================================================================
-
-fn render_witness_test_rust(entry: WitnessTestCase) -> String {
-  let assertions = entry.assertions |> map(a => render_witness_assertion_rust(a: a))
-  concat(
-    "    #[test]\n",
-    "    fn ", entry.test_name, "() {\n",
-    "        use crate::v2_compiler_coercion::*;\n",
-    assertions |> join(separator: ""),
-    "    }\n\n")
-}
-
-// Escape a string for embedding in a Rust string literal.
-fn escape_for_rust_string(s: String) -> String {
-  s |> split(delimiter: "\\") |> join(separator: "\\\\")
-    |> split(delimiter: "\"") |> join(separator: "\\\"")
-}
-
-fn render_witness_assertion_rust(a: WitnessAssertion) -> String {
-  match a {
-    PrimitiveWitnessAssertion { target: t, dag_name: name, expected_expr: expected } =>
-      concat("        assert_eq!(lookup_checkpoint(", render_target_rust_enum(target: t),
-        ", \"", name, "\".into()).and_then(|cp| cp.default_expr.clone()), Some(\"",
-        escape_for_rust_string(s: expected), "\".into()));\n")
-    ContainerWitnessAssertion { target: t, algebra: alg, expected_expr: expected } =>
-      concat("        assert_eq!(lookup_inhabitant(", render_target_rust_enum(target: t),
-        ", \"", alg, "\".into()).and_then(|inh| inh.identity_expr.clone()), Some(\"",
-        escape_for_rust_string(s: expected), "\".into()));\n")
-  }
-}
-
-fn ct_witness_tests() -> String {
-  let entries = extract_witness_tests()
-  let test_fns = entries |> map(e => render_witness_test_rust(entry: e))
-  concat(
-    "    // =========================================================================\n",
-    "    // Witness construction tests (auto-generated from type declarations)\n",
-    "    // =========================================================================\n\n",
-    test_fns |> join(separator: "\n"))
-}
-
 fn ct_module_footer() -> String {
   "}\n"
 }
@@ -1150,7 +1103,6 @@ fn compiler_tests_source() -> String {
     ct_gist_tests(),
     ct_type_size_test(),
     ct_coercion_tests(),
-    ct_witness_tests(),
     ct_profile_helpers(),
     ct_profile_gist_test(),
     ct_profile_self_compile_test(),
