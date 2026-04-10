@@ -406,6 +406,22 @@ too complex to get right), Option A is the fallback — it eliminates
 the same anti-pattern by moving classification to a single early pass
 rather than reconstructing it later.
 
+**Option A is a named limitation, not a competing architecture.**
+Option A and Option B solve the same classification problem — "what
+is this value's structural relationship to the function's inputs?"
+The difference is where the answer lives:
+
+- Option A: in the desugared primitive (the primitive IS the answer)
+- Option B: in the binding's provenance field
+
+The limiting factor for Option A is: **TypeBinding doesn't carry
+provenance.** That's the one structural gap. Option A works around it
+by classifying at a boundary (desugar pass) instead of at each
+binding site. If TypeBinding is ever extended with provenance, the
+desugar pass dissolves — the information is already on the bindings,
+so there's nothing left to desugar. Option A is a stepping stone
+toward Option B, not a fork.
+
 **The non-negotiable:** the construct-discard-reconstruct pattern
 must be eliminated regardless of which option is chosen. A 3000+ line
 reconstruction pass that grows with every new code pattern is not
