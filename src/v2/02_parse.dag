@@ -60,7 +60,8 @@ import v2.std.core {
   with_required_cardinality,
   error_type, is_compiler_error,
   node_name_span, no_span,
-  NewlineIndex
+  NewlineIndex,
+  InternTable, InternResult, empty_intern_table, intern
 }
 
 import v2.compiler.languages {
