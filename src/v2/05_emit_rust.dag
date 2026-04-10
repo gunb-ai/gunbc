@@ -492,7 +492,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let has_pipeline = typed.modules |> any(m => m.module.name == "v2.compiler.compile")
   let crate_name = if has_pipeline { "v2_compiler" } else { "v2_compiled" }
   let cargo = emit_cargo_toml(crate_name: crate_name, has_services: has_services)
-  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name)
+  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name, svc_module_map: svc_module_map)
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
   let dry_run_file = if has_services {
@@ -4728,14 +4728,66 @@ type WorkflowFunc {
   inferred: Node
   uses: List<Node>
   service_names: List<String>
+  // Resolved param defaults: param name → literal string value.
+  // Data references resolved at construction time via registry + module items.
+  resolved_defaults: Map<String, String>
   source_index: NewlineIndex?
 }
 
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> WorkflowFunc {
+// Extract literal string from an expression body node (for data item defaults).
+fn extract_literal_string(expr: Node) -> String? {
+  match expr.expr_data {
+    ExprLiteral { value: v } => match v {
+      LitStr { value: s } => Some { value: s }
+      LitBool { value: b } => Some { value: if b { "true" } else { "false" } }
+      _ => none
+    }
+    _ => none
+  }
+}
+
+// Resolve a param's default expression to a literal string value.
+// Direct literals are extracted immediately. ExprVar references are
+// resolved through the registry (for DataItem identity) and module
+// items (for body content) — single authority chain, no scanning.
+fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, module_items: List<Node>, source_index: NewlineIndex?) -> String? {
+  match param_node_default_value(n: param) {
+    Some { value: dv } => match dv.expr_data {
+      ExprLiteral { value: _ } => extract_literal_string(expr: dv)
+      ExprVar { binding_kind: _ } =>
+        // Verify through registry that the referenced name is a DataItem
+        match lookup_item(registry: registry, name: dv.name) {
+          Some { value: info } => match info.kind {
+            DataItem =>
+              // Find the data item's body in the same module's items
+              match module_items |> filter(i => i.name == dv.name) |> first {
+                Some { value: data_item } => match data_item.body {
+                  Some { value: body } => extract_literal_string(expr: body)
+                  None => none
+                }
+                None => none
+              }
+            _ => none
+          }
+          None => none
+        }
+      _ => none
+    }
+    None => none
+  }
+}
+
+fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, module_items: List<Node>, source_index: NewlineIndex?) -> WorkflowFunc {
   let svc_names = match lookup_item(registry: registry, name: item.name) {
     Some { value: info } => info.service_names
     None => []
   }
+  let defaults = item.params |> fold(init: empty_map(), f: (acc, p) =>
+    match resolve_param_default(param: p, registry: registry, module_items: module_items, source_index: source_index) {
+      Some { value: lit } => map_insert(acc, param_node_name_at(n: p, source_index: source_index), lit)
+      None => acc
+    }
+  )
   WorkflowFunc {
     name: item.name,
     module_name: module_name,
@@ -4743,18 +4795,41 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
     inferred: resolved_type(n: item),
     uses: item.uses,
     service_names: svc_names,
+    resolved_defaults: defaults,
     source_index: source_index
+  }
+}
+
+// Determine if a body-bearing item is a workflow function (CLI subcommand).
+// Uses registry as the single authority for service/resource dependencies.
+// Items with explicit `uses` clauses are always workflow funcs.
+// Items without `uses` are workflow funcs if they have transitive service deps.
+fn is_workflow_item(item: Node, registry: Map<String, ItemInfo>) -> Bool {
+  if item.body == none { false }
+  else if item.uses |> count > 0 { true }
+  else {
+    // Registry is total for body-bearing items that went through inference.
+    // A missing entry is a compiler invariant violation — the item should
+    // have been registered during inference. Fail-closed: include the item
+    // so the diagnostic surfaces rather than silently dropping a subcommand.
+    match lookup_item(registry: registry, name: item.name) {
+      Some { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
+      None => true
+    }
   }
 }
 
 fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> List<WorkflowFunc> {
   modules |> flat_map(tm =>
     tm.items
-      |> filter(item => item.body != none && item.uses |> count > 0)
-      |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry, source_index: tm.type_env.source_index))
+      |> filter(item => is_workflow_item(item: item, registry: registry))
+      |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry, module_items: tm.items, source_index: tm.type_env.source_index))
   )
 }
 
+// Extract literal string from a default expression for CLI default_value.
+// Only handles direct literals — data references are pre-resolved in
+// WorkflowFunc.resolved_defaults at construction time.
 fn cli_default_literal_value(expr: Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: v } => match v {
@@ -4772,14 +4847,21 @@ fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<
   workflow_funcs |> flat_map(wf =>
     wf.params |> flat_map(param =>
       match param_node_default_value(n: param) {
-        Some { value: dv } => match cli_default_literal_value(expr: dv) {
-          Some { value: _ } => []
-          None => [make_error_node(diagnostic: InternalError { message: concat(
-              "workflow CLI default for parameter `",
-              authored_name_at(source_index: wf.source_index, node: param),
-              "` must be a string, int, float, or bool literal"
-            ), span: param.span }, module_name: wf.module_name)]
-        }
+        Some { value: dv } =>
+          let param_name = authored_name_at(source_index: wf.source_index, node: param)
+          // Check resolved_defaults first (covers data references), then literal
+          let resolved = match map_get(wf.resolved_defaults, param_name) {
+            Some { value: _ } => true
+            None => match cli_default_literal_value(expr: dv) {
+              Some { value: _ } => true
+              None => false
+            }
+          }
+          if resolved { [] }
+          else { [make_error_node(diagnostic: InternalError { message: concat(
+              "workflow CLI default for parameter `", param_name,
+              "` must be a string, int, float, bool literal, or data reference"
+            ), span: param.span }, module_name: wf.module_name)] }
         None => []
       }
     )
@@ -4804,7 +4886,7 @@ fn find_resource_module(resource_name: String, modules: List<TypedModule>) -> St
   result
 }
 
-fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String) -> TextFile {
+fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String, svc_module_map: Map<String, String>) -> TextFile {
   let has_pipeline = modules |> any(m => m.module.name == "v2.compiler.compile")
   // Collect resource type imports for main.rs
   let resource_type_names = workflow_funcs |> flat_map(wf => wf.uses |> map(u => resource_use_resource(n: u).name))
@@ -4815,6 +4897,17 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
     else { [] }
   )
   let resource_imports_str = resource_imports |> join(separator: "\n")
+  // Collect service type imports for main.rs (e.g. use crate::mod::GithubPulls;)
+  let all_svc_names = workflow_funcs |> flat_map(wf => wf.service_names)
+  let unique_svc_names = unique_strings(items: all_svc_names)
+  let svc_imports = unique_svc_names |> flat_map(sn =>
+    let struct_name = sanitize_service_name(name: sn)
+    match map_get(svc_module_map, sn) {
+      Some { value: mod_name } => [concat("use ", crate_name, "::", mod_name, "::", struct_name, ";")]
+      None => []
+    }
+  )
+  let svc_imports_str = svc_imports |> join(separator: "\n")
   let header = concat(
     "// Generated by v2 compiler -- do not edit.\n\n",
     "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
@@ -4826,6 +4919,7 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
     ""
   }
   let resource_use = if resource_imports_str != "" { concat(resource_imports_str, "\n") } else { "" }
+  let svc_use = if svc_imports_str != "" { concat(svc_imports_str, "\n") } else { "" }
   let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline, crate_name: crate_name)
   let cli_struct = emit_cli_struct(workflow_funcs: workflow_funcs)
   let subcommand_enum = emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline)
@@ -4833,7 +4927,7 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   let main_fn = emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: has_pipeline, crate_name: crate_name)
   let diagnostic_fns = if has_pipeline { emit_main_diagnostic_fns(crate_name: crate_name) } else { "" }
   let content = concat(
-    header, crate_use, resource_use, mod_uses, "\n",
+    header, crate_use, resource_use, svc_use, mod_uses, "\n",
     cli_struct, "\n\n",
     subcommand_enum, "\n\n",
     pipeline_fns,
@@ -4928,12 +5022,12 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
 // },
 // ```
 fn emit_subcommand_variant(wf: WorkflowFunc, depth: Int) -> String {
-  let variant_name = capitalize_first(s: wf.name)
+  let variant_name = to_pascal(name: wf.name)
   let doc_line = concat("/// Run the ", wf.name, " workflow")
   if wf.params |> count == 0 {
     concat(doc_line, "\n", variant_name, ",")
   } else {
-    let fields = wf.params |> map(p => emit_subcommand_field(param: p, source_index: wf.source_index))
+    let fields = wf.params |> map(p => emit_subcommand_field(param: p, source_index: wf.source_index, resolved_defaults: wf.resolved_defaults))
     let fields_str = fields |> join(separator: "\n")
     concat(doc_line, "\n", variant_name, " {\n",
       make_indent(level: depth + 1),fields_str, "\n",
@@ -4942,18 +5036,22 @@ fn emit_subcommand_variant(wf: WorkflowFunc, depth: Int) -> String {
 }
 
 // Emit a struct field inside a subcommand variant, with clap attributes.
-fn emit_subcommand_field(param: Node, source_index: NewlineIndex?) -> String {
+fn emit_subcommand_field(param: Node, source_index: NewlineIndex?, resolved_defaults: Map<String, String>) -> String {
   let field_name = emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust)
+  let param_name = param_node_name_at(n: param, source_index: source_index)
   let field_type = emit_cli_param_type_node(n: param_node_type_expr(n: param))
-  let default_attr = match param_node_default_value(n: param) {
-    // Invalid defaults are rejected before file emission; this path only renders
-    // literals that already passed validation.
-    Some { value: dv } => match cli_default_literal_value(expr: dv) {
-      Some { value: default_value } =>
-        concat("#[arg(long, default_value = \"", default_value, "\")]\n")
+  // Check pre-resolved defaults first, then try literal extraction
+  let default_attr = match map_get(resolved_defaults, param_name) {
+    Some { value: resolved } =>
+      concat("#[arg(long, default_value = \"", resolved, "\")]\n")
+    None => match param_node_default_value(n: param) {
+      Some { value: dv } => match cli_default_literal_value(expr: dv) {
+        Some { value: default_value } =>
+          concat("#[arg(long, default_value = \"", default_value, "\")]\n")
+        None => "#[arg(long)]\n"
+      }
       None => "#[arg(long)]\n"
     }
-    None => "#[arg(long)]\n"
   }
   concat(default_attr, field_name, ": ", field_type, ",")
 }
@@ -4992,20 +5090,10 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool, has_pipe
   let all_arms = if has_pipeline { concat(match_arms, [compile_arm]) } else { match_arms }
   let arms_str = all_arms |> join(separator: "\n")
   let match_block = concat("match cli.command {\n", make_indent(level: depth + 2),arms_str, "\n    }")
+  // When has_services, each arm handles its own Result inline (see
+  // emit_main_match_arm), so the match is a statement, not an expression.
   let result_handling = if has_services {
-    concat(
-      "let result = ", match_block, ";\n",
-      "match result {\n",
-      "    Ok(value) => {\n",
-      "        let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| format!(\"{:?}\", value));\n",
-      "        println!(\"{}\", json);\n",
-      "    }\n",
-      "    Err(e) => {\n",
-      "        eprintln!(\"Error: {}\", e);\n",
-      "        std::process::exit(1);\n",
-      "    }\n",
-      "}"
-    )
+    match_block
   } else {
     concat("let _result = ", match_block, ";")
   }
@@ -5346,34 +5434,51 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
 }
 
 // Emit one match arm in the main function for a workflow function.
+// When has_services, each arm handles its own Result inline so that
+// workflow funcs with different return types can coexist in one match.
 fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
-  let variant_name = capitalize_first(s: wf.name)
+  let variant_name = to_pascal(name: wf.name)
   let mod_name = module_to_filename(name: wf.module_name)
   let fn_name = emit_ident(name: wf.name, target: Rust)
   let await_suffix = if has_services { ".await" } else { "" }
-  if wf.params |> count == 0 {
+  let call_expr = if wf.params |> count == 0 {
     let service_args = emit_main_service_args(wf: wf, has_services: has_services)
-    concat("Commands::", variant_name, " => ",
-      mod_name, "::", fn_name, "(", service_args, ")", await_suffix, ",")
+    concat(mod_name, "::", fn_name, "(", service_args, ")", await_suffix)
+  } else {
+    let call_args = emit_main_call_args(wf: wf, has_services: has_services)
+    concat(mod_name, "::", fn_name, "(", call_args, ")", await_suffix)
+  }
+  let pattern = if wf.params |> count == 0 {
+    concat("Commands::", variant_name)
   } else {
     let field_binds = wf.params |> map(p => emit_ident(name: param_node_name_at(n: p, source_index: wf.source_index), target: Rust))
     let binds_str = field_binds |> join(separator: ", ")
-    let call_args = emit_main_call_args(wf: wf, has_services: has_services)
-    concat("Commands::", variant_name, " { ", binds_str, " } => ",
-      mod_name, "::", fn_name, "(", call_args, ")", await_suffix, ",")
+    concat("Commands::", variant_name, " { ", binds_str, " }")
+  }
+  if has_services {
+    concat(pattern, " => {\n",
+      "            match ", call_expr, " {\n",
+      "                Ok(value) => {\n",
+      "                    let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| format!(\"{:?}\", value));\n",
+      "                    println!(\"{}\", json);\n",
+      "                }\n",
+      "                Err(e) => {\n",
+      "                    eprintln!(\"Error: {}\", e);\n",
+      "                    std::process::exit(1);\n",
+      "                }\n",
+      "            }\n",
+      "        }")
+  } else {
+    concat(pattern, " => ", call_expr, ",")
   }
 }
 
 // Emit the argument list for calling a workflow function from main.
 // Includes the function's params, then service instance args.
+// CLI args from clap are owned values — pass them directly without &.
 fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
   let param_args = wf.params |> map(p =>
-    let arg_name = emit_ident(name: param_node_name_at(n: p, source_index: wf.source_index), target: Rust)
-    if needs_reference_node(n: param_node_type_expr(n: p)) {
-      concat("&", arg_name)
-    } else {
-      arg_name
-    }
+    emit_ident(name: param_node_name_at(n: p, source_index: wf.source_index), target: Rust)
   )
   let service_args = emit_main_service_arg_list(wf: wf, has_services: has_services)
   let all_args = concat(param_args, service_args)
