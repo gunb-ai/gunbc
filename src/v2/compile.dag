@@ -29,7 +29,8 @@ import v2.std.core {
   arg_name, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_name_at, field_init_node_value,
   LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token,
   NewlineIndex, build_newline_index,
-  field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, foreach_variable, foreach_variable_at, expr_method_name, expr_method_name_at
+  field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, foreach_variable, foreach_variable_at, expr_method_name, expr_method_name_at,
+  InternTable, InternResult, empty_intern_table, intern
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
@@ -71,6 +72,7 @@ type FrontendResult {
   graph: ModuleGraph?
   diagnostics: List<ErrorNode>
   newline_indices: List<NewlineIndex>
+  intern_table: InternTable
 }
 
 type FrontendAccum {
@@ -792,17 +794,28 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let newline_indices = acc.newline_indices
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let has_parse_errors = parse_results |> any(p => p.error != None)
+  let intern_tables = parse_results |> map(p => p.intern_table)
+  let merged_intern_table = merge_intern_tables(tables: intern_tables)
   if has_parse_errors {
-    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices }
+    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: merged_intern_table }
   } else {
     let modules = parse_results |> map(p => p.module.value)
     let graph = resolve_modules(modules: modules)
     FrontendResult {
       graph: Some { value: graph },
       diagnostics: concat(parse_diagnostics, graph.diagnostics),
-      newline_indices: newline_indices
+      newline_indices: newline_indices,
+      intern_table: merged_intern_table
     }
   }
+}
+
+fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
+  tables |> fold(init: empty_intern_table(), f: (merged, t) =>
+    t.strings |> fold(init: merged, f: (m, s) =>
+      if s == "" { m } else { intern(table: m, s: s).table }
+    )
+  )
 }
 
 // =========================================================================
