@@ -21,6 +21,7 @@ import v2.std.core {
 import v2.compiler.infer_types {
   child_type_node
 }
+import std.induction { SubValueUnknown }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding
 }
@@ -139,7 +140,8 @@ fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) 
       fold(item.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,
-          resolved: item
+          resolved: item,
+          provenance: SubValueUnknown
         })
       )
     } else { acc }

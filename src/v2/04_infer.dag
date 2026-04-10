@@ -361,7 +361,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               InferScopeComponents {
                 func_sigs: acc.func_sigs,
                 svc_registry: acc.svc_registry,
-                svc_locals: map_insert(acc.svc_locals, titem.name, TypeBinding { name: titem.name, resolved: resolved_type(n: titem) })
+                svc_locals: map_insert(acc.svc_locals, titem.name, TypeBinding { name: titem.name, resolved: resolved_type(n: titem), provenance: SubValueUnknown })
               }
             }
             else {
@@ -384,7 +384,7 @@ fn nominal_leaf_type(name: String) -> Node {
 }
 
 fn nominal_type_binding(name: String) -> TypeBinding {
-  TypeBinding { name: name, resolved: nominal_leaf_type(name: name) }
+  TypeBinding { name: name, resolved: nominal_leaf_type(name: name), provenance: SubValueUnknown }
 }
 
 // Map-as-set membership check.
@@ -698,7 +698,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
 
 fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, param_node_name_at(n: p, source_index: scope.type_env.source_index), TypeBinding { name: param_node_name_at(n: p, source_index: scope.type_env.source_index), resolved: param_node_type_expr(n: p) })
+    map_insert(acc, param_node_name_at(n: p, source_index: scope.type_env.source_index), TypeBinding { name: param_node_name_at(n: p, source_index: scope.type_env.source_index), resolved: param_node_type_expr(n: p), provenance: SubValueUnknown })
   )
   InferScope {
     type_env: scope.type_env,
@@ -719,7 +719,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node) -> InferScope {
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }),
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -731,7 +731,7 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node) -> 
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }),
     match_bound_names: map_insert(scope.match_bound_names, name, true),
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -742,7 +742,7 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node) -> 
 // Extend scope with lambda parameter names.
 fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param") })
+    map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown })
   )
   InferScope {
     type_env: scope.type_env,
@@ -3683,13 +3683,15 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding {
       name: name,
-      resolved: Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      resolved: Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      provenance: SubValueUnknown
     })
   )
   // Override Unit with Conj connective (empty product, structurally distinct)
   let kernel_bindings = map_insert(kernel_bindings_base, "Unit", TypeBinding {
     name: "Unit",
-    resolved: Node { name: "Unit", span: no_span(), ident_span: Some { value: no_span() }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    resolved: Node { name: "Unit", span: no_span(), ident_span: Some { value: no_span() }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    provenance: SubValueUnknown
   })
   // Register Optional as a Disj type so lookup_type("Optional") succeeds.
   // The real Optional is parametric (Optional<T>), but the kernel provides
@@ -3698,7 +3700,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let some_value_field = Node { name: "value", span: zero_span, ident_span: Some { value: zero_span }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: "some_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, ident_span: Some { value: zero_span }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, ident_span: Some { value: zero_span }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
+  let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   // Compiler types' inductive fields are declared in std/node.dag.
   // This provides the structural facts for CX-L2 to prove tree-walk
   // functions are O(n). See ROADMAP CX-NEXT Phase 2.
@@ -3766,7 +3768,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
       // Type alias: connective is none, but inferred references the aliased type
       // For aliases, create a leaf node referencing the aliased type
@@ -3777,10 +3779,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: alias_node })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = nominal_ref_node(name: item.name, span: item.span, ident_span: item.ident_span)
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node, provenance: SubValueUnknown })
     } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
       // Parameterized type declaration (e.g., type List<element> = FreeMonoid<element>).
       // Register as a nominal type with params so generics can find the declaration.
@@ -3793,7 +3795,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: bare_node })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: bare_node, provenance: SubValueUnknown })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       // Resource declaration: has properties (kind, mode) but no children/connective.
       // Register as a nominal type so it can be referenced in `uses` clauses.
@@ -3869,12 +3871,12 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } })
+    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, provenance: SubValueUnknown })
   )
   let some_value_field = Node { name: "value", span: zero_span, ident_span: Some { value: zero_span }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: "some_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, ident_span: Some { value: zero_span }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, ident_span: Some { value: zero_span }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
+  let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_index: source_index }
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
   // Mirror the same bootstrap bridge in the unresolved path.
@@ -3914,13 +3916,13 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     let has_structure = item.connective != NoConnective
     if has_structure {
       let type_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
       let alias_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: alias_node })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = nominal_ref_node(name: item.name, span: item.span, ident_span: item.ident_span)
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node, provenance: SubValueUnknown })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item.name, nominal_type_binding(name: item.name))
     } else {
@@ -4113,13 +4115,13 @@ fn build_module_context(contributions: List<ItemContribution>,
               }
             } else if curr_is_imported {
               VariantFoldState {
-                locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved }),
+                locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved, provenance: SubValueUnknown }),
                 collision_errors: vacc.collision_errors
               }
             } else { vacc }
           None =>
             VariantFoldState {
-              locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved }),
+              locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved, provenance: SubValueUnknown }),
               collision_errors: vacc.collision_errors
             }
         }
@@ -4211,7 +4213,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // Data items: body != none, params == [], no inferred (have type_annotation instead).
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
     if item.body != none && item.params |> count == 0 && item.inferred == none && item.type_annotation != none {
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: item.type_annotation.value })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: item.type_annotation.value, provenance: SubValueUnknown })
     } else {
       acc
     }
@@ -4319,7 +4321,7 @@ fn topo_resolve_types(
         Some { value: binding } =>
           let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
           BindingsAccum {
-            bindings: map_insert(acc.bindings, name, TypeBinding { name: name, resolved: result.resolved }),
+            bindings: map_insert(acc.bindings, name, TypeBinding { name: name, resolved: result.resolved, provenance: SubValueUnknown }),
             diagnostics: concat(acc.diagnostics, result.diagnostics)
           }
         None => acc
@@ -4338,7 +4340,7 @@ fn topo_resolve_types(
       Some { value: binding } =>
         let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
         BindingsAccum {
-          bindings: map_insert(acc.bindings, name, TypeBinding { name: name, resolved: result.resolved }),
+          bindings: map_insert(acc.bindings, name, TypeBinding { name: name, resolved: result.resolved, provenance: SubValueUnknown }),
           diagnostics: concat(acc.diagnostics, result.diagnostics)
         }
       None => acc

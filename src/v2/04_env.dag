@@ -7,7 +7,7 @@
 module v2.compiler.infer_env
 
 import v2.std.core { Node, NewlineIndex, source_text_at, authored_name_at }
-import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion }
+import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
 // Types
@@ -24,6 +24,7 @@ type TypeEnv {
 type TypeBinding {
   name: String
   resolved: Node
+  provenance: SubValueRelation
 }
 
 // =========================================================================
