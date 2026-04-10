@@ -3061,7 +3061,85 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { call_semantics: cs, .. } => {
             let evidence = build_call_evidence(body.clone(), ctx.clone());
-let annotated_children = Rc::new({ let mut __result = Vec::new(); for child in body.children.clone().iter().cloned() { __result.push(annotate_descent(child.clone(), ctx.clone())); } __result });
+let source_type = body.children.clone().iter().cloned().fold("".to_string(), |found: String, arg_node: Rc<Node>| if (found.clone().as_str() != "".to_string().as_str()) {
+                found.clone()
+            } else {
+                match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => found.clone(),
+    _ => {
+                    let arg_val = arg_value(arg_node.clone());
+match (*arg_val.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+                        let vname = expr_var_name(arg_val.clone());
+match v2_rt::map_get(&ctx.param_names.clone(), vname.clone()) {
+    Some(t) => t.clone(),
+    None => "".to_string(),
+}
+},
+    _ => "".to_string(),
+}
+},
+}
+            });
+let annotated_children = Rc::new({ let mut __result = Vec::new(); for child in body.children.clone().iter().cloned() { __result.push({
+                let arg_val = arg_value(child.clone());
+match (*arg_val.expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => if (source_type.clone().as_str() != "".to_string().as_str()) {
+                    {
+                        let lparams = lambda_param_names(arg_val.clone());
+let p1 = match lparams.clone().first().cloned() {
+    Some(n) => n.clone(),
+    None => "".to_string(),
+};
+let p2 = match lparams.clone().get(1 as usize).cloned() {
+    Some(n) => n.clone(),
+    None => "".to_string(),
+};
+let lambda_ctx = Rc::new(DescentContext {
+    fn_name: ctx.fn_name.clone(),
+    param_names: if (p2.clone().as_str() != "".to_string().as_str()) {
+                            v2_rt::rc_map_insert(v2_rt::rc_map_insert(ctx.param_names.clone(), p1.clone(), source_type.clone()), p2.clone(), source_type.clone())
+                        } else {
+                            if (p1.clone().as_str() != "".to_string().as_str()) {
+                                v2_rt::rc_map_insert(ctx.param_names.clone(), p1.clone(), source_type.clone())
+                            } else {
+                                ctx.param_names.clone()
+                            }
+                        },
+    param_order: ctx.param_order.clone(),
+    type_env: ctx.type_env.clone(),
+    sub_value_vars: if (p1.clone().as_str() != "".to_string().as_str()) {
+                            {
+                                let source_fields = inductive_fields_for(ctx.type_env.clone(), source_type.clone());
+let cf = Rc::new({ let mut __result = Vec::new(); for f in source_fields.clone().iter().cloned() { if match f.shape.clone() {
+    RecursionShape::ListRecursion => true,
+    _ => false,
+} { __result.push(f); } } __result }).first().cloned();
+let rel = match cf.clone() {
+    Some(f) => Rc::new(SubValueRelation::IteratedSubValue {
+    field: f.clone(),
+}),
+    None => Rc::new(SubValueRelation::PreservedValue),
+};
+if (p2.clone().as_str() != "".to_string().as_str()) {
+                                    v2_rt::rc_map_insert(v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), p1.clone(), rel.clone()), p2.clone(), rel.clone())
+                                } else {
+                                    v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), p1.clone(), rel.clone())
+                                }
+}
+                        } else {
+                            ctx.sub_value_vars.clone()
+                        },
+    size_aliases: ctx.size_aliases.clone(),
+});
+make_arg_node(arg_name(child.clone()), annotate_descent(arg_val.clone(), lambda_ctx.clone()), child.span.clone(), child.span.clone())
+}
+                } else {
+                    make_arg_node(arg_name(child.clone()), annotate_descent(arg_val.clone(), ctx.clone()), child.span.clone(), child.span.clone())
+                },
+    _ => make_arg_node(arg_name(child.clone()), annotate_descent(arg_val.clone(), ctx.clone()), child.span.clone(), child.span.clone()),
+}
+}); } __result });
 Rc::new(Node {
     name: body.name.clone(),
     span: body.span.clone(),

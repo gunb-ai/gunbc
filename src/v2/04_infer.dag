@@ -2846,7 +2846,67 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       // For cross-calls, the SCC proof system reads this to build cross-edges.
       // Single authority: no parallel analysis needed.
       let evidence = build_call_evidence(call_node: body, ctx: ctx)
-      let annotated_children = body.children |> map(child => annotate_descent(body: child, ctx: ctx))
+      // Lambda transparency: when a call passes both a tracked parameter AND
+      // lambda arguments, the lambda parameters will receive sub-values of
+      // the tracked parameter. Register lambda params in the inner context
+      // so calls inside the lambda body get evidence instead of SubValueUnknown.
+      //
+      // Example: emit_shared_expr(texpr: texpr, recurse: child => self(texpr: child))
+      // The lambda param `child` receives sub-parts of `texpr`.
+      // Register child as PreservedValue with texpr's type so inner calls see it.
+      let source_type = body.children |> fold(init: "", f: (found, arg_node) =>
+        if found != "" { found }
+        else {
+          match arg_value(n: arg_node).expr_data {
+            ExprLambda { semantics: _ } => found
+            _ =>
+              let arg_val = arg_value(n: arg_node)
+              match arg_val.expr_data {
+                ExprVar { binding_kind: _ } =>
+                  let vname = expr_var_name(texpr: arg_val)
+                  match map_get(ctx.param_names, vname) { Some { value: t } => t  None => "" }
+                _ => ""
+              }
+          }
+        }
+      )
+      let annotated_children = body.children |> map(child =>
+        let arg_val = arg_value(n: child)
+        match arg_val.expr_data {
+          ExprLambda { semantics: _ } =>
+            if source_type != "" {
+              // Register lambda params with source param type for descent tracking.
+              // Most callback lambdas have 1-2 params. Register all with PreservedValue
+              // so calls inside the lambda body see them as related to the source param.
+              let lparams = lambda_param_names(texpr: arg_val)
+              let p1 = match lparams |> first { Some { value: n } => n  None => "" }
+              let p2 = match lparams |> skip(1) |> first { Some { value: n } => n  None => "" }
+              let lambda_ctx = DescentContext {
+                fn_name: ctx.fn_name,
+                param_names: if p2 != "" { map_insert(map_insert(ctx.param_names, p1, source_type), p2, source_type) }
+                  else if p1 != "" { map_insert(ctx.param_names, p1, source_type) }
+                  else { ctx.param_names },
+                param_order: ctx.param_order, type_env: ctx.type_env,
+                // Register lambda params as IteratedSubValue when the source type has
+                // inductive fields. The callee dispatches on the source's children/fields
+                // and passes sub-parts to the callback. In a decidable language, all
+                // lambdas are statically known and callbacks receive sub-values.
+                sub_value_vars: if p1 != "" {
+                  let source_fields = inductive_fields_for(env: ctx.type_env, type_name: source_type)
+                  let cf = source_fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+                  let rel = match cf { Some { value: f } => IteratedSubValue { field: f }  None => PreservedValue }
+                  if p2 != "" { map_insert(map_insert(ctx.sub_value_vars, p1, rel), p2, rel) }
+                  else { map_insert(ctx.sub_value_vars, p1, rel) }
+                } else { ctx.sub_value_vars },
+                size_aliases: ctx.size_aliases
+              }
+              make_arg_node(name: arg_name(n: child), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
+            } else {
+              make_arg_node(name: arg_name(n: child), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
+            }
+          _ => make_arg_node(name: arg_name(n: child), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
+        }
+      )
       Node {
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: annotated_children, connective: body.connective, params: body.params,
