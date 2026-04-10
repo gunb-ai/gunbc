@@ -11,7 +11,7 @@ pub use crate::v2_compiler_emit::{to_string};
 pub use crate::v2_compiler_parse::{ParserResultWitness, parser_progress_flag_var, parser_passthrough_state_expr, parser_result_witness, ParserCallIdentity};
 use crate::v2_compiler_parse::ParserResultWitness::{ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque};
 use crate::v2_compiler_parse::ParserCallIdentity::{ParserCallHelper, ParserCallFunction};
-pub use crate::std_termination::{DescentEvidence, RankingDimension, DescentSource, TerminationProof, ProofEdge, merge_evidence};
+pub use crate::std_termination::{DescentEvidence, RankingDimension, DescentSource, TerminationProof, ProofEdge, merge_evidence, promote_to_strict};
 use crate::std_termination::DescentEvidence::{Strict, NonIncreasing, DescentUnknown};
 use crate::std_termination::RankingDimension::{TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality};
 use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, ArithmeticDecrease, ParserAdvance, SetRemoval, FoldIteration};
@@ -38,7 +38,6 @@ pub use crate::std_graph::{CallGraph, CallGraphAcc, DfsFinishAcc, SccComponentAc
 use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
-use ProgressKind::*;
 use ParserResultSource::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -180,37 +179,29 @@ pub struct ParserStateParam {
     pub index: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ProgressKind {
-    ProgressUnknown,
-    ProgressSame,
-    ProgressStrict,
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParserResultSource {
     ParserResultAdvance {
-        input: ProgressKind,
+        input: DescentEvidence,
     },
     ParserResultExpect {
-        input: ProgressKind,
+        input: DescentEvidence,
     },
     ParserResultEat {
-        input: ProgressKind,
+        input: DescentEvidence,
     },
     ParserResultCall {
-        input: ProgressKind,
+        input: DescentEvidence,
         callee: String,
     },
     ParserResultDirectState {
-        input: ProgressKind,
+        input: DescentEvidence,
     },
     ParserResultOpaque,
 }
 impl ParserResultSource {
-    pub fn input(&self) -> ProgressKind {
+    pub fn input(&self) -> DescentEvidence {
         match self {
             ParserResultSource::ParserResultAdvance { input: __val, .. } => __val.clone(),
             ParserResultSource::ParserResultExpect { input: __val, .. } => __val.clone(),
@@ -226,12 +217,12 @@ impl ParserResultSource {
 pub struct ParserProgressEdge {
     pub caller: String,
     pub callee: String,
-    pub progress: ProgressKind,
+    pub progress: DescentEvidence,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserProgressEnv {
-    pub state_aliases: Rc<HashMap<String, ProgressKind>>,
+    pub state_aliases: Rc<HashMap<String, DescentEvidence>>,
     pub result_sources: Rc<HashMap<String, Rc<ParserResultSource>>>,
 }
 
@@ -277,22 +268,6 @@ pub fn iteration_element_name(method_semantics: Option<Rc<MethodSemantics>>, lam
     lambda_param_names(lambda).last().cloned()
 }
 
-pub fn progress_to_evidence(pk: ProgressKind) -> DescentEvidence {
-    match pk {
-    ProgressKind::ProgressStrict => DescentEvidence::Strict,
-    ProgressKind::ProgressSame => DescentEvidence::NonIncreasing,
-    ProgressKind::ProgressUnknown => DescentEvidence::DescentUnknown,
-}
-}
-
-pub fn evidence_to_progress(de: DescentEvidence) -> ProgressKind {
-    match de {
-    DescentEvidence::Strict => ProgressKind::ProgressStrict,
-    DescentEvidence::NonIncreasing => ProgressKind::ProgressSame,
-    DescentEvidence::DescentUnknown => ProgressKind::ProgressUnknown,
-}
-}
-
 pub fn proof_has_non_descending_cycle(proof: Rc<TerminationProof>, members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
     (is_valid_proof(proof, edges) == false)
 }
@@ -301,32 +276,9 @@ pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     (v2_rt::map_get(&m, key) != None)
 }
 
-pub fn strict_progress(progress: ProgressKind) -> ProgressKind {
-    match progress {
-    ProgressKind::ProgressSame => ProgressKind::ProgressStrict,
-    ProgressKind::ProgressStrict => ProgressKind::ProgressStrict,
-    _ => ProgressKind::ProgressUnknown,
-}
-}
-
-pub fn merge_progress(a: ProgressKind, b: ProgressKind) -> ProgressKind {
-    match a {
-    ProgressKind::ProgressUnknown => ProgressKind::ProgressUnknown,
-    ProgressKind::ProgressStrict => match b {
-    ProgressKind::ProgressUnknown => ProgressKind::ProgressUnknown,
-    ProgressKind::ProgressStrict => ProgressKind::ProgressStrict,
-    ProgressKind::ProgressSame => ProgressKind::ProgressSame,
-},
-    ProgressKind::ProgressSame => match b {
-    ProgressKind::ProgressUnknown => ProgressKind::ProgressUnknown,
-    _ => ProgressKind::ProgressSame,
-},
-}
-}
-
 pub fn empty_parser_progress_env() -> Rc<ParserProgressEnv> {
     Rc::new(ParserProgressEnv {
-    state_aliases: v2_rt::rc_empty_map::<ProgressKind>(),
+    state_aliases: v2_rt::rc_empty_map::<DescentEvidence>(),
     result_sources: v2_rt::rc_empty_map::<Rc<ParserResultSource>>(),
 })
 }
@@ -363,22 +315,22 @@ pub fn parser_state_base_var(expr: Rc<Node>, si: Option<Rc<NewlineIndex>>) -> Op
 }
 }
 
-pub fn parser_result_state_progress(source: Rc<ParserResultSource>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, result_name: String) -> ProgressKind {
+pub fn parser_result_state_progress(source: Rc<ParserResultSource>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, result_name: String) -> DescentEvidence {
     match (*source).clone() {
-    ParserResultSource::ParserResultAdvance { input, .. } => strict_progress(input.clone()),
-    ParserResultSource::ParserResultExpect { input, .. } => strict_progress(input.clone()),
+    ParserResultSource::ParserResultAdvance { input, .. } => promote_to_strict(input.clone()),
+    ParserResultSource::ParserResultExpect { input, .. } => promote_to_strict(input.clone()),
     ParserResultSource::ParserResultEat { input, .. } => if set_has(consumed_true_set, result_name) {
-        strict_progress(input.clone())
+        promote_to_strict(input.clone())
     } else {
         input.clone()
     },
     ParserResultSource::ParserResultCall { input, callee, .. } => if (set_has(consumed_true_set, result_name) || set_has(parser_always_advancing, callee.clone())) {
-        strict_progress(input.clone())
+        promote_to_strict(input.clone())
     } else {
         input.clone()
     },
     ParserResultSource::ParserResultDirectState { input: p, .. } => p.clone(),
-    ParserResultSource::ParserResultOpaque => ProgressKind::ProgressUnknown,
+    ParserResultSource::ParserResultOpaque => DescentEvidence::DescentUnknown,
 }
 }
 
@@ -403,17 +355,17 @@ if matches_state.clone() {
     })
 }
 
-pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: Rc<ParserStateParam>, env: Rc<ParserProgressEnv>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> ProgressKind {
+pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: Rc<ParserStateParam>, env: Rc<ParserProgressEnv>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> DescentEvidence {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
             let name = expr_var_name_at(expr.clone(), si.clone());
 if (name.clone().as_str() == state_param.name.clone().as_str()) {
-                ProgressKind::ProgressSame
+                DescentEvidence::NonIncreasing
             } else {
                 match v2_rt::map_get(&env.state_aliases.clone(), name.clone()) {
     Some(progress) => progress.clone(),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 }
             }
 },
@@ -421,16 +373,16 @@ if (name.clone().as_str() == state_param.name.clone().as_str()) {
             match parser_state_base_var(expr.clone(), si.clone()) {
     Some(result_name) => match v2_rt::map_get(&env.result_sources.clone(), result_name.clone()) {
     Some(source) => parser_result_state_progress(source.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_name.clone()),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 },
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 }
         } else {
-            ProgressKind::ProgressUnknown
+            DescentEvidence::DescentUnknown
         },
     ExprData::ExprCall { .. } => match parser_passthrough_state_expr(expr.clone(), si.clone()) {
     Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 },
     ExprData::ExprIf => {
             let cond = if_condition(expr.clone());
@@ -441,33 +393,33 @@ let then_consumed = match parser_progress_flag_var(cond, si.clone()) {
 let then_progress = parser_state_expr_progress(if_then_branch(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), then_consumed, si.clone());
 let else_progress = match if_else_branch(expr.clone()) {
     Some(eb) => parser_state_expr_progress(eb.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 };
-merge_progress(then_progress, else_progress)
+merge_evidence(then_progress, else_progress)
 },
     ExprData::ExprLet => {
             let next_env = parser_env_with_binding(let_binding_name_at(expr.clone(), si.clone()), let_value(expr.clone()), env.clone(), state_param.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone());
 match let_body(expr.clone()) {
     Some(body) => parser_state_expr_progress(body.clone(), state_param.clone(), next_env, parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 }
 },
     ExprData::ExprMatch => {
             let arm_progresses = Rc::new({ let mut __result = Vec::new(); for arm_node in match_arm_nodes(expr.clone()).iter().cloned() { __result.push(parser_state_expr_progress(arm_body(arm_node.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone())); } __result });
 match arm_progresses.clone().first().cloned() {
-    Some(initial) => arm_progresses.clone().iter().cloned().fold(initial.clone(), |acc: ProgressKind, p: ProgressKind| merge_progress(acc.clone(), p.clone())),
-    None => ProgressKind::ProgressUnknown,
+    Some(initial) => arm_progresses.clone().iter().cloned().fold(initial.clone(), |acc: DescentEvidence, p: DescentEvidence| merge_evidence(acc.clone(), p.clone())),
+    None => DescentEvidence::DescentUnknown,
 }
 },
     ExprData::ExprBlock => parser_block_state_progress(expr.children.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()),
-    _ => ProgressKind::ProgressUnknown,
+    _ => DescentEvidence::DescentUnknown,
 }
     })
 }
 
-pub fn parser_block_state_progress(stmts: Rc<Vec<Rc<Node>>>, state_param: Rc<ParserStateParam>, env: Rc<ParserProgressEnv>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> ProgressKind {
+pub fn parser_block_state_progress(stmts: Rc<Vec<Rc<Node>>>, state_param: Rc<ParserStateParam>, env: Rc<ParserProgressEnv>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> DescentEvidence {
     match stmts.clone().last().cloned() {
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
     Some(last_stmt) => {
         let leading = Rc::new(stmts.clone().iter().cloned().take(((stmts.clone().len() as i64) - 1) as usize).collect::<Vec<_>>());
 let final_env = leading.iter().cloned().fold(env.clone(), |acc_env: Rc<ParserProgressEnv>, stmt: Rc<Node>| match (*stmt.expr_data.clone()).clone() {
@@ -487,7 +439,7 @@ pub fn parser_result_source_for_expr(expr: Rc<Node>, state_param: Rc<ParserState
     ExprData::ExprCall { .. } => {
         let input_progress = match parser_state_arg_expr(expr.clone(), state_param.clone(), si.clone()) {
     Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env, parser_always_advancing, consumed_true_set, si.clone()),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 };
 match (*parser_result_witness(expr.clone(), si.clone())).clone() {
     ParserResultWitness::ParserWitnessAdvance => Rc::new(ParserResultSource::ParserResultAdvance {
@@ -502,7 +454,7 @@ match (*parser_result_witness(expr.clone(), si.clone())).clone() {
     ParserResultWitness::ParserWitnessCall { callee, .. } => match (*callee.clone()).clone() {
     ParserCallIdentity::ParserCallHelper { .. } => Rc::new(ParserResultSource::ParserResultOpaque),
     ParserCallIdentity::ParserCallFunction { name, .. } => match input_progress.clone() {
-    ProgressKind::ProgressUnknown => Rc::new(ParserResultSource::ParserResultOpaque),
+    DescentEvidence::DescentUnknown => Rc::new(ParserResultSource::ParserResultOpaque),
     _ => Rc::new(ParserResultSource::ParserResultCall {
     input: input_progress.clone(),
     callee: name.clone(),
@@ -515,7 +467,7 @@ match (*parser_result_witness(expr.clone(), si.clone())).clone() {
     _ => {
         let progress = parser_success_progress(expr.clone(), state_param.clone(), env, parser_always_advancing, consumed_true_set, si.clone());
 match progress.clone() {
-    ProgressKind::ProgressUnknown => Rc::new(ParserResultSource::ParserResultOpaque),
+    DescentEvidence::DescentUnknown => Rc::new(ParserResultSource::ParserResultOpaque),
     _ => Rc::new(ParserResultSource::ParserResultDirectState {
     input: progress.clone(),
 }),
@@ -535,17 +487,17 @@ Rc::new(ParserProgressEnv {
 }
 }
 
-pub fn parser_call_edge_progress(call_node: Rc<Node>, state_param: Rc<ParserStateParam>, env: Rc<ParserProgressEnv>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> ProgressKind {
+pub fn parser_call_edge_progress(call_node: Rc<Node>, state_param: Rc<ParserStateParam>, env: Rc<ParserProgressEnv>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> DescentEvidence {
     match parser_state_arg_expr(call_node.clone(), state_param.clone(), si.clone()) {
     Some(state_expr) => {
         let input_progress = parser_state_expr_progress(state_expr.clone(), state_param.clone(), env, parser_always_advancing.clone(), consumed_true_set, si.clone());
 if set_has(parser_always_advancing.clone(), expr_call_func_at(call_node.clone(), si.clone())) {
-            strict_progress(input_progress)
+            promote_to_strict(input_progress)
         } else {
             input_progress
         }
 },
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 }
 }
 
@@ -650,25 +602,25 @@ pub fn parser_expr_is_none(expr: Rc<Node>) -> bool {
 }
 }
 
-pub fn parser_success_progress(expr: Rc<Node>, state_param: Rc<ParserStateParam>, env: Rc<ParserProgressEnv>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> ProgressKind {
+pub fn parser_success_progress(expr: Rc<Node>, state_param: Rc<ParserStateParam>, env: Rc<ParserProgressEnv>, parser_always_advancing: Rc<HashMap<String, bool>>, consumed_true_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> DescentEvidence {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
     ExprData::ExprReturn => parser_success_progress(return_value(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()),
     ExprData::ExprVar { .. } => match v2_rt::map_get(&env.result_sources.clone(), expr_var_name_at(expr.clone(), si.clone())) {
     Some(source) => parser_result_state_progress(source.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), expr_var_name_at(expr.clone(), si.clone())),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 },
     ExprData::ExprCall { .. } => parser_result_state_progress(parser_result_source_for_expr(expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()), parser_always_advancing.clone(), consumed_true_set.clone(), "".to_string()),
     ExprData::ExprRecordLit { .. } => match parser_record_field_value(expr.clone(), "err".to_string(), si.clone()) {
     Some(err_expr) => if parser_expr_is_none(err_expr.clone()) {
             match parser_record_field_value(expr.clone(), "state".to_string(), si.clone()) {
     Some(state_expr) => parser_state_expr_progress(state_expr.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 }
         } else {
-            ProgressKind::ProgressUnknown
+            DescentEvidence::DescentUnknown
         },
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 },
     ExprData::ExprIf => {
             let cond = if_condition(expr.clone());
@@ -679,15 +631,15 @@ let then_consumed = match parser_progress_flag_var(cond, si.clone()) {
 let then_progress = parser_success_progress(if_then_branch(expr.clone()), state_param.clone(), env.clone(), parser_always_advancing.clone(), then_consumed, si.clone());
 let else_progress = match if_else_branch(expr.clone()) {
     Some(eb) => parser_success_progress(eb.clone(), state_param.clone(), env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 };
-merge_progress(then_progress, else_progress)
+merge_evidence(then_progress, else_progress)
 },
     ExprData::ExprLet => {
             let next_env = parser_env_with_binding(let_binding_name_at(expr.clone(), si.clone()), let_value(expr.clone()), env.clone(), state_param.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone());
 match let_body(expr.clone()) {
     Some(body) => parser_success_progress(body.clone(), state_param.clone(), next_env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 }
 },
     ExprData::ExprBlock => {
@@ -710,10 +662,10 @@ Rc::new(ParserProgressAcc {
 });
 match expr.children.clone().last().cloned() {
     Some(last_stmt) => parser_success_progress(last_stmt.clone(), state_param.clone(), acc.env.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), si.clone()),
-    None => ProgressKind::ProgressUnknown,
+    None => DescentEvidence::DescentUnknown,
 }
 },
-    _ => ProgressKind::ProgressUnknown,
+    _ => DescentEvidence::DescentUnknown,
 }
     })
 }
@@ -722,7 +674,7 @@ pub fn parser_member_is_always_advancing(entry: Rc<FuncEntry>, parser_name_set: 
     match parser_state_param(entry.params.clone(), si.clone()) {
     Some(state_param) => {
         let edges = collect_parser_progress_edges(entry.name.clone(), entry.body.clone(), state_param.clone(), parser_name_set, empty_parser_progress_env(), proven.clone(), v2_rt::rc_empty_map::<bool>(), si.clone());
-({ let mut __all = true; for edge in edges.iter().cloned() { if !((edge.progress.clone() == ProgressKind::ProgressStrict)) { __all = false; break; } } __all } && (parser_success_progress(entry.body.clone(), state_param.clone(), empty_parser_progress_env(), proven.clone(), v2_rt::rc_empty_map::<bool>(), si.clone()) == ProgressKind::ProgressStrict))
+({ let mut __all = true; for edge in edges.iter().cloned() { if !(((edge.progress.clone() == DescentEvidence::Strict) || ((edge.progress.clone() == DescentEvidence::NonIncreasing) && set_has(proven.clone(), edge.callee.clone())))) { __all = false; break; } } __all } && (parser_success_progress(entry.body.clone(), state_param.clone(), empty_parser_progress_env(), proven.clone(), v2_rt::rc_empty_map::<bool>(), si.clone()) == DescentEvidence::Strict))
 },
     None => false,
 }
@@ -881,7 +833,7 @@ Rc::new(CallGraph {
 
 pub fn same_progress_subgraph_has_cycle(members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ParserProgressEdge>>>) -> bool {
     {
-        let same_edges = Rc::new({ let mut __result = Vec::new(); for edge in edges.iter().cloned() { if (edge.progress.clone() == ProgressKind::ProgressSame) { __result.push(edge); } } __result });
+        let same_edges = Rc::new({ let mut __result = Vec::new(); for edge in edges.iter().cloned() { if (edge.progress.clone() == DescentEvidence::NonIncreasing) { __result.push(edge); } } __result });
 let has_self_cycle = { let mut __found = false; for edge in same_edges.clone().iter().cloned() { if (edge.caller.clone().as_str() == edge.callee.clone().as_str()) { __found = true; break; } } __found };
 if has_self_cycle {
             true
@@ -905,7 +857,8 @@ if (all_have_state == false) {
             Rc::new(vec![])
         } else {
             {
-                let parser_always_advancing = infer_parser_always_advancing_members(parser_function_names(func_index.clone(), si.clone()), func_index.clone(), si.clone());
+                let proven = infer_parser_always_advancing_members(parser_function_names(func_index.clone(), si.clone()), func_index.clone(), si.clone());
+let parser_always_advancing = proven;
 Rc::new({ let mut __result = Vec::new(); for name in members.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => match parser_state_param(entry.params.clone(), si.clone()) {
     Some(state_param) => collect_parser_progress_edges(name.clone(), entry.body.clone(), state_param.clone(), scc_name_set.clone(), empty_parser_progress_env(), parser_always_advancing.clone(), v2_rt::rc_empty_map::<bool>(), si.clone()),
@@ -926,7 +879,7 @@ if ((edges.clone().len() as i64) == 0) {
             None
         } else {
             {
-                let all_known = { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() != ProgressKind::ProgressUnknown)) { __all = false; break; } } __all };
+                let all_known = { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() != DescentEvidence::DescentUnknown)) { __all = false; break; } } __all };
 if (all_known && (same_progress_subgraph_has_cycle(members.clone(), edges.clone()) == false)) {
                     Some(lower_call_pattern(Rc::new(CallPattern::ParserAdvanceCall {
     witness: "parser_state".to_string(),
@@ -2323,7 +2276,7 @@ let single_dim_proof = match structural_proof.clone() {
     Some(state_param) => {
             let self_set = seed_bool_map(func_name.clone());
 let edges = collect_parser_progress_edges(func_name.clone(), body.clone(), state_param.clone(), self_set.clone(), empty_parser_progress_env(), parser_always_advancing, v2_rt::rc_empty_map::<bool>(), si.clone());
-if (((edges.clone().len() as i64) > 0) && { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() == ProgressKind::ProgressStrict)) { __all = false; break; } } __all }) {
+if (((edges.clone().len() as i64) > 0) && { let mut __all = true; for edge in edges.clone().iter().cloned() { if !((edge.progress.clone() == DescentEvidence::Strict)) { __all = false; break; } } __all }) {
                 Some(Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::TokenPosition {
     param: state_param.name.clone(),
@@ -2445,15 +2398,39 @@ let all_structural = (has_evidence && { let mut __all = true; for call_ev in all
 } { __found = true; break; } } __found }) { __all = false; break; } } __all });
 if all_structural {
                     {
-                        let first_call = match all_evidence.clone().first().cloned() {
-    Some(call_ev) => Rc::new({ let mut __result = Vec::new(); for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+                        let any_call_arithmetic_only = { let mut __found = false; for call_ev in all_evidence.clone().iter().cloned() { if {
+                            let has_tree = { let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
     SubValueRelation::IteratedSubValue { .. } => true,
+    _ => false,
+} { __found = true; break; } } __found };
+let has_arith = { let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::ArithmeticDescent { .. } => true,
     _ => false,
-} { __result.push(rel); } } __result }).first().cloned(),
-    None => None,
-};
+} { __found = true; break; } } __found };
+(has_arith.clone() && !has_tree.clone())
+} { __found = true; break; } } __found };
+let first_call = if any_call_arithmetic_only {
+                            Rc::new({ let mut __result = Vec::new(); for call_ev in all_evidence.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::ArithmeticDescent { .. } => true,
+    _ => false,
+} { __result.push(rel); } } __result })).iter().cloned()); } __result }).first().cloned()
+                        } else {
+                            {
+                                let tree_rels = Rc::new({ let mut __result = Vec::new(); for call_ev in all_evidence.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::StrictSubValue { .. } => true,
+    SubValueRelation::IteratedSubValue { .. } => true,
+    _ => false,
+} { __result.push(rel); } } __result })).iter().cloned()); } __result });
+match tree_rels.clone().first().cloned() {
+    Some(_) => tree_rels.clone().first().cloned(),
+    None => Rc::new({ let mut __result = Vec::new(); for call_ev in all_evidence.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+    SubValueRelation::ArithmeticDescent { .. } => true,
+    _ => false,
+} { __result.push(rel); } } __result })).iter().cloned()); } __result }).first().cloned(),
+}
+}
+                        };
 let is_arithmetic_branching = match first_call.clone() {
     Some(rel) => match (*rel.clone()).clone() {
     SubValueRelation::ArithmeticDescent { .. } => (path_calls.clone() > 1),
@@ -2710,24 +2687,24 @@ pub fn scc_label(members: Rc<Vec<String>>) -> String {
 }
 }
 
-pub fn classify_scc_call_progress(arg_expr: Rc<Node>, param_name: String, descent_vars: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> ProgressKind {
+pub fn classify_scc_call_progress(arg_expr: Rc<Node>, param_name: String, descent_vars: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> DescentEvidence {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_child_descent_expr(arg_expr.clone(), param_name.clone(), descent_vars.clone(), si.clone()) {
-            ProgressKind::ProgressStrict
+            DescentEvidence::Strict
         } else {
             if is_list_shrink_expr(arg_expr.clone(), param_name.clone(), si.clone()) {
-                ProgressKind::ProgressStrict
+                DescentEvidence::Strict
             } else {
                 match (*arg_expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
                     let vname = expr_var_name_at(arg_expr.clone(), si.clone());
 if set_has(descent_vars.clone(), vname.clone()) {
-                        ProgressKind::ProgressStrict
+                        DescentEvidence::Strict
                     } else {
                         if (vname.clone().as_str() == param_name.clone().as_str()) {
-                            ProgressKind::ProgressSame
+                            DescentEvidence::NonIncreasing
                         } else {
-                            ProgressKind::ProgressUnknown
+                            DescentEvidence::DescentUnknown
                         }
                     }
 },
@@ -2738,12 +2715,12 @@ if set_has(descent_vars.clone(), vname.clone()) {
                         {
                             let inner_progress = classify_scc_call_progress(extractor_inner_arg(arg_expr.clone()), param_name.clone(), descent_vars.clone(), si.clone());
 match inner_progress.clone() {
-    ProgressKind::ProgressSame => ProgressKind::ProgressStrict,
+    DescentEvidence::NonIncreasing => DescentEvidence::Strict,
     _ => inner_progress.clone(),
 }
 }
                     } else {
-                        ProgressKind::ProgressUnknown
+                        DescentEvidence::DescentUnknown
                     }
                 },
     ExprData::ExprFieldAccess { .. } => {
@@ -2752,15 +2729,15 @@ match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
                         let bname = expr_var_name_at(base.clone(), si.clone());
 if (set_has(descent_vars.clone(), bname.clone()) || (bname.clone().as_str() == param_name.clone().as_str())) {
-                            ProgressKind::ProgressStrict
+                            DescentEvidence::Strict
                         } else {
-                            ProgressKind::ProgressUnknown
+                            DescentEvidence::DescentUnknown
                         }
 },
-    _ => ProgressKind::ProgressUnknown,
+    _ => DescentEvidence::DescentUnknown,
 }
 },
-    _ => ProgressKind::ProgressUnknown,
+    _ => DescentEvidence::DescentUnknown,
 }
             }
         }
@@ -2779,7 +2756,7 @@ let own_edges = if set_has(target_set.clone(), callee.clone()) {
     Some(p) => p.clone(),
     None => v2_rt::rc_empty_map::<String>(),
 };
-let progress = body.children.clone().iter().cloned().fold(ProgressKind::ProgressUnknown, |acc: ProgressKind, arg_node: Rc<Node>| {
+let progress = body.children.clone().iter().cloned().fold(DescentEvidence::DescentUnknown, |acc: DescentEvidence, arg_node: Rc<Node>| {
                         let targets_measure = match arg_name_at(arg_node.clone(), si.clone()) {
     Some(aname) => (v2_rt::map_get(&callee_params, aname.clone()) != None),
     None => false,
@@ -2788,12 +2765,12 @@ if targets_measure.clone() {
                             {
                                 let arg_progress = classify_scc_call_progress(arg_value(arg_node.clone()), param_name.clone(), descent_vars.clone(), si.clone());
 match arg_progress.clone() {
-    ProgressKind::ProgressStrict => ProgressKind::ProgressStrict,
-    ProgressKind::ProgressSame => match acc.clone() {
-    ProgressKind::ProgressStrict => acc.clone(),
-    _ => ProgressKind::ProgressSame,
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    DescentEvidence::NonIncreasing => match acc.clone() {
+    DescentEvidence::Strict => acc.clone(),
+    _ => DescentEvidence::NonIncreasing,
 },
-    ProgressKind::ProgressUnknown => acc.clone(),
+    DescentEvidence::DescentUnknown => acc.clone(),
 }
 }
                         } else {
@@ -3030,12 +3007,12 @@ pub fn progress_edge_to_proof_edge(pe: Rc<ParserProgressEdge>) -> Rc<ProofEdge> 
     Rc::new(ProofEdge {
     caller: pe.caller.clone(),
     callee: pe.callee.clone(),
-    evidence: Rc::new(vec![progress_to_evidence(pe.progress.clone())]),
+    evidence: Rc::new(vec![pe.progress.clone()]),
 })
 }
 
 pub fn count_unknown_progress_edges(edges: Rc<Vec<Rc<ParserProgressEdge>>>) -> i64 {
-    (Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { if (e.progress.clone() == ProgressKind::ProgressUnknown) { __result.push(e); } } __result }).len() as i64)
+    (Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { if (e.progress.clone() == DescentEvidence::DescentUnknown) { __result.push(e); } } __result }).len() as i64)
 }
 
 pub fn count_unknown_proof_edges(edges: Rc<Vec<Rc<ProofEdge>>>) -> i64 {
@@ -3077,7 +3054,7 @@ Rc::new(ProofEdge {
 pub fn merge_edge_evidence(acc_map: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>) -> Rc<HashMap<String, DescentEvidence>> {
     {
         let existing = v2_rt::map_get(&acc_map, pe.callee.clone());
-let new_ev = progress_to_evidence(pe.progress.clone());
+let new_ev = pe.progress.clone();
 let merged_ev = match existing {
     Some(prev) => match prev.clone() {
     DescentEvidence::Strict => match new_ev {
@@ -4859,6 +4836,7 @@ match ev.clone() {
     DescentEvidence::Strict => DescentEvidence::Strict,
     _ => match best.clone() {
     DescentEvidence::Strict => DescentEvidence::Strict,
+    DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
     _ => ev.clone(),
 },
 }

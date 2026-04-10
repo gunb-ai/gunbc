@@ -1106,21 +1106,38 @@ pub fn is_sub_value_field(field_name: String) -> bool {
 }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum FunctionSizeEffect {
     TreeSizePreserving,
     TreeSizeReducing,
+    PropertyContraction {
+        domain_size: i64,
+    },
+}
+impl FunctionSizeEffect {
+    pub fn domain_size(&self) -> i64 {
+        match self {
+            FunctionSizeEffect::TreeSizePreserving => panic!("no domain_size on unit variant"),
+            FunctionSizeEffect::TreeSizeReducing => panic!("no domain_size on unit variant"),
+            FunctionSizeEffect::PropertyContraction { domain_size: __val, .. } => __val.clone(),
+        }
+    }
 }
 
-pub fn function_size_effects() -> Rc<HashMap<String, FunctionSizeEffect>> {
+pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, FunctionSizeEffect>> = {
+        static CACHED: Rc<HashMap<String, Rc<FunctionSizeEffect>>> = {
             let mut __m = HashMap::new();
-            __m.insert("with_required_cardinality".to_string(), FunctionSizeEffect::TreeSizePreserving);
-            __m.insert("resolved_type".to_string(), FunctionSizeEffect::TreeSizeReducing);
-            __m.insert("param_node_type_expr".to_string(), FunctionSizeEffect::TreeSizeReducing);
-            __m.insert("field_binding_pattern".to_string(), FunctionSizeEffect::TreeSizeReducing);
+            __m.insert("with_required_cardinality".to_string(), Rc::new(FunctionSizeEffect::PropertyContraction {
+    domain_size: 2,
+}));
+            __m.insert("resolved_type".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+            __m.insert("param_node_type_expr".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+            __m.insert("field_binding_pattern".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+            __m.insert("wrapper_inner_arg".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+            __m.insert("extractor_inner_arg".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+            __m.insert("child_type_node".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
             Rc::new(__m)
         };
     }
@@ -1128,15 +1145,23 @@ pub fn function_size_effects() -> Rc<HashMap<String, FunctionSizeEffect>> {
 }
 
 pub fn is_tree_size_preserving(func_name: String) -> bool {
-    match v2_rt::lookup(&function_size_effects(), func_name) {
+    match v2_rt::lookup(&function_size_effects(), func_name).as_deref().cloned() {
     Some(FunctionSizeEffect::TreeSizePreserving) => true,
+    Some(FunctionSizeEffect::PropertyContraction { .. }) => true,
     _ => false,
 }
 }
 
 pub fn is_tree_size_reducing(func_name: String) -> bool {
-    match v2_rt::lookup(&function_size_effects(), func_name) {
+    match v2_rt::lookup(&function_size_effects(), func_name).as_deref().cloned() {
     Some(FunctionSizeEffect::TreeSizeReducing) => true,
+    _ => false,
+}
+}
+
+pub fn is_property_contraction(func_name: String) -> bool {
+    match v2_rt::lookup(&function_size_effects(), func_name).as_deref().cloned() {
+    Some(FunctionSizeEffect::PropertyContraction { .. }) => true,
     _ => false,
 }
 }

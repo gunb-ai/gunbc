@@ -1769,8 +1769,9 @@ fn diag_parser_scc_edges() {
     use v2_compiler::v2_compiler_compile::{extract_func_entries, front_end_sources};
     use v2_compiler::v2_compiler_complexity::{
         build_scc_index, collect_parser_edges_for_scc,
-        same_progress_subgraph_has_cycle, FuncEntry, ProgressKind,
+        same_progress_subgraph_has_cycle, FuncEntry,
     };
+    use v2_compiler::std_termination::DescentEvidence;
     use v2_compiler::v2_compiler_normalize::normalize_graph;
     use v2_compiler::v2_compiler_infer::reconcile;
 
@@ -1812,9 +1813,9 @@ fn diag_parser_scc_edges() {
 
     for edge in edges.iter() {
         match &edge.progress {
-            ProgressKind::ProgressUnknown => unknown_edges.push(edge.clone()),
-            ProgressKind::ProgressSame => same_edges.push(edge.clone()),
-            ProgressKind::ProgressStrict => strict_edges.push(edge.clone()),
+            DescentEvidence::DescentUnknown => unknown_edges.push(edge.clone()),
+            DescentEvidence::NonIncreasing => same_edges.push(edge.clone()),
+            DescentEvidence::Strict => strict_edges.push(edge.clone()),
         }
     }
 
@@ -6699,4 +6700,191 @@ fn dump_complexity_report() {
     eprintln!("  Total functions:    {}", cx.function_classes.len());
     eprintln!("  Structural bounds:  {}", cx.structural_bounds.len());
     eprintln!("  Violations:         {}", cx.violations.len());
+}
+
+#[test]
+#[ignore]
+fn diag_render_node_type_evidence() {
+    use v2_compiler::v2_compiler_compile::{extract_func_entries, front_end_sources};
+    use v2_compiler::v2_compiler_complexity::{collect_self_call_evidence, max_path_self_calls};
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
+    use v2_compiler::v2_compiler_infer::reconcile;
+
+    let ws = crate::helpers::workspace_root();
+    let content = std::fs::read_to_string(ws.join("src/v2/05_emit.dag")).unwrap();
+    let sources = crate::helpers::resolve_imports_transitively("src/v2/05_emit.dag", &content);
+    let frontend = front_end_sources(Rc::new(sources));
+    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let norm = normalize_graph(graph);
+    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
+    let func_entries = extract_func_entries(typed.clone());
+
+    let entry = func_entries.iter().find(|e| e.name == "render_node_type");
+    if let Some(entry) = entry {
+        let path_calls = max_path_self_calls(entry.body.clone(), "render_node_type".to_string(), None);
+        eprintln!("\n=== render_node_type ===");
+        eprintln!("  path_calls: {}", path_calls);
+
+        let evidence = collect_self_call_evidence(entry.body.clone(), "render_node_type".to_string());
+        eprintln!("  evidence count (self-calls found): {}", evidence.len());
+        for (i, call_ev) in evidence.iter().enumerate() {
+            let has_strict = call_ev.iter().any(|r| {
+                matches!(r.as_ref(),
+                    v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } |
+                    v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } |
+                    v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. })
+            });
+            eprintln!("  call {}: {} params, has_strict={}", i, call_ev.len(), has_strict);
+            for (j, rel) in call_ev.iter().enumerate() {
+                let kind = match rel.as_ref() {
+                    v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => "StrictSubValue",
+                    v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => "IteratedSubValue",
+                    v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => "ArithmeticDescent",
+                    v2_compiler::std_induction::SubValueRelation::PreservedValue => "PreservedValue",
+                    v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "SubValueUnknown",
+                };
+                eprintln!("    param {}: {}", j, kind);
+            }
+        }
+    } else {
+        eprintln!("render_node_type not found");
+    }
+}
+
+#[test]
+#[ignore]
+fn diag_emitter_scc() {
+    use v2_compiler::v2_compiler_compile::{extract_func_entries, front_end_sources};
+    use v2_compiler::v2_compiler_complexity::{
+        build_scc_index, collect_scc_cx_l2_tree_edges,
+        collect_self_call_evidence, collect_callee_evidence,
+    };
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
+    use v2_compiler::v2_compiler_infer::reconcile;
+
+    let ws = crate::helpers::workspace_root();
+    let content = std::fs::read_to_string(ws.join("src/v2/05_emit_rust.dag")).unwrap();
+    let sources = crate::helpers::resolve_imports_transitively("src/v2/05_emit_rust.dag", &content);
+    let frontend = front_end_sources(Rc::new(sources));
+    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let norm = normalize_graph(graph);
+    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
+    let func_entries = extract_func_entries(typed.clone());
+
+    // Build func_index
+    let func_index: HashMap<String, Rc<v2_compiler::v2_compiler_compile::FuncEntry>> =
+        func_entries.iter().map(|e| (e.name.clone(), e.clone())).collect();
+    let func_index = Rc::new(func_index);
+
+    let scc_result = build_scc_index(
+        Rc::new(func_entries.to_vec()),
+        func_index.clone(),
+        None,
+    );
+
+    // Find the SCC containing emit_typed_expr
+    if let Some(info) = scc_result.index.get("emit_typed_expr") {
+        eprintln!("\n=== Emitter SCC ===");
+        eprintln!("  Members ({}):", info.members.len());
+        for m in info.members.iter() {
+            eprintln!("    {}", m);
+        }
+        eprintln!("  Pattern: {:?}", info.pattern);
+
+        // Collect CX-L2 tree edges
+        let edges = collect_scc_cx_l2_tree_edges(
+            info.members.clone(),
+            func_index.clone(),
+            Rc::new(info.member_set.as_ref().clone()),
+            None,
+        );
+        eprintln!("\n  CX-L2 tree edges ({}):", edges.len());
+        for e in edges.iter() {
+            let ev_str: Vec<String> = e.evidence.iter().map(|ev| format!("{:?}", ev)).collect();
+            eprintln!("    {} → {}: [{}]", e.caller, e.callee, ev_str.join(", "));
+        }
+
+        // Check for edges involving emit_rust_expr_match
+        let match_edges: Vec<_> = edges.iter().filter(|e| {
+            e.caller == "emit_rust_expr_match" || e.callee == "emit_rust_expr_match"
+        }).collect();
+        eprintln!("\n  Edges involving emit_rust_expr_match ({}):", match_edges.len());
+        for e in &match_edges {
+            let ev_str: Vec<String> = e.evidence.iter().map(|ev| format!("{:?}", ev)).collect();
+            eprintln!("    {} → {}: [{}]", e.caller, e.callee, ev_str.join(", "));
+        }
+
+        // Check which edges have DescentUnknown
+        let unknown_edges: Vec<_> = edges.iter().filter(|e| {
+            e.evidence.iter().any(|ev| matches!(ev, v2_compiler::std_termination::DescentEvidence::DescentUnknown))
+        }).collect();
+        eprintln!("\n  Edges with DescentUnknown ({}):", unknown_edges.len());
+        for e in &unknown_edges {
+            let ev_str: Vec<String> = e.evidence.iter().map(|ev| format!("{:?}", ev)).collect();
+            eprintln!("    {} → {}: [{}]", e.caller, e.callee, ev_str.join(", "));
+        }
+        // Detailed: look at what collect_callee_evidence returns for emit_rust_expr_match
+        let entry = func_index.get("emit_typed_expr");
+        if let Some(entry) = entry {
+            let target_evidence = collect_callee_evidence(
+                entry.body.clone(),
+                "emit_rust_expr_match".to_string(),
+            );
+            eprintln!("\n  collect_callee_evidence(emit_typed_expr → emit_rust_expr_match):");
+            eprintln!("    calls found: {}", target_evidence.len());
+            for (i, call_ev) in target_evidence.iter().enumerate() {
+                let kinds: Vec<&str> = call_ev.iter().map(|rel| {
+                    match rel.as_ref() {
+                        v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => "Strict",
+                        v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => "Iterated",
+                        v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => "Arith",
+                        v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
+                        v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
+                    }
+                }).collect();
+                eprintln!("    call {}: [{}]", i, kinds.join(", "));
+            }
+
+            // Also check self evidence
+            let self_ev = collect_self_call_evidence(entry.body.clone(), "emit_typed_expr".to_string());
+            eprintln!("\n  collect_self_call_evidence(emit_typed_expr):");
+            eprintln!("    self-calls found: {}", self_ev.len());
+            for (i, call_ev) in self_ev.iter().enumerate() {
+                let kinds: Vec<&str> = call_ev.iter().map(|rel| {
+                    match rel.as_ref() {
+                        v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => "Strict",
+                        v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => "Iterated",
+                        v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => "Arith",
+                        v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
+                        v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
+                    }
+                }).collect();
+                eprintln!("    call {}: [{}]", i, kinds.join(", "));
+            }
+        }
+    } else {
+        eprintln!("emit_typed_expr not found in any SCC");
+    }
+
+    // Check apply_named_template_nested
+    let entry = func_entries.iter().find(|e| e.name == "apply_named_template_nested");
+    if let Some(entry) = entry {
+        let self_ev = collect_self_call_evidence(entry.body.clone(), "apply_named_template_nested".to_string());
+        eprintln!("\n=== apply_named_template_nested ===");
+        eprintln!("  self-calls: {}", self_ev.len());
+        for (i, call_ev) in self_ev.iter().enumerate() {
+            let kinds: Vec<&str> = call_ev.iter().map(|rel| {
+                match rel.as_ref() {
+                    v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => "Strict",
+                    v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => "Iterated",
+                    v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => "Arith",
+                    v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
+                    v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
+                }
+            }).collect();
+            eprintln!("    call {}: [{}]", i, kinds.join(", "));
+        }
+        let path_calls = v2_compiler::v2_compiler_complexity::max_path_self_calls(entry.body.clone(), "apply_named_template_nested".to_string(), None);
+        eprintln!("  path_calls: {}", path_calls);
+    }
 }

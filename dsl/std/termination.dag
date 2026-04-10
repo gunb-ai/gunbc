@@ -94,6 +94,16 @@ fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   }
 }
 
+// Promote NonIncreasing to Strict (e.g., when a callee is known to always advance).
+// DescentUnknown stays unknown — can't promote what we don't know.
+fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
+  match evidence {
+    NonIncreasing => Strict
+    Strict => Strict
+    _ => DescentUnknown
+  }
+}
+
 // =========================================================================
 // Ranking dimensions: what can be measured for descent
 // =========================================================================

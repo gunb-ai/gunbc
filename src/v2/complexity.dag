@@ -27,7 +27,7 @@ import std.termination {
   RankingDimension, TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality,
   DescentSource, ChildAccessor, ListShrink, ArithmeticDecrease, ParserAdvance, SetRemoval, FoldIteration,
   TerminationProof, ProofEdge,
-  merge_evidence
+  merge_evidence, promote_to_strict
 }
 import std.computation {
   CallPattern,
@@ -263,24 +263,23 @@ type ParserStateParam {
   index: Int
 }
 
-type ProgressKind = ProgressUnknown | ProgressSame | ProgressStrict
 
 type ParserResultSource
-  = ParserResultAdvance { input: ProgressKind }
-  | ParserResultExpect { input: ProgressKind }
-  | ParserResultEat { input: ProgressKind }
-  | ParserResultCall { input: ProgressKind, callee: String }
-  | ParserResultDirectState { input: ProgressKind }
+  = ParserResultAdvance { input: DescentEvidence }
+  | ParserResultExpect { input: DescentEvidence }
+  | ParserResultEat { input: DescentEvidence }
+  | ParserResultCall { input: DescentEvidence, callee: String }
+  | ParserResultDirectState { input: DescentEvidence }
   | ParserResultOpaque
 
 type ParserProgressEdge {
   caller: String
   callee: String
-  progress: ProgressKind
+  progress: DescentEvidence
 }
 
 type ParserProgressEnv {
-  state_aliases: Map<String, ProgressKind>
+  state_aliases: Map<String, DescentEvidence>
   result_sources: Map<String, ParserResultSource>
 }
 
@@ -347,23 +346,6 @@ fn iteration_element_name(method_semantics: MethodSemantics?, lambda: Node) -> S
   lambda_param_names(texpr: lambda) |> last
 }
 
-// Bridge: convert ProgressKind → DescentEvidence (migration aid)
-fn progress_to_evidence(pk: ProgressKind) -> DescentEvidence {
-  match pk {
-    ProgressStrict => Strict
-    ProgressSame => NonIncreasing
-    ProgressUnknown => DescentUnknown
-  }
-}
-
-// Bridge: convert DescentEvidence → ProgressKind (migration aid)
-fn evidence_to_progress(de: DescentEvidence) -> ProgressKind {
-  match de {
-    Strict => ProgressStrict
-    NonIncreasing => ProgressSame
-    DescentUnknown => ProgressUnknown
-  }
-}
 
 // Thin wrapper: is_valid_proof returns true when proof is valid (no cycles).
 // This function returns true when there IS a cycle (inverted sense for callers).
@@ -379,30 +361,8 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
   map_get(m, key) != none
 }
 
-fn strict_progress(progress: ProgressKind) -> ProgressKind {
-  match progress {
-    ProgressSame => ProgressStrict
-    ProgressStrict => ProgressStrict
-    _ => ProgressUnknown
-  }
-}
-
-fn merge_progress(a: ProgressKind, b: ProgressKind) -> ProgressKind {
-  match a {
-    ProgressUnknown => ProgressUnknown
-    ProgressStrict =>
-      match b {
-        ProgressUnknown => ProgressUnknown
-        ProgressStrict => ProgressStrict
-        ProgressSame => ProgressSame
-      }
-    ProgressSame =>
-      match b {
-        ProgressUnknown => ProgressUnknown
-        _ => ProgressSame
-      }
-  }
-}
+// promote_to_strict and merge_evidence are now in std.termination
+// (the single authority for the DescentEvidence lattice)
 
 fn empty_parser_progress_env() -> ParserProgressEnv {
   ParserProgressEnv {
@@ -442,24 +402,24 @@ fn parser_state_base_var(expr: Node, si: NewlineIndex?) -> String? {
   }
 }
 
-fn parser_result_state_progress(source: ParserResultSource, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_name: String) -> ProgressKind {
+fn parser_result_state_progress(source: ParserResultSource, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_name: String) -> DescentEvidence {
   match source {
-    ParserResultAdvance { input: input } => strict_progress(progress: input)
-    ParserResultExpect { input: input } => strict_progress(progress: input)
+    ParserResultAdvance { input: input } => promote_to_strict(progress: input)
+    ParserResultExpect { input: input } => promote_to_strict(progress: input)
     ParserResultEat { input: input } =>
       if set_has(m: consumed_true_set, key: result_name) {
-        strict_progress(progress: input)
+        promote_to_strict(progress: input)
       } else {
         input
       }
     ParserResultCall { input: input, callee: callee } =>
       if set_has(m: consumed_true_set, key: result_name) || set_has(m: parser_always_advancing, key: callee) {
-        strict_progress(progress: input)
+        promote_to_strict(progress: input)
       } else {
         input
       }
     ParserResultDirectState { input: p } => p
-    ParserResultOpaque => ProgressUnknown
+    ParserResultOpaque => DescentUnknown
   }
 }
 
@@ -484,16 +444,16 @@ fn parser_state_arg_expr(call_node: Node, state_param: ParserStateParam, si: New
   )
 }
 
-fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: NewlineIndex?) -> ProgressKind {
+fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: NewlineIndex?) -> DescentEvidence {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
       let name = expr_var_name_at(texpr: expr, source_index: si)
       if name == state_param.name {
-        ProgressSame
+        NonIncreasing
       } else {
         match map_get(env.state_aliases, name) {
           Some { value: progress } => progress
-          None => ProgressUnknown
+          None => DescentUnknown
         }
       }
 
@@ -509,12 +469,12 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
                   consumed_true_set: consumed_true_set,
                   result_name: result_name
                 )
-              None => ProgressUnknown
+              None => DescentUnknown
             }
-          None => ProgressUnknown
+          None => DescentUnknown
         }
       } else {
-        ProgressUnknown
+        DescentUnknown
       }
 
     ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -527,7 +487,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => ProgressUnknown
+        None => DescentUnknown
       }
 
     ExprIf =>
@@ -552,9 +512,9 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => ProgressUnknown
+        None => DescentUnknown
       }
-      merge_progress(a: then_progress, b: else_progress)
+      merge_evidence(a: then_progress, b: else_progress)
 
     ExprLet =>
       let next_env = parser_env_with_binding(
@@ -574,7 +534,7 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => ProgressUnknown
+        None => DescentUnknown
       }
 
     ExprMatch =>
@@ -590,9 +550,9 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
       match arm_progresses |> first {
         Some { value: initial } =>
           arm_progresses |> fold(init: initial, f: (acc, p) =>
-            merge_progress(a: acc, b: p)
+            merge_evidence(a: acc, b: p)
           )
-        None => ProgressUnknown
+        None => DescentUnknown
       }
 
     ExprBlock =>
@@ -604,16 +564,16 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         consumed_true_set: consumed_true_set,
       si: si)
 
-    _ => ProgressUnknown
+    _ => DescentUnknown
   }
 }
 
 // Process a block of statements for parser state progress.
 // Walks let-bindings to build up the env, then evaluates
 // the final expression (block value) with accumulated env.
-fn parser_block_state_progress(stmts: List<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: NewlineIndex?) -> ProgressKind {
+fn parser_block_state_progress(stmts: List<Node>, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: NewlineIndex?) -> DescentEvidence {
   match stmts |> last {
-    None => ProgressUnknown
+    None => DescentUnknown
     Some { value: last_stmt } =>
       let leading = stmts |> take(n: (stmts |> count) - 1)
       let final_env = leading |> fold(init: env, f: (acc_env, stmt) =>
@@ -656,7 +616,7 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => ProgressUnknown
+        None => DescentUnknown
       }
       match parser_result_witness(expr: expr, source_index: si) {
         ParserWitnessAdvance => ParserResultAdvance { input: input_progress }
@@ -667,7 +627,7 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
             ParserCallHelper { helper: _ } => ParserResultOpaque
             ParserCallFunction { name: name } =>
               match input_progress {
-                ProgressUnknown => ParserResultOpaque
+                DescentUnknown => ParserResultOpaque
                 _ => ParserResultCall { input: input_progress, callee: name }
               }
           }
@@ -682,7 +642,7 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
         consumed_true_set: consumed_true_set,
       si: si)
       match progress {
-        ProgressUnknown => ParserResultOpaque
+        DescentUnknown => ParserResultOpaque
         _ => ParserResultDirectState { input: progress }
       }
   }
@@ -709,7 +669,7 @@ fn parser_env_with_binding(name: String, value_expr: Node, env: ParserProgressEn
   }
 }
 
-fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: NewlineIndex?) -> ProgressKind {
+fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: NewlineIndex?) -> DescentEvidence {
   match parser_state_arg_expr(call_node: call_node, state_param: state_param, si: si) {
     Some { value: state_expr } =>
       let input_progress = parser_state_expr_progress(
@@ -720,11 +680,11 @@ fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env
         consumed_true_set: consumed_true_set,
       si: si)
       if set_has(m: parser_always_advancing, key: expr_call_func_at(texpr: call_node, source_index: si)) {
-        strict_progress(progress: input_progress)
+        promote_to_strict(progress: input_progress)
       } else {
         input_progress
       }
-    None => ProgressUnknown
+    None => DescentUnknown
   }
 }
 
@@ -945,7 +905,7 @@ fn parser_expr_is_none(expr: Node) -> Bool {
   }
 }
 
-fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: NewlineIndex?) -> ProgressKind {
+fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: NewlineIndex?) -> DescentEvidence {
   match expr.expr_data {
     ExprReturn =>
       parser_success_progress(
@@ -965,7 +925,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
             consumed_true_set: consumed_true_set,
             result_name: expr_var_name_at(texpr: expr, source_index: si)
           )
-        None => ProgressUnknown
+        None => DescentUnknown
       }
 
     ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -995,12 +955,12 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
                   parser_always_advancing: parser_always_advancing,
                   consumed_true_set: consumed_true_set,
                 si: si)
-              None => ProgressUnknown
+              None => DescentUnknown
             }
           } else {
-            ProgressUnknown
+            DescentUnknown
           }
-        None => ProgressUnknown
+        None => DescentUnknown
       }
 
     ExprIf =>
@@ -1025,9 +985,9 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => ProgressUnknown
+        None => DescentUnknown
       }
-      merge_progress(a: then_progress, b: else_progress)
+      merge_evidence(a: then_progress, b: else_progress)
 
     ExprLet =>
       let next_env = parser_env_with_binding(
@@ -1047,7 +1007,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => ProgressUnknown
+        None => DescentUnknown
       }
 
     ExprBlock =>
@@ -1080,10 +1040,10 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: consumed_true_set,
           si: si)
-        None => ProgressUnknown
+        None => DescentUnknown
       }
 
-    _ => ProgressUnknown
+    _ => DescentUnknown
   }
 }
 
@@ -1099,14 +1059,19 @@ fn parser_member_is_always_advancing(entry: FuncEntry, parser_name_set: Map<Stri
         parser_always_advancing: proven,
         consumed_true_set: empty_map(),
       si: si)
-      (edges |> all(edge => edge.progress == ProgressStrict))
+      // Accept Strict edges directly. Also accept NonIncreasing edges when
+      // the callee is already proven to always advance — transitive advancement.
+      (edges |> all(edge =>
+        edge.progress == Strict
+        || (edge.progress == NonIncreasing && set_has(m: proven, key: edge.callee))
+      ))
       && parser_success_progress(
         expr: entry.body,
         state_param: state_param,
         env: empty_parser_progress_env(),
         parser_always_advancing: proven,
         consumed_true_set: empty_map(),
-      si: si) == ProgressStrict
+      si: si) == Strict
     None => false
   }
 }
@@ -1237,11 +1202,11 @@ fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserPro
   CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
-// Check whether the ProgressSame-only subgraph contains a cycle.
-// A cycle exists if any ProgressSame self-loop exists (1-node cycle)
-// or if the ProgressSame cross-edges form a multi-node SCC.
+// Check whether the NonIncreasing-only subgraph contains a cycle.
+// A cycle exists if any NonIncreasing self-loop exists (1-node cycle)
+// or if the NonIncreasing cross-edges form a multi-node SCC.
 fn same_progress_subgraph_has_cycle(members: List<String>, edges: List<ParserProgressEdge>) -> Bool {
-  let same_edges = edges |> filter(edge => edge.progress == ProgressSame)
+  let same_edges = edges |> filter(edge => edge.progress == NonIncreasing)
   let has_self_cycle = same_edges |> any(edge => edge.caller == edge.callee)
   if has_self_cycle { true }
   else {
@@ -1270,10 +1235,15 @@ fn collect_parser_edges_for_scc(members: List<String>, func_index: Map<String, F
   if all_have_state == false {
     []
   } else {
-    let parser_always_advancing = infer_parser_always_advancing_members(
+    let proven = infer_parser_always_advancing_members(
       members: parser_function_names(func_index: func_index, si: si),
       func_index: func_index,
     si: si)
+    // Only use the proven set from infer_parser_always_advancing_members.
+    // Do NOT assume all SCC members are always-advancing — that would be
+    // fail-open (a pure state-passing cycle A(s)→B(s)→A(s) with no token
+    // consumption would be incorrectly accepted).
+    let parser_always_advancing = proven
     members |> flat_map(name =>
       match map_get(func_index, name) {
         Some { value: entry } =>
@@ -1304,7 +1274,7 @@ fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<
   if (edges |> count) == 0 {
     none
   } else {
-    let all_known = edges |> all(edge => edge.progress != ProgressUnknown)
+    let all_known = edges |> all(edge => edge.progress != DescentUnknown)
     if all_known && same_progress_subgraph_has_cycle(members: members, edges: edges) == false {
       Some { value: lower_call_pattern(pattern: ParserAdvanceCall { witness: "parser_state" }) }
     } else {
@@ -2802,7 +2772,7 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
             parser_always_advancing: parser_always_advancing,
             consumed_true_set: empty_map(),
           si: si)
-          if (edges |> count) > 0 && (edges |> all(edge => edge.progress == ProgressStrict)) {
+          if (edges |> count) > 0 && (edges |> all(edge => edge.progress == Strict)) {
             Some { value: TerminationProof { dimensions: [TokenPosition { param: state_param.name }] } }
           } else { none }
         None => none
@@ -2904,18 +2874,35 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
       )
     )
     if all_structural {
-      // Find the first structural relation from the evidence.
-      let first_call = match all_evidence |> first {
-        Some { value: call_ev } =>
-          call_ev |> filter(rel =>
-            match rel {
-              StrictSubValue { field: _, factor: _ } => true
-              IteratedSubValue { field: _ } => true
-              ArithmeticDescent { param: _, factor: _ } => true
-              _ => false
-            }
+      // Per-call best evidence. Do NOT flatten across calls — different
+      // calls may descend on different params. If any call's best is
+      // arithmetic-only (no tree), the overall must be arithmetic so
+      // the branching guard applies correctly.
+      let any_call_arithmetic_only = all_evidence |> any(call_ev =>
+        let has_tree = call_ev |> any(rel =>
+          match rel { StrictSubValue { field: _, factor: _ } => true  IteratedSubValue { field: _ } => true  _ => false }
+        )
+        let has_arith = call_ev |> any(rel =>
+          match rel { ArithmeticDescent { param: _, factor: _ } => true  _ => false }
+        )
+        has_arith && !has_tree
+      )
+      // If any call is arithmetic-only, use the first arithmetic evidence.
+      // Otherwise use the first tree evidence found.
+      let first_call = if any_call_arithmetic_only {
+        all_evidence |> flat_map(call_ev =>
+          call_ev |> filter(rel => match rel { ArithmeticDescent { param: _, factor: _ } => true  _ => false })
+        ) |> first
+      } else {
+        let tree_rels = all_evidence |> flat_map(call_ev =>
+          call_ev |> filter(rel => match rel { StrictSubValue { field: _, factor: _ } => true  IteratedSubValue { field: _ } => true  _ => false })
+        )
+        match tree_rels |> first {
+          Some { value: _ } => tree_rels |> first
+          None => all_evidence |> flat_map(call_ev =>
+            call_ev |> filter(rel => match rel { ArithmeticDescent { param: _, factor: _ } => true  _ => false })
           ) |> first
-        None => none
+        }
       }
       // Guard: ArithmeticDescent with branching (multiple self-calls per path)
       // is UNSOUND as O(n). Example: fib(n-1) + fib(n-2) = O(2^n), not O(n).
@@ -3113,20 +3100,20 @@ fn scc_label(members: List<String>) -> String {
 
 // CX-3: Classify a call to an SCC peer as Strict (accessor/descent),
 // Same (unchanged param), or Unknown (fail-closed).
-fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: Map<String, Bool>, si: NewlineIndex?) -> ProgressKind {
+fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: Map<String, Bool>, si: NewlineIndex?) -> DescentEvidence {
   // Check if arg is a descent expression (accessor or children projection)
   if is_child_descent_expr(expr: arg_expr, param_name: param_name, vars: descent_vars, si: si) {
-    ProgressStrict
+    Strict
   } else if is_list_shrink_expr(expr: arg_expr, param_name: param_name, si: si) {
-    ProgressStrict
+    Strict
   } else {
     match arg_expr.expr_data {
       // Variable: check if it's a known descent var or the param itself
       ExprVar { binding_kind: _ } =>
         let vname = expr_var_name_at(texpr: arg_expr, source_index: si)
-        if set_has(m: descent_vars, key: vname) { ProgressStrict }
-        else if vname == param_name { ProgressSame }
-        else { ProgressUnknown }
+        if set_has(m: descent_vars, key: vname) { Strict }
+        else if vname == param_name { NonIncreasing }
+        else { DescentUnknown }
       // CX-D: wrapper transparency — unwrap and re-classify inner argument
       ExprCall { call_semantics: _, descent_evidence: _ } =>
         if is_tree_size_preserving_wrapper(expr: arg_expr, si: si) {
@@ -3136,21 +3123,21 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
           // Elevate Same→Strict because extractor(param) < param.
           let inner_progress = classify_scc_call_progress(arg_expr: extractor_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, si: si)
           match inner_progress {
-            ProgressSame => ProgressStrict
+            NonIncreasing => Strict
             _ => inner_progress
           }
-        } else { ProgressUnknown }
+        } else { DescentUnknown }
       // CX-E: param.field or descent_var.field is a strict sub-value
       ExprFieldAccess =>
         let base = field_access_base(texpr: arg_expr)
         match base.expr_data {
           ExprVar { binding_kind: _ } =>
             let bname = expr_var_name_at(texpr: base, source_index: si)
-            if set_has(m: descent_vars, key: bname) || bname == param_name { ProgressStrict }
-            else { ProgressUnknown }
-          _ => ProgressUnknown
+            if set_has(m: descent_vars, key: bname) || bname == param_name { Strict }
+            else { DescentUnknown }
+          _ => DescentUnknown
         }
-      _ => ProgressUnknown
+      _ => DescentUnknown
     }
   }
 }
@@ -3184,7 +3171,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           Some { value: p } => p
           None => empty_map()
         }
-        let progress = body.children |> fold(init: ProgressUnknown, f: (acc, arg_node) =>
+        let progress = body.children |> fold(init: DescentUnknown, f: (acc, arg_node) =>
           let targets_measure = match arg_name_at(n: arg_node, source_index: si) {
             Some { value: aname } =>
               // Single authority: callee's measure params determine which
@@ -3196,9 +3183,9 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           if targets_measure {
             let arg_progress = classify_scc_call_progress(arg_expr: arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars, si: si)
             match arg_progress {
-              ProgressStrict => ProgressStrict
-              ProgressSame => match acc { ProgressStrict => acc  _ => ProgressSame }
-              ProgressUnknown => acc
+              Strict => Strict
+              NonIncreasing => match acc { Strict => acc  _ => NonIncreasing }
+              DescentUnknown => acc
             }
           } else { acc }
         )
@@ -3384,7 +3371,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
 
 // CX-3: SCC container-child descent proof. Every cycle through the SCC
 // must have at least one edge where the callee receives an accessor
-// child (ProgressStrict). Fail-closed: any ProgressUnknown edge or
+// child (Strict). Fail-closed: any DescentUnknown edge or
 // any all-Same cycle means SameArgumentCall (bounded by Forever).
 fn is_scc_container_child_descent(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: NewlineIndex?) -> Bool {
   let measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
@@ -3399,7 +3386,7 @@ fn is_scc_container_child_descent(members: List<String>, func_index: Map<String,
           let pname = param_node_name_at(n: p, source_index: si)
           let descent_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: true, si: si)
           let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: descent_vars, target_set: scc_name_set, check_child: true, check_list: true, scc_measure_params: measure_params, si: si)
-          // Heuristic: keep the param whose edges have fewest ProgressUnknown.
+          // Heuristic: keep the param whose edges have fewest DescentUnknown.
           // This is a SEARCH heuristic, not a proof obligation — soundness comes
           // from the subsequent same_progress_subgraph_has_cycle check, which
           // rejects any candidate with an all-Same cycle or Unknown edges.
@@ -3432,12 +3419,12 @@ fn is_scc_container_child_descent(members: List<String>, func_index: Map<String,
 // path uses collect_scc_independent_dim_edges which builds 2-slot evidence.
 // Convert ParserProgressEdge to ProofEdge with 1-slot evidence.
 fn progress_edge_to_proof_edge(pe: ParserProgressEdge) -> ProofEdge {
-  ProofEdge { caller: pe.caller, callee: pe.callee, evidence: [progress_to_evidence(pk: pe.progress)] }
+  ProofEdge { caller: pe.caller, callee: pe.callee, evidence: [pe.progress] }
 }
 
 // Count unknown-progress edges in a parser progress edge list.
 fn count_unknown_progress_edges(edges: List<ParserProgressEdge>) -> Int {
-  edges |> filter(e => e.progress == ProgressUnknown) |> count
+  edges |> filter(e => e.progress == DescentUnknown) |> count
 }
 
 // Count unknown-evidence edges in a proof edge list.
@@ -3481,7 +3468,7 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
 fn merge_edge_evidence(acc_map: Map<String, DescentEvidence>, pe: ParserProgressEdge) -> Map<String, DescentEvidence> {
   // Key by callee only — caller is always the same within a per-member loop.
   let existing = map_get(acc_map, pe.callee)
-  let new_ev = progress_to_evidence(pk: pe.progress)
+  let new_ev = pe.progress
   let merged_ev = match existing {
     Some { value: prev } =>
       match prev {
@@ -5067,7 +5054,15 @@ fn derive_edge_evidence(all_calls: List<List<SubValueRelation>>) -> DescentEvide
   all_calls |> fold(init: Strict, f: (worst, call_ev) =>
     let call_best = call_ev |> fold(init: DescentUnknown, f: (best, rel) =>
       let ev = sub_value_to_evidence(relation: rel)
-      match ev { Strict => Strict  _ => match best { Strict => Strict  _ => ev } }
+      // Lattice max: Strict > NonIncreasing > DescentUnknown
+      match ev {
+        Strict => Strict
+        _ => match best {
+          Strict => Strict
+          NonIncreasing => NonIncreasing
+          _ => ev
+        }
+      }
     )
     merge_evidence(a: worst, b: call_best)
   )
