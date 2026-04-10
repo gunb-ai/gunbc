@@ -70,6 +70,7 @@ import std.termination {
 import std.computation {
   CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
   LoweringTarget, IterationPrimitive, Descend, Fold, Repeat,
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CollectionSize, ArithmeticParam, Forever,
   tree_size_bound
 }
@@ -143,20 +144,7 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 
 
 // =========================================================================
-// ShrinkFactor — rate of decrease per recursive step
-// =========================================================================
-
-// HOW MUCH an argument decreases per recursive step. Distinguishes
-// O(n) from O(log n).
-//
-//   UnitShrink:         n → n-1 → ... → 0            (O(n) steps)
-//   ConstantShrink:     n → n-k → ... → 0            (O(n/k) = O(n) steps)
-//   ProportionalShrink: n → n/d → n/d² → ... → 1     (O(log_d(n)) steps)
-
-type ShrinkFactor
-  = UnitShrink
-  | ConstantShrink { amount: Int }
-  | ProportionalShrink { divisor: Int }
+// ShrinkFactor — imported from std.computation (moved to avoid circular dep)
 
 
 // =========================================================================
@@ -182,20 +170,7 @@ type SubValueRelation
 
 
 // =========================================================================
-// BoundedLoweringTarget — LoweringTarget with preserved ShrinkFactor
-// =========================================================================
-
-// The direct bridge from SubValueRelation to LoweringTarget that preserves
-// ShrinkFactor information. The existing path through CallPattern (via
-// sub_value_to_call_pattern) drops factor with `factor: _`. This wrapper
-// carries both the lowering target and the optional shrink factor so that
-// downstream cost analysis can use the factor for tighter bounds (e.g.,
-// distinguishing O(n) from O(log n) via ProportionalShrink).
-
-type BoundedLoweringTarget {
-  target: LoweringTarget
-  factor: ShrinkFactor?
-}
+// ShrinkFactor is now on LoweringTarget directly (no wrapper needed).
 
 
 // =========================================================================
@@ -343,42 +318,34 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
 // from O(log n) via ProportionalShrink.
 // SubValueUnknown → none (fail-closed).
 
-fn sub_value_to_lowering_target(relation: SubValueRelation) -> BoundedLoweringTarget? {
+fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
   match relation {
     StrictSubValue { field: f, factor: fac } =>
-      Some { value: BoundedLoweringTarget {
-        target: LoweringTarget {
-          primitive: Descend,
-          bound: tree_size_bound(param: f.field_name),
-          evidence: Strict
-        },
+      Some { value: LoweringTarget {
+        primitive: Descend,
+        bound: tree_size_bound(param: f.field_name),
+        evidence: Strict,
         factor: Some { value: fac }
       }}
     IteratedSubValue { field: f } =>
-      Some { value: BoundedLoweringTarget {
-        target: LoweringTarget {
-          primitive: Fold,
-          bound: CollectionSize { param: f.field_name },
-          evidence: Strict
-        },
+      Some { value: LoweringTarget {
+        primitive: Fold,
+        bound: CollectionSize { param: f.field_name },
+        evidence: Strict,
         factor: none
       }}
     ArithmeticDescent { param: p, factor: fac } =>
-      Some { value: BoundedLoweringTarget {
-        target: LoweringTarget {
-          primitive: Repeat,
-          bound: ArithmeticParam { param: p },
-          evidence: Strict
-        },
+      Some { value: LoweringTarget {
+        primitive: Repeat,
+        bound: ArithmeticParam { param: p },
+        evidence: Strict,
         factor: Some { value: fac }
       }}
     PreservedValue =>
-      Some { value: BoundedLoweringTarget {
-        target: LoweringTarget {
-          primitive: Repeat,
-          bound: Forever,
-          evidence: NonIncreasing
-        },
+      Some { value: LoweringTarget {
+        primitive: Repeat,
+        bound: Forever,
+        evidence: NonIncreasing,
         factor: none
       }}
     SubValueUnknown => none

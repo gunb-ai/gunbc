@@ -760,7 +760,11 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
     ExprLet =>
       // children: [value] or [value, body] -- no body means children has 1 element
       if stmt.children |> count <= 1 {
-        extend_scope(scope: scope, name: let_binding_name_at(texpr: stmt, source_index: scope.type_env.source_index), resolved: stmt_type, provenance: SubValueUnknown)
+        let val = match stmt.children |> first {
+          Some { value: v } => v
+          None => stmt
+        }
+        extend_scope(scope: scope, name: let_binding_name_at(texpr: stmt, source_index: scope.type_env.source_index), resolved: stmt_type, provenance: classify_binding_provenance(val: val, scope: scope))
       } else {
         scope
       }
@@ -1922,7 +1926,23 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let coll_typed = coll_result.typed
       let coll_diags = coll_result.diagnostics
       let elem_type_node = for_each_element_type_node(n: resolved_type(n: coll_typed))
-      let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node, provenance: SubValueUnknown)
+      // S5: iteration variable gets IteratedSubValue when the collection
+      // has known provenance AND the element type has ListRecursion fields.
+      let coll_provenance = classify_binding_provenance(val: coll_typed, scope: scope)
+      let elem_provenance = match coll_provenance {
+        SubValueUnknown => SubValueUnknown
+        _ =>
+          if elem_type_node.name == "" { SubValueUnknown }
+          else {
+            let ind_fields = inductive_fields_for(env: scope.type_env, type_name: elem_type_node.name)
+            let list_field = ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
+            match list_field {
+              Some { value: f } => IteratedSubValue { field: f }
+              None => SubValueUnknown
+            }
+          }
+      }
+      let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node, provenance: elem_provenance)
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
@@ -2427,18 +2447,22 @@ fn classify_binding_provenance(val: Node, scope: InferScope) -> SubValueRelation
       match base.expr_data {
         ExprVar { binding_kind: _ } =>
           let bname = expr_var_name(texpr: base)
-          let base_type_name = match map_get(scope.locals, bname) {
-            Some { value: binding } => binding.resolved.name
-            None => ""
+          match map_get(scope.locals, bname) {
+            Some { value: binding } =>
+              // Only derive StrictSubValue if the base has known provenance.
+              // A SubValueUnknown binding should not be upgraded via type lookup.
+              match binding.provenance {
+                SubValueUnknown => SubValueUnknown
+                _ =>
+                  let fields = inductive_fields_for(env: scope.type_env, type_name: binding.resolved.name)
+                  let matching = fields |> filter(f => f.field_name == field) |> first
+                  match matching {
+                    Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+                    None => SubValueUnknown
+                  }
+              }
+            None => SubValueUnknown
           }
-          if base_type_name != "" {
-            let fields = inductive_fields_for(env: scope.type_env, type_name: base_type_name)
-            let matching = fields |> filter(f => f.field_name == field) |> first
-            match matching {
-              Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
-              None => SubValueUnknown
-            }
-          } else { SubValueUnknown }
         _ => SubValueUnknown
       }
     _ => SubValueUnknown

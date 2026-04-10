@@ -770,7 +770,13 @@ Rc::new(InferScope {
 pub fn scope_after_stmt_node(stmt: Rc<Node>, stmt_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {
     match (*stmt.expr_data.clone()).clone() {
     ExprData::ExprLet => if ((stmt.children.clone().len() as i64) <= 1) {
-        extend_scope(scope.clone(), let_binding_name_at(stmt.clone(), scope.type_env.clone().source_index.clone()), stmt_type, Rc::new(SubValueRelation::SubValueUnknown))
+        {
+            let val = match stmt.children.clone().first().cloned() {
+    Some(v) => v.clone(),
+    None => stmt.clone(),
+};
+extend_scope(scope.clone(), let_binding_name_at(stmt.clone(), scope.type_env.clone().source_index.clone()), stmt_type, classify_binding_provenance(val, scope.clone()))
+}
     } else {
         scope.clone()
     },
@@ -1789,7 +1795,7 @@ let empty_list_diags = if ((elem_results.clone().len() as i64) == 0) {
                 Rc::new(vec![])
             };
 let ll_texpr = make_expr_node(Rc::new(ExprData::ExprListLit), typed_elements, Some(Rc::new(InferredNode::Resolved {
-    node: named_collection_type("List".to_string(), elem_type_node),
+    node: named_collection_type("List".to_string(), elem_type_node.clone()),
 })), span.clone());
 Rc::new(InferResult {
     typed: ll_texpr,
@@ -1973,7 +1979,28 @@ let coll_result = infer_expr(coll, scope.clone(), None);
 let coll_typed = coll_result.typed.clone();
 let coll_diags = coll_result.diagnostics.clone();
 let elem_type_node = for_each_element_type_node(resolved_type(coll_typed.clone()));
-let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type_node, Rc::new(SubValueRelation::SubValueUnknown));
+let coll_provenance = classify_binding_provenance(coll_typed.clone(), scope.clone());
+let elem_provenance = match (*coll_provenance).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    _ => if (elem_type_node.name.clone().as_str() == "".to_string().as_str()) {
+                Rc::new(SubValueRelation::SubValueUnknown)
+            } else {
+                {
+                    let ind_fields = inductive_fields_for(scope.type_env.clone(), elem_type_node.name.clone());
+let list_field = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.iter().cloned() { if match f.shape.clone() {
+    RecursionShape::ListRecursion => true,
+    _ => false,
+} { __result.push(f); } } __result }).first().cloned();
+match list_field {
+    Some(f) => Rc::new(SubValueRelation::IteratedSubValue {
+    field: f.clone(),
+}),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
+}
+            },
+};
+let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type_node.clone(), elem_provenance);
 let body_result = infer_expr(body_expr.clone(), body_scope, None);
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
@@ -2555,13 +2582,11 @@ let field = field_access_field(val.clone());
 match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
             let bname = expr_var_name(base.clone());
-let base_type_name = match v2_rt::map_get(&scope.locals.clone(), bname) {
-    Some(binding) => binding.resolved.clone().name.clone(),
-    None => "".to_string(),
-};
-if (base_type_name.clone().as_str() != "".to_string().as_str()) {
-                {
-                    let fields = inductive_fields_for(scope.type_env.clone(), base_type_name.clone());
+match v2_rt::map_get(&scope.locals.clone(), bname) {
+    Some(binding) => match (*binding.provenance.clone()).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    _ => {
+                let fields = inductive_fields_for(scope.type_env.clone(), binding.resolved.clone().name.clone());
 let matching = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if (f.field_name.clone().as_str() == field.clone().as_str()) { __result.push(f); } } __result }).first().cloned();
 match matching {
     Some(ind_field) => Rc::new(SubValueRelation::StrictSubValue {
@@ -2570,10 +2595,10 @@ match matching {
 }),
     None => Rc::new(SubValueRelation::SubValueUnknown),
 }
+},
+},
+    None => Rc::new(SubValueRelation::SubValueUnknown),
 }
-            } else {
-                Rc::new(SubValueRelation::SubValueUnknown)
-            }
 },
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }

@@ -9,12 +9,12 @@ use crate::NonEmptyBTreeSet;
 pub use crate::std_termination::{DescentEvidence, RankingDimension};
 use crate::std_termination::DescentEvidence::{Strict, NonIncreasing, DescentUnknown};
 use crate::std_termination::RankingDimension::{TreeSize};
-pub use crate::std_computation::{CallPattern, LoweringTarget, IterationPrimitive, tree_size_bound, SizeBound};
+pub use crate::std_computation::{CallPattern, LoweringTarget, IterationPrimitive, ShrinkFactor, tree_size_bound, SizeBound};
 use crate::std_computation::CallPattern::{ChildAccessorCall, FoldBodyCall, SameArgumentCall};
 use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
+use crate::std_computation::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
 use crate::std_computation::SizeBound::{CollectionSize, ArithmeticParam, Forever};
 use RecursionShape::*;
-use ShrinkFactor::*;
 use SubValueRelation::*;
 use PolynomialExponent::*;
 use AtomicCost::*;
@@ -47,18 +47,6 @@ pub fn inductive_field_to_dimension(field: Rc<InductiveField>, param: String) ->
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum ShrinkFactor {
-    UnitShrink,
-    ConstantShrink {
-        amount: i64,
-    },
-    ProportionalShrink {
-        divisor: i64,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
 pub enum SubValueRelation {
     StrictSubValue {
         field: Rc<InductiveField>,
@@ -73,12 +61,6 @@ pub enum SubValueRelation {
     },
     PreservedValue,
     SubValueUnknown,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BoundedLoweringTarget {
-    pub target: Rc<LoweringTarget>,
-    pub factor: Option<Rc<ShrinkFactor>>,
 }
 
 pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence {
@@ -198,42 +180,34 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
 }
 }
 
-pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc<BoundedLoweringTarget>> {
+pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc<LoweringTarget>> {
     match (*relation).clone() {
-    SubValueRelation::StrictSubValue { field: f, factor: fac, .. } => Some(Rc::new(BoundedLoweringTarget {
-    target: Rc::new(LoweringTarget {
+    SubValueRelation::StrictSubValue { field: f, factor: fac, .. } => Some(Rc::new(LoweringTarget {
     primitive: IterationPrimitive::Descend,
     bound: tree_size_bound(f.field_name.clone()),
     evidence: DescentEvidence::Strict,
-}),
     factor: Some(fac.clone()),
 })),
-    SubValueRelation::IteratedSubValue { field: f, .. } => Some(Rc::new(BoundedLoweringTarget {
-    target: Rc::new(LoweringTarget {
+    SubValueRelation::IteratedSubValue { field: f, .. } => Some(Rc::new(LoweringTarget {
     primitive: IterationPrimitive::Fold,
     bound: Rc::new(SizeBound::CollectionSize {
     param: f.field_name.clone(),
 }),
     evidence: DescentEvidence::Strict,
-}),
     factor: None,
 })),
-    SubValueRelation::ArithmeticDescent { param: p, factor: fac, .. } => Some(Rc::new(BoundedLoweringTarget {
-    target: Rc::new(LoweringTarget {
+    SubValueRelation::ArithmeticDescent { param: p, factor: fac, .. } => Some(Rc::new(LoweringTarget {
     primitive: IterationPrimitive::Repeat,
     bound: Rc::new(SizeBound::ArithmeticParam {
     param: p.clone(),
 }),
     evidence: DescentEvidence::Strict,
-}),
     factor: Some(fac.clone()),
 })),
-    SubValueRelation::PreservedValue => Some(Rc::new(BoundedLoweringTarget {
-    target: Rc::new(LoweringTarget {
+    SubValueRelation::PreservedValue => Some(Rc::new(LoweringTarget {
     primitive: IterationPrimitive::Repeat,
     bound: Rc::new(SizeBound::Forever),
     evidence: DescentEvidence::NonIncreasing,
-}),
     factor: None,
 })),
     SubValueRelation::SubValueUnknown => None,
