@@ -2759,7 +2759,7 @@ let skip_amount = match skip_args.first().cloned() {
                             } else {
                                 0
                             } },
-    _ => 1,
+    _ => 0,
 },
     None => 0,
 };
@@ -2945,24 +2945,7 @@ if left_is_param {
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
                 } else {
-                    {
-                        let right_is_param = match (*right.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => ((expr_var_name(right.clone()).as_str() == param_name.clone().as_str()) || (v2_rt::map_get(&ctx.sub_value_vars.clone(), expr_var_name(right.clone())) != None)),
-    _ => false,
-};
-let left_is_literal = match (*left.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { .. } = value.as_ref() else { unreachable!() }; true },
-    _ => false,
-};
-if (right_is_param && left_is_literal) {
-                            Rc::new(SubValueRelation::ArithmeticDescent {
-    param: param_name.clone(),
-    factor: Rc::new(ShrinkFactor::UnitShrink),
-})
-                        } else {
-                            Rc::new(SubValueRelation::SubValueUnknown)
-                        }
-}
+                    Rc::new(SubValueRelation::SubValueUnknown)
                 }
 },
     BinOp::Div => {

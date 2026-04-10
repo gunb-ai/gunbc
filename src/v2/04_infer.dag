@@ -2579,7 +2579,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
                 Some { value: a } =>
                   match arg_value(n: a).expr_data {
                     ExprLiteral { value: LitInt { value: k } } => if k > 0 { k } else { 0 }
-                    _ => 1  // conservative: assume skip of at least 1 for non-literal args
+                    _ => 0  // fail-closed: skip(0) is legal, unknown amount is not strict decrease
                   }
                 None => 0
               }
@@ -2729,15 +2729,9 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
               _ => SubValueUnknown
             }
           } else {
-            // k - param (e.g., 0 - value for negation): bounded by |param|
-            let right_is_param = match right.expr_data {
-              ExprVar { binding_kind: _ } => expr_var_name(texpr: right) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: right)) != none
-              _ => false
-            }
-            let left_is_literal = match left.expr_data { ExprLiteral { value: LitInt { value: _ } } => true  _ => false }
-            if right_is_param && left_is_literal {
-              ArithmeticDescent { param: param_name, factor: UnitShrink }
-            } else { SubValueUnknown }
+            // k - param (e.g., 0 - n) is NOT well-founded descent.
+            // f(n) = f(0 - n) can oscillate. Fail closed.
+            SubValueUnknown
           }
         Div =>
           let left_is_param = match left.expr_data {
