@@ -432,16 +432,14 @@ func CanCharge(s PaymentStatus) bool {
 
 ## CS-11: Record Literal Completeness — New Required Field
 
-> **Status: planned guarantee.** The compiler does not yet check for missing fields in record literal construction. The test exists as `#[ignore]` to track this gap. When implemented, it will catch this class of bug at compile time.
-
 ### The bug
 Someone adds `priority: Int` to the shared `Config` type. Every module that constructs a `Config` value is now missing a required field. In dynamic languages, the missing field is simply absent — no error until someone reads it, possibly in a completely different module, possibly weeks later.
 
 ### Traditional languages
 Python: `Config(retries=3, timeout=30)` works if `Config` is a dataclass with a default for `priority`. Without a default, `TypeError` at construction — but only at runtime. JavaScript: missing fields are `undefined`. Go: caught at compile time (struct literals require all fields, or you get zero values — which may be silently wrong).
 
-### gunbc (planned)
-Record literal construction will be checked against the type definition. Every field in the type must appear in the literal. Missing fields will produce a diagnostic at the construction site.
+### gunbc
+Record literal construction is checked against the type definition. All required (non-optional) fields must appear in the literal. Missing fields produce a diagnostic at the construction site.
 
 ### Code
 

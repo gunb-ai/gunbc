@@ -372,7 +372,6 @@ fn status_label(s: PaymentStatus) -> String {
 // until someone reads it. In gunbc, every constructor site fails.
 
 #[test]
-#[ignore = "record literal completeness check not yet implemented — honest gap"]
 fn cs11_new_required_field_breaks_constructor() {
     // Module A: Config with a new required field
     let types = r#"module cs11_types
@@ -387,11 +386,13 @@ fn defaults() -> Config {
 }
 "#;
     let result = compile_multi(&[("cs11_types.dag", types), ("cs11_consumer.dag", consumer)]);
-    let msgs = diagnostic_messages(&result);
     assert!(
-        !msgs.is_empty(),
-        "constructing Config without 'priority' field should produce a diagnostic, got: {:?}",
-        msgs
+        result.diagnostics.iter().any(|d|
+            matches!(&*d.diagnostic, CompilerDiagnostic::InternalError { message, .. }
+                if message.contains("missing required field"))
+        ),
+        "constructing Config without 'priority' should produce missing-field diagnostic, got: {:?}",
+        diagnostic_messages(&result)
     );
 }
 

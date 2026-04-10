@@ -2088,7 +2088,7 @@ let struct_fields = match struct_def {
     Some(sd) => sd.children.clone(),
     None => Rc::new(vec![]),
 };
-let fi_infer_results = Rc::new({ let mut __result = Vec::new(); for fi in field_inits.iter().cloned() { __result.push({
+let fi_infer_results = Rc::new({ let mut __result = Vec::new(); for fi in field_inits.clone().iter().cloned() { __result.push({
             let fi_name = field_init_node_name_at(fi.clone(), scope.type_env.clone().source_index.clone());
 let field_expected = match Rc::new({ let mut __result = Vec::new(); for sf in struct_fields.clone().iter().cloned() { if (authored_name_at(scope.type_env.clone().source_index.clone(), sf.clone()).as_str() == fi_name.clone().as_str()) { __result.push(sf); } } __result }).first().cloned() {
     Some(sf) => {
@@ -2112,6 +2112,33 @@ Rc::new(FieldInferResult {
 }); } __result });
 let typed_fields = Rc::new({ let mut __result = Vec::new(); for fir in fi_infer_results.clone().iter().cloned() { __result.push(fir.typed_field.clone()); } __result });
 let fi_diags = Rc::new({ let mut __result = Vec::new(); for fir in fi_infer_results.clone().iter().cloned() { __result.extend((*fir.diagnostics.clone()).iter().cloned()); } __result });
+let provided_names = Rc::new({ let mut __result = Vec::new(); for fi in field_inits.clone().iter().cloned() { __result.push(field_init_node_name_at(fi.clone(), scope.type_env.clone().source_index.clone())); } __result });
+let struct_field_names = Rc::new({ let mut __result = Vec::new(); for sf in struct_fields.clone().iter().cloned() { __result.push(authored_name_at(scope.type_env.clone().source_index.clone(), sf.clone())); } __result });
+let all_provided_valid = { let mut __all = true; for pn in provided_names.clone().iter().cloned() { if !({ let mut __found = false; for sfn in struct_field_names.clone().iter().cloned() { if (sfn.clone().as_str() == pn.clone().as_str()) { __found = true; break; } } __found }) { __all = false; break; } } __all };
+let missing_fields = if (all_provided_valid && ((struct_fields.clone().len() as i64) > 0)) {
+            Rc::new({ let mut __result = Vec::new(); for sf in Rc::new({ let mut __result = Vec::new(); for sf in Rc::new({ let mut __result = Vec::new(); for sf in struct_fields.clone().iter().cloned() { if (sf.return_cardinality.clone() == Cardinality::Required) { __result.push(sf); } } __result }).iter().cloned() { if {
+                let expected_name = authored_name_at(scope.type_env.clone().source_index.clone(), sf.clone());
+({ let mut __found = false; for pn in provided_names.clone().iter().cloned() { if (pn.clone().as_str() == expected_name.clone().as_str()) { __found = true; break; } } __found } == false)
+} { __result.push(sf); } } __result }).iter().cloned() { __result.push(authored_name_at(scope.type_env.clone().source_index.clone(), sf.clone())); } __result })
+        } else {
+            Rc::new(vec![])
+        };
+let missing_label = missing_fields.clone().iter().cloned().fold("".to_string(), |acc: String, name: String| if (acc.clone().as_str() == "".to_string().as_str()) {
+            name.clone()
+        } else {
+            v2_rt::concat(v2_rt::concat(acc.clone(), ", ".to_string()), name.clone())
+        });
+let missing_diags = if ((missing_fields.clone().len() as i64) > 0) {
+            {
+                let tn_label = match type_name.clone() {
+    Some(tn) => tn.clone(),
+    None => "record".to_string(),
+};
+Rc::new(vec![inference_error(v2_rt::concat(v2_rt::concat(v2_rt::concat("missing required field(s) in ".to_string(), tn_label), ": ".to_string()), missing_label), span.clone(), scope.module_name.clone())])
+}
+        } else {
+            Rc::new(vec![])
+        };
 if (type_name.clone() == None) {
             {
                 let child_nodes = Rc::new({ let mut __result = Vec::new(); for fir in fi_infer_results.clone().iter().cloned() { __result.push(Rc::new(Node {
@@ -2160,7 +2187,7 @@ let texpr = make_expr_node(Rc::new(ExprData::ExprRecordLit {
 })), span.clone());
 Rc::new(InferResult {
     typed: texpr,
-    diagnostics: fi_diags,
+    diagnostics: v2_rt::concat(fi_diags, missing_diags),
 })
 }
         } else {
@@ -2210,7 +2237,7 @@ let texpr = make_named_expr_node(rl_name, Rc::new(ExprData::ExprRecordLit {
 })), span.clone(), name_span);
 Rc::new(InferResult {
     typed: texpr,
-    diagnostics: v2_rt::concat(fi_diags, type_diags),
+    diagnostics: v2_rt::concat(v2_rt::concat(fi_diags, type_diags), missing_diags),
 })
 }
         }

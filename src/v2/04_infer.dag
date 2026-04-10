@@ -2098,6 +2098,33 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   )
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
   let fi_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
+  // Record literal completeness: all required fields must be present.
+  // Guard: only check when struct_def is known AND all provided names are
+  // recognized fields of that struct (avoids false positives from type
+  // name collisions across modules).
+  let provided_names = field_inits |> map(fi =>
+    field_init_node_name_at(n: fi, source_index: scope.type_env.source_index))
+  let struct_field_names = struct_fields |> map(sf =>
+    authored_name_at(source_index: scope.type_env.source_index, node: sf))
+  let all_provided_valid = provided_names |> all(pn =>
+    struct_field_names |> any(sfn => sfn == pn))
+  let missing_fields = if all_provided_valid && count(struct_fields) > 0 {
+    struct_fields
+      |> filter(sf => sf.return_cardinality == Required)
+      |> filter(sf =>
+        let expected_name = authored_name_at(source_index: scope.type_env.source_index, node: sf)
+        provided_names |> any(pn => pn == expected_name) == false)
+      |> map(sf => authored_name_at(source_index: scope.type_env.source_index, node: sf))
+  } else { [] }
+  let missing_label = missing_fields |> fold(init: "", f: (acc, name) =>
+    if acc == "" { name } else { concat(acc, ", ", name) })
+  let missing_diags = if count(missing_fields) > 0 {
+    let tn_label = match type_name { Some { value: tn } => tn  None => "record" }
+    [inference_error(
+      message: concat("missing required field(s) in ", tn_label, ": ", missing_label),
+      span: span,
+      module_name: scope.module_name)]
+  } else { [] }
   if type_name == none {
     // Anonymous record -- construct Conj node from field inits
     let child_nodes = fi_infer_results |> map(fir =>
@@ -2118,7 +2145,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let texpr = make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Some { value: Resolved { node: anon_node } }, span: span)
     InferResult {
       typed: texpr,
-      diagnostics: fi_diags
+      diagnostics: concat(fi_diags, missing_diags)
     }
   } else {
     // Named record -- look up type in env.
@@ -2171,7 +2198,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     )
     InferResult {
       typed: texpr,
-      diagnostics: concat(fi_diags, type_diags)
+      diagnostics: concat(fi_diags, type_diags, missing_diags)
     }
   }
 }
