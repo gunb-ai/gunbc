@@ -32,7 +32,7 @@
 
 module std.termination
 
-import std.algebra { Ordering }
+import std.algebra { Ordering, BoundedLattice }
 // NOTE: is_valid_proof lives in std.graph (graph algorithm needs SCC
 // primitives). Cannot re-export here (circular: termination → graph →
 // termination). Consumers import from std.graph directly.
@@ -92,6 +92,33 @@ fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
     }
     _ => DescentUnknown
   }
+}
+
+// Join two descent evidences: the OPTIMISTIC merge. Returns the BEST
+// evidence from either branch. Dual of merge_evidence (meet).
+//
+// The lattice ordering is: DescentUnknown < NonIncreasing < Strict
+// join(DescentUnknown, X) = X
+// join(NonIncreasing, Strict) = Strict
+// join(NonIncreasing, NonIncreasing) = NonIncreasing
+// join(Strict, X) = Strict
+
+fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+  match a {
+    Strict => Strict
+    NonIncreasing => match b {
+      Strict => Strict
+      _ => NonIncreasing
+    }
+    _ => b
+  }
+}
+
+data descent_evidence_lattice: BoundedLattice<DescentEvidence> = {
+  meet: merge_evidence,
+  join: join_evidence,
+  top: Strict,
+  bottom: DescentUnknown
 }
 
 // Promote NonIncreasing to Strict (e.g., when a callee is known to always advance).

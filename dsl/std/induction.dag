@@ -68,8 +68,12 @@ import std.termination {
   RankingDimension, TreeSize
 }
 import std.computation {
-  CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall
+  CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
+  LoweringTarget, IterationPrimitive, Descend, Fold, Repeat,
+  SizeBound, CollectionSize, ArithmeticParam, Forever,
+  tree_size_bound
 }
+import std.algebra { BoundedLattice }
 
 
 // =========================================================================
@@ -178,6 +182,23 @@ type SubValueRelation
 
 
 // =========================================================================
+// BoundedLoweringTarget — LoweringTarget with preserved ShrinkFactor
+// =========================================================================
+
+// The direct bridge from SubValueRelation to LoweringTarget that preserves
+// ShrinkFactor information. The existing path through CallPattern (via
+// sub_value_to_call_pattern) drops factor with `factor: _`. This wrapper
+// carries both the lowering target and the optional shrink factor so that
+// downstream cost analysis can use the factor for tighter bounds (e.g.,
+// distinguishing O(n) from O(log n) via ProportionalShrink).
+
+type BoundedLoweringTarget {
+  target: LoweringTarget
+  factor: ShrinkFactor?
+}
+
+
+// =========================================================================
 // SubValueRelation → DescentEvidence
 // =========================================================================
 
@@ -189,6 +210,58 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
     PreservedValue                           => NonIncreasing
     SubValueUnknown                          => DescentUnknown
   }
+}
+
+
+// =========================================================================
+// SubValueRelation lattice: meet/join for conservative/optimistic merge
+// =========================================================================
+
+// Meet: conservative merge. SubValueUnknown absorbs everything (worst case).
+// PreservedValue absorbs everything except SubValueUnknown.
+// For two specific structural relations, keep `a` (they are incomparable
+// in the lattice — both are strict descents on different fields).
+//
+// Lattice ordering: SubValueUnknown < PreservedValue < {structural variants}
+
+fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
+  match a {
+    SubValueUnknown => SubValueUnknown
+    PreservedValue =>
+      match b {
+        SubValueUnknown => SubValueUnknown
+        _ => PreservedValue
+      }
+    _ =>
+      match b {
+        SubValueUnknown => SubValueUnknown
+        PreservedValue => PreservedValue
+        _ => a
+      }
+  }
+}
+
+// Join: optimistic merge. SubValueUnknown is identity (best of both).
+// PreservedValue yields to any structural descent.
+// For two specific structural relations, keep `a`.
+
+fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
+  match a {
+    SubValueUnknown => b
+    PreservedValue =>
+      match b {
+        SubValueUnknown => PreservedValue
+        _ => b
+      }
+    _ => a
+  }
+}
+
+data sub_value_relation_lattice: BoundedLattice<SubValueRelation> = {
+  meet: meet_sub_value,
+  join: join_sub_value,
+  top: PreservedValue,
+  bottom: SubValueUnknown
 }
 
 
@@ -215,6 +288,59 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
       }
     PreservedValue                            => Some { value: SameArgumentCall }
     SubValueUnknown                           => none
+  }
+}
+
+
+// =========================================================================
+// SubValueRelation → BoundedLoweringTarget (lossless)
+// =========================================================================
+
+// Direct bridge to LoweringTarget that preserves ShrinkFactor. Unlike
+// sub_value_to_call_pattern which drops factor, this function carries
+// the factor through so downstream cost analysis can distinguish O(n)
+// from O(log n) via ProportionalShrink.
+// SubValueUnknown → none (fail-closed).
+
+fn sub_value_to_lowering_target(relation: SubValueRelation) -> BoundedLoweringTarget? {
+  match relation {
+    StrictSubValue { field: f, factor: fac } =>
+      Some { value: BoundedLoweringTarget {
+        target: LoweringTarget {
+          primitive: Descend,
+          bound: tree_size_bound(param: f.field_name),
+          evidence: Strict
+        },
+        factor: Some { value: fac }
+      }}
+    IteratedSubValue { field: f } =>
+      Some { value: BoundedLoweringTarget {
+        target: LoweringTarget {
+          primitive: Fold,
+          bound: CollectionSize { param: f.field_name },
+          evidence: Strict
+        },
+        factor: none
+      }}
+    ArithmeticDescent { param: p, factor: fac } =>
+      Some { value: BoundedLoweringTarget {
+        target: LoweringTarget {
+          primitive: Repeat,
+          bound: ArithmeticParam { param: p },
+          evidence: Strict
+        },
+        factor: Some { value: fac }
+      }}
+    PreservedValue =>
+      Some { value: BoundedLoweringTarget {
+        target: LoweringTarget {
+          primitive: Repeat,
+          bound: Forever,
+          evidence: NonIncreasing
+        },
+        factor: none
+      }}
+    SubValueUnknown => none
   }
 }
 

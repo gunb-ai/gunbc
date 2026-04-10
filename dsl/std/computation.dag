@@ -125,6 +125,12 @@ type SizeBound
   | ExplicitCount { n: Int }           // developer-specified literal
   | Forever                            // the largest representable bound
 
+// Constructor for TreeSize bound — avoids name collision when importing
+// into modules that already have a TreeSize variant from another type.
+fn tree_size_bound(param: String) -> SizeBound {
+  TreeSize { param: param }
+}
+
 // =========================================================================
 // Forever: the bound on truth
 //
