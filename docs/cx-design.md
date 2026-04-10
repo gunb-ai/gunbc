@@ -1,6 +1,6 @@
 # CX: Complexity Analysis Design
 
-Stable principles for the complexity analyzer. If a change violates
+Stable principles for complexity analysis. If a change violates
 one of these, stop and update this doc first — then assess the impact
 on the codebase to determine if the direction is viable.
 
@@ -9,7 +9,157 @@ See also: `cx-computation-model.md` (migration state),
 
 ---
 
-## P1: Descent is a type-level fact
+## Foundational thesis: complexity is a conserved quantity
+
+In a decidable language where all data is finite (Bit/Word64), all
+iteration is bounded (fold/descend/repeat), and composition preserves
+boundedness (INVARIANTS.md), complexity is not a property to be
+*analyzed* — it is a property that *emerges from the model*.
+
+The physics analogy: in a simulator, energy conservation is not
+checked by a separate analysis pass after the simulation runs. Every
+force application produces a delta-E at the point of application.
+The bookkeeping is intrinsic. If you have to run a second pass to
+figure out where the energy went, the model has a hole.
+
+The three iteration primitives each have known costs:
+- `fold`: O(|collection| x per_element)
+- `descend`: O(|tree| x per_node)
+- `repeat`: O(N x per_step)
+
+Composition rules (INVARIANTS.md):
+- Sequential: cost(a; b) = cost(a) + cost(b)
+- Nested: cost(fold(list, f)) = |list| x cost(f)
+- Conditional: cost(if c then a else b) = cost(c) + max(cost(a), cost(b))
+
+If user code composes from these primitives, and each primitive has
+a known cost, the total cost is determined by the composition structure.
+**No post-hoc analysis should be needed.**
+
+---
+
+## The construct-discard-reconstruct anti-pattern
+
+The current implementation violates this thesis. The compiler computes
+structural relationships during inference, discards them in the IR,
+then a 3000+ line analysis pass (`complexity.dag` + `annotate_descent`
+in `04_infer.dag`) tries to reconstruct them via string matching and
+heuristic tables.
+
+This is the compiler equivalent of running a physics simulation,
+throwing away the force vectors, then running a second pass over the
+trajectories to infer what forces must have been applied.
+
+### Where information is constructed and discarded
+
+The discard points all follow the same pattern: `TypeBinding` stores
+only `{ name: String, resolved: Node }` — the type. Everything else
+the compiler knows at binding-creation time is thrown away.
+
+**1. Let-binding provenance** (`04_infer.dag:1649-1685`)
+
+When inference processes `let child = node.left`, it computes the full
+typed expression. It KNOWS that `child` is a sub-value of `node` via
+field `left`. It stores: `TypeBinding { name: "child", resolved: Node }`.
+The structural relationship is gone.
+
+**2. Lambda body opacity** (`04_infer.dag:745`)
+
+When a lambda parameter is bound, inference stores:
+`TypeBinding { name: p, resolved: type_variable_node("lambda_param") }`.
+The parameter gets a placeholder type. The compiler knows the full
+lambda body — in a decidable language all lambdas are statically known —
+but the binding carries none of this.
+
+**3. Match arm provenance** (`04_infer.dag:773-799`)
+
+When `match param { Cons { head, tail } => ... }` creates bindings,
+inference knows that `tail` is a strict sub-value of `param` via
+variant `Cons`, field `tail`. It stores: `TypeBinding { name: "tail",
+resolved: <type> }`. The variant name, field name, and structural
+relationship are gone.
+
+**4. For-each element provenance** (`04_infer.dag:1915-1933`)
+
+When `children |> map(c => ...)` creates the binding for `c`,
+inference knows `c` is an iterated element of `children`. It stores:
+`TypeBinding { name: "c", resolved: <elem_type> }`. The collection
+reference and iteration relationship are gone.
+
+**5. Cross-call argument alignment** (`04_infer.dag:2801-2829`)
+
+When caller passes `texpr` to a callee that names its parameter `expr`,
+the structural relationship is determined by argument position, not name.
+But `build_call_evidence` aligns by string name. Names don't match
+→ `SubValueUnknown`. The compiler had the positional binding; the
+name-based reconstruction fails.
+
+**6. ShrinkFactor loss** (`std/induction.dag:206-219`)
+
+`sub_value_to_call_pattern` converts `StrictSubValue { field, factor }`
+to `ChildAccessorCall { accessor: field_name }`. The factor
+(`UnitShrink`, `ConstantShrink`, `ProportionalShrink`) is discarded.
+`n/2` (O(log n) steps) becomes indistinguishable from `n-1` (O(n) steps).
+The Master theorem becomes unreachable.
+
+### Where information is reconstructed
+
+The discarded information is then reconstructed by 33 distinct
+heuristic points across two files:
+
+| Reconstruction method | Count | Examples |
+|-----------------------|-------|---------|
+| String name matching | 13 | Variable names, method names, field names, type names |
+| Hardcoded lookup tables | 8 | `is_child_accessor_in_model`, `function_size_effects`, `type_iteration_dimension` |
+| Thread-through maps | 4 | `param_names`, `sub_value_vars`, `size_aliases`, `descent_vars` |
+| Type introspection | 5 | `inductive_fields_for`, `element_type` extraction |
+| Heuristic assumptions | 3 | Lambda params assumed `IteratedSubValue`, callback transparency |
+
+Key reconstruction functions and what they re-derive:
+
+- `classify_argument` (04_infer.dag:2633) — re-derives whether an
+  expression is a sub-value of a parameter by pattern-matching AST
+- `classify_let_value` (04_infer.dag:2413) — re-derives let-binding
+  provenance by analyzing the value expression
+- `classify_collection_shrink` (04_infer.dag:2258) — re-derives
+  collection operations by matching method names ("take", "skip")
+- `build_call_evidence` (04_infer.dag:2801) — re-derives argument-to-
+  parameter alignment by string name matching
+- `annotate_descent` lambda heuristic (04_infer.dag:2870-2897) —
+  guesses that lambda params receive sub-values by looking for a
+  tracked parameter in the same call's other arguments
+- `is_child_accessor_in_model` (stage0) — hardcoded table of function
+  names that are known to be structural accessors
+- `function_size_effects` (stage0) — hardcoded table mapping function
+  names to their size effects (TreeSizeReducing, PropertyContraction)
+- `construct_termination_proof` (complexity.dag:2721) — re-derives
+  termination from scratch using yet another classification system
+
+**Every one of these reconstruction points dissolves if bindings
+carry provenance.** The information exists at binding-creation time.
+The reconstruction exists because the IR discards it.
+
+### Why this matters beyond CX
+
+This is not just a CX problem. The construct-discard-reconstruct
+pattern would repeat for any cross-cutting property:
+
+- **Tracing/observability:** To know which operations contribute to
+  a request's latency, you'd face the same problem — the IR doesn't
+  carry cost information, so you'd need a reconstruction pass.
+- **Space analysis:** To bound memory, you'd need to re-derive
+  allocation provenance from the typed AST.
+- **Effect tracking:** To know which operations have side effects,
+  you'd need to scan the tree after effects were already determined.
+
+The fix for CX establishes the pattern for all of these: **make the
+IR carry compositional facts at the point they're computed.**
+
+---
+
+## Principles
+
+### P1: Descent is a type-level fact
 
 Structural descent is a property of the **type definition**, not of
 any particular function or code pattern. If `Node` has
@@ -26,34 +176,32 @@ The accessor is just a projection — the descent fact lives in the type.
 derived from type declarations. Adding a new accessor function should
 require zero changes to the complexity analyzer.
 
-## P2: The analyzer reads .dag structure, never derives from AST
+### P2: The pipeline preserves facts — never constructs, discards, and reconstructs
 
-The complexity analyzer is a **consumer** of structural facts, not a
-producer. Every fact it needs — which parameters carry recursive
-structure, which expressions descend, which calls are bounded — should
-be represented as .dag structure (types, edges, functions) produced by
-upstream stages (resolve/infer).
+Every structural fact the compiler computes must be preserved in the
+IR from the point of computation to the point of consumption. The
+complexity analyzer is a **consumer** of structural facts, not a
+producer or reconstructor.
 
-**Not annotations.** The Modeling Faithfulness Invariant (INVARIANTS.md)
-requires facts to be .dag structure, not metadata. Descent evidence is
-modeled as .dag values (`DescentEvidence`, `TerminationProof` from
-`std/termination.dag`), not as IR annotations on nodes.
+**The invariant:** at no point in the pipeline should information be
+computed, stored in a lossy representation, and then re-derived
+downstream via heuristics. If a stage computes a fact, it either:
+1. Stores it in the IR for downstream consumers, or
+2. Is the final consumer (no downstream re-derivation needed)
 
-Today the analyzer re-derives descent from AST pattern-matching. This
-is the root cause of every heuristic extension: each new code pattern
-requires a new recognizer. The fix is not better recognizers — it's
-making the pipeline produce .dag-typed descent facts that the analyzer
-reads.
+This is the same principle as fail-closed diagnostics
+(INVARIANTS.md): if the compiler knows something, it must not
+discard it and hope a later stage can figure it out.
 
-**Implication:** `collect_descent_vars`, `collect_evidence_incremental`,
-`classify_self_call_evidence`, `expr_contains_descent` — the entire
-pattern-matching apparatus — should dissolve. The analyzer reads
-descent witnesses the same way it reads `method_semantics`.
+**Current violation:** `TypeBinding { name, resolved }` discards
+provenance. `annotate_descent_evidence` reconstructs it. This is
+the root cause of the 33 reconstruction heuristics and 424 CX
+violations.
 
-## P3: Every pattern has a bound — but Forever and Unknown are distinct
+### P3: Every pattern has a bound — but Forever and Unknown are distinct
 
 Every **structurally lowerable** call pattern has a finite bound.
-`self(same_arg)` → `repeat(Forever)`. The analyzer computes bounds
+`self(same_arg)` -> `repeat(Forever)`. The analyzer computes bounds
 for patterns it can lower.
 
 **Fail-closed:** If the analyzer cannot classify a call pattern —
@@ -66,90 +214,30 @@ because descent evidence is missing, not because the pattern is
 - `Unknown` = the analyzer cannot prove a bound. Hard error.
   The code may need restructuring, or the analyzer is incomplete.
 
-**However:** Forever is not "just a large O(1)." It conflates two
-orthogonal questions:
-
-1. **Scalability** — how does cost grow with input size? (`O(n)`, `O(n²)`)
-2. **Termination character** — is the bound input-dependent or degenerate?
-
-`O(Forever)` is technically constant w.r.t. input — but calling an
-infinite loop O(1) is useless analysis. The purpose of complexity
-analysis is to tell the user whether their algorithm is *sustainable
-as input grows*. Forever is independent of input, but it's not
-sustainable.
-
-**The resolution:** Forever is a **separate dimension**, factored out
-of the scalability report. A bound like `Forever × n` does not
-"simplify to Forever" — it decomposes into:
-
-- **Termination character:** runs forever (intentional: server loop,
-  event loop, retry loop)
+**Forever factoring:** A bound like `Forever x n` decomposes into:
+- **Termination character:** runs forever (server loop, event loop)
 - **Per-iteration scalability:** O(n) in tree size
 
-The user cares about the second part. A server that processes requests
-in O(n) per request is fundamentally different from one that processes
-in O(n²), even though both run "forever." The Forever dimension is
-factored out because the input-dependent portion always dominates
-actual computation time within each iteration.
+The bound algebra supports factoring. Forever is honest (not hidden
+or rejected) but separated from the scalability analysis.
 
-**Implication:** The bound algebra must support factoring. A bound is
-a product of dimensions, some input-dependent, some degenerate. The
-scalability report extracts the input-dependent portion. Forever is
-honest (not hidden or rejected) but separated from the analysis the
-user actually needs.
-
-## P4: Global descent, not strict monotonicity
+### P4: Global descent, not strict monotonicity
 
 The current analyzer requires every self-call to strictly decrease
-some measure. This is unnecessarily strict. Real programs take
-detours — a function may temporarily preserve or even increase a
-measure before eventually decreasing it.
+some measure. Real programs take detours — a function may temporarily
+preserve or even increase a measure before eventually decreasing it.
 
-**What matters:** the computation *eventually* terminates — global
-descent. Not that every individual step goes strictly down — local
-monotonicity.
-
-Examples of valid global descent that strict monotonicity rejects:
-- `render_node_type(n: with_required_cardinality(n: n))` — tree size
-  stays flat, but cardinality changes so the guard prevents re-entry.
-  One "detour," bounded by 1.
-- Worklist algorithms: adding items (ascent) is fine as long as the
-  worklist eventually drains (global descent).
-- Amortized patterns: occasional expensive operations that are paid
-  for by many cheap ones.
-
-**The requirement:** over every complete cycle of the computation,
+**What matters:** over every complete cycle of the computation,
 some well-founded measure decreases. Individual steps may not
 decrease, as long as no infinite non-decreasing sequence exists.
 
-**Representation options** (all must be structural, not annotations):
-1. **Lexicographic tuples** — `(cardinality_depth, tree_size)` decreases
-   lexicographically even when tree_size stays flat. Already partially
-   in the analyzer but not wired to condition changes.
-2. **Size-change termination** — track size relationships across ALL
-   call paths automatically. If every infinite call sequence would
-   violate some well-founded ordering, done. Derived from .dag
-   structure, no user annotations.
+**Phasing:** Start with strict descent (handles the vast majority
+of real patterns). Design the abstraction so it can be relaxed later.
+The interface between pipeline and analyzer should be an opaque proof
+object that accommodates lexicographic, size-change, or amortized
+proofs.
 
-**Open question:** how to make this expressible without a math PhD.
-The compiler should derive the proof from .dag structure (types, call
-patterns, field relationships) — no user-facing annotations.
-
-**Phasing:** Start with strict descent — it handles the vast majority
-of real patterns (tree walks, list consumption, parser advancement,
-arithmetic decrease). Design the abstraction so it can be relaxed
-later. The interface between pipeline and analyzer should be an opaque
-proof object: "does this descend? here's the witness." Today the
-witness = single-dimension strict descent. Tomorrow it could be
-lexicographic, size-change, or amortized. The analyzer asks "is there
-a valid proof?" and doesn't care how it was constructed.
-
-`TerminationProof { dimensions: List<RankingDimension> }` already has
-roughly this shape. The structure accommodates growth — it's the
-*production* of proofs that's currently heuristic (pattern-matching
-in the analyzer instead of facts from the pipeline).
-
-## P5: Complexity classes are emergent
+### P5: Complexity classes are emergent
 
 Linear, quadratic, Forever are emergent properties of the bound
 algebra. The analyzer doesn't classify — it computes a bound, and
@@ -159,7 +247,7 @@ the complexity class falls out.
 classification. `O(n)` emerges from `bound = TreeSize(param)`.
 `O(n*m)` emerges from nested iteration bounds.
 
-## P6: Recursion is emergent
+### P6: Recursion is emergent
 
 Recursion is not a first-class concept to model or analyze. It falls
 out of functions calling each other. Only iteration primitives
@@ -172,194 +260,309 @@ operations.
 
 ---
 
-## Design direction: descent witnesses as pipeline facts
+## Two viable paths
 
-The pipeline already produces structural facts at each stage:
+Both paths eliminate the construct-discard-reconstruct anti-pattern.
+They differ in WHERE the iteration primitive identity is captured.
 
-| Stage | Fact | Example |
-|-------|------|---------|
-| Parse | `expr_data` discriminant | ExprLet, ExprCall |
-| Resolve | `inferred` type | Resolved { node } |
-| Infer | `method_semantics` | AlgebraMethodSemantics |
-| Infer | `is_self_recursive` | true/false |
+### Option A: Desugar recursive syntax to primitives
 
-Descent evidence should follow the same pattern: produced by
-resolve/infer, consumed by the complexity analyzer.
+The language already says "recursive syntax is sugar"
+(`std/iteration.dag:53`). Option A commits to this: the parser (or
+an early compiler pass) rewrites recursive functions to explicit
+primitive form.
 
-**What the analyzer needs per recursive function:**
-1. Which parameters carry recursive structure (derivable from type)
-2. Which expressions are strict sub-values of those parameters
-3. Whether all self-call arguments descend
+```
+// User writes:
+fn simplify(expr: CostExpr) -> CostExpr {
+  match expr {
+    CostAdd { left: l, right: r } =>
+      CostAdd { left: simplify(l), right: simplify(r) }
+    _ => expr
+  }
+}
 
-(1) is a type-level query. (2) is an expression annotation produced
-during inference. (3) is the verification the analyzer performs by
-reading (1) and (2).
+// Compiler lowers to:
+descend(expr, f: (node, children) =>
+  match node {
+    CostAdd { left: _, right: _ } =>
+      CostAdd { left: children[0], right: children[1] }
+    _ => node
+  }
+)
+```
 
-**Open questions:**
-- Where exactly in the pipeline should descent annotations be produced?
-- What IR representation carries them? (New field on Node? On ExprData?)
-- How do annotations compose through let-bindings, match arms, method chains?
-- How does this interact with the existing `method_semantics` annotation?
+**What dissolves:** The entire CX-L2/L3 pipeline. There is no
+recursive call to analyze — the primitive IS the cost fact.
+`descend` costs O(|tree|). `fold` costs O(|collection|). Done.
+
+**Pros:**
+- Simplest possible model. Cost is a property of the primitive, not
+  a derived analysis.
+- Zero reconstruction. The desugared form carries its own cost.
+- Aligns with `std/iteration.dag`'s stated position.
+
+**Cons:**
+- Requires a desugaring pass that correctly classifies every
+  recursive pattern (same classification problem, different location).
+- Changes internal representation significantly — all downstream
+  passes (emit, ownership) see desugared form.
+- User error messages must map back to original syntax.
+- The desugaring pass itself needs the same structural knowledge
+  (which fields are recursive, which calls descend).
+
+**Viability concern:** The desugaring pass needs to solve the same
+classification problem that CX-L2 currently solves. The difference
+is that it solves it ONCE (at desugar time) rather than reconstructing
+it later. This is strictly better — but the classification work
+doesn't disappear, it moves.
+
+### Option B: Provenance on bindings (preferred)
+
+Every binding carries not just its type but its structural
+relationship to the function's inputs. Provenance is computed at
+binding-creation time and preserved through the IR.
+
+```
+type TypeBinding {
+  name: String
+  resolved: Node
+  provenance: Provenance   // NEW: structural relationship to inputs
+}
+
+type Provenance
+  = Parameter { index: Int }
+  | SubValueOf { source: String, field: InductiveField, factor: ShrinkFactor }
+  | IteratedElementOf { source: String, field: InductiveField }
+  | ArithmeticOf { source: String, factor: ShrinkFactor }
+  | ConstructedValue    // new value, not derived from any input
+  | Unknown             // fail-closed
+```
+
+**What dissolves:**
+
+| Current reconstruction | Why it dissolves |
+|------------------------|------------------|
+| `classify_argument` (13 heuristics) | Read `provenance` from binding |
+| `classify_let_value` (5 heuristics) | Provenance set at let-bind time |
+| `classify_collection_shrink` | Method semantics carry shrink info |
+| `build_call_evidence` name matching | Provenance flows with value, not name |
+| Lambda transparency guessing | Lambda params inherit provenance from caller |
+| `is_child_accessor_in_model` table | Field access sets provenance from type |
+| `function_size_effects` table | Function return provenance declared on function |
+| `sub_value_vars` map threading | Provenance IS the binding, not a side map |
+| `size_aliases` map threading | Arithmetic provenance tracks factors |
+| SCC evidence re-derivation | Read annotated provenance from call args |
+
+**Pros:**
+- No reconstruction. Provenance preserved from computation to consumption.
+- Aligns with how the compiler already handles types (types flow
+  through bindings; provenance would too).
+- Incremental: can be added to TypeBinding without rewriting the
+  rest of the pipeline.
+- Generalizes: the same provenance field serves CX, space analysis,
+  effect tracking, tracing.
+- Preserves recursive syntax as user writes it (no desugaring).
+
+**Cons:**
+- Every binding-creation site must compute provenance (there are ~10
+  sites in 04_infer.dag).
+- Provenance must compose through control flow (if/match/block) —
+  requires worst-case merging.
+- Lambda parameters need special handling: their provenance depends
+  on the call site, not the definition site.
+- Cross-call provenance requires knowing the callee's parameter
+  provenance (function signatures need provenance contracts).
+
+**Key design question for Option B:** Lambda parameter provenance.
+
+When `f(texpr: texpr, callback: child => self(texpr: child))` is
+called, the lambda param `child` should carry
+`SubValueOf(texpr, field: children)`. But this provenance comes from
+what `f` does internally — it iterates over `texpr.children` and
+passes each to `callback`.
+
+Two sub-options:
+1. **Callee contracts:** Functions declare what they pass to callback
+   parameters. `f` declares: "callback receives iterated elements of
+   param `texpr`." The compiler checks the contract at definition
+   time and applies it at call sites.
+2. **Inline lambda bodies:** Since all lambdas are statically known,
+   the compiler can inline the lambda at the call site and propagate
+   provenance through the body directly.
+
+Sub-option 1 is more modular (works for any higher-order function).
+Sub-option 2 is simpler but doesn't generalize to separate
+compilation.
+
+### Decision framework
+
+Option B is preferred because it preserves the user's syntax,
+generalizes to other cross-cutting properties, and aligns with the
+compiler's existing binding model.
+
+If Option B proves unviable (e.g., lambda provenance composition is
+too complex to get right), Option A is the fallback — it eliminates
+the same anti-pattern by moving classification to a single early pass
+rather than reconstructing it later.
+
+**The non-negotiable:** the construct-discard-reconstruct pattern
+must be eliminated regardless of which option is chosen. A 3000+ line
+reconstruction pass that grows with every new code pattern is not
+sustainable.
 
 ---
 
-## Roadmap to launch gate
+## Current state: what works and what doesn't
 
-### Existing foundation
+### Sound foundation (keep)
 
-| Asset | Lines | Role |
-|-------|-------|------|
-| `std/termination.dag` | 275 | DescentEvidence, RankingDimension, TerminationProof, DescentSource — well-designed, keep |
-| `std/iteration.dag` | 163 | fold/descend/repeat conceptual model — keep |
-| `std/computation.dag` | 369 | CallPattern → LoweringTarget — keep |
-| Pipeline facts | — | `is_self_recursive`, `AlgebraMethodSemantics`, `recursive_type_set`, `RecursiveVariantFieldWitness` already produced by inference |
-| `complexity.dag` | 4965 | Heuristic analyzer — replace, not extend |
-| `00_core.dag` tables | — | `node_field_roles`, `expr_child_roles`, `function_size_effects` — dissolve into type-derived facts |
+| Asset | Role | Status |
+|-------|------|--------|
+| `std/iteration.dag` | fold/descend/repeat primitives | Sound. These ARE the cost vocabulary. |
+| `std/induction.dag` | InductiveField, SubValueRelation, ShrinkFactor | Sound types. SubValueRelation is close to the right Provenance vocabulary. |
+| `std/computation.dag` | CallPattern -> LoweringTarget (exhaustive table) | Sound. 7/7 variants, no heuristics. |
+| `std/termination.dag` | DescentEvidence, RankingDimension | Sound proof vocabulary. |
+| CX-L1: type-level detection | InductiveField from type declarations | Working. Type → recursive field mapping is structural. |
+| Composition algebra | INVARIANTS.md composition rules | Sound. add/multiply/max compose correctly. |
 
-### CX-L1: Type-level recursive field detection
+### Partially working (needs restructuring)
 
-**Where:** Inference already does this.
+| Asset | Issue | Path forward |
+|-------|-------|-------------|
+| CX-L2: `annotate_descent_evidence` | Reconstruction pass — re-derives provenance from AST | Dissolves under Option B (provenance on bindings) or Option A (desugar) |
+| `descent_evidence` on ExprCall | Evidence IS stored on call nodes | Good — but evidence should flow FROM bindings, not be reconstructed BY walking |
+| `sub_value_to_call_pattern` | Lossy: drops ShrinkFactor | CallPattern should carry ShrinkFactor, or SubValueRelation should lower directly to LoweringTarget |
 
-**What already exists:** The pipeline detects recursive types and
-tracks which fields carry self-references:
+### Unsound (replace)
 
-- `TypeEnv.recursive_type_set: Map<String, Bool>` — which types
-  are self-referential (detected via dependency cycle analysis)
-- `TypeEnv.recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>`
-  — which variant fields reference the parent type
-- `RecursiveVariantFieldWitness { variant_name, field_name }` — e.g.,
-  for `type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }`,
-  witness is `{ variant_name: "Cons", field_name: "tail" }`
-- `is_recursive_type(env, name)` — queries the set
+| Asset | Issue | What replaces it |
+|-------|-------|-----------------|
+| `classify_argument` (13 heuristics) | Reconstructs provenance from AST pattern-matching | Binding provenance |
+| `is_child_accessor_in_model` table | Hardcoded function names | Type-derived facts |
+| `function_size_effects` table | Hardcoded function name -> effect mapping | Function signature provenance |
+| `construct_termination_proof` (old system) | Parallel classification authority to CX-L2 | Single authority: binding provenance |
+| `classify_scc_call_progress` (SCC heuristics) | Re-derives evidence that CX-L2 already annotated | Read annotated evidence |
+| `iteration_element_name` heuristic | Hardcoded "last param is element" | Algebra template structural lookup |
 
-**Recursive types in .dag:** The bounded kernel invariant says Node
-is the only recursive type in the **compiler IR**. But users CAN
-define recursive types (`MyList<T>`, binary trees, etc.) — these are
-represented as Node trees in the IR, and the compiler tracks their
-recursion via `recursive_type_set`. Test: `generic_recursive_type`
-in pipeline.rs.
+### Ratchet
 
-**What CX-L1 adds:** Map the existing `RecursiveVariantFieldWitness`
-to ranking dimensions for complexity analysis.
-
-| Witness pattern | Dimension |
-|-----------------|-----------|
-| Field type == parent type | TreeSize |
-| Field type == `List<parent>` | TreeSize (children-style) |
-| Field type == `parent?` | TreeSize |
-
-**Dissolves:** `node_field_roles`, `expr_child_roles` (for descent
-purposes), `function_size_effects` — these hand-maintained tables
-are replaced by the type-derived `RecursiveVariantFieldWitness`.
-
-**Bootstrap constraint:** `recursive_type_set` and
-`recursive_variant_fields` currently use `Map<String, ...>` with
-string keys as identity proxies. This is a known M4 constraint —
-string-keyed identity dissolves when structural identity lands.
-The CX design does not depend on string keys; it depends on the
-structural fact that recursive fields exist, which the maps carry.
-
-### CX-L2: Descent witness production in inference
-
-**Where:** Inference (after method semantics are assigned).
-
-**What:** For each self-recursive function, track sub-value
-relationships from parameters through expressions. When a self-call
-argument is a provable sub-value of a parameter on a recursive
-dimension, annotate it with `Strict` evidence.
-
-Standard patterns to recognize (strict descent):
-```
-// Direct iteration over recursive field
-param.children |> fold(init: ..., f: (child, acc) => self(child))
-
-// Child accessor extraction
-let child = accessor(param)    // accessor projects from children
-self(child)
-
-// Match on recursive field
-match param.body { Some { value: inner } => self(inner) }
-
-// Arithmetic decrease
-self(n: n - 1)
-```
-
-**Key property:** the witness is produced by the pipeline, not
-discovered by the analyzer. Adding a new accessor or field requires
-zero changes to the analysis — the type declaration IS the authority.
-
-**Output:** Each self-call site carries descent evidence per
-parameter, represented as .dag structure (design TBD: DescentEvidence
-values in a side table keyed by call site, or structural field on
-the call expression).
-
-### CX-L3: Bound computation and reporting
-
-**Where:** New, small analysis pass after inference.
-
-**What:** For each self-recursive function:
-1. Read descent witnesses from CX-L2
-2. If all self-calls have `Strict` evidence on some dimension →
-   bound = that dimension's measure
-3. If not → hard error (Unknown — fail-closed per INVARIANTS.md).
-   `Unknown` ≠ `Forever`. Forever is a concrete bound for actual
-   repeat loops. Unknown means the analyzer cannot prove a bound —
-   the user must restructure or the analyzer is incomplete.
-4. Report proven bounds as user-facing diagnostic: `info: f is O(n) in tree_size`
-
-**Forever factoring (P3):** For functions with proven Forever bounds
-(actual `repeat(max_int)` loops) containing input-dependent
-sub-computation, factor out the Forever and report the per-iteration
-scalability separately.
-
-**Size:** This pass should be small — hundreds of lines. It reads
-annotations, it doesn't pattern-match AST. The complexity is in
-CX-L2 (producing witnesses), not here (consuming them).
-
-### CX-L4: Cost composition (aspirational)
-
-For functions calling other functions, compose their bounds:
-- `f` calls `g` where `g` is `O(n)` → f's cost includes g's bound
-- Nested: `fold` body calls recursive function → multiply bounds
-- Report: `f is O(n × m)` for nested iteration
-
-### CX-L5: Suboptimality detection (aspirational)
-
-Hand-curated equivalence catalog: pattern → cheaper alternative.
-Even 3-5 rules would be a compelling demo.
-
-| Pattern | Suggestion | Why |
-|---------|------------|-----|
-| `xs \|> filter(p) \|> count > 0` | `xs \|> any(p)` | O(n) → O(k), short-circuits |
-| `xs \|> map(f) \|> filter(p)` | `xs \|> filter_map(f, p)` | One pass instead of two |
-| `xs \|> sort \|> first` | `xs \|> min` | O(n log n) → O(n) |
-
-This does not need to be architecturally complete — a small catalog
-is valuable. The catalog lives in `std/` as structural data, not as
-analyzer heuristics.
-
-### Launch gate = CX-L1 + CX-L2 + CX-L3
-
-The hard gate is phases 1-3. User-written functions using standard
-recursion patterns get proven complexity bounds via type-derived
-strict descent. The existing `complexity.dag` (4965 lines) continues
-to run non-blocking for internal compiler metrics — it is not on the
-launch path.
+424 honest violations (PR #370). These represent genuine gaps in
+the compositional evidence model — not implementation bugs. The
+violation count traces directly to the construct-discard-reconstruct
+pattern: each violation is a case where the reconstruction heuristics
+fail to re-derive information that was available at binding time.
 
 ---
 
-## Current state (reference)
+## Pipeline: current vs target
 
-524 violations in the compiler's own code (internal debt, not
-user-facing). 46 direct self-recursive, 185 composed. Full triage
-in `cx-violation-triage.md`.
+### Current pipeline (construct-discard-reconstruct)
 
-The existing `complexity.dag` analyzer partially works but is built
-on heuristic pattern-matching that grows with each new code pattern.
-It is not the launch architecture — CX-L1/L2/L3 above replace it
-for user-facing analysis.
+```
+Parse    ──> AST nodes (no cost info)
+               │
+Infer    ──> TypeBinding { name, resolved }
+               │                    ↑ DISCARD: provenance, lambda bodies,
+               │                      match context, collection refs
+               │
+CX-L2    ──> annotate_descent_evidence()
+               │  Re-walks entire body. Reconstructs provenance via:
+               │  - 13 string name matches
+               │  - 8 hardcoded lookup tables
+               │  - 4 thread-through maps
+               │  - 5 type introspection queries
+               │  - 3 heuristic assumptions
+               │
+CX-L2→L3 ──> sub_value_to_call_pattern()
+               │                    ↑ DISCARD: ShrinkFactor
+               │
+CX-L3    ──> lower_call_pattern() → bound
+               (works, but input already degraded)
+```
 
-Migration plan in `cx-computation-model.md` describes incremental
-cleanup of the existing analyzer. That plan is operational (how to
-get there), not architectural (what "there" looks like). This doc
-is the architecture.
+### Target pipeline (Option B: provenance preserved)
+
+```
+Parse    ──> AST nodes (no cost info)
+               │
+Infer    ──> TypeBinding { name, resolved, provenance }
+               │  At each binding site:
+               │  - let x = node.left    → provenance: SubValueOf(node, left, UnitShrink)
+               │  - match arm binding    → provenance: SubValueOf(param, variant.field, UnitShrink)
+               │  - lambda param c       → provenance: IteratedElementOf(collection, children)
+               │  - let y = n - 1        → provenance: ArithmeticOf(n, ConstantShrink(1))
+               │  - let z = new_thing()  → provenance: ConstructedValue
+               │
+CX       ──> For each self-call, read argument provenance:
+               │  self(child)  → child.provenance = SubValueOf(node, left)
+               │                → this is a descend on TreeSize
+               │                → bound = O(|tree|)
+               │
+             Done. No reconstruction. No heuristic tables.
+             The bound emerges from the provenance chain.
+```
+
+### Target pipeline (Option A: desugar)
+
+```
+Parse    ──> AST with recursive syntax
+               │
+Desugar  ──> Rewrite to primitive form:
+               │  fn f(n) { ... f(n.left) ... }
+               │  → descend(n, fn(node, children) { ... })
+               │
+Infer    ──> TypeBinding { name, resolved }
+               │  (provenance not needed — primitive IS the cost)
+               │
+CX       ──> Read primitive: descend → O(|tree|). Done.
+```
+
+---
+
+## Open design questions
+
+1. **Provenance composition through control flow.** When `let x =
+   if cond { a.left } else { b }`, what is x's provenance?
+   Worst-case: `SubValueOf(a)` meet `Unknown` = `Unknown`.
+   Is this too conservative? Should we track both branches?
+
+2. **Lambda parameter provenance: contracts vs inline.** Callee
+   contracts are more modular. Inlining is simpler. The decidability
+   invariant guarantees all lambdas are statically known, so inlining
+   is always possible. But contracts scale better to separate
+   compilation.
+
+3. **ShrinkFactor preservation.** Should CallPattern carry
+   ShrinkFactor? Or should SubValueRelation lower directly to
+   LoweringTarget (bypassing CallPattern)? The latter is simpler
+   and avoids the lossy bridge.
+
+4. **Provenance on function signatures.** For cross-call provenance
+   (function f calls function g), does g's signature need to declare
+   its return provenance? E.g., `fn accessor(n: Node) -> Node
+   @returns SubValueOf(n, field: left)`.
+
+5. **Migration path.** Can provenance be added to TypeBinding
+   incrementally (start with `ConstructedValue` everywhere, then
+   refine each binding site), or does it require a single coordinated
+   change?
+
+---
+
+## Relationship to other docs
+
+- **INVARIANTS.md** — bounded kernel, fail-closed, decidability,
+  strict forward progress. The construct-discard-reconstruct pattern
+  violates the spirit of fail-closed (discard = lose knowledge).
+- **MODELING.md** — shared facts, concept DAG, M9 (DFS the ontology).
+  Provenance is a concept that should attach to the ontology.
+- **ROADMAP.md section CX** — work items, sequencing, acceptance criteria.
+  The CX-B/CX-A/CX-D/CX-C/CX-E sequence describes incremental
+  improvement of the reconstruction pass. The new direction replaces
+  reconstruction with preservation.
+- **cx-computation-model.md** — migration state, compositional deficit
+  diagnosis. The "compositional deficit" IS the construct-discard-
+  reconstruct pattern named differently.
+- **cx-violation-triage.md** — violation breakdown. Stale (based on
+  526, current is 424). All violations trace to reconstruction failures.
