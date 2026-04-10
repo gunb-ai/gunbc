@@ -8,8 +8,6 @@
 //! See docs/bugs-impossible-by-construction.md for the full writeup.
 
 use crate::helpers::*;
-use std::collections::HashMap;
-use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 
 // ── CS-1: Impossible Typos (Generated Code) ────────────────────────────
@@ -79,23 +77,6 @@ fn cs2_added_variant_breaks_existing_match() {
 // Existing tests:
 //   soundness_same_argument_stays_violation (pipeline.rs:2277)
 //   cx_forever_bound_produces_violation (pipeline.rs:2219)
-
-fn compile_dag_with_complexity(source: &str) -> Rc<v2_compiler::v2_compiler_complexity::ComplexityReport> {
-    use v2_compiler::v2_compiler_compile::{extract_func_entries, build_recursion_context, front_end_sources};
-    use v2_compiler::v2_compiler_complexity::build_complexity_report;
-    use v2_compiler::v2_compiler_normalize::normalize_graph;
-    use v2_compiler::v2_compiler_infer::reconcile;
-    let sources = resolve_imports_transitively("test.dag", source);
-    let frontend = front_end_sources(Rc::new(sources));
-    let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph);
-    let source_indices = Rc::new(HashMap::new());
-    let typed = reconcile(norm.graph.clone(), source_indices);
-
-    let func_entries = extract_func_entries(typed.clone());
-    let recursion_ctx = build_recursion_context(typed);
-    build_complexity_report(func_entries, recursion_ctx)
-}
 
 #[test]
 fn cs3_recursive_typo_rejected() {
@@ -448,14 +429,24 @@ fn describe(inv: Invoice) -> String {
     assert_no_diagnostics(&python_result);
     assert_no_diagnostics(&go_result);
 
-    // All three targets must contain the same field names from the declaration
+    // Rust: snake_case field names match the .dag declaration
     let rust_code = find_file(&rust_result, "src/cs12_polyglot.rs");
     assert!(rust_code.contains("invoice_id"), "Rust must contain invoice_id");
     assert!(rust_code.contains("total_cents"), "Rust must contain total_cents");
 
-    // Python and Go also get the same names — no drift possible
-    assert!(!python_result.files.is_empty(), "Python should emit files");
-    assert!(!go_result.files.is_empty(), "Go should emit files");
+    // Python: snake_case field names match the .dag declaration
+    let py_file = python_result.files.iter()
+        .find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"))
+        .expect("Python should emit a .py file");
+    assert!(py_file.content.contains("invoice_id"), "Python must contain invoice_id");
+    assert!(py_file.content.contains("total_cents"), "Python must contain total_cents");
+
+    // Go: spec-driven PascalCase export (go_export_ident) from the same .dag identifiers
+    let go_file = go_result.files.iter()
+        .find(|f| f.path.ends_with(".go") && !f.path.contains("go.mod"))
+        .expect("Go should emit a .go file");
+    assert!(go_file.content.contains("InvoiceId"), "Go must contain InvoiceId (PascalCase from invoice_id)");
+    assert!(go_file.content.contains("TotalCents"), "Go must contain TotalCents (PascalCase from total_cents)");
 }
 
 // ── CS-13: Diamond Dependency — Type Identity Preserved ────────────────

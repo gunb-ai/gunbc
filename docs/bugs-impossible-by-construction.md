@@ -493,6 +493,8 @@ Each language has its own type definition. Keeping them in sync requires discipl
 ### gunbc
 One `.dag` type compiles to **all** target languages atomically. Rename a field once → Rust struct, Python dataclass, and Go struct all update in the same compilation. There is no separate "sync step" to forget.
 
+Each target applies its own spec-driven naming rules (`go_export_ident` converts `snake_case` to `PascalCase`; Rust and Python preserve `snake_case`). The field identity comes from the single `.dag` declaration — the naming transformation is deterministic and mechanical, not a human decision that can diverge.
+
 ### Code
 
 **One declaration, three targets:**
@@ -506,12 +508,12 @@ type Invoice {
 }
 ```
 
-Emits:
+Emits (field names derived mechanically from the `.dag` identifiers):
 - **Rust:** `pub struct Invoice { pub invoice_id: String, pub line_items: Vec<String>, pub total_cents: i64 }`
 - **Python:** `class Invoice: invoice_id: str; line_items: list[str]; total_cents: int`
-- **Go:** `type Invoice struct { InvoiceId string; LineItems []string; TotalCents int64 }`
+- **Go:** `type Invoice struct { InvoiceId string; LineItems []string; TotalCents int64 }` (PascalCase per Go export rules)
 
-All three use the same field names from the same declaration. There is no path for drift.
+All three are derived from the same declaration. The per-language naming is spec-driven (`LanguageSpec`), not hand-written. There is no path for drift.
 
 ### Test evidence
 `cs12_type_emits_consistently_across_all_targets` in `impossible_bugs.rs`.

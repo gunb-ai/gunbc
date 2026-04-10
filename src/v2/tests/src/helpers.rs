@@ -283,3 +283,26 @@ pub fn has_file(result: &PipelineResult, path: &str) -> bool {
 pub fn emitted_file_paths(result: &PipelineResult) -> Vec<String> {
     result.files.iter().map(|f| f.path.clone()).collect()
 }
+
+// ── Complexity analysis ─────────────────────────────────────────────────
+//
+// The bootstrap pipeline skips complexity analysis (compile.dag §817).
+// We call build_complexity_report directly to get real complexity results.
+
+pub fn compile_dag_with_complexity(source: &str) -> Rc<v2_compiler::v2_compiler_complexity::ComplexityReport> {
+    use std::collections::HashMap;
+    use v2_compiler::v2_compiler_compile::{extract_func_entries, build_recursion_context, front_end_sources};
+    use v2_compiler::v2_compiler_complexity::build_complexity_report;
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
+    use v2_compiler::v2_compiler_infer::reconcile;
+    let sources = resolve_imports_transitively("test.dag", source);
+    let frontend = front_end_sources(Rc::new(sources));
+    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let norm = normalize_graph(graph);
+    let source_indices = Rc::new(HashMap::new());
+    let typed = reconcile(norm.graph.clone(), source_indices);
+
+    let func_entries = extract_func_entries(typed.clone());
+    let recursion_ctx = build_recursion_context(typed);
+    build_complexity_report(func_entries, recursion_ctx)
+}
