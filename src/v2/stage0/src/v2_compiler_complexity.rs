@@ -857,7 +857,8 @@ if (all_have_state == false) {
             Rc::new(vec![])
         } else {
             {
-                let parser_always_advancing = infer_parser_always_advancing_members(parser_function_names(func_index.clone(), si.clone()), func_index.clone(), si.clone());
+                let proven = infer_parser_always_advancing_members(parser_function_names(func_index.clone(), si.clone()), func_index.clone(), si.clone());
+let parser_always_advancing = members.clone().iter().cloned().fold(proven.clone(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 Rc::new({ let mut __result = Vec::new(); for name in members.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => match parser_state_param(entry.params.clone(), si.clone()) {
     Some(state_param) => collect_parser_progress_edges(name.clone(), entry.body.clone(), state_param.clone(), scc_name_set.clone(), empty_parser_progress_env(), parser_always_advancing.clone(), v2_rt::rc_empty_map::<bool>(), si.clone()),

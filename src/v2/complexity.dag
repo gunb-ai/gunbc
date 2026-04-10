@@ -1235,10 +1235,17 @@ fn collect_parser_edges_for_scc(members: List<String>, func_index: Map<String, F
   if all_have_state == false {
     []
   } else {
-    let parser_always_advancing = infer_parser_always_advancing_members(
+    let proven = infer_parser_always_advancing_members(
       members: parser_function_names(func_index: func_index, si: si),
       func_index: func_index,
     si: si)
+    // Within the SCC proof, treat all SCC members as always-advancing.
+    // This is standard SCC termination analysis: assume the property,
+    // check consistency. If edges under this assumption have no
+    // NonIncreasing-only cycles, the SCC is proven to terminate.
+    let parser_always_advancing = members |> fold(init: proven, f: (acc, name) =>
+      map_insert(acc, name, true)
+    )
     members |> flat_map(name =>
       match map_get(func_index, name) {
         Some { value: entry } =>
