@@ -563,10 +563,19 @@ fn recursive_variant_witnesses_are_structural() {
         );
     }
 
+    // CX-NEXT Phase 2: inductive fields are now declared in std/node.dag
+    // and loaded via inductive_fields_list_to_map(compiler_inductive_fields).
+    // The put_inductive_field calls moved from inline kernel seeding to the
+    // std/node.dag data table. Inference loads from std.node, not inline calls.
     assert_live_contains(
         &infer_source,
-        "put_inductive_field(",
-        "inference should build inductive fields structurally",
+        "import std.node { compiler_inductive_fields",
+        "inference should import compiler inductive fields from std.node",
+    );
+    assert_live_contains(
+        &infer_source,
+        "inductive_fields_list_to_map(fields: compiler_inductive_fields)",
+        "inference should build fields from std.node data",
     );
 }
 

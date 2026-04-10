@@ -57,7 +57,7 @@ Bootstrap D │                                                         ├→ M
 |------|--------|-----|--------------|
 | A | M2 (BND-1..4), M4-L1 (declaration algebra, Tier 2.5/2.6/3) | — | Gate 1 (M2, M4) |
 | B | CG (TLC-4, P1-B), LS (spec data), RE-1 (transport fidelity), KF-6 (Verilog) | KF-6 | Gates 1 (CG,LS,RE), 3 (parity), 4 (hardware) |
-| C | CX-NEXT (525→0), KF-1 (complexity proof), KF-2 (reject suboptimal), KF-7 (space complexity), KF-8 (optimality gate) | KF-1, KF-2, KF-7, KF-8 | Gates 1 (CX), 4 (complexity) |
+| C | CX-NEXT (524→0), KF-1 (complexity proof), KF-2 (reject suboptimal), KF-7 (space complexity), KF-8 (optimality gate) | KF-1, KF-2, KF-7, KF-8 | Gates 1 (CX), 4 (complexity) |
 | D | RE-2..5 (review.dag, gist.dag), BC-1..4, service extdep models | — | Gates 1 (RE), 5 (business cases) |
 | E | M3 (test generation), KF-3 (witnesses), KF-4 (cross-language) | KF-3, KF-4 | Gates 3 (parity), 6 (test gen) |
 
@@ -135,7 +135,7 @@ Previously eliminated:
 |--------|---------|--------|-------|
 | Self-compile diagnostics | 314 | 525 | Honest count — complexity violations surfaced, non-blocking |
 | L1 type knowledge | 0 | 0 | GREEN — hard gate (PR #352). Constructor functions dissolved, ListOf/ReceiverCollectionOf merged into ContainerOf. |
-| Complexity violations | 325 | 525 | Honest: 525 functions with unrecognized descent (SameArgumentCall → Forever). Higher than 325 because analysis now covers std/ + lambda recursion visible. Ratchets down as analyzer improves. |
+| Complexity violations | 524 | 525 | Honest count. CX-L2 structural evidence active. Gate: wire LoweringTarget pipeline + types in std/. |
 | Emitted Rust errors | 0 | 0 | GREEN |
 | DSL complexity ratchet | 2 | 0 | stack_size + fold_stack (deferred to CX lane) |
 
@@ -892,13 +892,15 @@ then deleted. `Node.name` field deleted.
 
 ## CX: Complexity Analyzer (Lane C)
 
-**Status:** 528 honest violations (non-blocking gate).
+**Status:** 524 honest violations (non-blocking gate).
 PR #354: structural induction model (std/induction.dag), CX-L1/L2/L3 pipeline,
 master theorem integration, disjointness check, adversarial/gap tests.
 PR #357: KF-7 stack-space bounds, TCO detection. KF-8 deferred (needs structural
 CostBound comparison, not lossy ranking).
+PR #361: CX-L2 infrastructure — element_type, ArithmeticDescent, type-based
+collection detection, std/node.dag type declarations, cross-type detection.
 **Binary search proven O(log n) from source code.** Catamorphisms proven O(n).
-Next: heap-space bounds, optimality gate (KF-8), 528→0 violations.
+Next: wire LoweringTarget pipeline (CX-B), then 524→0 violations.
 
 **Root cause:** The analyzer maintains parallel heuristic classifiers
 instead of consuming the structural facts already modeled in std/.
@@ -908,13 +910,16 @@ the analyzer with name-matching heuristics.
 
 ### Design principles
 
-**Recursion is emergent.** Recursion is not a first-class concept to
-model or analyze. It falls out of functions calling each other — just
-like real programs don't "know" they're recursing. Only iteration
-primitives (fold/descend/repeat) are modeled explicitly because they
-are intentional developer constructs. The analyzer never tries to
-"prove recursion terminates" — it computes the tightest bound it can
-from structural facts about data and operations.
+**Recursion is emergent — fold/descend/repeat are classification.**
+Recursion is not a first-class concept to model or analyze. It falls
+out of functions calling each other — just like real programs don't
+"know" they're recursing. The iteration primitives (fold/descend/repeat)
+are not things users write — they are the compiler's classification
+vocabulary for emerged patterns. Users write functions; the compiler
+discovers cycles (emergence), observes that arguments shrink at cycle
+edges (evidence), and classifies each pattern as an instance of fold,
+descend, or repeat (proof). These are tiers of the same process, not
+competing ideas. See CX-NEXT §four tiers for the full architecture.
 
 **All programs are bounded.** All data is ultimately quantifiable
 (Bit/Word64). The analyzer reports HOW bounded, not WHETHER bounded.
@@ -943,14 +948,15 @@ property emerge, and the heuristic dissolves.
 Computation model and migration plan:
 [docs/cx-computation-model.md](docs/cx-computation-model.md)
 
-DFA triage maps violations to four algebraic root causes:
+Violation triage by Tier 3 primitive (524 violations, counted by
+transitive callee — proving one callee dissolves all its callers):
 
-| Root cause | Count | Fix |
-|-----------|-------|-----|
-| Parser SCCs | ~80 | DescentEvidence lattice (std/termination.dag) |
-| Fold/catamorphism | ~40 | Descend primitive (std/iteration.dag) |
-| CostExpr/SizeExpr | ~30 | Flat product-of-bounds (std/computation.dag) |
-| Accessor-on-var | ~14 | Signature-driven fold (std/algebra.dag) |
+| Primitive | Callee | Count | Fix |
+|-----------|--------|-------|-----|
+| descend | emit/serialize/render functions | ~500 | Wire LoweringTarget (CX-B) |
+| fold | `parse_type_expr` + parser SCCs | ~208 | TokenPosition evidence (CX-A) |
+| repeat | `make_indent` + arithmetic | ~44 | Wire LoweringTarget (CX-B) |
+| fold | `dfs_finish_order` + worklist | ~14 | Worklist drain evidence (CX-C) |
 
 ### PR #318 work (CX-K through CX-R)
 
@@ -1000,13 +1006,19 @@ remaining path is sound. Work accomplished:
 ### Dependency chain
 
 ```
-CX-D (model facts in std/)
- ├→ CX-B (wire LoweringTarget into analyzer, delete RecursionPattern)
- ├→ CX-A (consume DescentEvidence from std/termination.dag)
- ├→ CX-C (consume operation size contracts for fold evidence)
+CX-B (wire LoweringTarget — connect Tier 2→3 pipeline)
+ ├→ CX-A (parser SCC termination — TokenPosition evidence)
+ ├→ CX-D (extend type declarations in std/ — more Tier 0 facts)
+ │   └→ CX-C (fold evidence contracts — needs type declarations)
  └→ CX-E (re-enable gate once violations = 0)
       └→ PERF-3 (memory ratchet — can't validate until CX re-enabled)
 ```
+
+CX-B is first because it's plumbing — connects existing pieces without
+new proofs. The existing Node fields in std/node.dag + existing
+descent_evidence from CX-L2 should dissolve ~500 violations immediately
+once the pipeline reads LoweringTarget. CX-A and CX-D extend the
+pipeline to cover parser and additional types.
 
 **Dead code:** Three std/ declarations exist with no downstream consumer:
 - `computation.dag: LoweringTarget` — defined, lowering table complete,
@@ -1080,7 +1092,7 @@ CX-D (model facts in std/)
   un-ignore 14 complexity tests (10 `complexity_*`, 3 `soundness_*`,
   1 `structural_classify_*`; all `#[ignore]` with "CX track" comment).
   **Blocked-by: CX-A, CX-B, CX-C** (0 violations required).
-  **Current: 525 violations (non-blocking gate). See CX-NEXT.**
+  **Current: 524 violations (non-blocking gate). See CX-NEXT.**
 
 ### Acceptance (endgame — Gate 4)
 
@@ -1100,65 +1112,32 @@ language proves algorithmic complexity from source code at compile time.
 
 #### Current state (PR #354)
 
-37 proven structural bounds (all O(n) catamorphisms). 525 violations.
+37 proven structural bounds (all O(n) catamorphisms). 524 violations.
 Zero overlap — the proven functions don't have violations.
 
 **What works (22 regression tests):**
 - Direct field binding: `match x { Cons { tail: t } => f(x: t) }`
 - Fold/map on collection field: `cs |> fold(f: (acc, c) => f(t: c))`
 - Divide-and-conquer: binary search O(log n) via master theorem
+- Arithmetic descent: `self(n - 1)`, `self(n / 2)`
+- Type-based collection detection: `match_arm_nodes(n) → List<Node>`
+- Cross-type inductive fields: InferredNode.Resolved.node → Node
 - Fail-closed: same-argument, arithmetic, lambda-captured variables,
   duplicate-same-child, invalid proportional shrink
 
-**What doesn't work (the real compiler patterns):**
-- Match on one field, recurse on another: `match n.expr_data { ... } =>
-  n.children |> map(c => f(c))` — shape dispatch ≠ recursion target
-- Accessor chaining in fold: `n.params |> map(p => f(n: accessor(n: p)))`
-- Higher-order combinators: `map_children(node: n, transform: c => f(c))`
+**What doesn't work yet:**
+CX-L2 annotates descent evidence correctly. The evidence reaches
+classify_recursion_pattern. But the classification doesn't read the
+LoweringTarget pipeline — it uses its own parallel logic. This is
+the Tier 2→3 disconnect. CX-B fixes it.
 
-**Root cause:** The analyzer traces individual call arguments bottom-up
-(ExprVar? ExprFieldAccess? ExprCall?), adding special cases for each
-syntax form. The real compiler uses ~15 different syntactic patterns that
-all reduce to the same thing: fold over a tree. The argument-tracing
-approach is fundamentally combinatorial — it will never cover all skins.
-
-**The missing abstraction: recursion scheme recognition.** Instead of
-tracing "is this argument a sub-value?", recognize "is this function a
-structural fold over an inductive type?" A function `f(n: Node) → T`
-is a catamorphism if every self-call passes a strict sub-Node. The
-proof obligation is the negative check (no call preserves or grows the
-argument), not the positive trace (trace each call to a specific field).
-
-This is the same insight as "iteration in different skin" — fold, map,
-match+recurse, map_children, accessor chains are all the same operation.
-The analyzer must collapse them to a singular case.
-
-Infrastructure: CX-L1 (InductiveField), CX-L2 (descent_evidence with
-lambda transparency + fold context threading), CX-L3 (catamorphism +
-disjointness + master theorem), all in std/induction.dag.
-
-**Channels unified:** `classify_recursion_pattern` now reads
-`descent_evidence` first (single authority), falling back to existing
-proof constructors only for non-structural patterns (arithmetic,
-parser, worklist). No dual representation.
-
-#### Design direction: recursion scheme recognition
-
-The current bottom-up argument tracing (ExprVar? ExprFieldAccess?
-ExprCall?) is combinatorial — each syntactic form needs a special case.
-The compiler uses ~15 patterns that all reduce to "fold over a tree."
-
-**Next step:** Replace argument tracing with recursion scheme
-recognition. A function `f(n: T)` where T is inductive is a
-catamorphism if no self-call passes the original parameter or anything
-derived from a non-shrinking path. One check, not N special cases.
-
-**Concrete gaps (documented with gap_ tests):**
-- Accessor chains in scrutinee: `match get_inner(w: w) { ... }`
-- Operation-driven sub-values: `take`/`skip` as first-class shrink
-  witnesses (currently fabricated InductiveField)
-- Size expression unification: CX-L2's SizeExpr should merge with
-  complexity.dag's existing size algebra
+**Design direction: four-tier proof architecture.** See CX-NEXT.
+Users write functions. Recursion emerges from the call graph. The
+compiler observes descent evidence at cycle edges. Classification
+maps emerged patterns to fold/descend/repeat via the exhaustive
+lowering table. The primitives are proof vocabulary, not user-facing
+API. Raw recursion is allowed — the compiler handles it through all
+four tiers.
 
 #### Hard gate: Time complexity (KF-1)
 
@@ -1349,71 +1328,209 @@ Over-retention:
 No test >2s without justification. Self-compile time tracked per-PR.
 Self-compile complexity analysis runs without OOM (PERF-3 + PERF-6).
 
-### CX-NEXT: 525 → 0 violations (3 structural fixes)
+### CX-NEXT: 524 → 0 violations
 
-**Status:** 525 honest violations. Full triage in
+**Status:** 524 honest violations (down from 526). Full triage in
 [`docs/cx-violation-triage.md`](docs/cx-violation-triage.md).
-17 functions already have proven structural bounds (all O(n)
-catamorphisms on CostExpr, SizeExpr, TypeTemplate, Stack).
 
-All 525 trace to 3 root causes. 280 are direct (recursive functions
-where the analyzer can't see descent). 227 are composed (callers of
-direct unknowns — resolve automatically). 3 structural fixes cover all:
+#### Architecture: four tiers of the same thing
 
-| Fix | Direct | Composed | Total | Migration path |
-|-----|--------|----------|-------|----------------|
-| Node tree descent recognition | ~230 | ~200 | ~430 | Phase 1→2→3 below |
-| Parser SCC TokenPosition threading | ~73 | ~53 | ~126 | SCC termination proofs (std/termination.dag) |
-| Graph DFS worklist (I1/I2) | 2 | ~10 | ~12 | Worklist iteration pattern |
+Recursion is emergent — users write functions that call functions,
+and cycles appear in the call graph. The compiler doesn't model
+"recursion" — it models functions and observes what emerges. The
+proof that all programs terminate comes from four tiers, each building
+on the previous:
 
-When all three are done, `CostUnknown` can be deleted from `CostExpr`
-— because no code path can produce it.
+| Tier | What happens | Authority | Implementation |
+|------|-------------|-----------|----------------|
+| **0: Types** | Types declare their recursive structure (which fields are children, which are containers) | std/ type declarations | InductiveField, RecursionShape in std/induction.dag. Node fields in std/node.dag. |
+| **1: Emergence** | Call graph reveals cycles — recursion appears without being modeled | SCC detection | complexity.dag SCC analysis |
+| **2: Evidence** | For each call in a cycle, observe what happens to the arguments | CX-L2 descent annotation | annotate_descent in 04_infer.dag → SubValueRelation |
+| **3: Classification** | Map observed evidence to a proven primitive (fold/descend/repeat) | Lowering table | CallPattern → LoweringTarget in std/computation.dag |
 
-#### Migration path: Node as inductive type (highest ROI — ~430 violations)
+Users write functions. The compiler discovers that some form cycles
+(Tier 1), observes that arguments shrink at cycle edges (Tier 2), and
+classifies the pattern as an instance of fold, descend, or repeat
+(Tier 3). The three primitives aren't a constraint on what users
+write — they're the compiler's proof vocabulary for emerged patterns.
 
-Three phases, each independently shippable:
+**Exhaustiveness** means: the vocabulary covers every pattern that can
+emerge from well-typed function calls. The lowering table in
+computation.dag is exhaustive — every CallPattern maps to a bounded
+primitive. `SameArgumentCall → repeat(Forever)` is the worst case,
+not a gap.
 
-**Phase 1: Register Node.children now (bootstrap).**
-Seed `build_type_env` with Node.children as ListRecursion. Node is
-currently a hand-written Rust struct (the kernel's only recursive type).
-Declaring its structure as a fact lets CX-L1 prove tree-walk functions
-are O(n). This is a single change in the type-env kernel seeding and
-dissolves ~230 direct + ~200 composed violations immediately.
+**Regression prevention** means: once the pipeline is connected
+end-to-end, raw `self(...)` calls that can't be classified produce
+a compile error. New code either composes from proven patterns or
+fails loudly. No ratchet needed — the language enforces it.
 
-**Phase 2: Declare Node structure in std/ (.dag fact).**
-Move the Node structural declaration from Rust kernel seeding into a
-.dag file (e.g., `std/node.dag` or `std/syntax.dag`). The compiler
-reads the declaration the same way it reads any other type. Node is
-still implemented in Rust — the .dag file is a fact declaration, not
-an implementation. This aligns with M9 (DFS the concept DAG) and makes
-Node's recursive structure visible to all downstream analysis.
+#### Current state
 
-**Phase 3: Node IS a .dag type (self-hosting).**
-Node is defined in .dag and compiled to Rust. The kernel seed disappears.
-This is the endgame where the compiler's core data structure is defined
-in its own language. Blocked by: the compiler must be able to compile
-its own Node type and bootstrap from it.
+**What works:**
+- Tier 0: std/node.dag declares Node's 8 recursive fields +
+  InferredNode.Resolved.node cross-type reference. compiler_recursive_types
+  includes {Node, InferredNode, MatchPattern, MethodSemantics, LambdaSemantics}.
+- Tier 1: SCC detection works.
+- Tier 2: CX-L2 annotates descent_evidence on self-call ExprCall nodes.
+  classify_let_value handles field access, child accessors, arithmetic
+  descent, collection-preserving methods, type-based collection detection.
+- Tier 3: **DISCONNECTED.** LoweringTarget defined in computation.dag
+  but complexity.dag never reads it. classify_recursion_pattern has its
+  own parallel classification logic.
 
-#### Migration path: Parser SCC termination
+**The 524 violations are Tier 2→3 failures:** the compiler observed
+cycles and collected evidence, but can't classify because the pipeline
+isn't connected. The lowering table exists. The evidence exists. The
+wire between them doesn't.
 
+#### Violation breakdown (by transitive callee)
+
+| Callee | Count | Tier 3 primitive | What's missing |
+|--------|-------|-----------------|----------------|
+| `parse_type_expr` | 208 | fold (token advance) | Parser TokenPosition evidence (CX-A) |
+| `render_node_type` | 140 | descend (type tree) | Wire LoweringTarget (CX-B) |
+| `emit_*_block_stmts` | 108+102+88 | descend (Node tree) | Wire LoweringTarget (CX-B) |
+| `to_string` / `json_*` | 62+20 | descend (Node tree) | Wire LoweringTarget (CX-B) |
+| `make_indent` | 44 | repeat (arithmetic) | Wire LoweringTarget (CX-B) |
+| `dfs_finish_order` | 14 | fold (worklist) | Worklist drain evidence (CX-C) |
+
+Top 5 callees = 53% of all violations. All map to existing CallPattern
+variants in computation.dag.
+
+#### Sequenced work items
+
+**CX-B: Wire LoweringTarget into analyzer. NEXT.**
+Connect Tier 2→3. Make classify_recursion_pattern read SubValueRelation
+→ sub_value_to_call_pattern → call_pattern_to_lowering → LoweringTarget
+instead of its own parallel logic. Delete RecursionPattern.
+This is plumbing — no new proofs, just connecting existing pieces.
+Proof of concept with existing Node fields: should dissolve emitter +
+serializer + complexity.dag violations (~500 of 524) because Node's
+inductive fields already exist and descent_evidence is already annotated.
+
+**CX-A: Parser SCC termination.**
 Parser functions form mutual recursion groups (parse_type_expr →
 parse_expr → parse_type_expr). Each call passes the same token list
 but advances position. The proof requires showing that every SCC cycle
 advances the TokenPosition measure by at least 1. Infrastructure
-partially exists in `std/termination.dag`. The key enabler is threading
-parser-always-advancing proofs through SCC edge collection.
+partially exists in std/termination.dag. Dissolves ~208 violations.
 
-#### Migration path: Graph DFS worklist
+**CX-D: Extend type declarations in std/.**
+Declare more compiler types in std/ so Tier 2 can see descent through
+any type. Current: Node, InferredNode. Needed: type trees (for
+render_node_type), token streams (for parser). Each new type
+declaration makes Tier 2 see more evidence → Tier 3 classifies more
+patterns → violations dissolve.
 
-`dfs_finish_order` and `dfs_collect_component` in `std/graph.dag` use
-visited-set recursion. The proof requires showing that the worklist
-shrinks on every iteration (each node visited at most once). This is
-a bounded-iteration pattern (I1/I2 in Exploratory Directions).
+**CX-C: Fold evidence contracts.**
+Self-calls inside `children |> fold` callbacks get structural descent
+proofs from operation size contracts. Blocked-by: CX-D (needs fold
+contracts on collection types). Dissolves scattered violations.
 
-**Cost algebra design direction:** SizeExpr is a parallel algebra that
-should derive from std/ concepts. Sizes are structural facts, not
-symbolic expressions. CostLog should emerge from iteration structure.
-See triage doc for details.
+**CX-E: Re-enable gate.**
+Assert 0 violations. Delete CostUnknown from CostExpr — no code path
+can produce it. Delete old proof system (collect_descent_vars,
+construct_termination_proof, collect_scc_child_edges).
+
+#### CX-L2 infrastructure landed (PR #361)
+
+- `element_type` on InductiveField (cross-type inductive references)
+- `ArithmeticDescent` variant on SubValueRelation (replaces _arith fabrication)
+- `classify_let_value` — child accessor/list-accessor let-bindings,
+  arithmetic descent (Sub/Div/Add), collection-preserving methods,
+  type-based collection detection (inferred List<RecursiveType>)
+- `resolve_collection_field` — structural collection detection
+- ExprForEach handler, ExprMatch Optional handler with element_type
+- SCC hybrid: self-edges from CX-L2 descent_evidence, cross-edges from
+  existing infrastructure (`collect_scc_cx_l2_tree_edges`)
+- std/node.dag: compiler_inductive_fields, compiler_recursive_types
+- Cross-type detection: classify_field_recursion with recursive_type_set
+- SCC evidence derived through sub_value_to_evidence (not fabricated)
+- ArithmeticDescentCall derives op/by from actual ShrinkFactor
+
+#### Structural completeness: no edge cases
+
+The pipeline has 4 stages. Each stage must be exhaustive over its
+input type — every variant handled, fail-closed on unknowns. This
+is the guarantee that no new syntactic pattern creates an "edge case."
+
+**Exhaustive (no gaps):**
+- SubValueRelation → CallPattern: 5/5 variants (sub_value_to_call_pattern)
+- CallPattern → LoweringTarget: 7/7 variants (lower_call_pattern)
+- annotate_descent: 21/21 ExprData variants (special handling or map_children)
+
+**Gap 1: classify_argument — transparent wrapper propagation.**
+6/21 ExprData variants handled. The 15 unhandled split into:
+- Value constructors (9): ExprLiteral, ExprRecordLit, ExprListLit,
+  ExprStringInterp, ExprLambda, ExprForEach, ExprUnaryOp, ExprError,
+  NoExprData — CORRECTLY SubValueUnknown (new values aren't sub-values).
+- Transparent wrappers (6): ExprMatch, ExprIf, ExprBlock, ExprLet,
+  ExprCast, ExprReturn — SHOULD propagate evidence through to result.
+  ExprMatch: worst-case across arms. ExprIf: worst-case across branches.
+  ExprBlock/ExprLet: propagate body. ExprCast/ExprReturn: propagate inner.
+Fix: handle transparent wrappers. Any NEW ExprData variant is either
+a value constructor (→ SubValueUnknown) or a control flow wrapper
+(→ propagate). The classification is structurally determined by whether
+the variant produces a NEW value or passes through an existing one.
+
+**Gap 2: SCC proof dimensionality.**
+Only 2 lexicographic combinations tried ([TreeSize, ListLength] and
+[TreeSize, TokenPosition]). Should construct proofs systematically:
+for each SCC member, determine which RankingDimensions have evidence,
+then search for a dimension ordering where every cycle has at least
+one Strict edge. This is standard lexicographic termination analysis.
+5 dimensions × small SCCs = tractable search.
+
+**Gap 3: SetCardinality dimension unused.**
+WorklistDrainCall exists in CallPattern but no evidence path produces
+it. Fix: in classify_argument, recognize `set |> remove(x)` and
+`map |> remove(key)` patterns as SetCardinality descent. Or: model
+visited-set growth as fold over a finite universe.
+
+**Gap 4: ArithmeticValue not in SCC proofs.**
+Only used for single-function recursion. Fix: include ArithmeticValue
+in the SCC proof dimension search (Gap 2 fix covers this).
+
+**Gap 5: Lambda transparency.**
+Higher-order dispatch (e.g., `emit_shared_expr` with callback parameters)
+is opaque. When `f(callback: expr => g(expr))` calls `callback(child)`,
+the CX system sees a call to a lambda parameter — not `g(child)`. The
+information drops at `build_params_scope` (04_infer.dag:681): TypeBinding
+stores the Callable type, not the lambda body. In a decidable language,
+all lambdas are statically known. Fix: preserve lambda body in TypeBinding
+or inline at call sites. Dissolves emitter SCC violations (~112).
+
+**Deferred to types-in-std:**
+- `compiler_recursive_types` parallel fact table — dissolves when all
+  types move to std/ and recursive_type_set derives from inductive_fields.
+- Non-Node types in recursive set — intentional for cross-type detection;
+  bounded-kernel applies to the language, not the compiler's own types.
+- Hardcoded collection-preserving method names (skip/filter/take/etc.) —
+  dissolves when method semantics come from std/ type declarations.
+- `classify_let_value` takes first ListRecursion field by order — dissolves
+  when types declare projection facts (which field a function accesses).
+
+**Completeness guarantee:** When all 5 gaps are closed:
+- Every ExprData variant → SubValueRelation (exhaustive)
+- Every SubValueRelation → CallPattern (exhaustive)
+- Every CallPattern → LoweringTarget (exhaustive)
+- Every SCC topology → lexicographic proof search (exhaustive)
+- Lambda callbacks → transparent (inline at call site)
+- New code either maps to a proven primitive or gets CostUnknown
+  (fail-closed). CostUnknown means "declare the missing fact" —
+  not "add a new heuristic."
+
+#### Node as inductive type
+
+**Phase 1: DONE.** Node's 8 recursive fields + InferredNode cross-type
+reference declared in std/node.dag.
+
+**Phase 2: DONE.** Compiler types declared in std/node.dag as .dag
+fact declarations. Types still implemented in Rust.
+
+**Phase 3: Node IS a .dag type (self-hosting).** Endgame.
+Blocked by: compiler must compile its own Node type.
 
 **Deferred CX design improvements:**
 - ComplexityReport stores rendered class strings; should keep typed
@@ -2243,15 +2360,14 @@ fn find_duplicates(items: List<String>) -> List<String> {
 ```
 
 **Status:** Partially working. The analyzer computes CostExpr for
-all 1600 compiler functions. 525 get CostUnknown because descent
-evidence doesn't propagate through Node trees and parser SCCs.
-When the 3 structural fixes land (CX-NEXT), every function has a
-proven bound and CostUnknown is deleted from the type system.
+all 1600 compiler functions. 524 get CostUnknown because the Tier 2→3
+pipeline (SubValueRelation → LoweringTarget) isn't connected.
+CX-L2 evidence exists. The lowering table exists. CX-B wires them.
 
 **Remaining work:**
-- [ ] KF-1a: Node tree descent recognition (~230 direct violations)
-- [ ] KF-1b: Parser SCC TokenPosition threading (~73 direct)
-- [ ] KF-1c: Graph DFS worklist (2 direct, ~10 composed)
+- [ ] KF-1a: Wire LoweringTarget pipeline (CX-B — ~500 violations)
+- [ ] KF-1b: Parser SCC TokenPosition threading (CX-A — ~208 violations)
+- [ ] KF-1c: Graph DFS worklist (CX-C — ~14 violations)
 - [ ] KF-1d: Delete `CostUnknown` variant from CostExpr
 - [ ] KF-1e: Re-enable CX gate as blocking (CX-E)
 
