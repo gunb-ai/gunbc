@@ -64,6 +64,7 @@ type EdgeKind = Consumed | Read | Threaded | Projected
 type EdgeClassification {
   kind: EdgeKind
   site: String
+  span_start: Int
 }
 
 // =========================================================================
@@ -132,7 +133,7 @@ fn empty_usage_accum() -> UsageAccum {
 // binding_kind is set from ExprVar nodes; once set it is preserved across
 // subsequent records for the same name.
 fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?) -> UsageAccum {
-  let edge = EdgeClassification { kind: kind, site: site }
+  let edge = EdgeClassification { kind: kind, site: site, span_start: 0 }
   let existing = match map_get(accum.bindings, name) {
     Some { value: usage } => usage
     None => BindingUsage { name: name, binding_kind: none, consumers: [] }
