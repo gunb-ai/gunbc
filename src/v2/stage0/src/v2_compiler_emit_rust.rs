@@ -4296,14 +4296,17 @@ if ((pairs.clone().len() as i64) > 0) {
 
 pub fn emit_rest_body_line(transport: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     match transport_request_body(transport) {
-    Some(b) => if ((b.children.clone().len() as i64) == 0) {
-        "compile_error!(\"transport body must be a record expression with named fields\");".to_string()
-    } else {
-        {
-            let fields = Rc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), field_init_node_name(fi.clone())), "\": ".to_string()), emit_simple_expr(field_init_node_value(fi.clone()), RenderTarget::Rust, source_index.clone()))); } __result });
-v2_rt::concat(v2_rt::concat("let request = request.json(&serde_json::json!({ ".to_string(), fields.join(&", ".to_string())), " }));".to_string())
-}
-    },
+    Some(b) => match (*b.expr_data.clone()).clone() {
+    ExprData::ExprRecordLit { .. } => {
+        let fields = Rc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), field_init_node_name(fi.clone())), "\": ".to_string()), emit_simple_expr(field_init_node_value(fi.clone()), RenderTarget::Rust, source_index.clone()))); } __result });
+if ((fields.clone().len() as i64) > 0) {
+            v2_rt::concat(v2_rt::concat("let request = request.json(&serde_json::json!({ ".to_string(), fields.clone().join(&", ".to_string())), " }));".to_string())
+        } else {
+            "compile_error!(\"transport body record has no fields\");".to_string()
+        }
+},
+    _ => "compile_error!(\"transport body must be a record expression { field: value, ... }\");".to_string(),
+},
     None => "".to_string(),
 }
 }
