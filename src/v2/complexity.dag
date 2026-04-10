@@ -2890,10 +2890,10 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     let all_evidence = collect_self_call_evidence(body: body, fn_name: func_name)
     let has_evidence = all_evidence |> count > 0
     // Two conditions for structural proof:
-    // 1. At least one self-call strictly descends (makes progress)
-    // 2. All self-calls are non-growing (Strict, Iterated, Arithmetic, or Preserved)
-    //    — no call has SubValueUnknown on ALL parameters
-    let has_any_strict = has_evidence && all_evidence |> any(call_ev =>
+    // Check if ALL self-calls have structural evidence on at least one param.
+    // PreservedValue is NOT accepted here — a preserved branch can loop
+    // back to itself indefinitely (soundness: conditional_descent test).
+    let all_structural = has_evidence && all_evidence |> all(call_ev =>
       call_ev |> any(rel =>
         match rel {
           StrictSubValue { field: _, factor: _ } => true
@@ -2903,21 +2903,8 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
         }
       )
     )
-    let all_non_growing = has_evidence && all_evidence |> all(call_ev =>
-      call_ev |> any(rel =>
-        match rel {
-          StrictSubValue { field: _, factor: _ } => true
-          IteratedSubValue { field: _ } => true
-          ArithmeticDescent { param: _, factor: _ } => true
-          PreservedValue => true
-          _ => false
-        }
-      )
-    )
-    let all_structural = has_any_strict && all_non_growing
     if all_structural {
       // Find the first structural relation from the evidence.
-      // Must include ArithmeticDescent (accepted by all_structural).
       let first_call = match all_evidence |> first {
         Some { value: call_ev } =>
           call_ev |> filter(rel =>
@@ -2930,6 +2917,17 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
           ) |> first
         None => none
       }
+      // Guard: ArithmeticDescent with branching (multiple self-calls per path)
+      // is UNSOUND as O(n). Example: fib(n-1) + fib(n-2) = O(2^n), not O(n).
+      // Tree descent with branching IS sound (bounded by tree size).
+      let is_arithmetic_branching = match first_call {
+        Some { value: rel } =>
+          match rel { ArithmeticDescent { param: _, factor: _ } => path_calls > 1  _ => false }
+        None => false
+      }
+      if is_arithmetic_branching {
+        lower_call_pattern(pattern: SameArgumentCall)
+      } else {
       match first_call {
         Some { value: rel } =>
           match sub_value_to_call_pattern(relation: rel) {
@@ -2937,6 +2935,7 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
             None => lower_call_pattern(pattern: SameArgumentCall)
           }
         None => lower_call_pattern(pattern: SameArgumentCall)
+      }
       }
     } else {
       // ── Step 2: Fall back to existing proof constructors ────────────
@@ -3611,8 +3610,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
         // Self-edge: read CX-L2 descent_evidence from annotated self-calls
         let self_evidence = collect_self_call_evidence(body: entry.body, fn_name: name)
         let self_has_calls = self_evidence |> count > 0
-        // Two conditions: at least one call descends, all calls are non-growing
-        let has_any_strict = self_has_calls && self_evidence |> any(call_ev =>
+        let self_all_structural = self_has_calls && self_evidence |> all(call_ev =>
           call_ev |> any(rel =>
             match rel {
               StrictSubValue { field: _, factor: _ } => true
@@ -3622,18 +3620,6 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
             }
           )
         )
-        let all_non_growing = self_has_calls && self_evidence |> all(call_ev =>
-          call_ev |> any(rel =>
-            match rel {
-              StrictSubValue { field: _, factor: _ } => true
-              IteratedSubValue { field: _ } => true
-              ArithmeticDescent { param: _, factor: _ } => true
-              PreservedValue => true
-              _ => false
-            }
-          )
-        )
-        let self_all_structural = has_any_strict && all_non_growing
         // Extract the actual descending parameter name from evidence
         let descending_param = match self_evidence |> first {
           Some { value: call_ev } =>
@@ -5038,13 +5024,13 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // =========================================================================
 
 // Collect descent_evidence from ExprCall nodes calling any function in target_set.
-// Lambda bodies are OPAQUE — calls inside closures are not collected, because
-// lambda parameters are not the caller's parameters and the evidence would be wrong.
+// Collect descent_evidence from ExprCall nodes calling any function in target_set.
+// Recurses into lambda bodies: the evidence on calls inside fold/map lambdas IS
+// sound because annotate_descent's method-call handler sets up the correct context
+// (element parameter as IteratedSubValue). For parameter-callback lambdas, the
+// evidence will be SubValueUnknown (harmless — doesn't pass structural checks).
 fn collect_call_evidence(body: Node, target_set: Map<String, Bool>) -> List<List<SubValueRelation>> {
   match body.expr_data {
-    // Lambda bodies are opaque: don't recurse into closures.
-    // Calls inside lambdas use lambda parameters, not the caller's parameters.
-    ExprLambda { semantics: _ } => []
     ExprCall { call_semantics: _, descent_evidence: de } =>
       let callee = expr_call_func(texpr: body)
       let own = if map_get(target_set, callee) != none {
@@ -5112,6 +5098,11 @@ fn extract_shrink_factor(all_calls: List<List<SubValueRelation>>, param_index: I
                   UnitShrink => Some { value: f }
                   _ => if prev == f { acc } else { none }
                 }
+              ArithmeticDescent { param: _, factor: f } =>
+                match prev {
+                  UnitShrink => Some { value: f }
+                  _ => if prev == f { acc } else { none }
+                }
               _ => acc
             }
           None => acc
@@ -5135,6 +5126,7 @@ fn max_path_descending(body: Node, fn_name: String, param_index: Int) -> Int {
                 match rel {
                   StrictSubValue { field: _, factor: _ } => 1
                   IteratedSubValue { field: _ } => 1
+                  ArithmeticDescent { param: _, factor: _ } => 1
                   _ => 0
                 }
               None => 0

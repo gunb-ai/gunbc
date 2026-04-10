@@ -2437,20 +2437,12 @@ if (path_calls.clone() == 0) {
             {
                 let all_evidence = collect_self_call_evidence(body.clone(), func_name.clone());
 let has_evidence = ((all_evidence.clone().len() as i64) > 0);
-let has_any_strict = (has_evidence.clone() && { let mut __found = false; for call_ev in all_evidence.clone().iter().cloned() { if { let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+let all_structural = (has_evidence && { let mut __all = true; for call_ev in all_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
     SubValueRelation::IteratedSubValue { .. } => true,
     SubValueRelation::ArithmeticDescent { .. } => true,
-    _ => false,
-} { __found = true; break; } } __found } { __found = true; break; } } __found });
-let all_non_growing = (has_evidence.clone() && { let mut __all = true; for call_ev in all_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { .. } => true,
-    SubValueRelation::IteratedSubValue { .. } => true,
-    SubValueRelation::ArithmeticDescent { .. } => true,
-    SubValueRelation::PreservedValue => true,
     _ => false,
 } { __found = true; break; } } __found }) { __all = false; break; } } __all });
-let all_structural = (has_any_strict && all_non_growing);
 if all_structural {
                     {
                         let first_call = match all_evidence.clone().first().cloned() {
@@ -2462,13 +2454,24 @@ if all_structural {
 } { __result.push(rel); } } __result }).first().cloned(),
     None => None,
 };
-match first_call {
+let is_arithmetic_branching = match first_call.clone() {
+    Some(rel) => match (*rel.clone()).clone() {
+    SubValueRelation::ArithmeticDescent { .. } => (path_calls.clone() > 1),
+    _ => false,
+},
+    None => false,
+};
+if is_arithmetic_branching {
+                            lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                        } else {
+                            match first_call.clone() {
     Some(rel) => match sub_value_to_call_pattern(rel.clone()) {
     Some(cp) => lower_call_pattern(cp.clone()),
     None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
 },
     None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
 }
+                        }
 }
                 } else {
                     {
@@ -3210,20 +3213,12 @@ Rc::new({ let mut __result = Vec::new(); for name in members.clone().iter().clon
     Some(entry) => {
             let self_evidence = collect_self_call_evidence(entry.body.clone(), name.clone());
 let self_has_calls = ((self_evidence.clone().len() as i64) > 0);
-let has_any_strict = (self_has_calls.clone() && { let mut __found = false; for call_ev in self_evidence.clone().iter().cloned() { if { let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
+let self_all_structural = (self_has_calls.clone() && { let mut __all = true; for call_ev in self_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
     SubValueRelation::IteratedSubValue { .. } => true,
     SubValueRelation::ArithmeticDescent { .. } => true,
-    _ => false,
-} { __found = true; break; } } __found } { __found = true; break; } } __found });
-let all_non_growing = (self_has_calls.clone() && { let mut __all = true; for call_ev in self_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
-    SubValueRelation::StrictSubValue { .. } => true,
-    SubValueRelation::IteratedSubValue { .. } => true,
-    SubValueRelation::ArithmeticDescent { .. } => true,
-    SubValueRelation::PreservedValue => true,
     _ => false,
 } { __found = true; break; } } __found }) { __all = false; break; } } __all });
-let self_all_structural = (has_any_strict.clone() && all_non_growing.clone());
 let descending_param = match self_evidence.clone().first().cloned() {
     Some(call_ev) => call_ev.clone().iter().cloned().fold("".to_string(), |found: String, rel: Rc<SubValueRelation>| if (found.clone().as_str() != "".to_string().as_str()) {
                 found.clone()
@@ -4830,7 +4825,6 @@ Rc::new(SummaryResult {
 pub fn collect_call_evidence(body: Rc<Node>, target_set: Rc<HashMap<String, bool>>) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => Rc::new(vec![]),
     ExprData::ExprCall { descent_evidence: de, .. } => {
             let callee = expr_call_func(body.clone());
 let own = if (v2_rt::map_get(&target_set, callee) != None) {
@@ -4893,6 +4887,14 @@ pub fn extract_shrink_factor(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, 
         None
     },
 },
+    SubValueRelation::ArithmeticDescent { factor: f, .. } => match (*prev.clone()).clone() {
+    ShrinkFactor::UnitShrink => Some(f.clone()),
+    _ => if (prev.clone() == f.clone()) {
+        acc.clone()
+    } else {
+        None
+    },
+},
     _ => acc.clone(),
 },
     None => acc.clone(),
@@ -4911,6 +4913,7 @@ let own = if (callee.as_str() == fn_name.clone().as_str()) {
     Some(rel) => match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => 1,
     SubValueRelation::IteratedSubValue { .. } => 1,
+    SubValueRelation::ArithmeticDescent { .. } => 1,
     _ => 0,
 },
     None => 0,

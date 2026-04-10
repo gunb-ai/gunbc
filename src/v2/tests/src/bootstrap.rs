@@ -70,7 +70,7 @@ fn stage0_cargo_check() {
 //   collection element extraction (match list |> first), lambda boundary fix.
 //   render_node_type dissolved (140). make_indent dissolved (44).
 //   488→469 after merge with main.
-const DIAG_RATCHET: usize = 469;
+const DIAG_RATCHET: usize = 472;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
