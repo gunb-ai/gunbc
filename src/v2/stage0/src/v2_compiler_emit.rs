@@ -17,7 +17,8 @@ use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
-pub use crate::std_induction::{InductiveField};
+pub use crate::std_induction::{InductiveField, SubValueRelation};
+use crate::std_induction::SubValueRelation::{SubValueUnknown};
 pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix};
@@ -313,7 +314,7 @@ let has_body = ((ch.len() as i64) > 1);
 if (has_body == false) {
             {
                 let value = let_value(texpr.clone());
-extend_scope(scope.clone(), let_binding_name_at(texpr.clone(), scope.type_env.clone().source_index.clone()), resolved_type(value))
+extend_scope(scope.clone(), let_binding_name_at(texpr.clone(), scope.type_env.clone().source_index.clone()), resolved_type(value), Rc::new(SubValueRelation::SubValueUnknown))
 }
         } else {
             scope.clone()
@@ -400,12 +401,12 @@ pub fn has_nested_records_node(mut n: Rc<Node>, mut source_index: Option<Rc<Newl
     loop {
         let is_product = (n.connective.clone() == Connective::Conj);
 let is_coproduct = (n.connective.clone() == Connective::Disj);
-if is_product.clone() {
+if is_product {
             break true;
 } else {
-            if is_coproduct.clone() {
+            if is_coproduct {
                 let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-if is_optional.clone() {
+if is_optional {
                     {
                         let __tco_0 = with_required_cardinality(n);
 let __tco_1 = source_index;
@@ -418,7 +419,7 @@ continue;
 }
 } else {
                 let is_map = node_is_keyed_collection(n.clone(), source_index.clone());
-if is_map.clone() {
+if is_map {
                     match n.children.clone().get(1 as usize).cloned() {
     Some(val_child) => { {
                         let __tco_0 = child_type_node(val_child.clone());
@@ -517,18 +518,18 @@ to_string_helper(value.clone(), Rc::new(vec![])).join(&"".to_string())
 pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
     loop {
         if (value.clone() == 0) {
-            break acc.clone();
+            break acc;
 } else {
             let digit = (value.clone() % 10);
 let rest = ((value.clone() - digit.clone()) / 10);
 let digit_chars = Rc::new(vec!["0".to_string(), "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(), "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(), "9".to_string()]);
-let ch = match Rc::new({ let mut __result = Vec::new(); for p in Rc::new(digit_chars.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() == digit.clone()) { __result.push(p); } } __result }).first().cloned() {
+let ch = match Rc::new({ let mut __result = Vec::new(); for p in Rc::new(digit_chars.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() == digit.clone()) { __result.push(p); } } __result }).first().cloned() {
     Some(p) => p.1.clone(),
     None => "?".to_string(),
 };
 {
-                let __tco_0 = rest.clone();
-let __tco_1 = v2_rt::concat(Rc::new(vec![ch.clone()]), acc);
+                let __tco_0 = rest;
+let __tco_1 = v2_rt::concat(Rc::new(vec![ch]), acc);
 value = __tco_0;
 acc = __tco_1;
 continue;
@@ -1503,7 +1504,7 @@ pub fn emit_shared_tco_expr(mut frame: Rc<TcoFrame>, mut fn_name: String, mut em
     loop {
         let si = frame.scope.clone().type_env.clone().source_index.clone();
 match (*frame.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => { if (expr_call_func_at(frame.expr.clone(), si.clone()).as_str() == fn_name.clone().as_str()) {
+    ExprData::ExprCall { .. } => { if (expr_call_func_at(frame.expr.clone(), si).as_str() == fn_name.as_str()) {
             break emit_self_call_reassign(Rc::new(TcoReassignInput {
     args: frame.expr.clone().children.clone(),
     scope: frame.scope.clone(),
@@ -1515,7 +1516,7 @@ match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprReturn => { let inner = return_value(frame.expr.clone());
 {
             let __tco_0 = Rc::new(TcoFrame {
-    expr: inner.clone(),
+    expr: inner,
     scope: frame.scope.clone(),
     depth: frame.depth.clone(),
 });
@@ -1621,7 +1622,7 @@ let v = let_value(frame.expr.clone());
 let bd = let_body(frame.expr.clone());
 let val_str = recurse_expr(v.clone(), frame.scope.clone(), frame.depth.clone());
 let let_line = emit_let_binding(n.clone(), val_str, target);
-let next_scope = extend_scope(frame.scope.clone(), n.clone(), resolved_type(v.clone()));
+let next_scope = extend_scope(frame.scope.clone(), n.clone(), resolved_type(v.clone()), Rc::new(SubValueRelation::SubValueUnknown));
 match bd {
     Some(b) => v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), recurse_tco(b.clone(), next_scope, frame.depth.clone())),
     None => let_line,
@@ -1886,7 +1887,7 @@ pub fn emit_typed_for_each_shared(variable: String, collection: Rc<Node>, body: 
     {
         let coll_str = recurse(collection.clone(), scope.clone(), depth.clone());
 let elem_type = for_each_element_type_node(resolved_type(collection.clone()));
-let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type);
+let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type, Rc::new(SubValueRelation::SubValueUnknown));
 let body_str = recurse(body, body_scope, (depth.clone() + 1));
 let var_str = emit_ident(variable.clone(), target.clone());
 let spec = language_spec(target.clone());
@@ -2004,20 +2005,20 @@ pub fn emit_block_stmts_shared(mut remaining: Rc<Vec<Rc<Node>>>, mut text: Rc<Ve
     loop {
         match remaining.clone().first().cloned() {
     None => { break Rc::new(BlockEmitState {
-    text: text.clone(),
+    text: text,
     scope: scope.clone(),
 }); },
     Some(stmt) => { let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
 let line = if prepend_indent.clone() {
-            v2_rt::concat(make_indent(depth.clone()), raw.clone())
+            v2_rt::concat(make_indent(depth.clone()), raw)
         } else {
-            raw.clone()
+            raw
         };
 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
 {
             let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = v2_rt::rc_list_push(text, line.clone());
-let __tco_2 = next_scope.clone();
+let __tco_1 = v2_rt::rc_list_push(text, line);
+let __tco_2 = next_scope;
 let __tco_3 = depth;
 let __tco_4 = prepend_indent;
 let __tco_5 = emit_expr;
@@ -2037,26 +2038,26 @@ pub fn emit_init_block_stmts_shared(mut remaining: Rc<Vec<Rc<Node>>>, mut text: 
     loop {
         match remaining.clone().first().cloned() {
     None => { break Rc::new(BlockEmitState {
-    text: text.clone(),
+    text: text,
     scope: scope.clone(),
 }); },
     Some(stmt) => { let rest = Rc::new(remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 match rest.clone().first().cloned() {
     None => { break Rc::new(BlockEmitState {
-    text: text.clone(),
+    text: text,
     scope: scope.clone(),
 }); },
     Some(_) => { let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
 let line = if prepend_indent.clone() {
-            v2_rt::concat(make_indent(depth.clone()), raw.clone())
+            v2_rt::concat(make_indent(depth.clone()), raw)
         } else {
-            raw.clone()
+            raw
         };
 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
 {
             let __tco_0 = rest.clone();
-let __tco_1 = v2_rt::rc_list_push(text, line.clone());
-let __tco_2 = next_scope.clone();
+let __tco_1 = v2_rt::rc_list_push(text, line);
+let __tco_2 = next_scope;
 let __tco_3 = depth;
 let __tco_4 = prepend_indent;
 let __tco_5 = emit_expr;
@@ -2078,7 +2079,7 @@ pub fn emit_typed_let_shared(name: String, value_str: String, body: Option<Rc<No
         let let_line = emit_let_binding(name.clone(), value_str, target);
 match body {
     Some(bd) => {
-            let next_scope = extend_scope(scope, name.clone(), resolved_type(value_node));
+            let next_scope = extend_scope(scope, name.clone(), resolved_type(value_node), Rc::new(SubValueRelation::SubValueUnknown));
 v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), recurse(bd.clone(), next_scope))
 },
     None => let_line,

@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use v2_compiler::v2_compiler_infer_access;
 use v2_compiler::v2_compiler_infer_env::{TypeBinding, TypeEnv};
+use v2_compiler::std_induction::SubValueRelation;
 use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
@@ -349,6 +350,7 @@ fn resolve_node_uses_node_name_for_lookup() {
             Rc::new(TypeBinding {
                 name: "User".to_string(),
                 resolved: leaf_node("User".to_string()),
+                provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         )])),
         recursive_types: Rc::new(vec![]),

@@ -94,6 +94,32 @@ fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   }
 }
 
+// Join two descent evidences: the OPTIMISTIC merge. Returns the BEST
+// evidence from either branch. Dual of merge_evidence (meet).
+//
+// The lattice ordering is: DescentUnknown < NonIncreasing < Strict
+// join(DescentUnknown, X) = X
+// join(NonIncreasing, Strict) = Strict
+// join(NonIncreasing, NonIncreasing) = NonIncreasing
+// join(Strict, X) = Strict
+
+fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+  match a {
+    Strict => Strict
+    NonIncreasing => match b {
+      Strict => Strict
+      _ => NonIncreasing
+    }
+    _ => b
+  }
+}
+
+// DescentEvidence inhabits BoundedLattice:
+//   meet = merge_evidence, join = join_evidence
+//   top = Strict, bottom = DescentUnknown
+// Data declaration deferred: compiler does not yet emit generic type
+// parameters for data constants (BoundedLattice<DescentEvidence>).
+
 // Promote NonIncreasing to Strict (e.g., when a callee is known to always advance).
 // DescentUnknown stays unknown — can't promote what we don't know.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {

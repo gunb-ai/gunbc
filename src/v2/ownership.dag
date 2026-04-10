@@ -64,6 +64,7 @@ type EdgeKind = Consumed | Read | Threaded | Projected
 type EdgeClassification {
   kind: EdgeKind
   site: String
+  span_start: Int
 }
 
 // =========================================================================
@@ -131,8 +132,8 @@ fn empty_usage_accum() -> UsageAccum {
 // Record a use of a binding with the given edge kind and site description.
 // binding_kind is set from ExprVar nodes; once set it is preserved across
 // subsequent records for the same name.
-fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?) -> UsageAccum {
-  let edge = EdgeClassification { kind: kind, site: site }
+fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int) -> UsageAccum {
+  let edge = EdgeClassification { kind: kind, site: site, span_start: span_start }
   let existing = match map_get(accum.bindings, name) {
     Some { value: usage } => usage
     None => BindingUsage { name: name, binding_kind: none, consumers: [] }
@@ -189,9 +190,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
     ExprVar { binding_kind: bk } =>
       let n = expr_var_name_at(texpr: texpr, source_index: si)
       if in_tail {
-        record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk)
+        record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk, span_start: texpr.span.start)
       } else {
-        record_use(accum: accum, name: n, kind: Read, site: "read", binding_kind: bk)
+        record_use(accum: accum, name: n, kind: Read, site: "read", binding_kind: bk, span_start: texpr.span.start)
       }
 
     ExprLiteral { value: _ } => accum
@@ -203,7 +204,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
         ExprVar { binding_kind: bk } =>
           let vn = expr_var_name_at(texpr: base_node, source_index: si)
           let f = field_access_field_at(texpr: texpr, source_index: si)
-          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk)
+          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start)
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si)
       }
 
@@ -218,7 +219,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_index: si)
-                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk)
+                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
               _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false, si: si)
             }
           None => accum
@@ -247,7 +248,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_index: si)
-                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk)
+                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
               _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si)
             }
           None => recv_accum
@@ -326,8 +327,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
       let body = lambda_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: accum, f: (acc, usage) =>
-        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none)
-        record_use(accum: a1, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none)
+        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
+        record_use(accum: a1, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
       )
       UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes) }
 
@@ -338,8 +339,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
       let body = foreach_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: coll_accum, f: (acc, usage) =>
-        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none)
-        record_use(accum: a1, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none)
+        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
+        record_use(accum: a1, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
       )
       UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes) }
 
@@ -399,6 +400,29 @@ fn build_movable_set(proof: OwnershipProof) -> Map<String, Bool> {
   proof.bindings |> map_values
     |> filter(usage => binding_fan_out(usage: usage) == 1 && is_owned_local(kind: usage.binding_kind))
     |> fold(init: empty_map(), f: (acc, usage) => map_insert(acc, usage.name, true))
+}
+
+// Last-use set: for bindings with fan-out > 1, the consumer with the highest
+// span_start is the last use and can move instead of clone. Returns a map of
+// binding names where a last-use move opportunity exists.
+//
+// Note: with span_start defaulted to 0 (O1 bootstrap), all consumers share
+// the same position, so no binding qualifies yet. Once spans are populated,
+// this produces real results.
+fn build_last_use_set(proof: OwnershipProof) -> Map<String, Bool> {
+  proof.bindings |> map_values
+    |> filter(usage => binding_fan_out(usage: usage) > 1 && is_owned_local(kind: usage.binding_kind))
+    |> fold(init: empty_map(), f: (acc, usage) =>
+      // Find the maximum span_start across all non-Threaded consumers.
+      let consumers = usage.consumers |> filter(c => match c.kind { Threaded => false, _ => true })
+      let max_span = consumers |> fold(init: -1, f: (m, c) => if c.span_start > m { c.span_start } else { m })
+      // Only mark as last-use if max_span is unique (exactly one consumer at that position)
+      // and max_span > 0 (span data is actually populated, not the default 0).
+      let at_max = consumers |> filter(c => c.span_start == max_span) |> count
+      if max_span > 0 && at_max == 1 {
+        map_insert(acc, usage.name, true)
+      } else { acc }
+    )
 }
 
 // =========================================================================

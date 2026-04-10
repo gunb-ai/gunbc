@@ -125,6 +125,12 @@ type SizeBound
   | ExplicitCount { n: Int }           // developer-specified literal
   | Forever                            // the largest representable bound
 
+// Constructor for TreeSize bound — avoids name collision when importing
+// into modules that already have a TreeSize variant from another type.
+fn tree_size_bound(param: String) -> SizeBound {
+  TreeSize { param: param }
+}
+
 // =========================================================================
 // Forever: the bound on truth
 //
@@ -191,10 +197,19 @@ type CallPattern
 // The compiler never rejects a call pattern. It always finds a bound.
 // =========================================================================
 
+// ShrinkFactor — rate of decrease per recursive step. Distinguishes
+// O(n) from O(log n). Moved here from induction.dag to avoid circular
+// dependency (induction imports computation; LoweringTarget needs ShrinkFactor).
+type ShrinkFactor
+  = UnitShrink
+  | ConstantShrink { amount: Int }
+  | ProportionalShrink { divisor: Int }
+
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
   evidence: DescentEvidence   // Strict for descent/shrink calls; NonIncreasing for fold body and same-argument
+  factor: ShrinkFactor?       // rate of decrease — preserved from SubValueRelation for tighter bounds
 }
 
 type IterationPrimitive
@@ -207,37 +222,37 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
     ChildAccessorCall { accessor: a } =>
       LoweringTarget { primitive: Descend,
         bound: TreeSize { param: a },
-        evidence: Strict }
+        evidence: Strict, factor: none }
 
     CollectionShrinkCall { amount: _ } =>
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "collection" },
-        evidence: Strict }
+        evidence: Strict, factor: none }
 
     ArithmeticDescentCall { op: _, by: _ } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: "n" },
-        evidence: Strict }
+        evidence: Strict, factor: none }
 
     ParserAdvanceCall { witness: _ } =>
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "tokens" },
-        evidence: Strict }
+        evidence: Strict, factor: none }
 
     WorklistDrainCall { element: _ } =>
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "worklist" },
-        evidence: Strict }
+        evidence: Strict, factor: none }
 
     FoldBodyCall =>
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "outer_collection" },
-        evidence: NonIncreasing }
+        evidence: NonIncreasing, factor: none }
 
     SameArgumentCall =>
       LoweringTarget { primitive: Repeat,
         bound: Forever,
-        evidence: NonIncreasing }
+        evidence: NonIncreasing, factor: none }
   }
 }
 

@@ -36,6 +36,17 @@ pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence
 }
 }
 
+pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+    match a {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    DescentEvidence::NonIncreasing => match b {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    _ => DescentEvidence::NonIncreasing,
+},
+    _ => b,
+}
+}
+
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     match evidence {
     DescentEvidence::NonIncreasing => DescentEvidence::Strict,

@@ -9,10 +9,12 @@ use crate::NonEmptyBTreeSet;
 pub use crate::std_termination::{DescentEvidence, RankingDimension};
 use crate::std_termination::DescentEvidence::{Strict, NonIncreasing, DescentUnknown};
 use crate::std_termination::RankingDimension::{TreeSize};
-pub use crate::std_computation::{CallPattern};
+pub use crate::std_computation::{CallPattern, LoweringTarget, IterationPrimitive, ShrinkFactor, tree_size_bound, SizeBound};
 use crate::std_computation::CallPattern::{ChildAccessorCall, FoldBodyCall, SameArgumentCall};
+use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
+use crate::std_computation::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
+use crate::std_computation::SizeBound::{CollectionSize, ArithmeticParam, Forever};
 use RecursionShape::*;
-use ShrinkFactor::*;
 use SubValueRelation::*;
 use PolynomialExponent::*;
 use AtomicCost::*;
@@ -45,18 +47,6 @@ pub fn inductive_field_to_dimension(field: Rc<InductiveField>, param: String) ->
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum ShrinkFactor {
-    UnitShrink,
-    ConstantShrink {
-        amount: i64,
-    },
-    ProportionalShrink {
-        divisor: i64,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
 pub enum SubValueRelation {
     StrictSubValue {
         field: Rc<InductiveField>,
@@ -83,6 +73,86 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
 }
 }
 
+pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
+    match (*a.clone()).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    SubValueRelation::PreservedValue => match (*b).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    _ => Rc::new(SubValueRelation::PreservedValue),
+},
+    SubValueRelation::StrictSubValue { field: fa, .. } => match (*b).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
+    SubValueRelation::StrictSubValue { field: fb, .. } => if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
+    SubValueRelation::IteratedSubValue { field: fb, .. } => if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    SubValueRelation::ArithmeticDescent { param: pa, .. } => match (*b).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
+    SubValueRelation::ArithmeticDescent { param: pb, .. } => if (pa.clone().as_str() == pb.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
+}
+}
+
+pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
+    match (*a.clone()).clone() {
+    SubValueRelation::SubValueUnknown => b.clone(),
+    SubValueRelation::PreservedValue => match (*b.clone()).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::PreservedValue),
+    _ => b.clone(),
+},
+    SubValueRelation::StrictSubValue { field: fa, .. } => match (*b.clone()).clone() {
+    SubValueRelation::SubValueUnknown => a.clone(),
+    SubValueRelation::PreservedValue => a.clone(),
+    SubValueRelation::StrictSubValue { field: fb, .. } => if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b.clone()).clone() {
+    SubValueRelation::SubValueUnknown => a.clone(),
+    SubValueRelation::PreservedValue => a.clone(),
+    SubValueRelation::IteratedSubValue { field: fb, .. } => if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    SubValueRelation::ArithmeticDescent { param: pa, .. } => match (*b.clone()).clone() {
+    SubValueRelation::SubValueUnknown => a.clone(),
+    SubValueRelation::PreservedValue => a.clone(),
+    SubValueRelation::ArithmeticDescent { param: pb, .. } => if (pa.clone().as_str() == pb.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
+}
+}
+
 pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<CallPattern>> {
     match (*relation).clone() {
     SubValueRelation::StrictSubValue { field: f, .. } => Some(Rc::new(CallPattern::ChildAccessorCall {
@@ -106,6 +176,40 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
 })),
 },
     SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),
+    SubValueRelation::SubValueUnknown => None,
+}
+}
+
+pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc<LoweringTarget>> {
+    match (*relation).clone() {
+    SubValueRelation::StrictSubValue { field: f, factor: fac, .. } => Some(Rc::new(LoweringTarget {
+    primitive: IterationPrimitive::Descend,
+    bound: tree_size_bound(f.field_name.clone()),
+    evidence: DescentEvidence::Strict,
+    factor: Some(fac.clone()),
+})),
+    SubValueRelation::IteratedSubValue { field: f, .. } => Some(Rc::new(LoweringTarget {
+    primitive: IterationPrimitive::Fold,
+    bound: Rc::new(SizeBound::CollectionSize {
+    param: f.field_name.clone(),
+}),
+    evidence: DescentEvidence::Strict,
+    factor: None,
+})),
+    SubValueRelation::ArithmeticDescent { param: p, factor: fac, .. } => Some(Rc::new(LoweringTarget {
+    primitive: IterationPrimitive::Repeat,
+    bound: Rc::new(SizeBound::ArithmeticParam {
+    param: p.clone(),
+}),
+    evidence: DescentEvidence::Strict,
+    factor: Some(fac.clone()),
+})),
+    SubValueRelation::PreservedValue => Some(Rc::new(LoweringTarget {
+    primitive: IterationPrimitive::Repeat,
+    bound: Rc::new(SizeBound::Forever),
+    evidence: DescentEvidence::NonIncreasing,
+    factor: None,
+})),
     SubValueRelation::SubValueUnknown => None,
 }
 }
@@ -278,7 +382,7 @@ pub fn ceil_log(base: i64, argument: i64) -> i64 {
 pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i64) -> i64 {
     loop {
         if (power.clone() >= argument.clone()) {
-            break k.clone();
+            break k;
 } else {
             {
                 let __tco_0 = base.clone();

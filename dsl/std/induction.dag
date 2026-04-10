@@ -68,8 +68,13 @@ import std.termination {
   RankingDimension, TreeSize
 }
 import std.computation {
-  CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall
+  CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
+  LoweringTarget, IterationPrimitive, Descend, Fold, Repeat,
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
+  CollectionSize, ArithmeticParam, Forever,
+  tree_size_bound
 }
+
 
 
 // =========================================================================
@@ -139,20 +144,7 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 
 
 // =========================================================================
-// ShrinkFactor — rate of decrease per recursive step
-// =========================================================================
-
-// HOW MUCH an argument decreases per recursive step. Distinguishes
-// O(n) from O(log n).
-//
-//   UnitShrink:         n → n-1 → ... → 0            (O(n) steps)
-//   ConstantShrink:     n → n-k → ... → 0            (O(n/k) = O(n) steps)
-//   ProportionalShrink: n → n/d → n/d² → ... → 1     (O(log_d(n)) steps)
-
-type ShrinkFactor
-  = UnitShrink
-  | ConstantShrink { amount: Int }
-  | ProportionalShrink { divisor: Int }
+// ShrinkFactor — imported from std.computation (moved to avoid circular dep)
 
 
 // =========================================================================
@@ -178,6 +170,10 @@ type SubValueRelation
 
 
 // =========================================================================
+// ShrinkFactor is now on LoweringTarget directly (no wrapper needed).
+
+
+// =========================================================================
 // SubValueRelation → DescentEvidence
 // =========================================================================
 
@@ -190,6 +186,99 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
     SubValueUnknown                          => DescentUnknown
   }
 }
+
+
+// =========================================================================
+// SubValueRelation lattice: meet/join for conservative/optimistic merge
+// =========================================================================
+
+// Meet: conservative merge. SubValueUnknown absorbs everything (worst case).
+// PreservedValue absorbs everything except SubValueUnknown.
+// For two specific structural relations, keep `a` (they are incomparable
+// in the lattice — both are strict descents on different fields).
+//
+// Lattice ordering: SubValueUnknown < PreservedValue < {structural variants}
+
+fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
+  match a {
+    SubValueUnknown => SubValueUnknown
+    PreservedValue =>
+      match b {
+        SubValueUnknown => SubValueUnknown
+        _ => PreservedValue
+      }
+    StrictSubValue { field: fa, factor: _ } =>
+      match b {
+        SubValueUnknown => SubValueUnknown
+        PreservedValue => PreservedValue
+        StrictSubValue { field: fb, factor: _ } =>
+          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+    IteratedSubValue { field: fa } =>
+      match b {
+        SubValueUnknown => SubValueUnknown
+        PreservedValue => PreservedValue
+        IteratedSubValue { field: fb } =>
+          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+    ArithmeticDescent { param: pa, factor: _ } =>
+      match b {
+        SubValueUnknown => SubValueUnknown
+        PreservedValue => PreservedValue
+        ArithmeticDescent { param: pb, factor: _ } =>
+          if pa == pb { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+  }
+}
+
+// Join: optimistic merge. SubValueUnknown is identity.
+// PreservedValue yields to any structural descent.
+// Two identical structural variants keep their value; two incompatible
+// structural variants produce SubValueUnknown (commutativity).
+
+fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
+  match a {
+    SubValueUnknown => b
+    PreservedValue =>
+      match b {
+        SubValueUnknown => PreservedValue
+        _ => b
+      }
+    StrictSubValue { field: fa, factor: _ } =>
+      match b {
+        SubValueUnknown => a
+        PreservedValue => a
+        StrictSubValue { field: fb, factor: _ } =>
+          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+    IteratedSubValue { field: fa } =>
+      match b {
+        SubValueUnknown => a
+        PreservedValue => a
+        IteratedSubValue { field: fb } =>
+          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+    ArithmeticDescent { param: pa, factor: _ } =>
+      match b {
+        SubValueUnknown => a
+        PreservedValue => a
+        ArithmeticDescent { param: pb, factor: _ } =>
+          if pa == pb { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+  }
+}
+
+// SubValueRelation inhabits BoundedLattice:
+//   meet = meet_sub_value, join = join_sub_value
+//   top = PreservedValue (meet identity), bottom = SubValueUnknown
+// Data declaration deferred: compiler does not yet emit generic type
+// parameters for data constants (BoundedLattice<SubValueRelation>).
 
 
 // =========================================================================
@@ -215,6 +304,51 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
       }
     PreservedValue                            => Some { value: SameArgumentCall }
     SubValueUnknown                           => none
+  }
+}
+
+
+// =========================================================================
+// SubValueRelation → BoundedLoweringTarget (lossless)
+// =========================================================================
+
+// Direct bridge to LoweringTarget that preserves ShrinkFactor. Unlike
+// sub_value_to_call_pattern which drops factor, this function carries
+// the factor through so downstream cost analysis can distinguish O(n)
+// from O(log n) via ProportionalShrink.
+// SubValueUnknown → none (fail-closed).
+
+fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
+  match relation {
+    StrictSubValue { field: f, factor: fac } =>
+      Some { value: LoweringTarget {
+        primitive: Descend,
+        bound: tree_size_bound(param: f.field_name),
+        evidence: Strict,
+        factor: Some { value: fac }
+      }}
+    IteratedSubValue { field: f } =>
+      Some { value: LoweringTarget {
+        primitive: Fold,
+        bound: CollectionSize { param: f.field_name },
+        evidence: Strict,
+        factor: none
+      }}
+    ArithmeticDescent { param: p, factor: fac } =>
+      Some { value: LoweringTarget {
+        primitive: Repeat,
+        bound: ArithmeticParam { param: p },
+        evidence: Strict,
+        factor: Some { value: fac }
+      }}
+    PreservedValue =>
+      Some { value: LoweringTarget {
+        primitive: Repeat,
+        bound: Forever,
+        evidence: NonIncreasing,
+        factor: none
+      }}
+    SubValueUnknown => none
   }
 }
 

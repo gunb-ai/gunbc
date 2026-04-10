@@ -45,6 +45,7 @@ import v2.std.core {
 import v2.compiler.infer_types {
   resolved_type, child_type_node, node_is_keyed_collection
 }
+import std.induction { SubValueUnknown }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for
 }
@@ -913,7 +914,8 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
     TypeEnv {
       bindings: map_insert(e.bindings, tp_name, TypeBinding {
         name: tp_name,
-        resolved: Node { name: tp_name, span: no_span(), ident_span: default_ident_span(name: tp_name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        resolved: Node { name: tp_name, span: no_span(), ident_span: default_ident_span(name: tp_name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+        provenance: SubValueUnknown
       }),
       recursive_types: e.recursive_types,
       recursive_type_set: e.recursive_type_set,

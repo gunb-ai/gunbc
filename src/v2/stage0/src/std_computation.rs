@@ -13,6 +13,7 @@ pub use crate::std_algebra::{AlgebraProfile, kernel_algebra_profile};
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use SizeBound::*;
 use CallPattern::*;
+use ShrinkFactor::*;
 use IterationPrimitive::*;
 use IterationDimension::*;
 
@@ -32,6 +33,12 @@ pub enum SizeBound {
         n: i64,
     },
     Forever,
+}
+
+pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
+    Rc::new(SizeBound::TreeSize {
+    param: param,
+})
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -58,10 +65,23 @@ pub enum CallPattern {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ShrinkFactor {
+    UnitShrink,
+    ConstantShrink {
+        amount: i64,
+    },
+    ProportionalShrink {
+        divisor: i64,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LoweringTarget {
     pub primitive: IterationPrimitive,
     pub bound: Rc<SizeBound>,
     pub evidence: DescentEvidence,
+    pub factor: Option<Rc<ShrinkFactor>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -80,6 +100,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
     param: a.clone(),
 }),
     evidence: DescentEvidence::Strict,
+    factor: None,
 }),
     CallPattern::CollectionShrinkCall { .. } => Rc::new(LoweringTarget {
     primitive: IterationPrimitive::Fold,
@@ -87,6 +108,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
     param: "collection".to_string(),
 }),
     evidence: DescentEvidence::Strict,
+    factor: None,
 }),
     CallPattern::ArithmeticDescentCall { .. } => Rc::new(LoweringTarget {
     primitive: IterationPrimitive::Repeat,
@@ -94,6 +116,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
     param: "n".to_string(),
 }),
     evidence: DescentEvidence::Strict,
+    factor: None,
 }),
     CallPattern::ParserAdvanceCall { .. } => Rc::new(LoweringTarget {
     primitive: IterationPrimitive::Fold,
@@ -101,6 +124,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
     param: "tokens".to_string(),
 }),
     evidence: DescentEvidence::Strict,
+    factor: None,
 }),
     CallPattern::WorklistDrainCall { .. } => Rc::new(LoweringTarget {
     primitive: IterationPrimitive::Fold,
@@ -108,6 +132,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
     param: "worklist".to_string(),
 }),
     evidence: DescentEvidence::Strict,
+    factor: None,
 }),
     CallPattern::FoldBodyCall => Rc::new(LoweringTarget {
     primitive: IterationPrimitive::Fold,
@@ -115,11 +140,13 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
     param: "outer_collection".to_string(),
 }),
     evidence: DescentEvidence::NonIncreasing,
+    factor: None,
 }),
     CallPattern::SameArgumentCall => Rc::new(LoweringTarget {
     primitive: IterationPrimitive::Repeat,
     bound: Rc::new(SizeBound::Forever),
     evidence: DescentEvidence::NonIncreasing,
+    factor: None,
 }),
 }
 }

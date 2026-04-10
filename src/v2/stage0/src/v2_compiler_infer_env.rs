@@ -7,8 +7,9 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::v2_std_core::{Node, NewlineIndex, source_text_at, authored_name_at};
-pub use crate::std_induction::{InductiveField, RecursionShape};
+pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion};
+use crate::std_induction::SubValueRelation::{SubValueUnknown, PreservedValue};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
@@ -23,6 +24,7 @@ pub struct TypeEnv {
 pub struct TypeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
+    pub provenance: Rc<SubValueRelation>,
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, name: String) -> bool {

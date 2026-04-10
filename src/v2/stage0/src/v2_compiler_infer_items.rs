@@ -12,6 +12,8 @@ use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Cardinality::{Required};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 pub use crate::v2_compiler_infer_types::{child_type_node};
+pub use crate::std_induction::{SubValueRelation};
+use crate::std_induction::SubValueRelation::{SubValueUnknown};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo};
@@ -138,6 +140,7 @@ if is_coproduct.clone() {
             item.children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| v2_rt::rc_map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {
     name: child.name.clone(),
     resolved: item.clone(),
+    provenance: Rc::new(SubValueRelation::SubValueUnknown),
 })))
         } else {
             acc.clone()

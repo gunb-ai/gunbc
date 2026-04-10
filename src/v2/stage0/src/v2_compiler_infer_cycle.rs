@@ -126,7 +126,7 @@ if (deg.clone() == 0) {
 })
 });
 {
-            let __tco_0 = next_queue.clone();
+            let __tco_0 = next_queue;
 let __tco_1 = result.in_degree.clone();
 let __tco_2 = reverse_adj;
 let __tco_3 = result.removed_count.clone();

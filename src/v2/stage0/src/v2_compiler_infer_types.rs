@@ -768,12 +768,12 @@ if is_callable {
 pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
     loop {
         let has_structure = (n.connective.clone() != Connective::NoConnective);
-let unwrapped = if ((n.type_annotation.clone() != None) && has_structure.clone()) {
+let unwrapped = if ((n.type_annotation.clone() != None) && has_structure) {
             n.children.clone().first().cloned()
         } else {
             None
         };
-match unwrapped.clone() {
+match unwrapped {
     Some(base) => { {
             let __tco_0 = base.clone();
 n = __tco_0;
@@ -880,21 +880,21 @@ let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
 let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
 let right_is_unit = is_unit_like(right.clone());
 let left_is_unit = is_unit_like(left.clone());
-if (left_err.clone() || right_err.clone()) {
+if (left_err || right_err) {
             break true;
 } else {
-            if (left_tv.clone() || right_tv.clone()) {
+            if (left_tv || right_tv) {
                 break true;
 } else {
-                if (left_opt.clone() && right_is_unit.clone()) {
+                if (left_opt.clone() && right_is_unit) {
                     break true;
 } else {
-                    if (left_is_unit.clone() && right_opt.clone()) {
+                    if (left_is_unit && right_opt.clone()) {
                         break true;
 } else {
                         let left_is_container = node_is_element_collection(left.clone(), source_index.clone());
 let right_is_container = node_is_element_collection(right.clone(), source_index.clone());
-if (left_is_container.clone() && right_is_container.clone()) {
+if (left_is_container && right_is_container) {
                             if (left.name.clone().as_str() != right.name.clone().as_str()) {
                                 break false;
 } else {
@@ -904,7 +904,7 @@ if (left_is_container.clone() && right_is_container.clone()) {
 let right_el = child_type_node(right_ch.clone());
 let left_el_is_unit = is_unit_like(left_el.clone());
 let right_el_is_unit = is_unit_like(right_el.clone());
-if (left_el_is_unit.clone() || right_el_is_unit.clone()) {
+if (left_el_is_unit || right_el_is_unit) {
                                     break true;
 } else {
                                     {
@@ -928,7 +928,7 @@ continue;
 let right_inner = with_required_cardinality(right.clone());
 let left_inner_is_unit = is_unit_like(left_inner.clone());
 let right_inner_is_unit = is_unit_like(right_inner.clone());
-if (left_inner_is_unit.clone() || right_inner_is_unit.clone()) {
+if (left_inner_is_unit || right_inner_is_unit) {
                                     break true;
 } else {
                                     {
