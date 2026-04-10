@@ -60,21 +60,20 @@ reconstruct them:
 
 ### The fix: provenance on bindings
 
-Extend TypeBinding with structural provenance — a value's relationship
-to the function's inputs, preserved from computation to consumption:
+Thread the existing `SubValueRelation` (std/induction.dag) through
+bindings — preserved from computation to consumption:
 
 ```
 type TypeBinding {
   name: String
   resolved: Node
-  provenance: SubValueRelation   // NEW
-  source_param: String           // NEW
+  provenance: SubValueRelation   // NEW — reuses existing authority
 }
 ```
 
-SubValueRelation already exists in std/induction.dag with the right
-vocabulary (StrictSubValue, IteratedSubValue, ArithmeticDescent,
-PreservedValue, SubValueUnknown). Reuse it — don't reinvent.
+SubValueRelation already has the right vocabulary (StrictSubValue,
+IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown)
+with InductiveField and ShrinkFactor. No new type — single authority.
 
 **Estimated impact:** ~1365 lines of reconstruction code dissolve in
 CX alone. Ownership name-matching dissolves. Emission heuristics
