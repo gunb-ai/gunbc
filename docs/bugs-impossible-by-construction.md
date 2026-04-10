@@ -26,7 +26,7 @@ For field access in `.dag` source itself, the compiler checks structurally: `u.n
 type User { name: String  email: String }
 
 fn greet(u: User) -> String {
-  u.naem    // FieldNotFound — 'naem' does not exist on User
+  u.naem    // diagnostic: "no field 'naem' on type 'User'"
 }
 ```
 
@@ -176,14 +176,14 @@ An `if/else` expression returns different types from each branch. The caller exp
 Python/JS/Ruby: both branches can return anything. The caller gets `1` or `"error"` depending on the condition — type error downstream. Go: caught at compile time (explicit return types). Rust: caught at compile time.
 
 ### gunbc
-The infer stage checks that both branches of an `if/else` unify to the same type. Mismatched branches produce a `TypeMismatch` diagnostic.
+The infer stage checks that both branches of an `if/else` unify to the same type. Mismatched branches produce a diagnostic at the `if` expression.
 
 ### Code
 
 **Rejected**:
 ```dag
 fn pick(flag: Bool) -> Int {
-  if flag { 1 } else { "x" }   // TypeMismatch: Int vs String
+  if flag { 1 } else { "x" }   // diagnostic: branch type mismatch
 }
 ```
 
@@ -326,7 +326,7 @@ module billing
 import types { Order }
 
 fn invoice_total(order: Order) -> Float {
-  order.total    // FieldNotFound — field was renamed to `amount`
+  order.total    // diagnostic: "no field 'total' on type 'Order'"
 }
 ```
 
