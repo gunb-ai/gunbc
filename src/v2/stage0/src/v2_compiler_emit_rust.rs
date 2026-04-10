@@ -369,6 +369,14 @@ let emit_info = Rc::new(EmitGraphInfo {
 let shared_types = emit_info.shared_types.clone();
 let registry = typed.item_registry.clone();
 let workflow_funcs = collect_workflow_funcs(typed.modules.clone(), registry.clone());
+let data_values = collect_data_literal_values(typed.modules.clone());
+let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone(), data_values);
+if ((workflow_default_diags.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+    files: Rc::new(vec![]),
+    diagnostics: workflow_default_diags.clone(),
+})
+        }
 let svc_module_map = typed.modules.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
             let svc_items = Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_service_item(item.clone()) { __result.push(item); } } __result });
 let mod_filename = module_to_filename(tm.module.clone().name.clone());
@@ -385,7 +393,7 @@ let crate_name = if has_pipeline.clone() {
             "v2_compiled".to_string()
         };
 let cargo = emit_cargo_toml(crate_name.clone(), has_services.clone());
-let main_file = emit_main_rs(workflow_funcs, typed.modules.clone(), has_services.clone(), crate_name.clone());
+let main_file = emit_main_rs(workflow_funcs.clone(), typed.modules.clone(), has_services.clone(), crate_name.clone(), svc_module_map.clone());
 let rt_file = emit_v2_rt_module();
 let compiler_tests_file = if has_pipeline.clone() {
             Rc::new(vec![emit_compiler_tests_module()])
@@ -4915,7 +4923,7 @@ pub fn collect_workflow_funcs(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<Ha
 })) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(item.clone(), tm.module.clone().name.clone(), registry.clone(), tm.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
 }
 
-pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
+pub fn cli_default_literal_value(expr: Rc<Node>, data_values: Rc<HashMap<String, String>>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
     LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
@@ -4928,16 +4936,31 @@ pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
     }),
     LiteralValue::LitNull => None,
 },
+    ExprData::ExprVar { .. } => v2_rt::map_get(&data_values, expr.name.clone()),
     _ => None,
 }
 }
 
-pub fn validate_workflow_param_defaults(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn collect_data_literal_values(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, String>> {
+    modules.iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| tm.items.clone().iter().cloned().fold(acc.clone(), |a: Rc<HashMap<String, String>>, item: Rc<Node>| if (((item.body.clone() != None) && (item.type_annotation.clone() != None)) && ((item.params.clone().len() as i64) == 0)) {
+        match item.body.clone() {
+    Some(body) => match cli_default_literal_value(body.clone(), v2_rt::rc_empty_map::<String>()) {
+    Some(lit) => v2_rt::rc_map_insert(a.clone(), item.name.clone(), lit.clone()),
+    None => a.clone(),
+},
+    None => a.clone(),
+}
+    } else {
+        a.clone()
+    }))
+}
+
+pub fn validate_workflow_param_defaults(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, data_values: Rc<HashMap<String, String>>) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({ let mut __result = Vec::new(); for wf in workflow_funcs.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for param in wf.params.clone().iter().cloned() { __result.extend((*match param_node_default_value(param.clone()) {
-    Some(dv) => match cli_default_literal_value(dv.clone()) {
+    Some(dv) => match cli_default_literal_value(dv.clone(), data_values.clone()) {
     Some(_) => Rc::new(vec![]),
     None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v2_rt::concat(v2_rt::concat("workflow CLI default for parameter `".to_string(), authored_name_at(wf.source_index.clone(), param.clone())), "` must be a string, int, float, or bool literal".to_string()),
+    message: v2_rt::concat(v2_rt::concat("workflow CLI default for parameter `".to_string(), authored_name_at(wf.source_index.clone(), param.clone())), "` must be a string, int, float, bool literal, or data reference".to_string()),
     span: param.span.clone(),
 }), wf.module_name.clone())]),
 },
@@ -4956,17 +4979,7 @@ result
 }
 }
 
-pub fn find_service_module(service_name: String, modules: Rc<Vec<Rc<TypedModule>>>) -> String {
-    {
-        let matching = Rc::new({ let mut __result = Vec::new(); for m in modules.iter().cloned() { if { let mut __found = false; for item in m.items.clone().iter().cloned() { if ((item.name.clone().as_str() == service_name.clone().as_str()) && is_service_item(item.clone())) { __found = true; break; } } __found } { __result.push(m); } } __result });
-match matching.first().cloned() {
-    Some(tm) => module_to_filename(tm.module.clone().name.clone()),
-    None => "".to_string(),
-}
-}
-}
-
-pub fn emit_main_rs(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, modules: Rc<Vec<Rc<TypedModule>>>, has_services: bool, crate_name: String) -> Rc<TextFile> {
+pub fn emit_main_rs(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, modules: Rc<Vec<Rc<TypedModule>>>, has_services: bool, crate_name: String, svc_module_map: Rc<HashMap<String, String>>) -> Rc<TextFile> {
     {
         let has_pipeline = { let mut __found = false; for m in modules.clone().iter().cloned() { if (m.module.clone().name.clone().as_str() == "v2.compiler.compile".to_string().as_str()) { __found = true; break; } } __found };
 let resource_type_names = Rc::new({ let mut __result = Vec::new(); for wf in workflow_funcs.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for u in wf.uses.clone().iter().cloned() { __result.push(resource_use_resource(u.clone()).name.clone()); } __result })).iter().cloned()); } __result });
@@ -4984,12 +4997,10 @@ let all_svc_names = Rc::new({ let mut __result = Vec::new(); for wf in workflow_
 let unique_svc_names = unique_strings(all_svc_names);
 let svc_imports = Rc::new({ let mut __result = Vec::new(); for sn in unique_svc_names.iter().cloned() { __result.extend((*{
             let struct_name = sanitize_service_name(sn.clone());
-let mod_name = find_service_module(sn.clone(), modules.clone());
-if (mod_name.clone().as_str() != "".to_string().as_str()) {
-                Rc::new(vec![v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("use ".to_string(), crate_name.clone()), "::".to_string()), mod_name.clone()), "::".to_string()), struct_name.clone()), ";".to_string())])
-            } else {
-                Rc::new(vec![])
-            }
+match v2_rt::map_get(&svc_module_map, sn.clone()) {
+    Some(mod_name) => Rc::new(vec![v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("use ".to_string(), crate_name.clone()), "::".to_string()), mod_name.clone()), "::".to_string()), struct_name.clone()), ";".to_string())]),
+    None => Rc::new(vec![]),
+}
 }).iter().cloned()); } __result });
 let svc_imports_str = svc_imports.join(&"\n".to_string());
 let header = v2_rt::concat(v2_rt::concat("// Generated by v2 compiler -- do not edit.\n\n".to_string(), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n".to_string()), v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("use clap::".to_string(), "{".to_string()), "Parser, Subcommand".to_string()), "}".to_string()), ";\n".to_string()));
@@ -5009,8 +5020,9 @@ let svc_use = if (svc_imports_str.clone().as_str() != "".to_string().as_str()) {
             "".to_string()
         };
 let mod_uses = emit_main_mod_uses(workflow_funcs.clone(), has_pipeline.clone(), crate_name.clone());
+let data_values = collect_data_literal_values(modules.clone());
 let cli_struct = emit_cli_struct(workflow_funcs.clone());
-let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone());
+let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone(), data_values);
 let pipeline_fns = if has_pipeline.clone() {
             emit_main_pipeline_fns(crate_name.clone())
         } else {
@@ -5053,10 +5065,10 @@ pub fn emit_cli_struct(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"v2-compiled\", about = \"Generated CLI from DAG compiler\")]\n".to_string()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    dry_run: bool,\n".to_string()), "}".to_string())
 }
 
-pub fn emit_subcommand_enum(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, has_pipeline: bool) -> String {
+pub fn emit_subcommand_enum(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, has_pipeline: bool, data_values: Rc<HashMap<String, String>>) -> String {
     {
         let depth = 0;
-let variants = Rc::new({ let mut __result = Vec::new(); for wf in workflow_funcs.iter().cloned() { __result.push(emit_subcommand_variant(wf.clone(), (depth.clone() + 1))); } __result });
+let variants = Rc::new({ let mut __result = Vec::new(); for wf in workflow_funcs.iter().cloned() { __result.push(emit_subcommand_variant(wf.clone(), (depth.clone() + 1), data_values.clone())); } __result });
 let compile_variant = if has_pipeline.clone() {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("/// Compile .dag source files to a target language\n".to_string(), make_indent((depth.clone() + 1))), "Compile {\n".to_string()), make_indent((depth.clone() + 2))), "/// Source root directories (searched recursively for .dag files).\n".to_string()), make_indent((depth.clone() + 2))), "/// Module imports are resolved transitively from these roots.\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-root\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_roots: Vec<String>,\n".to_string()), make_indent((depth.clone() + 2))), "/// Legacy: single source directory (all .dag files loaded, no import resolution)\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-dir\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_dir: Option<String>,\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long)]\n".to_string()), make_indent((depth.clone() + 2))), "output_dir: String,\n".to_string()), make_indent((depth.clone() + 2))), "/// Target language: rust, python, go, dag\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long, default_value = \"rust\")]\n".to_string()), make_indent((depth.clone() + 2))), "target: String,\n".to_string()), make_indent((depth.clone() + 1))), "},".to_string())
         } else {
@@ -5072,7 +5084,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(
 }
 }
 
-pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> String {
+pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64, data_values: Rc<HashMap<String, String>>) -> String {
     {
         let variant_name = to_pascal(wf.name.clone());
 let doc_line = v2_rt::concat(v2_rt::concat("/// Run the ".to_string(), wf.name.clone()), " workflow".to_string());
@@ -5080,7 +5092,7 @@ if ((wf.params.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(doc_line, "\n".to_string()), variant_name), ",".to_string())
         } else {
             {
-                let fields = Rc::new({ let mut __result = Vec::new(); for p in wf.params.clone().iter().cloned() { __result.push(emit_subcommand_field(p.clone(), wf.source_index.clone())); } __result });
+                let fields = Rc::new({ let mut __result = Vec::new(); for p in wf.params.clone().iter().cloned() { __result.push(emit_subcommand_field(p.clone(), wf.source_index.clone(), data_values.clone())); } __result });
 let fields_str = fields.join(&"\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(doc_line, "\n".to_string()), variant_name), " {\n".to_string()), make_indent((depth + 1))), fields_str), "\n".to_string()), "},".to_string())
 }
@@ -5088,12 +5100,12 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 }
 
-pub fn emit_subcommand_field(param: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+pub fn emit_subcommand_field(param: Rc<Node>, source_index: Option<Rc<NewlineIndex>>, data_values: Rc<HashMap<String, String>>) -> String {
     {
         let field_name = emit_ident(param_node_name_at(param.clone(), source_index), RenderTarget::Rust);
 let field_type = emit_cli_param_type_node(param_node_type_expr(param.clone()));
 let default_attr = match param_node_default_value(param.clone()) {
-    Some(dv) => match cli_default_literal_value(dv.clone()) {
+    Some(dv) => match cli_default_literal_value(dv.clone(), data_values) {
     Some(default_value) => v2_rt::concat(v2_rt::concat("#[arg(long, default_value = \"".to_string(), default_value.clone()), "\")]\n".to_string()),
     None => "#[arg(long)]\n".to_string(),
 },

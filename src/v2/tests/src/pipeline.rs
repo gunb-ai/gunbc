@@ -5299,10 +5299,6 @@ fn review_dag_builds_and_runs_dry_run() {
         .arg("test-repo")
         .arg("--pr-number")
         .arg("1")
-        .arg("--backend")
-        .arg("codex")
-        .arg("--model")
-        .arg("gpt-5.4")
         .output()
         .expect("failed to run binary --dry-run review-pr");
 
