@@ -258,7 +258,7 @@ A binding (variable) is used in two consuming positions. In most languages, both
 Python/JS: both consumers get the same reference. Mutations from one corrupt the other. Go: slices share underlying arrays — appending in one goroutine corrupts another. Rust: caught by the borrow checker (move semantics).
 
 ### gunbc
-The ownership analyzer counts semantic consumers for each binding. When a non-Copy binding (like `Map` or `List`) is consumed by multiple call sites, it's classified as `SharedError`. For fold accumulators, this makes the fold ineligible for unwrap optimization, forcing a safe (cloned) path.
+The ownership analyzer tracks semantic consumers for each binding. For fold accumulators, when the same field is consumed by multiple call sites within one fold step, the analyzer marks the fold as ineligible for unwrap optimization (`fold_acc_unwrap.eligible = false`), forcing a safe (cloned) path. This is a distinct authority from the binding-level `SharedError` decision — the fold analysis (`analyze_single_fold`) detects repeated field moves specifically.
 
 ### Code
 
@@ -272,7 +272,7 @@ fn process(items: List<String>) -> Accum {
     Accum { data: b }
   )
 }
-// Ownership: acc.data has 2 consumers → ineligible for unwrap optimization
+// Ownership: acc.data moved twice in fold body → fold_acc_unwrap.eligible = false
 ```
 
 **Accepted** — single-consumer per field:
@@ -482,7 +482,7 @@ function defaults() {
 
 ---
 
-## CS-12: Cross-Language Atomic Update
+## CS-12: Single Declaration, All Targets
 
 ### The bug
 A polyglot system has the same data type in Rust, Python, and Go. Someone renames a field in the Rust code but forgets to update the Python client. The services now disagree on field names, and JSON deserialization silently drops the renamed field.
@@ -491,9 +491,9 @@ A polyglot system has the same data type in Rust, Python, and Go. Someone rename
 Each language has its own type definition. Keeping them in sync requires discipline, code review, or a schema registry (protobuf, OpenAPI). Even with protobuf, the `.proto` file is separate from the implementations, and regeneration is a manual step that can be forgotten.
 
 ### gunbc
-One `.dag` type compiles to **all** target languages atomically. Rename a field once → Rust struct, Python dataclass, and Go struct all update in the same compilation. There is no separate "sync step" to forget.
+One `.dag` declaration is the single source of truth. Each target language is a separate `compile_sources(sources, target)` call — there is no first-class multi-target artifact — but every target derives its field names from the same `.dag` AST. Rename a field once in the `.dag` source → re-render each target → all outputs update.
 
-Each target applies its own spec-driven naming rules (`go_export_ident` converts `snake_case` to `PascalCase`; Rust and Python preserve `snake_case`). The field identity comes from the single `.dag` declaration — the naming transformation is deterministic and mechanical, not a human decision that can diverge.
+Each target applies its own spec-driven naming rules via `LanguageSpec`: `go_export_ident` converts `snake_case` to `PascalCase`; Rust and Python preserve `snake_case`. The naming transformation is deterministic and mechanical, not a human decision that can diverge.
 
 ### Code
 

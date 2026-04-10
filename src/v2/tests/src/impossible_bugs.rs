@@ -9,6 +9,7 @@
 
 use crate::helpers::*;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
+use v2_compiler::v2_std_core::CompilerDiagnostic;
 
 // ── CS-1: Impossible Typos (Generated Code) ────────────────────────────
 //
@@ -36,10 +37,14 @@ fn cs1_misspelled_field_access_rejected() {
     // languages accept this silently. gunbc rejects it at compile time.
     let source = "module cs1_typo_err\n\ntype User { name: String  email: String }\n\nfn greet(u: User) -> String {\n  u.naem\n}\n";
     let result = compile_dag(source);
-    let msgs = diagnostic_messages(&result);
+    // Field access errors are InternalError (inference_error in 04_infer.dag)
     assert!(
-        !msgs.is_empty(),
-        "accessing non-existent field 'naem' should produce a diagnostic"
+        result.diagnostics.iter().any(|d|
+            matches!(&*d.diagnostic, CompilerDiagnostic::InternalError { message, .. }
+                if message.contains("naem"))
+        ),
+        "accessing non-existent field 'naem' should produce InternalError mentioning 'naem', got: {:?}",
+        diagnostic_messages(&result)
     );
 }
 
@@ -61,11 +66,13 @@ fn cs2_added_variant_breaks_existing_match() {
     let types = "module cs2_types\n\ntype Status = Active | Inactive | Suspended\n";
     let consumer = "module cs2_consumer\nimport cs2_types { Status }\n\nfn describe(s: Status) -> String {\n  match s {\n    Active => \"on\"\n    Inactive => \"off\"\n  }\n}\n";
     let result = compile_multi(&[("cs2_types.dag", types), ("cs2_consumer.dag", consumer)]);
-    let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("non-exhaustive") || m.contains("Suspended")),
-        "missing Suspended arm should produce exhaustiveness diagnostic, got: {:?}",
-        msgs
+        result.diagnostics.iter().any(|d|
+            matches!(&*d.diagnostic, CompilerDiagnostic::NonExhaustiveMatch { missing, .. }
+                if missing.iter().any(|v| v == "Suspended"))
+        ),
+        "missing Suspended arm should produce NonExhaustiveMatch, got: {:?}",
+        diagnostic_messages(&result)
     );
 }
 
@@ -152,11 +159,14 @@ fn cs6_map_wrong_key_type_rejected() {
     // Full pipeline: Map<String, Int> indexed with Int key → diagnostic.
     let source = "module cs6_err\nimport std.types { Map }\n\nfn lookup(m: Map<String, Int>, id: Int) -> Int? {\n  m[id]\n}\n";
     let result = compile_dag(source);
-    let msgs = diagnostic_messages(&result);
+    // Key type mismatches are InternalError (inference_error in 04_infer.dag)
     assert!(
-        !msgs.is_empty(),
-        "indexing Map<String, Int> with Int key should produce a diagnostic, got: {:?}",
-        msgs
+        result.diagnostics.iter().any(|d|
+            matches!(&*d.diagnostic, CompilerDiagnostic::InternalError { message, .. }
+                if message.contains("key type"))
+        ),
+        "indexing Map<String, Int> with Int key should produce InternalError about key type, got: {:?}",
+        diagnostic_messages(&result)
     );
 }
 
@@ -183,7 +193,8 @@ fn cs6_map_correct_key_type_accepted() {
 fn cs8_double_consumer_detected() {
     // A non-Copy binding (Map) is consumed by two different call sites.
     // In Python/JS, both get the same reference — mutations from one corrupt the other.
-    // gunbc's ownership analysis detects this as SharedError.
+    // gunbc's ownership analysis marks the fold accumulator as ineligible
+    // for unwrap optimization (fold_acc_unwrap.eligible = false).
     let source = r#"module cs8_double
 type Accum { data: Map<String, Bool> }
 fn process(items: List<String>) -> Accum {
@@ -269,11 +280,14 @@ fn invoice_total(order: Order) -> Float {
 }
 "#;
     let result = compile_multi(&[("cs9_types.dag", types), ("cs9_billing.dag", billing)]);
-    let msgs = diagnostic_messages(&result);
+    // Field access errors are InternalError (inference_error in 04_infer.dag)
     assert!(
-        !msgs.is_empty(),
-        "accessing renamed field 'total' (now 'amount') should produce a diagnostic, got: {:?}",
-        msgs
+        result.diagnostics.iter().any(|d|
+            matches!(&*d.diagnostic, CompilerDiagnostic::InternalError { message, .. }
+                if message.contains("total"))
+        ),
+        "accessing renamed field 'total' (now 'amount') should produce InternalError mentioning 'total', got: {:?}",
+        diagnostic_messages(&result)
     );
 }
 
@@ -337,16 +351,16 @@ fn status_label(s: PaymentStatus) -> String {
         ("cs10_billing.dag", billing),
         ("cs10_reporting.dag", reporting),
     ]);
-    let msgs = diagnostic_messages(&result);
-    // Both billing and reporting should produce exhaustiveness diagnostics
-    let refunded_msgs: Vec<_> = msgs.iter()
-        .filter(|m| m.contains("non-exhaustive") || m.contains("Refunded"))
+    // Both billing and reporting should produce NonExhaustiveMatch for Refunded
+    let exhaustiveness_diags: Vec<_> = result.diagnostics.iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::NonExhaustiveMatch { missing, .. }
+            if missing.iter().any(|v| v == "Refunded")))
         .collect();
     assert!(
-        refunded_msgs.len() >= 2,
-        "both billing and reporting should fail for missing Refunded, got {} diagnostics: {:?}",
-        refunded_msgs.len(),
-        msgs
+        exhaustiveness_diags.len() >= 2,
+        "both billing and reporting should produce NonExhaustiveMatch for Refunded, got {}: {:?}",
+        exhaustiveness_diags.len(),
+        diagnostic_messages(&result)
     );
 }
 
@@ -398,13 +412,16 @@ fn defaults() -> Config {
     assert_no_diagnostics(&result);
 }
 
-// ── CS-12: Cross-Language Atomic Update ─────────────────────────────────
+// ── CS-12: Single Declaration, All Targets ──────────────────────────────
 //
 // The "polyglot drift" problem: a type changes in one place, but the
 // Go client gets updated while the Python client doesn't. In traditional
 // polyglot systems, each language has hand-written types that drift apart.
-// In gunbc, one .dag type compiles to ALL targets atomically — Rust, Python,
-// and Go all get the same field names from the same declaration.
+// In gunbc, one .dag declaration is the single source of truth for all
+// targets. Each target is a separate `compile_sources(sources, target)`
+// call, but the field identities all derive from the same .dag AST —
+// per-target naming is spec-driven (snake_case for Rust/Python,
+// PascalCase for Go via go_export_ident), not hand-written.
 
 #[test]
 fn cs12_type_emits_consistently_across_all_targets() {
