@@ -67,7 +67,10 @@ fn span_width(span: Span, tier: Tier) -> Int {
   let text_w = string_display_width(s: span.text)
   match span.style.symbol {
     null => text_w
-    sym  => text_w + string_display_width(s: resolve_symbol(id: sym, tier: tier))
+    sym  => match resolve_symbol(id: sym, tier: tier) {
+      Some { value: s } => text_w + string_display_width(s: s)
+      None => text_w
+    }
   }
 }
 

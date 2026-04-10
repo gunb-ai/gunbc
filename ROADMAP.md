@@ -55,7 +55,7 @@ Bootstrap D │                                                         ├→ M
 
 | Lane | Tracks | KF | Release gates |
 |------|--------|-----|--------------|
-| A | M2 (BND-1..4), M4-L1 (declaration algebra, Tier 2.5/2.6/3) | — | Gate 1 (M2, M4) |
+| A | **M2 COMPLETE**, M4-L1 (declaration algebra, Tier 2.5 done; 2.6/3 rehomed) | — | Gate 1 (M2 ✓, M4) |
 | B | CG (TLC-4, P1-B), LS (spec data), RE-1 (transport fidelity), KF-6 (Verilog) | KF-6 | Gates 1 (CG,LS,RE), 3 (parity), 4 (hardware) |
 | C | CX-NEXT (524→0), KF-1 (complexity proof), KF-2 (reject suboptimal), KF-7 (space complexity), KF-8 (optimality gate) | KF-1, KF-2, KF-7, KF-8 | Gates 1 (CX), 4 (complexity) |
 | D | RE-2..5 (review.dag, gist.dag), BC-1..4, service extdep models | — | Gates 1 (RE), 5 (business cases) |
@@ -205,11 +205,16 @@ a missing codegen authority (CG) — never a standalone emitter patch.
 Four named architectural problems. Each has one root cause and one
 definition of done. Lanes 1–3 run in parallel; M4 follows.
 
-## M2: Boundary Sufficiency (Lane A)
+## M2: Boundary Sufficiency (Lane A) — COMPLETE
 
 **Root cause:** The resolution→emit boundary does not carry enough
 structure. Emit compensates with heuristics. Every remaining workaround
 is an inference-boundary bug or a missing upstream fact.
+
+**Status: COMPLETE.** BRIDGE count 0 real, no fabricated type args,
+no error-typed children reaching emit. `resolved_type` is the boundary
+API. Deferred structural enforcement (BND-1/2 carrier endstate,
+`Node<I>` parameterization, ExpectedContext) dissolves via M4 and CM.
 
 ### Structural error propagation
 
@@ -240,6 +245,12 @@ Open items:
 - [x] Thread `expected` to formal params at matching positions — over-arity args no longer receive synthetic expected types; non-callable expected boundary overload remains open
 - [x] Refine fold accumulators structurally via `is_fully_resolved` — recursive: checks TypeVariable on self, collection arity, and recurses into all children
 - [x] `CallableOf` in `AlgebraTypeTemplate` for higher-order signatures
+- [ ] CallableOf coverage incomplete (external review 2026-04-09):
+  `filter`, `any`, `all`, `sort_by` still omit CallableOf from their
+  `param_types` in both `boolean_algebra_collection_templates` and
+  `free_monoid_collection_templates` (algebra.dag:450,454-455,486,489-490,496).
+  Only `map`, `flat_map`, `fold` have callable signatures. Completing
+  this dissolves downstream string dispatch in emit + CX.
 
 ### BRIDGE fabrication progress (83 → 0)
 
@@ -444,7 +455,7 @@ exploring when Node generics or per-stage IR becomes practical.
 **Acceptance:** No fabrication (done). `resolved_type` is the boundary
 API. Further structural enforcement deferred to `Node<I>` exploration.
 
-### Acceptance
+### Acceptance — MET
 
 No fabricated type args, no generic/wrong fallback return types, no
 error-typed children reaching emit. BRIDGE fabrication count: 0 real.
@@ -614,6 +625,16 @@ pervades every handler and prevents clean parameterization of:
 Shared schema in `std/coercion.dag`; per-language instances in
 `extdeps/languages/{rust,python,go}/types.dag`. Design doc:
 [docs/coercion-design.md](docs/coercion-design.md).
+
+**Untracked duplication (surfaced by external review 2026-04-09):**
+- [ ] `emit_rust_default_value` (`05_emit_rust.dag:4666`) is a hand-written
+  if-forest over type names. `TypeCheckpoint.default_expr` already carries
+  the same defaults in `extdeps/languages/rust/types.dag`. Fix: read
+  `default_expr` from checkpoint data instead of reimplementing inline.
+- [ ] `rust_type_map` (`extdeps/languages/rust/emit.dag:18`) duplicates the
+  primitive mapping already in `rust_type_checkpoints` (`types.dag:37`).
+  Same pattern exists for Go and Python. Fix: derive from TypeCheckpoint
+  only; delete per-language `*_type_map` data tables.
 
 Remaining parallel authorities:
 - [x] Copy/value semantics: `is_rust_value_type` reads `TypeCheckpoint.is_copy`
@@ -828,15 +849,8 @@ instead of hardcoding them.
   - [x] T/K/V parameter names derive from algebra via `container_param_name_required`
   - [x] `ListOf`/`ReceiverCollectionOf` merged into `ContainerOf { source, element }`
   - [x] `unify_template` enforces `ContainerSource` (carrier name match)
-- Tier 2.6 (functional system modeling):
-  - [ ] Model function application as a concept (apply/call vs function-value-ref)
-  - [ ] Inference encodes "this is a call" in the IR node, not as a type-arity heuristic
-  - L1 Callable name comparisons already dissolved (Arrow connective).
-    Tier 2.6 is about deeper concept modeling, not L1 violations.
-- Tier 3 (full structural algebra, requires FF-9):
-  - [ ] Compiler reads type declarations + algebra edges at resolve time
-  - [ ] Derive kernel/container identity from type declarations
-  - [ ] CollectionKind bridge dissolves when method algebras land
+- Tier 2.6 (functional system modeling): Rehomed to CM (concept modeling)
+- Tier 3 (full structural algebra, requires FF-9): Rehomed to Layer 3 deferred
   - [x] 27 type constructor sites → 0 (PR #352)
 
 ### M4 Lane 2: Node.name deletion (D6) — Phase 2, cross-cutting
@@ -1960,28 +1974,24 @@ that reduce ontology drift and make the compiler simpler to model
 against. Each item is a concrete MODELING.md M4–M9 violation in
 existing std/ code.
 
-### D-STD-1: `standard_symbols` → PartialFunction model
+### D-STD-1: `standard_symbols` → Optional returns — DONE
 
-`dsl/std/symbols.dag` models `standard_symbols` as `List<SymbolEntry>`
-and resolves via filter + fold with fabricated defaults (`resolve_symbol`
-falls back to empty strings, `symbol_color` falls back to Default).
-`std/algebra.dag` already defines `PartialFunction<K,V>`. The symbol
-table should inhabit PartialFunction — list scan with sentinels is
-both a missed algebraic structure and a live M5 fabrication.
+`resolve_symbol`, `symbol_color`, `ansi_code` now return Optional types
+(`String?`, `SemanticColor?`, `String?`) using `filter |> first` pattern.
+Fabricated defaults (empty strings, `Default` color, reset ANSI code)
+eliminated. Consumer `span_width` in `render.dag` updated to handle `None`.
 
-### D-STD-2: `fermi_timeouts` — derive function from data (M7)
+### D-STD-2: `fermi_timeouts` — single authority — DONE
 
-`dsl/std/transport.dag`: `fermi_timeouts` data table and
-`timeout_for_depth` function encode the same mapping twice. M7 says
-if a fact exists both as data and as a function body, derive the
-function from the data.
+`timeout_for_depth` now derives from the `fermi_timeouts` data table
+via `filter |> first` instead of duplicating the 5 timeout values in
+a hardcoded match. Single source of truth: `fermi_timeouts` data table.
 
-### D-STD-3: TransportClass — eliminate wildcard branches on closed enum
+### D-STD-3: TransportClass — exhaustive match — DONE
 
-`TransportClass` is a fixed sum type (6 variants). `transport_depth`
-and `transport_hermetic` use `_ => ...` wildcard branches. On a closed
-enum, wildcard fallback hides whether `Unknown` is handled intentionally
-or accidentally. Replace with exhaustive matches.
+`transport_depth` and `transport_hermetic` now explicitly match `Unknown`
+instead of using wildcard `_`. Compiler exhaustiveness checker activates
+on future variant additions.
 
 ### D-STD-4: ProgressKind → inhabit DescentEvidence lattice (CX-A)
 
@@ -2024,10 +2034,32 @@ No lane addresses these. Highest-value: coercion.dag container-to-algebra
 table (should derive from algebra declarations), 04_resolve.dag alias
 resolution (4 fail-open sites).
 
+**Parser fabrication (surfaced by external review 2026-04-09):**
+Three silent fabrications in `02_parse.dag` (Lane A):
+- `parse_transport_binding:2392` — unknown transport identifier silently
+  returns dummy local transport with `err: none` (no diagnostic)
+- `parse_rest_fields:2415` — missing `base_url` fabricates `LitStr { value: "" }`
+  with zero-span instead of diagnosing
+- `parse_file_fields:2498` — same fabrication for missing `base_path`
+These are M5 violations (no fallbacks that fabricate). Fix: return
+diagnostic on unknown transport kind; require `base_url`/`base_path`
+or diagnose absence.
+
 **Arity boundaries (cross-cutting):** Container under/over-arity,
 empty services/resources, Optional collapse, Callable/lambda mismatch.
 Enforce arity from algebra profile at normalization. See CM.md §Arity
 boundaries.
+
+**Hardcoded type variable names (surfaced by external review 2026-04-09):**
+`is_type_variable_name` in `04_infer.dag:3504` hardcodes `T|K|V|MappedElement|FoldAccumulator`.
+`algebra.dag` already models `AlgebraTypeVariable` and `algebra_type_param_names`.
+Dissolves with M4-L1 Tier 3 (declaration-driven algebra reads at resolve time).
+
+**Rehomed from M4-L1 Tier 2.6 (functional system modeling):**
+- [ ] Model function application as a concept (apply/call vs function-value-ref)
+- [ ] Inference encodes "this is a call" in the IR node, not as a type-arity heuristic
+- L1 Callable name comparisons already dissolved (Arrow connective).
+  This is deeper concept modeling, not L1 violations.
 
 **Relationship to other lanes:** M2, CG, and CX all generate work
 items that are actually CM problems. When a PR "moves a heuristic
@@ -2095,7 +2127,7 @@ invocation, method kind, built-in refinement) re-derived from name
 matching at every consumption site.
 
 **Current counts (2026-04-06):**
-- `method_def.name` / `method_name ==` dispatch: ~17 sites (emit_rust: 12, infer: 5, complexity: 0 — all complexity method dispatch reads from AlgebraMethodSemantics)
+- `method_def.name` / `method_name ==` dispatch: ~17 sites (emit_rust: 12, infer: 5, complexity: 0 — complexity reads from AlgebraMethodSemantics structurally; external review 2026-04-09 claimed CX uses string lists, verified stale)
 - Nullary function detection: 3 sites in emit_rust, 0 in Go/Python (bug)
 - Built-in call type refinement by name: 4 sites in infer
 
@@ -2215,6 +2247,14 @@ Non-recursive authority leaks (same class of unfinished migration):
 | ~~Missing `CallableOf`~~ | ~~M4 Tier 2.5~~ (DONE) |
 | Semantic strings (parent_enum, service_name) | Structural Node references |
 
+## M4-L1 Tier 3: Full Structural Algebra (requires FF-9)
+
+Rehomed from Lane A. Gated on FF-9 (import scoping / declaration-driven loading).
+
+- [ ] Compiler reads type declarations + algebra edges at resolve time
+- [ ] Derive kernel/container identity from type declarations
+- [ ] CollectionKind bridge dissolves when method algebras land
+
 ## Pipeline Algebraic Grounding
 
 Every compiler type is a mathematical concept in disguise. Grounding
@@ -2234,6 +2274,15 @@ Key redundancies:
 Missing std/ concepts: `std/discrimination.dag` (pattern matching),
 `std/graph.dag` (directed graph algebra), Signature + Term in
 `std/algebra.dag`, Cardinality lattice in `std/types.dag`.
+
+**Additional duplication (surfaced by external review 2026-04-09):**
+- `container_to_algebra` map in `types.dag:139-156` duplicates the type
+  alias declarations at `types.dag:202+` (`List = FreeMonoid`, etc.).
+  Has inline TODO; dissolves with M4 structural identity / reflection.
+- `std/iteration.dag` is commentary only — no type/fn/data declarations.
+  Iteration semantics (fold/descend/repeat) are compiler primitives by
+  design. The file documents the decidability argument, not executable
+  authority. Low priority to materialize; the design is intentional.
 
 ## Deferred Milestones
 
@@ -2796,9 +2845,9 @@ Every Layer 2 root-cause track reaches its acceptance criteria.
 
 | Lane | Gate condition | Current | Ratchet |
 |------|---------------|---------|---------|
-| M2 | No fabricated types, no BRIDGE, BND-1..4 landed | 0 real BRIDGEs (4 emitter template strings remain), BND open | `full_dsl_compiles` 0 diagnostics |
+| M2 | No fabricated types, no BRIDGE, BND-1..4 landed | **COMPLETE** — 0 real BRIDGEs, no fabrication, `resolved_type` boundary API | `full_dsl_compiles` 0 diagnostics |
 | CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_fixed_point` passes |
-| M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=37 | `l1-ratchet.sh --check` |
+| M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=0 (hard gate), Node.name deletion in progress (PR #367) | `l1-ratchet.sh --check` |
 | CX | User code gets proven bounds via type-derived strict descent (see CX launch gate below) | 524 violations in compiler code (non-blocking, internal debt) | User-facing: bounds on standard patterns. Internal: `strict_compile_diagnostic_count` tracked but not blocking |
 | LS | All emitter decisions from spec-referenced data | Not started | No inline target-language knowledge in emitter |
 | RE | review.dag compiles and runs (RE ratchet 21/21) | 21/21 | RE ratchet table |

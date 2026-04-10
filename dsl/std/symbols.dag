@@ -161,20 +161,25 @@ data standard_symbols: List<SymbolEntry> = [
 
 // --- Resolution functions ---
 
-fn resolve_symbol(id: SymbolId, tier: Tier) -> String {
+fn resolve_symbol(id: SymbolId, tier: Tier) -> String? {
   let matches = filter(standard_symbols, e => e.id == id)
-  let entry = fold(matches, init: { emoji: "", unicode: "", ascii: "" }, f: (acc, e) => e)
-  match tier {
-    Emoji   => entry.emoji
-    Unicode => entry.unicode
-    Ascii   => entry.ascii
+  match matches |> first {
+    Some { value: entry } =>
+      match tier {
+        Emoji   => Some { value: entry.emoji }
+        Unicode => Some { value: entry.unicode }
+        Ascii   => Some { value: entry.ascii }
+      }
+    None => none
   }
 }
 
-fn symbol_color(id: SymbolId) -> SemanticColor {
+fn symbol_color(id: SymbolId) -> SemanticColor? {
   let matches = filter(standard_symbols, e => e.id == id)
-  let entry = fold(matches, init: { color: Default }, f: (acc, e) => e)
-  entry.color
+  match matches |> first {
+    Some { value: entry } => Some { value: entry.color }
+    None => none
+  }
 }
 
 // --- ANSI color mapping ---
@@ -198,8 +203,10 @@ data ansi_mappings: List<AnsiMapping> = [
   { color: Accent,  code: "\x1b[38;5;75m"    }
 ]
 
-fn ansi_code(c: SemanticColor) -> String {
+fn ansi_code(c: SemanticColor) -> String? {
   let matches = filter(ansi_mappings, m => m.color == c)
-  let mapping = fold(matches, init: { code: "\x1b[0m" }, f: (acc, m) => m)
-  mapping.code
+  match matches |> first {
+    Some { value: mapping } => Some { value: mapping.code }
+    None => none
+  }
 }
