@@ -149,7 +149,6 @@ type ControlFlowSyntax {
   if_else: String                  // e.g. "if \{cond\} { \{then\} } else { \{else\} }"
   match_header: String             // e.g. "match \{expr\} {" or "switch \{expr\} {"
   match_arm: String                // e.g. "\{pattern\} => \{body\},"
-  for_each: String                 // e.g. "for \{item\} in \{iter\} { \{body\} }" (flat template, not used for rendering)
   for_each_syntax: ForEachSyntax   // structural authority for iteration rendering
   while_loop: String               // e.g. "while \{cond\} { \{body\} }"
   loop_infinite: String?           // e.g. "loop { \{body\} }" or null
@@ -649,7 +648,6 @@ data rust_control_flow: ControlFlowSyntax = {
   if_else: "if \{cond\} { \{then\} } else { \{else\} }",
   match_header: "match \{expr\} {",
   match_arm: "\{pattern\} => \{body\},",
-  for_each: "for \{item\} in \{iter\} { \{body\} }",
   for_each_syntax: { prefix: "for ", separator: " in " },
   while_loop: "while \{cond\} { \{body\} }",
   loop_infinite: "loop { \{body\} }",
@@ -769,7 +767,6 @@ data go_control_flow: ControlFlowSyntax = {
   if_else: "if \{cond\} { \{then\} } else { \{else\} }",
   match_header: "switch \{expr\} {",
   match_arm: "case \{pattern\}: \{body\}",
-  for_each: "for \{item\} := range \{iter\} { \{body\} }",
   for_each_syntax: { prefix: "for _, ", separator: " := range " },
   while_loop: "for \{cond\} { \{body\} }",
   loop_infinite: "for { \{body\} }",
@@ -890,7 +887,6 @@ data python_control_flow: ControlFlowSyntax = {
   if_else: "if \{cond\}:\n    \{then\}\nelse:\n    \{else\}",
   match_header: "match \{expr\}:",
   match_arm: "case \{pattern\}: \{body\}",
-  for_each: "for \{item\} in \{iter\}:\n    \{body\}",
   for_each_syntax: { prefix: "for ", separator: " in " },
   while_loop: "while \{cond\}:\n    \{body\}",
   loop_infinite: "while True:\n    \{body\}",
