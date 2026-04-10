@@ -6888,3 +6888,276 @@ fn diag_emitter_scc() {
         eprintln!("  path_calls: {}", path_calls);
     }
 }
+
+// ── Ownership violation tracking ─────────────────────────────────────────
+//
+// Each test compiles a .dag program where the ownership properties are
+// known by construction, then counts PROVABLE violations — clones the
+// analysis already has enough information to eliminate.
+//
+// Violation classes:
+//
+//   V1 — Last-use clone:  fan-out > 1, but the last use clones when it
+//         could move.  Count: (fan_out - 1) is necessary, the Nth use
+//         should be free.  Currently ALL uses clone.
+//
+//   V2 — TCO-gated move:  fan-out = 1 + is_owned_local, but function is
+//         TCO-eligible so emitter zeros the movable set.  The binding
+//         SHOULD move but clones due to the gate.
+//
+//   V3 — Fold fallback:   FoldAccUnwrapProof.eligible = true, but the
+//         emitter still emits try_unwrap + clone fallback.
+//
+//   V4 — Read-as-clone:   EdgeKind::Read edges get emitted as .clone()
+//         when a borrow (&x) would suffice.  Blocked on LS-4 (borrow
+//         rules in LanguageSpec), but still a provable violation.
+//
+// The ratchet counts ONLY violations (clones we know are wrong), not
+// total clones (many of which are legitimately needed).
+
+/// Count occurrences of a pattern in a string.
+fn count_pattern(haystack: &str, needle: &str) -> usize {
+    haystack.match_indices(needle).count()
+}
+
+/// Count ownership violations by cross-referencing the ownership proof
+/// (the authority for which bindings are movable) against the emitted
+/// Rust code (the authority for what the emitter actually did).
+///
+/// A violation is: build_movable_set says the binding can move, but
+/// the emitted code contains `name.clone()`.  This is the only fact
+/// we have complete authority for — the proof says "move" and the
+/// emitter says "clone".
+///
+/// Returns (movable_but_cloned, try_unwrap_fallbacks).
+fn count_ownership_violations(
+    result: &v2_compiler::v2_compiler_compile::PipelineResult,
+) -> (usize, usize) {
+    use v2_compiler::v2_compiler_ownership::build_movable_set;
+
+    // Collect all emitted Rust into one string for searching.
+    let emitted: String = result
+        .files
+        .iter()
+        .filter(|f| f.path.ends_with(".rs"))
+        .map(|f| (*f.content).clone())
+        .collect();
+
+    let mut movable_but_cloned = 0usize;
+    let mut try_unwrap_fallbacks = count_pattern(&emitted, "unwrap_or_else(|rc| (*rc).clone())");
+
+    for proof in result.ownership.iter() {
+        let movable = build_movable_set(proof.clone());
+        for (name, _) in movable.iter() {
+            // The proof says this binding should move.
+            // Check if the emitted code clones it instead.
+            let clone_pattern = format!("{}.clone()", name);
+            let clones_in_emitted = count_pattern(&emitted, &clone_pattern);
+            movable_but_cloned += clones_in_emitted;
+        }
+    }
+
+    (movable_but_cloned, try_unwrap_fallbacks)
+}
+
+// ── Focused .dag programs with known ownership properties ──
+
+/// Fan-out = 1, is_owned_local → proof says movable → must not clone.
+#[test]
+fn ownership_v_single_use_moves() {
+    let source = "module ov1\nfn pass_through(items: List<Int>) -> List<Int> { items }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let (movable_but_cloned, _) = count_ownership_violations(&result);
+    eprintln!("single_use: movable_but_cloned={}", movable_but_cloned);
+    let content = find_file(&result, "src/ov1.rs");
+    assert!(
+        !content.contains("items.clone()"),
+        "single-use param must move, not clone:\n{}", content,
+    );
+}
+
+/// Fan-out = 2 → not in movable set → clones are necessary.
+/// Track total clones to see if last-use analysis improves this.
+#[test]
+fn ownership_v_multi_use_clones() {
+    let source = r#"
+module ov_multi
+import std.types { List }
+fn use_twice(items: List<Int>) -> List<Int> {
+  let a = items |> count
+  items
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/ov_multi.rs");
+    let clones = count_pattern(&content, "items.clone()");
+    eprintln!("multi_use: items.clone()={} (ideal: 1, current: 2)", clones);
+    assert!(clones <= 2, "items.clone() {} > ratchet 2", clones);
+}
+
+/// Fold accumulator — check try_unwrap fallbacks in emitted code.
+#[test]
+fn ownership_v_fold_fallback() {
+    let source = r#"
+module ov_fold
+import std.types { List }
+fn sum_all(items: List<Int>) -> Int {
+  items |> fold(init: 0, f: (acc, x) => acc + x)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let (_, try_unwrap) = count_ownership_violations(&result);
+    eprintln!("fold: try_unwrap_fallbacks={}", try_unwrap);
+    let content = find_file(&result, "src/ov_fold.rs");
+    let fallbacks = count_pattern(&content, "unwrap_or_else(|rc| (*rc).clone())");
+    eprintln!("  in ov_fold.rs: {}", fallbacks);
+}
+
+// ── Aggregate violation ratchet ──────────────────────────────────────────
+
+/// Compile a representative .dag program through the full pipeline and
+/// count ownership violations by cross-referencing the ownership proof
+/// against the emitted code.
+///
+/// A violation: build_movable_set says "move", emitted code says ".clone()".
+/// This is the only metric grounded in two authorities — the ownership
+/// proof and the emitter output.
+///
+/// Run with: cargo test -p v2-compiler-tests ownership_violation_ratchet -- --nocapture
+#[test]
+fn ownership_violation_ratchet() {
+    let source = r#"
+module ov_ratchet
+import std.types { List }
+
+fn identity(x: Int) -> Int { x }
+
+fn use_twice(items: List<Int>) -> List<Int> {
+  let a = items |> count
+  items
+}
+
+fn sum_all(items: List<Int>) -> Int {
+  items |> fold(init: 0, f: (acc, x) => acc + x)
+}
+
+fn total_and_count(items: List<Int>) -> Int {
+  let s = items |> fold(init: 0, f: (acc, x) => acc + x)
+  let c = items |> count
+  s + c
+}
+
+fn process(data: List<Int>) -> List<Int> {
+  let filtered = data |> filter(x => x > 0)
+  let mapped = filtered |> map(x => x + 1)
+  mapped
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+
+    let (movable_but_cloned, try_unwrap_fallbacks) = count_ownership_violations(&result);
+
+    eprintln!("\n=== OWNERSHIP VIOLATION RATCHET ===\n");
+    eprintln!("  movable_but_cloned:    {:>3}  (proof says move, emitter says clone)", movable_but_cloned);
+    eprintln!("  try_unwrap_fallbacks:  {:>3}  (fabrication fallback in emitted code)", try_unwrap_fallbacks);
+    let total = movable_but_cloned + try_unwrap_fallbacks;
+    eprintln!("  ────────────────────────");
+    eprintln!("  TOTAL violations:      {:>3}", total);
+
+    // ── Ratchets (only move DOWN) ──
+    //
+    // 2026-04-10: baseline.  Each violation is grounded in two authorities:
+    //   - build_movable_set (ownership proof) says the binding can move
+    //   - emitted Rust code contains `name.clone()` for that binding
+    //
+    // As ownership modeling improves, these counts drop.
+
+    const MOVABLE_CLONED_RATCHET: usize = 10;
+    const TRY_UNWRAP_RATCHET: usize = 5;
+    const TOTAL_RATCHET: usize = 15;
+
+    assert!(
+        movable_but_cloned <= MOVABLE_CLONED_RATCHET,
+        "movable_but_cloned {} > ratchet {}", movable_but_cloned, MOVABLE_CLONED_RATCHET,
+    );
+    assert!(
+        try_unwrap_fallbacks <= TRY_UNWRAP_RATCHET,
+        "try_unwrap_fallbacks {} > ratchet {}", try_unwrap_fallbacks, TRY_UNWRAP_RATCHET,
+    );
+    assert!(total <= TOTAL_RATCHET, "total violations {} > ratchet {}", total, TOTAL_RATCHET);
+}
+
+// ── Stage0 clone census (gross metric, context for violations) ──────────
+
+/// Count raw clone patterns in committed stage0 files.
+/// This is the gross metric — includes both necessary and unnecessary clones.
+/// The violation ratchet above is the sharp metric.
+///
+/// Run with: cargo test -p v2-compiler-tests ownership_stage0_census -- --nocapture
+#[test]
+fn ownership_stage0_census() {
+    let ws = crate::helpers::workspace_root();
+    let stage0_dir = ws.join("src/v2/stage0/src");
+
+    let mut total_clones = 0usize;
+    let mut total_try_unwrap = 0usize;
+    let mut total_iter_cloned = 0usize;
+    let mut total_lines = 0usize;
+    let mut file_metrics: Vec<(String, usize, usize, usize, usize)> = Vec::new();
+
+    let mut entries: Vec<_> = std::fs::read_dir(&stage0_dir)
+        .expect("failed to read stage0/src")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.starts_with("v2_") && name.ends_with(".rs")
+        })
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    eprintln!("\n=== STAGE0 CLONE CENSUS ===\n");
+
+    for entry in &entries {
+        let content = std::fs::read_to_string(entry.path())
+            .unwrap_or_else(|e| panic!("failed to read: {}", e));
+        let name = entry.file_name().to_string_lossy().to_string();
+        let clones = count_pattern(&content, ".clone()");
+        let fallbacks = count_pattern(&content, "unwrap_or_else(|rc| (*rc).clone())");
+        let iter_cl = count_pattern(&content, ".iter().cloned()");
+        let lines = content.lines().count();
+
+        total_clones += clones;
+        total_try_unwrap += fallbacks;
+        total_iter_cloned += iter_cl;
+        total_lines += lines;
+        file_metrics.push((name, clones, fallbacks, iter_cl, lines));
+    }
+
+    file_metrics.sort_by(|a, b| b.1.cmp(&a.1));
+    for (name, clones, fallbacks, iter_cl, lines) in &file_metrics {
+        if *clones > 0 {
+            eprintln!(
+                "  {:>45}: {:>5} clones, {:>2} try_unwrap, {:>3} iter_cloned  ({:>5} lines, {:.2} cl/ln)",
+                name, clones, fallbacks, iter_cl, lines,
+                *clones as f64 / *lines as f64,
+            );
+        }
+    }
+
+    eprintln!("\n  TOTAL .clone():         {}", total_clones);
+    eprintln!("  TOTAL try_unwrap:       {}", total_try_unwrap);
+    eprintln!("  TOTAL .iter().cloned(): {}", total_iter_cloned);
+    eprintln!("  TOTAL lines:            {}", total_lines);
+    eprintln!("  clones/line:            {:.3}", total_clones as f64 / total_lines as f64);
+
+    // 2026-04-10 baseline: 23267 clones, 8 try_unwrap, 1251 iter_cloned, 42665 lines
+    const CLONE_RATCHET: usize = 23267;
+    const TRY_UNWRAP_RATCHET: usize = 8;
+
+    assert!(total_clones <= CLONE_RATCHET, ".clone() {} > ratchet {}", total_clones, CLONE_RATCHET);
+    assert!(total_try_unwrap <= TRY_UNWRAP_RATCHET, "try_unwrap {} > ratchet {}", total_try_unwrap, TRY_UNWRAP_RATCHET);
+}

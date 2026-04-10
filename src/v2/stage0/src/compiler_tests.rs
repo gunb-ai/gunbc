@@ -956,6 +956,133 @@ mod compiler_tests {
 
     #[test]
     #[ignore]
+    fn profile_full_pipeline() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                use std::time::Instant;
+
+                let sources = self_compile_sources();
+                let source_count = sources.len();
+                let total_chars: usize = sources.iter().map(|s| s.content.len()).sum();
+                let total_tokens_est: usize = sources.iter().map(|s| s.content.len() / 6).sum();
+
+                eprintln!("\n=== FULL PIPELINE PROFILE ({} sources, {} chars) ===\n", source_count, total_chars);
+
+                // 1a. Tokenize + parse (individual)
+                let t = Instant::now();
+                let mut token_lists = Vec::new();
+                for source in &sources {
+                    let tokens = crate::v2_compiler_tokenize::tokenize(
+                        source.content.clone(), source.path.clone(),
+                    );
+                    token_lists.push(tokens);
+                }
+                let tokenize_elapsed = t.elapsed();
+
+                let t = Instant::now();
+                let mut modules = Vec::new();
+                for (i, tokens) in token_lists.iter().enumerate() {
+                    let result = crate::v2_compiler_parse::parse(tokens.clone(), None);
+                    if let Some(m) = result.module.clone() {
+                        modules.push(m);
+                    }
+                }
+                let parse_elapsed = t.elapsed();
+
+                // 1b. Resolve
+                let t = Instant::now();
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
+                let resolve_elapsed = t.elapsed();
+                let resolve_errors: usize = graph.diagnostics.iter()
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                    .count();
+
+                // 1c. Newline indices
+                let t = Instant::now();
+                let newline_indices: Vec<_> = sources.iter().map(|s| {
+                    crate::v2_std_core::build_newline_index(s.path.clone(), s.content.clone())
+                }).collect();
+                let newline_elapsed = t.elapsed();
+
+                let frontend_elapsed = tokenize_elapsed + parse_elapsed + resolve_elapsed + newline_elapsed;
+                eprintln!("  Tokenize:                     {:>8.2?}", tokenize_elapsed);
+                eprintln!("  Parse:                        {:>8.2?}", parse_elapsed);
+                eprintln!("  Resolve:                      {:>8.2?}  ({} resolve errors)", resolve_elapsed, resolve_errors);
+                eprintln!("  Newline indices:               {:>8.2?}", newline_elapsed);
+                eprintln!("  Frontend total:               {:>8.2?}", frontend_elapsed);
+
+                // 2. Normalize
+                let t = Instant::now();
+                let norm = crate::v2_compiler_normalize::normalize_graph(graph);
+                let normalize_elapsed = t.elapsed();
+                eprintln!("  Normalize:                    {:>8.2?}", normalize_elapsed);
+
+                // 3. Reconcile (type checking)
+                let source_indices = newline_indices.iter().cloned().fold(
+                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    |acc, index| crate::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone()),
+                );
+                let t = Instant::now();
+                let typed = crate::v2_compiler_infer::reconcile(norm.graph.clone(), source_indices);
+                let reconcile_elapsed = t.elapsed();
+                let type_errors: usize = typed.diagnostics.iter()
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                    .count();
+                eprintln!("  Reconcile:                    {:>8.2?}  ({} type errors)", reconcile_elapsed, type_errors);
+
+                // 4. Complexity analysis
+                let t = Instant::now();
+                let func_entries = crate::v2_compiler_compile::extract_func_entries(typed.clone());
+                let func_count = func_entries.len();
+                let recursion_ctx = crate::v2_compiler_compile::build_recursion_context(typed.clone());
+                let complexity = crate::v2_compiler_complexity::build_complexity_report(
+                    func_entries, recursion_ctx,
+                );
+                let complexity_elapsed = t.elapsed();
+                let cx_diags = crate::v2_compiler_compile::complexity_diagnostics(complexity.clone());
+                eprintln!("  Complexity:                   {:>8.2?}  ({} funcs, {} diagnostics)", complexity_elapsed, func_count, cx_diags.len());
+
+                // 5. Ownership analysis
+                let t = Instant::now();
+                let ownership = crate::v2_compiler_compile::extract_ownership_proofs(typed.clone());
+                let ownership_elapsed = t.elapsed();
+                let own_diags = crate::v2_compiler_compile::ownership_diagnostics(ownership.clone());
+                eprintln!("  Ownership:                    {:>8.2?}  ({} proofs, {} diagnostics)", ownership_elapsed, ownership.len(), own_diags.len());
+
+                // 6. Emit
+                let artifact_plan = crate::v2_compiler_compile::default_artifact_plan(
+                    std::rc::Rc::new(typed.modules.iter().map(|m| m.module.clone().name.clone()).collect()),
+                    crate::v2_compiler_artifact::RenderTarget::Rust,
+                );
+                let t = Instant::now();
+                let emit_result = crate::v2_compiler_compile::emit_from_artifact_plan(typed.clone(), artifact_plan);
+                let emit_elapsed = t.elapsed();
+                let emitted_files = emit_result.files.len();
+                let emitted_bytes: usize = emit_result.files.iter().map(|f| f.content.len()).sum();
+                eprintln!("  Emit:                         {:>8.2?}  ({} files, {} bytes)", emit_elapsed, emitted_files, emitted_bytes);
+
+                let total = frontend_elapsed + normalize_elapsed + reconcile_elapsed
+                    + complexity_elapsed + ownership_elapsed + emit_elapsed;
+                eprintln!("\n=== SUMMARY ===");
+                eprintln!("  Tokenize:   {:>8.2?}  ({:.0}%)", tokenize_elapsed, tokenize_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
+                eprintln!("  Parse:      {:>8.2?}  ({:.0}%)", parse_elapsed, parse_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
+                eprintln!("  Resolve:    {:>8.2?}  ({:.0}%)", resolve_elapsed, resolve_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
+                eprintln!("  Newline:    {:>8.2?}  ({:.0}%)", newline_elapsed, newline_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
+                eprintln!("  Normalize:  {:>8.2?}  ({:.0}%)", normalize_elapsed, normalize_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
+                eprintln!("  Reconcile:  {:>8.2?}  ({:.0}%)", reconcile_elapsed, reconcile_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
+                eprintln!("  Complexity: {:>8.2?}  ({:.0}%)", complexity_elapsed, complexity_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
+                eprintln!("  Ownership:  {:>8.2?}  ({:.0}%)", ownership_elapsed, ownership_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
+                eprintln!("  Emit:       {:>8.2?}  ({:.0}%)", emit_elapsed, emit_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
+                eprintln!("  TOTAL:      {:>8.2?}", total);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("profile_full_pipeline panicked");
+    }
+
+    #[test]
+    #[ignore]
     fn profile_reconcile_per_module() {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
