@@ -370,7 +370,7 @@ let shared_types = emit_info.shared_types.clone();
 let registry = typed.item_registry.clone();
 let workflow_funcs = collect_workflow_funcs(typed.modules.clone(), registry.clone());
 let data_values = collect_data_literal_values(typed.modules.clone());
-let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone(), data_values);
+let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone(), data_values.clone());
 if ((workflow_default_diags.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
     files: Rc::new(vec![]),
@@ -393,7 +393,7 @@ let crate_name = if has_pipeline.clone() {
             "v2_compiled".to_string()
         };
 let cargo = emit_cargo_toml(crate_name.clone(), has_services.clone());
-let main_file = emit_main_rs(workflow_funcs.clone(), typed.modules.clone(), has_services.clone(), crate_name.clone(), svc_module_map.clone());
+let main_file = emit_main_rs(workflow_funcs.clone(), typed.modules.clone(), has_services.clone(), crate_name.clone(), svc_module_map.clone(), data_values.clone());
 let rt_file = emit_v2_rt_module();
 let compiler_tests_file = if has_pipeline.clone() {
             Rc::new(vec![emit_compiler_tests_module()])
@@ -4944,9 +4944,17 @@ pub fn cli_default_literal_value(expr: Rc<Node>, data_values: Rc<HashMap<String,
 pub fn collect_data_literal_values(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, String>> {
     modules.iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| tm.items.clone().iter().cloned().fold(acc.clone(), |a: Rc<HashMap<String, String>>, item: Rc<Node>| if (((item.body.clone() != None) && (item.type_annotation.clone() != None)) && ((item.params.clone().len() as i64) == 0)) {
         match item.body.clone() {
-    Some(body) => match cli_default_literal_value(body.clone(), v2_rt::rc_empty_map::<String>()) {
-    Some(lit) => v2_rt::rc_map_insert(a.clone(), item.name.clone(), lit.clone()),
-    None => a.clone(),
+    Some(body) => match (*body.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
+    LiteralValue::LitStr { value: s, .. } => v2_rt::rc_map_insert(a.clone(), item.name.clone(), s.clone()),
+    LiteralValue::LitBool { value: b, .. } => v2_rt::rc_map_insert(a.clone(), item.name.clone(), if b.clone() {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }),
+    _ => a.clone(),
+},
+    _ => a.clone(),
 },
     None => a.clone(),
 }
@@ -4979,7 +4987,7 @@ result
 }
 }
 
-pub fn emit_main_rs(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, modules: Rc<Vec<Rc<TypedModule>>>, has_services: bool, crate_name: String, svc_module_map: Rc<HashMap<String, String>>) -> Rc<TextFile> {
+pub fn emit_main_rs(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, modules: Rc<Vec<Rc<TypedModule>>>, has_services: bool, crate_name: String, svc_module_map: Rc<HashMap<String, String>>, data_values: Rc<HashMap<String, String>>) -> Rc<TextFile> {
     {
         let has_pipeline = { let mut __found = false; for m in modules.clone().iter().cloned() { if (m.module.clone().name.clone().as_str() == "v2.compiler.compile".to_string().as_str()) { __found = true; break; } } __found };
 let resource_type_names = Rc::new({ let mut __result = Vec::new(); for wf in workflow_funcs.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for u in wf.uses.clone().iter().cloned() { __result.push(resource_use_resource(u.clone()).name.clone()); } __result })).iter().cloned()); } __result });
@@ -5020,7 +5028,6 @@ let svc_use = if (svc_imports_str.clone().as_str() != "".to_string().as_str()) {
             "".to_string()
         };
 let mod_uses = emit_main_mod_uses(workflow_funcs.clone(), has_pipeline.clone(), crate_name.clone());
-let data_values = collect_data_literal_values(modules.clone());
 let cli_struct = emit_cli_struct(workflow_funcs.clone());
 let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone(), data_values);
 let pipeline_fns = if has_pipeline.clone() {

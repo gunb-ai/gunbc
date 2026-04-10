@@ -493,7 +493,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let has_pipeline = typed.modules |> any(m => m.module.name == "v2.compiler.compile")
   let crate_name = if has_pipeline { "v2_compiler" } else { "v2_compiled" }
   let cargo = emit_cargo_toml(crate_name: crate_name, has_services: has_services)
-  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name, svc_module_map: svc_module_map)
+  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name, svc_module_map: svc_module_map, data_values: data_values)
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
   let dry_run_file = if has_services {
@@ -4782,14 +4782,20 @@ fn cli_default_literal_value(expr: Node, data_values: Map<String, String>) -> St
 
 // Build a map from data-item names to their literal string values.
 // Only includes DataItems whose body is a simple literal expression.
+// Uses direct ExprData matching (no transitive to_string call) to avoid
+// adding a complexity violation through cli_default_literal_value.
 fn collect_data_literal_values(modules: List<TypedModule>) -> Map<String, String> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     tm.items |> fold(init: acc, f: (a, item) =>
       if item.body != none && item.type_annotation != none && item.params |> count == 0 {
         match item.body {
-          Some { value: body } => match cli_default_literal_value(expr: body, data_values: empty_map()) {
-            Some { value: lit } => map_insert(a, item.name, lit)
-            None => a
+          Some { value: body } => match body.expr_data {
+            ExprLiteral { value: v } => match v {
+              LitStr { value: s } => map_insert(a, item.name, s)
+              LitBool { value: b } => map_insert(a, item.name, if b { "true" } else { "false" })
+              _ => a
+            }
+            _ => a
           }
           None => a
         }
@@ -4834,7 +4840,7 @@ fn find_resource_module(resource_name: String, modules: List<TypedModule>) -> St
   result
 }
 
-fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String, svc_module_map: Map<String, String>) -> TextFile {
+fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String, svc_module_map: Map<String, String>, data_values: Map<String, String>) -> TextFile {
   let has_pipeline = modules |> any(m => m.module.name == "v2.compiler.compile")
   // Collect resource type imports for main.rs
   let resource_type_names = workflow_funcs |> flat_map(wf => wf.uses |> map(u => resource_use_resource(n: u).name))
@@ -4869,7 +4875,6 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   let resource_use = if resource_imports_str != "" { concat(resource_imports_str, "\n") } else { "" }
   let svc_use = if svc_imports_str != "" { concat(svc_imports_str, "\n") } else { "" }
   let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline, crate_name: crate_name)
-  let data_values = collect_data_literal_values(modules: modules)
   let cli_struct = emit_cli_struct(workflow_funcs: workflow_funcs)
   let subcommand_enum = emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline, data_values: data_values)
   let pipeline_fns = if has_pipeline { emit_main_pipeline_fns(crate_name: crate_name) } else { "" }
