@@ -1104,7 +1104,7 @@ Active work items. Each has a TDD test and a cleanup target.
 | S5 | Instrument for-each variable → IteratedSubValue | Test: `children \|> map(c => ...)` produces IteratedSubValue on `c` | For-each handling in annotate_descent | DONE (04_infer.dag:1934-1947) |
 | S6 | Lambda params with element expected → IteratedSubValue | Test: fold/map callback param gets IteratedSubValue | Lambda heuristic (04_infer.dag:2870-2897) | Not started |
 | S7 | Lambda params with Callable expected (callee contracts) | Test: user-defined HOF callback param gets correct SVR | Full lambda transparency heuristic | Not started |
-| S8 | Declare DescentEvidence as BoundedLattice inhabitant | Test: lattice laws (idempotent, commutative, absorptive) | `merge_argument_relations` (04_infer.dag:2611) | DONE (PR #379) |
+| S8 | Declare lattice inhabitants (DescentEvidence + SubValueRelation) | Test: lattice laws (idempotent, commutative, absorptive) | `merge_argument_relations` now uses `meet_sub_value` | Phase 1: DescentEvidence lifters + SVR meet wired (PR #379). Phase 2: generic lifters (blocked on generic emission). |
 
 ### CX-specific
 

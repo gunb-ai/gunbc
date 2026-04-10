@@ -108,9 +108,8 @@ import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
-  sub_value_to_evidence
+  sub_value_to_evidence, meet_sub_value
 }
-import std.termination { evidence_rank }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
   NodeResolveResult, ItemResult
@@ -2693,53 +2692,20 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   }
 }
 
-// Lattice meet on SubValueRelation. Total order ensures commutativity:
-// meet(a, b) = meet(b, a) for all a, b.
+// Merge SubValueRelations across branches using the structural lattice
+// meet from std/induction.dag. No lossy projection — meet_sub_value is
+// the single authority for SubValueRelation lattice operations.
 //
-// Primary rank (evidence level):
-//   SubValueUnknown (0) < PreservedValue (10) < ArithmeticDescent (20)
-//   < IteratedSubValue (30) < StrictSubValue (40)
-//
-// Secondary tiebreaker (within same variant kind):
-//   Canonical string comparison on field_name/param_name.
-//   Ensures meet(StrictSubValue{children}, StrictSubValue{body}) is
-//   commutative — the same field wins regardless of argument order.
-fn svr_total_rank(rel: SubValueRelation) -> Int {
-  match rel {
-    SubValueUnknown => 0
-    PreservedValue => 10
-    ArithmeticDescent { param: _, factor: _ } => 20
-    IteratedSubValue { field: _ } => 30
-    StrictSubValue { field: _, factor: _ } => 40
-  }
-}
-
-fn svr_detail_key(rel: SubValueRelation) -> String {
-  match rel {
-    StrictSubValue { field: f, factor: _ } => f.field_name
-    IteratedSubValue { field: f } => f.field_name
-    ArithmeticDescent { param: p, factor: _ } => p
-    _ => ""
-  }
-}
-
-fn svr_min_by_rank(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
-  let ra = svr_total_rank(rel: a)
-  let rb = svr_total_rank(rel: b)
-  if rb < ra { b }
-  else if ra < rb { a }
-  else {
-    // Same variant kind: canonical field/param name ordering for commutativity.
-    if svr_detail_key(rel: b) < svr_detail_key(rel: a) { b } else { a }
-  }
-}
-
+// Uses first-element-as-init because the lattice has no unique top
+// (structural variants are incomparable). Empty list → SubValueUnknown
+// (fail-closed; shouldn't occur in practice since match/if always has
+// at least one branch).
 fn merge_argument_relations(rels: List<SubValueRelation>) -> SubValueRelation {
   match rels |> first {
     None => SubValueUnknown
     Some { value: first_rel } =>
       rels |> skip(1) |> fold(init: first_rel, f: (acc, rel) =>
-        svr_min_by_rank(a: acc, b: rel)
+        meet_sub_value(a: acc, b: rel)
       )
   }
 }

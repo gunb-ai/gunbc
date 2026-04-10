@@ -7290,10 +7290,11 @@ fn process(data: List<Int>) -> List<Int> {
     // 2026-04-10: baseline (40/0/40).  Approximate — scope-blind string
     // matching (see function doc). Useful as regression gate, not for
     // precise claims.  As ownership modeling improves, these counts drop.
-    // 2026-04-10: 40→45 — new lattice lifters in std/algebra.dag
-    // (optional_meet, map_merge_at, min_by, max_by) and evidence_rank/
-    // join_evidence in std/termination.dag add 5 clones from new code
-    // transitively compiled via std.types→std.algebra; not a regression.
+    // 2026-04-10: 40→45 — new functions in std/termination.dag
+    // (evidence_rank, join_evidence, optional_evidence_meet,
+    // map_evidence_merge_at) add 5 clones from new code transitively
+    // compiled via std.types→std.termination; not a regression in
+    // existing code — these are new function bodies with new bindings.
 
     const MOVABLE_CLONED_RATCHET: usize = 45;
     const TRY_UNWRAP_RATCHET: usize = 0;
@@ -7374,9 +7375,9 @@ fn ownership_stage0_census() {
     eprintln!("  clones/line:            {:.3}", total_clones as f64 / total_lines as f64);
 
     // 2026-04-10 baseline: 23784 clones (+51 from workflow func CLI generation)
-    // 2026-04-10: +3 from lattice lifters (optional_evidence_meet,
-    // map_evidence_merge_at, svr_min_by_rank, max_usage_by_fan_out,
-    // map_usage_merge_at).
+    // 2026-04-10: +3 from new compiler helpers (optional_evidence_meet,
+    // map_evidence_merge_at, max_usage_by_fan_out, map_usage_merge_at
+    // in stage0 via std/termination.dag and ownership.dag).
     const CLONE_RATCHET: usize = 23787;
     const TRY_UNWRAP_RATCHET: usize = 8;
 

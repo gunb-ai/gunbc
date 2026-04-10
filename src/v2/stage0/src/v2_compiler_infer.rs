@@ -31,11 +31,10 @@ pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_built
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for, inductive_fields_list_to_map};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
-pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor, sub_value_to_evidence};
+pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor, sub_value_to_evidence, meet_sub_value};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown};
 use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
-pub use crate::std_termination::{evidence_rank};
 pub use crate::v2_compiler_infer_resolve::{resolve_node, resolve_item_types, NodeResolveResult, ItemResult};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult, resolve_func_sigs};
 pub use crate::v2_compiler_infer_emit_info::{TypeRepr, TypeSummary, EmitGraphInfo, EmitInfoBuildState, empty_emit_graph_info, lookup_emit_type_summary, build_struct_field_summaries, build_enum_field_summaries, add_emit_item_summary, derive_variant_to_enum};
@@ -2913,49 +2912,10 @@ Some(Rc::new(SubValueRelation::StrictSubValue {
 }
 }
 
-pub fn svr_total_rank(rel: Rc<SubValueRelation>) -> i64 {
-    match (*rel).clone() {
-    SubValueRelation::SubValueUnknown => 0,
-    SubValueRelation::PreservedValue => 10,
-    SubValueRelation::ArithmeticDescent { .. } => 20,
-    SubValueRelation::IteratedSubValue { .. } => 30,
-    SubValueRelation::StrictSubValue { .. } => 40,
-}
-}
-
-pub fn svr_detail_key(rel: Rc<SubValueRelation>) -> String {
-    match (*rel).clone() {
-    SubValueRelation::StrictSubValue { field: f, .. } => f.field_name.clone(),
-    SubValueRelation::IteratedSubValue { field: f, .. } => f.field_name.clone(),
-    SubValueRelation::ArithmeticDescent { param: p, .. } => p.clone(),
-    _ => "".to_string(),
-}
-}
-
-pub fn svr_min_by_rank(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
-    {
-        let ra = svr_total_rank(a.clone());
-let rb = svr_total_rank(b.clone());
-if (rb.clone() < ra.clone()) {
-            b.clone()
-        } else {
-            if (ra.clone() < rb.clone()) {
-                a.clone()
-            } else {
-                if (svr_detail_key(b.clone()) < svr_detail_key(a.clone())) {
-                    b.clone()
-                } else {
-                    a.clone()
-                }
-            }
-        }
-}
-}
-
 pub fn merge_argument_relations(rels: Rc<Vec<Rc<SubValueRelation>>>) -> Rc<SubValueRelation> {
     match rels.clone().first().cloned() {
     None => Rc::new(SubValueRelation::SubValueUnknown),
-    Some(first_rel) => Rc::new(rels.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned().fold(first_rel.clone(), |acc: Rc<SubValueRelation>, rel: Rc<SubValueRelation>| svr_min_by_rank(acc.clone(), rel.clone())),
+    Some(first_rel) => Rc::new(rels.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned().fold(first_rel.clone(), |acc: Rc<SubValueRelation>, rel: Rc<SubValueRelation>| meet_sub_value(acc.clone(), rel.clone())),
 }
 }
 
