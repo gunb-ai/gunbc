@@ -55,7 +55,7 @@ Bootstrap D │                                                         ├→ M
 
 | Lane | Tracks | KF | Release gates |
 |------|--------|-----|--------------|
-| A | **M2 COMPLETE**, M4-L1 (declaration algebra, Tier 2.5 done; 2.6/3 rehomed) | — | Gate 1 (M2 ✓, M4) |
+| A | M2 (acceptance met, BND open), M4-L1 (declaration algebra, Tier 2.5 done; 2.6/3 rehomed) | — | Gate 1 (M2, M4) |
 | B | CG (TLC-4, P1-B), LS (spec data), RE-1 (transport fidelity), KF-6 (Verilog) | KF-6 | Gates 1 (CG,LS,RE), 3 (parity), 4 (hardware) |
 | C | CX-NEXT (524→0), KF-1 (complexity proof), KF-2 (reject suboptimal), KF-7 (space complexity), KF-8 (optimality gate) | KF-1, KF-2, KF-7, KF-8 | Gates 1 (CX), 4 (complexity) |
 | D | RE-2..5 (review.dag, gist.dag), BC-1..4, service extdep models | — | Gates 1 (RE), 5 (business cases) |
@@ -205,16 +205,16 @@ a missing codegen authority (CG) — never a standalone emitter patch.
 Four named architectural problems. Each has one root cause and one
 definition of done. Lanes 1–3 run in parallel; M4 follows.
 
-## M2: Boundary Sufficiency (Lane A) — COMPLETE
+## M2: Boundary Sufficiency (Lane A)
 
 **Root cause:** The resolution→emit boundary does not carry enough
 structure. Emit compensates with heuristics. Every remaining workaround
 is an inference-boundary bug or a missing upstream fact.
 
-**Status: COMPLETE.** BRIDGE count 0 real, no fabricated type args,
-no error-typed children reaching emit. `resolved_type` is the boundary
-API. Deferred structural enforcement (BND-1/2 carrier endstate,
-`Node<I>` parameterization, ExpectedContext) dissolves via M4 and CM.
+**Status:** Acceptance criteria met (0 real BRIDGEs, no fabrication,
+`resolved_type` boundary API). BND-1/2 carrier endstate and
+`Node<I>` parameterization deferred to M4 and CM. Gate 1 still
+requires BND-1..4 landed before formal completion.
 
 ### Structural error propagation
 
@@ -455,7 +455,7 @@ exploring when Node generics or per-stage IR becomes practical.
 **Acceptance:** No fabrication (done). `resolved_type` is the boundary
 API. Further structural enforcement deferred to `Node<I>` exploration.
 
-### Acceptance — MET
+### Acceptance
 
 No fabricated type args, no generic/wrong fallback return types, no
 error-typed children reaching emit. BRIDGE fabrication count: 0 real.
@@ -2845,7 +2845,7 @@ Every Layer 2 root-cause track reaches its acceptance criteria.
 
 | Lane | Gate condition | Current | Ratchet |
 |------|---------------|---------|---------|
-| M2 | No fabricated types, no BRIDGE, BND-1..4 landed | **COMPLETE** — 0 real BRIDGEs, no fabrication, `resolved_type` boundary API | `full_dsl_compiles` 0 diagnostics |
+| M2 | No fabricated types, no BRIDGE, BND-1..4 landed | 0 real BRIDGEs, no fabrication, `resolved_type` boundary API; BND-1..4 open | `full_dsl_compiles` 0 diagnostics |
 | CG | Every codegen decision from one structural authority | TLC-1/2/3 done, TLC-4 partial | `bootstrap_fixed_point` passes |
 | M4 | `l1-ratchet.sh` = 0, `Node.name` deleted | L1=0 (hard gate), Node.name deletion in progress (PR #367) | `l1-ratchet.sh --check` |
 | CX | User code gets proven bounds via type-derived strict descent (see CX launch gate below) | 524 violations in compiler code (non-blocking, internal debt) | User-facing: bounds on standard patterns. Internal: `strict_compile_diagnostic_count` tracked but not blocking |
