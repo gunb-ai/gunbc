@@ -110,7 +110,7 @@ service llm.Anthropic {
     transport rest {
       method: POST,
       path: "/v1/messages",
-      body: { model: model, messages: messages, max_tokens: max_tokens }
+      body: { model: model, messages: messages, max_tokens: max_tokens, temperature: temperature, system: system }
     }
     response {
       200 => Json
