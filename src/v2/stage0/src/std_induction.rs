@@ -98,10 +98,35 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
     SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
     _ => Rc::new(SubValueRelation::PreservedValue),
 },
-    _ => match (*b).clone() {
+    SubValueRelation::StrictSubValue { field: fa, .. } => match (*b).clone() {
     SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
     SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
-    _ => a.clone(),
+    SubValueRelation::StrictSubValue { field: fb, .. } => if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
+    SubValueRelation::IteratedSubValue { field: fb, .. } => if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    SubValueRelation::ArithmeticDescent { param: pa, .. } => match (*b).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
+    SubValueRelation::ArithmeticDescent { param: pb, .. } => if (pa.clone().as_str() == pb.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
 },
 }
 }
@@ -113,7 +138,36 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
     SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::PreservedValue),
     _ => b.clone(),
 },
-    _ => a.clone(),
+    SubValueRelation::StrictSubValue { field: fa, .. } => match (*b.clone()).clone() {
+    SubValueRelation::SubValueUnknown => a.clone(),
+    SubValueRelation::PreservedValue => a.clone(),
+    SubValueRelation::StrictSubValue { field: fb, .. } => if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b.clone()).clone() {
+    SubValueRelation::SubValueUnknown => a.clone(),
+    SubValueRelation::PreservedValue => a.clone(),
+    SubValueRelation::IteratedSubValue { field: fb, .. } => if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    SubValueRelation::ArithmeticDescent { param: pa, .. } => match (*b.clone()).clone() {
+    SubValueRelation::SubValueUnknown => a.clone(),
+    SubValueRelation::PreservedValue => a.clone(),
+    SubValueRelation::ArithmeticDescent { param: pb, .. } => if (pa.clone().as_str() == pb.clone().as_str()) {
+        a.clone()
+    } else {
+        Rc::new(SubValueRelation::SubValueUnknown)
+    },
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+},
 }
 }
 

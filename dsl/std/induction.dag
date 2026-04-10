@@ -232,18 +232,37 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
         SubValueUnknown => SubValueUnknown
         _ => PreservedValue
       }
-    _ =>
+    StrictSubValue { field: fa, factor: _ } =>
       match b {
         SubValueUnknown => SubValueUnknown
         PreservedValue => PreservedValue
-        _ => a
+        StrictSubValue { field: fb, factor: _ } =>
+          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+    IteratedSubValue { field: fa } =>
+      match b {
+        SubValueUnknown => SubValueUnknown
+        PreservedValue => PreservedValue
+        IteratedSubValue { field: fb } =>
+          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+    ArithmeticDescent { param: pa, factor: _ } =>
+      match b {
+        SubValueUnknown => SubValueUnknown
+        PreservedValue => PreservedValue
+        ArithmeticDescent { param: pb, factor: _ } =>
+          if pa == pb { a } else { SubValueUnknown }
+        _ => SubValueUnknown
       }
   }
 }
 
-// Join: optimistic merge. SubValueUnknown is identity (best of both).
+// Join: optimistic merge. SubValueUnknown is identity.
 // PreservedValue yields to any structural descent.
-// For two specific structural relations, keep `a`.
+// Two identical structural variants keep their value; two incompatible
+// structural variants produce SubValueUnknown (commutativity).
 
 fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   match a {
@@ -253,7 +272,30 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
         SubValueUnknown => PreservedValue
         _ => b
       }
-    _ => a
+    StrictSubValue { field: fa, factor: _ } =>
+      match b {
+        SubValueUnknown => a
+        PreservedValue => a
+        StrictSubValue { field: fb, factor: _ } =>
+          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+    IteratedSubValue { field: fa } =>
+      match b {
+        SubValueUnknown => a
+        PreservedValue => a
+        IteratedSubValue { field: fb } =>
+          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+    ArithmeticDescent { param: pa, factor: _ } =>
+      match b {
+        SubValueUnknown => a
+        PreservedValue => a
+        ArithmeticDescent { param: pb, factor: _ } =>
+          if pa == pb { a } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
   }
 }
 

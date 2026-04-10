@@ -132,8 +132,8 @@ fn empty_usage_accum() -> UsageAccum {
 // Record a use of a binding with the given edge kind and site description.
 // binding_kind is set from ExprVar nodes; once set it is preserved across
 // subsequent records for the same name.
-fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?) -> UsageAccum {
-  let edge = EdgeClassification { kind: kind, site: site, span_start: 0 }
+fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int) -> UsageAccum {
+  let edge = EdgeClassification { kind: kind, site: site, span_start: span_start }
   let existing = match map_get(accum.bindings, name) {
     Some { value: usage } => usage
     None => BindingUsage { name: name, binding_kind: none, consumers: [] }
@@ -190,9 +190,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
     ExprVar { binding_kind: bk } =>
       let n = expr_var_name_at(texpr: texpr, source_index: si)
       if in_tail {
-        record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk)
+        record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk, span_start: texpr.span.start)
       } else {
-        record_use(accum: accum, name: n, kind: Read, site: "read", binding_kind: bk)
+        record_use(accum: accum, name: n, kind: Read, site: "read", binding_kind: bk, span_start: texpr.span.start)
       }
 
     ExprLiteral { value: _ } => accum
@@ -204,7 +204,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
         ExprVar { binding_kind: bk } =>
           let vn = expr_var_name_at(texpr: base_node, source_index: si)
           let f = field_access_field_at(texpr: texpr, source_index: si)
-          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk)
+          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start)
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si)
       }
 
@@ -219,7 +219,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_index: si)
-                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk)
+                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
               _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false, si: si)
             }
           None => accum
@@ -248,7 +248,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_index: si)
-                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk)
+                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
               _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si)
             }
           None => recv_accum
@@ -327,8 +327,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
       let body = lambda_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: accum, f: (acc, usage) =>
-        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none)
-        record_use(accum: a1, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none)
+        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
+        record_use(accum: a1, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
       )
       UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes) }
 
@@ -339,8 +339,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
       let body = foreach_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: coll_accum, f: (acc, usage) =>
-        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none)
-        record_use(accum: a1, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none)
+        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
+        record_use(accum: a1, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
       )
       UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes) }
 

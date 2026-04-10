@@ -40,7 +40,7 @@ pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extra
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, build_emit_graph_info, expr_span};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, TypeRepr};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
-pub use crate::v2_compiler_ownership::{OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_last_use_set};
+pub use crate::v2_compiler_ownership::{OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set};
 pub use crate::std_induction::{SubValueRelation};
 use crate::std_induction::SubValueRelation::{SubValueUnknown};
 pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared};
@@ -325,7 +325,6 @@ pub struct OwnershipProofEntry {
 pub struct OwnershipBuildResult {
     pub ownership_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub fold_eligible_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    pub last_use_index: Rc<HashMap<String, bool>>,
 }
 
 pub fn build_fold_eligible_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, bool>> {
@@ -345,11 +344,9 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
 proofs.iter().cloned().fold(Rc::new(OwnershipBuildResult {
     ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     fold_eligible_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
-    last_use_index: v2_rt::rc_empty_map::<bool>(),
 }), |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); Rc::new(OwnershipBuildResult {
     ownership_index: v2_rt::rc_map_insert(acc.ownership_index, entry.name.clone(), build_movable_set(entry.proof.clone())),
     fold_eligible_index: v2_rt::rc_map_insert(acc.fold_eligible_index, entry.name.clone(), build_fold_eligible_set(entry.proof.clone())),
-    last_use_index: v2_rt::rc_map_merge(acc.last_use_index, build_last_use_set(entry.proof.clone())),
 }) })
 }
 }
@@ -370,7 +367,6 @@ let emit_info = Rc::new(EmitGraphInfo {
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
     fold_eligible_index: ownership.fold_eligible_index.clone(),
     fold_eligible: v2_rt::rc_empty_map::<bool>(),
-    last_use_sites: ownership.last_use_index.clone(),
 });
 let shared_types = emit_info.shared_types.clone();
 let registry = typed.item_registry.clone();
@@ -472,7 +468,6 @@ let emit_info = Rc::new(EmitGraphInfo {
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
     fold_eligible_index: base_info.fold_eligible_index.clone(),
     fold_eligible: v2_rt::rc_empty_map::<bool>(),
-    last_use_sites: v2_rt::rc_empty_map::<bool>(),
 });
 let shared_types = emit_info.shared_types.clone();
 emit_module_full(typed_module.clone(), registry, emit_info.clone(), shared_types, v2_rt::rc_empty_map::<String>())
@@ -671,7 +666,6 @@ let fn_emit_info = Rc::new(EmitGraphInfo {
     owned_bindings: v2_rt::rc_empty_map::<bool>(),
     fold_eligible_index: emit_info.fold_eligible_index.clone(),
     fold_eligible: fn_fold_eligible,
-    last_use_sites: emit_info.last_use_sites.clone(),
 });
 let is_effectful = match lookup_item(registry.clone(), item.name.clone()) {
     Some(info) => (((info.service_names.clone().len() as i64) > 0) || ((info.resource_names.clone().len() as i64) > 0)),
@@ -1653,21 +1647,6 @@ pub fn apply_field_clone(expr: String, field: String) -> String {
 
 pub fn clone_iterator_suffix() -> String {
     sharing_for_target(RenderTarget::Rust).clone_suffix.clone()
-}
-
-pub fn emit_var_clone_or_move(ident: String, name: String, resolved_type: Option<Rc<InferredNode>>, emit_info: Rc<EmitGraphInfo>) -> String {
-    {
-        let is_movable = emit_map_has(emit_info.movable.clone(), name.clone());
-let is_last_use = emit_map_has(emit_info.last_use_sites.clone(), name.clone());
-if (is_movable || is_last_use) {
-            ident
-        } else {
-            match resolved_type {
-    Some(_) => apply_clone(ident),
-    _ => ident,
-}
-        }
-}
 }
 
 pub fn effective_variant_parent(name: String, binding_kind: Option<Rc<VarBindingKind>>, resolved_type: Option<Rc<InferredNode>>, emit_info: Rc<EmitGraphInfo>) -> Option<String> {
@@ -2689,7 +2668,6 @@ match ps.first().cloned() {
     owned_bindings: v2_rt::rc_map_insert(emit_info.owned_bindings.clone(), acc_name.clone(), true),
     fold_eligible_index: emit_info.fold_eligible_index.clone(),
     fold_eligible: emit_info.fold_eligible.clone(),
-    last_use_sites: emit_info.last_use_sites.clone(),
 }),
     None => emit_info.clone(),
 }

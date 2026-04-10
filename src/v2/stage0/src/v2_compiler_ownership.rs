@@ -108,12 +108,12 @@ pub fn empty_usage_accum() -> Rc<UsageAccum> {
 })
 }
 
-pub fn record_use(accum: Rc<UsageAccum>, name: String, kind: EdgeKind, site: String, binding_kind: Option<Rc<VarBindingKind>>) -> Rc<UsageAccum> {
+pub fn record_use(accum: Rc<UsageAccum>, name: String, kind: EdgeKind, site: String, binding_kind: Option<Rc<VarBindingKind>>, span_start: i64) -> Rc<UsageAccum> {
     {
         let edge = Rc::new(EdgeClassification {
     kind: kind,
     site: site,
-    span_start: 0,
+    span_start: span_start,
 });
 let existing = match v2_rt::map_get(&accum.bindings.clone(), name.clone()) {
     Some(usage) => usage.clone(),
@@ -172,9 +172,9 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool, si: Opti
     ExprData::ExprVar { binding_kind: bk, .. } => {
             let n = expr_var_name_at(texpr.clone(), si.clone());
 if in_tail.clone() {
-                record_use(accum, n, EdgeKind::Consumed, "return".to_string(), bk.clone())
+                record_use(accum, n, EdgeKind::Consumed, "return".to_string(), bk.clone(), texpr.span.clone().start.clone())
             } else {
-                record_use(accum, n, EdgeKind::Read, "read".to_string(), bk.clone())
+                record_use(accum, n, EdgeKind::Read, "read".to_string(), bk.clone(), texpr.span.clone().start.clone())
             }
 },
     ExprData::ExprLiteral { .. } => accum,
@@ -184,7 +184,7 @@ match (*base_node.expr_data.clone()).clone() {
     ExprData::ExprVar { binding_kind: bk, .. } => {
                 let vn = expr_var_name_at(base_node.clone(), si.clone());
 let f = field_access_field_at(texpr.clone(), si.clone());
-record_use(accum, vn, EdgeKind::Projected, v2_rt::concat(".".to_string(), f), bk.clone())
+record_use(accum, vn, EdgeKind::Projected, v2_rt::concat(".".to_string(), f), bk.clone(), texpr.span.clone().start.clone())
 },
     _ => walk_expr(accum, base_node.clone(), false, si.clone()),
 }
@@ -200,7 +200,7 @@ let threaded_accum = match init_arg {
 match (*ia_val.expr_data.clone()).clone() {
     ExprData::ExprVar { binding_kind: bk, .. } => {
                             let vn = expr_var_name_at(ia_val.clone(), si.clone());
-record_use(accum, vn, EdgeKind::Threaded, "fold_init".to_string(), bk.clone())
+record_use(accum, vn, EdgeKind::Threaded, "fold_init".to_string(), bk.clone(), ia_val.span.clone().start.clone())
 },
     _ => walk_expr(accum, ia_val.clone(), false, si.clone()),
 }
@@ -228,7 +228,7 @@ let threaded_accum = match init_arg {
 match (*ia_val.expr_data.clone()).clone() {
     ExprData::ExprVar { binding_kind: bk, .. } => {
                             let vn = expr_var_name_at(ia_val.clone(), si.clone());
-record_use(recv_accum, vn, EdgeKind::Threaded, "fold_init".to_string(), bk.clone())
+record_use(recv_accum, vn, EdgeKind::Threaded, "fold_init".to_string(), bk.clone(), ia_val.span.clone().start.clone())
 },
     _ => walk_expr(recv_accum, ia_val.clone(), false, si.clone()),
 }
@@ -295,8 +295,8 @@ match ss.clone().last().cloned() {
             let body = lambda_body(texpr.clone());
 let inner = walk_expr(empty_usage_accum(), body, false, si.clone());
 let binding_merged = Rc::new(v2_rt::map_values(&inner.bindings.clone())).iter().cloned().fold(accum, |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
-                let a1 = record_use(acc.clone(), usage.name.clone(), EdgeKind::Read, "lambda-capture".to_string(), None);
-record_use(a1.clone(), usage.name.clone(), EdgeKind::Read, "lambda-capture".to_string(), None)
+                let a1 = record_use(acc.clone(), usage.name.clone(), EdgeKind::Read, "lambda-capture".to_string(), None, 0);
+record_use(a1.clone(), usage.name.clone(), EdgeKind::Read, "lambda-capture".to_string(), None, 0)
 });
 Rc::new(UsageAccum {
     bindings: binding_merged.bindings.clone(),
@@ -309,8 +309,8 @@ let coll_accum = walk_expr(accum, coll, false, si.clone());
 let body = foreach_body(texpr.clone());
 let inner = walk_expr(empty_usage_accum(), body, false, si.clone());
 let binding_merged = Rc::new(v2_rt::map_values(&inner.bindings.clone())).iter().cloned().fold(coll_accum.clone(), |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
-                let a1 = record_use(acc.clone(), usage.name.clone(), EdgeKind::Read, "foreach-capture".to_string(), None);
-record_use(a1.clone(), usage.name.clone(), EdgeKind::Read, "foreach-capture".to_string(), None)
+                let a1 = record_use(acc.clone(), usage.name.clone(), EdgeKind::Read, "foreach-capture".to_string(), None, 0);
+record_use(a1.clone(), usage.name.clone(), EdgeKind::Read, "foreach-capture".to_string(), None, 0)
 });
 Rc::new(UsageAccum {
     bindings: binding_merged.bindings.clone(),
