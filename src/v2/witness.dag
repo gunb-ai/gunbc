@@ -1,0 +1,169 @@
+// Witness generation and emission algebra enumeration.
+//
+// Generates canonical witness values for each type from coercion data
+// tables (TypeCheckpoint.default_expr, InhabitantDecl.identity_expr).
+// Enumerates the emission algebra as (ExprCategory x TypeForm x Cardinality)
+// triples for structural form coverage testing.
+//
+// Authority chain:
+//   std/coercion.dag               -> shared schema
+//   extdeps/languages/*/types.dag  -> per-language data (witnesses)
+//   v2/coercion.dag                -> lookup dispatch
+//   THIS FILE                      -> witness extraction + algebra enumeration
+//
+// Consumers:
+//   compiler_tests_rust.dag  -- renders witness + algebra tests
+
+module v2.compiler.witness
+
+import v2.compiler.artifact { RenderTarget, Rust, Python, Go }
+import v2.compiler.coercion { target_checkpoints, target_inhabitants, target_label }
+import std.coercion { TypeCheckpoint, InhabitantDecl }
+import std.types { TypeForm, FormPrimitive, FormProduct, FormCoproduct, FormCollection, FormCallable }
+import std.verification { EmissionAlgebraElement }
+
+// =========================================================================
+// Witness assertion types (compiler-internal)
+//
+// Parallel to CoercionAssertion / CoercionTestEntry in coercion.dag.
+// =========================================================================
+
+type WitnessAssertion
+  = PrimitiveWitnessAssertion { target: RenderTarget, dag_name: String, expected_expr: String }
+  | ContainerWitnessAssertion { target: RenderTarget, algebra: String, expected_expr: String }
+
+type WitnessTestCase {
+  test_name: String
+  assertions: List<WitnessAssertion>
+}
+
+// =========================================================================
+// Witness lookup functions
+//
+// Thin wrappers around coercion data. canonical_witness_expr reads
+// TypeCheckpoint.default_expr; container_identity_expr reads
+// InhabitantDecl.identity_expr. Both are compiled to stage0 Rust
+// and tested by the generated witness tests.
+// =========================================================================
+
+fn canonical_witness_expr(target: RenderTarget, dag_name: String) -> String? {
+  let cps = target_checkpoints(target: target)
+  match cps |> filter(cp => cp.dag_name == dag_name) |> first {
+    Some { value: cp } => cp.default_expr
+    None => none
+  }
+}
+
+fn container_identity_expr(target: RenderTarget, algebra: String) -> String? {
+  let inhs = target_inhabitants(target: target)
+  match inhs |> filter(inh => inh.algebra == algebra) |> first {
+    Some { value: inh } => inh.identity_expr
+    None => none
+  }
+}
+
+// =========================================================================
+// Witness test extraction
+//
+// Reads coercion data tables and produces test cases. Each TypeCheckpoint
+// with a default_expr generates a primitive witness assertion. Each
+// InhabitantDecl with an identity_expr generates a container witness
+// assertion. New data declarations → new witness tests automatically.
+// =========================================================================
+
+fn primitive_witness_tests(target: RenderTarget) -> List<WitnessTestCase> {
+  let label = target_label(target: target)
+  let cps = target_checkpoints(target: target)
+  let assertions = cps |> flat_map(cp =>
+    match cp.default_expr {
+      Some { value: expr } =>
+        [PrimitiveWitnessAssertion { target: target, dag_name: cp.dag_name, expected_expr: expr }]
+      None => []
+    })
+  if assertions |> count == 0 { [] }
+  else {
+    [WitnessTestCase {
+      test_name: concat("witness_", label, "_canonical_primitives"),
+      assertions: assertions
+    }]
+  }
+}
+
+fn container_witness_tests(target: RenderTarget) -> List<WitnessTestCase> {
+  let label = target_label(target: target)
+  let inhs = target_inhabitants(target: target)
+  let assertions = inhs |> flat_map(inh =>
+    match inh.identity_expr {
+      Some { value: expr } =>
+        [ContainerWitnessAssertion { target: target, algebra: inh.algebra, expected_expr: expr }]
+      None => []
+    })
+  if assertions |> count == 0 { [] }
+  else {
+    [WitnessTestCase {
+      test_name: concat("witness_", label, "_container_identities"),
+      assertions: assertions
+    }]
+  }
+}
+
+fn extract_witness_tests() -> List<WitnessTestCase> {
+  concat(
+    primitive_witness_tests(target: Rust),
+    primitive_witness_tests(target: Python),
+    primitive_witness_tests(target: Go),
+    container_witness_tests(target: Rust),
+    container_witness_tests(target: Python),
+    container_witness_tests(target: Go))
+}
+
+// =========================================================================
+// Emission algebra enumeration (KF-3b)
+//
+// The emission algebra is (ExprCategory x TypeForm x Cardinality).
+// This is the coverage target for structural form testing: every valid
+// triple should have at least one synthesized .dag program (KF-3c, later).
+//
+// Phase 1: all triples marked valid. Phase 2 will add structural pruning
+// (e.g., ExprListLit only produces FormCollection).
+// =========================================================================
+
+data expr_categories: List<String> = [
+  "Leaf", "Compound", "ControlFlow", "Binding"
+]
+
+data category_examples: Map<String, String> = {
+  "Leaf": "ExprLiteral",
+  "Compound": "ExprCall",
+  "ControlFlow": "ExprIf",
+  "Binding": "ExprLet"
+}
+
+data type_form_names: List<String> = [
+  "FormPrimitive", "FormProduct", "FormCoproduct", "FormCollection", "FormCallable"
+]
+
+data cardinality_values: List<String> = ["Required", "CardOptional"]
+
+fn type_form_from_name(name: String) -> TypeForm {
+  match name {
+    "FormPrimitive" => FormPrimitive
+    "FormProduct" => FormProduct
+    "FormCoproduct" => FormCoproduct
+    "FormCollection" => FormCollection
+    _ => FormCallable
+  }
+}
+
+fn enumerate_emission_algebra() -> List<EmissionAlgebraElement> {
+  expr_categories |> flat_map(cat =>
+    type_form_names |> flat_map(form_name =>
+      cardinality_values |> map(card =>
+        EmissionAlgebraElement {
+          expr_category: cat,
+          type_form: type_form_from_name(name: form_name),
+          cardinality: card,
+          is_valid: true,
+          example_expr: map_get(category_examples, cat)
+        })))
+}

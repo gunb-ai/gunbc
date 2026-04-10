@@ -12,6 +12,12 @@ import v2.compiler.coercion {
   extract_coercion_tests, CoercionTestEntry, CoercionAssertion,
   CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion
 }
+import v2.compiler.witness {
+  extract_witness_tests, WitnessTestCase, WitnessAssertion,
+  PrimitiveWitnessAssertion, ContainerWitnessAssertion,
+  enumerate_emission_algebra
+}
+import std.verification { EmissionAlgebraElement }
 
 fn ct_module_header() -> String {
   concat(
@@ -1084,6 +1090,70 @@ fn ct_profile_reconcile_test() -> String {
     "    }\n\n")
 }
 
+// =========================================================================
+// Witness test rendering (KF-3a)
+// =========================================================================
+
+fn render_witness_test_rust(entry: WitnessTestCase) -> String {
+  let assertions = entry.assertions |> map(a => render_witness_assertion_rust(a: a))
+  concat(
+    "    #[test]\n",
+    "    fn ", entry.test_name, "() {\n",
+    "        use crate::v2_compiler_witness::*;\n",
+    assertions |> join(separator: ""),
+    "    }\n\n")
+}
+
+// Escape a string for embedding in a Rust string literal.
+fn escape_for_rust_string(s: String) -> String {
+  s |> split(delimiter: "\\") |> join(separator: "\\\\")
+    |> split(delimiter: "\"") |> join(separator: "\\\"")
+}
+
+fn render_witness_assertion_rust(a: WitnessAssertion) -> String {
+  match a {
+    PrimitiveWitnessAssertion { target: t, dag_name: name, expected_expr: expected } =>
+      concat("        assert_eq!(canonical_witness_expr(", render_target_rust_enum(target: t),
+        ", \"", name, "\".into()), Some(\"", escape_for_rust_string(s: expected), "\".into()));\n")
+    ContainerWitnessAssertion { target: t, algebra: alg, expected_expr: expected } =>
+      concat("        assert_eq!(container_identity_expr(", render_target_rust_enum(target: t),
+        ", \"", alg, "\".into()), Some(\"", escape_for_rust_string(s: expected), "\".into()));\n")
+  }
+}
+
+fn ct_witness_tests() -> String {
+  let entries = extract_witness_tests()
+  let test_fns = entries |> map(e => render_witness_test_rust(entry: e))
+  concat(
+    "    // =========================================================================\n",
+    "    // Witness construction tests (auto-generated from type declarations)\n",
+    "    // =========================================================================\n\n",
+    test_fns |> join(separator: "\n"))
+}
+
+// =========================================================================
+// Emission algebra enumeration test (KF-3b)
+// =========================================================================
+
+fn ct_emission_algebra_tests() -> String {
+  let elements = enumerate_emission_algebra()
+  let total = elements |> count
+  let valid_count = elements |> filter(e => e.is_valid) |> count
+  concat(
+    "    // =========================================================================\n",
+    "    // Emission algebra enumeration test (auto-generated)\n",
+    "    // =========================================================================\n\n",
+    "    #[test]\n",
+    "    fn emission_algebra_enumeration_complete() {\n",
+    "        // The emission algebra has 4 categories x 5 type forms x 2 cardinalities\n",
+    "        let total = ", to_string(value: total), ";\n",
+    "        let valid = ", to_string(value: valid_count), ";\n",
+    "        assert_eq!(total, 4 * 5 * 2,\n",
+    "            \"emission algebra should be 4 categories x 5 type forms x 2 cardinalities\");\n",
+    "        assert_eq!(valid, total, \"phase 1: all triples marked valid\");\n",
+    "    }\n\n")
+}
+
 fn ct_module_footer() -> String {
   "}\n"
 }
@@ -1103,6 +1173,8 @@ fn compiler_tests_source() -> String {
     ct_gist_tests(),
     ct_type_size_test(),
     ct_coercion_tests(),
+    ct_witness_tests(),
+    ct_emission_algebra_tests(),
     ct_profile_helpers(),
     ct_profile_gist_test(),
     ct_profile_self_compile_test(),
