@@ -9,10 +9,13 @@ use crate::NonEmptyBTreeSet;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go};
 pub use crate::v2_compiler_coercion::{target_checkpoints, target_inhabitants, target_label};
+pub use crate::v2_compiler_emit::{ExprCategory};
+use crate::v2_compiler_emit::ExprCategory::{ExprCatLeaf, ExprCatCompound, ExprCatControlFlow, ExprCatBinding};
+pub use crate::v2_std_core::{Cardinality};
+use crate::v2_std_core::Cardinality::{Required, CardOptional};
 pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl};
 pub use crate::std_types::{TypeForm};
 use crate::std_types::TypeForm::{FormPrimitive, FormProduct, FormCoproduct, FormCollection, FormCallable};
-pub use crate::std_verification::{EmissionAlgebraElement};
 use WitnessAssertion::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -120,63 +123,46 @@ pub fn extract_witness_tests() -> Rc<Vec<Rc<WitnessTestCase>>> {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(primitive_witness_tests(RenderTarget::Rust), primitive_witness_tests(RenderTarget::Python)), primitive_witness_tests(RenderTarget::Go)), container_witness_tests(RenderTarget::Rust)), container_witness_tests(RenderTarget::Python)), container_witness_tests(RenderTarget::Go))
 }
 
-pub fn expr_categories() -> Rc<Vec<String>> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EmissionAlgebraElement {
+    pub expr_category: ExprCategory,
+    pub type_form: TypeForm,
+    pub cardinality: Cardinality,
+    pub is_valid: bool,
+}
+
+pub fn all_expr_categories() -> Rc<Vec<ExprCategory>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["Leaf".to_string(), "Compound".to_string(), "ControlFlow".to_string(), "Binding".to_string()])
+        static CACHED: Rc<Vec<ExprCategory>> = {
+            Rc::new(vec![ExprCategory::ExprCatLeaf, ExprCategory::ExprCatCompound, ExprCategory::ExprCatControlFlow, ExprCategory::ExprCatBinding])
         };
     }
     CACHED.with(|c| c.clone())
 }
 
-pub fn category_examples() -> Rc<HashMap<String, String>> {
+pub fn all_type_forms() -> Rc<Vec<TypeForm>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("Leaf".to_string(), "ExprLiteral".to_string());
-            __m.insert("Compound".to_string(), "ExprCall".to_string());
-            __m.insert("ControlFlow".to_string(), "ExprIf".to_string());
-            __m.insert("Binding".to_string(), "ExprLet".to_string());
-            Rc::new(__m)
+        static CACHED: Rc<Vec<TypeForm>> = {
+            Rc::new(vec![TypeForm::FormPrimitive, TypeForm::FormProduct, TypeForm::FormCoproduct, TypeForm::FormCollection, TypeForm::FormCallable])
         };
     }
     CACHED.with(|c| c.clone())
 }
 
-pub fn type_form_names() -> Rc<Vec<String>> {
+pub fn all_cardinalities() -> Rc<Vec<Cardinality>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["FormPrimitive".to_string(), "FormProduct".to_string(), "FormCoproduct".to_string(), "FormCollection".to_string(), "FormCallable".to_string()])
+        static CACHED: Rc<Vec<Cardinality>> = {
+            Rc::new(vec![Cardinality::Required, Cardinality::CardOptional])
         };
     }
     CACHED.with(|c| c.clone())
-}
-
-pub fn cardinality_values() -> Rc<Vec<String>> {
-    thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["Required".to_string(), "CardOptional".to_string()])
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn type_form_from_name(name: String) -> TypeForm {
-    match name.as_str() {
-    "FormPrimitive" => TypeForm::FormPrimitive,
-    "FormProduct" => TypeForm::FormProduct,
-    "FormCoproduct" => TypeForm::FormCoproduct,
-    "FormCollection" => TypeForm::FormCollection,
-    _ => TypeForm::FormCallable,
-}
 }
 
 pub fn enumerate_emission_algebra() -> Rc<Vec<Rc<EmissionAlgebraElement>>> {
-    Rc::new({ let mut __result = Vec::new(); for cat in expr_categories().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for form_name in type_form_names().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for card in cardinality_values().iter().cloned() { __result.push(Rc::new(EmissionAlgebraElement {
+    Rc::new({ let mut __result = Vec::new(); for cat in all_expr_categories().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for form in all_type_forms().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for card in all_cardinalities().iter().cloned() { __result.push(Rc::new(EmissionAlgebraElement {
     expr_category: cat.clone(),
-    type_form: type_form_from_name(form_name.clone()),
+    type_form: form.clone(),
     cardinality: card.clone(),
     is_valid: true,
-    example_expr: v2_rt::map_get(&category_examples(), cat.clone()),
 })); } __result })).iter().cloned()); } __result })).iter().cloned()); } __result })
 }

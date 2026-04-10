@@ -21,8 +21,6 @@
 
 module std.verification
 
-import std.types { TypeForm }
-
 // The predicate form of an assertion.
 // Each variant corresponds to a standard verification predicate
 // that every test framework supports.
@@ -46,46 +44,4 @@ type TestCase {
   name: String
   claims: List<TestClaim>
   ignored: Bool
-}
-
-// --- Witness generation (KF-3a) ----------------------------------------
-// A witness is a concrete value that proves type inhabitation. Witnesses
-// are layered by how they are derived — canonical values come from type
-// structure alone, while algebra-derived values come from algebraic laws.
-
-// The derivation layer of a witness value.
-type WitnessLayer
-  = Canonical           // L1: one canonical value per type form
-  | VariantExhaustive   // L2: one per coproduct variant
-  | AlgebraLaw          // L3: special elements from algebra declarations
-  | ConstraintBoundary  // L4: predicate edge cases
-  | UserProvided        // L5: user-declared samples
-
-// A concrete witness value for a type in a specific target language.
-// Derived from TypeCheckpoint (default_expr) and InhabitantDecl
-// (identity_expr) data declarations.
-type WitnessValue {
-  dag_type: String
-  type_form: TypeForm
-  target_expr: String
-  target_type: String
-}
-
-// A witness test entry — one test function with its witness assertions.
-type WitnessTestEntry {
-  test_name: String
-  witnesses: List<WitnessValue>
-}
-
-// --- Emission algebra (KF-3b) ------------------------------------------
-// An element of the emission algebra: one (ExprCategory x TypeForm x
-// Cardinality) triple. The full algebra is the Cartesian product of
-// these finite sets, filtered by structural validity.
-
-type EmissionAlgebraElement {
-  expr_category: String
-  type_form: TypeForm
-  cardinality: String
-  is_valid: Bool
-  example_expr: String?
 }

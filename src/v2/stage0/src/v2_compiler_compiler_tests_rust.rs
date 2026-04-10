@@ -10,9 +10,8 @@ pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go};
 pub use crate::v2_compiler_coercion::{extract_coercion_tests, CoercionTestEntry, CoercionAssertion};
 use crate::v2_compiler_coercion::CoercionAssertion::{CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion};
-pub use crate::v2_compiler_witness::{extract_witness_tests, WitnessTestCase, WitnessAssertion, enumerate_emission_algebra};
+pub use crate::v2_compiler_witness::{extract_witness_tests, WitnessTestCase, WitnessAssertion, enumerate_emission_algebra, EmissionAlgebraElement};
 use crate::v2_compiler_witness::WitnessAssertion::{PrimitiveWitnessAssertion, ContainerWitnessAssertion};
-pub use crate::std_verification::{EmissionAlgebraElement};
 
 pub fn ct_module_header() -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat("#[cfg(test)]\n".to_string(), "mod compiler_tests {\n".to_string()), "    use std::collections::HashMap;\n".to_string()), "    use crate::v2_compiler_tokenize::tokenize;\n\n".to_string())

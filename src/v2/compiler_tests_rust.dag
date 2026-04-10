@@ -15,9 +15,8 @@ import v2.compiler.coercion {
 import v2.compiler.witness {
   extract_witness_tests, WitnessTestCase, WitnessAssertion,
   PrimitiveWitnessAssertion, ContainerWitnessAssertion,
-  enumerate_emission_algebra
+  enumerate_emission_algebra, EmissionAlgebraElement
 }
-import std.verification { EmissionAlgebraElement }
 
 fn ct_module_header() -> String {
   concat(

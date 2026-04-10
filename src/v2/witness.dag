@@ -18,9 +18,10 @@ module v2.compiler.witness
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go }
 import v2.compiler.coercion { target_checkpoints, target_inhabitants, target_label }
+import v2.compiler.emit { ExprCategory, ExprCatLeaf, ExprCatCompound, ExprCatControlFlow, ExprCatBinding }
+import v2.std.core { Cardinality, Required, CardOptional }
 import std.coercion { TypeCheckpoint, InhabitantDecl }
 import std.types { TypeForm, FormPrimitive, FormProduct, FormCoproduct, FormCollection, FormCallable }
-import std.verification { EmissionAlgebraElement }
 
 // =========================================================================
 // Witness assertion types (compiler-internal)
@@ -121,49 +122,38 @@ fn extract_witness_tests() -> List<WitnessTestCase> {
 // Emission algebra enumeration (KF-3b)
 //
 // The emission algebra is (ExprCategory x TypeForm x Cardinality).
-// This is the coverage target for structural form testing: every valid
-// triple should have at least one synthesized .dag program (KF-3c, later).
+// Uses the actual structural types from 00_core.dag (Cardinality),
+// 05_emit.dag (ExprCategory), and std/types.dag (TypeForm).
 //
 // Phase 1: all triples marked valid. Phase 2 will add structural pruning
 // (e.g., ExprListLit only produces FormCollection).
 // =========================================================================
 
-data expr_categories: List<String> = [
-  "Leaf", "Compound", "ControlFlow", "Binding"
-]
-
-data category_examples: Map<String, String> = {
-  "Leaf": "ExprLiteral",
-  "Compound": "ExprCall",
-  "ControlFlow": "ExprIf",
-  "Binding": "ExprLet"
+type EmissionAlgebraElement {
+  expr_category: ExprCategory
+  type_form: TypeForm
+  cardinality: Cardinality
+  is_valid: Bool
 }
 
-data type_form_names: List<String> = [
-  "FormPrimitive", "FormProduct", "FormCoproduct", "FormCollection", "FormCallable"
+data all_expr_categories: List<ExprCategory> = [
+  ExprCatLeaf, ExprCatCompound, ExprCatControlFlow, ExprCatBinding
 ]
 
-data cardinality_values: List<String> = ["Required", "CardOptional"]
+data all_type_forms: List<TypeForm> = [
+  FormPrimitive, FormProduct, FormCoproduct, FormCollection, FormCallable
+]
 
-fn type_form_from_name(name: String) -> TypeForm {
-  match name {
-    "FormPrimitive" => FormPrimitive
-    "FormProduct" => FormProduct
-    "FormCoproduct" => FormCoproduct
-    "FormCollection" => FormCollection
-    _ => FormCallable
-  }
-}
+data all_cardinalities: List<Cardinality> = [Required, CardOptional]
 
 fn enumerate_emission_algebra() -> List<EmissionAlgebraElement> {
-  expr_categories |> flat_map(cat =>
-    type_form_names |> flat_map(form_name =>
-      cardinality_values |> map(card =>
+  all_expr_categories |> flat_map(cat =>
+    all_type_forms |> flat_map(form =>
+      all_cardinalities |> map(card =>
         EmissionAlgebraElement {
           expr_category: cat,
-          type_form: type_form_from_name(name: form_name),
+          type_form: form,
           cardinality: card,
-          is_valid: true,
-          example_expr: map_get(category_examples, cat)
+          is_valid: true
         })))
 }
