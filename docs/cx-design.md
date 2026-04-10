@@ -925,6 +925,116 @@ cleanup.
 
 ---
 
+## Cross-compiler audit: the anti-pattern is systemic
+
+The construct-discard-reconstruct pattern is not CX-specific. An
+audit of all compiler stages found the same structural gap in every
+stage that needs facts about values beyond their types.
+
+### Confirmed instances
+
+**1. Complexity (CX) — 33 reconstruction heuristics**
+
+Fully documented above. TypeBinding drops provenance. CX-L2
+reconstructs via string matching, accessor tables, and AST re-walks.
+424 violations. ~1365 lines of reconstruction code.
+
+**2. Ownership — string name matching for fold accumulators**
+
+`ownership.dag` re-derives fold structure by name-matching:
+- `a.name == "init"` to find fold initializers (line 214)
+- `terminal.name == acc_type_name` to identify accumulator structs
+  (line 430)
+- `collect_acc_field_moves` re-walks the body to find field accesses
+  (lines 438-454)
+
+Root cause: inference knows the fold structure (which arg is init,
+which is body, which is collection) but stores it as generic ExprCall
+children with string names. Ownership must reconstruct semantics
+from names.
+
+**3. Emission — upstream information loss (M2)**
+
+The ROADMAP reviewer root cause analysis (2026-04-03, line 193)
+already identified this: "facts that exist upstream are lost before
+emit, so emission compensates with heuristics." Specific instances:
+- `variant_to_enum` map uses empty string as ambiguity sentinel;
+  emitter falls back to AST inspection (05_emit_rust.dag:1787)
+- Emitter re-derives method dispatch, expression semantics, and
+  clone decisions that inference already computed
+
+M2 (Boundary Sufficiency) is the same anti-pattern named differently:
+the resolution→emit boundary doesn't carry enough structure.
+
+**4. Core tables — hand-maintained semantic maps**
+
+`00_core.dag` maintains hardcoded tables that should be derived from
+type declarations:
+- `expr_child_roles` (line 750): maps ExprData variant names to
+  their child accessor functions — via string keys
+- `node_field_roles` (line 845): maps Node field names to structural
+  recursion roles — via string keys
+- `function_size_effects` (line 881): maps function names to size
+  effects (TreeSizePreserving, TreeSizeReducing) — via string keys
+
+Every consumer that queries these tables is doing name-based
+reconstruction of facts that the type system already has.
+
+**5. Inference — string dispatch for built-in functions**
+
+`04_infer.dag` has `if func_name == "..."` branches for built-in
+function type logic:
+- `func_name == "empty_map"` (line 1228)
+- `func_name == "map_get"` (line 1256)
+- `func_name == "map_keys"` (line 1269)
+- `func_name == "map_values"` (line 1282)
+
+Each branch applies type-narrowing rules that should be declared on
+the function's signature, not hardcoded as name-matching in the
+inference engine.
+
+**6. Algebra — ExprBinOp.algebra_field: String?**
+
+Documented as known debt (M8/M9). Binary operator algebra dispatch
+uses `algebra_field: String?` with values "add", "mul", "quotient",
+etc. Every consumer (inference, emit, complexity) matches on these
+strings instead of a proper AlgebraFieldKind coproduct.
+
+### The pattern
+
+Every instance follows the same structure:
+
+```
+Stage N computes a structural fact
+     ↓
+IR stores only the type (or a string proxy)
+     ↓
+Stage N+k reconstructs the fact via name matching / AST re-walking
+```
+
+The root cause is always the same: **the IR vocabulary is too narrow.**
+TypeBinding stores `{ name, resolved }`. ExprCall stores generic
+children. ExprBinOp stores a string. Each narrowing forces downstream
+stages to reconstruct what upstream stages already knew.
+
+### What provenance-on-bindings fixes (and what it doesn't)
+
+Provenance on TypeBinding directly fixes instances 1 (CX) and 2
+(Ownership). It indirectly helps with 3 (Emission) by making value
+relationships visible to emit.
+
+Instances 4-6 are separate but related: they're about semantic
+metadata on types and operations (not on bindings). The fix for
+those is to move hand-maintained tables into type declarations in
+std/ — the same "declare facts at authority" principle.
+
+All six instances share one thesis: **the IR should carry structural
+facts from the point of computation to the point of consumption.**
+Provenance on bindings is the first and highest-leverage fix.
+Type-derived semantic tables are the second.
+
+---
+
 ## Relationship to other docs
 
 - **INVARIANTS.md** — bounded kernel, fail-closed, decidability,
