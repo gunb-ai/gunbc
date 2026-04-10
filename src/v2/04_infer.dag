@@ -2102,6 +2102,9 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   // Guard: only check when struct_def is known AND all provided names are
   // recognized fields of that struct (avoids false positives from type
   // name collisions across modules).
+  // Limitation: variant constructors are resolved later via effective_lookup,
+  // so this check only applies to top-level struct construction, not fielded
+  // enum variants. Uses InternalError pending a first-class diagnostic variant.
   let provided_names = field_inits |> map(fi =>
     field_init_node_name_at(n: fi, source_index: scope.type_env.source_index))
   let struct_field_names = struct_fields |> map(sf =>

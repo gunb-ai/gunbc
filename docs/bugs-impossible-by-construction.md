@@ -258,7 +258,7 @@ A binding (variable) is used in two consuming positions. In most languages, both
 Python/JS: both consumers get the same reference. Mutations from one corrupt the other. Go: slices share underlying arrays — appending in one goroutine corrupts another. Rust: caught by the borrow checker (move semantics).
 
 ### gunbc
-The ownership analyzer tracks semantic consumers for each binding. For fold accumulators, when the same field is consumed by multiple call sites within one fold step, the analyzer marks the fold as ineligible for unwrap optimization (`fold_acc_unwrap.eligible = false`), forcing a safe (cloned) path. This is a distinct authority from the binding-level `SharedError` decision — the fold analysis (`analyze_single_fold`) detects repeated field moves specifically.
+The ownership analyzer tracks semantic consumers for each binding. For fold accumulators, when the same field is consumed by multiple call sites within one fold step, the analyzer marks the fold as ineligible for unwrap optimization (`fold_acc_unwrap.eligible = false`). When ineligible, the emitter uses `Rc::try_unwrap(...).unwrap_or_else(|rc| (*rc).clone())` — a runtime check that clones only when the `Rc` is shared. This is a distinct authority from the binding-level `SharedError` decision — the fold analysis (`analyze_single_fold`) detects repeated field moves specifically.
 
 ### Code
 
