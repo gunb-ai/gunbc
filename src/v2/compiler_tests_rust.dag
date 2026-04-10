@@ -14,8 +14,7 @@ import v2.compiler.coercion {
 }
 import v2.compiler.witness {
   extract_witness_tests, WitnessTestCase, WitnessAssertion,
-  PrimitiveWitnessAssertion, ContainerWitnessAssertion,
-  enumerate_emission_algebra, EmissionAlgebraElement
+  PrimitiveWitnessAssertion, ContainerWitnessAssertion
 }
 
 fn ct_module_header() -> String {
@@ -1098,7 +1097,7 @@ fn render_witness_test_rust(entry: WitnessTestCase) -> String {
   concat(
     "    #[test]\n",
     "    fn ", entry.test_name, "() {\n",
-    "        use crate::v2_compiler_witness::*;\n",
+    "        use crate::v2_compiler_coercion::*;\n",
     assertions |> join(separator: ""),
     "    }\n\n")
 }
@@ -1112,11 +1111,13 @@ fn escape_for_rust_string(s: String) -> String {
 fn render_witness_assertion_rust(a: WitnessAssertion) -> String {
   match a {
     PrimitiveWitnessAssertion { target: t, dag_name: name, expected_expr: expected } =>
-      concat("        assert_eq!(canonical_witness_expr(", render_target_rust_enum(target: t),
-        ", \"", name, "\".into()), Some(\"", escape_for_rust_string(s: expected), "\".into()));\n")
+      concat("        assert_eq!(lookup_checkpoint(", render_target_rust_enum(target: t),
+        ", \"", name, "\".into()).and_then(|cp| cp.default_expr.clone()), Some(\"",
+        escape_for_rust_string(s: expected), "\".into()));\n")
     ContainerWitnessAssertion { target: t, algebra: alg, expected_expr: expected } =>
-      concat("        assert_eq!(container_identity_expr(", render_target_rust_enum(target: t),
-        ", \"", alg, "\".into()), Some(\"", escape_for_rust_string(s: expected), "\".into()));\n")
+      concat("        assert_eq!(lookup_inhabitant(", render_target_rust_enum(target: t),
+        ", \"", alg, "\".into()).and_then(|inh| inh.identity_expr.clone()), Some(\"",
+        escape_for_rust_string(s: expected), "\".into()));\n")
   }
 }
 
@@ -1128,29 +1129,6 @@ fn ct_witness_tests() -> String {
     "    // Witness construction tests (auto-generated from type declarations)\n",
     "    // =========================================================================\n\n",
     test_fns |> join(separator: "\n"))
-}
-
-// =========================================================================
-// Emission algebra enumeration test (KF-3b)
-// =========================================================================
-
-fn ct_emission_algebra_tests() -> String {
-  let elements = enumerate_emission_algebra()
-  let total = elements |> count
-  let valid_count = elements |> filter(e => e.is_valid) |> count
-  concat(
-    "    // =========================================================================\n",
-    "    // Emission algebra enumeration test (auto-generated)\n",
-    "    // =========================================================================\n\n",
-    "    #[test]\n",
-    "    fn emission_algebra_enumeration_complete() {\n",
-    "        // The emission algebra has 6 categories x 5 type forms x 2 cardinalities\n",
-    "        let total = ", to_string(value: total), ";\n",
-    "        let valid = ", to_string(value: valid_count), ";\n",
-    "        assert_eq!(total, 6 * 5 * 2,\n",
-    "            \"emission algebra should be 6 categories x 5 type forms x 2 cardinalities\");\n",
-    "        assert_eq!(valid, total, \"phase 1: all triples marked valid\");\n",
-    "    }\n\n")
 }
 
 fn ct_module_footer() -> String {
@@ -1173,7 +1151,6 @@ fn compiler_tests_source() -> String {
     ct_type_size_test(),
     ct_coercion_tests(),
     ct_witness_tests(),
-    ct_emission_algebra_tests(),
     ct_profile_helpers(),
     ct_profile_gist_test(),
     ct_profile_self_compile_test(),

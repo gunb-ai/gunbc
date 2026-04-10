@@ -9,13 +9,7 @@ use crate::NonEmptyBTreeSet;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go};
 pub use crate::v2_compiler_coercion::{target_checkpoints, target_inhabitants, target_label};
-pub use crate::v2_compiler_emit::{ExprCategory};
-use crate::v2_compiler_emit::ExprCategory::{ExprCatLeaf, ExprCatCompound, ExprCatControlFlow, ExprCatBinding, ExprCatService, ExprCatNone};
-pub use crate::v2_std_core::{Cardinality};
-use crate::v2_std_core::Cardinality::{Required, CardOptional};
 pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl};
-pub use crate::std_types::{TypeForm};
-use crate::std_types::TypeForm::{FormPrimitive, FormProduct, FormCoproduct, FormCollection, FormCallable};
 use WitnessAssertion::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -51,26 +45,6 @@ impl WitnessAssertion {
 pub struct WitnessTestCase {
     pub test_name: String,
     pub assertions: Rc<Vec<Rc<WitnessAssertion>>>,
-}
-
-pub fn canonical_witness_expr(target: RenderTarget, dag_name: String) -> Option<String> {
-    {
-        let cps = target_checkpoints(target);
-match Rc::new({ let mut __result = Vec::new(); for cp in cps.iter().cloned() { if (cp.dag_name.clone().as_str() == dag_name.clone().as_str()) { __result.push(cp); } } __result }).first().cloned() {
-    Some(cp) => cp.default_expr.clone(),
-    None => None,
-}
-}
-}
-
-pub fn container_identity_expr(target: RenderTarget, algebra: String) -> Option<String> {
-    {
-        let inhs = target_inhabitants(target);
-match Rc::new({ let mut __result = Vec::new(); for inh in inhs.iter().cloned() { if (inh.algebra.clone().as_str() == algebra.clone().as_str()) { __result.push(inh); } } __result }).first().cloned() {
-    Some(inh) => inh.identity_expr.clone(),
-    None => None,
-}
-}
 }
 
 pub fn primitive_witness_tests(target: RenderTarget) -> Rc<Vec<Rc<WitnessTestCase>>> {
@@ -121,48 +95,4 @@ if ((assertions.clone().len() as i64) == 0) {
 
 pub fn extract_witness_tests() -> Rc<Vec<Rc<WitnessTestCase>>> {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(primitive_witness_tests(RenderTarget::Rust), primitive_witness_tests(RenderTarget::Python)), primitive_witness_tests(RenderTarget::Go)), container_witness_tests(RenderTarget::Rust)), container_witness_tests(RenderTarget::Python)), container_witness_tests(RenderTarget::Go))
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct EmissionAlgebraElement {
-    pub expr_category: ExprCategory,
-    pub type_form: TypeForm,
-    pub cardinality: Cardinality,
-    pub is_valid: bool,
-}
-
-pub fn all_expr_categories() -> Rc<Vec<ExprCategory>> {
-    thread_local! {
-        static CACHED: Rc<Vec<ExprCategory>> = {
-            Rc::new(vec![ExprCategory::ExprCatLeaf, ExprCategory::ExprCatCompound, ExprCategory::ExprCatControlFlow, ExprCategory::ExprCatBinding, ExprCategory::ExprCatService, ExprCategory::ExprCatNone])
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn all_type_forms() -> Rc<Vec<TypeForm>> {
-    thread_local! {
-        static CACHED: Rc<Vec<TypeForm>> = {
-            Rc::new(vec![TypeForm::FormPrimitive, TypeForm::FormProduct, TypeForm::FormCoproduct, TypeForm::FormCollection, TypeForm::FormCallable])
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn all_cardinalities() -> Rc<Vec<Cardinality>> {
-    thread_local! {
-        static CACHED: Rc<Vec<Cardinality>> = {
-            Rc::new(vec![Cardinality::Required, Cardinality::CardOptional])
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn enumerate_emission_algebra() -> Rc<Vec<Rc<EmissionAlgebraElement>>> {
-    Rc::new({ let mut __result = Vec::new(); for cat in all_expr_categories().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for form in all_type_forms().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for card in all_cardinalities().iter().cloned() { __result.push(Rc::new(EmissionAlgebraElement {
-    expr_category: cat.clone(),
-    type_form: form.clone(),
-    cardinality: card.clone(),
-    is_valid: true,
-})); } __result })).iter().cloned()); } __result })).iter().cloned()); } __result })
 }

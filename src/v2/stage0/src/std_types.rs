@@ -7,7 +7,6 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_algebra::{FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names};
-use TypeForm::*;
 use Bool::*;
 use WarningPolicy::*;
 use CloudRuntime::*;
@@ -27,16 +26,6 @@ use ContentEncoding::*;
 use HttpMethod::*;
 use AuthScheme::*;
 use CodegenBackend::*;
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum TypeForm {
-    FormPrimitive,
-    FormProduct,
-    FormCoproduct,
-    FormCollection,
-    FormCallable,
-}
 
 pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
     thread_local! {

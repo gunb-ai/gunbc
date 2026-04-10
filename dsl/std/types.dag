@@ -32,25 +32,6 @@ module std.types
 
 import std.algebra { FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names }
 
-// --- Type Form (structural classification) ----------------------------
-// Reifies the structural shape of a type for emission algebra enumeration
-// and witness generation. Each TypeForm maps to the type's Connective +
-// container classification:
-//   FormPrimitive  ↔ NoConnective, not container
-//   FormProduct    ↔ Conj (record with fields)
-//   FormCoproduct  ↔ Disj (enum/union)
-//   FormCollection ↔ container arity > 0 (List<T>, Set<T>, Map<K,V>)
-//   FormCallable   ↔ Arrow connective (fn types)
-//
-// Optional (T?) is NOT a TypeForm — it is the Cardinality axis.
-// This enum is non-recursive (Node is the only recursive type).
-type TypeForm
-  = FormPrimitive
-  | FormProduct
-  | FormCoproduct
-  | FormCollection
-  | FormCallable
-
 // --- Primitives (Level 0: Atoms) --------------------------------------
 // Each is a single-node Identity DAG -- no validation, just a base carrier.
 //

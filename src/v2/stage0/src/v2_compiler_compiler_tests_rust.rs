@@ -10,7 +10,7 @@ pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go};
 pub use crate::v2_compiler_coercion::{extract_coercion_tests, CoercionTestEntry, CoercionAssertion};
 use crate::v2_compiler_coercion::CoercionAssertion::{CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion};
-pub use crate::v2_compiler_witness::{extract_witness_tests, WitnessTestCase, WitnessAssertion, enumerate_emission_algebra, EmissionAlgebraElement};
+pub use crate::v2_compiler_witness::{extract_witness_tests, WitnessTestCase, WitnessAssertion};
 use crate::v2_compiler_witness::WitnessAssertion::{PrimitiveWitnessAssertion, ContainerWitnessAssertion};
 
 pub fn ct_module_header() -> String {
@@ -154,7 +154,7 @@ pub fn ct_profile_reconcile_test() -> String {
 pub fn render_witness_test_rust(entry: Rc<WitnessTestCase>) -> String {
     {
         let assertions = Rc::new({ let mut __result = Vec::new(); for a in entry.assertions.clone().iter().cloned() { __result.push(render_witness_assertion_rust(a.clone())); } __result });
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    #[test]\n".to_string(), "    fn ".to_string()), entry.test_name.clone()), "() {\n".to_string()), "        use crate::v2_compiler_witness::*;\n".to_string()), assertions.join(&"".to_string())), "    }\n\n".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    #[test]\n".to_string(), "    fn ".to_string()), entry.test_name.clone()), "() {\n".to_string()), "        use crate::v2_compiler_coercion::*;\n".to_string()), assertions.join(&"".to_string())), "    }\n\n".to_string())
 }
 }
 
@@ -164,8 +164,8 @@ pub fn escape_for_rust_string(s: String) -> String {
 
 pub fn render_witness_assertion_rust(a: Rc<WitnessAssertion>) -> String {
     match (*a).clone() {
-    WitnessAssertion::PrimitiveWitnessAssertion { target: t, dag_name: name, expected_expr: expected, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(canonical_witness_expr(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into()), Some(\"".to_string()), escape_for_rust_string(expected.clone())), "\".into()));\n".to_string()),
-    WitnessAssertion::ContainerWitnessAssertion { target: t, algebra: alg, expected_expr: expected, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(container_identity_expr(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), alg.clone()), "\".into()), Some(\"".to_string()), escape_for_rust_string(expected.clone())), "\".into()));\n".to_string()),
+    WitnessAssertion::PrimitiveWitnessAssertion { target: t, dag_name: name, expected_expr: expected, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(lookup_checkpoint(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), name.clone()), "\".into()).and_then(|cp| cp.default_expr.clone()), Some(\"".to_string()), escape_for_rust_string(expected.clone())), "\".into()));\n".to_string()),
+    WitnessAssertion::ContainerWitnessAssertion { target: t, algebra: alg, expected_expr: expected, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("        assert_eq!(lookup_inhabitant(".to_string(), render_target_rust_enum(t.clone())), ", \"".to_string()), alg.clone()), "\".into()).and_then(|inh| inh.identity_expr.clone()), Some(\"".to_string()), escape_for_rust_string(expected.clone())), "\".into()));\n".to_string()),
 }
 }
 
@@ -177,19 +177,10 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("    // ==============================
 }
 }
 
-pub fn ct_emission_algebra_tests() -> String {
-    {
-        let elements = enumerate_emission_algebra();
-let total = (elements.clone().len() as i64);
-let valid_count = (Rc::new({ let mut __result = Vec::new(); for e in elements.clone().iter().cloned() { if e.is_valid.clone() { __result.push(e); } } __result }).len() as i64);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    // =========================================================================\n".to_string(), "    // Emission algebra enumeration test (auto-generated)\n".to_string()), "    // =========================================================================\n\n".to_string()), "    #[test]\n".to_string()), "    fn emission_algebra_enumeration_complete() {\n".to_string()), "        // The emission algebra has 6 categories x 5 type forms x 2 cardinalities\n".to_string()), "        let total = ".to_string()), (total).to_string()), ";\n".to_string()), "        let valid = ".to_string()), (valid_count).to_string()), ";\n".to_string()), "        assert_eq!(total, 6 * 5 * 2,\n".to_string()), "            \"emission algebra should be 6 categories x 5 type forms x 2 cardinalities\");\n".to_string()), "        assert_eq!(valid, total, \"phase 1: all triples marked valid\");\n".to_string()), "    }\n\n".to_string())
-}
-}
-
 pub fn ct_module_footer() -> String {
     "}\n".to_string()
 }
 
 pub fn compiler_tests_source() -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(ct_module_header(), ct_workspace_helpers()), ct_file_discovery_helpers()), ct_source_builders()), ct_tokenizer_tests()), ct_parse_tests()), ct_pipeline_test()), ct_self_parse_all_test()), ct_self_compile_test()), ct_self_compile_cargo_check_test()), ct_gist_tests()), ct_type_size_test()), ct_coercion_tests()), ct_witness_tests()), ct_emission_algebra_tests()), ct_profile_helpers()), ct_profile_gist_test()), ct_profile_self_compile_test()), ct_profile_reconcile_test()), ct_module_footer())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(ct_module_header(), ct_workspace_helpers()), ct_file_discovery_helpers()), ct_source_builders()), ct_tokenizer_tests()), ct_parse_tests()), ct_pipeline_test()), ct_self_parse_all_test()), ct_self_compile_test()), ct_self_compile_cargo_check_test()), ct_gist_tests()), ct_type_size_test()), ct_coercion_tests()), ct_witness_tests()), ct_profile_helpers()), ct_profile_gist_test()), ct_profile_self_compile_test()), ct_profile_reconcile_test()), ct_module_footer())
 }
