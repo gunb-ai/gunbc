@@ -198,7 +198,7 @@ spec-referenced data lookups instead of inline logic.
 
 **LS-4: Ownership — three layers to clone elimination**
 
-Stage0 emits 23,324 `.clone()` calls (~0.546 clones/line). The
+Stage0 emits 23,733 `.clone()` calls (~0.479 clones/line). The
 ownership analysis (PR #313) already computes the facts needed to
 eliminate most of them. The gap: the emitter doesn't consume all
 the facts it has.

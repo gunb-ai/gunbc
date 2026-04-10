@@ -7114,7 +7114,7 @@ fn ownership_stage0_census() {
         .filter_map(|e| e.ok())
         .filter(|e| {
             let name = e.file_name().to_string_lossy().to_string();
-            name.starts_with("v2_") && name.ends_with(".rs")
+            name.ends_with(".rs") && name != "lib.rs"
         })
         .collect();
     entries.sort_by_key(|e| e.file_name());
@@ -7154,8 +7154,8 @@ fn ownership_stage0_census() {
     eprintln!("  TOTAL lines:            {}", total_lines);
     eprintln!("  clones/line:            {:.3}", total_clones as f64 / total_lines as f64);
 
-    // 2026-04-10 baseline: 23324 clones, 8 try_unwrap, 1255 iter_cloned, 49647 lines
-    const CLONE_RATCHET: usize = 23324;
+    // 2026-04-10 baseline (all stage0 .rs): 23733 clones, 8 try_unwrap, 1282 iter_cloned, 49546 lines
+    const CLONE_RATCHET: usize = 23733;
     const TRY_UNWRAP_RATCHET: usize = 8;
 
     assert!(total_clones <= CLONE_RATCHET, ".clone() {} > ratchet {}", total_clones, CLONE_RATCHET);
