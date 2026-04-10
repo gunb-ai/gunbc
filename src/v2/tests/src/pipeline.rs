@@ -6940,7 +6940,7 @@ fn count_ownership_violations(
         .files
         .iter()
         .filter(|f| f.path.ends_with(".rs"))
-        .map(|f| (*f.content).clone())
+        .map(|f| f.content.clone())
         .collect();
 
     let mut movable_but_cloned = 0usize;
