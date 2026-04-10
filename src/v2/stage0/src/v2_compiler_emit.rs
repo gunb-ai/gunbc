@@ -18,7 +18,7 @@ use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
 pub use crate::std_induction::{InductiveField};
-pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node};
+pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -1878,6 +1878,28 @@ if ((src_ty.clone().as_str() != "".to_string().as_str()) && (src_ty.clone().as_s
             } else {
                 emit_error_expr(v2_rt::concat(v2_rt::concat(v2_rt::concat("unsupported cast from ".to_string(), src_ty.clone()), " to ".to_string()), ty_str.clone()), target.clone())
             }
+        }
+}
+}
+
+pub fn emit_typed_for_each_shared(variable: String, collection: Rc<Node>, body: Rc<Node>, target: RenderTarget, depth: i64, source_index: Option<Rc<NewlineIndex>>, recurse: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone, scope: Rc<InferScope>) -> String {
+    {
+        let coll_str = recurse(collection.clone(), scope.clone(), depth.clone());
+let elem_type = for_each_element_type_node(resolved_type(collection.clone()));
+let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type);
+let body_str = recurse(body, body_scope, (depth.clone() + 1));
+let var_str = emit_ident(variable.clone(), target.clone());
+let spec = language_spec(target.clone());
+let fes = spec.for_each_syntax.clone();
+let bs = spec.block_syntax.clone();
+let body_indent = make_indent((depth.clone() + 1));
+if bs.significant_whitespace.clone() {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(fes.prefix.clone(), var_str), fes.separator.clone()), coll_str), bs.block_open.clone()), body_indent), body_str)
+        } else {
+            {
+                let close_indent = make_indent(depth.clone());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(fes.prefix.clone(), var_str), fes.separator.clone()), coll_str), bs.block_open.clone()), body_indent), body_str), "\n".to_string()), close_indent), bs.block_close.clone())
+}
         }
 }
 }

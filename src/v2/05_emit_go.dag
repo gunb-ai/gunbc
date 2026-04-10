@@ -72,7 +72,7 @@ import v2.compiler.languages {
   is_string_like, CaseVisibility
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
-import v2.compiler.infer_types { resolved_type, for_each_element_type_node, normalize_access_type_node, node_is_keyed_collection, is_unit_like }
+import v2.compiler.infer_types { resolved_type, normalize_access_type_node, node_is_keyed_collection, is_unit_like }
 import v2.compiler.infer_method {
 }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
@@ -120,7 +120,7 @@ import v2.compiler.emit {
   ServiceFieldSet, compute_service_fields, service_field_decls,
   seed_bindings,
   emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts,
-  emit_typed_cast_shared, emit_typed_index_shared, emit_typed_slice_shared,
+  emit_typed_cast_shared, emit_typed_for_each_shared, emit_typed_index_shared, emit_typed_slice_shared,
   emit_block_stmts_shared, emit_init_block_stmts_shared,
   emit_typed_if_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, apply_naming_case,
   emit_inferred_shared, emit_typed_block_join,
@@ -623,7 +623,13 @@ fn emit_go_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 }
 
 fn emit_go_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_for_each(variable: foreach_variable_at(texpr: expr, source_index: scope.type_env.source_index), collection: foreach_collection(texpr: expr), body: foreach_body(texpr: expr), registry: registry, scope: scope, depth: depth)
+  emit_typed_for_each_shared(
+    variable: foreach_variable_at(texpr: expr, source_index: scope.type_env.source_index),
+    collection: foreach_collection(texpr: expr),
+    body: foreach_body(texpr: expr),
+    target: Go, depth: depth, source_index: scope.type_env.source_index,
+    recurse: (child, s, d) => emit_go_typed_expr(texpr: child, registry: registry, scope: s, depth: d, fuel: 1024),
+    scope: scope)
 }
 
 fn emit_go_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -677,14 +683,6 @@ fn emit_go_typed_call(func: String, args: List<Node>, registry: Map<String, Item
   concat(go_export_ident(name: func), "(", args_str, ")")
 }
 
-fn emit_go_typed_for_each(variable: String, collection: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let coll_str = emit_go_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  let elem_type = for_each_element_type_node(n: resolved_type(n: collection))
-  let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
-  let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1, fuel: 1024)
-  concat("for _, ", emit_ident(name: variable, target: Go), " := range ", coll_str, " {\n",
-    make_indent(level: depth + 1), body_str, "\n", make_indent(level: depth), "}")
-}
 
 fn go_bridge_method_name(method_name: String) -> String {
   // Derive PascalCase from the canonical snake_case method name.
