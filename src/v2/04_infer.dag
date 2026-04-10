@@ -866,7 +866,8 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
 
 // Infer method args with element type context and fold special-casing.
 // Shared between ExprCall bridge and ExprMethodCall paths.
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, scope: InferScope) -> List<ArgInferResult> {
+// S6: elem_provenance threads IteratedSubValue from the receiver to lambda params.
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -894,7 +895,20 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: Some { value: fold_callable })
       ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_index: scope.type_env.source_index), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
     } else {
-      infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
+      // S6: pre-extend scope with elem_provenance for non-fold lambda params (map/filter/etc).
+      let nf_lam_value = arg_value(n: a)
+      let nf_scope = if is_lambda_expr(e: nf_lam_value) {
+        let nf_lam_names = lambda_param_names_at(texpr: nf_lam_value, source_index: scope.type_env.source_index)
+        // For non-fold: the single/last param is the element param.
+        fold(nf_lam_names |> enumerate, init: scope, f: (acc_scope, pair) =>
+          if pair.first == (nf_lam_names |> count) - 1 {
+            extend_scope(scope: acc_scope, name: pair.second, resolved: element_type, provenance: elem_provenance)
+          } else {
+            acc_scope
+          }
+        )
+      } else { scope }
+      infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
     }
   )
 }
@@ -1125,7 +1139,22 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type)
-            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
+            // S6: compute element provenance from first arg (collection), mirroring ExprForEach.
+            let call_coll_provenance = classify_binding_provenance(val: first_result.typed, scope: scope)
+            let call_elem_provenance = match call_coll_provenance {
+              SubValueUnknown => SubValueUnknown
+              _ =>
+                if elem_type.name == "" { SubValueUnknown }
+                else {
+                  let call_ind_fields = inductive_fields_for(env: scope.type_env, type_name: elem_type.name)
+                  let call_list_field = call_ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
+                  match call_list_field {
+                    Some { value: f } => IteratedSubValue { field: f }
+                    None => SubValueUnknown
+                  }
+                }
+            }
+            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, scope: scope)
             concat(
               [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: first_arg, source_index: scope.type_env.source_index), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
@@ -1416,7 +1445,22 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Some { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
         None => error_type
       }
-      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
+      // S6: compute element provenance from receiver, mirroring ExprForEach logic.
+      let mc_recv_provenance = classify_binding_provenance(val: recv_typed, scope: scope)
+      let mc_elem_provenance = match mc_recv_provenance {
+        SubValueUnknown => SubValueUnknown
+        _ =>
+          if recv_elem_type.name == "" { SubValueUnknown }
+          else {
+            let mc_ind_fields = inductive_fields_for(env: scope.type_env, type_name: recv_elem_type.name)
+            let mc_list_field = mc_ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
+            match mc_list_field {
+              Some { value: f } => IteratedSubValue { field: f }
+              None => SubValueUnknown
+            }
+          }
+      }
+      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       // Refine fold_acc_type from lambda body when init is under-resolved.
@@ -1818,30 +1862,45 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // If expected carries an element type, use it for lambda params.
       // Single param or last param gets the element type; others get TypeVariable.
       // Unified lambda element-type threading: expected flows to param scope.
+      // S6: when the caller pre-extended scope with provenance for a lambda param
+      // (fold/map receiver provenance), preserve it instead of hardcoding SubValueUnknown.
       let lam_scope = if expected != none {
         let exp = expected.value
         if exp.params |> count > 0 {
           // Callable expected: thread each callable param type to corresponding lambda param.
           // Dissolves infer_lambda_with_callable_type bypass.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
+            let existing_prov = match map_get(scope.locals, pair.second) {
+              Some { value: b } => b.provenance
+              None => SubValueUnknown
+            }
             match exp.params |> skip(pair.first) |> first {
-              Some { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp), provenance: SubValueUnknown)
-              None => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: SubValueUnknown)
+              Some { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp), provenance: existing_prov)
+              None => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: existing_prov)
             }
           )
         } else if lam_params |> count == 1 {
           // Single element type expected: apply to sole param.
           match lam_params |> first {
-            Some { value: p } => extend_scope(scope: scope, name: p, resolved: exp, provenance: SubValueUnknown)
+            Some { value: p } =>
+              let existing_prov = match map_get(scope.locals, p) {
+                Some { value: b } => b.provenance
+                None => SubValueUnknown
+              }
+              extend_scope(scope: scope, name: p, resolved: exp, provenance: existing_prov)
             None => scope
           }
         } else {
           // Element type expected with multiple params: apply to last param.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
+            let existing_prov = match map_get(scope.locals, pair.second) {
+              Some { value: b } => b.provenance
+              None => SubValueUnknown
+            }
             if pair.first == (lam_params |> count) - 1 {
-              extend_scope(scope: acc, name: pair.second, resolved: exp, provenance: SubValueUnknown)
+              extend_scope(scope: acc, name: pair.second, resolved: exp, provenance: existing_prov)
             } else {
-              extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown)
+              extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_param"), provenance: existing_prov)
             }
           )
         }
