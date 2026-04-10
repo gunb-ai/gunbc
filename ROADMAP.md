@@ -75,9 +75,11 @@ SubValueRelation already has the right vocabulary (StrictSubValue,
 IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown)
 with InductiveField and ShrinkFactor. No new type — single authority.
 
-**Estimated impact:** ~1365 lines of reconstruction code dissolve in
-CX alone. Ownership name-matching dissolves. Emission heuristics
-reduce. Total estimated dissolution: ~2000+ lines across all stages.
+**Estimated impact:** ~1100-1200 lines net dissolution in CX (~200
+lines of classification logic moves to binding sites; the
+reconstruction pass and threading infrastructure dissolve).
+Ownership name-matching dissolves (~65 lines). Emission heuristics
+reduce. Total estimated net dissolution: ~1500+ lines across stages.
 
 Implementation plan: [docs/cx-design.md §Option B](docs/cx-design.md).
 

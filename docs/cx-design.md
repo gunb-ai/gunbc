@@ -345,6 +345,38 @@ No new type algebra. No parallel vocabulary. The same SubValueRelation
 that CX-L2 currently reconstructs is instead computed once at binding
 time and carried through the IR.
 
+**Why "at binding time" works:** Inference processes bindings
+top-to-bottom (sequential). When `let child = node.left` is bound,
+`node` is already in scope with its provenance (`PreservedValue` for
+a parameter). The compiler looks up `node`'s binding, finds its
+SubValueRelation, and composes with the field access to get `child`'s
+provenance. Each binding reads prior bindings' provenance from scope.
+The chain is sequential, not circular.
+
+This is the same computation that `annotate_descent` does today via
+`sub_value_vars` — but as a separate reconstruction pass. Under
+Option B, the computation happens at binding sites because the scope
+already carries provenance. The reconstruction pass dissolves; the
+classification logic moves to binding sites (~200 lines).
+
+**Known gap: SubValueRelation needs extension.** The current type
+covers structural descent, iterated elements, and arithmetic descent.
+It does NOT cover property contractions (e.g.,
+`with_required_cardinality` changes a semantic property without
+shrinking the value). A `PropertyContraction { domain_size: Int }`
+variant is needed. This is a small extension (~5 lines in
+std/induction.dag) but should not be deferred.
+
+**Known limitation: lambda parameters.** Lambda parameter provenance
+depends on the call site, not the definition site. When
+`f(texpr, callback: child => ...)` is inferred, the lambda param
+`child` has no provenance at binding time — its provenance comes from
+what `f` does with `callback`, which requires a callee contract.
+Collection methods (fold/map/filter) can get contracts via
+AlgebraMethodSemantics. User-defined higher-order functions start at
+`SubValueUnknown`. **~105 lambda transparency violations will NOT
+dissolve in the first iteration.** This is deferred, not solved.
+
 **What dissolves:**
 
 | Current reconstruction | Why it dissolves |
@@ -845,19 +877,28 @@ fn bound_for_recursive_function(entry: FuncEntry) -> CostBound {
 
 | Current code | Lines | Status |
 |-------------|-------|--------|
-| `annotate_descent_evidence` + helpers | ~400 | Dissolves entirely |
-| `classify_argument` (13 heuristics) | ~200 | Dissolves — read binding.provenance |
-| `classify_let_value` (5 heuristics) | ~170 | Dissolves — provenance set at bind time |
+| `annotate_descent_evidence` walk + threading | ~400 | Dissolves — walk is the reconstruction pass |
+| `classify_argument` (13 heuristics) | ~200 | **Moves** to binding sites (~200 lines, same logic, different location) |
+| `classify_let_value` (5 heuristics) | ~170 | **Moves** to let-binding site (subset of classify_argument) |
 | `classify_collection_shrink` | ~90 | Dissolves — method semantics carry shrink |
 | `build_call_evidence` | ~30 | Dissolves — read argument provenance |
-| `annotate_descent` lambda heuristic | ~50 | Dissolves — callee contracts |
+| `annotate_descent` lambda heuristic | ~50 | Partially dissolves (collection methods via contracts; HOFs deferred) |
 | `is_child_accessor_in_model` table | ~10 | Dissolves — type-derived |
-| `function_size_effects` table | ~40 | Dissolves — type-derived |
+| `function_size_effects` table | ~40 | Dissolves — structural contracts in std/ |
 | `construct_termination_proof` (old system) | ~200 | Dissolves — single authority |
 | `classify_scc_call_progress` | ~60 | Dissolves — read annotated provenance |
 | `sub_value_to_call_pattern` (lossy bridge) | ~15 | Dissolves — direct lowering |
 | Thread-through maps (param_names, sub_value_vars, size_aliases) | ~100 | Dissolves — provenance on binding |
-| **Total dissolved** | **~1365** | |
+| **Total reconstruction code** | **~1365** | |
+
+**Honest accounting:** ~200 lines of classification logic (the core
+of `classify_argument` and `classify_let_value`) moves to binding
+sites — the same computation, done earlier. The reconstruction
+PASS dissolves (~750 lines of walking/threading/context management),
+but the classification itself is inherent work that shifts location.
+
+**Net dissolution: ~1100-1200 lines.** Plus the old proof system
+(~450 lines) dissolves separately.
 
 **What remains:**
 
@@ -865,13 +906,14 @@ fn bound_for_recursive_function(entry: FuncEntry) -> CostBound {
 |------|-------|------|
 | SCC detection | ~200 | Still needed: call graph cycle detection |
 | `sub_value_to_lowering_target` | ~30 | New: direct lowering preserving ShrinkFactor |
+| Binding-site classification | ~200 | Moved from reconstruction to binding sites |
 | `bound_for_recursive_function` | ~50 | New: read provenance, compute bound |
 | `bounded_cost` / cost composition | ~100 | Keep: composition algebra is sound |
 | `master_theorem` / `derive_bound` | ~80 | Keep: bound computation is sound |
 | Reporting / violation collection | ~100 | Keep: output formatting |
-| **Total remaining** | **~560** | |
+| **Total remaining** | **~760** | |
 
-Estimated reduction: ~5000 lines → ~560 lines (89% dissolution).
+Estimated reduction: ~5000 lines → ~760 lines (~85% dissolution).
 
 ### Migration path
 
@@ -945,7 +987,8 @@ stage that needs facts about values beyond their types.
 
 Fully documented above. TypeBinding drops provenance. CX-L2
 reconstructs via string matching, accessor tables, and AST re-walks.
-424 violations. ~1365 lines of reconstruction code.
+424 violations. ~1100-1200 lines net dissolution (~200 lines of
+classification logic moves to binding sites).
 
 **2. Ownership — string name matching for fold accumulators**
 
@@ -1141,7 +1184,8 @@ deletes it and the estimated line count.
 | `node_field_roles` table | 00_core.dag | ~40 | Track 7 |
 | **Subtotal** | | **~140** | |
 
-**Total estimated dissolution: ~1895 lines.**
+**Total estimated dissolution: ~1700 lines** (net, after accounting
+for ~200 lines of classification logic that moves to binding sites).
 
 ---
 
