@@ -547,7 +547,7 @@ Infer    ──> TypeBinding { name, resolved, provenance }
                │  - match arm binding    → provenance: SubValueOf(param, variant.field, UnitShrink)
                │  - lambda param c       → provenance: IteratedElementOf(collection, children)
                │  - let y = n - 1        → provenance: ArithmeticOf(n, ConstantShrink(1))
-               │  - let z = new_thing()  → provenance: ConstructedValue
+               │  - let z = new_thing()  → provenance: SubValueUnknown (no descent relation)
                │
 CX       ──> For each self-call, read argument provenance:
                │  self(child)  → child.provenance = SubValueOf(node, left)
@@ -614,7 +614,8 @@ the lossy CallPattern bridge). No new parallel type system.
 There are 7 binding-creation sites in `04_infer.dag` that matter
 for function-body provenance. Type environment setup (~15 more sites
 at lines 3684-3923) creates bindings for type names — these are
-always `ConstructedValue` and can be ignored.
+always `SubValueUnknown` (type names have no descent relation to
+function inputs) and can be ignored.
 
 **Site 1: Function parameters** (`build_params_scope`, line 699)
 

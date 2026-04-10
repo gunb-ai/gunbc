@@ -203,15 +203,21 @@ ownership analysis (PR #313) already computes the facts needed to
 eliminate most of them. The gap: the emitter doesn't consume all
 the facts it has.
 
-Violation classes (from ownership ratchet, PR #373):
-- **V1 (last-use clone):** Fan-out > 1, but the Nth use clones when
-  it could move. Every fan-out > 1 binding has 1 unnecessary clone.
-- **V2 (TCO-gated move):** Fan-out = 1 + owned_local, but TCO gate
-  zeroes the movable set. The binding SHOULD move but clones.
-- **V3 (fold fallback):** FoldAccUnwrapProof.eligible = true, but
-  emitter emits try_unwrap + clone fallback anyway.
+Conceptual violation classes (design orientation — not yet
+individually measured by the ratchet):
+- **V1 (last-use clone):** Fan-out > 1, last use clones when it
+  could move.
+- **V2 (TCO-gated move):** Fan-out = 1 + owned, TCO gate zeroes
+  the movable set.
+- **V3 (fold fallback):** Proof says eligible, emitter emits
+  try_unwrap + clone fallback.
 - **V4 (read-as-clone):** Read edges emitted as `.clone()` when a
-  borrow (`&x`) would suffice. ~90% of violations in focused tests.
+  borrow would suffice. Blocked on LS-4.
+
+Current measurement: two coarse aggregates (`movable_but_cloned`
+conflates V1+V2; `try_unwrap_fallbacks` approximates V3; V4 not
+yet measured). Counting is scope-blind string matching — a
+directional regression indicator, not a precise metric.
 
 Three layers, sequenced by dependency:
 

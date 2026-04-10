@@ -88,14 +88,16 @@ for each use.
 
 ## Violation classes
 
-From the ownership ratchet (PR #373):
+Conceptual categories for design orientation. The current ratchet
+does NOT measure these individually — it produces two coarse
+aggregates via scope-blind string matching (see pipeline.rs).
 
-| Class | What | Count (focused test) | Root cause |
-|-------|------|---------------------|------------|
-| V1: Last-use clone | Fan-out > 1, last use clones when it could move | ~10% | Emitter doesn't track which use is last |
-| V2: TCO-gated move | Fan-out = 1 + owned, but TCO gate zeroes movable set | ~2% | TCO runs before ownership |
-| V3: Fold fallback | Proof says eligible, emitter emits fallback anyway | Rare | Emitter doesn't trust proof |
-| V4: Read-as-clone | Read edge emitted as `.clone()` when `&x` suffices | ~90% | No borrow model in LanguageSpec |
+| Class | What | Root cause | Measured by |
+|-------|------|------------|-------------|
+| V1: Last-use clone | Fan-out > 1, last use clones when it could move | Emitter doesn't track which use is last | `movable_but_cloned` (conflated with V2) |
+| V2: TCO-gated move | Fan-out = 1 + owned, but TCO gate zeroes movable set | TCO runs before ownership | `movable_but_cloned` (conflated with V1) |
+| V3: Fold fallback | Proof says eligible, emitter emits fallback anyway | Emitter doesn't trust proof | `try_unwrap_fallbacks` |
+| V4: Read-as-clone | Read edge emitted as `.clone()` when `&x` suffices | No borrow model in LanguageSpec | Not yet measured |
 
 ## Three layers to clone elimination
 

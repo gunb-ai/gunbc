@@ -6895,39 +6895,42 @@ fn diag_emitter_scc() {
 // known by construction, then counts PROVABLE violations — clones the
 // analysis already has enough information to eliminate.
 //
-// Violation classes:
+// Conceptual violation classes (for design orientation, not yet
+// individually measured):
 //
 //   V1 — Last-use clone:  fan-out > 1, but the last use clones when it
-//         could move.  Count: (fan_out - 1) is necessary, the Nth use
-//         should be free.  Currently ALL uses clone.
+//         could move.
+//   V2 — TCO-gated move:  fan-out = 1 + is_owned_local, but TCO gate
+//         zeroes the movable set.
+//   V3 — Fold fallback:   proof says eligible, emitter emits fallback.
+//   V4 — Read-as-clone:   Read edges emitted as .clone() when borrow
+//         would suffice.  Blocked on LS-4.
 //
-//   V2 — TCO-gated move:  fan-out = 1 + is_owned_local, but function is
-//         TCO-eligible so emitter zeros the movable set.  The binding
-//         SHOULD move but clones due to the gate.
+// Current measurement is two COARSE aggregates:
+//   movable_but_cloned — conflates V1 + V2 (scope-blind string match)
+//   try_unwrap_fallbacks — approximates V3 (pattern match in emitted code)
+// V4 is not yet measured.
 //
-//   V3 — Fold fallback:   FoldAccUnwrapProof.eligible = true, but the
-//         emitter still emits try_unwrap + clone fallback.
-//
-//   V4 — Read-as-clone:   EdgeKind::Read edges get emitted as .clone()
-//         when a borrow (&x) would suffice.  Blocked on LS-4 (borrow
-//         rules in LanguageSpec), but still a provable violation.
-//
-// The ratchet counts ONLY violations (clones we know are wrong), not
-// total clones (many of which are legitimately needed).
+// Limitation: counting is scope-blind — it concatenates all emitted Rust
+// and does substring matching. Bindings with the same name in different
+// functions can cause over/under-counting. This is a directional
+// indicator, not a precise violation count. The ratchet is useful for
+// detecting regressions, not for precise claims.
 
 /// Count occurrences of a pattern in a string.
 fn count_pattern(haystack: &str, needle: &str) -> usize {
     haystack.match_indices(needle).count()
 }
 
-/// Count ownership violations by cross-referencing the ownership proof
-/// (the authority for which bindings are movable) against the emitted
-/// Rust code (the authority for what the emitter actually did).
+/// Approximate ownership violation count via scope-blind string matching.
 ///
-/// A violation is: build_movable_set says the binding can move, but
-/// the emitted code contains `name.clone()`.  This is the only fact
-/// we have complete authority for — the proof says "move" and the
-/// emitter says "clone".
+/// Cross-references the ownership proof (which bindings are movable)
+/// against emitted Rust (whether `.clone()` appears for that name).
+///
+/// **Limitation:** concatenates all emitted files and matches by name
+/// substring — scope-blind. Same-named bindings in different functions
+/// can over/under-count. Use as a directional regression indicator,
+/// not for precise claims.
 ///
 /// Returns (movable_but_cloned, try_unwrap_fallbacks).
 fn count_ownership_violations(
@@ -6997,7 +7000,7 @@ fn use_twice(items: List<Int>) -> List<Int> {
     assert!(clones <= 2, "items.clone() {} > ratchet 2", clones);
 }
 
-/// Fold accumulator — check try_unwrap fallbacks in emitted code.
+/// Fold accumulator — assert try_unwrap fallback count stays at or below baseline.
 #[test]
 fn ownership_v_fold_fallback() {
     let source = r#"
@@ -7014,6 +7017,13 @@ fn sum_all(items: List<Int>) -> Int {
     let content = find_file(&result, "src/ov_fold.rs");
     let fallbacks = count_pattern(&content, "unwrap_or_else(|rc| (*rc).clone())");
     eprintln!("  in ov_fold.rs: {}", fallbacks);
+
+    // 2026-04-10: baseline.  Ratchet — only move down.
+    const FALLBACK_RATCHET: usize = 0;
+    assert!(
+        fallbacks <= FALLBACK_RATCHET,
+        "fold fallbacks {} > ratchet {}", fallbacks, FALLBACK_RATCHET,
+    );
 }
 
 // ── Aggregate violation ratchet ──────────────────────────────────────────
@@ -7070,11 +7080,9 @@ fn process(data: List<Int>) -> List<Int> {
 
     // ── Ratchets (only move DOWN) ──
     //
-    // 2026-04-10: baseline (40/0/40).  Each violation is grounded in two authorities:
-    //   - build_movable_set (ownership proof) says the binding can move
-    //   - emitted Rust code contains `name.clone()` for that binding
-    //
-    // As ownership modeling improves, these counts drop.
+    // 2026-04-10: baseline (40/0/40).  Approximate — scope-blind string
+    // matching (see function doc). Useful as regression gate, not for
+    // precise claims.  As ownership modeling improves, these counts drop.
 
     const MOVABLE_CLONED_RATCHET: usize = 40;
     const TRY_UNWRAP_RATCHET: usize = 0;
