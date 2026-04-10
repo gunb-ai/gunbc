@@ -369,13 +369,6 @@ let emit_info = Rc::new(EmitGraphInfo {
 let shared_types = emit_info.shared_types.clone();
 let registry = typed.item_registry.clone();
 let workflow_funcs = collect_workflow_funcs(typed.modules.clone(), registry.clone());
-let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone());
-if ((workflow_default_diags.clone().len() as i64) > 0) {
-            return Rc::new(EmitResult {
-    files: Rc::new(vec![]),
-    diagnostics: workflow_default_diags.clone(),
-})
-        }
 let svc_module_map = typed.modules.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
             let svc_items = Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_service_item(item.clone()) { __result.push(item); } } __result });
 let mod_filename = module_to_filename(tm.module.clone().name.clone());
@@ -392,7 +385,7 @@ let crate_name = if has_pipeline.clone() {
             "v2_compiled".to_string()
         };
 let cargo = emit_cargo_toml(crate_name.clone(), has_services.clone());
-let main_file = emit_main_rs(workflow_funcs.clone(), typed.modules.clone(), has_services.clone(), crate_name.clone());
+let main_file = emit_main_rs(workflow_funcs, typed.modules.clone(), has_services.clone(), crate_name.clone());
 let rt_file = emit_v2_rt_module();
 let compiler_tests_file = if has_pipeline.clone() {
             Rc::new(vec![emit_compiler_tests_module()])
@@ -4916,7 +4909,10 @@ Rc::new(WorkflowFunc {
 }
 
 pub fn collect_workflow_funcs(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<Vec<Rc<WorkflowFunc>>> {
-    Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if ((item.body.clone() != None) && ((item.uses.clone().len() as i64) > 0)) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(item.clone(), tm.module.clone().name.clone(), registry.clone(), tm.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
+    Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if ((item.body.clone() != None) && (((item.uses.clone().len() as i64) > 0) || match lookup_item(registry.clone(), item.name.clone()) {
+    Some(info) => (((info.service_names.clone().len() as i64) > 0) || ((info.resource_names.clone().len() as i64) > 0)),
+    None => false,
+})) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(item.clone(), tm.module.clone().name.clone(), registry.clone(), tm.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
 }
 
 pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
@@ -4960,6 +4956,16 @@ result
 }
 }
 
+pub fn find_service_module(service_name: String, modules: Rc<Vec<Rc<TypedModule>>>) -> String {
+    {
+        let matching = Rc::new({ let mut __result = Vec::new(); for m in modules.iter().cloned() { if { let mut __found = false; for item in m.items.clone().iter().cloned() { if ((item.name.clone().as_str() == service_name.clone().as_str()) && is_service_item(item.clone())) { __found = true; break; } } __found } { __result.push(m); } } __result });
+match matching.first().cloned() {
+    Some(tm) => module_to_filename(tm.module.clone().name.clone()),
+    None => "".to_string(),
+}
+}
+}
+
 pub fn emit_main_rs(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, modules: Rc<Vec<Rc<TypedModule>>>, has_services: bool, crate_name: String) -> Rc<TextFile> {
     {
         let has_pipeline = { let mut __found = false; for m in modules.clone().iter().cloned() { if (m.module.clone().name.clone().as_str() == "v2.compiler.compile".to_string().as_str()) { __found = true; break; } } __found };
@@ -4974,6 +4980,18 @@ if (mod_name.clone().as_str() != "".to_string().as_str()) {
             }
 }).iter().cloned()); } __result });
 let resource_imports_str = resource_imports.join(&"\n".to_string());
+let all_svc_names = Rc::new({ let mut __result = Vec::new(); for wf in workflow_funcs.clone().iter().cloned() { __result.extend((*wf.service_names.clone()).iter().cloned()); } __result });
+let unique_svc_names = unique_strings(all_svc_names);
+let svc_imports = Rc::new({ let mut __result = Vec::new(); for sn in unique_svc_names.iter().cloned() { __result.extend((*{
+            let struct_name = sanitize_service_name(sn.clone());
+let mod_name = find_service_module(sn.clone(), modules.clone());
+if (mod_name.clone().as_str() != "".to_string().as_str()) {
+                Rc::new(vec![v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("use ".to_string(), crate_name.clone()), "::".to_string()), mod_name.clone()), "::".to_string()), struct_name.clone()), ";".to_string())])
+            } else {
+                Rc::new(vec![])
+            }
+}).iter().cloned()); } __result });
+let svc_imports_str = svc_imports.join(&"\n".to_string());
 let header = v2_rt::concat(v2_rt::concat("// Generated by v2 compiler -- do not edit.\n\n".to_string(), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n".to_string()), v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("use clap::".to_string(), "{".to_string()), "Parser, Subcommand".to_string()), "}".to_string()), ";\n".to_string()));
 let crate_use = if has_services.clone() {
             v2_rt::concat(v2_rt::concat("use ".to_string(), crate_name.clone()), "::dry_run::DryRunMode;\n".to_string())
@@ -4982,6 +5000,11 @@ let crate_use = if has_services.clone() {
         };
 let resource_use = if (resource_imports_str.clone().as_str() != "".to_string().as_str()) {
             v2_rt::concat(resource_imports_str.clone(), "\n".to_string())
+        } else {
+            "".to_string()
+        };
+let svc_use = if (svc_imports_str.clone().as_str() != "".to_string().as_str()) {
+            v2_rt::concat(svc_imports_str.clone(), "\n".to_string())
         } else {
             "".to_string()
         };
@@ -4999,7 +5022,7 @@ let diagnostic_fns = if has_pipeline.clone() {
         } else {
             "".to_string()
         };
-let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(header, crate_use), resource_use), mod_uses), "\n".to_string()), cli_struct), "\n\n".to_string()), subcommand_enum), "\n\n".to_string()), pipeline_fns), main_fn), "\n".to_string()), diagnostic_fns);
+let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(header, crate_use), resource_use), svc_use), mod_uses), "\n".to_string()), cli_struct), "\n\n".to_string()), subcommand_enum), "\n\n".to_string()), pipeline_fns), main_fn), "\n".to_string()), diagnostic_fns);
 Rc::new(TextFile {
     path: v2_rt::concat(v2_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
     content: content,
@@ -5051,7 +5074,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(
 
 pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> String {
     {
-        let variant_name = capitalize_first(wf.name.clone());
+        let variant_name = to_pascal(wf.name.clone());
 let doc_line = v2_rt::concat(v2_rt::concat("/// Run the ".to_string(), wf.name.clone()), " workflow".to_string());
 if ((wf.params.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(doc_line, "\n".to_string()), variant_name), ",".to_string())
@@ -5137,7 +5160,7 @@ let all_arms = if has_pipeline.clone() {
 let arms_str = all_arms.join(&"\n".to_string());
 let match_block = v2_rt::concat(v2_rt::concat(v2_rt::concat("match cli.command {\n".to_string(), make_indent((depth.clone() + 2))), arms_str), "\n    }".to_string());
 let result_handling = if has_services.clone() {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let result = ".to_string(), match_block), ";\n".to_string()), "match result {\n".to_string()), "    Ok(value) => {\n".to_string()), "        let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| format!(\"{:?}\", value));\n".to_string()), "        println!(\"{}\", json);\n".to_string()), "    }\n".to_string()), "    Err(e) => {\n".to_string()), "        eprintln!(\"Error: {}\", e);\n".to_string()), "        std::process::exit(1);\n".to_string()), "    }\n".to_string()), "}".to_string())
+            match_block
         } else {
             v2_rt::concat(v2_rt::concat("let _result = ".to_string(), match_block), ";".to_string())
         };
@@ -5194,7 +5217,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 
 pub fn emit_main_match_arm(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
     {
-        let variant_name = capitalize_first(wf.name.clone());
+        let variant_name = to_pascal(wf.name.clone());
 let mod_name = module_to_filename(wf.module_name.clone());
 let fn_name = emit_ident(wf.name.clone(), RenderTarget::Rust);
 let await_suffix = if has_services.clone() {
@@ -5202,32 +5225,37 @@ let await_suffix = if has_services.clone() {
         } else {
             "".to_string()
         };
-if ((wf.params.clone().len() as i64) == 0) {
+let call_expr = if ((wf.params.clone().len() as i64) == 0) {
             {
                 let service_args = emit_main_service_args(wf.clone(), has_services.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Commands::".to_string(), variant_name), " => ".to_string()), mod_name), "::".to_string()), fn_name), "(".to_string()), service_args), ")".to_string()), await_suffix), ",".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(mod_name, "::".to_string()), fn_name), "(".to_string()), service_args), ")".to_string()), await_suffix)
 }
+        } else {
+            {
+                let call_args = emit_main_call_args(wf.clone(), has_services.clone());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(mod_name, "::".to_string()), fn_name), "(".to_string()), call_args), ")".to_string()), await_suffix)
+}
+        };
+let pattern = if ((wf.params.clone().len() as i64) == 0) {
+            v2_rt::concat("Commands::".to_string(), variant_name)
         } else {
             {
                 let field_binds = Rc::new({ let mut __result = Vec::new(); for p in wf.params.clone().iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), wf.source_index.clone()), RenderTarget::Rust)); } __result });
 let binds_str = field_binds.join(&", ".to_string());
-let call_args = emit_main_call_args(wf.clone(), has_services.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Commands::".to_string(), variant_name), " { ".to_string()), binds_str), " } => ".to_string()), mod_name), "::".to_string()), fn_name), "(".to_string()), call_args), ")".to_string()), await_suffix), ",".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Commands::".to_string(), variant_name), " { ".to_string()), binds_str), " }".to_string())
 }
+        };
+if has_services.clone() {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(pattern, " => {\n".to_string()), "            match ".to_string()), call_expr), " {\n".to_string()), "                Ok(value) => {\n".to_string()), "                    let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| format!(\"{:?}\", value));\n".to_string()), "                    println!(\"{}\", json);\n".to_string()), "                }\n".to_string()), "                Err(e) => {\n".to_string()), "                    eprintln!(\"Error: {}\", e);\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            }\n".to_string()), "        }".to_string())
+        } else {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(pattern, " => ".to_string()), call_expr), ",".to_string())
         }
 }
 }
 
 pub fn emit_main_call_args(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
     {
-        let param_args = Rc::new({ let mut __result = Vec::new(); for p in wf.params.clone().iter().cloned() { __result.push({
-            let arg_name = emit_ident(param_node_name_at(p.clone(), wf.source_index.clone()), RenderTarget::Rust);
-if needs_reference_node(param_node_type_expr(p.clone())) {
-                v2_rt::concat("&".to_string(), arg_name.clone())
-            } else {
-                arg_name.clone()
-            }
-}); } __result });
+        let param_args = Rc::new({ let mut __result = Vec::new(); for p in wf.params.clone().iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), wf.source_index.clone()), RenderTarget::Rust)); } __result });
 let service_args = emit_main_service_arg_list(wf.clone(), has_services);
 let all_args = v2_rt::concat(param_args, service_args);
 all_args.join(&", ".to_string())

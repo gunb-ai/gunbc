@@ -23,6 +23,9 @@ service shell.Find {
       0 => Unit
       nonzero => String "Find command failed"
     }
+    mock_response {
+      0 => { dirs: ["/tmp/mock-dir"] } "Mock directory listing"
+    }
   }
 }
 
@@ -35,6 +38,9 @@ service shell.Env {
     exit {
       0 => Unit
       1 => Unit "Variable not set"
+    }
+    mock_response {
+      0 => { value: "mock-value" } "Mock environment variable"
     }
   }
 }
@@ -49,6 +55,9 @@ service shell.Which {
       0 => Unit "Command found"
       1 => Unit "Command not found"
     }
+    mock_response {
+      0 => { exists: true, path: "/usr/bin/mock" } "Mock command found"
+    }
   }
 }
 
@@ -61,6 +70,9 @@ service shell.Exec {
       0 => Unit
       nonzero => String "Script failed"
     }
+    mock_response {
+      0 => { success: true, stdout: "(mock)", stderr: "" } "Mock shell execution"
+    }
   }
 
   operation Check {
@@ -71,6 +83,9 @@ service shell.Exec {
     exit {
       0 => Unit
       nonzero => String "Command failed"
+    }
+    mock_response {
+      0 => { exists: true } "Mock command check"
     }
   }
 }
