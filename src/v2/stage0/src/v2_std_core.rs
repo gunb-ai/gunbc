@@ -1121,6 +1121,8 @@ pub fn function_size_effects() -> Rc<HashMap<String, FunctionSizeEffect>> {
             __m.insert("resolved_type".to_string(), FunctionSizeEffect::TreeSizeReducing);
             __m.insert("param_node_type_expr".to_string(), FunctionSizeEffect::TreeSizeReducing);
             __m.insert("field_binding_pattern".to_string(), FunctionSizeEffect::TreeSizeReducing);
+            __m.insert("wrapper_inner_arg".to_string(), FunctionSizeEffect::TreeSizeReducing);
+            __m.insert("extractor_inner_arg".to_string(), FunctionSizeEffect::TreeSizeReducing);
             Rc::new(__m)
         };
     }
@@ -1479,15 +1481,6 @@ pub fn transport_query_key() -> String {
     CACHED.with(|c| c.clone())
 }
 
-pub fn transport_body_key() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "body".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 pub fn transport_stdin_key() -> String {
     thread_local! {
         static CACHED: String = {
@@ -1523,7 +1516,7 @@ pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
     make_transport_node(Rc::new(vec![]), Rc::new(vec![]), None, span)
 }
 
-pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, method: Option<Rc<Node>>, path: Option<Rc<Node>>, query: Option<Rc<Node>>, request_body: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, method: Option<Rc<Node>>, path: Option<Rc<Node>>, query: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let zero_span = make_span(0, 0);
 let url_field = make_field_init_node(transport_url_key(), base_url, zero_span.clone(), zero_span.clone());
@@ -1539,11 +1532,7 @@ let query_props = match query {
     Some(q) => Rc::new(vec![make_field_init_node(transport_query_key(), q.clone(), zero_span.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
-let body_props = match request_body {
-    Some(b) => Rc::new(vec![make_field_init_node(transport_body_key(), b.clone(), zero_span.clone(), zero_span.clone())]),
-    None => Rc::new(vec![]),
-};
-let props = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), method_props), path_props), query_props), body_props), auth_props), headers);
+let props = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), method_props), path_props), query_props), auth_props), headers);
 make_transport_node(props, Rc::new(vec![]), None, span)
 }
 }
@@ -1703,16 +1692,12 @@ pub fn transport_query(t: Rc<Node>) -> Option<Rc<Node>> {
     find_property(t.properties.clone(), transport_query_key())
 }
 
-pub fn transport_request_body(t: Rc<Node>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_body_key())
-}
-
 pub fn transport_stdin(t: Rc<Node>) -> Option<Rc<Node>> {
     find_property(t.properties.clone(), transport_stdin_key())
 }
 
 pub fn is_config_reserved_key(name: String) -> bool {
-    ((((((((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str())) || (name.clone().as_str() == transport_method_key().as_str())) || (name.clone().as_str() == transport_path_template_key().as_str())) || (name.clone().as_str() == transport_query_key().as_str())) || (name.clone().as_str() == transport_body_key().as_str())) || (name.clone().as_str() == transport_stdin_key().as_str()))
+    (((((((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str())) || (name.clone().as_str() == transport_method_key().as_str())) || (name.clone().as_str() == transport_path_template_key().as_str())) || (name.clone().as_str() == transport_query_key().as_str())) || (name.clone().as_str() == transport_stdin_key().as_str()))
 }
 
 pub fn transport_headers(t: Rc<Node>) -> Rc<Vec<Rc<Node>>> {

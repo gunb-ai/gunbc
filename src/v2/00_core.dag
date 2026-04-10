@@ -881,7 +881,9 @@ data function_size_effects: Map<String, FunctionSizeEffect> = {
   "with_required_cardinality": TreeSizePreserving,
   "resolved_type": TreeSizeReducing,
   "param_node_type_expr": TreeSizeReducing,
-  "field_binding_pattern": TreeSizeReducing
+  "field_binding_pattern": TreeSizeReducing,
+  "wrapper_inner_arg": TreeSizeReducing,
+  "extractor_inner_arg": TreeSizeReducing
 }
 
 fn is_tree_size_preserving(func_name: String) -> Bool {

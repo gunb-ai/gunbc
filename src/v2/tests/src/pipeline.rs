@@ -1769,8 +1769,9 @@ fn diag_parser_scc_edges() {
     use v2_compiler::v2_compiler_compile::{extract_func_entries, front_end_sources};
     use v2_compiler::v2_compiler_complexity::{
         build_scc_index, collect_parser_edges_for_scc,
-        same_progress_subgraph_has_cycle, FuncEntry, ProgressKind,
+        same_progress_subgraph_has_cycle, FuncEntry,
     };
+    use v2_compiler::std_termination::DescentEvidence;
     use v2_compiler::v2_compiler_normalize::normalize_graph;
     use v2_compiler::v2_compiler_infer::reconcile;
 
@@ -1812,9 +1813,9 @@ fn diag_parser_scc_edges() {
 
     for edge in edges.iter() {
         match &edge.progress {
-            ProgressKind::ProgressUnknown => unknown_edges.push(edge.clone()),
-            ProgressKind::ProgressSame => same_edges.push(edge.clone()),
-            ProgressKind::ProgressStrict => strict_edges.push(edge.clone()),
+            DescentEvidence::DescentUnknown => unknown_edges.push(edge.clone()),
+            DescentEvidence::NonIncreasing => same_edges.push(edge.clone()),
+            DescentEvidence::Strict => strict_edges.push(edge.clone()),
         }
     }
 

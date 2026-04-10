@@ -2272,6 +2272,13 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                 Some { value: arg_node } =>
                   let arg_val = arg_value(n: arg_node)
                   match arg_val.expr_data {
+                    // skip(1), take(k): literal integer → ConstantShrink
+                    ExprLiteral { value: LitInt { value: k } } =>
+                      if k > 0 {
+                        let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
+                        StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } }
+                      } else { SubValueUnknown }
+                    // skip(mid), take(mid): variable that is a known size alias
                     ExprVar { binding_kind: _ } =>
                       let aname = expr_var_name(texpr: arg_val)
                       match map_get(ctx.size_aliases, aname) {
@@ -2557,7 +2564,21 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
         let coll_field = resolve_collection_field(expr: receiver, ctx: ctx)
         match coll_field {
           Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
-          None => none
+          None =>
+            // For skip/take on a parameter of any List type (even non-recursive elements),
+            // the collection itself shrinks. Synthesize an InductiveField for the list shrink.
+            let is_shrink = mname == "skip" || mname == "take"
+            if is_shrink {
+              match receiver.expr_data {
+                ExprVar { binding_kind: _ } =>
+                  let rname = expr_var_name(texpr: receiver)
+                  if map_get(ctx.param_names, rname) != none || map_get(ctx.sub_value_vars, rname) != none {
+                    let synth_field = InductiveField { type_name: rname, variant_name: "", field_name: mname, shape: ListRecursion, element_type: rname }
+                    Some { value: StrictSubValue { field: synth_field, factor: ConstantShrink { amount: 1 } } }
+                  } else { none }
+                _ => none
+              }
+            } else { none }
         }
       } else { none }
             _ => none
@@ -2685,7 +2706,17 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
                 else { SubValueUnknown }
               _ => SubValueUnknown
             }
-          } else { SubValueUnknown }
+          } else {
+            // k - param (e.g., 0 - value for negation): bounded by |param|
+            let right_is_param = match right.expr_data {
+              ExprVar { binding_kind: _ } => expr_var_name(texpr: right) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: right)) != none
+              _ => false
+            }
+            let left_is_literal = match left.expr_data { ExprLiteral { value: LitInt { value: _ } } => true  _ => false }
+            if right_is_param && left_is_literal {
+              ArithmeticDescent { param: param_name, factor: UnitShrink }
+            } else { SubValueUnknown }
+          }
         Div =>
           let left_is_param = match left.expr_data {
             ExprVar { binding_kind: _ } => expr_var_name(texpr: left) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: left)) != none
@@ -2815,9 +2846,27 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           let sname = expr_var_name(texpr: scrut)
           match map_get(ctx.param_names, sname) {
             Some { value: t } => t
-            None => ""
+            None =>
+              // Also check sub_value_vars for the element_type
+              match map_get(ctx.sub_value_vars, sname) {
+                Some { value: rel } =>
+                  match rel {
+                    StrictSubValue { field: f, factor: _ } => f.element_type
+                    IteratedSubValue { field: f } => f.element_type
+                    _ => ""
+                  }
+                None => ""
+              }
           }
-        _ => ""
+        _ =>
+          // For ExprCall / other scrutinees, use inferred type if available
+          match scrut.inferred {
+            Some { value: Resolved { node: rt } } =>
+              if inductive_fields_for(env: ctx.type_env, type_name: rt.name) |> count > 0 {
+                rt.name
+              } else { "" }
+            _ => ""
+          }
       }
       // For field-access scrutinees (e.g., c.next), find the inducing InductiveField
       let scrut_inducing_field = match scrut.expr_data {
@@ -2862,21 +2911,44 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                 Some { value: ind_field } =>
                   if vname == "Some" {
                     bindings |> fold(init: ctx, f: (c, fb) =>
-                      let bind_name = match field_binding_pattern(n: fb) {
-                        Bind { name: bname } => bname
-                        _ => ""
+                      match field_binding_pattern(n: fb) {
+                        Bind { name: bname } =>
+                          // Register binding as sub-value AND in param_names with element_type
+                          // so inner matches can look up the unwrapped type's inductive fields.
+                          DescentContext {
+                            fn_name: c.fn_name,
+                            param_names: map_insert(c.param_names, bname, ind_field.element_type),
+                            param_order: c.param_order, type_env: c.type_env,
+                            sub_value_vars: map_insert(c.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
+                            size_aliases: c.size_aliases
+                          }
+                        VariantPattern { name: inner_vname, parent_enum: _, field_bindings: inner_bindings } =>
+                          // Nested destructuring: Some { value: Resolved { node: rt } }
+                          // Look up inductive fields for the element_type (e.g., InferredNode)
+                          let inner_ind_fields = inductive_fields_for(env: c.type_env, type_name: ind_field.element_type)
+                          inner_bindings |> fold(init: c, f: (ic, inner_fb) =>
+                            let inner_field_name = field_binding_name(n: inner_fb)
+                            let inner_bind_name = match field_binding_pattern(n: inner_fb) {
+                              Bind { name: ibname } => ibname
+                              _ => ""
+                            }
+                            let inner_matching = inner_ind_fields |> filter(f => f.variant_name == inner_vname && f.field_name == inner_field_name) |> first
+                            match inner_matching {
+                              Some { value: inner_ind_field } =>
+                                if inner_bind_name != "" {
+                                  DescentContext {
+                                    fn_name: ic.fn_name,
+                                    param_names: map_insert(ic.param_names, inner_bind_name, inner_ind_field.element_type),
+                                    param_order: ic.param_order, type_env: ic.type_env,
+                                    sub_value_vars: map_insert(ic.sub_value_vars, inner_bind_name, StrictSubValue { field: inner_ind_field, factor: UnitShrink }),
+                                    size_aliases: ic.size_aliases
+                                  }
+                                } else { ic }
+                              None => ic
+                            }
+                          )
+                        _ => c
                       }
-                      if bind_name != "" {
-                        // Register binding as sub-value AND in param_names with element_type
-                        // so inner matches can look up the unwrapped type's inductive fields.
-                        DescentContext {
-                          fn_name: c.fn_name,
-                          param_names: map_insert(c.param_names, bind_name, ind_field.element_type),
-                          param_order: c.param_order, type_env: c.type_env,
-                          sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
-                          size_aliases: c.size_aliases
-                        }
-                      } else { c }
                     )
                   } else { ctx }
                 None =>
@@ -3138,7 +3210,11 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   size_aliases: ctx.size_aliases
                 }
               None =>
-                // Fold on non-recognized collection: clear sub_value_vars entirely
+                // Fold on non-recognized collection: clear sub_value_vars entirely.
+                // Captured sub-values inside a fold body have their descent multiplied
+                // by the fold's iteration count, making them unsound as catamorphism
+                // evidence. (e.g., [1,2] |> fold(f: (acc, x) => self(t: child)) is
+                // T(n) = 2T(n-1) = O(2^n), not O(n).)
                 DescentContext {
                   fn_name: ctx.fn_name, param_names: ctx.param_names,
                   param_order: ctx.param_order, type_env: ctx.type_env,

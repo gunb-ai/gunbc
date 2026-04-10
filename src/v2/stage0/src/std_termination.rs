@@ -36,6 +36,14 @@ pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence
 }
 }
 
+pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
+    match evidence {
+    DescentEvidence::NonIncreasing => DescentEvidence::Strict,
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    _ => DescentEvidence::DescentUnknown,
+}
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum RankingDimension {
