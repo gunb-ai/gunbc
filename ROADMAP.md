@@ -222,6 +222,34 @@ from type declarations in `std/`:
 
 These dissolve as types move to `std/` and carry their own metadata.
 
+### Track 8: Lattice inhabitant consolidation (Lane D)
+
+`std/algebra.dag` defines `Lattice<T>` and `BoundedLattice<T>` as
+types, but no concrete type declares that it inhabits them. Instead,
+6+ ad-hoc merge functions across the codebase hand-implement lattice
+meets without naming the concept:
+
+| Ad-hoc merge function | Type | Lattice it IS |
+|-----------------------|------|--------------|
+| `merge_evidence` | DescentEvidence | BoundedLattice (top=Strict, bottom=Unknown) |
+| `merge_argument_relations` | SubValueRelation | BoundedLattice (top=StrictSubValue, bottom=Unknown) |
+| `merge_optional_evidence` | DescentEvidence? | Lifted BoundedLattice |
+| `merge_param_evidence` | SubValueRelation → DescentEvidence | Composed projection + merge |
+| `merge_edge_evidence` | Map<String, DescentEvidence> | Pointwise BoundedLattice |
+| `merge_branch_usages` | UsageAccum | Pointwise merge over binding fan-out |
+
+**Fix:** Declare lattice inhabitants in `std/`. DescentEvidence
+inhabits BoundedLattice. SubValueRelation inhabits BoundedLattice.
+The merge operation IS the lattice meet — declared once at authority,
+consumed everywhere.
+
+**What dissolves:** All 6 ad-hoc merge functions. Pointwise lifting
+(Map, List, Optional) follows automatically from the element lattice.
+New analysis types get merging for free by declaring their lattice.
+
+**Connects to:** Track 1 (provenance composition uses lattice meet),
+KF-3 (test generation can verify lattice laws automatically).
+
 ---
 
 ## Bootstrap
