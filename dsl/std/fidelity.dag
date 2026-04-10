@@ -29,7 +29,7 @@ fn transport_depth(tc: TransportClass) -> FermiDepth {
     ShellLocal     => S
     FileBoundary   => S
     RestNetwork    => L
-    _              => Xl
+    Unknown        => Xl
   }
 }
 
@@ -41,7 +41,7 @@ fn transport_hermetic(tc: TransportClass) -> Bool {
     ShellLocal     => true
     FileBoundary   => true
     RestNetwork    => false
-    _              => false
+    Unknown        => false
   }
 }
 
