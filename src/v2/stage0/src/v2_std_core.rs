@@ -2283,6 +2283,68 @@ pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> String {
     v2_rt::substring(&index.source.clone(), span.start.clone(), span.end.clone())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct InternTable {
+    pub strings: Rc<Vec<String>>,
+    pub index: Rc<HashMap<String, i64>>,
+    pub next_id: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct InternResult {
+    pub table: Rc<InternTable>,
+    pub id: i64,
+}
+
+pub fn empty_intern_table() -> Rc<InternTable> {
+    Rc::new(InternTable {
+    strings: Rc::new(vec!["".to_string()]),
+    index: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<i64>(), "".to_string(), 0),
+    next_id: 1,
+})
+}
+
+pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
+    match v2_rt::map_get(&table.index.clone(), s.clone()) {
+    Some(id) => Rc::new(InternResult {
+    table: table.clone(),
+    id: id.clone(),
+}),
+    None => {
+        let id = table.next_id.clone();
+Rc::new(InternResult {
+    table: Rc::new(InternTable {
+    strings: v2_rt::rc_list_push(table.strings.clone(), s.clone()),
+    index: v2_rt::rc_map_insert(table.index.clone(), s.clone(), id.clone()),
+    next_id: (id.clone() + 1),
+}),
+    id: id.clone(),
+})
+},
+}
+}
+
+pub fn intern_str(table: Rc<InternTable>, id: i64) -> String {
+    match table.strings.clone().get(id as usize).cloned() {
+    Some(s) => s.clone(),
+    None => "".to_string(),
+}
+}
+
+pub fn intern_find(table: Rc<InternTable>, s: String) -> Option<i64> {
+    match v2_rt::map_get(&table.index.clone(), s) {
+    Some(id) => Some(id.clone()),
+    None => None,
+}
+}
+
+pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
+    match v2_rt::map_get(&table.index.clone(), s) {
+    Some(id) => id.clone(),
+    None => 0,
+}
+}
+
 pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: n.name.clone(),

@@ -71,6 +71,7 @@ type FrontendResult {
   graph: ModuleGraph?
   diagnostics: List<ErrorNode>
   newline_indices: List<NewlineIndex>
+  intern_table: InternTable
 }
 
 type FrontendAccum {
@@ -792,17 +793,28 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let newline_indices = acc.newline_indices
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let has_parse_errors = parse_results |> any(p => p.error != None)
+  let intern_tables = parse_results |> map(p => p.intern_table)
+  let merged_intern_table = merge_intern_tables(tables: intern_tables)
   if has_parse_errors {
-    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices }
+    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: merged_intern_table }
   } else {
     let modules = parse_results |> map(p => p.module.value)
     let graph = resolve_modules(modules: modules)
     FrontendResult {
       graph: Some { value: graph },
       diagnostics: concat(parse_diagnostics, graph.diagnostics),
-      newline_indices: newline_indices
+      newline_indices: newline_indices,
+      intern_table: merged_intern_table
     }
   }
+}
+
+fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
+  tables |> fold(init: empty_intern_table(), f: (merged, t) =>
+    t.strings |> fold(init: merged, f: (m, s) =>
+      if s == "" { m } else { intern(table: m, s: s).table }
+    )
+  )
 }
 
 // =========================================================================

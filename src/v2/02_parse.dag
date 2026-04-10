@@ -79,11 +79,13 @@ import extdeps.languages.dag.syntax { dag_syntax_spec }
 type ParserState {
   pos: Int
   source_index: NewlineIndex?
+  intern_table: InternTable
 }
 
 type ParseResult {
   module: Node?
   error: ErrorNode?
+  intern_table: InternTable
 }
 
 // Typed parse results -- replace the untyped PR type.
@@ -982,12 +984,12 @@ fn parse_dotted_ident_rest(tokens: List<Token>, state: ParserState, acc: String,
 // =========================================================================
 
 fn parse(tokens: List<Token>, source_index: NewlineIndex?) -> ParseResult {
-  let state = ParserState { pos: 0, source_index: source_index }
+  let state = ParserState { pos: 0, source_index: source_index, intern_table: empty_intern_table() }
   let r = parse_module(tokens: tokens, state: state)
   if has_err(err: r.err) {
-    ParseResult { module: none, error: r.err }
+    ParseResult { module: none, error: r.err, intern_table: r.state.intern_table }
   } else {
-    ParseResult { module: Some { value: r.module }, error: none }
+    ParseResult { module: Some { value: r.module }, error: none, intern_table: r.state.intern_table }
   }
 }
 
@@ -1021,6 +1023,9 @@ fn parse_module(tokens: List<Token>, state: ParserState) -> ModuleResult {
   let items = r.items
   let s = r.state
 
+  // Intern the module name for future identity lookup
+  let mod_ir = intern(table: s.intern_table, s: mod_name)
+  let s = with(s, { intern_table: mod_ir.table })
   let mod = module_node(name: mod_name, imports: imports, items: items, span: start_span)
   ModuleResult { module: mod, state: s, err: none }
 }
@@ -3466,7 +3471,7 @@ fn is_constraint_bracket_after_ident(tokens: List<Token>, state: ParserState) ->
   if state.pos + 1 < count(tokens) {
     let t1 = tokens |> skip(state.pos + 1) |> first
     match t1 {
-      Some { value: t } => is_lbracket_shape(shape: t.shape) && is_constraint_bracket(tokens: tokens, state: ParserState { pos: state.pos + 1, source_index: state.source_index })
+      Some { value: t } => is_lbracket_shape(shape: t.shape) && is_constraint_bracket(tokens: tokens, state: ParserState { pos: state.pos + 1, source_index: state.source_index, intern_table: state.intern_table })
       None => false
     }
   } else { false }

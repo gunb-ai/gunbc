@@ -1581,6 +1581,66 @@ fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
   substring(s: index.source, start: span.start, end: span.end)
 }
 
+// =========================================================================
+// Intern table — parser-owned identifier authority (Phase 1: type + functions only)
+//
+// Phase 1 adds the InternTable type and parser wiring.
+// Phase 2 will add Node.ident field and thread intern_table through functions.
+// =========================================================================
+
+type InternTable {
+  strings: List<String>
+  index: Map<String, Int>
+  next_id: Int
+}
+
+type InternResult {
+  table: InternTable
+  id: Int
+}
+
+fn empty_intern_table() -> InternTable {
+  // Pre-seed ID 0 = "" (anonymous/empty). IDs are sequential list indices.
+  InternTable { strings: [""], index: map_insert(empty_map(), "", 0), next_id: 1 }
+}
+
+fn intern(table: InternTable, s: String) -> InternResult {
+  match map_get(table.index, s) {
+    Some { value: id } => InternResult { table: table, id: id }
+    None =>
+      let id = table.next_id
+      InternResult {
+        table: InternTable {
+          strings: list_push(table.strings, s),
+          index: map_insert(table.index, s, id),
+          next_id: id + 1
+        },
+        id: id
+      }
+  }
+}
+
+fn intern_str(table: InternTable, id: Int) -> String {
+  match table.strings |> skip(id) |> first {
+    Some { value: s } => s
+    None => ""
+  }
+}
+
+fn intern_find(table: InternTable, s: String) -> Int? {
+  match map_get(table.index, s) {
+    Some { value: id } => Some { value: id }
+    None => none
+  }
+}
+
+fn intern_find_or_empty(table: InternTable, s: String) -> Int {
+  match map_get(table.index, s) {
+    Some { value: id } => id
+    None => 0
+  }
+}
+
 fn with_optional_cardinality(n: Node) -> Node {
   Node { name: n.name, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
