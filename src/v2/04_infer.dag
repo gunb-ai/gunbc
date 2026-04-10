@@ -715,11 +715,11 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
 // extend_scope: add a single local binding to an InferScope
 // -------------------------------------------------------------------------
 
-fn extend_scope(scope: InferScope, name: String, resolved: Node) -> InferScope {
+fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: SubValueRelation) -> InferScope {
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -760,7 +760,7 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
     ExprLet =>
       // children: [value] or [value, body] -- no body means children has 1 element
       if stmt.children |> count <= 1 {
-        extend_scope(scope: scope, name: let_binding_name_at(texpr: stmt, source_index: scope.type_env.source_index), resolved: stmt_type)
+        extend_scope(scope: scope, name: let_binding_name_at(texpr: stmt, source_index: scope.type_env.source_index), resolved: stmt_type, provenance: SubValueUnknown)
       } else {
         scope
       }
@@ -1673,7 +1673,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           diagnostics: val_diags
         }
       } else {
-        let extended = extend_scope(scope: scope, name: let_name, resolved: val_type)
+        let extended = extend_scope(scope: scope, name: let_name, resolved: val_type, provenance: classify_binding_provenance(val: val_typed, scope: scope))
         let body_result = infer_expr(texpr: body_expr.value, scope: extended, expected: expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
@@ -1791,23 +1791,23 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           // Dissolves infer_lambda_with_callable_type bypass.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
             match exp.params |> skip(pair.first) |> first {
-              Some { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp))
-              None => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"))
+              Some { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp), provenance: SubValueUnknown)
+              None => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: SubValueUnknown)
             }
           )
         } else if lam_params |> count == 1 {
           // Single element type expected: apply to sole param.
           match lam_params |> first {
-            Some { value: p } => extend_scope(scope: scope, name: p, resolved: exp)
+            Some { value: p } => extend_scope(scope: scope, name: p, resolved: exp, provenance: SubValueUnknown)
             None => scope
           }
         } else {
           // Element type expected with multiple params: apply to last param.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
             if pair.first == (lam_params |> count) - 1 {
-              extend_scope(scope: acc, name: pair.second, resolved: exp)
+              extend_scope(scope: acc, name: pair.second, resolved: exp, provenance: SubValueUnknown)
             } else {
-              extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_param"))
+              extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown)
             }
           )
         }
@@ -1922,7 +1922,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let coll_typed = coll_result.typed
       let coll_diags = coll_result.diagnostics
       let elem_type_node = for_each_element_type_node(n: resolved_type(n: coll_typed))
-      let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node)
+      let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node, provenance: SubValueUnknown)
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
@@ -2405,6 +2405,43 @@ fn resolve_collection_field(expr: Node, ctx: DescentContext) -> InductiveField? 
         resolve_collection_field(expr: method_receiver(texpr: expr), ctx: ctx)
       } else { none }
     _ => none
+  }
+}
+
+// Classify a let-binding's provenance from its typed value expression.
+// Used at binding-creation time to propagate sub-value evidence through
+// the scope without waiting for the post-hoc CX descent analysis.
+// Handles ExprVar (inherits provenance from scope) and ExprFieldAccess
+// (strict sub-value when the field is inductive).
+fn classify_binding_provenance(val: Node, scope: InferScope) -> SubValueRelation {
+  match val.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let vname = expr_var_name(texpr: val)
+      match map_get(scope.locals, vname) {
+        Some { value: binding } => binding.provenance
+        None => SubValueUnknown
+      }
+    ExprFieldAccess { summary: _ } =>
+      let base = field_access_base(texpr: val)
+      let field = field_access_field(texpr: val)
+      match base.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let bname = expr_var_name(texpr: base)
+          let base_type_name = match map_get(scope.locals, bname) {
+            Some { value: binding } => binding.resolved.name
+            None => ""
+          }
+          if base_type_name != "" {
+            let fields = inductive_fields_for(env: scope.type_env, type_name: base_type_name)
+            let matching = fields |> filter(f => f.field_name == field) |> first
+            match matching {
+              Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+              None => SubValueUnknown
+            }
+          } else { SubValueUnknown }
+        _ => SubValueUnknown
+      }
+    _ => SubValueUnknown
   }
 }
 
@@ -3524,7 +3561,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let fn_scope = build_params_scope(scope: scope, params: item.params)
     // Add uses bindings (e.g., uses net: Network) to scope
     let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
-      extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: scope.type_env.source_index), resolved: resource_use_resource(n: u))
+      extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: scope.type_env.source_index), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
     )
     let fn_return_expected = if item.inferred != none { Some { value: resolved_type(n: item) } } else { none }
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: fn_return_expected)
