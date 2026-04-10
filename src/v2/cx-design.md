@@ -1110,7 +1110,7 @@ Active work items. Each has a TDD test and a cleanup target.
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| C1 | Direct SubValueRelation → LoweringTarget (bypass CallPattern) | Test: StrictSubValue{ProportionalShrink{2}} → correct LoweringTarget with factor | `sub_value_to_call_pattern` (std/induction.dag:206, lossy bridge) | Not started |
+| C1 | Direct SubValueRelation → LoweringTarget (bypass CallPattern) | Test: StrictSubValue{ProportionalShrink{2}} → correct LoweringTarget with factor | `sub_value_to_call_pattern` (std/induction.dag:206, lossy bridge) | DONE |
 | C2 | Switch classify_recursion_pattern to read binding provenance | Test: violation count matches or improves vs current | `classify_argument` (04_infer.dag:2633, ~200 lines) | Not started |
 | C3 | Validate: binding provenance == CX-L2 reconstruction on all functions | Test: for every function, assert new path agrees with old path | Comparison harness (temporary, deleted after C4) | Not started |
 | C4 | Delete annotate_descent_evidence and all reconstruction code | Test: all existing CX tests pass without reconstruction | See cleanup catalog below | Not started |
