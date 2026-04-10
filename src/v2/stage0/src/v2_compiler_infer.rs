@@ -3576,7 +3576,7 @@ match lparams.clone().get(((lparams.clone().len() as i64) - 1) as usize).cloned(
 },
     None => None,
 };
-let is_fold = mname.as_str() == "fold";
+let is_fold = (mname.clone().as_str() == "fold".to_string().as_str());
 let inner_ctx = match lambda_elem_info {
     Some(elem_name) => match receiver_field {
     Some(ind_field) => Rc::new(DescentContext {
@@ -3584,11 +3584,15 @@ let inner_ctx = match lambda_elem_info {
     param_names: v2_rt::rc_map_insert(ctx.param_names.clone(), elem_name.clone(), ind_field.element_type.clone()),
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
-    sub_value_vars: if is_fold { v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), elem_name.clone(), Rc::new(SubValueRelation::IteratedSubValue {
+    sub_value_vars: if is_fold {
+                        v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), elem_name.clone(), Rc::new(SubValueRelation::IteratedSubValue {
     field: ind_field.clone(),
-})) } else { v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), elem_name.clone(), Rc::new(SubValueRelation::IteratedSubValue {
+}))
+                    } else {
+                        v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), elem_name.clone(), Rc::new(SubValueRelation::IteratedSubValue {
     field: ind_field.clone(),
-})) },
+}))
+                    },
     size_aliases: ctx.size_aliases.clone(),
 }),
     None => Rc::new(DescentContext {
@@ -3596,7 +3600,11 @@ let inner_ctx = match lambda_elem_info {
     param_names: ctx.param_names.clone(),
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
-    sub_value_vars: if is_fold { v2_rt::rc_empty_map::<Rc<SubValueRelation>>() } else { ctx.sub_value_vars.clone() },
+    sub_value_vars: if is_fold {
+                        v2_rt::rc_empty_map::<Rc<SubValueRelation>>()
+                    } else {
+                        ctx.sub_value_vars.clone()
+                    },
     size_aliases: ctx.size_aliases.clone(),
 }),
 },
