@@ -13,8 +13,8 @@ bindings), `ROADMAP.md` (Track 2: LS-4 ownership layers).
 The ownership pipeline (`ownership.dag`) computes correct facts about
 value usage — fan-out, edge classification (Consumed/Read/Threaded/
 Projected), fold accumulator eligibility. The emitter doesn't consume
-all the facts it has. The result: 23,267 `.clone()` calls in stage0
-(~0.545 clones/line), most unnecessary.
+all the facts it has. The result: 23,324 `.clone()` calls in stage0
+(~0.546 clones/line), most unnecessary.
 
 This is the same construct-discard-reconstruct pattern as CX:
 - Inference computes structural relationships
@@ -101,7 +101,7 @@ From the ownership ratchet (PR #373):
 
 | Layer | Size | Blocked on | Impact (est.) |
 |-------|------|-----------|---------------|
-| 1. Last-use elision | 1-2 PRs | Nothing | ~2,000-4,000 of 23,267 clones |
+| 1. Last-use elision | 1-2 PRs | Nothing | ~2,000-4,000 of 23,324 clones |
 | 2. Post-TCO ownership | 1 PR | Nothing | ~500-1,000 clones |
 | 3. Borrow propagation (LS-4) | 3-5 PRs | LanguageSpec design | ~15,000-18,000 clones |
 

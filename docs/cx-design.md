@@ -897,8 +897,10 @@ sites — the same computation, done earlier. The reconstruction
 PASS dissolves (~750 lines of walking/threading/context management),
 but the classification itself is inherent work that shifts location.
 
-**Net dissolution: ~1100-1200 lines.** Plus the old proof system
-(~450 lines) dissolves separately.
+**Net dissolution estimate: ~1100-1200 lines** (derived from the
+cleanup catalog line counts below, minus ~200 lines of classification
+that moves to binding sites). Plus the old proof system (~450 lines)
+dissolves separately.
 
 **What remains:**
 
