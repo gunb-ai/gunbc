@@ -82,10 +82,11 @@ fn stage0_cargo_check() {
 //   measure (std/termination.dag), not synthetic arithmetic descent.
 // 2026-04-09: 480→524 — Delete heuristic tables (list_child_accessors, ExprCall
 //   collection+lambda positional guess), replace _arith synthetic InductiveField
-//   524→411: centralized evidence, PreservedValue, ArithmeticDescent, transparent
-//   wrappers, collection element extraction (match list |> first { Some => x }).
-//   resolve_node_bounded dissolved. render_node_type dissolved. make_indent dissolved.
-const DIAG_RATCHET: usize = 411;
+//   524→476: centralized evidence, PreservedValue, ArithmeticDescent, transparent
+//   wrappers, collection element extraction. Lambda body boundary enforced
+//   (soundness: 411→476 because lambda leakage gave false evidence).
+//   render_node_type dissolved (140). make_indent dissolved (44).
+const DIAG_RATCHET: usize = 476;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

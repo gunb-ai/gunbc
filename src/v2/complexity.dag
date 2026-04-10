@@ -5038,9 +5038,13 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // =========================================================================
 
 // Collect descent_evidence from ExprCall nodes calling any function in target_set.
-// Lambda bodies are opaque — calls inside closures are not collected.
+// Lambda bodies are OPAQUE — calls inside closures are not collected, because
+// lambda parameters are not the caller's parameters and the evidence would be wrong.
 fn collect_call_evidence(body: Node, target_set: Map<String, Bool>) -> List<List<SubValueRelation>> {
   match body.expr_data {
+    // Lambda bodies are opaque: don't recurse into closures.
+    // Calls inside lambdas use lambda parameters, not the caller's parameters.
+    ExprLambda { semantics: _ } => []
     ExprCall { call_semantics: _, descent_evidence: de } =>
       let callee = expr_call_func(texpr: body)
       let own = if map_get(target_set, callee) != none {

@@ -4830,6 +4830,7 @@ Rc::new(SummaryResult {
 pub fn collect_call_evidence(body: Rc<Node>, target_set: Rc<HashMap<String, bool>>) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
+    ExprData::ExprLambda { .. } => Rc::new(vec![]),
     ExprData::ExprCall { descent_evidence: de, .. } => {
             let callee = expr_call_func(body.clone());
 let own = if (v2_rt::map_get(&target_set, callee) != None) {
