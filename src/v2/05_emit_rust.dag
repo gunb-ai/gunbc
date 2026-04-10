@@ -111,6 +111,7 @@ import v2.compiler.infer_emit_info {
   variant_belongs_to_enum
 }
 import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_last_use_set }
+import std.induction { SubValueUnknown }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
@@ -425,6 +426,7 @@ type OwnershipProofEntry {
 type OwnershipBuildResult {
   ownership_index: Map<String, Map<String, Bool>>
   fold_eligible_index: Map<String, Map<String, Bool>>
+  last_use_index: Map<String, Bool>
 }
 
 fn build_fold_eligible_set(proof: OwnershipProof) -> Map<String, Bool> {
@@ -439,24 +441,12 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
       OwnershipProofEntry { name: item.name, proof: analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index) }
     )
   )
-  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map() }, f: (acc, entry) =>
+  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map(), last_use_index: empty_map() }, f: (acc, entry) =>
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, build_movable_set(proof: entry.proof)),
-      fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, build_fold_eligible_set(proof: entry.proof))
+      fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, build_fold_eligible_set(proof: entry.proof)),
+      last_use_index: map_merge(acc.last_use_index, build_last_use_set(proof: entry.proof))
     }
-  )
-}
-
-// Build last-use move set from ownership proofs. Merges per-function results
-// into a single flat map of binding names with last-use move opportunities.
-fn build_last_use_results(modules: List<TypedModule>) -> Map<String, Bool> {
-  let proofs = modules |> flat_map(m =>
-    m.items |> filter(item => item.body != None) |> map(item =>
-      analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index)
-    )
-  )
-  proofs |> fold(init: empty_map(), f: (acc, proof) =>
-    map_merge(acc, build_last_use_set(proof: proof))
   )
 }
 
@@ -468,7 +458,6 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let base_info = build_emit_graph_info(modules: typed.modules)
   let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
-  let last_use = build_last_use_results(modules: typed.modules)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
@@ -480,7 +469,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     owned_bindings: empty_map(),
     fold_eligible_index: ownership.fold_eligible_index,
     fold_eligible: empty_map(),
-    last_use_sites: last_use
+    last_use_sites: ownership.last_use_index
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -1154,7 +1143,7 @@ fn emit_func_def(
   let body_scope = build_params_scope(scope: scope, params: params)
   let si = scope.type_env.source_index
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
-    extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: si), resolved: resource_use_resource(n: u))
+    extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
   )
   let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
   let items = rust_items()
@@ -1176,7 +1165,7 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       // Type annotations disabled for bootstrap convergence (Pass A).
       let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
-      let next_scope = extend_scope(scope: scope, name: n, resolved: resolved_type(n: v))
+      let next_scope = extend_scope(scope: scope, name: n, resolved: resolved_type(n: v), provenance: SubValueUnknown)
       match inner {
         Some { value: bd } =>
           concat(let_line, "\n", emit_func_body(body: bd, registry: registry, scope: next_scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
@@ -2471,7 +2460,7 @@ fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry:
   let sharing = language_spec(target: Rust).sharing
   let coll_str = emit_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let elem_type = for_each_element_type_node(n: resolved_type(n: collection))
-  let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
+  let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type, provenance: SubValueUnknown)
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let ind1 = make_indent(level: depth + 1)
   let ind2 = make_indent(level: depth + 2)
@@ -2550,7 +2539,7 @@ fn lambda_scope_from_semantics(scope: InferScope, params: List<String>, semantic
           Some { value: resolved_type } => resolved_type
           None => type_variable_node(id: "lambda_param")
         }
-        extend_scope(scope: acc, name: param_name, resolved: param_type)
+        extend_scope(scope: acc, name: param_name, resolved: param_type, provenance: SubValueUnknown)
       )
     None => scope
   }
@@ -3667,7 +3656,7 @@ fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, regis
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       let is_param = params |> any(p => param_node_name_at(n: p, source_index: frame.scope.type_env.source_index) == n)
       let let_line = if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") } else { concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";") }
-      let next_scope = extend_scope(scope: frame.scope, name: n, resolved: resolved_type(n: v))
+      let next_scope = extend_scope(scope: frame.scope, name: n, resolved: resolved_type(n: v), provenance: SubValueUnknown)
       match bd {
         Some { value: b } =>
           concat(let_line, "\n", emit_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info))

@@ -34,6 +34,12 @@ pub enum SizeBound {
     Forever,
 }
 
+pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
+    Rc::new(SizeBound::TreeSize {
+    param: param,
+})
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallPattern {

@@ -58,7 +58,7 @@ import v2.std.core {
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import std.induction { InductiveField }
+import std.induction { InductiveField, SubValueUnknown }
 // NamingCase, PascalCase, SnakeCase imported via v2.compiler.languages (bootstrap-local mirror)
 import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node }
 import std.types { is_container_type, container_to_algebra_name }
@@ -335,7 +335,7 @@ fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
       let has_body = (ch |> count) > 1
       if has_body == false {
         let value = let_value(texpr: texpr)
-        extend_scope(scope: scope, name: let_binding_name_at(texpr: texpr, source_index: scope.type_env.source_index), resolved: resolved_type(n: value))
+        extend_scope(scope: scope, name: let_binding_name_at(texpr: texpr, source_index: scope.type_env.source_index), resolved: resolved_type(n: value), provenance: SubValueUnknown)
       } else {
         scope
       }
@@ -1628,7 +1628,7 @@ fn shared_tco_let(
       let bd = let_body(texpr: frame.expr)
       let val_str = recurse_expr(v, frame.scope, frame.depth)
       let let_line = emit_let_binding(name: n, value: val_str, target: target)
-      let next_scope = extend_scope(scope: frame.scope, name: n, resolved: resolved_type(n: v))
+      let next_scope = extend_scope(scope: frame.scope, name: n, resolved: resolved_type(n: v), provenance: SubValueUnknown)
       match bd {
         Some { value: b } =>
           concat(let_line, "\n", recurse_tco(b, next_scope, frame.depth))
@@ -1908,7 +1908,7 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
 fn emit_typed_for_each_shared(variable: String, collection: Node, body: Node, target: RenderTarget, depth: Int, source_index: NewlineIndex?, recurse: fn(Node, InferScope, Int) -> String, scope: InferScope) -> String {
   let coll_str = recurse(collection, scope, depth)
   let elem_type = for_each_element_type_node(n: resolved_type(n: collection))
-  let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
+  let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type, provenance: SubValueUnknown)
   let body_str = recurse(body, body_scope, depth + 1)
   let var_str = emit_ident(name: variable, target: target)
   let spec = language_spec(target: target)
@@ -2118,7 +2118,7 @@ fn emit_typed_let_shared(name: String, value_str: String, body: Node?, target: R
   let let_line = emit_let_binding(name: name, value: value_str, target: target)
   match body {
     Some { value: bd } =>
-      let next_scope = extend_scope(scope: scope, name: name, resolved: resolved_type(n: value_node))
+      let next_scope = extend_scope(scope: scope, name: name, resolved: resolved_type(n: value_node), provenance: SubValueUnknown)
       concat(let_line, "\n", recurse(bd, next_scope))
     None => let_line
   }

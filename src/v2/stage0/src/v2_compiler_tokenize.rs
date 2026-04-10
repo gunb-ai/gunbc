@@ -205,7 +205,7 @@ scan_token(source.clone(), pos.clone(), ch.clone())
 
 pub fn tokenize_loop(mut source: Rc<SourceRef>, mut tokens: Rc<Vec<Rc<Token>>>, mut pos: Rc<TokPos>, mut fuel: i64) -> Rc<TokenizerState> {
     loop {
-        let s = skip_spaces_and_comments(source.clone(), pos.clone(), fuel.clone());
+        let s = skip_spaces_and_comments(source.clone(), pos, fuel.clone());
 if (s.pos.clone() >= source_len(source.clone())) {
             return Rc::new(TokenizerState {
     pos: s.pos.clone(),
@@ -501,14 +501,14 @@ pub fn scan_string_body(mut source: Rc<SourceRef>, mut pos: i64, mut acc: Rc<Vec
     loop {
         if (pos.clone() >= source_len(source.clone())) {
             break Rc::new(StringScanResult::UnterminatedString {
-    content: acc.clone().join(&"".to_string()),
+    content: acc.join(&"".to_string()),
     end_pos: pos.clone(),
 });
 } else {
             let ch = source_char(source.clone(), pos.clone());
 if (ch.clone().as_str() == "\"".to_string().as_str()) {
                 break Rc::new(StringScanResult::ClosedString {
-    content: acc.clone().join(&"".to_string()),
+    content: acc.join(&"".to_string()),
     end_pos: pos.clone(),
 });
 } else {
@@ -518,7 +518,7 @@ if (ch.clone().as_str() == "\"".to_string().as_str()) {
 {
                             let __tco_0 = source;
 let __tco_1 = (pos + 2);
-let __tco_2 = v2_rt::rc_list_push(v2_rt::rc_list_push(acc, "\\".to_string()), escaped.clone());
+let __tco_2 = v2_rt::rc_list_push(v2_rt::rc_list_push(acc, "\\".to_string()), escaped);
 source = __tco_0;
 pos = __tco_1;
 acc = __tco_2;
@@ -526,7 +526,7 @@ continue;
 }
 } else {
                         break Rc::new(StringScanResult::UnterminatedString {
-    content: v2_rt::rc_list_push(acc.clone(), "\\".to_string()).join(&"".to_string()),
+    content: v2_rt::rc_list_push(acc, "\\".to_string()).join(&"".to_string()),
     end_pos: (pos.clone() + 1),
 });
 }
@@ -534,7 +534,7 @@ continue;
                     if (ch.clone().as_str() == "{".to_string().as_str()) {
                         if should_start_interpolation(source.clone(), pos.clone()) {
                             break Rc::new(StringScanResult::InterpolationStart {
-    content: acc.clone().join(&"".to_string()),
+    content: acc.join(&"".to_string()),
     end_pos: pos.clone(),
 });
 } else {
@@ -583,7 +583,7 @@ pub fn process_escapes(raw: String) -> String {
 pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> String {
     loop {
         if (pos.clone() >= v2_rt::string_length(&source)) {
-            break acc.clone().join(&"".to_string());
+            break acc.join(&"".to_string());
 } else {
             let ch = v2_rt::char_at(&source, pos.clone());
 if ((ch.clone().as_str() == "\\".to_string().as_str()) && ((pos.clone() + 1) < v2_rt::string_length(&source))) {
@@ -616,7 +616,7 @@ let resolved = if (next.clone().as_str() == "\"".to_string().as_str()) {
 {
                     let __tco_0 = source;
 let __tco_1 = (pos + 2);
-let __tco_2 = v2_rt::rc_list_push(acc, resolved.clone());
+let __tco_2 = v2_rt::rc_list_push(acc, resolved);
 source = __tco_0;
 pos = __tco_1;
 acc = __tco_2;
@@ -662,9 +662,9 @@ if ((((p.clone() + 1) < source_len(source.clone())) && (source_char(source.clone
             {
                 let eol = source_scan_to_eol(source.clone(), p.clone());
 return skip_spaces_and_comments(source.clone(), Rc::new(TokPos {
-    pos: eol.clone(),
+    pos: eol,
     interp_depth: pos.interp_depth.clone(),
-}), (fuel.clone() - 1))
+}), (fuel - 1))
 }
         }
 break Rc::new(TokPos {

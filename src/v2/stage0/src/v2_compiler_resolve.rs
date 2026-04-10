@@ -364,7 +364,7 @@ let new_zero_set = Rc::new({ let mut __result = Vec::new(); for neighbor in Rc::
 } { __result.push(neighbor); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let new_zero = Rc::new({ let mut __sorted: Vec<_> = Rc::new(v2_rt::map_keys(&new_zero_set)).iter().cloned().collect(); __sorted.sort_by(|a: &String, b: &String| { let __ka = (|name: String| name.clone())(a.clone()); let __kb = (|name: String| name.clone())(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted });
 {
-            let __tco_0 = new_zero.clone();
+            let __tco_0 = new_zero;
 let __tco_1 = batch_result.sorted.clone();
 let __tco_2 = batch_result.in_degree_map.clone();
 let __tco_3 = adjacency;

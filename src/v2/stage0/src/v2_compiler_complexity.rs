@@ -686,7 +686,7 @@ pub fn infer_parser_always_advancing_members_worklist(mut queue: Rc<Vec<String>>
     Some(name) => { let rest = Rc::new(queue.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 if set_has(proven.clone(), name.clone()) {
             {
-                let __tco_0 = rest.clone();
+                let __tco_0 = rest;
 let __tco_1 = func_index;
 let __tco_2 = parser_name_set;
 let __tco_3 = reverse_graph;
@@ -708,7 +708,7 @@ continue;
     None => Rc::new(vec![]),
 };
 {
-                    let __tco_0 = deduplicate(v2_rt::concat(rest.clone(), callers.clone()));
+                    let __tco_0 = deduplicate(v2_rt::concat(rest, callers));
 let __tco_1 = func_index;
 let __tco_2 = parser_name_set;
 let __tco_3 = reverse_graph;
@@ -724,7 +724,7 @@ continue;
 }
 } else {
                 {
-                    let __tco_0 = rest.clone();
+                    let __tco_0 = rest;
 let __tco_1 = func_index;
 let __tco_2 = parser_name_set;
 let __tco_3 = reverse_graph;
@@ -740,7 +740,7 @@ continue;
 }
 } },
     None => { {
-                let __tco_0 = rest.clone();
+                let __tco_0 = rest;
 let __tco_1 = func_index;
 let __tco_2 = parser_name_set;
 let __tco_3 = reverse_graph;
@@ -1138,7 +1138,7 @@ pub fn descending_name_set_without_key(names: Rc<HashMap<String, String>>, key: 
 pub fn expr_descending_witness_source(mut expr: Rc<Node>, mut descending_witness_names: Rc<HashMap<String, String>>, mut si: Option<Rc<NewlineIndex>>) -> Option<String> {
     loop {
         match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => { break v2_rt::map_get(&descending_witness_names, expr_var_name_at(expr.clone(), si.clone())); },
+    ExprData::ExprVar { .. } => { break v2_rt::map_get(&descending_witness_names, expr_var_name_at(expr.clone(), si)); },
     ExprData::ExprBinOp { op, .. } => { match op.clone() {
     BinOp::Sub => { {
             let __tco_0 = binop_left(expr);
@@ -1274,11 +1274,11 @@ pub fn is_children_of_param(mut expr: Rc<Node>, mut param_name: String, mut vars
         match (*expr.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => { let base = field_access_base(expr.clone());
 let field = field_access_field_at(expr.clone(), si.clone());
-break (is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => (expr_var_name_at(base.clone(), si.clone()).as_str() == param_name.clone().as_str()),
+break (is_children_list_field(field) && match (*base.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => (expr_var_name_at(base.clone(), si.clone()).as_str() == param_name.as_str()),
     _ => false,
 }); },
-    ExprData::ExprVar { .. } => { break set_has(vars.clone(), expr_var_name_at(expr.clone(), si.clone())); },
+    ExprData::ExprVar { .. } => { break set_has(vars, expr_var_name_at(expr.clone(), si.clone())); },
     ExprData::ExprMethodCall { method_semantics: ms, .. } => { match method_size_effect(ms.clone()) {
     Some(CollectionSizeEffect::ShrinkEffect) => { {
             let __tco_0 = method_receiver(expr);
@@ -2575,7 +2575,7 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
 
 pub fn extract_unknown_reason(mut expr: Rc<CostExpr>) -> String {
     loop {
-        match (*expr.clone()).clone() {
+        match (*expr).clone() {
     CostExpr::CostUnknown { reason: r, .. } => { break r.clone(); },
     CostExpr::CostAdd { left: l, right: r, .. } => { if is_unknown_cost(l.clone()) {
             {
@@ -3568,10 +3568,10 @@ pub fn receiver_size_var(mut recv: Rc<Node>, mut si: Option<Rc<NewlineIndex>>) -
     loop {
         match (*recv.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => { break Rc::new(SizeExpr::SizeLen {
-    collection: expr_var_name_at(recv.clone(), si.clone()),
+    collection: expr_var_name_at(recv.clone(), si),
 }); },
     ExprData::ExprFieldAccess { .. } => { break Rc::new(SizeExpr::SizeLen {
-    collection: field_access_field_at(recv.clone(), si.clone()),
+    collection: field_access_field_at(recv.clone(), si),
 }); },
     ExprData::ExprMethodCall { method_semantics, .. } => { let inner_recv = match recv.children.clone().first().cloned() {
     Some(r) => r.clone(),
@@ -3579,7 +3579,7 @@ pub fn receiver_size_var(mut recv: Rc<Node>, mut si: Option<Rc<NewlineIndex>>) -
 };
 if method_preserves_collection_size(method_semantics.clone()) {
             {
-                let __tco_0 = inner_recv.clone();
+                let __tco_0 = inner_recv;
 let __tco_1 = si;
 recv = __tco_0;
 si = __tco_1;

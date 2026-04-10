@@ -9,8 +9,10 @@ use crate::NonEmptyBTreeSet;
 pub use crate::std_termination::{DescentEvidence, RankingDimension};
 use crate::std_termination::DescentEvidence::{Strict, NonIncreasing, DescentUnknown};
 use crate::std_termination::RankingDimension::{TreeSize};
-pub use crate::std_computation::{CallPattern};
+pub use crate::std_computation::{CallPattern, LoweringTarget, IterationPrimitive, tree_size_bound, SizeBound};
 use crate::std_computation::CallPattern::{ChildAccessorCall, FoldBodyCall, SameArgumentCall};
+use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
+use crate::std_computation::SizeBound::{CollectionSize, ArithmeticParam, Forever};
 use RecursionShape::*;
 use ShrinkFactor::*;
 use SubValueRelation::*;
@@ -73,6 +75,12 @@ pub enum SubValueRelation {
     SubValueUnknown,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BoundedLoweringTarget {
+    pub target: Rc<LoweringTarget>,
+    pub factor: Option<Rc<ShrinkFactor>>,
+}
+
 pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence {
     match (*relation).clone() {
     SubValueRelation::StrictSubValue { .. } => DescentEvidence::Strict,
@@ -80,6 +88,32 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
     SubValueRelation::ArithmeticDescent { .. } => DescentEvidence::Strict,
     SubValueRelation::PreservedValue => DescentEvidence::NonIncreasing,
     SubValueRelation::SubValueUnknown => DescentEvidence::DescentUnknown,
+}
+}
+
+pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
+    match (*a.clone()).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    SubValueRelation::PreservedValue => match (*b).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    _ => Rc::new(SubValueRelation::PreservedValue),
+},
+    _ => match (*b).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
+    _ => a.clone(),
+},
+}
+}
+
+pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
+    match (*a.clone()).clone() {
+    SubValueRelation::SubValueUnknown => b.clone(),
+    SubValueRelation::PreservedValue => match (*b.clone()).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::PreservedValue),
+    _ => b.clone(),
+},
+    _ => a.clone(),
 }
 }
 
@@ -106,6 +140,48 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
 })),
 },
     SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),
+    SubValueRelation::SubValueUnknown => None,
+}
+}
+
+pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc<BoundedLoweringTarget>> {
+    match (*relation).clone() {
+    SubValueRelation::StrictSubValue { field: f, factor: fac, .. } => Some(Rc::new(BoundedLoweringTarget {
+    target: Rc::new(LoweringTarget {
+    primitive: IterationPrimitive::Descend,
+    bound: tree_size_bound(f.field_name.clone()),
+    evidence: DescentEvidence::Strict,
+}),
+    factor: Some(fac.clone()),
+})),
+    SubValueRelation::IteratedSubValue { field: f, .. } => Some(Rc::new(BoundedLoweringTarget {
+    target: Rc::new(LoweringTarget {
+    primitive: IterationPrimitive::Fold,
+    bound: Rc::new(SizeBound::CollectionSize {
+    param: f.field_name.clone(),
+}),
+    evidence: DescentEvidence::Strict,
+}),
+    factor: None,
+})),
+    SubValueRelation::ArithmeticDescent { param: p, factor: fac, .. } => Some(Rc::new(BoundedLoweringTarget {
+    target: Rc::new(LoweringTarget {
+    primitive: IterationPrimitive::Repeat,
+    bound: Rc::new(SizeBound::ArithmeticParam {
+    param: p.clone(),
+}),
+    evidence: DescentEvidence::Strict,
+}),
+    factor: Some(fac.clone()),
+})),
+    SubValueRelation::PreservedValue => Some(Rc::new(BoundedLoweringTarget {
+    target: Rc::new(LoweringTarget {
+    primitive: IterationPrimitive::Repeat,
+    bound: Rc::new(SizeBound::Forever),
+    evidence: DescentEvidence::NonIncreasing,
+}),
+    factor: None,
+})),
     SubValueRelation::SubValueUnknown => None,
 }
 }
@@ -278,7 +354,7 @@ pub fn ceil_log(base: i64, argument: i64) -> i64 {
 pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i64) -> i64 {
     loop {
         if (power.clone() >= argument.clone()) {
-            break k.clone();
+            break k;
 } else {
             {
                 let __tco_0 = base.clone();

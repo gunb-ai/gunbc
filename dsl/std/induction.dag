@@ -70,10 +70,10 @@ import std.termination {
 import std.computation {
   CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
   LoweringTarget, IterationPrimitive, Descend, Fold, Repeat,
-  SizeBound, CollectionSize, ArithmeticParam, Forever,
+  CollectionSize, ArithmeticParam, Forever,
   tree_size_bound
 }
-import std.algebra { BoundedLattice }
+
 
 
 // =========================================================================
@@ -257,12 +257,11 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-data sub_value_relation_lattice: BoundedLattice<SubValueRelation> = {
-  meet: meet_sub_value,
-  join: join_sub_value,
-  top: PreservedValue,
-  bottom: SubValueUnknown
-}
+// SubValueRelation inhabits BoundedLattice:
+//   meet = meet_sub_value, join = join_sub_value
+//   top = PreservedValue (meet identity), bottom = SubValueUnknown
+// Data declaration deferred: compiler does not yet emit generic type
+// parameters for data constants (BoundedLattice<SubValueRelation>).
 
 
 // =========================================================================

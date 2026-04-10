@@ -193,7 +193,7 @@ pub fn expand_transitive_services(mut modules: Rc<Vec<Rc<TypedModule>>>, mut reg
             let before = total_service_count(registry.clone());
 let next = expand_transitive_services_once(modules.clone(), registry.clone());
 let after = total_service_count(next.clone());
-if (before.clone() == after.clone()) {
+if (before == after) {
                 break registry.clone();
 } else {
                 {

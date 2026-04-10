@@ -17,6 +17,8 @@ use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, 
 use crate::v2_std_core::ExprErrorKind::{SemanticExprError};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, node_is_keyed_collection};
+pub use crate::std_induction::{SubValueRelation};
+use crate::std_induction::SubValueRelation::{SubValueUnknown};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for};
 use AliasKind::*;
 
@@ -1521,6 +1523,7 @@ let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: S
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 }),
+    provenance: Rc::new(SubValueRelation::SubValueUnknown),
 })),
     recursive_types: e.recursive_types,
     recursive_type_set: e.recursive_type_set,
