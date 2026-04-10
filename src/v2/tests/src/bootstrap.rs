@@ -82,12 +82,10 @@ fn stage0_cargo_check() {
 //   measure (std/termination.dag), not synthetic arithmetic descent.
 // 2026-04-09: 480→524 — Delete heuristic tables (list_child_accessors, ExprCall
 //   collection+lambda positional guess), replace _arith synthetic InductiveField
-//   524→438: ArithmeticDescent filter, PreservedValue structural check,
-//   centralized CX-L2 evidence, transparent wrapper propagation in classify_argument.
-//   render_node_type dissolved (140), make_indent dissolved (44).
-//   +4 from classify_argument's new recursive paths (match/if/block/let/cast/return).
-//   Remaining: SCC multi-dimensional lexicographic proof (CX-A).
-const DIAG_RATCHET: usize = 438;
+//   524→411: centralized evidence, PreservedValue, ArithmeticDescent, transparent
+//   wrappers, collection element extraction (match list |> first { Some => x }).
+//   resolve_node_bounded dissolved. render_node_type dissolved. make_indent dissolved.
+const DIAG_RATCHET: usize = 411;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

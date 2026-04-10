@@ -2986,6 +2986,17 @@ Rc::new({ let mut __result = Vec::new(); for f in ind_fields.clone().iter().clon
     _ => None,
 }
 },
+    ExprData::ExprMethodCall { .. } => {
+                let mname = expr_method_name(scrut.clone());
+if ((mname.clone().as_str() == "first".to_string().as_str()) || (mname.clone().as_str() == "last".to_string().as_str())) {
+                    {
+                        let receiver = method_receiver(scrut.clone());
+resolve_collection_field(receiver.clone(), ctx.clone())
+}
+} else {
+                    None
+}
+},
     _ => None,
 };
 let scrut_has_inductive = (((scrut_type.clone().as_str() != "".to_string().as_str()) && ((inductive_fields_for(ctx.type_env.clone(), scrut_type.clone()).len() as i64) > 0)) || (scrut_inducing_field.clone() != None));

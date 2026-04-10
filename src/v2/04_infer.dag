@@ -2807,6 +2807,15 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
               } else { none }
             _ => none
           }
+        // collection_param |> first: unwrapping Optional element from a list parameter.
+        // If receiver is a tracked collection (param or sub-value with ListRecursion),
+        // the Some binding is an IteratedSubValue.
+        ExprMethodCall { method_semantics: _ } =>
+          let mname = expr_method_name(texpr: scrut)
+          if mname == "first" || mname == "last" {
+            let receiver = method_receiver(texpr: scrut)
+            resolve_collection_field(expr: receiver, ctx: ctx)
+          } else { none }
         _ => none
       }
       let scrut_has_inductive = (scrut_type != "" && inductive_fields_for(env: ctx.type_env, type_name: scrut_type) |> count > 0) || scrut_inducing_field != none
