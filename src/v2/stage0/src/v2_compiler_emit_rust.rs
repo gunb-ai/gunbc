@@ -4959,11 +4959,23 @@ Rc::new(WorkflowFunc {
 }
 }
 
-pub fn collect_workflow_funcs(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<Vec<Rc<WorkflowFunc>>> {
-    Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if ((item.body.clone() != None) && (((item.uses.clone().len() as i64) > 0) || match lookup_item(registry.clone(), item.name.clone()) {
+pub fn is_workflow_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> bool {
+    if (item.body.clone() == None) {
+        false
+    } else {
+        if ((item.uses.clone().len() as i64) > 0) {
+            true
+        } else {
+            match lookup_item(registry, item.name.clone()) {
     Some(info) => (((info.service_names.clone().len() as i64) > 0) || ((info.resource_names.clone().len() as i64) > 0)),
-    None => false,
-})) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(item.clone(), tm.module.clone().name.clone(), registry.clone(), tm.items.clone(), tm.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
+    None => true,
+}
+        }
+    }
+}
+
+pub fn collect_workflow_funcs(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<Vec<Rc<WorkflowFunc>>> {
+    Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_workflow_item(item.clone(), registry.clone()) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(item.clone(), tm.module.clone().name.clone(), registry.clone(), tm.items.clone(), tm.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
 }
 
 pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {

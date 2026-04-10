@@ -4800,16 +4800,29 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
   }
 }
 
+// Determine if a body-bearing item is a workflow function (CLI subcommand).
+// Uses registry as the single authority for service/resource dependencies.
+// Items with explicit `uses` clauses are always workflow funcs.
+// Items without `uses` are workflow funcs if they have transitive service deps.
+fn is_workflow_item(item: Node, registry: Map<String, ItemInfo>) -> Bool {
+  if item.body == none { false }
+  else if item.uses |> count > 0 { true }
+  else {
+    // Registry is total for body-bearing items that went through inference.
+    // A missing entry is a compiler invariant violation — the item should
+    // have been registered during inference. Fail-closed: include the item
+    // so the diagnostic surfaces rather than silently dropping a subcommand.
+    match lookup_item(registry: registry, name: item.name) {
+      Some { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
+      None => true
+    }
+  }
+}
+
 fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> List<WorkflowFunc> {
   modules |> flat_map(tm =>
     tm.items
-      |> filter(item => item.body != none && (
-        item.uses |> count > 0 ||
-        match lookup_item(registry: registry, name: item.name) {
-          Some { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
-          None => false
-        }
-      ))
+      |> filter(item => is_workflow_item(item: item, registry: registry))
       |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry, module_items: tm.items, source_index: tm.type_env.source_index))
   )
 }
