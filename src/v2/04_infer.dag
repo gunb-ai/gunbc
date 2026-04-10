@@ -2805,7 +2805,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
 // in definition order. Named args are matched by name; unnamed args fall back
 // to positional alignment.
 fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRelation> {
-  // Build map from arg name → (index, arg_value_node)
+  // Build map from arg name → arg_value_node
   let arg_map = call_node.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
     let idx = pair.first
     let arg_node = pair.second
@@ -3280,6 +3280,12 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             }
           None => none
         }
+        // Fold has an accumulator — captured sub_value_vars can alias it,
+        // making descent evidence unsound. (e.g., [1,2] |> fold(f: (acc, x) => self(t: child))
+        // is T(n) = 2T(n-1) = O(2^n), not O(n).)
+        // Map/filter/any/all have no accumulator — each invocation is independent,
+        // so captured sub_value_vars remain valid descent evidence.
+        let is_fold = mname == "fold"
         let inner_ctx = match lambda_elem_info {
           Some { value: elem_name } =>
             match receiver_field {
@@ -3288,19 +3294,15 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   fn_name: ctx.fn_name,
                   param_names: map_insert(ctx.param_names, elem_name, ind_field.element_type),
                   param_order: ctx.param_order, type_env: ctx.type_env,
-                  sub_value_vars: map_insert(empty_map(), elem_name, IteratedSubValue { field: ind_field }),
+                  sub_value_vars: if is_fold { map_insert(empty_map(), elem_name, IteratedSubValue { field: ind_field }) }
+                    else { map_insert(ctx.sub_value_vars, elem_name, IteratedSubValue { field: ind_field }) },
                   size_aliases: ctx.size_aliases
                 }
               None =>
-                // Fold on non-recognized collection: clear sub_value_vars entirely.
-                // Captured sub-values inside a fold body have their descent multiplied
-                // by the fold's iteration count, making them unsound as catamorphism
-                // evidence. (e.g., [1,2] |> fold(f: (acc, x) => self(t: child)) is
-                // T(n) = 2T(n-1) = O(2^n), not O(n).)
                 DescentContext {
                   fn_name: ctx.fn_name, param_names: ctx.param_names,
                   param_order: ctx.param_order, type_env: ctx.type_env,
-                  sub_value_vars: empty_map(),
+                  sub_value_vars: if is_fold { empty_map() } else { ctx.sub_value_vars },
                   size_aliases: ctx.size_aliases
                 }
             }

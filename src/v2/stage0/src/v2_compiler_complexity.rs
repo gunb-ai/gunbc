@@ -4818,6 +4818,7 @@ match ev.clone() {
     DescentEvidence::Strict => DescentEvidence::Strict,
     _ => match best.clone() {
     DescentEvidence::Strict => DescentEvidence::Strict,
+    DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
     _ => ev.clone(),
 },
 }

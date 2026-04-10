@@ -5058,7 +5058,15 @@ fn derive_edge_evidence(all_calls: List<List<SubValueRelation>>) -> DescentEvide
   all_calls |> fold(init: Strict, f: (worst, call_ev) =>
     let call_best = call_ev |> fold(init: DescentUnknown, f: (best, rel) =>
       let ev = sub_value_to_evidence(relation: rel)
-      match ev { Strict => Strict  _ => match best { Strict => Strict  _ => ev } }
+      // Lattice max: Strict > NonIncreasing > DescentUnknown
+      match ev {
+        Strict => Strict
+        _ => match best {
+          Strict => Strict
+          NonIncreasing => NonIncreasing
+          _ => ev
+        }
+      }
     )
     merge_evidence(a: worst, b: call_best)
   )
