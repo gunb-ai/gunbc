@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name, resource_use_name_at, resource_use_resource, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_name_at, field_binding_pattern, arg_name, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, foreach_variable, foreach_variable_at, expr_method_name, expr_method_name_at};
+pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name, resource_use_name_at, resource_use_resource, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_name_at, field_binding_pattern, arg_name, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, foreach_variable, foreach_variable_at, expr_method_name, expr_method_name_at, InternTable, InternResult, empty_intern_table, intern};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, OwnershipViolation};
 use crate::v2_std_core::Connective::{NoConnective, Arrow};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -64,6 +64,7 @@ pub struct FrontendResult {
     pub graph: Option<Rc<ModuleGraph>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -577,11 +578,14 @@ let parse_results = acc.parse_results.clone();
 let newline_indices = acc.newline_indices.clone();
 let parse_diagnostics = collect_diagnostics(parse_results.clone());
 let has_parse_errors = { let mut __found = false; for p in parse_results.clone().iter().cloned() { if (p.error.clone() != None) { __found = true; break; } } __found };
+let intern_tables = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.intern_table.clone()); } __result });
+let merged_intern_table = merge_intern_tables(intern_tables);
 if has_parse_errors {
             Rc::new(FrontendResult {
     graph: None,
     diagnostics: parse_diagnostics,
     newline_indices: newline_indices,
+    intern_table: merged_intern_table,
 })
         } else {
             {
@@ -591,10 +595,19 @@ Rc::new(FrontendResult {
     graph: Some(graph.clone()),
     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
     newline_indices: newline_indices,
+    intern_table: merged_intern_table,
 })
 }
         }
 }
+}
+
+pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> {
+    tables.iter().cloned().fold(empty_intern_table(), |merged: Rc<InternTable>, t: Rc<InternTable>| t.strings.clone().iter().cloned().fold(merged.clone(), |m: Rc<InternTable>, s: String| if (s.clone().as_str() == "".to_string().as_str()) {
+        m.clone()
+    } else {
+        intern(m.clone(), s.clone()).table.clone()
+    }))
 }
 
 pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {

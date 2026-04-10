@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name, variant_node_name_at, variant_node_fields, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, expr_var_name_at, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, NewlineIndex, CompilerDiagnostic};
+pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_name, param_node_type_expr, param_node_default_value, make_field_node, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name, variant_node_name_at, variant_node_fields, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name, expr_var_name_at, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_arg_node, arg_name, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, NewlineIndex, InternTable, InternResult, empty_intern_table, intern, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -33,12 +33,14 @@ use ParserResultWitness::*;
 pub struct ParserState {
     pub pos: i64,
     pub source_index: Option<Rc<NewlineIndex>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParseResult {
     pub module: Option<Rc<Node>>,
     pub error: Option<Rc<ErrorNode>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1727,17 +1729,20 @@ pub fn parse(tokens: Rc<Vec<Rc<Token>>>, source_index: Option<Rc<NewlineIndex>>)
         let state = Rc::new(ParserState {
     pos: 0,
     source_index: source_index,
+    intern_table: empty_intern_table(),
 });
 let r = parse_module(tokens, state);
 if has_err(r.err.clone()) {
             Rc::new(ParseResult {
     module: None,
     error: r.err.clone(),
+    intern_table: r.state.clone().intern_table.clone(),
 })
         } else {
             Rc::new(ParseResult {
     module: Some(r.module.clone()),
     error: None,
+    intern_table: r.state.clone().intern_table.clone(),
 })
         }
 }
@@ -1788,7 +1793,9 @@ if has_err(r.err.clone()) {
         }
 let items = r.items.clone();
 let s = r.state.clone();
-let r#mod = module_node(mod_name, imports, items, start_span.clone());
+let mod_ir = intern(s.intern_table.clone(), mod_name.clone());
+let s = Rc::new(ParserState { intern_table: mod_ir.table.clone(), ..(*s.clone()).clone() });
+let r#mod = module_node(mod_name.clone(), imports, items, start_span.clone());
 Rc::new(ModuleResult {
     module: r#mod,
     state: s.clone(),
@@ -8065,6 +8072,7 @@ match t1 {
     Some(t) => (is_lbracket_shape(t.shape.clone()) && is_constraint_bracket(tokens.clone(), Rc::new(ParserState {
     pos: (state.pos.clone() + 1),
     source_index: state.source_index.clone(),
+    intern_table: state.intern_table.clone(),
 }))),
     None => false,
 }

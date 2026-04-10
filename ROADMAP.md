@@ -265,7 +265,7 @@ via string values ("add", "mul", etc.). Replace with structural
 Status: Documented, not started. Low urgency (few consumers), but
 exemplifies the string-dispatch anti-pattern.
 
-### Track 7: Core table dissolution (Lane A + D)
+### Track 7: Core table dissolution + duplication cleanup (Lane A + D)
 
 Hand-maintained string-keyed tables in `00_core.dag` should derive
 from type declarations in `std/`:
@@ -277,6 +277,17 @@ from type declarations in `std/`:
 | `function_size_effects` | Function names → size effects | Function signature metadata |
 
 These dissolve as types move to `std/` and carry their own metadata.
+
+Additional duplication surfaced by review (PR #371):
+- `emit_rust_default_value` (05_emit_rust.dag) is a hand-written
+  if-forest over type names. `TypeCheckpoint.default_expr` already
+  carries the same defaults. Fix: read from checkpoint data.
+- `rust_type_map` (extdeps/languages/rust/emit.dag) duplicates the
+  primitive mapping in `rust_type_checkpoints`. Same for Go/Python.
+  Fix: derive from TypeCheckpoint only.
+- CallableOf coverage incomplete: `filter`, `any`, `all`, `sort_by`
+  still omit CallableOf from their param_types in algebra templates.
+  Completing this dissolves downstream string dispatch in emit + CX.
 
 ### Track 8: Lattice inhabitant consolidation (Lane D)
 
