@@ -876,19 +876,22 @@ fn is_sub_value_field(field_name: String) -> Bool {
 type FunctionSizeEffect
   = TreeSizePreserving    // output tree_size == input tree_size (wrapper)
   | TreeSizeReducing      // output tree_size < input tree_size (sub-value extractor)
+  | PropertyContraction { domain_size: Int }  // output changes a finite-domain property
 
 data function_size_effects: Map<String, FunctionSizeEffect> = {
-  "with_required_cardinality": TreeSizePreserving,
+  "with_required_cardinality": PropertyContraction { domain_size: 2 },
   "resolved_type": TreeSizeReducing,
   "param_node_type_expr": TreeSizeReducing,
   "field_binding_pattern": TreeSizeReducing,
   "wrapper_inner_arg": TreeSizeReducing,
-  "extractor_inner_arg": TreeSizeReducing
+  "extractor_inner_arg": TreeSizeReducing,
+  "child_type_node": TreeSizeReducing
 }
 
 fn is_tree_size_preserving(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
     Some { value: TreeSizePreserving } => true
+    Some { value: PropertyContraction { domain_size: _ } } => true
     _ => false
   }
 }
@@ -896,6 +899,13 @@ fn is_tree_size_preserving(func_name: String) -> Bool {
 fn is_tree_size_reducing(func_name: String) -> Bool {
   match lookup(function_size_effects, key: func_name) {
     Some { value: TreeSizeReducing } => true
+    _ => false
+  }
+}
+
+fn is_property_contraction(func_name: String) -> Bool {
+  match lookup(function_size_effects, key: func_name) {
+    Some { value: PropertyContraction { domain_size: _ } } => true
     _ => false
   }
 }

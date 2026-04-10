@@ -2877,17 +2877,27 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     )
     if all_structural {
       // Find the first structural relation from the evidence.
-      let first_call = match all_evidence |> first {
-        Some { value: call_ev } =>
-          call_ev |> filter(rel =>
-            match rel {
-              StrictSubValue { field: _, factor: _ } => true
-              IteratedSubValue { field: _ } => true
-              ArithmeticDescent { param: _, factor: _ } => true
-              _ => false
-            }
-          ) |> first
-        None => none
+      // Find the best structural evidence across ALL self-calls.
+      // Prefer tree descent (StrictSubValue/IteratedSubValue) over arithmetic,
+      // since arithmetic descent with branching (e.g., fib) triggers the
+      // unsoundness guard, while tree descent with branching is always sound.
+      let all_strict_rels = all_evidence |> flat_map(call_ev =>
+        call_ev |> filter(rel =>
+          match rel {
+            StrictSubValue { field: _, factor: _ } => true
+            IteratedSubValue { field: _ } => true
+            ArithmeticDescent { param: _, factor: _ } => true
+            _ => false
+          }
+        )
+      )
+      // Prefer tree descent over arithmetic
+      let first_call = all_strict_rels |> filter(rel =>
+        match rel { StrictSubValue { field: _, factor: _ } => true  IteratedSubValue { field: _ } => true  _ => false }
+      ) |> first
+      let first_call = match first_call {
+        Some { value: _ } => first_call
+        None => all_strict_rels |> first  // fall back to arithmetic if no tree descent
       }
       // Guard: ArithmeticDescent with branching (multiple self-calls per path)
       // is UNSOUND as O(n). Example: fib(n-1) + fib(n-2) = O(2^n), not O(n).

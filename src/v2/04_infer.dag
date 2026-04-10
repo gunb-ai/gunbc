@@ -44,7 +44,7 @@ import v2.std.core {
   InternalError, VariantCollision,
   resource_use_name, resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
-  is_child_accessor_in_model, is_tree_size_reducing,
+  is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -2681,6 +2681,12 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
                   Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
                   None => PreservedValue
                 }
+              } else if is_property_contraction(func_name: callee) {
+                // PropertyContraction: the function changes a finite-domain property
+                // (e.g., with_required_cardinality strips optional). The domain has
+                // bounded size, so this recursion path fires at most domain_size times.
+                // Model as ArithmeticDescent — the property domain acts as a counter.
+                ArithmeticDescent { param: param_name, factor: ConstantShrink { amount: 1 } }
               } else { PreservedValue }
             SubValueUnknown => SubValueUnknown
           }
