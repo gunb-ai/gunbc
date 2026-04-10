@@ -2526,16 +2526,50 @@ The compiler generates:
 5. **Algebra law tests:** if Shape has algebra methods, test monoid/
    lattice laws with generated witnesses
 
-**Status:** Level 0 done (coercion data → test assertions, ~48 tests
-auto-generated). Levels 4-6 designed in `docs/testing-strategy.md` but
-not implemented.
+**Status:** Level 0 done. PR #368 landed TypeForm enum (5 structural
+forms), canonical witness extraction from TypeCheckpoint/InhabitantDecl
+data, and emission algebra enumeration (40 triples). ~86 auto-generated
+assertions total (48 coercion + 38 witness). Levels 4-6 designed in
+`docs/testing-strategy.md` but not implemented.
+
+**Design constraints:**
+
+1. **Non-tautological only.** Every generated test must justify why
+   the property cannot be proven from compilation alone. The compiler
+   already proves type correctness, decidability, ownership, and
+   termination. A test that re-proves any of these is wasted work.
+   Tests exist only at boundaries the compiler does not control:
+   runtime behavior of emitted code, cross-target equivalence,
+   external system contracts, algebraic law satisfaction with
+   concrete values. If a test's assertion is derivable from the
+   type system or the complexity analyzer, it should not exist.
+
+2. **Free from structure.** Tests must flow from structural
+   declarations with zero manual specification. The model IS the
+   test spec: type definitions produce witnesses, algebra
+   inhabitations produce law checks, service declarations produce
+   DryRun exercises, constraint predicates produce boundary tests.
+   Cost of Change = 1 file — adding a type, an algebra method, or
+   a service operation produces new tests at the next regeneration
+   with no additional edits.
+
+These two constraints are complementary. Constraint 1 says "only
+tests that add information beyond what compilation proves."
+Constraint 2 says "those tests must be derivable from the model
+without authoring." Together: the compiler generates exactly the
+tests that close the gap between static proof and runtime behavior,
+and it does so from the declarations alone.
 
 **Remaining work:**
-- [ ] KF-3a: Witness generator — one canonical value per type form
+- [~] KF-3a: Witness generator — one canonical value per type form
   (primitive→zero, product→all fields, coproduct→each variant,
-  optional→Some+None, collection→[]+[witness])
-- [ ] KF-3b: Emission algebra enumerator — enumerate all
-  `(NodeKind × TypeForm × Cardinality)` triples from .dag type defs
+  optional→Some+None, collection→[]+[witness]).
+  Partial: primitive + container witnesses from coercion data (PR #368).
+  Remaining: derive witnesses from resolved type structure.
+- [~] KF-3b: Emission algebra enumerator — enumerate all
+  `(ExprCategory × TypeForm × Cardinality)` triples from .dag type defs.
+  Partial: 40 triples enumerated from structural types (PR #368).
+  Remaining: structural validity pruning from emission dispatch.
 - [ ] KF-3c: Program synthesizer — one minimal .dag program per
   emission algebra element
 - [ ] KF-3d: Cross-target compilation — synthesized programs compile
