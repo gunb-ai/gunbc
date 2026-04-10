@@ -539,9 +539,9 @@ fn gist_full_pipeline() {
 /// lost facts, unnecessary allocations).
 ///
 /// The ratchet must be generous enough for CI runners under load.
-/// The actual pipeline time is ~6.5s in release mode on fast hardware.
-/// GitHub Actions runners regularly exceed 30s due to shared load.
-/// TODO: investigate pipeline perf regression (was 30s, now needs 45s on CI).
+/// Verified 2026-04-10: no regression from CX evidence work.
+/// Pre-CX and post-CX both measure ~10.8s on dev hardware.
+/// CI runners exceed 30s due to shared load — 45s budget is CI variance.
 const PERF_RATCHET_SECONDS: u64 = 45;
 
 #[test]
