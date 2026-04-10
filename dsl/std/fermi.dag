@@ -73,10 +73,10 @@ data fermi_timeouts: List<FermiTimeout> = [
   FermiTimeout { depth: Xl, timeout_ms: 3600000,  label: "60 minutes" },
 ]
 
-fn timeout_for_depth(depth: FermiDepth) -> Int {
+fn timeout_for_depth(depth: FermiDepth) -> Int? {
   let matches = filter(fermi_timeouts, t => t.depth == depth)
   match matches |> first {
-    Some { value: t } => t.timeout_ms
-    None => 0
+    Some { value: t } => Some { value: t.timeout_ms }
+    None => none
   }
 }
