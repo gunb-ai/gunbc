@@ -1043,6 +1043,108 @@ Type-derived semantic tables are the second.
 
 ---
 
+## Workboard
+
+Active work items. Each has a TDD test and a cleanup target.
+
+### Shared infrastructure (with ownership — see ownership-design.md)
+
+| # | Item | Test | Cleanup target | Status |
+|---|------|------|---------------|--------|
+| S1 | Add `provenance: SubValueRelation` to TypeBinding (default SubValueUnknown) | All existing tests pass, no behavior change | — (no-op step) | Not started |
+| S2 | Instrument function params → PreservedValue | Test: compile known .dag, assert param bindings have PreservedValue | — | Not started |
+| S3 | Instrument let-bindings → classify from value expr | Test: `let child = node.left` produces StrictSubValue | `classify_let_value` (04_infer.dag:2413, ~170 lines) | Not started |
+| S4 | Instrument match arms → StrictSubValue from variant field | Test: `match param { Cons { tail } => ... }` produces StrictSubValue on `tail` | Match-related heuristics in classify_argument | Not started |
+| S5 | Instrument for-each variable → IteratedSubValue | Test: `children \|> map(c => ...)` produces IteratedSubValue on `c` | For-each handling in annotate_descent | Not started |
+| S6 | Lambda params with element expected → IteratedSubValue | Test: fold/map callback param gets IteratedSubValue | Lambda heuristic (04_infer.dag:2870-2897) | Not started |
+| S7 | Lambda params with Callable expected (callee contracts) | Test: user-defined HOF callback param gets correct SVR | Full lambda transparency heuristic | Not started |
+| S8 | Declare SubValueRelation as BoundedLattice inhabitant | Test: lattice laws (idempotent, commutative, absorptive) | `merge_argument_relations` (04_infer.dag:2611) | Not started |
+
+### CX-specific
+
+| # | Item | Test | Cleanup target | Status |
+|---|------|------|---------------|--------|
+| C1 | Direct SubValueRelation → LoweringTarget (bypass CallPattern) | Test: StrictSubValue{ProportionalShrink{2}} → correct LoweringTarget with factor | `sub_value_to_call_pattern` (std/induction.dag:206, lossy bridge) | Not started |
+| C2 | Switch classify_recursion_pattern to read binding provenance | Test: violation count matches or improves vs current | `classify_argument` (04_infer.dag:2633, ~200 lines) | Not started |
+| C3 | Validate: binding provenance == CX-L2 reconstruction on all functions | Test: for every function, assert new path agrees with old path | Comparison harness (temporary, deleted after C4) | Not started |
+| C4 | Delete annotate_descent_evidence and all reconstruction code | Test: all existing CX tests pass without reconstruction | See cleanup catalog below | Not started |
+| C5 | Delete old proof system (construct_termination_proof) | Test: all SCC analysis reads provenance, no fallback | `construct_termination_proof` (~200 lines), `classify_scc_call_progress` (~60 lines) | Not started |
+| C6 | Re-enable CX gate as blocking (0 violations) | Test: `strict_compile_diagnostic_count` = 0 | CX gate disable in compile.dag + main.rs exit code filter | Not started |
+
+### TDD strategy
+
+**Validation harness (temporary, for C3):** During migration, compute
+provenance both ways — at bind time (new) and via CX-L2 reconstruction
+(old). Assert they agree on every function. When they agree on all
+functions, the old path can be deleted (C4). This is the proof that
+the new path is correct.
+
+```
+// Pseudocode for comparison test:
+for each function in self-compile:
+  let new_evidence = read descent_evidence from binding provenance
+  let old_evidence = run annotate_descent_evidence (reconstruction)
+  assert new_evidence == old_evidence
+```
+
+**Test progression:** Each shared step (S1-S8) has a focused test.
+As sites are instrumented, the comparison harness (C3) validates
+correctness incrementally. The violation count should monotonically
+decrease as more sites produce provenance. If it doesn't, the design
+needs re-evaluation before proceeding.
+
+**Red flag protocol:** If any step produces provenance that disagrees
+with CX-L2 reconstruction on a case where CX-L2 is correct, STOP.
+Diagnose whether:
+1. The binding site doesn't have enough information (design gap)
+2. The provenance composition is wrong (lattice bug)
+3. CX-L2 was using a heuristic that can't be expressed structurally
+   (indicates the heuristic was unsound — good to discover)
+
+### Cleanup catalog
+
+Code that dissolves as provenance lands. Each entry lists what
+deletes it and the estimated line count.
+
+**Dissolves after S3-S6 + C2 (binding provenance replaces reconstruction):**
+
+| Code | File | Lines | Deletes after |
+|------|------|-------|--------------|
+| `annotate_descent_evidence` + helpers | 04_infer.dag:2183-2930 | ~750 | C4 |
+| `classify_argument` (13 heuristics) | 04_infer.dag:2633-2821 | ~190 | C4 |
+| `classify_let_value` (5 heuristics) | 04_infer.dag:2413-2582 | ~170 | C4 |
+| `classify_collection_shrink` | 04_infer.dag:2258-2348 | ~90 | C4 |
+| `classify_size_expr` | 04_infer.dag:2212-2253 | ~40 | C4 |
+| `build_call_evidence` | 04_infer.dag:2801-2829 | ~30 | C4 |
+| `merge_argument_relations` | 04_infer.dag:2611-2631 | ~20 | S8 (lattice replaces) |
+| `DescentContext` type + threading | 04_infer.dag:2201-2208 | ~10 | C4 |
+| **Subtotal** | | **~1300** | |
+
+**Dissolves after C5 (old proof system deleted):**
+
+| Code | File | Lines | Deletes after |
+|------|------|-------|--------------|
+| `construct_termination_proof` | complexity.dag:~2721 | ~200 | C5 |
+| `classify_scc_call_progress` | complexity.dag:~3103 | ~60 | C5 |
+| `collect_evidence_incremental` | complexity.dag:~2455 | ~100 | C5 |
+| `is_child_descent_expr` + helpers | complexity.dag:~1767 | ~80 | C5 |
+| `sub_value_to_call_pattern` (lossy bridge) | std/induction.dag:206 | ~15 | C1 |
+| **Subtotal** | | **~455** | |
+
+**Dissolves when types move to std/ (Track 7):**
+
+| Code | File | Lines | Deletes after |
+|------|------|-------|--------------|
+| `is_child_accessor_in_model` | stage0 (v2_std_core.rs) | ~10 | Track 7 |
+| `function_size_effects` table | stage0 (v2_std_core.rs) | ~40 | Track 7 |
+| `expr_child_roles` table | 00_core.dag | ~50 | Track 7 |
+| `node_field_roles` table | 00_core.dag | ~40 | Track 7 |
+| **Subtotal** | | **~140** | |
+
+**Total estimated dissolution: ~1895 lines.**
+
+---
+
 ## Relationship to other docs
 
 - **INVARIANTS.md** — bounded kernel, fail-closed, decidability,

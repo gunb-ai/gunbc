@@ -134,19 +134,16 @@ doesn't carry enough structure. Each track closes a specific gap.
 
 ### Track 1: Provenance on bindings (Lane A + C)
 
-**The highest-leverage fix.** Extend TypeBinding with SubValueRelation
-provenance. Dissolves CX reconstruction (33 heuristics, 424
+**The highest-leverage fix.** Thread existing SubValueRelation
+through TypeBinding. Dissolves CX reconstruction (33 heuristics, 424
 violations) and ownership name-matching.
 
-| Step | What | Status |
-|------|------|--------|
-| 1 | Add provenance field to TypeBinding, default SubValueUnknown | Not started |
-| 2 | Instrument binding sites (params, let, match, lambda, for-each) | Not started |
-| 3 | Direct SubValueRelation → LoweringTarget (bypass CallPattern) | Not started |
-| 4 | Switch CX to read provenance instead of reconstructing | Not started |
-| 5 | Delete reconstruction code (~1365 lines) | Blocked by step 4 |
+Shared items S1-S8 serve both CX and ownership. CX-specific items
+C1-C6 build on top. Ownership-specific items O1-O10 build on top.
 
-Design: [docs/cx-design.md §Option B implementation plan](docs/cx-design.md)
+Active workboards with TDD plans and cleanup catalogs:
+- **CX:** [docs/cx-design.md §Workboard](docs/cx-design.md)
+- **Ownership:** [docs/ownership-design.md §Workboard](docs/ownership-design.md)
 
 ### Track 2: Language spec modeling + ownership (Lane B)
 
@@ -161,7 +158,7 @@ spec-referenced data lookups instead of inline logic.
 | LS-1: Type cast rules | Partial (numeric casts validated in infer) |
 | LS-2: Operator semantics | DONE (PR #355) |
 | LS-3: Expression syntax | Not started |
-| LS-4: Ownership/borrowing | See ownership layers below |
+| LS-4: Ownership/borrowing | See [ownership-design.md](docs/ownership-design.md) |
 | LS-5: Visibility/module system | Not started |
 | LS-6: Shared typed handlers | DONE (PR #355) |
 
