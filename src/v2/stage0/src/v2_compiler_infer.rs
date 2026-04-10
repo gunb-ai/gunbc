@@ -2701,6 +2701,23 @@ match coll_field {
 }
 }
 
+pub fn merge_argument_relations(rels: Rc<Vec<Rc<SubValueRelation>>>) -> Rc<SubValueRelation> {
+    rels.iter().cloned().fold(Rc::new(SubValueRelation::PreservedValue), |acc: Rc<SubValueRelation>, rel: Rc<SubValueRelation>| match (*rel.clone()).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    _ => match (*acc.clone()).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    SubValueRelation::PreservedValue => match (*rel.clone()).clone() {
+    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
+    _ => rel.clone(),
+},
+    _ => match (*rel.clone()).clone() {
+    SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
+    _ => acc.clone(),
+},
+},
+})
+}
+
 pub fn classify_argument(arg_expr: Rc<Node>, param_name: String, ctx: Rc<DescentContext>) -> Rc<SubValueRelation> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*arg_expr.expr_data.clone()).clone() {
@@ -2847,6 +2864,31 @@ if left_is_param {
     BinOp::Add => Rc::new(SubValueRelation::SubValueUnknown),
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
+},
+    ExprData::ExprMatch => {
+            let arm_rels = Rc::new({ let mut __result = Vec::new(); for arm in match_arm_nodes(arg_expr.clone()).iter().cloned() { __result.push(classify_argument(arm_body(arm.clone()), param_name.clone(), ctx.clone())); } __result });
+merge_argument_relations(arm_rels)
+},
+    ExprData::ExprIf => {
+            let then_rel = classify_argument(if_then_branch(arg_expr.clone()), param_name.clone(), ctx.clone());
+let else_rel = match if_else_branch(arg_expr.clone()) {
+    Some(e) => classify_argument(e.clone(), param_name.clone(), ctx.clone()),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+};
+merge_argument_relations(Rc::new(vec![then_rel, else_rel]))
+},
+    ExprData::ExprBlock => match arg_expr.children.clone().last().cloned() {
+    Some(last_expr) => classify_argument(last_expr.clone(), param_name.clone(), ctx.clone()),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    ExprData::ExprLet => match let_body(arg_expr.clone()) {
+    Some(body) => classify_argument(body.clone(), param_name.clone(), ctx.clone()),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+},
+    ExprData::ExprCast => classify_argument(cast_expr(arg_expr.clone()), param_name.clone(), ctx.clone()),
+    ExprData::ExprReturn => match arg_expr.children.clone().first().cloned() {
+    Some(inner) => classify_argument(inner, param_name.clone(), ctx.clone()),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
 },
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 }

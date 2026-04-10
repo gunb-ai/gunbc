@@ -2537,6 +2537,32 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
 }
 
 // Classify one self-call argument against its corresponding parameter.
+// Merge SubValueRelations across branches (match arms, if branches).
+// Conservative: if ALL are the same structural kind, keep it.
+// If ANY is SubValueUnknown, result is SubValueUnknown.
+// PreservedValue is weaker than Strict — mixed Strict+Preserved → PreservedValue.
+fn merge_argument_relations(rels: List<SubValueRelation>) -> SubValueRelation {
+  rels |> fold(init: PreservedValue, f: (acc, rel) =>
+    match rel {
+      SubValueUnknown => SubValueUnknown
+      _ =>
+        match acc {
+          SubValueUnknown => SubValueUnknown
+          PreservedValue =>
+            match rel {
+              PreservedValue => PreservedValue
+              _ => rel  // first non-Preserved sets the structural kind
+            }
+          _ =>
+            match rel {
+              PreservedValue => PreservedValue  // Preserved weakens to Preserved
+              _ => acc  // keep existing structural kind (conservative: first wins)
+            }
+        }
+    }
+  )
+}
+
 fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
   match arg_expr.expr_data {
     ExprVar { binding_kind: _ } =>
@@ -2655,6 +2681,38 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           // (token length), not by self-recursion. Direct count_up(n: n + 1) is Forever.
           SubValueUnknown
         _ => SubValueUnknown
+      }
+    // ── Transparent wrappers: propagate evidence through control flow ──
+    // These are not value constructors — they pass through an existing value.
+    // Worst-case across branches ensures soundness.
+    ExprMatch =>
+      let arm_rels = match_arm_nodes(texpr: arg_expr) |> map(arm =>
+        classify_argument(arg_expr: arm_body(n: arm), param_name: param_name, ctx: ctx)
+      )
+      merge_argument_relations(rels: arm_rels)
+    ExprIf =>
+      let then_rel = classify_argument(arg_expr: if_then_branch(texpr: arg_expr), param_name: param_name, ctx: ctx)
+      let else_rel = match if_else_branch(texpr: arg_expr) {
+        Some { value: e } => classify_argument(arg_expr: e, param_name: param_name, ctx: ctx)
+        None => SubValueUnknown
+      }
+      merge_argument_relations(rels: [then_rel, else_rel])
+    ExprBlock =>
+      match arg_expr.children |> last {
+        Some { value: last_expr } => classify_argument(arg_expr: last_expr, param_name: param_name, ctx: ctx)
+        None => SubValueUnknown
+      }
+    ExprLet =>
+      match let_body(texpr: arg_expr) {
+        Some { value: body } => classify_argument(arg_expr: body, param_name: param_name, ctx: ctx)
+        None => SubValueUnknown
+      }
+    ExprCast =>
+      classify_argument(arg_expr: cast_expr(texpr: arg_expr), param_name: param_name, ctx: ctx)
+    ExprReturn =>
+      match arg_expr.children |> first {
+        Some { value: inner } => classify_argument(arg_expr: inner, param_name: param_name, ctx: ctx)
+        None => SubValueUnknown
       }
     _ => SubValueUnknown
   }
