@@ -148,7 +148,7 @@ violations) and ownership name-matching.
 
 Design: [docs/cx-design.md §Option B implementation plan](docs/cx-design.md)
 
-### Track 2: Language spec modeling (Lane B)
+### Track 2: Language spec modeling + ownership (Lane B)
 
 **Thesis:** Every target language has a spec. Model specs as .dag data
 in `dsl/extdeps/languages/`. The emitter reads specs — never decides.
@@ -161,9 +161,65 @@ spec-referenced data lookups instead of inline logic.
 | LS-1: Type cast rules | Partial (numeric casts validated in infer) |
 | LS-2: Operator semantics | DONE (PR #355) |
 | LS-3: Expression syntax | Not started |
-| LS-4: Ownership/borrowing (Rust) | Partial (needs_sharing parameterized) |
+| LS-4: Ownership/borrowing | See ownership layers below |
 | LS-5: Visibility/module system | Not started |
 | LS-6: Shared typed handlers | DONE (PR #355) |
+
+**LS-4: Ownership — three layers to clone elimination**
+
+Stage0 emits 23,267 `.clone()` calls (~0.545 clones/line). The
+ownership analysis (PR #313) already computes the facts needed to
+eliminate most of them. The gap: the emitter doesn't consume all
+the facts it has.
+
+Violation classes (from ownership ratchet, PR #373):
+- **V1 (last-use clone):** Fan-out > 1, but the Nth use clones when
+  it could move. Every fan-out > 1 binding has 1 unnecessary clone.
+- **V2 (TCO-gated move):** Fan-out = 1 + owned_local, but TCO gate
+  zeroes the movable set. The binding SHOULD move but clones.
+- **V3 (fold fallback):** FoldAccUnwrapProof.eligible = true, but
+  emitter emits try_unwrap + clone fallback anyway.
+- **V4 (read-as-clone):** Read edges emitted as `.clone()` when a
+  borrow (`&x`) would suffice. ~90% of violations in focused tests.
+
+Three layers, sequenced by dependency:
+
+| Layer | Size | Blocked on | Impact (est.) |
+|-------|------|-----------|---------------|
+| 1. Last-use elision | 1-2 PRs | Nothing | ~2,000-4,000 clones |
+| 2. Post-TCO ownership | 1 PR | Nothing | ~500-1,000 clones |
+| 3. Borrow propagation | 3-5 PRs | LS-4 design | ~15,000-18,000 clones |
+
+**Layer 1 (last-use elision):** For each binding with fan-out > 1,
+the last use site moves instead of cloning. The data exists in
+BindingUsage — the emitter just needs to track which use is last
+and skip the `.clone()`. Unblocked.
+
+**Layer 2 (post-TCO ownership):** TCO-eligible functions currently
+zero the movable set (conservative). Fix: run ownership after TCO
+transformation, not before. Fan-out=1 owned locals in TCO functions
+can then move. Unblocked.
+
+**Layer 3 (borrow propagation — the bulk):** Read-only function
+parameters should be borrowed (`&Rc<T>`) instead of owned (`Rc<T>`).
+Call sites pass `&x` instead of `x.clone()`. This is where ~90% of
+unnecessary clones live.
+
+Requires LS-4 language spec work:
+1. Add borrow syntax to SharingStrategy — how does each target
+   language express "I only need to read this"? Rust: `&T`.
+   Go: pass-by-value for small types, pointer for large.
+   Python: no-op (reference semantics).
+2. For each function, determine which params are read-only (all
+   edges are Read/Projected). Derivable from ownership proof.
+3. Emit function signatures with borrows. Read-only params get
+   `&Rc<T>` instead of `Rc<T>`.
+4. Cascade: changes function signatures across entire emitted
+   codebase — every call site must match. Atomic with stage0 regen.
+
+Layer 3 is a design project (LanguageSpec borrow model), not just
+a coding project. Layers 1+2 are unblocked and move the ratchet
+immediately.
 
 ### Track 3: Structural identity / Node.name deletion (Lane A)
 
