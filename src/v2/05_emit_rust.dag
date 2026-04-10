@@ -44,7 +44,7 @@ import v2.std.core {
   transport_base_url,
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
-  transport_method, transport_path_template, transport_query, transport_stdin,
+  transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin,
   service_config_auth, service_config_auth_input, service_config_auth_source,
   expr_has_self_call, expr_has_non_tail_self_call,
   field_access_base, field_access_field, foreach_variable, foreach_variable_at,
@@ -3962,6 +3962,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   let http_method = emit_rest_http_method(transport: transport, source_index: source_index)
   let auth_line = emit_rest_auth_line(transport: transport, service_item: service_item, http_method: http_method, source_index: source_index)
   let query_line = emit_rest_query_line(transport: transport, source_index: source_index)
+  let body_line = emit_rest_body_line(transport: transport, source_index: source_index)
   let headers = transport_headers(t: transport)
   let header_lines = headers |> map(h =>
     concat("let request = request.header(\"", h.name, "\", ",
@@ -3971,7 +3972,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   // RE-1e: Response code mapping
   let response_handling = emit_response_code_handling(op_node: op_node)
   let all_lines = concat([client_init, url_line, auth_line],
-    header_lines, [query_line, send_line, response_handling])
+    header_lines, [query_line, body_line, send_line, response_handling])
     |> filter(l => l != "")
   all_lines |> join(separator: "\n")
 }
@@ -4122,6 +4123,29 @@ fn emit_rest_query_line(transport: Node, source_index: NewlineIndex?) -> String 
       if pairs |> count > 0 {
         concat("let request = request.query(&[", pairs |> join(separator: ", "), "]);")
       } else { "" }
+    }
+    None => ""
+  }
+}
+
+// RE-1 POST body: emit .json() with serde_json::json! macro for request body.
+// Body must be ExprRecordLit (field-init children). Fail-closed: any other
+// expression shape produces compile_error! — no silent fabrication.
+fn emit_rest_body_line(transport: Node, source_index: NewlineIndex?) -> String {
+  match transport_request_body(t: transport) {
+    Some { value: b } => match b.expr_data {
+      ExprRecordLit => {
+        let fields = b.children |> map(fi =>
+          concat("\"", field_init_node_name(n: fi), "\": ",
+            emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_index: source_index))
+        )
+        if fields |> count > 0 {
+          concat("let request = request.json(&serde_json::json!({ ", fields |> join(separator: ", "), " }));")
+        } else {
+          "compile_error!(\"transport body record has no fields\");"
+        }
+      }
+      _ => "compile_error!(\"transport body must be a record expression { field: value, ... }\");"
     }
     None => ""
   }

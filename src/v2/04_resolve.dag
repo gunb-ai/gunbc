@@ -34,7 +34,7 @@ import v2.std.core {
   expr_var_name, field_access_field, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at, foreach_variable, foreach_variable_at, lambda_param_names, record_lit_type_name,
   make_arg_node, arg_name, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
   make_transport_node, local_transport_node,
-  is_local_transport,
+  is_local_transport, transport_request_body,
   is_kernel_type, is_container_type,
   with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
@@ -658,9 +658,18 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
     let child_results = map(transport.children, c => resolve_expr_types(texpr: c, env: env, module_name: module_name))
     let resolved_children = map(child_results, cr => cr.expr)
     let child_diags = flat_map(child_results, cr => cr.diagnostics)
+    // Validate body shape: must be ExprRecordLit if present.
+    // Reject non-record shapes here so the emitter only translates valid bodies.
+    let body_diags = match transport_request_body(t: transport) {
+      Some { value: b } => match b.expr_data {
+        ExprRecordLit => []
+        _ => [make_error_node(diagnostic: InternalError { message: "transport body must be a record expression { field: value, ... }", span: b.span }, module_name: module_name)]
+      }
+      None => []
+    }
     TransportResolveResult {
       transport: make_transport_node(properties: resolved_props, children: resolved_children, body: transport.body, span: transport.span),
-      diagnostics: concat(prop_diags, child_diags)
+      diagnostics: concat(prop_diags, child_diags, body_diags)
     }
   }
 }
