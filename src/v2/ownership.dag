@@ -402,6 +402,29 @@ fn build_movable_set(proof: OwnershipProof) -> Map<String, Bool> {
     |> fold(init: empty_map(), f: (acc, usage) => map_insert(acc, usage.name, true))
 }
 
+// Last-use set: for bindings with fan-out > 1, the consumer with the highest
+// span_start is the last use and can move instead of clone. Returns a map of
+// binding names where a last-use move opportunity exists.
+//
+// Note: with span_start defaulted to 0 (O1 bootstrap), all consumers share
+// the same position, so no binding qualifies yet. Once spans are populated,
+// this produces real results.
+fn build_last_use_set(proof: OwnershipProof) -> Map<String, Bool> {
+  proof.bindings |> map_values
+    |> filter(usage => binding_fan_out(usage: usage) > 1 && is_owned_local(kind: usage.binding_kind))
+    |> fold(init: empty_map(), f: (acc, usage) =>
+      // Find the maximum span_start across all non-Threaded consumers.
+      let consumers = usage.consumers |> filter(c => match c.kind { Threaded => false, _ => true })
+      let max_span = consumers |> fold(init: -1, f: (m, c) => if c.span_start > m { c.span_start } else { m })
+      // Only mark as last-use if max_span is unique (exactly one consumer at that position)
+      // and max_span > 0 (span data is actually populated, not the default 0).
+      let at_max = consumers |> filter(c => c.span_start == max_span) |> count
+      if max_span > 0 && at_max == 1 {
+        map_insert(acc, usage.name, true)
+      } else { acc }
+    )
+}
+
 // =========================================================================
 // Fold accumulator unwrap — structural analysis (target-agnostic)
 // =========================================================================

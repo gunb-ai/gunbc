@@ -110,7 +110,7 @@ import v2.compiler.infer_emit_info {
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum
 }
-import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set }
+import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_last_use_set }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
@@ -447,6 +447,19 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
   )
 }
 
+// Build last-use move set from ownership proofs. Merges per-function results
+// into a single flat map of binding names with last-use move opportunities.
+fn build_last_use_results(modules: List<TypedModule>) -> Map<String, Bool> {
+  let proofs = modules |> flat_map(m =>
+    m.items |> filter(item => item.body != None) |> map(item =>
+      analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index)
+    )
+  )
+  proofs |> fold(init: empty_map(), f: (acc, proof) =>
+    map_merge(acc, build_last_use_set(proof: proof))
+  )
+}
+
 // =========================================================================
 // Entry point -- Rust target
 // =========================================================================
@@ -455,6 +468,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let base_info = build_emit_graph_info(modules: typed.modules)
   let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
+  let last_use = build_last_use_results(modules: typed.modules)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
@@ -465,7 +479,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_map(),
     fold_eligible_index: ownership.fold_eligible_index,
-    fold_eligible: empty_map()
+    fold_eligible: empty_map(),
+    last_use_sites: last_use
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -572,7 +587,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_map(),
     fold_eligible_index: base_info.fold_eligible_index,
-    fold_eligible: empty_map()
+    fold_eligible: empty_map(),
+    last_use_sites: empty_map()
   }
   let shared_types = emit_info.shared_types
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map())
@@ -820,7 +836,8 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       variant_to_enum: emit_info.variant_to_enum,
       owned_bindings: empty_map(),
       fold_eligible_index: emit_info.fold_eligible_index,
-      fold_eligible: fn_fold_eligible
+      fold_eligible: fn_fold_eligible,
+      last_use_sites: emit_info.last_use_sites
     }
     // Items with resource uses or service calls are emitted as async workflow functions.
     // Single authority: service_names + resource_names on ItemInfo (not uses on the Node).
@@ -1765,13 +1782,14 @@ fn clone_iterator_suffix() -> String {
   sharing_for_target(target: Rust).clone_suffix
 }
 
-// Decide clone vs move for a variable reference based on ownership fan-out.
 // Decide clone vs move for a variable reference based on ownership movable set.
-// Movable bindings (fan-out=1) are moved; non-movable are cloned via
+// Movable bindings (fan-out=1) are moved; last-use bindings (fan-out>1 but
+// this is the final use-site) are also moved. Non-movable are cloned via
 // SharingStrategy templates. Falls back to clone if resolved_type is present.
 fn emit_var_clone_or_move(ident: String, name: String, resolved_type: InferredNode?, emit_info: EmitGraphInfo) -> String {
   let is_movable = emit_map_has(m: emit_info.movable, key: name)
-  if is_movable { ident }
+  let is_last_use = emit_map_has(m: emit_info.last_use_sites, key: name)
+  if is_movable || is_last_use { ident }
   else {
     match resolved_type {
       Some { value: _ } => apply_clone(expr: ident)
@@ -2687,7 +2705,8 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
               fold_eligible_index: emit_info.fold_eligible_index,
-              fold_eligible: emit_info.fold_eligible
+              fold_eligible: emit_info.fold_eligible,
+              last_use_sites: emit_info.last_use_sites
             }
           None => emit_info
         }
