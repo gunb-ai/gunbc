@@ -117,10 +117,11 @@ type RecursionShape
 //   InductiveField { type_name: "MyList", variant_name: "Cons", field_name: "tail", shape: DirectRecursion }
 
 type InductiveField {
-  type_name: String
-  variant_name: String
-  field_name: String
-  shape: RecursionShape
+  type_name: String         // type that owns this field ("Node", "InferredNode")
+  variant_name: String      // "" for records, variant name for sum types
+  field_name: String        // "children", "body", "node"
+  shape: RecursionShape     // how field references recursive structure
+  element_type: String      // type of the element (== type_name for self-referential, different for cross-type)
 }
 
 
@@ -171,6 +172,7 @@ type ShrinkFactor
 type SubValueRelation
   = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
   | IteratedSubValue { field: InductiveField }
+  | ArithmeticDescent { param: String, factor: ShrinkFactor }
   | PreservedValue
   | SubValueUnknown
 
@@ -181,10 +183,11 @@ type SubValueRelation
 
 fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
   match relation {
-    StrictSubValue { field: _, factor: _ } => Strict
-    IteratedSubValue { field: _ }          => Strict
-    PreservedValue                         => NonIncreasing
-    SubValueUnknown                        => DescentUnknown
+    StrictSubValue { field: _, factor: _ }   => Strict
+    IteratedSubValue { field: _ }            => Strict
+    ArithmeticDescent { param: _, factor: _ } => Strict
+    PreservedValue                           => NonIncreasing
+    SubValueUnknown                          => DescentUnknown
   }
 }
 
@@ -202,10 +205,16 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
 
 fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
   match relation {
-    StrictSubValue { field: f, factor: _ } => Some { value: ChildAccessorCall { accessor: f.field_name } }
-    IteratedSubValue { field: f }          => Some { value: ChildAccessorCall { accessor: f.field_name } }
-    PreservedValue                         => Some { value: SameArgumentCall }
-    SubValueUnknown                        => none
+    StrictSubValue { field: f, factor: _ }    => Some { value: ChildAccessorCall { accessor: f.field_name } }
+    IteratedSubValue { field: f }             => Some { value: ChildAccessorCall { accessor: f.field_name } }
+    ArithmeticDescent { param: _, factor: f } =>
+      match f {
+        ConstantShrink { amount: k }      => Some { value: ArithmeticDescentCall { op: "subtract", by: k } }
+        ProportionalShrink { divisor: k } => Some { value: ArithmeticDescentCall { op: "divide", by: k } }
+        UnitShrink                        => Some { value: ArithmeticDescentCall { op: "subtract", by: 1 } }
+      }
+    PreservedValue                            => Some { value: SameArgumentCall }
+    SubValueUnknown                           => none
   }
 }
 

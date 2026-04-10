@@ -34,6 +34,7 @@ pub struct InductiveField {
     pub variant_name: String,
     pub field_name: String,
     pub shape: RecursionShape,
+    pub element_type: String,
 }
 
 pub fn inductive_field_to_dimension(field: Rc<InductiveField>, param: String) -> Rc<RankingDimension> {
@@ -64,24 +65,19 @@ pub enum SubValueRelation {
     IteratedSubValue {
         field: Rc<InductiveField>,
     },
+    ArithmeticDescent {
+        param: String,
+        factor: Rc<ShrinkFactor>,
+    },
     PreservedValue,
     SubValueUnknown,
-}
-impl SubValueRelation {
-    pub fn field(&self) -> Rc<InductiveField> {
-        match self {
-            SubValueRelation::StrictSubValue { field: __val, .. } => __val.clone(),
-            SubValueRelation::IteratedSubValue { field: __val, .. } => __val.clone(),
-            SubValueRelation::PreservedValue => panic!("no field on unit variant"),
-            SubValueRelation::SubValueUnknown => panic!("no field on unit variant"),
-        }
-    }
 }
 
 pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence {
     match (*relation).clone() {
     SubValueRelation::StrictSubValue { .. } => DescentEvidence::Strict,
     SubValueRelation::IteratedSubValue { .. } => DescentEvidence::Strict,
+    SubValueRelation::ArithmeticDescent { .. } => DescentEvidence::Strict,
     SubValueRelation::PreservedValue => DescentEvidence::NonIncreasing,
     SubValueRelation::SubValueUnknown => DescentEvidence::DescentUnknown,
 }
@@ -95,6 +91,20 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
     SubValueRelation::IteratedSubValue { field: f, .. } => Some(Rc::new(CallPattern::ChildAccessorCall {
     accessor: f.field_name.clone(),
 })),
+    SubValueRelation::ArithmeticDescent { factor: f, .. } => match (*f.clone()).clone() {
+    ShrinkFactor::ConstantShrink { amount: k, .. } => Some(Rc::new(CallPattern::ArithmeticDescentCall {
+    op: "subtract".to_string(),
+    by: k.clone(),
+})),
+    ShrinkFactor::ProportionalShrink { divisor: k, .. } => Some(Rc::new(CallPattern::ArithmeticDescentCall {
+    op: "divide".to_string(),
+    by: k.clone(),
+})),
+    ShrinkFactor::UnitShrink => Some(Rc::new(CallPattern::ArithmeticDescentCall {
+    op: "subtract".to_string(),
+    by: 1,
+})),
+},
     SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),
     SubValueRelation::SubValueUnknown => None,
 }

@@ -38,7 +38,7 @@ import std.computation {
   type_iteration_dimension
 }
 import std.induction {
-  SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown,
+  SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent, IntegerExp,
@@ -2889,29 +2889,45 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // both channels — no dual representation.
     let all_evidence = collect_self_call_evidence(body: body, fn_name: func_name)
     let has_evidence = all_evidence |> count > 0
-    // Check if ALL self-calls have structural evidence on at least one param
+    // Two conditions for structural proof:
+    // Check if ALL self-calls have structural evidence on at least one param.
+    // PreservedValue is NOT accepted here — a preserved branch can loop
+    // back to itself indefinitely (soundness: conditional_descent test).
     let all_structural = has_evidence && all_evidence |> all(call_ev =>
       call_ev |> any(rel =>
         match rel {
           StrictSubValue { field: _, factor: _ } => true
           IteratedSubValue { field: _ } => true
+          ArithmeticDescent { param: _, factor: _ } => true
           _ => false
         }
       )
     )
     if all_structural {
-      // Find the first structural call pattern from the evidence
+      // Find the first structural relation from the evidence.
       let first_call = match all_evidence |> first {
         Some { value: call_ev } =>
           call_ev |> filter(rel =>
             match rel {
               StrictSubValue { field: _, factor: _ } => true
               IteratedSubValue { field: _ } => true
+              ArithmeticDescent { param: _, factor: _ } => true
               _ => false
             }
           ) |> first
         None => none
       }
+      // Guard: ArithmeticDescent with branching (multiple self-calls per path)
+      // is UNSOUND as O(n). Example: fib(n-1) + fib(n-2) = O(2^n), not O(n).
+      // Tree descent with branching IS sound (bounded by tree size).
+      let is_arithmetic_branching = match first_call {
+        Some { value: rel } =>
+          match rel { ArithmeticDescent { param: _, factor: _ } => path_calls > 1  _ => false }
+        None => false
+      }
+      if is_arithmetic_branching {
+        lower_call_pattern(pattern: SameArgumentCall)
+      } else {
       match first_call {
         Some { value: rel } =>
           match sub_value_to_call_pattern(relation: rel) {
@@ -2919,6 +2935,7 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
             None => lower_call_pattern(pattern: SameArgumentCall)
           }
         None => lower_call_pattern(pattern: SameArgumentCall)
+      }
       }
     } else {
       // ── Step 2: Fall back to existing proof constructors ────────────
@@ -3582,8 +3599,118 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
   }
 }
 
+// CX-L2 hybrid: self-edges from descent_evidence annotations, cross-edges from old system.
+// This uses the richer CX-L2 classification for self-calls (accessor let-bindings,
+// collection+lambda, arithmetic) while keeping the existing cross-call infrastructure.
+fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: NewlineIndex?) -> List<ProofEdge> {
+  let measure_params = build_scc_measure_params(members: members, func_index: func_index, si: si)
+  members |> flat_map(name =>
+    match map_get(func_index, name) {
+      Some { value: entry } =>
+        // Self-edge: read CX-L2 descent_evidence from annotated self-calls
+        let self_evidence = collect_self_call_evidence(body: entry.body, fn_name: name)
+        let self_has_calls = self_evidence |> count > 0
+        let self_all_structural = self_has_calls && self_evidence |> all(call_ev =>
+          call_ev |> any(rel =>
+            match rel {
+              StrictSubValue { field: _, factor: _ } => true
+              IteratedSubValue { field: _ } => true
+              ArithmeticDescent { param: _, factor: _ } => true
+              _ => false
+            }
+          )
+        )
+        // Extract the actual descending parameter name from evidence
+        let descending_param = match self_evidence |> first {
+          Some { value: call_ev } =>
+            call_ev |> fold(init: "", f: (found, rel) =>
+              if found != "" { found }
+              else {
+                match rel {
+                  StrictSubValue { field: f, factor: _ } => f.element_type
+                  IteratedSubValue { field: f } => f.element_type
+                  ArithmeticDescent { param: p, factor: _ } => p
+                  _ => ""
+                }
+              }
+            )
+          None => ""
+        }
+        let self_edge = if self_has_calls {
+          if self_all_structural {
+            // Derive evidence from actual relations: best per call, worst across calls
+            let derived = self_evidence |> fold(init: Strict, f: (worst, call_ev) =>
+              let call_best = call_ev |> fold(init: DescentUnknown, f: (best, rel) =>
+                let ev = sub_value_to_evidence(relation: rel)
+                match ev { Strict => Strict  _ => match best { Strict => Strict  _ => ev } }
+              )
+              merge_evidence(a: worst, b: call_best)
+            )
+            [ProofEdge { caller: name, callee: name, evidence: [derived] }]
+          } else {
+            [ProofEdge { caller: name, callee: name, evidence: [DescentUnknown] }]
+          }
+        } else { [] }
+        // Cross-edges: read CX-L2 descent_evidence from annotated cross-calls.
+        // Single authority — same annotations used for self-edges and cross-edges.
+        let other_members = map_keys(scc_name_set) |> filter(m => m != name)
+        let cross_edges = other_members |> flat_map(callee =>
+          let callee_evidence = collect_callee_evidence(body: entry.body, callee_name: callee)
+          if callee_evidence |> count > 0 {
+            let ev = derive_edge_evidence(all_calls: callee_evidence)
+            [ProofEdge { caller: name, callee: callee, evidence: [ev] }]
+          } else { [] }
+        )
+        concat(self_edge, cross_edges)
+      None => []
+    }
+  )
+}
+
+// Extract the actual descending parameter name from CX-L2 evidence for the first SCC member.
+fn scc_descending_param(members: List<String>, func_index: Map<String, FuncEntry>) -> String {
+  members |> fold(init: "", f: (found, name) =>
+    if found != "" { found }
+    else {
+      match map_get(func_index, name) {
+        Some { value: entry } =>
+          let evidence = collect_self_call_evidence(body: entry.body, fn_name: name)
+          match evidence |> first {
+            Some { value: call_ev } =>
+              call_ev |> fold(init: "", f: (p, rel) =>
+                if p != "" { p }
+                else {
+                  match rel {
+                    StrictSubValue { field: f, factor: _ } => f.element_type
+                    IteratedSubValue { field: f } => f.element_type
+                    ArithmeticDescent { param: ap, factor: _ } => ap
+                    _ => ""
+                  }
+                }
+              )
+            None => ""
+          }
+        None => ""
+      }
+    }
+  )
+}
+
 fn construct_scc_termination_proof(members: List<String>, func_index: Map<String, FuncEntry>, scc_name_set: Map<String, Bool>, si: NewlineIndex?) -> TerminationProof? {
-  // Try single dimensions first
+  // CX-L2 hybrid: self-edges from descent_evidence, cross-edges from old system
+  let cx_l2_edges = collect_scc_cx_l2_tree_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
+  let cx_l2_all_known = cx_l2_edges |> all(e =>
+    match e.evidence |> first {
+      Some { value: DescentUnknown } => false
+      _ => true
+    }
+  )
+  let cx_l2_param = scc_descending_param(members: members, func_index: func_index)
+  let cx_l2_proof = TerminationProof { dimensions: [TreeSize { param: if cx_l2_param != "" { cx_l2_param } else { "scc" } }] }
+  if cx_l2_all_known && (cx_l2_edges |> count) > 0 && proof_has_non_descending_cycle(proof: cx_l2_proof, members: members, edges: cx_l2_edges) == false {
+    Some { value: cx_l2_proof }
+  } else {
+  // Fall through to existing proof constructors
   let tree_edges = collect_scc_proof_edges_for_dim(members: members, func_index: func_index, scc_name_set: scc_name_set, check_child: true, check_list: false, si: si)
   let tree_all_known = tree_edges |> all(e =>
     match e.evidence |> first {
@@ -3650,6 +3777,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
         }
       }
     }
+  }
   }
 }
 
@@ -4895,27 +5023,54 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // NEVER pattern-matches AST — reads only descent_evidence fields.
 // =========================================================================
 
-// Collect descent_evidence from all self-call ExprCall nodes in a body.
-// Lambda bodies are opaque — self-calls inside closures are not collected.
-fn collect_self_call_evidence(body: Node, fn_name: String) -> List<List<SubValueRelation>> {
+// Collect descent_evidence from ExprCall nodes calling any function in target_set.
+// Collect descent_evidence from ExprCall nodes calling any function in target_set.
+// Recurses into lambda bodies: the evidence on calls inside fold/map lambdas IS
+// sound because annotate_descent's method-call handler sets up the correct context
+// (element parameter as IteratedSubValue). For parameter-callback lambdas, the
+// evidence will be SubValueUnknown (harmless — doesn't pass structural checks).
+fn collect_call_evidence(body: Node, target_set: Map<String, Bool>) -> List<List<SubValueRelation>> {
   match body.expr_data {
     ExprCall { call_semantics: _, descent_evidence: de } =>
       let callee = expr_call_func(texpr: body)
-      let own = if callee == fn_name {
+      let own = if map_get(target_set, callee) != none {
         match de {
           Some { value: evidence } => [evidence]
           None => []
         }
       } else { [] }
       let from_children = body.children |> fold(init: [], f: (acc, child) =>
-        concat(acc, collect_self_call_evidence(body: child, fn_name: fn_name))
+        concat(acc, collect_call_evidence(body: child, target_set: target_set))
       )
       concat(own, from_children)
     _ =>
       body.children |> fold(init: [], f: (acc, child) =>
-        concat(acc, collect_self_call_evidence(body: child, fn_name: fn_name))
+        concat(acc, collect_call_evidence(body: child, target_set: target_set))
       )
   }
+}
+
+// Convenience: collect evidence for self-calls only.
+fn collect_self_call_evidence(body: Node, fn_name: String) -> List<List<SubValueRelation>> {
+  collect_call_evidence(body: body, target_set: map_insert(empty_map(), fn_name, true))
+}
+
+// Collect descent_evidence for calls to a specific callee within a body.
+fn collect_callee_evidence(body: Node, callee_name: String) -> List<List<SubValueRelation>> {
+  collect_call_evidence(body: body, target_set: map_insert(empty_map(), callee_name, true))
+}
+
+// Derive best DescentEvidence from a list of call evidence vectors.
+// Best per call (any Strict → Strict), worst across calls (merge_evidence).
+// Accepts PreservedValue as NonIncreasing.
+fn derive_edge_evidence(all_calls: List<List<SubValueRelation>>) -> DescentEvidence {
+  all_calls |> fold(init: Strict, f: (worst, call_ev) =>
+    let call_best = call_ev |> fold(init: DescentUnknown, f: (best, rel) =>
+      let ev = sub_value_to_evidence(relation: rel)
+      match ev { Strict => Strict  _ => match best { Strict => Strict  _ => ev } }
+    )
+    merge_evidence(a: worst, b: call_best)
+  )
 }
 
 // Merge descent evidence for a specific parameter across all self-call sites.
@@ -4943,6 +5098,11 @@ fn extract_shrink_factor(all_calls: List<List<SubValueRelation>>, param_index: I
                   UnitShrink => Some { value: f }
                   _ => if prev == f { acc } else { none }
                 }
+              ArithmeticDescent { param: _, factor: f } =>
+                match prev {
+                  UnitShrink => Some { value: f }
+                  _ => if prev == f { acc } else { none }
+                }
               _ => acc
             }
           None => acc
@@ -4966,6 +5126,7 @@ fn max_path_descending(body: Node, fn_name: String, param_index: Int) -> Int {
                 match rel {
                   StrictSubValue { field: _, factor: _ } => 1
                   IteratedSubValue { field: _ } => 1
+                  ArithmeticDescent { param: _, factor: _ } => 1
                   _ => 0
                 }
               None => 0

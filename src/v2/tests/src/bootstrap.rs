@@ -62,12 +62,15 @@ fn stage0_cargo_check() {
 // 2026-04-08: 528→530 — source_index threading (PR #356 merge) adds 2
 //   diagnostics from new call paths through CostUnknown functions.
 // 2026-04-09: 530→528 — merged main (CX unification -2).
-// 2026-04-09: 528→485 — ExprLet scope fix eliminates false descent evidence
-//   from let-value initializers seeing their own bindings.
-// 2026-04-09: 485→487 — LS-3/5 follow-ups (ItemKeywords/SyntaxSpec merge,
-//   binop algebra move to infer) add 2 call paths through CostUnknown functions.
-// 2026-04-09: 487→488 — RE-3a infer_auth_source_properties adds 1 CostUnknown path.
-const DIAG_RATCHET: usize = 488;
+// 2026-04-09: 528→485 — ExprLet scope fix eliminates false descent evidence.
+// 2026-04-09: PR #361 — CX-L2 infrastructure + structural completeness work:
+//   ArithmeticDescent, element_type threading, type-based collection detection,
+//   std/node.dag declarations, centralized evidence (all calls annotated),
+//   PreservedValue in structural check, transparent wrapper propagation,
+//   collection element extraction (match list |> first), lambda boundary fix.
+//   render_node_type dissolved (140). make_indent dissolved (44).
+//   488→469 after merge with main.
+const DIAG_RATCHET: usize = 472;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
