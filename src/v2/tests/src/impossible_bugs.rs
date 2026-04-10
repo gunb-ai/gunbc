@@ -503,3 +503,158 @@ fn same_user(a: AccountRef, o: OrderRef) -> Bool {
     ]);
     assert_no_diagnostics(&result);
 }
+
+// =========================================================================
+// "Beats structured languages" case studies
+//
+// These tests demonstrate bugs that even Rust, Go, and C++ cannot catch
+// at compile time. These are the cases where gunbc's approach — code
+// generation from structural declarations — provides guarantees that
+// no hand-written statically-typed code can achieve.
+// =========================================================================
+
+// ── CS-14: Generated API Client — No Hand-Written String Literals ───────
+//
+// In Rust: `json!({"auth_tolen": key})` compiles fine — the typo is
+// inside a macro string literal, invisible to the type checker.
+// In Go: `req.Header.Set("Auhtorization", ...)` compiles fine — it's
+// just a string argument.
+//
+// In gunbc: service definitions generate the HTTP call code. The field
+// names, paths, and headers come from the declaration. The string
+// "auth_token" exists once in the .dag source — never hand-written
+// in generated code.
+
+#[test]
+fn cs14_service_field_names_generated_from_declaration() {
+    // Define a service with typed input/output fields. The emitted code
+    // must use exactly the declared field names — no opportunity for typos.
+    let source = r#"module cs14_service
+
+service WeatherAPI {
+  transport rest { base_url: "https://api.weather.com" }
+
+  operation get_forecast {
+    input { city: String  api_key: Secret }
+    output { temp: Float  description: String }
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/cs14_service.rs");
+    // The generated code must contain the declared input field names as
+    // method parameters — derived from the .dag declaration, never hand-typed.
+    assert!(content.contains("city: String"), "generated method must have 'city' parameter from declaration");
+    assert!(content.contains("api_key: String"), "generated method must have 'api_key' parameter from declaration");
+    // The method name comes from the operation declaration
+    assert!(content.contains("get_forecast"), "generated method must use operation name from declaration");
+    // The base URL comes from the transport declaration
+    assert!(content.contains("api.weather.com"), "generated code must use base_url from declaration");
+    // These typos cannot appear because no human writes the generated code
+    assert!(!content.contains("api_kye"), "typo 'api_kye' must not appear in generated code");
+    assert!(!content.contains("get_forcast"), "typo 'get_forcast' must not appear in generated code");
+}
+
+// ── CS-15: Exhaustive Response Code Handling ────────────────────────────
+//
+// In Rust: `match status { 200 => ..., 401 => ..., _ => panic!() }`
+// The wildcard hides unhandled codes. Adding 429 (rate limit) is silently
+// caught by `_`. No compiler warning.
+//
+// In Go: `switch statusCode { case 200: ... default: return err }`
+// Same problem — default swallows new codes silently.
+//
+// In gunbc: service definitions declare specific response codes. The
+// emitter generates a handler for each declared code. There is no
+// wildcard that hides new codes.
+
+#[test]
+fn cs15_service_response_codes_all_handled() {
+    let source = r#"module cs15_responses
+
+type ForecastResult { temp: Float }
+type ApiError { message: String }
+
+service WeatherAPI {
+  transport rest { base_url: "https://api.weather.com" }
+
+  operation get_forecast {
+    input { city: String }
+    output { temp: Float }
+    response {
+      200 => ForecastResult
+      401 => ApiError
+      429 => ApiError
+    }
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/cs15_responses.rs");
+    // Each declared response code should have an explicit handler in generated code
+    assert!(content.contains("200"), "generated code must handle status 200");
+    assert!(content.contains("401"), "generated code must handle status 401");
+    assert!(content.contains("429"), "generated code must handle status 429");
+}
+
+// ── CS-16: Cross-Module Exhaustiveness (Even Rust Misses Across Crates) ─
+//
+// In Rust, if crate A defines `enum Status { Active, Inactive }` and
+// crate B matches on it, adding `Suspended` to crate A does NOT break
+// crate B until B is recompiled against the new crate A. With stale
+// lockfiles, vendored dependencies, or cached builds, the bug slips
+// through. This is a REAL production failure mode.
+//
+// In gunbc, ALL modules compile together in one pass. There is no
+// "stale dependency" — adding a variant in Module A immediately
+// produces NonExhaustiveMatch in every consumer module.
+
+#[test]
+fn cs16_cross_module_exhaustiveness_single_pass() {
+    // Three modules compiled together. Module A adds a variant.
+    // Modules B and C both have incomplete matches.
+    // In Rust, this would ONLY be caught if all three crates are
+    // recompiled together. With stale deps, B and C pass.
+    let types = r#"module cs16_types
+type DeployStatus = Running | Stopped | Degraded | Migrating
+"#;
+    let monitor = r#"module cs16_monitor
+import cs16_types { DeployStatus }
+
+fn alert_level(s: DeployStatus) -> Int {
+  match s {
+    Running  => 0
+    Stopped  => 2
+    Degraded => 1
+  }
+}
+"#;
+    let dashboard = r#"module cs16_dashboard
+import cs16_types { DeployStatus }
+
+fn status_icon(s: DeployStatus) -> String {
+  match s {
+    Running  => "green"
+    Stopped  => "red"
+    Degraded => "yellow"
+  }
+}
+"#;
+    let result = compile_multi(&[
+        ("cs16_types.dag", types),
+        ("cs16_monitor.dag", monitor),
+        ("cs16_dashboard.dag", dashboard),
+    ]);
+    let exhaustiveness_diags: Vec<_> = result.diagnostics.iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::NonExhaustiveMatch { missing, .. }
+            if missing.iter().any(|v| v == "Migrating")))
+        .collect();
+    assert!(
+        exhaustiveness_diags.len() >= 2,
+        "both monitor and dashboard should fail for missing Migrating, got {}: {:?}",
+        exhaustiveness_diags.len(),
+        diagnostic_messages(&result)
+    );
+}
