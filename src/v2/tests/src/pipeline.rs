@@ -6701,3 +6701,52 @@ fn dump_complexity_report() {
     eprintln!("  Structural bounds:  {}", cx.structural_bounds.len());
     eprintln!("  Violations:         {}", cx.violations.len());
 }
+
+#[test]
+#[ignore]
+fn diag_render_node_type_evidence() {
+    use v2_compiler::v2_compiler_compile::{extract_func_entries, front_end_sources};
+    use v2_compiler::v2_compiler_complexity::{collect_self_call_evidence, max_path_self_calls};
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
+    use v2_compiler::v2_compiler_infer::reconcile;
+
+    let ws = crate::helpers::workspace_root();
+    let content = std::fs::read_to_string(ws.join("src/v2/05_emit.dag")).unwrap();
+    let sources = crate::helpers::resolve_imports_transitively("src/v2/05_emit.dag", &content);
+    let frontend = front_end_sources(Rc::new(sources));
+    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let norm = normalize_graph(graph);
+    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
+    let func_entries = extract_func_entries(typed.clone());
+
+    let entry = func_entries.iter().find(|e| e.name == "render_node_type");
+    if let Some(entry) = entry {
+        let path_calls = max_path_self_calls(entry.body.clone(), "render_node_type".to_string(), None);
+        eprintln!("\n=== render_node_type ===");
+        eprintln!("  path_calls: {}", path_calls);
+
+        let evidence = collect_self_call_evidence(entry.body.clone(), "render_node_type".to_string());
+        eprintln!("  evidence count (self-calls found): {}", evidence.len());
+        for (i, call_ev) in evidence.iter().enumerate() {
+            let has_strict = call_ev.iter().any(|r| {
+                matches!(r.as_ref(),
+                    v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } |
+                    v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } |
+                    v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. })
+            });
+            eprintln!("  call {}: {} params, has_strict={}", i, call_ev.len(), has_strict);
+            for (j, rel) in call_ev.iter().enumerate() {
+                let kind = match rel.as_ref() {
+                    v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => "StrictSubValue",
+                    v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => "IteratedSubValue",
+                    v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => "ArithmeticDescent",
+                    v2_compiler::std_induction::SubValueRelation::PreservedValue => "PreservedValue",
+                    v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "SubValueUnknown",
+                };
+                eprintln!("    param {}: {}", j, kind);
+            }
+        }
+    } else {
+        eprintln!("render_node_type not found");
+    }
+}

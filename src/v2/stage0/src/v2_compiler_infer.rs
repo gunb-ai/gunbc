@@ -2476,7 +2476,8 @@ match v2_rt::map_get(&ctx.sub_value_vars.clone(), rname.clone()) {
     None => { break None; },
 } },
     ExprData::ExprMethodCall { .. } => { let inner_mname = expr_method_name(expr.clone());
-if (inner_mname.clone().as_str() == "enumerate".to_string().as_str()) {
+let is_collection_preserving = (((((inner_mname.clone().as_str() == "enumerate".to_string().as_str()) || (inner_mname.clone().as_str() == "skip".to_string().as_str())) || (inner_mname.clone().as_str() == "take".to_string().as_str())) || (inner_mname.clone().as_str() == "filter".to_string().as_str())) || (inner_mname.clone().as_str() == "reverse".to_string().as_str()));
+if is_collection_preserving.clone() {
             {
                 let __tco_0 = method_receiver(expr);
 let __tco_1 = ctx;

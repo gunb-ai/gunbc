@@ -2397,7 +2397,8 @@ fn resolve_collection_field(expr: Node, ctx: DescentContext) -> InductiveField? 
       }
     ExprMethodCall { method_semantics: _ } =>
       let inner_mname = expr_method_name(texpr: expr)
-      if inner_mname == "enumerate" {
+      let is_collection_preserving = inner_mname == "enumerate" || inner_mname == "skip" || inner_mname == "take" || inner_mname == "filter" || inner_mname == "reverse"
+      if is_collection_preserving {
         resolve_collection_field(expr: method_receiver(texpr: expr), ctx: ctx)
       } else { none }
     _ => none
