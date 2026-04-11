@@ -197,12 +197,10 @@ if (before == after) {
                 break registry.clone();
 } else {
                 {
-                    let __tco_0 = modules;
-let __tco_1 = next.clone();
-let __tco_2 = (remaining_passes - 1);
-modules = __tco_0;
-registry = __tco_1;
-remaining_passes = __tco_2;
+                    let __tco_0 = next.clone();
+let __tco_1 = (remaining_passes - 1);
+registry = __tco_0;
+remaining_passes = __tco_1;
 continue;
 }
 }

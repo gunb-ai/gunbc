@@ -411,9 +411,7 @@ if is_product {
 if is_optional {
                     {
                         let __tco_0 = with_required_cardinality(n);
-let __tco_1 = source_index;
 n = __tco_0;
-source_index = __tco_1;
 continue;
 }
 } else {
@@ -425,9 +423,7 @@ if is_map {
                     match n.children.clone().get(1 as usize).cloned() {
     Some(val_child) => { {
                         let __tco_0 = child_type_node(val_child.clone());
-let __tco_1 = source_index;
 n = __tco_0;
-source_index = __tco_1;
 continue;
 } },
     None => { break false; },
@@ -437,9 +433,7 @@ continue;
                         match n.children.clone().first().cloned() {
     Some(el) => { {
                             let __tco_0 = child_type_node(el.clone());
-let __tco_1 = source_index;
 n = __tco_0;
-source_index = __tco_1;
 continue;
 } },
     None => { break false; },
@@ -1522,23 +1516,7 @@ match (*frame.expr.clone().expr_data.clone()).clone() {
     scope: frame.scope.clone(),
     depth: frame.depth.clone(),
 });
-let __tco_1 = fn_name;
-let __tco_2 = emit_self_call_reassign;
-let __tco_3 = emit_non_self_call;
-let __tco_4 = emit_if;
-let __tco_5 = emit_match;
-let __tco_6 = emit_let;
-let __tco_7 = emit_block;
-let __tco_8 = emit_default_return;
 frame = __tco_0;
-fn_name = __tco_1;
-emit_self_call_reassign = __tco_2;
-emit_non_self_call = __tco_3;
-emit_if = __tco_4;
-emit_match = __tco_5;
-emit_let = __tco_6;
-emit_block = __tco_7;
-emit_default_return = __tco_8;
 continue;
 } },
     ExprData::ExprIf => { break emit_if(frame.clone()); },
@@ -2021,15 +1999,9 @@ let next_scope = scope_after_expr(stmt.clone(), scope.clone());
             let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let __tco_1 = v2_rt::rc_list_push(text, line);
 let __tco_2 = next_scope;
-let __tco_3 = depth;
-let __tco_4 = prepend_indent;
-let __tco_5 = emit_expr;
 remaining = __tco_0;
 text = __tco_1;
 scope = __tco_2;
-depth = __tco_3;
-prepend_indent = __tco_4;
-emit_expr = __tco_5;
 continue;
 } },
 }
@@ -2060,15 +2032,9 @@ let next_scope = scope_after_expr(stmt.clone(), scope.clone());
             let __tco_0 = rest.clone();
 let __tco_1 = v2_rt::rc_list_push(text, line);
 let __tco_2 = next_scope;
-let __tco_3 = depth;
-let __tco_4 = prepend_indent;
-let __tco_5 = emit_expr;
 remaining = __tco_0;
 text = __tco_1;
 scope = __tco_2;
-depth = __tco_3;
-prepend_indent = __tco_4;
-emit_expr = __tco_5;
 continue;
 } },
 } },

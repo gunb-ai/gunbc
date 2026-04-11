@@ -910,10 +910,8 @@ if (left_el_is_unit || right_el_is_unit) {
                                     {
                                         let __tco_0 = left_el.clone();
 let __tco_1 = right_el.clone();
-let __tco_2 = source_index;
 left = __tco_0;
 right = __tco_1;
-source_index = __tco_2;
 continue;
 }
 } },
@@ -934,10 +932,8 @@ if (left_inner_is_unit || right_inner_is_unit) {
                                     {
                                         let __tco_0 = left_inner.clone();
 let __tco_1 = right_inner.clone();
-let __tco_2 = source_index;
 left = __tco_0;
 right = __tco_1;
-source_index = __tco_2;
 continue;
 }
 }
@@ -1313,12 +1309,8 @@ pub fn first_matching_algebra_field(mut n: Rc<Node>, mut candidates: Rc<Vec<Stri
     field_node: f.clone(),
 })); },
     None => { {
-            let __tco_0 = n;
-let __tco_1 = Rc::new(candidates.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_2 = source_index;
-n = __tco_0;
-candidates = __tco_1;
-source_index = __tco_2;
+            let __tco_0 = Rc::new(candidates.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+candidates = __tco_0;
 continue;
 } },
 } },

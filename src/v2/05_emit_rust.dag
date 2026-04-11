@@ -3727,20 +3727,47 @@ fn expr_references_var(node: Node, var_name: String, source_index: NewlineIndex?
   }
 }
 
+// Check if a TCO self-call argument is an identity pass-through: `f(param: param)`.
+// When the arg is ExprVar with the same name as the corresponding param, the
+// reassignment `let __tco = param; param = __tco;` is a no-op and can be skipped.
+fn is_tco_identity_passthrough(arg_val: Node, param_name: String, si: NewlineIndex?) -> Bool {
+  match arg_val.expr_data {
+    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: arg_val, source_index: si) == param_name
+    _ => false
+  }
+}
+
 fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_index
   let arg_values = args |> map(a => arg_value(n: a))
+  // Filter out identity pass-throughs: `f(param: param)` becomes `param = param`
+  // which is a no-op. Skipping reduces generated code size and avoids unnecessary
+  // temp variables. This is safe because the parameter keeps its value across
+  // loop iterations (the `mut` binding is not reassigned for that slot).
+  let identity_params = params |> enumerate |> fold(init: empty_map(), f: (m, pair) =>
+    let pname = param_node_name_at(n: pair.second, source_index: si)
+    let av = match arg_values |> skip(pair.first) |> first { Some { value: v } => v  None => pair.second }
+    if is_tco_identity_passthrough(arg_val: av, param_name: pname, si: si) {
+      map_insert(m, pname, true)
+    } else { m }
+  )
+  // Collect non-identity arg values and params for the actual reassignment.
+  let filtered_arg_values = params |> enumerate
+    |> filter(pair => match map_get(identity_params, param_node_name_at(n: pair.second, source_index: si)) { Some { value: _ } => false  None => true })
+    |> map(pair => match arg_values |> skip(pair.first) |> first { Some { value: v } => v  None => pair.second })
+  let filtered_params = params
+    |> filter(p => match map_get(identity_params, param_node_name_at(n: p, source_index: si)) { Some { value: _ } => false  None => true })
   // Mark TCO params as movable when they appear in at most one arg
   // expression. This avoids .clone() on Rc containers, preventing
   // O(n) deep copies inside Rc::make_mut (e.g. token list in TCO loops).
-  let tco_movable = params |> fold(acc: emit_info.movable, f: (m, p) =>
+  let tco_movable = filtered_params |> fold(acc: emit_info.movable, f: (m, p) =>
     let pname = param_node_name_at(n: p, source_index: si)
-    let ref_count = arg_values |> fold(acc: 0, f: (n, av) =>
+    let ref_count = filtered_arg_values |> fold(acc: 0, f: (n, av) =>
       if expr_references_var(node: av, var_name: pname, source_index: si) { n + 1 } else { n })
     if ref_count <= 1 { map_insert(m, pname, true) } else { m })
   let tco_emit_info = with(emit_info, { movable: tco_movable })
-  let ordered_args = arg_values |> map(av => emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: tco_emit_info, fuel: 1024))
-  let param_names = params |> map(p => emit_ident(name: param_node_name_at(n: p, source_index: si), target: Rust))
+  let ordered_args = filtered_arg_values |> map(av => emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: tco_emit_info, fuel: 1024))
+  let param_names = filtered_params |> map(p => emit_ident(name: param_node_name_at(n: p, source_index: si), target: Rust))
   let all_lines = tco_reassign_core(
     ordered_args: ordered_args, param_names: param_names,
     temp_var_prefix: "__tco_", temp_decl_prefix: "let ",

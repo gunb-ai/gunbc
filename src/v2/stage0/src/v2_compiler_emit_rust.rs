@@ -185,17 +185,9 @@ let next_scope = scope_after_expr(stmt.clone(), scope.clone());
             let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let __tco_1 = v2_rt::rc_list_push(text, line);
 let __tco_2 = next_scope;
-let __tco_3 = registry;
-let __tco_4 = depth;
-let __tco_5 = shared_types;
-let __tco_6 = emit_info;
 remaining = __tco_0;
 text = __tco_1;
 scope = __tco_2;
-registry = __tco_3;
-depth = __tco_4;
-shared_types = __tco_5;
-emit_info = __tco_6;
 continue;
 } },
 }
@@ -230,17 +222,9 @@ let next_scope = scope_after_expr(stmt.clone(), scope.clone());
             let __tco_0 = rest.clone();
 let __tco_1 = v2_rt::rc_list_push(text, line);
 let __tco_2 = next_scope;
-let __tco_3 = registry;
-let __tco_4 = depth;
-let __tco_5 = shared_types;
-let __tco_6 = emit_info;
 remaining = __tco_0;
 text = __tco_1;
 scope = __tco_2;
-registry = __tco_3;
-depth = __tco_4;
-shared_types = __tco_5;
-emit_info = __tco_6;
 continue;
 } },
 } },
@@ -711,11 +695,7 @@ pub fn needs_box_wrapping(mut n: Rc<Node>, mut recursive_types: Rc<HashMap<Strin
 if is_optional {
                 {
                     let __tco_0 = with_required_cardinality(n);
-let __tco_1 = recursive_types;
-let __tco_2 = shared_types;
 n = __tco_0;
-recursive_types = __tco_1;
-shared_types = __tco_2;
 continue;
 }
 } else {
@@ -1133,9 +1113,7 @@ if is_string_lit_pattern(fb_pat.clone()) {
 } else {
                 {
                     let __tco_0 = fb_pat.clone();
-let __tco_1 = source_index;
 pattern = __tco_0;
-source_index = __tco_1;
 continue;
 }
 } },
@@ -1541,14 +1519,8 @@ let inner_analysis = analyze_rc_pattern(fb_pat.clone(), "".to_string(), shared_t
 {
                     let __tco_0 = fb_pat.clone();
 let __tco_1 = inner_analysis;
-let __tco_2 = shared_types;
-let __tco_3 = source_index;
-let __tco_4 = emit_info;
 pattern = __tco_0;
 rc_analysis = __tco_1;
-shared_types = __tco_2;
-source_index = __tco_3;
-emit_info = __tco_4;
 continue;
 } },
     None => { break "".to_string(); },
@@ -2397,10 +2369,8 @@ pub fn emit_nested_rt_concat(mut remaining: Rc<Vec<String>>, mut acc: String, mu
 {
             let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let __tco_1 = next_acc;
-let __tco_2 = shared_types;
 remaining = __tco_0;
 acc = __tco_1;
-shared_types = __tco_2;
 continue;
 } },
 }
@@ -3679,19 +3649,9 @@ let next_scope = scope_after_expr(stmt.clone(), scope.clone());
             let __tco_0 = rest.clone();
 let __tco_1 = v2_rt::rc_list_push(text, line);
 let __tco_2 = next_scope;
-let __tco_3 = registry;
-let __tco_4 = depth;
-let __tco_5 = shared_types;
-let __tco_6 = emit_info;
-let __tco_7 = params;
 remaining = __tco_0;
 text = __tco_1;
 scope = __tco_2;
-registry = __tco_3;
-depth = __tco_4;
-shared_types = __tco_5;
-emit_info = __tco_6;
-params = __tco_7;
 continue;
 } },
 } },
@@ -3910,13 +3870,43 @@ pub fn expr_references_var(node: Rc<Node>, var_name: String, source_index: Optio
     })
 }
 
+pub fn is_tco_identity_passthrough(arg_val: Rc<Node>, param_name: String, si: Option<Rc<NewlineIndex>>) -> bool {
+    match (*arg_val.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => (expr_var_name_at(arg_val.clone(), si).as_str() == param_name.as_str()),
+    _ => false,
+}
+}
+
 pub fn emit_typed_tco_reassign(args: Rc<Vec<Rc<Node>>>, params: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, shared_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let si = scope.type_env.clone().source_index.clone();
 let arg_values = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(arg_value(a.clone())); } __result });
-let tco_movable = params.clone().iter().cloned().fold(emit_info.movable.clone(), |m: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+let identity_params = Rc::new(params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |m: Rc<HashMap<String, bool>>, pair: (i64, Rc<Node>)| {
+            let pname = param_node_name_at(pair.1.clone(), si.clone());
+let av = match arg_values.clone().get(pair.0.clone() as usize).cloned() {
+    Some(v) => v.clone(),
+    None => pair.1.clone(),
+};
+if is_tco_identity_passthrough(av.clone(), pname.clone(), si.clone()) {
+                v2_rt::rc_map_insert(m.clone(), pname.clone(), true)
+            } else {
+                m.clone()
+            }
+});
+let filtered_arg_values = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if match v2_rt::map_get(&identity_params, param_node_name_at(pair.1.clone(), si.clone())) {
+    Some(_) => false,
+    None => true,
+} { __result.push(pair); } } __result }).iter().cloned() { __result.push(match arg_values.clone().get(pair.0.clone() as usize).cloned() {
+    Some(v) => v.clone(),
+    None => pair.1.clone(),
+}); } __result });
+let filtered_params = Rc::new({ let mut __result = Vec::new(); for p in params.clone().iter().cloned() { if match v2_rt::map_get(&identity_params, param_node_name_at(p.clone(), si.clone())) {
+    Some(_) => false,
+    None => true,
+} { __result.push(p); } } __result });
+let tco_movable = filtered_params.clone().iter().cloned().fold(emit_info.movable.clone(), |m: Rc<HashMap<String, bool>>, p: Rc<Node>| {
             let pname = param_node_name_at(p.clone(), si.clone());
-let ref_count = arg_values.clone().iter().cloned().fold(0, |n: i64, av: Rc<Node>| if expr_references_var(av.clone(), pname.clone(), si.clone()) {
+let ref_count = filtered_arg_values.clone().iter().cloned().fold(0, |n: i64, av: Rc<Node>| if expr_references_var(av.clone(), pname.clone(), si.clone()) {
                 (n.clone() + 1)
             } else {
                 n.clone()
@@ -3928,8 +3918,8 @@ if (ref_count.clone() <= 1) {
             }
 });
 let tco_emit_info = Rc::new(EmitGraphInfo { movable: tco_movable, ..(*emit_info.clone()).clone() });
-let ordered_args = Rc::new({ let mut __result = Vec::new(); for av in arg_values.clone().iter().cloned() { __result.push(emit_typed_expr(av.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), tco_emit_info.clone(), 1024)); } __result });
-let param_names = Rc::new({ let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), si.clone()), RenderTarget::Rust)); } __result });
+let ordered_args = Rc::new({ let mut __result = Vec::new(); for av in filtered_arg_values.clone().iter().cloned() { __result.push(emit_typed_expr(av.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), tco_emit_info.clone(), 1024)); } __result });
+let param_names = Rc::new({ let mut __result = Vec::new(); for p in filtered_params.clone().iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), si.clone()), RenderTarget::Rust)); } __result });
 let all_lines = tco_reassign_core(ordered_args, param_names, "__tco_".to_string(), "let ".to_string(), " = ".to_string(), ";".to_string(), "continue;".to_string(), "".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n".to_string(), make_indent((depth.clone() + 1))), all_lines.join(&"\n".to_string())), "\n}".to_string())
 }
