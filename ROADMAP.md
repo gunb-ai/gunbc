@@ -194,18 +194,20 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 ## Active work: close the model
 
 All active tracks are facets of one problem: the IR doesn't carry
-enough structure. Three parallel streams, plus CX consumer switchover.
+enough structure. Four parallel streams, plus CX consumer switchover.
 
 ```
 Stream A (provenance)   S1→S2→S3→S4→S5→S6 ─→ C1→C2→C3→C4→C5→C6
                         ════════════════      ═══════
                         ALL DONE              C1-C2 DONE; C3-C6 remaining
 
-Stream B (ownership)    Layer 1 (reverted) → Layer 2 (DONE) → Layer 3 (PR #390)
+Stream B (ownership)    Layer 1 (reverted) → Layer 2 (DONE) → Layer 3 (DONE, PR #390)
                                  │
                                  └── blocked on Track 3 (binding identity)
 
 Stream C (std/)         C1 DONE   S8 Phase 1 DONE
+
+Stream D (structural parser)    P1 ────────────────── (02_parse.dag + compile.dag only)
 ```
 
 **Stream A: Provenance pipeline** (04_infer.dag, 04_env.dag, complexity.dag)
@@ -226,34 +228,70 @@ name-keyed emit boundary collapsed distinct bindings. Blocked on
 Track 3 (stable binding identity via InternTable).
 Layer 2 (post-TCO) DONE (PR #387) — identity pass-throughs elided,
 ~620 lines of dead reassignment removed from stage0.
-Layer 3 (borrow propagation O6-O9) in review (PR #390) — eliminates
+Layer 3 (borrow propagation O6-O9) DONE (PR #390) — eliminates
 535 `.clone()` calls (13,820→13,285).
 
 **Stream C: std/ foundation** (std/induction.dag, std/algebra.dag, std/termination.dag)
 C1 DONE. S8 Phase 1 DONE (DescentEvidence lattice inhabitants).
 Phase 2 blocked on user-defined generic emission.
 
+**Stream D: Structural parser** (02_parse.dag, compile.dag)
+Restructure parser from integer position indexing to list consumption.
+Target: eliminate 132 CX violations (Category B) by construction.
+Design: [src/v2/parser-design.md](src/v2/parser-design.md).
+**Current state:** Phase 0 done (helper interface narrowing in
+02_parse.dag). Phases 1-4 (the structural rewrite) not yet started.
+Touches only parser + compile boundary — no overlap with other streams.
+
+Not in Stream D (separate future PRs):
+- Tokenizer restructuring (22 violations, needs span position design)
+- SubValueRelation → ProgressRelation rename (overlaps Stream A/C)
+
+### CX violation audit (measured 2026-04-11, ratchet is 424)
+
+Local measurement found 421 violations (ratchet set at 424 in
+bootstrap.rs). The violation count breaks into 8 root-cause categories:
+
+| Cat | Root cause | Count | Fix |
+|-----|-----------|------:|-----|
+| A | Node tree descent (children are sub-values) | 159 | Body-inferred return contracts |
+| B | Parser SCC (position advancement) | 132 | **Stream D: structural parser** |
+| C | Emission TCO mutual recursion | 22 | Body-inferred return contracts |
+| D | Inference mutual recursion (list shrinkage) | 15 | Body-inferred return contracts |
+| E | Complexity self-analysis | 17 | Follow-on work |
+| F | Tokenizer (position into bounded string) | 22 | Separate PR (span design needed) |
+| G | Arithmetic descent (`(n-d)/10`) | 44 | Classification refinement in S3 |
+| H | Graph DFS (visited-set termination) | 10 | Deferred (needs worklist primitive) |
+
+**Path to 0:** Stream D (-132) + body inference (-196) + tokenizer
+(-22) + arithmetic (-44) + complexity self-analysis (-17) = -411.
+Remaining ~10 = graph DFS (needs language primitive). Tokenizer and
+rename are separate PRs, not counted in Stream D scope.
+
 ### What to start now
 
 | Item | Track/Stream | Files | Blocked on |
 |------|-------------|-------|-----------|
 | C3-C6 (CX validation → deletion → gate) | Stream A | complexity.dag, 04_infer.dag | Nothing (C2 landed) |
+| Stream D Phase 1-4 (parser restructuring) | Stream D | 02_parse.dag, compile.dag | Nothing (design done, PR #389) |
 | S7 (callee contracts for HOFs) | Stream A | 04_infer.dag | Design |
 | Track 3: ~15 n.name reads + fallback fix | Track 3 | 04_infer, 04_env, 04_types | Nothing (active: quick-owl-889) |
 
 ### Active branches and PRs (2026-04-11)
 
-| Branch | What | Lane |
-|--------|------|------|
-| `quick-owl-889` | Track 3: Node.name reads + authored_name_at fallback | A: Inference |
-| `bright-owl-13` (PR #389) | CX violation audit + parser design doc | C: Complexity (docs) |
-| `quick-bee-373` (PR #388) | Track 9 + Track 10 structural modeling | D: DSL Modeling |
-| `bright-elk-779` (PR #390) | Stream B Layer 3 borrow propagation | B: Emission |
+| Branch | What | Lane | Status |
+|--------|------|------|--------|
+| `quick-owl-889` | Track 3: Node.name reads + authored_name_at fallback | A: Inference | Active |
+| ~~`bright-owl-13` (PR #389)~~ | CX violation audit + parser design doc | C: Complexity | Merged |
+| ~~`quick-bee-373` (PR #388)~~ | Track 9 + Track 10 structural modeling | D: DSL Modeling | Merged |
+| ~~`bright-elk-779` (PR #390)~~ | Stream B Layer 3 borrow propagation | B: Emission | Merged |
 
 ### Active workboards
 
 - **CX:** [src/v2/cx-design.md §Workboard](src/v2/cx-design.md)
   — S1-S8 shared, C1-C6 CX-specific, TDD plan, cleanup catalog
+- **Parser:** [src/v2/parser-design.md](src/v2/parser-design.md)
+  — D1-D8 design decisions, target structure, scope
 - **Ownership:** [src/v2/ownership-design.md §Workboard](src/v2/ownership-design.md)
   — O1-O10, violation classes, 3 layers, TDD plan, cleanup catalog
 

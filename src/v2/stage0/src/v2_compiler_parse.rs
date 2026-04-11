@@ -804,30 +804,6 @@ pub fn is_keyword_shape(shape: TokenShape) -> bool {
 }
 }
 
-pub fn peek_is_keyword(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, kw: String) -> bool {
-    {
-        let tok = peek(tokens, state);
-match tok {
-    Some(t) => (is_keyword_shape(t.shape.clone()) && (t.text.clone().as_str() == kw.as_str())),
-    None => false,
-}
-}
-}
-
-pub fn peek_keyword_text(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> String {
-    {
-        let tok = peek(tokens, state);
-match tok {
-    Some(t) => if is_keyword_shape(t.shape.clone()) {
-            t.text.clone()
-        } else {
-            "".to_string()
-        },
-    None => "".to_string(),
-}
-}
-}
-
 pub fn is_lbrace_shape(shape: TokenShape) -> bool {
     match shape {
     TokenShape::ShLBrace => true,
@@ -1045,156 +1021,199 @@ pub fn is_pipe_arrow_shape(shape: TokenShape) -> bool {
 }
 }
 
-pub fn peek_is_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_ident_shape(shape.clone()),
+pub fn tok_is_keyword(tok: Option<Rc<Token>>, kw: String) -> bool {
+    match tok {
+    Some(t) => (is_keyword_shape(t.shape.clone()) && (t.text.clone().as_str() == kw.as_str())),
     None => false,
 }
 }
 
-pub fn peek_is_newline(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_newline_shape(shape.clone()),
+pub fn tok_keyword_text(tok: Option<Rc<Token>>) -> String {
+    match tok {
+    Some(t) => if is_keyword_shape(t.shape.clone()) {
+        t.text.clone()
+    } else {
+        "".to_string()
+    },
+    None => "".to_string(),
+}
+}
+
+pub fn tok_is_ident(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_ident_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_eof(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_eof_shape(shape.clone()),
+pub fn tok_is_newline(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_newline_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_lit_str(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_lit_str_shape(shape.clone()),
+pub fn tok_is_eof(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_eof_shape(t.shape.clone()),
+    None => true,
+}
+}
+
+pub fn tok_is_lit_str(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_lit_str_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_lbrace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_lbrace_shape(shape.clone()),
+pub fn tok_is_lbrace(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_lbrace_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_rbrace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_rbrace_shape(shape.clone()),
+pub fn tok_is_rbrace(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_rbrace_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_lparen(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_lparen_shape(shape.clone()),
+pub fn tok_is_lparen(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_lparen_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_rparen(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_rparen_shape(shape.clone()),
+pub fn tok_is_rparen(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_rparen_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_lbracket(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_lbracket_shape(shape.clone()),
+pub fn tok_is_lbracket(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_lbracket_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_rbracket(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_rbracket_shape(shape.clone()),
+pub fn tok_is_rbracket(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_rbracket_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_colon(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_colon_shape(shape.clone()),
+pub fn tok_is_colon(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_colon_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_comma(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_comma_shape(shape.clone()),
+pub fn tok_is_comma(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_comma_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_dot(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_dot_shape(shape.clone()),
+pub fn tok_is_dot(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_dot_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_dot_dot(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_dot_dot_shape(shape.clone()),
+pub fn tok_is_dot_dot(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_dot_dot_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_eq_shape(shape.clone()),
+pub fn tok_is_eq(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_eq_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_fat_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_fat_arrow_shape(shape.clone()),
+pub fn tok_is_fat_arrow(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_fat_arrow_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_arrow_shape(shape.clone()),
+pub fn tok_is_arrow(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_arrow_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_lt(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_lt_shape(shape.clone()),
+pub fn tok_is_lt(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_lt_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_gt(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_gt_shape(shape.clone()),
+pub fn tok_is_gt(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_gt_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_pipe(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_pipe_shape(shape.clone()),
+pub fn tok_is_pipe(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_pipe_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_pipe_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_pipe_arrow_shape(shape.clone()),
+pub fn tok_is_pipe_arrow(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_pipe_arrow_shape(t.shape.clone()),
     None => false,
 }
 }
 
-pub fn peek_is_question(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_shape(tokens, state) {
-    Some(shape) => is_question_shape(shape.clone()),
+pub fn tok_is_question(tok: Option<Rc<Token>>) -> bool {
+    match tok {
+    Some(t) => is_question_shape(t.shape.clone()),
+    None => false,
+}
+}
+
+pub fn tok_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
+    match tok {
+    Some(t) => t.span.clone(),
+    None => make_span(0, 0),
+}
+}
+
+pub fn tok_keyword_to_name(tok: Option<Rc<Token>>) -> Option<String> {
+    match tok {
+    Some(t) => if is_name_keyword(&t) {
+        Some(t.text.clone())
+    } else {
+        None
+    },
+    None => None,
+}
+}
+
+pub fn tok_is_keyword_name(tok: Option<Rc<Token>>) -> bool {
+    match tok_keyword_to_name(tok) {
+    Some(_) => true,
     None => false,
 }
 }
@@ -1390,7 +1409,7 @@ Rc::new(NameResult {
 })
 },
     _ => {
-            let kw_name = keyword_to_name(tokens.clone(), state.clone());
+            let kw_name = tok_keyword_to_name(peek(tokens.clone(), state.clone()));
 match kw_name {
     Some(n) => {
                 let span = tok.clone().unwrap().span.clone();
@@ -1420,20 +1439,6 @@ Rc::new(NameResult {
 }
 }
 
-pub fn keyword_to_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Option<String> {
-    {
-        let tok = peek(tokens, state);
-match tok {
-    Some(t) => if is_name_keyword(&t) {
-            Some(t.text.clone())
-        } else {
-            None
-        },
-    None => None,
-}
-}
-}
-
 pub fn is_name_keyword(token: &Rc<Token>) -> bool {
     if is_keyword_shape(token.shape.clone()) {
         {
@@ -1451,7 +1456,8 @@ let is_lifecycle = ((token.text.clone().as_str() == "acquire".to_string().as_str
 
 pub fn skip_newlines(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>) -> Rc<ParserState> {
     loop {
-        if peek_is_newline(tokens.clone(), state.clone()) {
+        let tok = peek(tokens.clone(), state.clone());
+if tok_is_newline(tok) {
             let adv = advance(tokens.clone(), &state);
 {
                 let __tco_0 = adv.state.clone();
@@ -1470,7 +1476,8 @@ pub fn is_continuation_shape(shape: &TokenShape) -> bool {
 
 pub fn skip_continuation_newlines(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) -> Rc<ParserState> {
     {
-        let is_continuation = if peek_is_newline(tokens.clone(), state.clone()) {
+        let tok = peek(tokens.clone(), state.clone());
+let is_continuation = if tok_is_newline(tok) {
             {
                 let s = skip_newlines(tokens.clone(), state.clone());
 match peek_shape(tokens.clone(), s) {
@@ -1613,17 +1620,6 @@ pub fn parser_result_witness(expr: &Rc<Node>, source_index: Option<Rc<NewlineInd
 },
 },
     _ => Rc::new(ParserResultWitness::ParserWitnessOpaque),
-}
-}
-
-pub fn is_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    peek_is_ident(tokens, state)
-}
-
-pub fn is_keyword_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match keyword_to_name(tokens, state) {
-    Some(_) => true,
-    None => false,
 }
 }
 
@@ -1805,7 +1801,7 @@ pub fn parse_imports(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<I
 pub fn parse_imports_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<ImportsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if peek_is_keyword(tokens.clone(), s.clone(), "import".to_string()) {
+if tok_is_keyword(peek(tokens.clone(), s.clone()), "import".to_string()) {
             let r = parse_import(&tokens, &s);
 if has_err(r.err.clone()) {
                 return Rc::new(ImportsResult {
@@ -1838,7 +1834,7 @@ pub fn parse_items(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Ite
 pub fn parse_items_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<ItemsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if (at_end(tokens.clone(), s.clone()) || peek_is_eof(tokens.clone(), s.clone())) {
+if (at_end(tokens.clone(), s.clone()) || tok_is_eof(peek(tokens.clone(), s.clone()))) {
             break Rc::new(ItemsResult {
     items: acc.clone(),
     state: s.clone(),
@@ -1943,7 +1939,7 @@ pub fn parsed_name_leaf(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
 pub fn parse_import_names_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<NamesResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if peek_is_rbrace(tokens.clone(), s.clone()) {
+if tok_is_rbrace(peek(tokens.clone(), s.clone())) {
             break Rc::new(NamesResult {
     names: acc,
     state: s.clone(),
@@ -1991,7 +1987,7 @@ match (matches.clone().len() as i64) {
 pub fn parse_item(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ItemResult> {
     {
         let s = skip_newlines(tokens.clone(), state);
-let kw = peek_keyword_text(tokens.clone(), s.clone());
+let kw = tok_keyword_text(peek(tokens.clone(), s.clone()));
 let form = find_item_form(dag_syntax_spec().item_forms.clone(), kw);
 match form {
     Some(f) => parse_item_by_form(&tokens, &s, &f),
@@ -2676,7 +2672,7 @@ pub fn parse_type_body_after_eq(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserSt
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 });
-if is_ident(tokens.clone(), state.clone()) {
+if tok_is_ident(peek(tokens.clone(), state.clone())) {
             {
                 let r = expect_ident(&tokens, &state);
 if has_err(r.err.clone()) {
@@ -2689,7 +2685,7 @@ if has_err(r.err.clone()) {
 let first_name = r.name.clone();
 let first_name_span = r.span.clone();
 let s = skip_newlines(tokens.clone(), r.state.clone());
-if (peek_is_lbrace(tokens.clone(), s.clone()) || peek_is_pipe(tokens.clone(), s.clone())) {
+if (tok_is_lbrace(peek(tokens.clone(), s.clone())) || tok_is_pipe(peek(tokens.clone(), s.clone()))) {
                     {
                         let r = parse_variant_fields(&tokens, &s, &first_name, &first_name_span);
 if has_err(r.err.clone()) {
@@ -2832,7 +2828,7 @@ Rc::new(ItemResult {
 }
 
 pub fn try_where_clause(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>, base_te: &Rc<Node>, start_span: &Rc<SourceSpan>) -> Rc<TypeResult> {
-    if peek_is_keyword(tokens.clone(), state.clone(), "where".to_string()) {
+    if tok_is_keyword(peek(tokens.clone(), state.clone()), "where".to_string()) {
         {
             let adv = advance(tokens.clone(), &state);
 let r = parse_predicates(tokens.clone(), adv.state.clone());
@@ -3449,7 +3445,7 @@ if has_err(r.err.clone()) {
 })
         }
 let s = skip_newlines(tokens.clone(), r.state.clone());
-let params_result = if peek_is_rparen(tokens.clone(), s.clone()) {
+let params_result = if tok_is_rparen(peek(tokens.clone(), s.clone())) {
             Rc::new(ParamsResult {
     params: Rc::new(vec![]),
     state: s.clone(),
@@ -3530,7 +3526,7 @@ acc = v2_rt::rc_list_push(acc.clone(), param);
 let e = eat(&tokens, &r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
             let s = skip_newlines(tokens.clone(), e.state.clone());
-if peek_is_rparen(tokens.clone(), s.clone()) {
+if tok_is_rparen(peek(tokens.clone(), s.clone())) {
                 break Rc::new(ParamsResult {
     params: acc.clone(),
     state: s.clone(),
@@ -3640,7 +3636,7 @@ Rc::new(TypeParamsResult {
 
 pub fn collect_type_param_names(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut params: Rc<Vec<Rc<Node>>>) -> Rc<TypeParamsResult> {
     loop {
-        if is_ident(tokens.clone(), state.clone()) {
+        if tok_is_ident(peek(tokens.clone(), state.clone())) {
             let r = expect_ident(&tokens, &state);
 let span = r.span.clone();
 let param = make_param_node(&r.name.clone(), leaf_type_node(&r.name.clone(), &span), None, span.clone(), span.clone());
@@ -3752,14 +3748,14 @@ pub fn parse_field_list(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
 pub fn parse_field_list_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<FieldsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if ((peek_is_rbrace(tokens.clone(), s.clone()) || peek_is_rparen(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
+if ((tok_is_rbrace(peek(tokens.clone(), s.clone())) || tok_is_rparen(peek(tokens.clone(), s.clone()))) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(FieldsResult {
     fields: acc,
     state: s.clone(),
     err: None,
 });
 } else {
-            if (is_ident(tokens.clone(), s.clone()) || is_keyword_name(tokens.clone(), s.clone())) {
+            if (tok_is_ident(peek(tokens.clone(), s.clone())) || tok_is_keyword_name(peek(tokens.clone(), s.clone()))) {
                 let r = parse_field(&tokens, &s);
 if has_err(r.err.clone()) {
                     return Rc::new(FieldsResult {
@@ -4143,7 +4139,7 @@ let dummy = Rc::new(Node {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 });
-let kw = peek_keyword_text(tokens.clone(), state.clone());
+let kw = tok_keyword_text(peek(tokens.clone(), state.clone()));
 let r = if (kw.clone().as_str() == "func".to_string().as_str()) {
             expect(&tokens, &state, &Rc::new(ExpectedToken::ExpectKeyword {
     text: "func".to_string(),
@@ -4574,7 +4570,7 @@ pub fn parse_resource_config_args(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserS
 
 pub fn parse_resource_config_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<ResConfigResult> {
     loop {
-        if peek_is_rparen(tokens.clone(), state.clone()) {
+        if tok_is_rparen(peek(tokens.clone(), state.clone())) {
             return Rc::new(ResConfigResult {
     fields: acc.clone(),
     state: state.clone(),
@@ -4814,7 +4810,7 @@ pub fn parse_service_body(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) 
 pub fn parse_service_entries(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut config: Option<Rc<ServiceConfig>>, mut transport: Rc<Node>, mut operations: Rc<Vec<Rc<Node>>>) -> Rc<ServiceBodyResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(ServiceBodyResult {
     config: config.clone(),
     transport: transport.clone(),
@@ -4947,7 +4943,7 @@ pub fn parse_service_config_block(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSt
 pub fn parse_config_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut endpoint: Option<Rc<Node>>, mut auth: Option<Rc<Node>>, mut auth_input: Option<Rc<Node>>, mut auth_source: Option<Rc<Node>>, mut rate_limit: Option<Rc<Node>>, mut retry: Option<Rc<Node>>) -> Rc<ConfigResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             let cfg = Rc::new(ServiceConfig {
     endpoint: match endpoint {
     Some(e) => e.clone(),
@@ -5208,7 +5204,7 @@ pub fn parse_rest_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserSta
         let s = skip_newlines(tokens.clone(), state);
 let span = current_span(tokens.clone(), s.clone());
 let dummy = local_transport_node(span.clone());
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             let bu = match base_url {
     Some(e) => e.clone(),
     None => make_expr_node(Rc::new(ExprData::ExprLiteral {
@@ -5322,7 +5318,7 @@ pub fn parse_shell_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserSt
         let s = skip_newlines(tokens.clone(), state);
 let span = current_span(tokens.clone(), s.clone());
 let dummy = local_transport_node(span.clone());
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(TransportResult {
     transport: shell_transport_node(argv, Rc::new(vec![]), stdin, &span),
     state: s.clone(),
@@ -5442,7 +5438,7 @@ pub fn parse_file_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserSta
         let s = skip_newlines(tokens.clone(), state);
 let span = current_span(tokens.clone(), s.clone());
 let dummy = local_transport_node(span.clone());
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             let bp = match base_path {
     Some(e) => e.clone(),
     None => make_expr_node(Rc::new(ExprData::ExprLiteral {
@@ -5532,7 +5528,7 @@ if has_err(r.err.clone()) {
 let name = r.name.clone();
 let name_span = r.span.clone();
 let s = skip_newlines(tokens.clone(), r.state.clone());
-if peek_is_lbrace(tokens.clone(), s.clone()) {
+if tok_is_lbrace(peek(tokens.clone(), s.clone())) {
             parse_operation_v1_body(&tokens, &s, name, name_span, &start_span)
         } else {
             parse_operation_v2_inline(&tokens, &s, name, name_span, &start_span)
@@ -5665,7 +5661,7 @@ let mk_result = Rc::new(OpBodyResult {
     state: s.clone(),
     err: None,
 });
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break mk_result;
 } else {
             let tok = peek(tokens.clone(), s.clone());
@@ -6173,7 +6169,7 @@ pub fn parse_exit_entries(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
 pub fn parse_exit_entries_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<ExitEntriesResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(ExitEntriesResult {
     entries: acc,
     state: s.clone(),
@@ -6253,7 +6249,7 @@ pub fn parse_operation_modifiers(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSta
 
 pub fn parse_operation_modifiers_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<OperationModifier>>) -> Rc<ModsResult> {
     loop {
-        let kw = peek_keyword_text(tokens.clone(), state.clone());
+        let kw = tok_keyword_text(peek(tokens.clone(), state.clone()));
 if (kw.clone().as_str() == "idempotent".to_string().as_str()) {
             let adv = advance(tokens.clone(), &state);
 {
@@ -6466,7 +6462,7 @@ pub fn parse_response_entries(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
 pub fn parse_response_entries_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<RespEntriesResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(RespEntriesResult {
     entries: acc,
     state: s.clone(),
@@ -6578,7 +6574,7 @@ pub fn parse_mock_response_entries(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserS
 pub fn parse_mock_response_entries_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<MockEntriesResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(MockEntriesResult {
     entries: acc,
     state: s.clone(),
@@ -6790,7 +6786,7 @@ Rc::new(ItemResult {
 pub fn parse_resource_entries(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut properties: Rc<Vec<Rc<Node>>>, mut capabilities: Rc<Vec<Rc<Node>>>) -> Rc<ResPropResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(ResPropResult {
     properties: properties.clone(),
     capabilities: capabilities.clone(),
@@ -6800,7 +6796,7 @@ if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone(
 } else {
             let sh = peek_shape(tokens.clone(), s.clone());
 match sh {
-    Some(TokenShape::ShKeyword) => { let kw_text = peek_keyword_text(tokens.clone(), s.clone());
+    Some(TokenShape::ShKeyword) => { let kw_text = tok_keyword_text(peek(tokens.clone(), s.clone()));
 if (kw_text.clone().as_str() == "capability".to_string().as_str()) {
                 let r = parse_capability(&tokens, &s);
 if has_err(r.err.clone()) {
@@ -6942,7 +6938,7 @@ pub fn skip_until_rbrace(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let s = skip_newlines(tokens.clone(), state);
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
                 Rc::new(UnitResult {
     state: s.clone(),
     err: None,
@@ -6999,7 +6995,7 @@ if has_err(r.err.clone()) {
 let name = r.name.clone();
 let name_span = r.span.clone();
 let s = r.state.clone();
-if peek_is_lbrace(tokens.clone(), s.clone()) {
+if tok_is_lbrace(peek(tokens.clone(), s.clone())) {
             {
                 let r2 = expect(&tokens, &s, &Rc::new(ExpectedToken::ExpectLBrace));
 if has_err(r2.err.clone()) {
@@ -7033,7 +7029,7 @@ Rc::new(CapResult {
 })
 }
         } else {
-            if peek_is_lparen(tokens.clone(), s.clone()) {
+            if tok_is_lparen(peek(tokens.clone(), s.clone())) {
                 {
                     let r2 = expect(&tokens, &s, &Rc::new(ExpectedToken::ExpectLParen));
 if has_err(r2.err.clone()) {
@@ -7100,7 +7096,7 @@ pub fn parse_input_output_blocks(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSta
 pub fn parse_io_blocks_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut inputs: Rc<Vec<Rc<Node>>>, mut outputs: Rc<Vec<Rc<Node>>>) -> Rc<IOResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(IOResult {
     inputs: inputs.clone(),
     outputs: outputs.clone(),
@@ -7108,7 +7104,7 @@ if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone(
     err: None,
 });
 } else {
-            let kw = peek_keyword_text(tokens.clone(), s.clone());
+            let kw = tok_keyword_text(peek(tokens.clone(), s.clone()));
 if (kw.clone().as_str() == "input".to_string().as_str()) {
                 let adv = advance(tokens.clone(), &s);
 let r = expect(&tokens, &adv.state.clone(), &Rc::new(ExpectedToken::ExpectLBrace));
@@ -7353,7 +7349,7 @@ if has_err(r.err.clone()) {
 })
         }
 let s = skip_newlines(tokens.clone(), r.state.clone());
-if peek_is_rparen(tokens.clone(), s.clone()) {
+if tok_is_rparen(peek(tokens.clone(), s.clone())) {
             {
                 let adv = advance(tokens.clone(), &s);
 Rc::new(ParamsResult {
@@ -7406,7 +7402,7 @@ let s = r.state.clone();
 let e = eat(&tokens, &s, Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
             let s2 = skip_newlines(tokens.clone(), e.state.clone());
-if peek_is_rparen(tokens.clone(), s2.clone()) {
+if tok_is_rparen(peek(tokens.clone(), s2.clone())) {
                 break Rc::new(ParamsResult {
     params: acc.clone(),
     state: s2.clone(),
@@ -7556,7 +7552,7 @@ pub fn parse_stmts(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Stm
 pub fn parse_stmts_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<StmtsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if ((peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) || peek_is_eof(tokens.clone(), s.clone())) {
+if ((tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) || tok_is_eof(peek(tokens.clone(), s.clone()))) {
             break Rc::new(StmtsResult {
     stmts: acc.clone(),
     state: s.clone(),
@@ -7587,7 +7583,7 @@ pub fn parse_stmt(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) -> Rc<Ex
         let sh = peek_shape(tokens.clone(), state.clone());
 match sh {
     Some(TokenShape::ShKeyword) => {
-            let kw_text = peek_keyword_text(tokens.clone(), state.clone());
+            let kw_text = tok_keyword_text(peek(tokens.clone(), state.clone()));
 if (kw_text.clone().as_str() == "let".to_string().as_str()) {
                 parse_let(&tokens, &state)
             } else {
@@ -7917,7 +7913,7 @@ parse_expr_loop(tokens.clone(), s, lhs, min_bp)
 
 pub fn parse_expr_loop(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut lhs: Rc<Node>, mut min_bp: i64) -> Rc<ExprResult> {
     loop {
-        if (at_end(tokens.clone(), state.clone()) || peek_is_eof(tokens.clone(), state.clone())) {
+        if (at_end(tokens.clone(), state.clone()) || tok_is_eof(peek(tokens.clone(), state.clone()))) {
             break Rc::new(ExprResult {
     expr: lhs.clone(),
     state: state.clone(),
@@ -8088,7 +8084,7 @@ if has_err(r.err.clone()) {
 let method = r.name.clone();
 let s = r.state.clone();
 let s = skip_newlines(tokens.clone(), s.clone());
-if peek_is_lparen(tokens.clone(), s.clone()) {
+if tok_is_lparen(peek(tokens.clone(), s.clone())) {
             {
                 let r2 = parse_call_args(&tokens, s.clone());
 if has_err(r2.err.clone()) {
@@ -8207,7 +8203,7 @@ Rc::new(ExprResult {
                                     parse_fn_lambda(&tokens, &state)
                                 } else {
                                     {
-                                        let kw_name = keyword_to_name(tokens.clone(), state.clone());
+                                        let kw_name = tok_keyword_to_name(peek(tokens.clone(), state.clone()));
 match kw_name {
     Some(n) => parse_ident_expr(&tokens, &state, &n),
     None => Rc::new(ExprResult {
@@ -8298,7 +8294,7 @@ Rc::new(ExprResult {
 pub fn parse_lambda_body(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ExprResult> {
     {
         let s = skip_newlines(tokens.clone(), state);
-let is_block = (peek_is_keyword(tokens.clone(), s.clone(), "let".to_string()) || peek_is_keyword(tokens.clone(), s.clone(), "return".to_string()));
+let is_block = (tok_is_keyword(peek(tokens.clone(), s.clone()), "let".to_string()) || tok_is_keyword(peek(tokens.clone(), s.clone()), "return".to_string()));
 if is_block {
             {
                 let r = parse_lambda_stmts(tokens.clone(), s.clone(), Rc::new(vec![]));
@@ -8333,7 +8329,7 @@ if ((r.stmts.clone().len() as i64) == 1) {
 pub fn parse_lambda_stmts(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<StmtsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if (((peek_is_rparen(tokens.clone(), s.clone()) || peek_is_rbrace(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) || peek_is_eof(tokens.clone(), s.clone())) {
+if (((tok_is_rparen(peek(tokens.clone(), s.clone())) || tok_is_rbrace(peek(tokens.clone(), s.clone()))) || at_end(tokens.clone(), s.clone())) || tok_is_eof(peek(tokens.clone(), s.clone()))) {
             break Rc::new(StmtsResult {
     stmts: acc.clone(),
     state: s.clone(),
@@ -8364,7 +8360,7 @@ pub fn parse_ident_expr(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>, na
         let span = current_span(tokens.clone(), state.clone());
 let adv = advance(tokens.clone(), &state);
 let s = adv.state.clone();
-if peek_is_fat_arrow(tokens.clone(), s.clone()) {
+if tok_is_fat_arrow(peek(tokens.clone(), s.clone())) {
             {
                 let adv2 = advance(tokens.clone(), &s);
 let r = parse_lambda_body(&tokens, adv2.state.clone());
@@ -8380,7 +8376,7 @@ Rc::new(ExprResult {
 })
 }
         } else {
-            if (is_uppercase_start(name.clone()) && peek_is_lbrace(tokens.clone(), s.clone())) {
+            if (is_uppercase_start(name.clone()) && tok_is_lbrace(peek(tokens.clone(), s.clone()))) {
                 parse_record_literal(&tokens, s.clone(), name.clone(), &span)
             } else {
                 Rc::new(ExprResult {
@@ -8717,7 +8713,7 @@ if has_err(r.err.clone()) {
         }
 let first_expr = r.expr.clone();
 let s = r.state.clone();
-if peek_is_dot_dot(tokens.clone(), s.clone()) {
+if tok_is_dot_dot(peek(tokens.clone(), s.clone())) {
             {
                 let adv = advance(tokens.clone(), &s);
 let r = parse_expr(tokens.clone(), adv.state.clone());
@@ -8775,7 +8771,7 @@ if has_err(r.err.clone()) {
 })
         }
 let s = skip_newlines(tokens.clone(), r.state.clone());
-if peek_is_rparen(tokens.clone(), s.clone()) {
+if tok_is_rparen(peek(tokens.clone(), s.clone())) {
             {
                 let adv = advance(tokens.clone(), &s);
 Rc::new(ArgsResult {
@@ -8829,7 +8825,7 @@ let s = r.state.clone();
 let e = eat(&tokens, &s, Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
             let s2 = skip_newlines(tokens.clone(), e.state.clone());
-if peek_is_rparen(tokens.clone(), s2.clone()) {
+if tok_is_rparen(peek(tokens.clone(), s2.clone())) {
                 break Rc::new(ArgsResult {
     args: acc.clone(),
     state: s2.clone(),
@@ -8856,7 +8852,7 @@ pub fn parse_single_arg(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) ->
     {
         let span = current_span(tokens.clone(), state.clone());
 let dummy_arg = make_arg_node(None, parse_recovery_placeholder(), span.clone(), span.clone());
-let is_name_token = (is_ident(tokens.clone(), state.clone()) || is_keyword_name(tokens.clone(), state.clone()));
+let is_name_token = (tok_is_ident(peek(tokens.clone(), state.clone())) || tok_is_keyword_name(peek(tokens.clone(), state.clone())));
 if is_name_token {
             {
                 let save_pos = state.pos.clone();
@@ -8879,7 +8875,7 @@ Rc::new(ArgResult {
 })
 }
                 } else {
-                    if peek_is_colon(tokens.clone(), name_r.state.clone()) {
+                    if tok_is_colon(peek(tokens.clone(), name_r.state.clone())) {
                         {
                             let adv = advance(tokens.clone(), &name_r.state.clone());
 let r = parse_expr(tokens.clone(), adv.state.clone());
@@ -9008,7 +9004,7 @@ parse_expr_loop_no_brace(tokens.clone(), r.state.clone(), lhs, min_bp)
 
 pub fn parse_expr_loop_no_brace(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut lhs: Rc<Node>, mut min_bp: i64) -> Rc<ExprResult> {
     loop {
-        if ((at_end(tokens.clone(), state.clone()) || peek_is_eof(tokens.clone(), state.clone())) || peek_is_lbrace(tokens.clone(), state.clone())) {
+        if ((at_end(tokens.clone(), state.clone()) || tok_is_eof(peek(tokens.clone(), state.clone()))) || tok_is_lbrace(peek(tokens.clone(), state.clone()))) {
             break Rc::new(ExprResult {
     expr: lhs.clone(),
     state: state.clone(),
@@ -9016,7 +9012,7 @@ pub fn parse_expr_loop_no_brace(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<Pa
 });
 } else {
             let s = skip_continuation_newlines(&tokens, &state);
-if (peek_is_lparen(tokens.clone(), s.clone()) && (14 >= min_bp.clone())) {
+if (tok_is_lparen(peek(tokens.clone(), s.clone())) && (14 >= min_bp.clone())) {
                 let r = parse_call_args(&tokens, s.clone());
 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
@@ -9035,7 +9031,7 @@ lhs = __tco_1;
 continue;
 }
 } else {
-                if (peek_is_lbracket(tokens.clone(), s.clone()) && (14 >= min_bp.clone())) {
+                if (tok_is_lbracket(peek(tokens.clone(), s.clone())) && (14 >= min_bp.clone())) {
                     let span = current_span(tokens.clone(), s.clone());
 let r = parse_index_or_slice(&tokens, s.clone(), lhs.clone(), span);
 if has_err(r.err.clone()) {
@@ -9154,7 +9150,7 @@ pub fn parse_match_arms(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
 pub fn parse_match_arms_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<ArmsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(ArmsResult {
     arms: acc.clone(),
     state: s.clone(),
@@ -9218,7 +9214,7 @@ if has_err(r.err.clone()) {
 })
         }
 let s = skip_newlines(tokens.clone(), r.state.clone());
-let r = if peek_is_lbrace(tokens.clone(), s.clone()) {
+let r = if tok_is_lbrace(peek(tokens.clone(), s.clone())) {
             parse_block(&tokens, &s)
         } else {
             parse_match_arm_body(&tokens, &s)
@@ -9241,7 +9237,7 @@ Rc::new(ArmResult {
 
 pub fn parse_match_arm_body(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) -> Rc<ExprResult> {
     {
-        let is_block = (peek_is_keyword(tokens.clone(), state.clone(), "let".to_string()) || peek_is_keyword(tokens.clone(), state.clone(), "return".to_string()));
+        let is_block = (tok_is_keyword(peek(tokens.clone(), state.clone()), "let".to_string()) || tok_is_keyword(peek(tokens.clone(), state.clone()), "return".to_string()));
 if is_block {
             {
                 let r = parse_match_arm_stmts(tokens.clone(), state.clone(), Rc::new(vec![]));
@@ -9276,7 +9272,7 @@ if ((r.stmts.clone().len() as i64) == 1) {
 pub fn parse_match_arm_stmts(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<StmtsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if ((peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) || peek_is_eof(tokens.clone(), s.clone())) {
+if ((tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) || tok_is_eof(peek(tokens.clone(), s.clone()))) {
             break Rc::new(StmtsResult {
     stmts: acc.clone(),
     state: s.clone(),
@@ -9426,7 +9422,7 @@ continue;
 }
 
 pub fn parse_optional_guard(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) -> Rc<GuardResult> {
-    if peek_is_keyword(tokens.clone(), state.clone(), "if".to_string()) {
+    if tok_is_keyword(peek(tokens.clone(), state.clone()), "if".to_string()) {
         {
             let adv = advance(tokens.clone(), &state);
 let r = parse_expr(tokens.clone(), adv.state.clone());
@@ -9548,7 +9544,7 @@ Rc::new(PatternResult {
 }
 
 pub fn parse_variant_pattern(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>, name: String) -> Rc<PatternResult> {
-    if peek_is_lbrace(tokens.clone(), state.clone()) {
+    if tok_is_lbrace(peek(tokens.clone(), state.clone())) {
         {
             let adv = advance(tokens.clone(), &state);
 let r = parse_variant_bindings_brace(tokens.clone(), skip_newlines(tokens.clone(), adv.state.clone()));
@@ -9578,7 +9574,7 @@ Rc::new(PatternResult {
 })
 }
     } else {
-        if peek_is_lparen(tokens.clone(), state.clone()) {
+        if tok_is_lparen(peek(tokens.clone(), state.clone())) {
             {
                 let adv = advance(tokens.clone(), &state);
 let r = parse_pattern(&tokens, &adv.state.clone());
@@ -9629,7 +9625,7 @@ pub fn parse_variant_bindings_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<Parser
 pub fn parse_variant_bindings_brace_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<BindingsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(BindingsResult {
     field_bindings: acc,
     state: s.clone(),
@@ -9734,7 +9730,7 @@ let e = eat(&tokens, &s, Rc::new(ExpectedToken::ExpectKeyword {
 if e.consumed.clone() {
                 {
                     let s = skip_newlines(tokens.clone(), e.state.clone());
-if peek_is_keyword(tokens.clone(), s.clone(), "if".to_string()) {
+if tok_is_keyword(peek(tokens.clone(), s.clone()), "if".to_string()) {
                         {
                             let r2 = parse_if(&tokens, &s);
 if has_err(r2.err.clone()) {
@@ -9956,7 +9952,7 @@ pub fn parse_field_init_list(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>)
 pub fn parse_field_init_list_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<Node>>>) -> Rc<FieldInitsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
+if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) {
             break Rc::new(FieldInitsResult {
     fields: acc,
     state: s.clone(),
@@ -9992,7 +9988,7 @@ pub fn parse_field_init(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) ->
     {
         let zero_span = make_span(0, 0);
 let dummy_fi = make_field_init_node(&"".to_string(), parse_recovery_placeholder(), zero_span.clone(), zero_span.clone());
-if (is_ident(tokens.clone(), state.clone()) || is_keyword_name(tokens.clone(), state.clone())) {
+if (tok_is_ident(peek(tokens.clone(), state.clone())) || tok_is_keyword_name(peek(tokens.clone(), state.clone()))) {
             {
                 let name_r = expect_name(&tokens, &state);
 if has_err(name_r.err.clone()) {
@@ -10003,7 +9999,7 @@ if has_err(name_r.err.clone()) {
 })
                 }
 let n = name_r.name.clone();
-if peek_is_colon(tokens.clone(), name_r.state.clone()) {
+if tok_is_colon(peek(tokens.clone(), name_r.state.clone())) {
                     {
                         let adv2 = advance(tokens.clone(), &name_r.state.clone());
 let r = parse_expr(tokens.clone(), adv2.state.clone());
@@ -10035,7 +10031,7 @@ Rc::new(FieldInitResult {
                 }
 }
         } else {
-            if (peek_is_lit_str(tokens.clone(), state.clone()) && peek_is_colon_after_ident(&tokens, &state)) {
+            if (tok_is_lit_str(peek(tokens.clone(), state.clone())) && peek_is_colon_after_ident(&tokens, &state)) {
                 {
                     let str_tok = peek(tokens.clone(), state.clone());
 let str_name = match str_tok {
@@ -10173,7 +10169,7 @@ if has_err(r.err.clone()) {
 })
         }
 let s = skip_newlines(tokens.clone(), r.state.clone());
-if peek_is_rparen(tokens.clone(), s.clone()) {
+if tok_is_rparen(peek(tokens.clone(), s.clone())) {
             {
                 let adv = advance(tokens.clone(), &s);
 Rc::new(ExprResult {
@@ -10285,7 +10281,7 @@ Rc::new(ExprResult {
 pub fn collect_fn_lambda_params(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<ParserParam>>>) -> Rc<IdentCollectResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
-if peek_is_rparen(tokens.clone(), s.clone()) {
+if tok_is_rparen(peek(tokens.clone(), s.clone())) {
             break Rc::new(IdentCollectResult {
     success: true,
     params: acc,
@@ -10303,7 +10299,7 @@ if has_err(name_r.err.clone()) {
 });
 } else {
                 let s2 = skip_newlines(tokens.clone(), name_r.state.clone());
-if peek_is_comma(tokens.clone(), s2.clone()) {
+if tok_is_comma(peek(tokens.clone(), s2.clone())) {
                     let adv = advance(tokens.clone(), &s2);
 {
                         let __tco_0 = adv.state.clone();
@@ -10336,10 +10332,10 @@ pub fn try_lambda_params(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) -
         let save_pos = state.pos.clone();
 let r = collect_lambda_idents(tokens.clone(), state.clone(), Rc::new(vec![]));
 if (r.success.clone() && ((r.params.clone().len() as i64) >= 2)) {
-            if peek_is_rparen(tokens.clone(), r.state.clone()) {
+            if tok_is_rparen(peek(tokens.clone(), r.state.clone())) {
                 {
                     let adv = advance(tokens.clone(), &r.state.clone());
-if peek_is_fat_arrow(tokens.clone(), adv.state.clone()) {
+if tok_is_fat_arrow(peek(tokens.clone(), adv.state.clone())) {
                         {
                             let adv2 = advance(tokens.clone(), &adv.state.clone());
 Rc::new(LambdaCheckResult {
@@ -10388,7 +10384,7 @@ Rc::new(LambdaCheckResult {
 
 pub fn collect_lambda_idents(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Rc<Vec<Rc<ParserParam>>>) -> Rc<IdentCollectResult> {
     loop {
-        if is_ident(tokens.clone(), state.clone()) {
+        if tok_is_ident(peek(tokens.clone(), state.clone())) {
             let tok = peek(tokens.clone(), state.clone());
 let param = Rc::new(ParserParam {
     name: tok.clone().unwrap().text.clone(),
@@ -10521,7 +10517,7 @@ pub fn parse_brace_expr(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) ->
 let dummy_expr = parse_recovery_placeholder();
 let adv = advance(tokens.clone(), &state);
 let s = skip_newlines(tokens.clone(), adv.state.clone());
-if peek_is_rbrace(tokens.clone(), s.clone()) {
+if tok_is_rbrace(peek(tokens.clone(), s.clone())) {
             {
                 let adv2 = advance(tokens.clone(), &s);
 Rc::new(ExprResult {
@@ -10537,7 +10533,7 @@ Rc::new(ExprResult {
                 let sh = peek_shape(tokens.clone(), s.clone());
 match sh {
     Some(TokenShape::ShKeyword) => {
-                    let brace_kw = peek_keyword_text(tokens.clone(), s.clone());
+                    let brace_kw = tok_keyword_text(peek(tokens.clone(), s.clone()));
 if ((brace_kw.clone().as_str() == "let".to_string().as_str()) || (brace_kw.clone().as_str() == "return".to_string().as_str())) {
                         {
                             let r = parse_stmts(tokens.clone(), s.clone());
@@ -10573,7 +10569,7 @@ if ((r.stmts.clone().len() as i64) == 1) {
 }
                     } else {
                         {
-                            let ident_or_keyword = is_keyword_name(tokens.clone(), s.clone());
+                            let ident_or_keyword = tok_is_keyword_name(peek(tokens.clone(), s.clone()));
 if (ident_or_keyword && peek_is_colon_after_ident(&tokens, &s)) {
                                 {
                                     let r = parse_field_init_list(tokens.clone(), s.clone());
@@ -10631,7 +10627,7 @@ Rc::new(ExprResult {
                     }
 },
     _ => {
-                    let ident_or_keyword = (is_ident(tokens.clone(), s.clone()) || is_keyword_name(tokens.clone(), s.clone()));
+                    let ident_or_keyword = (tok_is_ident(peek(tokens.clone(), s.clone())) || tok_is_keyword_name(peek(tokens.clone(), s.clone())));
 if (ident_or_keyword && peek_is_colon_after_ident(&tokens, &s)) {
                         {
                             let r = parse_field_init_list(tokens.clone(), s.clone());
@@ -10660,7 +10656,7 @@ Rc::new(ExprResult {
 })
 }
                     } else {
-                        if (peek_is_lit_str(tokens.clone(), s.clone()) && peek_is_colon_after_ident(&tokens, &s)) {
+                        if (tok_is_lit_str(peek(tokens.clone(), s.clone())) && peek_is_colon_after_ident(&tokens, &s)) {
                             {
                                 let r = parse_field_init_list(tokens.clone(), s.clone());
 if has_err(r.err.clone()) {
