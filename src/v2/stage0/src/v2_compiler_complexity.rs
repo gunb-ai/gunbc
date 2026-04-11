@@ -24,7 +24,7 @@ use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, Proportiona
 use crate::std_induction::CostBound::{ConstantBound, AtomicBound, ForeverBound, ErrorBound};
 use crate::std_induction::AtomicCost::{PolyCost};
 use crate::std_induction::PolynomialExponent::{IntegerExp};
-pub use crate::v2_std_core::{Node, NewlineIndex, ExprData, BinOp, MatchPattern, field_init_node_name, field_init_node_name_at, field_init_node_value, arg_name, arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name, let_binding_name_at, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_name_at, param_node_type_expr, return_value, expr_call_func, expr_call_func_at, expr_var_name, expr_var_name_at, field_access_base, field_access_field, field_access_field_at, LiteralValue, is_child_accessor_in_model, lambda_param_names, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing};
+pub use crate::v2_std_core::{Node, NewlineIndex, ExprData, BinOp, MatchPattern, field_init_node_name_at, field_init_node_value, arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name_at, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name_at, param_node_type_expr, return_value, expr_call_func_at, expr_var_name_at, field_access_base, field_access_field_at, LiteralValue, is_child_accessor_in_model, lambda_param_names_at, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprBinOp, ExprUnaryOp, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda};
 use crate::v2_std_core::BinOp::{Sub, Div};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
@@ -264,8 +264,8 @@ pub fn method_size_effect(method_semantics: Option<Rc<MethodSemantics>>) -> Opti
 }
 }
 
-pub fn iteration_element_name(method_semantics: Option<Rc<MethodSemantics>>, lambda: Rc<Node>) -> Option<String> {
-    lambda_param_names(lambda).last().cloned()
+pub fn iteration_element_name(method_semantics: Option<Rc<MethodSemantics>>, lambda: Rc<Node>, si: Option<Rc<NewlineIndex>>) -> Option<String> {
+    lambda_param_names_at(lambda, si).last().cloned()
 }
 
 pub fn proof_has_non_descending_cycle(proof: Rc<TerminationProof>, members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
@@ -1744,7 +1744,7 @@ if (is_iter && is_struct) {
 let args_ok = { let mut __all = true; for arg_node in method_arg_nodes(body.clone()).iter().cloned() { if !({
                         let arg_val = arg_value(arg_node.clone());
 match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone()) {
+    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone(), si.clone()) {
     Some(iter_name) => {
                             let ext_vars = v2_rt::rc_map_insert(vars.clone(), iter_name.clone(), true);
 all_self_calls_descend_inc(lambda_body(arg_val.clone()), func_name.clone(), param_name.clone(), ext_vars.clone(), check_child.clone(), check_list.clone(), si.clone())
@@ -2164,7 +2164,7 @@ if (is_iter && is_struct) {
 let args_ev = method_arg_nodes(body.clone()).iter().cloned().fold(None, |acc: _, arg_node: Rc<Node>| {
                         let arg_val = arg_value(arg_node.clone());
 let ev = match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone()) {
+    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone(), si.clone()) {
     Some(iter_name) => {
                             let ext_vars = v2_rt::rc_map_insert(vars.clone(), iter_name.clone(), true);
 collect_evidence_incremental(lambda_body(arg_val.clone()), func_name.clone(), param_name.clone(), ext_vars.clone(), check_child.clone(), check_list.clone(), branching_only.clone(), si.clone())
@@ -2382,7 +2382,7 @@ if (path_calls.clone() == 0) {
             lower_call_pattern(Rc::new(CallPattern::FoldBodyCall))
         } else {
             {
-                let all_evidence = collect_self_call_evidence(body.clone(), func_name.clone());
+                let all_evidence = collect_self_call_evidence(body.clone(), func_name.clone(), si.clone());
 let has_evidence = ((all_evidence.clone().len() as i64) > 0);
 let all_structural = (has_evidence && { let mut __all = true; for call_ev in all_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
@@ -2793,7 +2793,7 @@ if (is_iter && is_struct) {
 let args_edges = Rc::new({ let mut __result = Vec::new(); for arg_node in method_arg_nodes(body.clone()).iter().cloned() { __result.extend((*{
                         let arg_val = arg_value(arg_node.clone());
 match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone()) {
+    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone(), si.clone()) {
     Some(iter_name) => {
                             let ext_vars = v2_rt::rc_map_insert(descent_vars.clone(), iter_name.clone(), true);
 collect_scc_child_edges(lambda_body(arg_val.clone()), caller.clone(), param_name.clone(), ext_vars.clone(), target_set.clone(), check_child.clone(), check_list.clone(), scc_measure_params.clone(), si.clone())
@@ -3159,10 +3159,10 @@ Rc::new(ProofEdge {
 
 pub fn collect_scc_cx_l2_tree_edges(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_name_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<ProofEdge>>> {
     {
-        let measure_params = build_scc_measure_params(members.clone(), func_index.clone(), si);
+        let measure_params = build_scc_measure_params(members.clone(), func_index.clone(), si.clone());
 Rc::new({ let mut __result = Vec::new(); for name in members.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-            let self_evidence = collect_self_call_evidence(entry.body.clone(), name.clone());
+            let self_evidence = collect_self_call_evidence(entry.body.clone(), name.clone(), si.clone());
 let self_has_calls = ((self_evidence.clone().len() as i64) > 0);
 let self_all_structural = (self_has_calls.clone() && { let mut __all = true; for call_ev in self_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
@@ -3217,7 +3217,7 @@ Rc::new(vec![Rc::new(ProofEdge {
             };
 let other_members = Rc::new({ let mut __result = Vec::new(); for m in Rc::new(v2_rt::map_keys(&scc_name_set)).iter().cloned() { if (m.clone().as_str() != name.clone().as_str()) { __result.push(m); } } __result });
 let cross_edges = Rc::new({ let mut __result = Vec::new(); for callee in other_members.clone().iter().cloned() { __result.extend((*{
-                let callee_evidence = collect_callee_evidence(entry.body.clone(), callee.clone());
+                let callee_evidence = collect_callee_evidence(entry.body.clone(), callee.clone(), si.clone());
 if ((callee_evidence.clone().len() as i64) > 0) {
                     {
                         let ev = derive_edge_evidence(callee_evidence.clone());
@@ -3238,13 +3238,13 @@ v2_rt::concat(self_edge.clone(), cross_edges.clone())
 }
 }
 
-pub fn scc_descending_param(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>) -> String {
+pub fn scc_descending_param(members: Rc<Vec<String>>, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, si: Option<Rc<NewlineIndex>>) -> String {
     members.iter().cloned().fold("".to_string(), |found: String, name: String| if (found.clone().as_str() != "".to_string().as_str()) {
         found.clone()
     } else {
         match v2_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-            let evidence = collect_self_call_evidence(entry.body.clone(), name.clone());
+            let evidence = collect_self_call_evidence(entry.body.clone(), name.clone(), si.clone());
 match evidence.clone().first().cloned() {
     Some(call_ev) => call_ev.clone().iter().cloned().fold("".to_string(), |p: String, rel: Rc<SubValueRelation>| if (p.clone().as_str() != "".to_string().as_str()) {
                 p.clone()
@@ -3271,7 +3271,7 @@ let cx_l2_all_known = { let mut __all = true; for e in cx_l2_edges.clone().iter(
     Some(DescentEvidence::DescentUnknown) => false,
     _ => true,
 }) { __all = false; break; } } __all };
-let cx_l2_param = scc_descending_param(members.clone(), func_index.clone());
+let cx_l2_param = scc_descending_param(members.clone(), func_index.clone(), si.clone());
 let cx_l2_proof = Rc::new(TerminationProof {
     dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
     param: if (cx_l2_param.clone().as_str() != "".to_string().as_str()) {
@@ -4773,11 +4773,11 @@ Rc::new(SummaryResult {
 }
 }
 
-pub fn collect_call_evidence(body: Rc<Node>, target_set: Rc<HashMap<String, bool>>) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+pub fn collect_call_evidence(body: Rc<Node>, target_set: Rc<HashMap<String, bool>>, si: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { descent_evidence: de, .. } => {
-            let callee = expr_call_func(body.clone());
+            let callee = expr_call_func_at(body.clone(), si.clone());
 let own = if (v2_rt::map_get(&target_set, callee) != None) {
                 match de.clone() {
     Some(evidence) => Rc::new(vec![evidence.clone()]),
@@ -4786,20 +4786,20 @@ let own = if (v2_rt::map_get(&target_set, callee) != None) {
             } else {
                 Rc::new(vec![])
             };
-let from_children = body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_call_evidence(child.clone(), target_set.clone())));
+let from_children = body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_call_evidence(child.clone(), target_set.clone(), si.clone())));
 v2_rt::concat(own, from_children)
 },
-    _ => body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_call_evidence(child.clone(), target_set.clone()))),
+    _ => body.children.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, child: Rc<Node>| v2_rt::concat(acc.clone(), collect_call_evidence(child.clone(), target_set.clone(), si.clone()))),
 }
     })
 }
 
-pub fn collect_self_call_evidence(body: Rc<Node>, fn_name: String) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
-    collect_call_evidence(body, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<bool>(), fn_name, true))
+pub fn collect_self_call_evidence(body: Rc<Node>, fn_name: String, si: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+    collect_call_evidence(body, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<bool>(), fn_name, true), si)
 }
 
-pub fn collect_callee_evidence(body: Rc<Node>, callee_name: String) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
-    collect_call_evidence(body, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<bool>(), callee_name, true))
+pub fn collect_callee_evidence(body: Rc<Node>, callee_name: String, si: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+    collect_call_evidence(body, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<bool>(), callee_name, true), si)
 }
 
 pub fn derive_edge_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>) -> DescentEvidence {
@@ -4854,11 +4854,11 @@ pub fn extract_shrink_factor(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, 
 })
 }
 
-pub fn max_path_descending(body: Rc<Node>, fn_name: String, param_index: i64) -> i64 {
+pub fn max_path_descending(body: Rc<Node>, fn_name: String, param_index: i64, si: Option<Rc<NewlineIndex>>) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprCall { descent_evidence: de, .. } => {
-            let callee = expr_call_func(body.clone());
+            let callee = expr_call_func_at(body.clone(), si.clone());
 let own = if (callee.as_str() == fn_name.clone().as_str()) {
                 match de.clone() {
     Some(evidence) => match evidence.clone().get(param_index.clone() as usize).cloned() {
@@ -4875,15 +4875,15 @@ let own = if (callee.as_str() == fn_name.clone().as_str()) {
             } else {
                 0
             };
-let from_children = body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| (acc.clone() + max_path_descending(child.clone(), fn_name.clone(), param_index.clone())));
+let from_children = body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| (acc.clone() + max_path_descending(child.clone(), fn_name.clone(), param_index.clone(), si.clone())));
 (own + from_children)
 },
     ExprData::ExprIf => {
-            let cond_count = max_path_descending(if_condition(body.clone()), fn_name.clone(), param_index.clone());
-let then_count = max_path_descending(if_then_branch(body.clone()), fn_name.clone(), param_index.clone());
+            let cond_count = max_path_descending(if_condition(body.clone()), fn_name.clone(), param_index.clone(), si.clone());
+let then_count = max_path_descending(if_then_branch(body.clone()), fn_name.clone(), param_index.clone(), si.clone());
 let else_branch = if_else_branch(body.clone());
 let else_count = match else_branch {
-    Some(eb) => max_path_descending(eb.clone(), fn_name.clone(), param_index.clone()),
+    Some(eb) => max_path_descending(eb.clone(), fn_name.clone(), param_index.clone(), si.clone()),
     None => 0,
 };
 let branch_max = if (then_count.clone() > else_count.clone()) {
@@ -4894,10 +4894,10 @@ let branch_max = if (then_count.clone() > else_count.clone()) {
 (cond_count + branch_max)
 },
     ExprData::ExprMatch => {
-            let scrut_count = max_path_descending(match_scrutinee(body.clone()), fn_name.clone(), param_index.clone());
+            let scrut_count = max_path_descending(match_scrutinee(body.clone()), fn_name.clone(), param_index.clone(), si.clone());
 let arms = match_arm_nodes(body.clone());
 let arm_max = arms.iter().cloned().fold(0, |acc: i64, arm: Rc<Node>| {
-                let arm_count = max_path_descending(arm_body(arm.clone()), fn_name.clone(), param_index.clone());
+                let arm_count = max_path_descending(arm_body(arm.clone()), fn_name.clone(), param_index.clone(), si.clone());
 if (arm_count.clone() > acc.clone()) {
                     arm_count.clone()
                 } else {
@@ -4906,7 +4906,7 @@ if (arm_count.clone() > acc.clone()) {
 });
 (scrut_count + arm_max)
 },
-    _ => body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| (acc.clone() + max_path_descending(child.clone(), fn_name.clone(), param_index.clone()))),
+    _ => body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| (acc.clone() + max_path_descending(child.clone(), fn_name.clone(), param_index.clone(), si.clone()))),
 }
     })
 }
@@ -4925,9 +4925,9 @@ pub fn distinct_descended_fields(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>
 }
 }
 
-pub fn analyze_structural_bounds(func_entries: Rc<Vec<Rc<FuncEntry>>>) -> Rc<Vec<Rc<StructuralBoundResult>>> {
+pub fn analyze_structural_bounds(func_entries: Rc<Vec<Rc<FuncEntry>>>, si: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<StructuralBoundResult>>> {
     func_entries.iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<StructuralBoundResult>>>, entry: Rc<FuncEntry>| {
-        let all_calls = collect_self_call_evidence(entry.body.clone(), entry.name.clone());
+        let all_calls = collect_self_call_evidence(entry.body.clone(), entry.name.clone(), si.clone());
 if ((all_calls.clone().len() as i64) == 0) {
             acc.clone()
         } else {
@@ -4938,11 +4938,11 @@ let param_node = pair.1.clone();
 let evidence = merge_param_evidence(all_calls.clone(), param_index.clone());
 match evidence.clone() {
     DescentEvidence::Strict => {
-                        let param_name = param_node_name(param_node.clone());
+                        let param_name = param_node_name_at(param_node.clone(), si.clone());
 let factor_opt = extract_shrink_factor(all_calls.clone(), param_index.clone());
 match factor_opt.clone() {
     Some(factor) => {
-                            let branches = max_path_descending(entry.body.clone(), entry.name.clone(), param_index.clone());
+                            let branches = max_path_descending(entry.body.clone(), entry.name.clone(), param_index.clone(), si.clone());
 let recurrence = match (*factor.clone()).clone() {
     ShrinkFactor::UnitShrink => {
                                 let distinct_fields = distinct_descended_fields(all_calls.clone(), param_index.clone());
@@ -5087,7 +5087,7 @@ Rc::new(TopoBuildAcc {
 },
     None => acc.clone(),
 });
-let structural_bounds = analyze_structural_bounds(func_entries.clone());
+let structural_bounds = analyze_structural_bounds(func_entries.clone(), si.clone());
 Rc::new(ComplexityReport {
     function_classes: result.classes.clone(),
     violations: result.violations.clone(),

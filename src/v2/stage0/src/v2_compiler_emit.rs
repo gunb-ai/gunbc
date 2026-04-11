@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name, arm_body, arm_pattern, arm_guard, arg_name, arg_name_at, arg_value, field_init_node_name, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, Cardinality};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard, arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
@@ -347,28 +347,28 @@ if (n.clone() == None) {
 
 pub fn order_typed_call_args(args: Rc<Vec<Rc<Node>>>, func: String, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
     {
-        let has_unnamed = { let mut __found = false; for arg in args.clone().iter().cloned() { if (arg_name(arg.clone()) == None) { __found = true; break; } } __found };
+        let has_unnamed = { let mut __found = false; for arg in args.clone().iter().cloned() { if (arg_name_at(arg.clone(), scope.type_env.clone().source_index.clone()) == None) { __found = true; break; } } __found };
 if has_unnamed {
             args.clone()
         } else {
-            match lookup_func_sig_in_scope(scope, func) {
+            match lookup_func_sig_in_scope(scope.clone(), func) {
     None => args.clone(),
     Some(sig) => {
                 let arg_map = args.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
-                    let n = arg_name(arg.clone());
+                    let n = arg_name_at(arg.clone(), scope.type_env.clone().source_index.clone());
 if (n.clone() != None) {
                         v2_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
                     } else {
                         acc.clone()
                     }
 });
-let param_name_set = sig.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name(param.clone()), true));
-let ordered = Rc::new({ let mut __result = Vec::new(); for param in sig.params.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&arg_map, param_node_name(param.clone())) {
+let param_name_set = sig.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name_at(param.clone(), scope.type_env.clone().source_index.clone()), true));
+let ordered = Rc::new({ let mut __result = Vec::new(); for param in sig.params.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&arg_map, param_node_name_at(param.clone(), scope.type_env.clone().source_index.clone())) {
     Some(arg) => Rc::new(vec![arg.clone()]),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let leftovers = Rc::new({ let mut __result = Vec::new(); for arg in args.clone().iter().cloned() { if {
-                    let n = arg_name(arg.clone());
+                    let n = arg_name_at(arg.clone(), scope.type_env.clone().source_index.clone());
 if (n.clone() == None) {
                         true
                     } else {
@@ -1154,11 +1154,11 @@ pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> R
 }
 }
 
-pub fn service_has_rest(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+pub fn service_has_rest(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> bool {
     {
-        let from_fallback = is_rest_transport(fallback_transport);
+        let from_fallback = is_rest_transport(fallback_transport, source_index.clone());
 let from_ops = { let mut __found = false; for op in op_children.iter().cloned() { if if (op.transport.clone() != None) {
-            is_rest_transport(op.transport.clone().clone().unwrap())
+            is_rest_transport(op.transport.clone().clone().unwrap(), source_index.clone())
         } else {
             false
         } { __found = true; break; } } __found };
@@ -1178,11 +1178,11 @@ let from_ops = { let mut __found = false; for op in op_children.iter().cloned() 
 }
 }
 
-pub fn service_has_file(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+pub fn service_has_file(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> bool {
     {
-        let from_fallback = is_file_transport(fallback_transport);
+        let from_fallback = is_file_transport(fallback_transport, source_index.clone());
 let from_ops = { let mut __found = false; for op in op_children.iter().cloned() { if if (op.transport.clone() != None) {
-            is_file_transport(op.transport.clone().clone().unwrap())
+            is_file_transport(op.transport.clone().clone().unwrap(), source_index.clone())
         } else {
             false
         } { __found = true; break; } } __found };
@@ -1190,19 +1190,19 @@ let from_ops = { let mut __found = false; for op in op_children.iter().cloned() 
 }
 }
 
-pub fn service_has_rest_auth(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> bool {
+pub fn service_has_rest_auth(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> bool {
     {
-        let fallback_is_rest = is_rest_transport(fallback_transport.clone());
+        let fallback_is_rest = is_rest_transport(fallback_transport.clone(), source_index.clone());
 let from_fallback = if fallback_is_rest {
-            transport_has_auth(fallback_transport.clone())
+            transport_has_auth(fallback_transport.clone(), source_index.clone())
         } else {
             false
         };
 let from_ops = { let mut __found = false; for op in op_children.iter().cloned() { if if (op.transport.clone() != None) {
             {
                 let t = op.transport.clone().clone().unwrap();
-if is_rest_transport(t.clone()) {
-                    transport_has_auth(t.clone())
+if is_rest_transport(t.clone(), source_index.clone()) {
+                    transport_has_auth(t.clone(), source_index.clone())
                 } else {
                     false
                 }
@@ -1214,8 +1214,8 @@ if is_rest_transport(t.clone()) {
 }
 }
 
-pub fn extract_modifier_names(properties: Rc<Vec<Rc<Node>>>) -> Rc<Vec<String>> {
-    Rc::new({ let mut __result = Vec::new(); for p in properties.iter().cloned() { __result.extend((*match field_init_operation_modifier(p.clone()) {
+pub fn extract_modifier_names(properties: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
+    Rc::new({ let mut __result = Vec::new(); for p in properties.iter().cloned() { __result.extend((*match field_init_operation_modifier(p.clone(), source_index.clone()) {
     Some(modifier) => Rc::new(vec![operation_modifier_name(modifier.clone())]),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result })
@@ -1229,12 +1229,12 @@ pub struct ServiceFieldSet {
     pub has_auth: bool,
 }
 
-pub fn compute_service_fields(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> ServiceFieldSet {
+pub fn compute_service_fields(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> ServiceFieldSet {
     ServiceFieldSet {
-    has_rest: service_has_rest(fallback_transport.clone(), op_children.clone()),
+    has_rest: service_has_rest(fallback_transport.clone(), op_children.clone(), source_index.clone()),
     has_shell: service_has_shell(fallback_transport.clone(), op_children.clone()),
-    has_file: service_has_file(fallback_transport.clone(), op_children.clone()),
-    has_auth: service_has_rest_auth(fallback_transport.clone(), op_children.clone()),
+    has_file: service_has_file(fallback_transport.clone(), op_children.clone(), source_index.clone()),
+    has_auth: service_has_rest_auth(fallback_transport.clone(), op_children.clone(), source_index.clone()),
 }
 }
 
@@ -1480,17 +1480,17 @@ pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     }
 }
 
-pub fn is_tco_eligible(name: String, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> bool {
+pub fn is_tco_eligible(name: String, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, source_index: Option<Rc<NewlineIndex>>) -> bool {
     match lookup_item(registry, name.clone()) {
     Some(info) => (info.is_self_recursive.clone() && (info.has_non_tail_self_call.clone() == false)),
-    None => (expr_has_self_call(body.clone(), name.clone()) && (expr_has_non_tail_self_call(body.clone(), name.clone(), true) == false)),
+    None => (expr_has_self_call(body.clone(), name.clone(), source_index.clone()) && (expr_has_non_tail_self_call(body.clone(), name.clone(), true, source_index.clone()) == false)),
 }
 }
 
-pub fn is_self_recursive(name: String, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> bool {
+pub fn is_self_recursive(name: String, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, source_index: Option<Rc<NewlineIndex>>) -> bool {
     match lookup_item(registry, name.clone()) {
     Some(info) => info.is_self_recursive.clone(),
-    None => expr_has_self_call(body, name.clone()),
+    None => expr_has_self_call(body, name.clone(), source_index),
 }
 }
 
