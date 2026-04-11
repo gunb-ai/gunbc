@@ -10,6 +10,8 @@ pub use crate::v2_std_core::{Node, ExprData, expr_call_func_at, ErrorNode, make_
 use crate::v2_std_core::ExprData::{ExprCall};
 use crate::v2_std_core::CompilerDiagnostic::{MissingAnnotation};
 pub use crate::v2_compiler_infer_types::{emit_map_has};
+pub use crate::std_induction::{SubValueRelation};
+use crate::std_induction::SubValueRelation::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncSig {
@@ -17,6 +19,7 @@ pub struct ResolvedFuncSig {
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Rc<Node>,
     pub is_async: bool,
+    pub output_provenance: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -114,6 +117,7 @@ pub fn declared_to_resolved(dsig: &Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
     params: dsig.params.clone(),
     inferred: dsig.inferred.clone().clone().unwrap(),
     is_async: dsig.is_async.clone(),
+    output_provenance: dsig.output_provenance.clone(),
 })
 }
 
