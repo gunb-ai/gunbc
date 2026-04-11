@@ -468,8 +468,8 @@ described but not structurally modeled in .dag:
 
 | Item | Current state | Fix |
 |------|--------------|-----|
-| Encoding lattice | `dsl/std/encoding.dag` names the lattice but delegates to Rust's `ContentEncoding` | Model join/meet in .dag; reconcile `Encoding` and `ContentEncoding` to one authority |
-| Stack<T> → FreeMonoid | `dsl/std/stack.dag` defines bespoke push/pop/fold_stack instead of attaching to FreeMonoid | Import algebra.dag; Stack IS FreeMonoid |
+| Encoding lattice | **DONE** — consolidated to `Encoding` in encoding.dag with BoundedLattice meet/join; `ContentEncoding` deleted; `FileClassification` moved to filesystem.dag | — |
+| Stack\<T\> → FreeMonoid | **DONE** — imports algebra.dag; operations aligned to FreeMonoid vocabulary; inhabitation declared | — |
 | User-defined generic emission | Generic functions (T, V, K params) parse and type-check but emit unresolved type variables in Rust | Emitter needs monomorphization or generic Rust output |
 | **Duplicate foundational types** | `AuthScheme` defined in std/cloud.dag (3 variants) AND std/types.dag (4 variants, different payloads) — **actively divergent**. `CloudRuntime` and `WarningPolicy` exact duplicates in both files. | Pick single authority per type, delete the other |
 | **Phantom container types** | `container_type_arity` in std/types.dag lists NonEmptyList and NonEmptySet, but no `type NonEmptyList` or `type NonEmptySet` exists anywhere. Causes `__BUG_NO_PROFILE_*` fabrication fallback. | Either declare the types or remove from metadata tables |
@@ -484,14 +484,14 @@ audit (2026-04-10):
 | Item | File | Status |
 |------|------|--------|
 | ~~`GitHubAuthToken.scopes: List<String>`~~ | extdeps/github/github.dag | DONE (PR #387) — uses `List<GitHubScope>` |
-| ~~`ThinkingConfig.type: String`~~| extdeps/llm/anthropic.dag | DONE (PR #387) — wire discriminant field restored |
-| `LlmMessage.content: String` | extdeps/llm/llm.dag | Deferred — M1-level multimodal redesign (PR #388 changes to `List<ContentBlock>`) |
+| ~~`ThinkingConfig.type: String`~~ | extdeps/llm/anthropic.dag | DONE (PR #388) — `ThinkingMode = Enabled \| Disabled` |
+| ~~`LlmMessage.content: String`~~ | extdeps/llm/llm.dag | DONE (PR #388) — `List<ContentBlock>` with `TextContent \| ImageContent` |
 | ~~`Gist.files: List<GistFile>`~~ | extdeps/github/gists.dag | DONE (PR #387) — `Map<String, GistFile>` |
 | OpenAI string-path extraction | extdeps/llm/openai.dag | Skipped — compiler-level `from` syntax feature, not extdeps issue |
 | `Gist.owner: String` | extdeps/github/gists.dag | Should be `GitHubUser` — already imported in same file, used structurally in pulls.dag |
 | `Gist.public: Bool` | extdeps/github/gists.dag | `GistVisibility` enum exists but unused; `public` still Bool |
-| ~~Policy defaults in `CloudSecretConfig`~~ | std/types.dag | DONE (PR #387) — defaults removed |
-| ~~`ProjectId` vs `GcpProjectId`~~ | std/types.dag | DONE (PR #387) — `GcpProjectId` deleted |
+| ~~Policy defaults in `CloudSecretConfig`~~ | std/types.dag | DONE (PR #388) — dead type deleted; operations define own inputs |
+| ~~`ProjectId` vs `GcpProjectId`~~ | std/types.dag | DONE (PR #388) — renamed to `GcpProjectId`; 5 dead types deleted |
 
 ### Coercion (folded into Track 13 — not a separate track)
 

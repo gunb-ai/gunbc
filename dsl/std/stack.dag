@@ -1,25 +1,23 @@
 // std/stack.dag -- Persistent LIFO stack (cons list).
 //
-// A Stack is a recursive coproduct: either Empty or a Push of an
-// element onto another Stack. This is the fundamental persistent
-// data structure for LIFO access patterns.
+// Stack<T> is a free monoid over T with reversed orientation:
+// the natural O(1) operation is prepend (push), not append.
+// This is the cons-list representation — mathematically equivalent
+// to List (both are FreeMonoid<T>), but with different cost profiles:
 //
-// COST MODEL:
-//   push:     O(1) — construct Push node
-//   pop:      O(1) — return rest
-//   peek:     O(1) — return top
-//   is_empty: O(1) — match on variant
-//   size:     O(n) — fold over stack
-//   to_list:  O(n) — fold, reversed
+//   Operation        Stack (cons-list)    List (array)
+//   ──────────────   ─────────────────    ────────────
+//   push (prepend)   O(1)                 O(n)
+//   peek (first)     O(1)                 O(1)
+//   pop (rest)       O(1)                 O(n)
+//   concat           O(n)                 O(1) amortized
+//   index            O(n)                 O(1)
+//   size             O(n)                 O(1)
+//   fold             O(n)                 O(n)
 //
-// WHY NOT LIST?
-//   List is backed by an array (Vec in Rust). Append is O(1) amortized,
-//   but prepend and remove-last are O(n) because they copy the array.
-//   Stack is a linked list — push/pop are O(1) by construction.
-//
-//   Use List when you need indexed access or iteration over all elements.
-//   Use Stack when you need LIFO push/pop (call stacks, undo history,
-//   parsing state, depth-first traversal).
+// Use Stack when you need LIFO push/pop (call stacks, undo history,
+// parsing state, depth-first traversal).
+// Use List when you need indexed access or append.
 //
 // DECIDABILITY:
 //   Stack is inductively defined. Every Stack is finite because:
@@ -27,12 +25,10 @@
 //   - Push { top, rest } has 1 + |rest| elements
 //   There is no constructor for infinite stacks.
 //   fold_stack is bounded by |stack| — same as fold on List.
-//
-// RELATIONSHIP TO COMPOSITION STACK:
-//   Layer 4 (structural compositions). Stack complements List (Layer 3)
-//   as a persistent structure optimized for different access patterns.
 
 module std.stack
+
+import std.algebra { FreeMonoid }
 
 // =========================================================================
 // Stack type — recursive coproduct
@@ -83,7 +79,6 @@ fn stack_size<T>(stack: Stack<T>) -> Int {
 }
 
 fn stack_to_list<T>(stack: Stack<T>) -> List<T> {
-  // Produces elements in LIFO order (top first).
   match stack {
     Empty => []
     Push { top: t, rest: r } => [t] |> concat(stack_to_list(stack: r))
@@ -91,8 +86,6 @@ fn stack_to_list<T>(stack: Stack<T>) -> List<T> {
 }
 
 fn list_to_stack<T>(items: List<T>) -> Stack<T> {
-  // First element of list becomes bottom of stack;
-  // last element becomes top.
   fold(items, Empty, fn(stack, item) { stack_push(stack: stack, value: item) })
 }
 
@@ -111,3 +104,22 @@ fn fold_stack<T, B>(stack: Stack<T>, init: B, f: fn(B, T) -> B) -> B {
     Push { top: t, rest: r } => fold_stack(stack: r, init: f(init, t), f: f)
   }
 }
+
+// =========================================================================
+// Algebraic relationship to FreeMonoid
+//
+// Stack<T> and List<T> are both free monoids over T. The difference
+// is orientation: Stack's O(1) operation is prepend (push to front),
+// while List's O(1) operation is append (add to end).
+//
+// The FreeMonoid homomorphism Stack<T> → List<T> is stack_to_list.
+// The reverse is list_to_stack. Both preserve sequence content but
+// may reverse element order depending on construction.
+//
+// Mapping (Stack operation → FreeMonoid concept):
+//   stack_push   = prepend (NOT append — reversed orientation)
+//   stack_peek   = first
+//   stack_pop    = rest (tail)
+//   fold_stack   = catamorphism (right fold from top)
+//   Empty        = identity element
+// =========================================================================

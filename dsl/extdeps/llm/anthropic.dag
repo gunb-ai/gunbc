@@ -37,9 +37,10 @@ data models: List<AnthropicModelSpec> = [
   { model: ClaudeOpus4_6, model_id: "claude-opus-4-6-20251101", context_window: 200000, max_output_tokens: 64000 }
 ]
 
-// -- Content blocks ------------------------------------------------
+// -- Anthropic content blocks (provider-specific) ---------------------
+// Extends the shared ContentBlock (llm.dag) with tool-use blocks.
 
-type ContentBlock
+type AnthropicContentBlock
   = TextBlock { text: String }
   | ToolUseBlock { id: String, name: String, input: Json }
   | ToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
@@ -59,11 +60,11 @@ type SystemPrompt {
 
 // -- Extended thinking ---------------------------------------------
 
-// Anthropic extended thinking: wire shape requires {"type": "enabled", ...}.
-// Single-value discriminant, but the field must be present for API fidelity.
+type ThinkingMode = Enabled | Disabled
+
 type ThinkingConfig {
-  type: String
-  budget_tokens: Int
+  type: ThinkingMode
+  budget_tokens: Int?
 }
 
 // -- Tool definitions ----------------------------------------------
