@@ -191,6 +191,36 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 
 ---
 
+## Milestones to Gate 1
+
+Four concrete goals, in priority order. Each has a clear done-criterion.
+
+```
+M1: CX gate → 0 violations (currently 421, ratchet 424)
+    Done when: strict_compile_diagnostic_count = 0, gate is blocking
+    How: Stream D parser (-132), body-inferred return contracts (-196),
+         arithmetic refinement (-44), C3-C6 deletion, tokenizer (-22)
+    Remaining ~10 (graph DFS) needs language primitive
+
+M2: Node.name deleted
+    Done when: Node.name field removed, l1-ratchet = 0
+    How: fix authored_name_at fallback, eliminate ~15 remaining reads
+    Active: quick-owl-889
+    Unblocks: Stream B Layer 1 (last-use clone elision)
+
+M3: review.dag runs end-to-end
+    Done when: review.dag compiles, builds, runs live against real APIs
+    How: fix remaining RE-3 serde gaps
+    Mostly done (RE-1/2/4 complete)
+
+M4: Single emitter reads data, never decides
+    Done when: 05_emit_rust/python/go.dag deleted, all emission from specs
+    How: Lane C (coercion = emission, language plugins)
+    Blocked on: M1 + M2 substantially complete
+```
+
+---
+
 ## Active work: close the model
 
 All active tracks are facets of one problem: the IR doesn't carry
