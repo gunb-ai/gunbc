@@ -1937,13 +1937,21 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
 })
 }
 
+pub fn kernel_span(name: String) -> Rc<SourceSpan> {
+    Rc::new(SourceSpan {
+    file: v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()),
+    start: 0,
+    end: v2_rt::string_length(&name),
+})
+}
+
 pub fn unit_type() -> Rc<Node> {
     thread_local! {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "Unit".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span("Unit".to_string()),
+    ident_span: Some(kernel_span("Unit".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
@@ -1969,8 +1977,8 @@ pub fn bool_type() -> Rc<Node> {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "Bool".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span("Bool".to_string()),
+    ident_span: Some(kernel_span("Bool".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1996,8 +2004,8 @@ pub fn string_type() -> Rc<Node> {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "String".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span("String".to_string()),
+    ident_span: Some(kernel_span("String".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2023,8 +2031,8 @@ pub fn int_type() -> Rc<Node> {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "Int".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span("Int".to_string()),
+    ident_span: Some(kernel_span("Int".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2050,8 +2058,8 @@ pub fn float_type() -> Rc<Node> {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "Float".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span("Float".to_string()),
+    ident_span: Some(kernel_span("Float".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2077,8 +2085,8 @@ pub fn none_type() -> Rc<Node> {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "None".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span("None".to_string()),
+    ident_span: Some(kernel_span("None".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
