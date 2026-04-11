@@ -2320,6 +2320,7 @@ type DescentContext {
   type_env: TypeEnv
   sub_value_vars: Map<String, SubValueRelation>
   size_aliases: Map<String, SizeExpr>
+  scope_locals: Map<String, TypeBinding>  // C2: binding provenance from inference
 }
 
 // Classify a let-value as a size expression for ProportionalShrink tracking.
@@ -2937,6 +2938,87 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
   }
 }
 
+// C2: Read argument provenance from binding provenance (scope_locals) for
+// ExprVar and ExprFieldAccess. scope_locals has provenance set during
+// inference (S2-S6) for function params. When the binding is not in
+// scope_locals (match arm/let bindings created during body inference),
+// fall back to classify_argument which reads sub_value_vars.
+// For expression-level patterns (accessor calls, collection shrinks,
+// arithmetic, transparent wrappers), delegate to classify_argument.
+fn read_arg_provenance(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
+  match arg_expr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let vname = expr_var_name_at(texpr: arg_expr, source_index: ctx.type_env.source_index)
+      // Read provenance from binding set during inference (S2-S6).
+      // Falls back to classify_argument for bindings not in scope_locals
+      // (match arm/let bindings tracked in sub_value_vars by annotate_descent).
+      match map_get(ctx.scope_locals, vname) {
+        Some { value: binding } =>
+          match binding.provenance {
+            SubValueUnknown =>
+              // scope_locals has the binding but provenance is unknown.
+              // Fall back to classify_argument which checks sub_value_vars
+              // (populated by annotate_descent for match/let bindings).
+              classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+            _ => binding.provenance
+          }
+        None =>
+          // Binding not in scope_locals (e.g., inner match/let binding).
+          // classify_argument reads sub_value_vars for these.
+          classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+      }
+    ExprFieldAccess { summary: _ } =>
+      let base = field_access_base(texpr: arg_expr)
+      let field = field_access_field_at(texpr: arg_expr, source_index: ctx.type_env.source_index)
+      match base.expr_data {
+        ExprVar { binding_kind: _ } =>
+          let bname = expr_var_name_at(texpr: base, source_index: ctx.type_env.source_index)
+          match map_get(ctx.scope_locals, bname) {
+            Some { value: binding } =>
+              match binding.provenance {
+                SubValueUnknown =>
+                  // Fall back to classify_argument for unknown provenance.
+                  classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+                _ =>
+                  // Compose provenance via compose_sub_value (std/induction.dag authority).
+                  let fields = inductive_fields_for(env: ctx.type_env, type_name: binding.resolved.name)
+                  let matching = fields |> filter(f => f.field_name == field) |> first
+                  match matching {
+                    Some { value: ind_field } => compose_sub_value(base: binding.provenance, field: ind_field)
+                    None => SubValueUnknown
+                  }
+              }
+            None =>
+              // Binding not in scope_locals; fall back to classify_argument.
+              classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+          }
+        _ => SubValueUnknown
+      }
+    // Expression-level patterns: delegate to classify_argument heuristics.
+    // Function return contracts (accessor calls) are deferred to a later step.
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    ExprMethodCall { method_semantics: _ } =>
+      classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    ExprBinOp { op: _ } =>
+      classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    // Transparent wrappers: delegate to classify_argument which handles them.
+    ExprMatch =>
+      classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    ExprIf =>
+      classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    ExprBlock =>
+      classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    ExprLet =>
+      classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    ExprCast =>
+      classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    ExprReturn =>
+      classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
+    _ => SubValueUnknown
+  }
+}
+
 // Build descent_evidence for a self-call: one SubValueRelation per parameter
 // in definition order. Named args are matched by name; unnamed args fall back
 // to positional alignment.
@@ -2959,11 +3041,11 @@ fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRel
     let def_idx = pair.first
     let pname = pair.second
     match map_get(arg_map, pname) {
-      Some { value: arg_val } => classify_argument(arg_expr: arg_val, param_name: pname, ctx: ctx)
+      Some { value: arg_val } => read_arg_provenance(arg_expr: arg_val, param_name: pname, ctx: ctx)
       None =>
         // Positional fallback: use position in unnamed arg list
         match positional_args |> skip(def_idx) |> first {
-          Some { value: arg_val } => classify_argument(arg_expr: arg_val, param_name: pname, ctx: ctx)
+          Some { value: arg_val } => read_arg_provenance(arg_expr: arg_val, param_name: pname, ctx: ctx)
           None => SubValueUnknown
         }
     }
@@ -3034,7 +3116,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   if p2 != "" { map_insert(map_insert(ctx.sub_value_vars, p1, rel), p2, rel) }
                   else { map_insert(ctx.sub_value_vars, p1, rel) }
                 } else { ctx.sub_value_vars },
-                size_aliases: ctx.size_aliases
+                size_aliases: ctx.size_aliases,
+                scope_locals: ctx.scope_locals
               }
               make_arg_node(name: arg_name_at(n: child, source_index: ctx.type_env.source_index), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
             } else {
@@ -3134,7 +3217,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             param_names: map_insert(c.param_names, bname, ind_field.element_type),
                             param_order: c.param_order, type_env: c.type_env,
                             sub_value_vars: map_insert(c.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
-                            size_aliases: c.size_aliases
+                            size_aliases: c.size_aliases,
+                            scope_locals: c.scope_locals
                           }
                         VariantPattern { name: inner_vname, parent_enum: _, field_bindings: inner_bindings } =>
                           // Nested destructuring: Some { value: Resolved { node: rt } }
@@ -3155,7 +3239,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                                     param_names: map_insert(ic.param_names, inner_bind_name, inner_ind_field.element_type),
                                     param_order: ic.param_order, type_env: ic.type_env,
                                     sub_value_vars: map_insert(ic.sub_value_vars, inner_bind_name, StrictSubValue { field: inner_ind_field, factor: UnitShrink }),
-                                    size_aliases: ic.size_aliases
+                                    size_aliases: ic.size_aliases,
+                                    scope_locals: ic.scope_locals
                                   }
                                 } else { ic }
                               None => ic
@@ -3181,7 +3266,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                           DescentContext {
                             fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env,
                             sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
-                            size_aliases: c.size_aliases
+                            size_aliases: c.size_aliases,
+                            scope_locals: c.scope_locals
                           }
                         } else { c }
                       None => c
@@ -3198,7 +3284,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_names: map_insert(ctx.param_names, bname, scrut_type),
                   param_order: ctx.param_order, type_env: ctx.type_env,
                   sub_value_vars: map_insert(ctx.sub_value_vars, bname, PreservedValue),
-                  size_aliases: ctx.size_aliases
+                  size_aliases: ctx.size_aliases,
+                  scope_locals: ctx.scope_locals
                 }
               } else {
                 match scrut_inducing_field {
@@ -3208,7 +3295,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                       param_names: map_insert(ctx.param_names, bname, ind_field.element_type),
                       param_order: ctx.param_order, type_env: ctx.type_env,
                       sub_value_vars: map_insert(ctx.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
-                      size_aliases: ctx.size_aliases
+                      size_aliases: ctx.size_aliases,
+                      scope_locals: ctx.scope_locals
                     }
                   None => ctx
                 }
@@ -3257,13 +3345,15 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_names: if sub_type != "" { map_insert(ctx.param_names, binding_name, sub_type) } else { ctx.param_names },
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
-            size_aliases: inner_size_aliases
+            size_aliases: inner_size_aliases,
+            scope_locals: ctx.scope_locals
           }
         None =>
           DescentContext {
             fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: ctx.sub_value_vars,
-            size_aliases: inner_size_aliases
+            size_aliases: inner_size_aliases,
+            scope_locals: ctx.scope_locals
           }
       }
       // Lexical scope: value initializer sees OUTER context (binding not yet in scope),
@@ -3312,13 +3402,15 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_names: if sub_type != "" { map_insert(acc.ctx.param_names, bname, sub_type) } else { acc.ctx.param_names },
                   param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: map_insert(acc.ctx.sub_value_vars, bname, rel),
-                  size_aliases: new_sa
+                  size_aliases: new_sa,
+                  scope_locals: acc.ctx.scope_locals
                 }
               None =>
                 DescentContext {
                   fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: acc.ctx.sub_value_vars,
-                  size_aliases: new_sa
+                  size_aliases: new_sa,
+                  scope_locals: acc.ctx.scope_locals
                 }
             }
           _ => acc.ctx
@@ -3428,14 +3520,16 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: ctx.param_order, type_env: ctx.type_env,
                   sub_value_vars: if is_fold { map_insert(empty_map(), elem_name, IteratedSubValue { field: ind_field }) }
                     else { map_insert(ctx.sub_value_vars, elem_name, IteratedSubValue { field: ind_field }) },
-                  size_aliases: ctx.size_aliases
+                  size_aliases: ctx.size_aliases,
+                  scope_locals: ctx.scope_locals
                 }
               None =>
                 DescentContext {
                   fn_name: ctx.fn_name, param_names: ctx.param_names,
                   param_order: ctx.param_order, type_env: ctx.type_env,
                   sub_value_vars: if is_fold { empty_map() } else { ctx.sub_value_vars },
-                  size_aliases: ctx.size_aliases
+                  size_aliases: ctx.size_aliases,
+                  scope_locals: ctx.scope_locals
                 }
             }
           None => ctx
@@ -3479,14 +3573,16 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_names: map_insert(ctx.param_names, fe_var, ind_field.element_type),
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(empty_map(), fe_var, IteratedSubValue { field: ind_field }),
-            size_aliases: ctx.size_aliases
+            size_aliases: ctx.size_aliases,
+            scope_locals: ctx.scope_locals
           }
         None =>
           DescentContext {
             fn_name: ctx.fn_name, param_names: ctx.param_names,
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: empty_map(),
-            size_aliases: ctx.size_aliases
+            size_aliases: ctx.size_aliases,
+            scope_locals: ctx.scope_locals
           }
       }
       let annotated_coll = annotate_descent(body: coll, ctx: ctx)
@@ -3521,7 +3617,7 @@ fn resolved_type_name(n: Node) -> String {
 }
 
 // Top-level: annotate a self-recursive function body with descent evidence.
-fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv) -> Node {
+fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>) -> Node {
   let param_name_map = params |> fold(init: empty_map(), f: (acc, p) =>
     let pname = param_node_name_at(n: p, source_index: type_env.source_index)
     let ptype = resolved_type_name(n: p)
@@ -3534,7 +3630,8 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
     param_order: param_order_list,
     type_env: type_env,
     sub_value_vars: empty_map(),
-    size_aliases: empty_map()
+    size_aliases: empty_map(),
+    scope_locals: scope_locals
   }
   annotate_descent(body: body, ctx: ctx)
 }
@@ -3676,7 +3773,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     // CX-L2: annotate self-call sites with descent evidence
     let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: item.name, source_index: scope.type_env.source_index)
     let annotated_body = if is_recursive {
-      annotate_descent_evidence(body: body_typed, fn_name: item.name, params: item.params, type_env: scope.type_env)
+      annotate_descent_evidence(body: body_typed, fn_name: item.name, params: item.params, type_env: scope.type_env, scope_locals: scope.locals)
     } else { body_typed }
     TypedItemResult {
       item: Node {
