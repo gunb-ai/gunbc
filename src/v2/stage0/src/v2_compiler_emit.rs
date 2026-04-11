@@ -189,13 +189,19 @@ if is_typed_service_call_receiver(&expr, source_index.clone()) {
 }); } __result });
 emit_simple_string_interp(&ps, &target, source_index.clone())
 },
-    ExprData::ExprListLit => {
+    ExprData::ExprListLit => match target.clone() {
+    RenderTarget::Go => emit_error_expr("list literal in simple expr not yet supported for Go".to_string(), target.clone()),
+    _ => {
             let el_strs = Rc::new({ let mut __result = Vec::new(); for e in expr.children.clone().iter().cloned() { __result.push(emit_simple_expr(&e, &target, &source_index)); } __result });
 v2_rt::concat(v2_rt::concat("[".to_string(), el_strs.join(&", ".to_string())), "]".to_string())
 },
-    ExprData::ExprRecordLit { .. } => {
+},
+    ExprData::ExprRecordLit { .. } => match target.clone() {
+    RenderTarget::Go => emit_error_expr("record literal in simple expr not yet supported for Go".to_string(), target.clone()),
+    _ => {
             let field_strs = Rc::new({ let mut __result = Vec::new(); for f in expr.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), field_init_node_name_at(f.clone(), source_index.clone())), "\": ".to_string()), emit_simple_expr(&field_init_node_value(&f), &target, &source_index))); } __result });
 v2_rt::concat(v2_rt::concat("{".to_string(), field_strs.join(&", ".to_string())), "}".to_string())
+},
 },
     _ => emit_error_expr("unsupported simple expr in test/mock binding".to_string(), target.clone()),
 }
