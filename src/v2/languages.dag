@@ -350,6 +350,17 @@ type LanguageSpec {
   callable_type_template: String?
   // Identifier case conversion for local variable names.
   naming_case: NamingCase
+  // Async call prefix — prepended to effectful calls (service/resource).
+  // Python: "await ". Go/Rust/Dag: "".
+  async_call_prefix: String
+  // Bridge method rendering — how algebra method fallbacks render.
+  bridge_method_prefix: String              // "" (Python) or "v2rt." (Go)
+  bridge_method_case: NamingCase            // SnakeCase (Python) or PascalCase (Go)
+  bridge_method_overrides: List<EscapePair>  // [{from: "with", to: "with_update"}] (Python) or [] (Go)
+  // Error fallback for unsupported service receivers.
+  service_error_fallback: String            // 'raise NotImplementedError("...")' or error marker
+  // Record literal syntax.
+  record_lit: RecordLitSyntax
 }
 
 type TupleSyntax {
@@ -357,6 +368,23 @@ type TupleSyntax {
   pair_template: String      // "({0}, {1})" — {0} = first, {1} = second
   multi_template: String     // "({0})" — {0} = joined parts
   separator: String          // ", " / "; "
+  first_accessor: String     // "[0]" (Python) / ".First" (Go)
+  second_accessor: String    // "[1]" (Python) / ".Second" (Go)
+}
+
+// Record literal syntax — how named and anonymous records render.
+// Python: TypeName(field=val, ...) / {"key": val}
+// Go: TypeName{Field: val, ...} / map[string]interface{}{"key": val}
+type RecordLitSyntax {
+  named_open: String           // "(" (Python) or "{" (Go)
+  named_close: String          // ")" (Python) or "}" (Go)
+  named_empty: String          // "()" (Python) or "{}" (Go) — appended to type name
+  named_field_sep: String      // "=" (Python) or ": " (Go)
+  named_field_join: String     // ", " (both)
+  anon_empty: String           // "{}" (Python) or "map[string]interface{}{}" (Go)
+  anon_prefix: String          // "{\n" (Python) or "map[string]interface{}{\n" (Go)
+  anon_suffix: String          // "}" (both)
+  anon_field_indent: String    // "    " (Python) or "\t" (Go)
 }
 
 // String interpolation — three structurally different models:
@@ -495,7 +523,9 @@ fn rust_spec() -> LanguageSpec {
       empty: rust_tuple_empty,
       pair_template: rust_tuple_pair_template,
       multi_template: rust_tuple_multi_template,
-      separator: rust_tuple_separator
+      separator: rust_tuple_separator,
+      first_accessor: ".0",
+      second_accessor: ".1"
     },
     string_interp: StringInterpSyntax {
       style: FormatArgs,
@@ -505,7 +535,18 @@ fn rust_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
     },
     callable_type_template: "Rc<dyn Fn(\{params\}) -> \{return\}>",
-    naming_case: SnakeCase
+    naming_case: SnakeCase,
+    async_call_prefix: "",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: [],
+    service_error_fallback: "compile_error!(\"unsupported service receiver\")",
+    record_lit: RecordLitSyntax {
+      named_open: " \{", named_close: "\}", named_empty: " \{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
+    }
   }
 }
 
@@ -621,7 +662,9 @@ fn python_spec() -> LanguageSpec {
       empty: python_tuple_empty,
       pair_template: python_tuple_pair_template,
       multi_template: python_tuple_multi_template,
-      separator: python_tuple_separator
+      separator: python_tuple_separator,
+      first_accessor: "[0]",
+      second_accessor: "[1]"
     },
     string_interp: StringInterpSyntax {
       style: InlineExpr,
@@ -631,7 +674,18 @@ fn python_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
     },
     callable_type_template: null,
-    naming_case: SnakeCase
+    naming_case: SnakeCase,
+    async_call_prefix: "await ",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: [EscapePair { from: "with", to: "with_update" }],
+    service_error_fallback: "raise NotImplementedError(\"unsupported service receiver\")",
+    record_lit: RecordLitSyntax {
+      named_open: "(", named_close: ")", named_empty: "()",
+      named_field_sep: "=", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
+    }
   }
 }
 
@@ -747,7 +801,9 @@ fn go_spec() -> LanguageSpec {
       empty: go_tuple_empty,
       pair_template: go_tuple_pair_template,
       multi_template: go_tuple_multi_template,
-      separator: go_tuple_separator
+      separator: go_tuple_separator,
+      first_accessor: ".First",
+      second_accessor: ".Second"
     },
     string_interp: StringInterpSyntax {
       style: FormatArgs,
@@ -757,7 +813,18 @@ fn go_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "%", to: "%%" }]
     },
     callable_type_template: null,
-    naming_case: CamelCase
+    naming_case: CamelCase,
+    async_call_prefix: "",
+    bridge_method_prefix: "v2rt.",
+    bridge_method_case: PascalCase,
+    bridge_method_overrides: [],
+    service_error_fallback: "panic(\"unsupported service receiver\")",
+    record_lit: RecordLitSyntax {
+      named_open: "\{", named_close: "\}", named_empty: "\{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "map[string]interface\{\}\{\}", anon_prefix: "map[string]interface\{\}\{\n", anon_suffix: "\}",
+      anon_field_indent: "\t"
+    }
   }
 }
 
@@ -876,7 +943,9 @@ fn dag_spec() -> LanguageSpec {
       empty: dag_tuple_empty,
       pair_template: dag_tuple_pair_template,
       multi_template: dag_tuple_multi_template,
-      separator: dag_tuple_separator
+      separator: dag_tuple_separator,
+      first_accessor: ".0",
+      second_accessor: ".1"
     },
     string_interp: StringInterpSyntax {
       style: FormatArgs,
@@ -886,7 +955,18 @@ fn dag_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
     },
     callable_type_template: null,
-    naming_case: AsAuthored
+    naming_case: AsAuthored,
+    async_call_prefix: "",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: [],
+    service_error_fallback: "compile_error!(\"unsupported service receiver\")",
+    record_lit: RecordLitSyntax {
+      named_open: " \{", named_close: "\}", named_empty: " \{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
+    }
   }
 }
 

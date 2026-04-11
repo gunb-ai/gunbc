@@ -84,6 +84,7 @@ import v2.compiler.languages {
   NamingCase, PascalCase, SnakeCase, CamelCase, AsAuthored,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   StringInterpSyntax, InterpStyle, FormatArgs, InlineExpr, EscapePair,
+  RecordLitSyntax,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
   ContainerUsageTrigger, AsyncUsageTrigger,
@@ -1741,6 +1742,34 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
     }
   } else {
     converted
+  }
+}
+
+// Export-context identifier rendering: for function names, type names, struct fields.
+// CaseVisibility languages (Go): PascalCase. KeywordVisibility languages: same as emit_ident.
+fn emit_export_ident(name: String, target: RenderTarget) -> String {
+  let spec = language_spec(target: target)
+  match spec.visibility {
+    CaseVisibility { export_case: ec } =>
+      let result = apply_naming_case(name: name, case_style: ec)
+      let is_reserved = spec.reserved_words.keywords |> any(r => r == result)
+      if is_reserved {
+        match spec.reserved_words.strategy {
+          SuffixEscape { suffix: s } => concat(result, s)
+          PrefixEscape { prefix: p } => concat(p, result)
+          NoEscape => result
+        }
+      } else { result }
+    KeywordVisibility { prefix: _ } =>
+      emit_ident(name: name, target: target)
+  }
+}
+
+// Apply bridge method overrides — resolves method name conflicts (e.g. Python "with" → "with_update").
+fn apply_bridge_method_overrides(name: String, overrides: List<EscapePair>) -> String {
+  match overrides |> filter(o => o.from == name) |> first {
+    Some { value: override } => override.to
+    None => name
   }
 }
 

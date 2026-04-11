@@ -30,7 +30,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, StringInterpSyntax, InterpStyle, EscapePair, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, StringInterpSyntax, InterpStyle, EscapePair, RecordLitSyntax, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::IfValueForm::{IfExpression, ConditionalTernary, IfStatement};
 use crate::v2_compiler_languages::VisibilitySpec::{KeywordVisibility, CaseVisibility};
@@ -1686,6 +1686,35 @@ if is_reserved {
         } else {
             converted.clone()
         }
+}
+}
+
+pub fn emit_export_ident(name: String, target: &RenderTarget) -> String {
+    {
+        let spec = language_spec(target.clone());
+match (*spec.visibility.clone()).clone() {
+    VisibilitySpec::CaseVisibility { export_case: ec, .. } => {
+            let result = apply_naming_case(name, ec.clone());
+let is_reserved = { let mut __found = false; for r in spec.reserved_words.clone().keywords.clone().iter().cloned() { if (r.clone().as_str() == result.clone().as_str()) { __found = true; break; } } __found };
+if is_reserved {
+                match (*spec.reserved_words.clone().strategy.clone()).clone() {
+    ReservedWordStrategy::SuffixEscape { suffix: s, .. } => v2_rt::concat(result.clone(), s.clone()),
+    ReservedWordStrategy::PrefixEscape { prefix: p, .. } => v2_rt::concat(p.clone(), result.clone()),
+    ReservedWordStrategy::NoEscape => result.clone(),
+}
+            } else {
+                result.clone()
+            }
+},
+    VisibilitySpec::KeywordVisibility { .. } => emit_ident(name, target.clone()),
+}
+}
+}
+
+pub fn apply_bridge_method_overrides(name: String, overrides: Rc<Vec<Rc<EscapePair>>>) -> String {
+    match Rc::new({ let mut __result = Vec::new(); for o in overrides.iter().cloned() { if (o.from.clone().as_str() == name.clone().as_str()) { __result.push(o); } } __result }).first().cloned() {
+    Some(r#override) => r#override.to.clone(),
+    None => name.clone(),
 }
 }
 
