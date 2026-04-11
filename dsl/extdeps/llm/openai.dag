@@ -64,9 +64,11 @@ type FunctionCall {
   arguments: String
 }
 
+// OpenAI tool call type (as of 2026): "function" is the only type.
+// The type field is always "function" — the struct name IS the discriminant.
+// Serialization to {"type": "function", ...} is a transport concern.
 type ToolCall {
   id: String
-  type: String
   function: FunctionCall
 }
 

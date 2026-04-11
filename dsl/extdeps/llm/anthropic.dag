@@ -41,10 +41,10 @@ type ContentBlock
 
 // -- System prompt -------------------------------------------------
 
-// Single-variant enum. "Ephemeral" is the only cache control type
-// in the Anthropic API (as of 2026). Modeled as a String constant
-// since single-variant enums are type aliases in .dag.
-type CacheControl { type: String }
+// Anthropic API cache control (as of 2026): "ephemeral" is the only type.
+// The type field is always "ephemeral" — the struct name IS the discriminant.
+// Serialization to {"type": "ephemeral"} is a transport concern.
+type CacheControl {}
 
 type SystemPrompt {
   text: String
@@ -53,8 +53,10 @@ type SystemPrompt {
 
 // -- Extended thinking ---------------------------------------------
 
+// Anthropic extended thinking (as of 2026): "enabled" is the only type.
+// The type field is always "enabled" — the struct name IS the discriminant.
+// Serialization to {"type": "enabled", ...} is a transport concern.
 type ThinkingConfig {
-  type: String
   budget_tokens: Int
 }
 

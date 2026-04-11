@@ -305,7 +305,6 @@ type GitRef       = String where non_empty
 // --- GCP / OIDC types (refinements for cloud identifiers) ----------------
 type ProjectId    = String where non_empty, pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 type ServiceAccountEmail = String where pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")
-type GcpProjectId           = String where non_empty
 type GcpSecretId            = String where non_empty
 type GcpServiceAccountEmail = String where non_empty
 type GcpSubjectToken        = String where non_empty
@@ -488,10 +487,10 @@ type AccessToken {
 type CloudSecretConfig {
   project_id: String
   secret: String
-  version: String = "latest"
+  version: String
   service_account: String?
-  audience: String = "sigstore"
-  scheme: AuthScheme = Bearer
+  audience: String
+  scheme: AuthScheme
   header_name: String?
   source_id: String
   required_scopes: List<String>

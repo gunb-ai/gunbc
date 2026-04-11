@@ -262,8 +262,6 @@ pub type ProjectId = String;
 
 pub type ServiceAccountEmail = String;
 
-pub type GcpProjectId = String;
-
 pub type GcpSecretId = String;
 
 pub type GcpServiceAccountEmail = String;
