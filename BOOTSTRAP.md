@@ -1,3 +1,7 @@
+> Part of: [THESIS.md](THESIS.md) — self-hosting is a verification
+> artifact. When the compiler compiles itself to identical output,
+> the causal engine is proven internally consistent.
+
 # Bootstrap
 
 Stage0 (`src/v2/stage0/`) is the bootstrap seed for the self-hosted

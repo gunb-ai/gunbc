@@ -1,8 +1,12 @@
+> Part of: [THESIS.md](THESIS.md) — modeling guidelines ensure that
+> every `.dag` construct is grounded in external fact, so the causal
+> engine can validate it.
+
 # DAG Modeling Guidelines
 
-Companion to `SUSTAINABILITY.md` (code quality) and `INVARIANTS.md`
-(compiler invariants). This document covers the **modeling quality** of
-`.dag` source files — the domain models themselves, not the compiler that
+Companion to [INVARIANTS.md](INVARIANTS.md) (compiler invariants).
+This document covers the **modeling quality** of `.dag` source
+files — the domain models themselves, not the compiler that
 processes them.
 
 ---

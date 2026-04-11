@@ -14,7 +14,8 @@ type definitions. Non-Node types are flat discriminants and data
 tables. This makes descent provable by construction: any function
 that walks Node.children is structurally bounded.
 
-Full thesis: [docs/architecture.md](docs/architecture.md)
+Full thesis: [THESIS.md](THESIS.md)
+Architecture: [docs/architecture.md](docs/architecture.md)
 Compiler laws and coercion model: [src/v2/compiler-laws.md](src/v2/compiler-laws.md)
 Coercion design (algebra-keyed inhabitants): [docs/coercion-design.md](docs/coercion-design.md)
 Testing strategy: [src/v2/tests/testing-strategy.md](src/v2/tests/testing-strategy.md)

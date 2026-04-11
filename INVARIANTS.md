@@ -1,3 +1,7 @@
+> Part of: [THESIS.md](THESIS.md) — these invariants are the structural
+> rules that enforce causal consistency. The thesis says "every causal
+> link is validated"; this document says how.
+
 # Compiler and Runtime Invariants
 
 This document governs the engineering invariants for the entire
