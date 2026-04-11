@@ -2067,7 +2067,7 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
 }
 
 fn rust_runtime_bridge_name(function_name: String) -> String {
-  match map_get(rt_bridge_function_names, function_name) {
+  match map_get(rt_bridge_function_names(), function_name) {
     Some { value: runtime_name } => runtime_name
     None => function_name
   }

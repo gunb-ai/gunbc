@@ -421,7 +421,7 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
-    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if (f.name.as_str() != f.bridge_name.as_str()) { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), entry.bridge_name.clone()))
+    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if (f.name.clone().as_str() != f.bridge_name.clone().as_str()) { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), entry.bridge_name.clone()))
 }
 
 pub fn is_rt_function(name: String) -> bool {
