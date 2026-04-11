@@ -5093,48 +5093,7 @@ service test.Api {
     );
 }
 
-// ── BRIDGE 2a: auth_source prunes auth_input from signature ─────────────
-#[test]
-fn auth_source_prunes_auth_input_param() {
-    let source = r#"module prune
 
-import std.types { AuthScheme }
-import std.credentials { CredentialSource }
-
-service test.Api {
-  config {
-    endpoint: "https://api.example.com"
-    auth: Bearer
-    auth_input: api_key
-    auth_source: EnvVar { name: "MY_TOKEN" }
-  }
-  operation GetData {
-    input { api_key: Secret, query: String }
-    output { data: String }
-    transport rest { method: GET, path: "/data" }
-    response {
-      200 => String
-    }
-    mock_response {
-      200 => "ok" "data"
-    }
-  }
-}
-"#;
-    let result = compile_dag_target(source, RenderTarget::Rust);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/prune.rs");
-    // api_key should NOT appear as a parameter in the method signature
-    assert!(
-        content.contains("fn get_data(&self, query: String)") || content.contains("fn get_data(&self, query: "),
-        "BRIDGE 2a: expected api_key pruned from signature, got:\n{content}"
-    );
-    // self.auth_token should still be used
-    assert!(
-        content.contains("self.auth_token"),
-        "BRIDGE 2a: expected self.auth_token used for auth, got:\n{content}"
-    );
-}
 
 // ── RE-2: review.dag compiles to Rust ───────────────────────────────────
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.

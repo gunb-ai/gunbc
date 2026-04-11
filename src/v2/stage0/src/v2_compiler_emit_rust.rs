@@ -4087,7 +4087,7 @@ pub fn emit_service_impl(name: &String, transport: &Rc<Node>, op_children: &Rc<V
     {
         let depth = 0;
 let new_method = emit_service_new_method(name.clone(), &transport, op_children.clone(), &service_item, &env.source_index.clone());
-let method_strs = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_operation_method(name.clone(), transport.clone(), &op_node, &registry, (depth.clone() + 1), &shared_types, &env, &service_item)); } __result });
+let method_strs = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_operation_method(name.clone(), transport.clone(), &op_node, &registry, (depth.clone() + 1), &shared_types, &env, service_item.clone())); } __result });
 let all_methods = v2_rt::concat(Rc::new(vec![new_method]), method_strs);
 let methods_str = all_methods.join(&"\n\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("impl ".to_string(), name.clone()), " {\n".to_string()), make_indent((depth.clone() + 1))), methods_str), "\n}".to_string())
@@ -4191,23 +4191,10 @@ if ((names.clone().len() as i64) == 0) {
 }
 }
 
-pub fn emit_operation_method(service_name: String, transport: Rc<Node>, op_node: &Rc<Node>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, shared_types: &Rc<HashMap<String, bool>>, env: &Rc<TypeEnv>, service_item: &Rc<Node>) -> String {
+pub fn emit_operation_method(service_name: String, transport: Rc<Node>, op_node: &Rc<Node>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, shared_types: &Rc<HashMap<String, bool>>, env: &Rc<TypeEnv>, service_item: Rc<Node>) -> String {
     {
         let op_text = authored_name(env.clone(), op_node.clone());
-let has_auth_source = match service_config_auth_source(service_item.clone(), env.source_index.clone()) {
-    Some(_) => true,
-    None => false,
-};
-let auth_input_name = match service_config_auth_input(service_item.clone(), env.source_index.clone()) {
-    Some(ai) => expr_var_name_at(ai.clone(), env.source_index.clone()),
-    None => "".to_string(),
-};
-let visible_params = if (has_auth_source && (auth_input_name.clone().as_str() != "".to_string().as_str())) {
-            Rc::new({ let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { if (param_node_name_at(p.clone(), env.source_index.clone()).as_str() != auth_input_name.clone().as_str()) { __result.push(p); } } __result })
-        } else {
-            op_node.params.clone()
-        };
-let input_params = Rc::new({ let mut __result = Vec::new(); for p in visible_params.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Rust), rust_items().param_type_sep.clone()), emit_rust_param_type(&param_node_type_expr(&p), &shared_types, &env.source_index.clone()))); } __result });
+let input_params = Rc::new({ let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(param_node_name_at(p.clone(), env.source_index.clone()), RenderTarget::Rust), rust_items().param_type_sep.clone()), emit_rust_param_type(&param_node_type_expr(&p), &shared_types, &env.source_index.clone()))); } __result });
 let params_str = input_params.join(&", ".to_string());
 let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
             "&self".to_string()
@@ -4217,7 +4204,7 @@ let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
 let ret_type = render_rust_type(resolved_type(op_node.clone()), shared_types.clone(), env.source_index.clone());
 let eff_transport = effective_operation_transport(op_node.clone(), transport);
 let op_inferred = resolved_type(op_node.clone());
-let real_body = emit_transport_call(&eff_transport, op_text.clone(), registry.clone(), (depth.clone() + 2), op_inferred, service_item.clone(), op_node.clone(), &env.source_index.clone());
+let real_body = emit_transport_call(&eff_transport, op_text.clone(), registry.clone(), (depth.clone() + 2), op_inferred, service_item, op_node.clone(), &env.source_index.clone());
 let mock_props = Rc::new({ let mut __result = Vec::new(); for p in op_node.properties.clone().iter().cloned() { if has_mock_prefix(&field_init_node_name_at(p.clone(), env.source_index.clone())) { __result.push(p); } } __result });
 let dry_run_body = emit_dry_run_branch_from_props(&op_text, &resolved_type(op_node.clone()), &mock_props, registry.clone(), &env.source_index.clone());
 let body = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if self.dry_run.is_dry_run() {\n".to_string(), make_indent((depth.clone() + 2))), dry_run_body), "\n".to_string()), "} else {\n".to_string()), make_indent((depth.clone() + 2))), real_body), "\n".to_string()), "}".to_string());

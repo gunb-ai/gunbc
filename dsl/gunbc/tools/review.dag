@@ -21,10 +21,10 @@ import extdeps.shell
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: String = "*/10 * * * *"
-// Messages as JSON string: call arguments go through the general expression
-// emitter, not emit_simple_expr. The Json-typed param resolves the record to
-// LlmMessage which isn't in scope. Dissolves when the emitter handles
-// Json-typed arguments via serde_json::json! instead of struct construction.
+// BRIDGE: messages should be [{ role: "user", content: "..." }] (Json array),
+// but emit_simple_expr cannot render list/record literals in transport bodies.
+// Passed as a JSON-encoded string; the emitter coerces via serde_json::from_str.
+// Dissolves when emit_simple_expr handles ExprListLit/ExprRecordLit.
 data review_messages: String = "[{\"role\": \"user\", \"content\": \"Review the PR described in the system prompt.\"}]"
 
 // -- Pure functions ---------------------------------------------------
@@ -80,6 +80,7 @@ func review_pr(
 
   // Step 1: Get PR metadata
   pr = github.Pulls.Get(
+    auth_token: "",
     owner: owner,
     repo: repo,
     pull_number: pr_number
@@ -87,6 +88,7 @@ func review_pr(
 
   // Step 2: Dedup -- check if already reviewed at this SHA (idempotent guard)
   existing = github.Pulls.ListReviews(
+    auth_token: "",
     owner: owner,
     repo: repo,
     pull_number: pr_number
@@ -95,6 +97,7 @@ func review_pr(
 
   // Step 3: Fetch context (parallel)
   diff = github.Pulls.Diff(
+    auth_token: "",
     owner: owner,
     repo: repo,
     pull_number: pr_number
@@ -123,6 +126,7 @@ func review_pr(
     diff: diff.diff
   )
   llm_response = llm.Anthropic.Messages(
+    api_key: "",
     model: model,
     messages: review_messages,
     max_tokens: 8192,
@@ -132,6 +136,7 @@ func review_pr(
 
   // Step 5: Post review via GitHub API (idempotent: guarded by step 2)
   posted = github.Pulls.CreateReview(
+    auth_token: "",
     owner: owner,
     repo: repo,
     pull_number: pr_number,
@@ -164,6 +169,7 @@ func review_cycle(
 
   // List open PRs
   open_prs = github.Pulls.List(
+    auth_token: "",
     owner: owner,
     repo: repo,
     state: "open"

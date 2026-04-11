@@ -4030,17 +4030,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>, source_index: NewlineInd
 
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Map<String, Bool>, env: TypeEnv, service_item: Node) -> String {
   let op_text = authored_name(env: env, node: op_node)
-  // RE follow-up #10: when auth_source is declared, prune auth_input param
-  // from the operation signature — credential comes from self.auth_token.
-  let has_auth_source = match service_config_auth_source(n: service_item, source_index: env.source_index) { Some { value: _ } => true  None => false }
-  let auth_input_name = match service_config_auth_input(n: service_item, source_index: env.source_index) {
-    Some { value: ai } => expr_var_name_at(texpr: ai, source_index: env.source_index)
-    None => ""
-  }
-  let visible_params = if has_auth_source && auth_input_name != "" {
-    op_node.params |> filter(p => param_node_name_at(n: p, source_index: env.source_index) != auth_input_name)
-  } else { op_node.params }
-  let input_params = visible_params |> map(p =>
+  let input_params = op_node.params |> map(p =>
     concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_index: env.source_index))
   )
   let params_str = input_params |> join(separator: ", ")
