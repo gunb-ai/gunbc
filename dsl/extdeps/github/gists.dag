@@ -32,7 +32,7 @@ type Gist {
   owner: GitHubUser
   created_at: Timestamp
   updated_at: Timestamp
-  url: String
+  html_url: Url
 }
 
 // -- Service: REST transport wiring ------------------------------
