@@ -204,7 +204,7 @@ Stream B (ownership)    O1→O2→O3→O4→O5            │  (independent)
 Stream C (std/)         C1  S8 ───────────────────┘
                         (both feed into CX consumer)
 
-Stream D (structural parser)    P1 ────────────────── (independent, Lane A files)
+Stream D (structural parser)    P1 ────────────────── (parser/tokenizer independent; rename overlaps A/C)
 ```
 
 **Stream A: Provenance pipeline** (04_infer.dag, 04_env.dag, complexity.dag)
@@ -223,12 +223,15 @@ C1 (direct SubValueRelation→LoweringTarget) and S8 (lattice
 inhabitant declarations). Both small, both unblocked. C1 enables
 better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
 
-**Stream D: Structural parser** (02_parse.dag, 01_tokenize.dag)
+**Stream D: Structural parser** (02_parse.dag, 01_tokenize.dag, compile.dag)
 Restructure parser from integer position indexing to list consumption.
 Eliminates 154 CX violations by construction — no new concepts needed.
 Also renames SubValueRelation → ProgressRelation (honest name).
 Design complete: [src/v2/parser-design.md](src/v2/parser-design.md).
-**Fully independent** — touches only parser/tokenizer files.
+Parser/tokenizer restructuring is independent of other streams.
+The ProgressRelation rename touches Stream A/C files (induction.dag,
+computation.dag, 04_env.dag, 04_infer.dag, complexity.dag) — sequence
+the rename after or atomic with any in-flight Stream A work.
 
 ### CX violation audit (421 violations, 2026-04-11)
 
