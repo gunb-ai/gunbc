@@ -116,8 +116,11 @@ mod compiler_tests {
             "dsl/gunbc/auth/credentials.dag",
             "dsl/gunbc/tools/gist.dag",
             "dsl/std/algebra.dag",
+            "dsl/std/encoding.dag",
             "dsl/std/errors.dag",
+            "dsl/std/filesystem.dag",
             "dsl/std/resources.dag",
+            "dsl/std/serialization.dag",
             "dsl/std/types.dag",
         ];
         let root = workspace_root();
