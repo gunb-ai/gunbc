@@ -7376,9 +7376,9 @@ fn ownership_stage0_census() {
     eprintln!("  clones/line:            {:.3}", total_clones as f64 / total_lines as f64);
 
     // 2026-04-10 baseline: 23969 clones (+144 _at accessor migration, +38 per-file resolve indices)
-    // 2026-04-10: +25 from S6 lambda_param_provenance field on InferScope
-    // (new field propagated through all scope construction sites).
-    const CLONE_RATCHET: usize = 23994;
+    // 2026-04-10: +31 from S6 lambda_param_provenance field on InferScope
+    // and body_scope clearing in ExprLambda handler.
+    const CLONE_RATCHET: usize = 24000;
     const TRY_UNWRAP_RATCHET: usize = 8;
 
     assert!(total_clones <= CLONE_RATCHET, ".clone() {} > ratchet {}", total_clones, CLONE_RATCHET);
