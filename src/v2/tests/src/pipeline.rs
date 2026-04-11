@@ -68,7 +68,7 @@ fn full_dsl_compiles() {
                 .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
             let result =
                 v2_compiler::v2_compiler_parse::parse(v2_compiler::v2_compiler_tokenize::tokenize(
-                    content,
+                    &content,
                     path.to_string_lossy().to_string(),
                 ), None);
             if let Some(ref err) = result.error {
@@ -957,13 +957,13 @@ fn compile_dag_with_complexity(source: &str) -> Rc<v2_compiler::v2_compiler_comp
     let sources = resolve_imports_transitively("test.dag", source);
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph);
+    let norm = normalize_graph(&graph);
     let source_indices = Rc::new(HashMap::new());
     let typed = reconcile(norm.graph.clone(), source_indices);
 
     let func_entries = extract_func_entries(typed.clone());
     let recursion_ctx = build_recursion_context(typed);
-    build_complexity_report(func_entries, recursion_ctx)
+    build_complexity_report(&func_entries, recursion_ctx)
 }
 
 #[test]
@@ -1780,7 +1780,7 @@ fn diag_parser_scc_edges() {
     let sources = crate::helpers::resolve_imports_transitively("src/v2/02_parse.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph);
+    let norm = normalize_graph(&graph);
     let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
     let func_entries = extract_func_entries(typed);
 
@@ -1788,7 +1788,7 @@ fn diag_parser_scc_edges() {
         func_entries.iter().cloned().map(|e| (e.name.clone(), e)).collect();
     let func_index_rc = Rc::new(func_index);
 
-    let scc_result = build_scc_index(func_entries, func_index_rc.clone(), None);
+    let scc_result = build_scc_index(&func_entries, func_index_rc.clone(), &None);
 
     // Find the large parser SCC (the one containing parse_type_expr)
     let scc_info = scc_result.index.get("parse_type_expr")
@@ -1799,10 +1799,10 @@ fn diag_parser_scc_edges() {
     let scc_name_set: HashMap<String, bool> = scc_info.members.iter()
         .cloned().map(|n| (n, true)).collect();
     let edges = collect_parser_edges_for_scc(
-        scc_info.members.clone(),
-        func_index_rc.clone(),
+        &scc_info.members,
+        &func_index_rc,
         Rc::new(scc_name_set),
-        None,
+        &None,
     );
 
     eprintln!("Total edges: {}", edges.len());
@@ -1835,7 +1835,7 @@ fn diag_parser_scc_edges() {
     }
 
     let has_cycle = same_progress_subgraph_has_cycle(
-        scc_info.members.clone(), edges.clone(),
+        &scc_info.members, edges.clone(),
     );
     eprintln!("\n  Same-subgraph has cycle: {}", has_cycle);
 }
@@ -1857,7 +1857,7 @@ fn diag_parse_node_decl_env() {
     let sources = crate::helpers::resolve_imports_transitively("src/v2/02_parse.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph);
+    let norm = normalize_graph(&graph);
     let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
     let func_entries = extract_func_entries(typed.clone());
 
@@ -1870,14 +1870,14 @@ fn diag_parse_node_decl_env() {
 
     // Build parser_always_advancing exactly as the SCC analysis does
     let parser_always_advancing = infer_parser_always_advancing_members(
-        parser_function_names(func_index_rc.clone(), None),
-        func_index_rc.clone(),
-        None,
+        &parser_function_names(&func_index_rc, None),
+        &func_index_rc,
+        &None,
     );
 
     // Build scc_name_set for the parser SCC containing parse_node_decl
     use v2_compiler::v2_compiler_complexity::build_scc_index;
-    let scc_result = build_scc_index(func_entries.clone(), func_index_rc.clone(), None);
+    let scc_result = build_scc_index(&func_entries, func_index_rc.clone(), &None);
     let scc_info = scc_result.index.get("parse_node_decl")
         .expect("parse_node_decl must be in SCC index");
     let scc_name_set: Rc<HashMap<String, bool>> = Rc::new(
@@ -1890,14 +1890,14 @@ fn diag_parse_node_decl_env() {
 
     // Call exactly what the SCC analysis calls
     let edges = collect_parser_progress_edges(
-        "parse_node_decl".to_string(),
-        pnd.body.clone(),
-        state_param.clone(),
-        scc_name_set.clone(),
-        empty_parser_progress_env(),
-        parser_always_advancing.clone(),
-        Rc::new(HashMap::new()),
-        None,
+        &"parse_node_decl".to_string(),
+        &pnd.body,
+        &state_param,
+        &scc_name_set,
+        &empty_parser_progress_env(),
+        &parser_always_advancing,
+        &Rc::new(HashMap::new()),
+        &None,
     );
 
     eprintln!("Edges from collect_parser_progress_edges: {}", edges.len());
@@ -4113,7 +4113,7 @@ type Bar<K, V> {
 
 fn test_leaf_node(name: &str) -> Rc<v2_compiler::v2_std_core::Node> {
     use v2_compiler::v2_std_core::{leaf_node_with_span, SourceSpan};
-    leaf_node_with_span(name.to_string(), Rc::new(SourceSpan { file: "test".to_string(), start: 0, end: 0 }))
+    leaf_node_with_span(&name.to_string(), &Rc::new(SourceSpan { file: "test".to_string(), start: 0, end: 0 }))
 }
 
 #[test]
@@ -4123,7 +4123,7 @@ fn type_rendering_bare_list_not_map() {
     let list_node = test_leaf_node("List");
     let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
 
-    let rendered = render_node_type(list_node, RenderTarget::Rust, shared_types, None);
+    let rendered = render_node_type(&list_node, &RenderTarget::Rust, &shared_types, &None);
 
     assert!(rendered.contains("Vec"), "bare List rendered as {:?}, expected Vec<_>", rendered);
     assert!(!rendered.contains("HashMap"), "bare List incorrectly rendered as HashMap: {:?}", rendered);
@@ -4136,7 +4136,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     let map_node = test_leaf_node("Map");
     let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
 
-    let rendered = render_node_type(map_node, RenderTarget::Rust, shared_types, None);
+    let rendered = render_node_type(&map_node, &RenderTarget::Rust, &shared_types, &None);
 
     assert!(rendered.contains("HashMap"), "bare Map rendered as {:?}, expected HashMap<_, _>", rendered);
 }
@@ -4154,7 +4154,7 @@ fn type_rendering_named_conj_with_container_template() {
     });
     let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
 
-    let rendered = render_node_type(free_monoid_conj, RenderTarget::Rust, shared_types, None);
+    let rendered = render_node_type(&free_monoid_conj, &RenderTarget::Rust, &shared_types, &None);
 
     assert!(rendered.contains("Vec"), "FreeMonoid Conj rendered as {:?}, expected Vec<_> via container template", rendered);
     assert!(!rendered.contains("FreeMonoid"), "FreeMonoid Conj rendered bare name instead of container template: {:?}", rendered);
@@ -4200,7 +4200,7 @@ fn apply_named_template_does_not_rescan_substituted_values() {
     let mut bindings = HashMap::new();
     bindings.insert("recv".to_string(), "expr_with_{arg}_literal".to_string());
     bindings.insert("arg".to_string(), "sep".to_string());
-    let result = apply_named_template(template, Rc::new(bindings));
+    let result = apply_named_template(template, &Rc::new(bindings));
 
     assert_eq!(
         result, "expr_with_{arg}_literal.join(&sep)",
@@ -4217,7 +4217,7 @@ fn apply_named_template_arg_value_containing_recv_placeholder() {
     let mut bindings = HashMap::new();
     bindings.insert("recv".to_string(), "receiver".to_string());
     bindings.insert("arg".to_string(), "has_{recv}_inside".to_string());
-    let result = apply_named_template(template, Rc::new(bindings));
+    let result = apply_named_template(template, &Rc::new(bindings));
 
     assert_eq!(
         result, "receiver.call(has_{recv}_inside)",
@@ -6987,7 +6987,7 @@ fn diag_render_node_type_evidence() {
     let sources = crate::helpers::resolve_imports_transitively("src/v2/05_emit.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph);
+    let norm = normalize_graph(&graph);
     let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
     let func_entries = extract_func_entries(typed.clone());
 
@@ -7039,7 +7039,7 @@ fn diag_emitter_scc() {
     let sources = crate::helpers::resolve_imports_transitively("src/v2/05_emit_rust.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph);
+    let norm = normalize_graph(&graph);
     let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
     let func_entries = extract_func_entries(typed.clone());
 
@@ -7049,9 +7049,9 @@ fn diag_emitter_scc() {
     let func_index = Rc::new(func_index);
 
     let scc_result = build_scc_index(
-        Rc::new(func_entries.to_vec()),
+        &Rc::new(func_entries.to_vec()),
         func_index.clone(),
-        None,
+        &None,
     );
 
     // Find the SCC containing emit_typed_expr
@@ -7065,10 +7065,10 @@ fn diag_emitter_scc() {
 
         // Collect CX-L2 tree edges
         let edges = collect_scc_cx_l2_tree_edges(
-            info.members.clone(),
-            func_index.clone(),
+            &info.members,
+            &func_index,
             Rc::new(info.member_set.as_ref().clone()),
-            None,
+            &None,
         );
         eprintln!("\n  CX-L2 tree edges ({}):", edges.len());
         for e in edges.iter() {
@@ -7361,10 +7361,12 @@ fn process(data: List<Int>) -> List<Int> {
     // map_evidence_merge_at) add 5 clones from new code transitively
     // compiled via std.types→std.termination; not a regression in
     // existing code — these are new function bodies with new bindings.
+    // 2026-04-11: 45→40 — borrow propagation (O6-O9) eliminates 5
+    // movable-but-cloned violations where params are now borrowed.
 
-    const MOVABLE_CLONED_RATCHET: usize = 45;
+    const MOVABLE_CLONED_RATCHET: usize = 40;
     const TRY_UNWRAP_RATCHET: usize = 0;
-    const TOTAL_RATCHET: usize = 45;
+    const TOTAL_RATCHET: usize = 40;
 
     assert!(
         movable_but_cloned <= MOVABLE_CLONED_RATCHET,
@@ -7375,6 +7377,78 @@ fn process(data: List<Int>) -> List<Int> {
         "try_unwrap_fallbacks {} > ratchet {}", try_unwrap_fallbacks, TRY_UNWRAP_RATCHET,
     );
     assert!(total <= TOTAL_RATCHET, "total violations {} > ratchet {}", total, TOTAL_RATCHET);
+}
+
+// ── Borrow propagation behavioral tests ──────────────────────────────────
+
+/// Read-only Rc-wrapped param emits as &Rc<T>, call site emits &x.
+#[test]
+fn borrow_read_only_rc_param() {
+    let source = r#"
+module bp_rc
+import std.types { List }
+
+fn count_twice(items: List<Int>) -> Int {
+  let a = items |> count
+  let b = items |> count
+  a + b
+}
+
+fn caller(data: List<Int>) -> Int {
+  count_twice(items: data)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/bp_rc.rs");
+    // Param should be borrowed
+    assert!(content.contains("items: &Rc<Vec"), "read-only Rc param should be &Rc<Vec<...>>:\n{}", content);
+    // Call site should pass &
+    assert!(content.contains("&data") || content.contains("& data"),
+        "call site should pass &data, not data.clone():\n{}", content);
+}
+
+/// Consumed param stays owned (not borrowed).
+#[test]
+fn consumed_param_stays_owned() {
+    let source = r#"
+module bp_consumed
+import std.types { List }
+
+fn take_and_return(items: List<Int>) -> List<Int> {
+  items
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/bp_consumed.rs");
+    // Param should NOT be borrowed — it's consumed (returned)
+    assert!(!content.contains("items: &Rc<Vec"),
+        "consumed param must stay owned, not borrowed:\n{}", content);
+}
+
+/// TCO-eligible functions do not borrow params (they use mut).
+#[test]
+fn tco_params_not_borrowed() {
+    let source = r#"
+module bp_tco
+import std.types { List }
+
+fn sum_rec(items: List<Int>, acc: Int) -> Int {
+  match items |> first {
+    Some { value: x } => sum_rec(items: items |> skip(1), acc: acc + x)
+    None => acc
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/bp_tco.rs");
+    // TCO params should be mut, not borrowed
+    assert!(content.contains("mut items") || content.contains("mut acc"),
+        "TCO function params should be mut:\n{}", content);
+    assert!(!content.contains("items: &Rc") && !content.contains("acc: &"),
+        "TCO params must not be borrowed:\n{}", content);
 }
 
 // ── Stage0 clone census (gross metric, context for violations) ──────────
@@ -7443,12 +7517,14 @@ fn ownership_stage0_census() {
     // 2026-04-10 baseline: 23969 clones (+144 _at accessor migration, +38 per-file resolve indices)
     // 2026-04-10: +31 from S6 lambda_param_provenance field on InferScope
     // and body_scope clearing in ExprLambda handler.
+    // 2026-04-11: 24000→21000 — Stream B Layer 3 borrow propagation (O6-O9)
+    // eliminates ~535 Rc-wrapped clones at call sites + prior reductions.
     //
     // Tolerance: ±1% to absorb CI vs local codegen differences (different
     // Rust versions, optimization flags, or platform-specific clone patterns).
     // The ratchet catches real regressions (hundreds of clones) not noise.
-    const CLONE_RATCHET: usize = 24000;
-    const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100;  // 1% = ~240
+    const CLONE_RATCHET: usize = 21000;
+    const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100;  // 1% = ~210
     const TRY_UNWRAP_RATCHET: usize = 8;
 
     assert!(total_clones <= CLONE_RATCHET + CLONE_TOLERANCE,

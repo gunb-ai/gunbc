@@ -4674,7 +4674,9 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     variant_to_enum: vtoe,
     owned_bindings: empty_map(),
     fold_eligible_index: empty_map(),
-    fold_eligible: empty_map()
+    fold_eligible: empty_map(),
+    read_only_params_index: empty_map(),
+    read_only_params: empty_map()
   }
 }
 

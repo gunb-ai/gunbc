@@ -35,7 +35,7 @@ import v2.std.core {
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn, ExprLambda, ExprForEach,
   ExprRecordLit,
-  VarBindingKind, LocalValueBinding,
+  VarBindingKind, LocalValueBinding, FunctionValueBinding,
   InferredNode, Resolved,
   Cardinality, Required,
   arg_value, arm_body,
@@ -403,6 +403,96 @@ fn build_movable_set(proof: OwnershipProof) -> Map<String, Bool> {
   proof.bindings |> map_values
     |> filter(usage => binding_fan_out(usage: usage) == 1 && is_owned_local(kind: usage.binding_kind))
     |> fold(init: empty_map(), f: (acc, usage) => map_insert(acc, usage.name, true))
+}
+
+// Read-only params: function parameters where all usage edges are
+// Read/Projected/Threaded (no Consumed). These can be passed by borrow
+// (&Rc<T>) instead of owned (Rc<T>), eliminating clone at each call site.
+// Fan-out=1 params are excluded — they're already movable (zero cost).
+// param_names restricts to actual function parameters (VarBindingKind
+// doesn't distinguish params from let-bindings).
+fn build_read_only_params(proof: OwnershipProof, param_names: Map<String, Bool>) -> Map<String, Bool> {
+  proof.bindings |> map_values
+    |> filter(usage =>
+      map_contains_key(param_names, usage.name)
+      && is_owned_local(kind: usage.binding_kind)
+      && binding_fan_out(usage: usage) > 1
+      && usage.consumers |> all(c => match c.kind { Read => true, Projected => true, Threaded => true, _ => false })
+    )
+    |> fold(init: empty_map(), f: (acc, usage) => map_insert(acc, usage.name, true))
+}
+
+// =========================================================================
+// Callable reference collection — which functions are passed as values?
+//
+// A function used as a first-class callable (passed as an argument to a
+// HOF) cannot have its params borrowed, because borrowing changes the
+// function's signature and breaks the callable type match.
+//
+// Walk all expression trees and collect names of ExprVar nodes with
+// FunctionValueBinding — these are functions referenced as values.
+// =========================================================================
+
+fn collect_callable_refs(texpr: Node, si: NewlineIndex?) -> Map<String, Bool> {
+  match texpr.expr_data {
+    ExprVar { binding_kind: bk } =>
+      match bk {
+        Some { value: FunctionValueBinding } =>
+          let n = expr_var_name_at(texpr: texpr, source_index: si)
+          map_insert(empty_map(), n, true)
+        _ => empty_map()
+      }
+    ExprLiteral { value: _ } => empty_map()
+    ExprFieldAccess =>
+      collect_callable_refs(texpr: field_access_base(texpr: texpr), si: si)
+    ExprCall =>
+      texpr.children |> fold(init: empty_map(), f: (acc, a) =>
+        map_merge(acc, collect_callable_refs(texpr: arg_value(n: a), si: si))
+      )
+    ExprMethodCall { method_semantics: _ } =>
+      let recv = collect_callable_refs(texpr: method_receiver(texpr: texpr), si: si)
+      method_arg_nodes(texpr: texpr) |> fold(init: recv, f: (acc, a) =>
+        map_merge(acc, collect_callable_refs(texpr: arg_value(n: a), si: si))
+      )
+    ExprIf =>
+      let cond = collect_callable_refs(texpr: if_condition(texpr: texpr), si: si)
+      let then_br = collect_callable_refs(texpr: if_then_branch(texpr: texpr), si: si)
+      let else_br = match if_else_branch(texpr: texpr) {
+        Some { value: eb } => collect_callable_refs(texpr: eb, si: si)
+        None => empty_map()
+      }
+      map_merge(map_merge(cond, then_br), else_br)
+    ExprMatch =>
+      let scrut = collect_callable_refs(texpr: match_scrutinee(texpr: texpr), si: si)
+      match_arm_nodes(texpr: texpr) |> fold(init: scrut, f: (acc, arm) =>
+        map_merge(acc, collect_callable_refs(texpr: arm_body(arm: arm), si: si))
+      )
+    ExprLet =>
+      let val = collect_callable_refs(texpr: let_value(texpr: texpr), si: si)
+      match let_body(texpr: texpr) {
+        Some { value: lb } => map_merge(val, collect_callable_refs(texpr: lb, si: si))
+        None => val
+      }
+    ExprBlock =>
+      texpr.children |> fold(init: empty_map(), f: (acc, child) =>
+        map_merge(acc, collect_callable_refs(texpr: child, si: si))
+      )
+    ExprReturn =>
+      match texpr.children |> first {
+        Some { value: child } => collect_callable_refs(texpr: child, si: si)
+        None => empty_map()
+      }
+    ExprLambda { semantics: _ } =>
+      collect_callable_refs(texpr: lambda_body(texpr: texpr), si: si)
+    ExprForEach =>
+      let col = collect_callable_refs(texpr: foreach_collection(texpr: texpr), si: si)
+      map_merge(col, collect_callable_refs(texpr: foreach_body(texpr: texpr), si: si))
+    ExprRecordLit =>
+      texpr.children |> fold(init: empty_map(), f: (acc, field) =>
+        map_merge(acc, collect_callable_refs(texpr: arg_value(n: field), si: si))
+      )
+    _ => empty_map()
+  }
 }
 
 // =========================================================================

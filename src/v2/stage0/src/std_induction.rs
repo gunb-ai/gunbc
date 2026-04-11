@@ -335,7 +335,7 @@ pub fn cost_log(param: String) -> Rc<CostBound> {
 })
 }
 
-pub fn cost_nlogn(param: String) -> Rc<CostBound> {
+pub fn cost_nlogn(param: &String) -> Rc<CostBound> {
     Rc::new(CostBound::ProductBound {
     factors: Rc::new(vec![Rc::new(AtomicCost::PolyCost {
     param: param.clone(),
@@ -405,7 +405,7 @@ continue;
 }
 }
 
-pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
+pub fn master_theorem(form: &Rc<RecurrenceForm>) -> Rc<CostBound> {
     {
         let a = form.branches.clone();
 let b = form.divisor.clone();
@@ -472,7 +472,7 @@ pub fn derive_bound(param: String, branches: i64, factor: Rc<ShrinkFactor>, work
     } else {
         Rc::new(CostBound::ForeverBound)
     },
-    ShrinkFactor::ProportionalShrink { divisor: d, .. } => master_theorem(Rc::new(RecurrenceForm {
+    ShrinkFactor::ProportionalShrink { divisor: d, .. } => master_theorem(&Rc::new(RecurrenceForm {
     param: param,
     branches: branches,
     divisor: d.clone(),

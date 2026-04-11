@@ -117,6 +117,8 @@ pub struct SharingStrategy {
     pub field_clone: String,
     pub iter_owned: String,
     pub clone_suffix: String,
+    pub borrow_param_template: String,
+    pub borrow_arg_template: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -297,6 +299,8 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     field_clone: "{0}.{1}.clone()".to_string(),
     iter_owned: "{0}.iter().cloned()".to_string(),
     clone_suffix: ".cloned()".to_string(),
+    borrow_param_template: "&{0}".to_string(),
+    borrow_arg_template: "&{0}".to_string(),
 }),
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[({1}) as usize].clone()".to_string(),
@@ -408,6 +412,8 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     field_clone: "{0}.{1}".to_string(),
     iter_owned: "{0}".to_string(),
     clone_suffix: "".to_string(),
+    borrow_param_template: "{0}".to_string(),
+    borrow_arg_template: "{0}".to_string(),
 }),
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[{1}]".to_string(),
@@ -519,6 +525,8 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     field_clone: "{0}.{1}".to_string(),
     iter_owned: "{0}".to_string(),
     clone_suffix: "".to_string(),
+    borrow_param_template: "{0}".to_string(),
+    borrow_arg_template: "{0}".to_string(),
 }),
     indexing: Rc::new(IndexingSemantics {
     list_index: "{0}[{1}]".to_string(),

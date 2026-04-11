@@ -102,6 +102,12 @@ type EmitGraphInfo {
   fold_eligible_index: Map<String, Map<String, Bool>>
   // Current function's eligible fold accumulator types. Set by emit_typed_item.
   fold_eligible: Map<String, Bool>
+  // Per-function read-only params: func_name → (param_name → true).
+  // A param is read-only when all usage edges are Read/Projected/Threaded
+  // (no Consumed) and fan-out > 1. These can be passed by borrow (&Rc<T>).
+  read_only_params_index: Map<String, Map<String, Bool>>
+  // Current function's read-only params. Set by emit_typed_item.
+  read_only_params: Map<String, Bool>
 }
 
 type EmitInfoBuildState {
@@ -123,7 +129,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     variant_to_enum: empty_map(),
     owned_bindings: empty_map(),
     fold_eligible_index: empty_map(),
-    fold_eligible: empty_map()
+    fold_eligible: empty_map(),
+    read_only_params_index: empty_map(),
+    read_only_params: empty_map()
   }
 }
 
