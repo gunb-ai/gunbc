@@ -45,7 +45,7 @@ import v2.std.core {
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
   transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin,
-  service_config_auth, service_config_auth_input, service_config_auth_source,
+  service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint,
   expr_has_self_call, expr_has_non_tail_self_call,
   field_access_base, foreach_variable_at,
   expr_method_name_at, let_binding_name_at,
@@ -224,6 +224,38 @@ fn rust_serde_tag_attr() -> String {
   match serialization_for_target(target: Rust).tag_attribute {
     Some { value: attr } => attr
     None => emit_error_expr(message: "missing serde tag_attribute for Rust", target: Rust)
+  }
+}
+
+// Resolve serde enum attribute from a module-level wire_contract data item.
+// Reads WireContract.variant_encoding to determine the serde attribute:
+//   StringVariant { naming: AsAuthored } → "" (serde default: unit variants as strings)
+//   StringVariant { naming: SnakeCase }  → #[serde(rename_all = "snake_case")]
+//   TaggedVariant                        → #[serde(tag = "_variant")] (default)
+fn resolve_wire_serde_tag(wire_item: Node, source_index: NewlineIndex?) -> String {
+  // wire_item body is a VariantEncoding value directly (StringVariant or TaggedVariant)
+  match wire_item.body {
+    Some { value: ve } =>
+      // StringVariant has children (naming field); TaggedVariant is a unit variant
+      if ve.children |> count > 0 {
+        // StringVariant { naming: ... } — check naming field
+        let naming_field = ve.children |> filter(fi => field_init_node_name_at(n: fi, source_index: source_index) == "naming") |> first
+        match naming_field {
+          Some { value: nf } =>
+            let nv = field_init_node_value(n: nf)
+            // SnakeCase has no children (unit variant). Distinguish by checking
+            // if the naming value has a non-empty name that isn't the first variant.
+            // AsAuthored is the first variant of VariantNaming (index 0).
+            // SnakeCase is the second (index 1). Check structural identity.
+            if nv.name == "SnakeCase" { "#[serde(rename_all = \"snake_case\")]" }
+            else { "" }  // AsAuthored: no serde attribute needed
+          None => ""  // StringVariant without naming → AsAuthored default
+        }
+      } else {
+        // TaggedVariant (unit variant, no children) → default tag
+        rust_serde_tag_attr()
+      }
+    None => rust_serde_tag_attr()
   }
 }
 
@@ -613,8 +645,11 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     |> map(item => concat("use ", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
+  // Wire contract: find the module's wire_contract data item (if any)
+  // and pass it to each item for per-enum resolution. No collapse to string.
+  let wire_contract_item = typed_module.items |> filter(i => i.name == "wire_contract") |> first
   let items_str = typed_module.items
-    |> map(item => emit_typed_item(item: item, registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info))
+    |> map(item => emit_typed_item(item: item, registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item))
     |> join(separator: "\n\n")
   let raw_filename = module_to_filename(name: m.name)
   // Avoid collision with the CLI entry point (src/main.rs)
@@ -792,12 +827,12 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, wire_contract_item: Node?) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
   // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
-    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info)
+    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item)
   } else if is_type_alias_item(item: item, source_index: env.source_index) {
     concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_index: env.source_index), ";")
   } else if is_type_decl_item(item: item, source_index: env.source_index) {
@@ -881,14 +916,19 @@ fn emit_type_params(params: List<Node>, source_index: NewlineIndex?) -> String {
   }
 }
 
-fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?) -> String {
   let type_params = emit_type_params(params: item.params, source_index: env.source_index)
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
   if is_product {
     emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   } else {
-    emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env)
+    // Resolve serde tag per-enum from the module's wire contract data item
+    let serde_enum_tag = match wire_contract_item {
+      Some { value: wc } => resolve_wire_serde_tag(wire_item: wc, source_index: env.source_index)
+      None => rust_serde_tag_attr()
+    }
+    emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_enum_tag: serde_enum_tag)
   }
 }
 
@@ -955,7 +995,15 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
     }
     None => ""
   }
-  concat(rename_attr, "    ", rust_visibility_prefix(), emit_ident(name: authored_name(env: env, node: child), target: Rust), ": ", final_ty, ",")
+  // Reserved keywords: emit_ident adds r# prefix, but serde needs a rename
+  // to match the original JSON key (e.g., "ref" → r#ref needs #[serde(rename = "ref")])
+  let authored = authored_name(env: env, node: child)
+  let snake = to_snake(name: authored)
+  let is_reserved = language_spec(target: Rust).reserved_words.keywords |> any(r => r == snake)
+  let keyword_rename = if is_reserved && rename_attr == "" {
+    concat("    #[serde(rename = \"", snake, "\")]\n")
+  } else { "" }
+  concat(keyword_rename, rename_attr, "    ", rust_visibility_prefix(), emit_ident(name: authored, target: Rust), ": ", final_ty, ",")
 }
 
 fn enum_derives(children: List<Node>) -> String {
@@ -968,11 +1016,14 @@ fn enum_derives(children: List<Node>) -> String {
   }
 }
 
-fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
+fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, serde_enum_tag: String) -> String {
   let derives = enum_derives(children: children)
   let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, shared_types: shared_types, env: env))
   let variants_str = variant_lines |> join(separator: "\n")
-  let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
+  // Wire contract: serde_enum_tag is "" for StringVariant/AsAuthored,
+  // a rename_all attribute for SnakeCase, or the default _variant tag.
+  let tag_line = if serde_enum_tag == "" { "" } else { concat(serde_enum_tag, "\n") }
+  let enum_def = concat(derives, "\n", tag_line, rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   // Generate accessor methods for shared fields (fields present in ALL variants).
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env)
   if accessor_impl == "" { enum_def }
@@ -3829,8 +3880,16 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
   let has_svc_auth = match service_config_auth_source(n: service_item, source_index: source_index) { Some { value: _ } => true  None => false }
   let fs = if has_svc_auth { ServiceFieldSet { has_rest: fs.has_rest, has_shell: fs.has_shell, has_file: fs.has_file, has_auth: true } }
   else { fs }
-  // Find a default base_url from the service-level REST transport or from any REST op
-  let base_url_default = if fs.has_rest {
+  // Find base_url: prefer service config endpoint, then transport base_url
+  let from_config = match service_config_endpoint(n: service_item, source_index: source_index) {
+    Some { value: ep } => match ep.expr_data {
+      ExprLiteral { value: LitStr { value: s } } => s
+      _ => ""
+    }
+    None => ""
+  }
+  let base_url_default = if from_config != "" { from_config }
+  else if fs.has_rest {
     let fallback_is_rest = is_rest_transport(t: fallback_transport, source_index: source_index)
     let from_fallback = if fallback_is_rest {
       match transport_base_url(t: fallback_transport, source_index: source_index) {
@@ -3933,17 +3992,56 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
 
 // Emit the dry-run branch for an operation method.
 // If mock data is available, use it. Otherwise, emit compile_error!().
+// For conjunctive output types (tuples), extract fields by name/from_key
+// from the mock JSON — matching the real path's extraction pattern.
 fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
-    // Use the first mock property body as the dry-run return value
     let first_mock = mock_props |> first
     match first_mock {
       Some { value: mp } => {
         let mock_json = emit_data_value_json(value: field_init_node_value(n: mp), source_index: source_index)
-        concat(log_line, "\n",
-          "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
-          "Ok(serde_json::from_value(mock_value)?)")
+        // Only use tuple extraction for anonymous conjunctions (no ident_span).
+        // Named conjunctions render as structs and serde_json::from_value works.
+        // Multi-field anonymous conjunctions are emitted as tuples.
+        // serde_json::from_value can't deserialize JSON objects into tuples,
+        // so we extract fields individually and construct the tuple.
+        // Single-field conjunctions (return type = field type) use from_value.
+        let is_multi_field_conj = inferred.connective == Conj && inferred.children |> count > 1
+        if is_multi_field_conj {
+          // Output is a conjunction (record → tuple). Extract fields from
+          // mock JSON using from_key paths (or field names as fallback),
+          // then construct the tuple. This mirrors emit_from_key_extraction.
+          let children = inferred.children
+          let extract_lines = children |> map(ch =>
+            let field_name = emit_ident(name: ch.name, target: Rust)
+            let from_path = match child_from_key(ch: ch, source_index: source_index) {
+              Some { value: p } => p
+              None => ch.name
+            }
+            let raw = match ch.inferred {
+              Some { value: Resolved { node: tn } } =>
+                emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: tn.name)
+              _ =>
+                concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch.name, "\");")
+            }
+            // Optional fields: wrap extracted value in Some()
+            match ch.return_cardinality {
+              CardOptional => "{raw}\nlet {field_name} = Some({field_name});"
+              _ => raw
+            }
+          )
+          let field_names = children |> map(ch => emit_ident(name: ch.name, target: Rust))
+          let result_body = concat("(", field_names |> join(separator: ", "), ")")
+          concat(log_line, "\n",
+            "let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
+            extract_lines |> join(separator: "\n"),
+            "\nOk(", result_body, ")")
+        } else {
+          concat(log_line, "\n",
+            "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
+            "Ok(serde_json::from_value(mock_value)?)")
+        }
       }
       None => concat(log_line, "\ncompile_error!(\"mock property list was non-empty but first() returned None\")")
     }
@@ -3960,7 +4058,7 @@ fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, I
 }
 
 fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_index: NewlineIndex?) -> String {
-  let client_init = "let client = reqwest::Client::new();"
+  let client_init = "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
   let url_line = emit_rest_url_line(transport: transport, op_name: op_name, source_index: source_index)
   let http_method = emit_rest_http_method(transport: transport, source_index: source_index)
   let auth_line = emit_rest_auth_line(transport: transport, service_item: service_item, http_method: http_method, source_index: source_index)
@@ -4063,7 +4161,7 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
       // from the emitted signature when auth_source is present requires
       // operation parameter pruning at emit time (tracked as RE follow-up #10).
       let has_auth_source = match service_config_auth_source(n: service_item, source_index: source_index) { Some { value: _ } => true  None => false }
-      let token_param = if has_auth_source { "self.auth_token" }
+      let token_param = if has_auth_source { "self.auth_token.clone()" }
       else {
         match auth_input {
           Some { value: ai } => emit_simple_expr(expr: ai, target: Rust, source_index: source_index)
@@ -4274,6 +4372,10 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, source_index
     if use_from_key {
       concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_index: source_index), " },")
     } else {
+      // TODO: response wire format (text vs json) should be a structural
+      // fact in std/, not inferred by the emitter. Currently all success
+      // responses use response.json(). String-body responses (like diffs)
+      // need a WireFormat declaration on the response block.
       concat("    ", pattern, " => { let result = response.json().await?; Ok(result) },")
     }
   } else {
@@ -4453,6 +4555,9 @@ fn emit_shell_return(inferred: Node, source_index: NewlineIndex?) -> String {
     if __eff_is_container {
       "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))"
     } else if is_product && effective.children |> count > 1 {
+      // BRIDGE: assumes shell stdout is JSON-parseable into the output type.
+      // Dissolves when transport definitions declare channel→field mappings
+      // (stdout from stdout, stderr from stderr, success from exit_code).
       concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
     } else {
       let is_optional = effective.return_cardinality == CardOptional

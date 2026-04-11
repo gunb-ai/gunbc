@@ -14,28 +14,42 @@ module gunbc.tools.review
 
 import extdeps.cron
 import extdeps.github.pulls
-import extdeps.llm.cli
+import extdeps.llm.anthropic
 import extdeps.shell
 
 // -- Configuration as data --------------------------------------------
 
-data default_backend: String = "codex"
-data default_model: String = "gpt-5.4"
+data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: String = "*/10 * * * *"
+// BRIDGE: messages should be [{ role: "user", content: "..." }] (Json array),
+// but emit_simple_expr cannot render list/record literals in transport bodies.
+// Passed as a JSON-encoded string; the emitter coerces via serde_json::from_str.
+// Dissolves when emit_simple_expr handles ExprListLit/ExprRecordLit.
+data review_messages: String = "[{\"role\": \"user\", \"content\": \"Review the PR described in the system prompt.\"}]"
 
 // -- Pure functions ---------------------------------------------------
 
-fn backend_command(backend: String, model: String, prompt_file: String, cwd: String) -> String {
-  match backend {
-    "codex" => "codex exec -m {model} -C {cwd} - < {prompt_file}"
-    "claude" => "claude -p --output-format text --permission-mode plan --model {model} --effort max < {prompt_file}"
-    "gemini" => "gemini -p --output-format text --approval-mode plan < {prompt_file}"
-    _ => "echo unknown backend && exit 1"
-  }
-}
-
 fn has_review_at_sha(reviews: List<PullReview>, sha: String) -> Bool {
   any(reviews, r => r.commit_id == sha && contains(r.body, "Review"))
+}
+
+fn build_system_prompt(
+  invariants: String,
+  algebra_ref: String,
+  extdeps_ref: String
+) -> String {
+  let instructions = "Review on two axes:\n1. INVARIANT VIOLATIONS: check diff against INVARIANTS.md\n2. COMPOSITIONAL MODELING: for .dag changes, evaluate accuracy, harmony, layering\n\nOutput:\nVIOLATION|file|line|description\nMODEL|file|GOOD|description\nMODEL|file|IMPROVE|description\nSUMMARY|one sentence\n\nNothing else."
+  "{instructions}\n\n--- INVARIANTS.md ---\n{invariants}\n\n--- std/algebra.dag ---\n{algebra_ref}\n\n--- extdeps.md ---\n{extdeps_ref}"
+}
+
+fn build_user_message(
+  pr_title: String,
+  pr_number: Int,
+  branch: String,
+  base_ref: String,
+  diff: String
+) -> String {
+  "PR #{pr_number}: {pr_title}\nBranch: {branch} -> {base_ref}\n\n--- Diff ---\n{diff}"
 }
 
 fn build_review_prompt(
@@ -48,9 +62,9 @@ fn build_review_prompt(
   algebra_ref: String,
   extdeps_ref: String
 ) -> String {
-  let instructions = "Review on two axes:\n1. INVARIANT VIOLATIONS: check diff against INVARIANTS.md\n2. COMPOSITIONAL MODELING: for .dag changes, evaluate accuracy, harmony, layering\n\nOutput:\nVIOLATION|file|line|description\nMODEL|file|GOOD|description\nMODEL|file|IMPROVE|description\nSUMMARY|one sentence\n\nNothing else."
-  let header = "PR #{pr_number}: {pr_title}\nBranch: {branch} -> {base_ref}"
-  "{instructions}\n\n{header}\n\n--- INVARIANTS.md ---\n{invariants}\n\n--- std/algebra.dag ---\n{algebra_ref}\n\n--- extdeps.md ---\n{extdeps_ref}\n\n--- Diff ---\n{diff}"
+  let system = build_system_prompt(invariants: invariants, algebra_ref: algebra_ref, extdeps_ref: extdeps_ref)
+  let user_msg = build_user_message(pr_title: pr_title, pr_number: pr_number, branch: branch, base_ref: base_ref, diff: diff)
+  "{system}\n\n{user_msg}"
 }
 
 // -- Review a single PR -----------------------------------------------
@@ -61,7 +75,6 @@ func review_pr(
   owner: String,
   repo: String,
   pr_number: Int,
-  backend: String = default_backend,
   model: String = default_model
 ) -> { reviewed: Bool, comment_url: String } {
 
@@ -99,21 +112,26 @@ func review_pr(
     script: "cd ~/gunbc && git show origin/{pr.pr.head.ref}:dsl/extdeps/extdeps.md 2>/dev/null || echo '(not found)'"
   )
 
-  // Step 4: Build prompt and invoke LLM
-  prompt = build_review_prompt(
-    pr_title: pr.pr.title,
-    pr_number: pr_number,
-    branch: pr.pr.head.ref,
-    base_ref: pr.pr.base.ref,
-    diff: diff.diff,
+  // Step 4: Build context and invoke LLM via Anthropic REST API
+  system_prompt = build_system_prompt(
     invariants: invariants.stdout,
     algebra_ref: algebra_ref.stdout,
     extdeps_ref: extdeps_ref.stdout
   )
-  prompt_file = "/Users/briansrls/.local/share/gunbc-review/prompt.md"
-  command = backend_command(backend: backend, model: model, prompt_file: prompt_file, cwd: "/Users/briansrls/gunbc")
-  llm_result = shell.Exec.Run(
-    script: "mkdir -p /Users/briansrls/.local/share/gunbc-review && printf '%s' '{prompt}' > {prompt_file} && {command}"
+  user_msg = build_user_message(
+    pr_title: pr.pr.title,
+    pr_number: pr_number,
+    branch: pr.pr.head.ref,
+    base_ref: pr.pr.base.ref,
+    diff: diff.diff
+  )
+  llm_response = llm.Anthropic.Messages(
+    api_key: "",
+    model: model,
+    messages: review_messages,
+    max_tokens: 8192,
+    temperature: none,
+    system: "{system_prompt}\n\n{user_msg}"
   )
 
   // Step 5: Post review via GitHub API (idempotent: guarded by step 2)
@@ -123,7 +141,7 @@ func review_pr(
     repo: repo,
     pull_number: pr_number,
     commit_id: pr.pr.head.sha,
-    body: llm_result.stdout,
+    body: llm_response.content,
     comments: "[]"
   )
 
@@ -138,8 +156,7 @@ func review_pr(
 
 func review_cycle(
   owner: String = "gunb-ai",
-  repo: String = "gunbc",
-  backend: String = default_backend
+  repo: String = "gunbc"
 ) -> { reviewed_count: Int } {
 
   // Upsert cron -- idempotent, converges on every run
@@ -163,8 +180,7 @@ func review_cycle(
     review_pr(
       owner: owner,
       repo: repo,
-      pr_number: pr.number,
-      backend: backend
+      pr_number: pr.number
     )
   }
 
