@@ -242,6 +242,24 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_index: NewlineIndex
         _ => Interpolation { expr: arg_value(n: child) }
       })
       emit_simple_string_interp(parts: ps, target: target, source_index: source_index)
+    ExprListLit =>
+      // Target-aware: JSON array syntax is valid inside Rust serde_json::json!
+      // and as Python list literals. Go needs separate handling.
+      match target {
+        Go => emit_error_expr(message: "list literal in simple expr not yet supported for Go", target: target)
+        _ =>
+          let el_strs = expr.children |> map(e => emit_simple_expr(expr: e, target: target, source_index: source_index))
+          concat("[", el_strs |> join(separator: ", "), "]")
+      }
+    ExprRecordLit { parent_enum: _ } =>
+      match target {
+        Go => emit_error_expr(message: "record literal in simple expr not yet supported for Go", target: target)
+        _ =>
+          let field_strs = expr.children |> map(f =>
+            concat("\"", field_init_node_name_at(n: f, source_index: source_index), "\": ",
+              emit_simple_expr(expr: field_init_node_value(n: f), target: target, source_index: source_index)))
+          concat("{", field_strs |> join(separator: ", "), "}")
+      }
     _ => emit_error_expr(message: "unsupported simple expr in test/mock binding", target: target)
   }
 }
