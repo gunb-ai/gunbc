@@ -11,7 +11,7 @@ pub use crate::v2_compiler_emit::{to_string};
 pub use crate::v2_compiler_parse::{ParserResultWitness, parser_progress_flag_var, parser_passthrough_state_expr, parser_result_witness, ParserCallIdentity};
 use crate::v2_compiler_parse::ParserResultWitness::{ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque};
 use crate::v2_compiler_parse::ParserCallIdentity::{ParserCallHelper, ParserCallFunction};
-pub use crate::std_termination::{DescentEvidence, RankingDimension, DescentSource, TerminationProof, ProofEdge, merge_evidence, promote_to_strict};
+pub use crate::std_termination::{DescentEvidence, RankingDimension, DescentSource, TerminationProof, ProofEdge, merge_evidence, join_evidence, evidence_rank, promote_to_strict, optional_evidence_meet, map_evidence_merge_at};
 use crate::std_termination::DescentEvidence::{Strict, NonIncreasing, DescentUnknown};
 use crate::std_termination::RankingDimension::{TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality};
 use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, ArithmeticDecrease, ParserAdvance, SetRemoval, FoldIteration};
@@ -1911,13 +1911,7 @@ pub fn try_branching_dimension_for_param(body: Rc<Node>, func_name: String, para
 }
 
 pub fn merge_optional_evidence(a: Option<DescentEvidence>, b: Option<DescentEvidence>) -> Option<DescentEvidence> {
-    match a.clone() {
-    None => b,
-    Some(ea) => match b {
-    None => a.clone(),
-    Some(eb) => Some(merge_evidence(ea.clone(), eb.clone())),
-},
-}
+    optional_evidence_meet(a, b)
 }
 
 pub fn collect_evidence_incremental(body: Rc<Node>, func_name: String, param_name: String, vars: Rc<HashMap<String, bool>>, check_child: bool, check_list: bool, branching_only: bool, si: Option<Rc<NewlineIndex>>) -> Option<DescentEvidence> {
@@ -3052,27 +3046,7 @@ Rc::new(ProofEdge {
 }
 
 pub fn merge_edge_evidence(acc_map: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>) -> Rc<HashMap<String, DescentEvidence>> {
-    {
-        let existing = v2_rt::map_get(&acc_map, pe.callee.clone());
-let new_ev = pe.progress.clone();
-let merged_ev = match existing {
-    Some(prev) => match prev.clone() {
-    DescentEvidence::Strict => match new_ev {
-    DescentEvidence::Strict => DescentEvidence::Strict,
-    DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-},
-    DescentEvidence::NonIncreasing => match new_ev {
-    DescentEvidence::Strict => DescentEvidence::NonIncreasing,
-    DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-},
-    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-},
-    None => new_ev,
-};
-v2_rt::rc_map_insert(acc_map.clone(), pe.callee.clone(), merged_ev)
-}
+    map_evidence_merge_at(acc_map, pe.callee.clone(), pe.progress.clone())
 }
 
 pub fn count_known_in_edge_map(m: Rc<HashMap<String, DescentEvidence>>) -> i64 {

@@ -189,6 +189,7 @@ type InferScope {
   module_name: String
   service_registry: Map<String, List<OpEntry>>
   item_registry: Map<String, ItemInfo>
+  lambda_param_provenance: Map<String, SubValueRelation>
 }
 
 type InferResult {
@@ -708,7 +709,8 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
-    item_registry: scope.item_registry
+    item_registry: scope.item_registry,
+    lambda_param_provenance: empty_map()
   }
 }
 
@@ -724,7 +726,8 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
-    item_registry: scope.item_registry
+    item_registry: scope.item_registry,
+    lambda_param_provenance: scope.lambda_param_provenance
   }
 }
 
@@ -736,7 +739,8 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
     match_bound_names: map_insert(scope.match_bound_names, name, true),
     module_name: scope.module_name,
     service_registry: scope.service_registry,
-    item_registry: scope.item_registry
+    item_registry: scope.item_registry,
+    lambda_param_provenance: scope.lambda_param_provenance
   }
 }
 
@@ -752,7 +756,8 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
-    item_registry: scope.item_registry
+    item_registry: scope.item_registry,
+    lambda_param_provenance: scope.lambda_param_provenance
   }
 }
 
@@ -892,21 +897,42 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         properties: [], type_annotation: none, is_self_recursive: false,
         has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: Some { value: fold_callable })
+      // S6: set lambda_param_provenance so ExprLambda reads it without name-collision risk.
+      let lam_value = arg_value(n: a)
+      let prov_map = match elem_provenance {
+        SubValueUnknown => empty_map()
+        _ => map_insert(empty_map(), "elem", elem_provenance)
+      }
+      let fold_scope = InferScope {
+        type_env: scope.type_env,
+        func_env: scope.func_env,
+        locals: scope.locals,
+        match_bound_names: scope.match_bound_names,
+        module_name: scope.module_name,
+        service_registry: scope.service_registry,
+        item_registry: scope.item_registry,
+        lambda_param_provenance: prov_map
+      }
+      let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Some { value: fold_callable })
       ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_index: scope.type_env.source_index), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
     } else {
-      // S6: pre-extend scope with elem_provenance for non-fold lambda params (map/filter/etc).
+      // S6: set lambda_param_provenance for non-fold lambda params (map/filter/etc).
       let nf_lam_value = arg_value(n: a)
+      let nf_prov_map = match elem_provenance {
+        SubValueUnknown => empty_map()
+        _ => map_insert(empty_map(), "elem", elem_provenance)
+      }
       let nf_scope = if is_lambda_expr(e: nf_lam_value) {
-        let nf_lam_names = lambda_param_names_at(texpr: nf_lam_value, source_index: scope.type_env.source_index)
-        // For non-fold: the single/last param is the element param.
-        fold(nf_lam_names |> enumerate, init: scope, f: (acc_scope, pair) =>
-          if pair.first == (nf_lam_names |> count) - 1 {
-            extend_scope(scope: acc_scope, name: pair.second, resolved: element_type, provenance: elem_provenance)
-          } else {
-            acc_scope
-          }
-        )
+        InferScope {
+          type_env: scope.type_env,
+          func_env: scope.func_env,
+          locals: scope.locals,
+          match_bound_names: scope.match_bound_names,
+          module_name: scope.module_name,
+          service_registry: scope.service_registry,
+          item_registry: scope.item_registry,
+          lambda_param_provenance: nf_prov_map
+        }
       } else { scope }
       infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
     }
@@ -1862,45 +1888,39 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // If expected carries an element type, use it for lambda params.
       // Single param or last param gets the element type; others get TypeVariable.
       // Unified lambda element-type threading: expected flows to param scope.
-      // S6: when the caller pre-extended scope with provenance for a lambda param
-      // (fold/map receiver provenance), preserve it instead of hardcoding SubValueUnknown.
+      // S6: read provenance from lambda_param_provenance (set by fold/map caller),
+      // not from scope.locals (which could shadow from outer same-named bindings).
+      let elem_prov = match map_get(scope.lambda_param_provenance, "elem") {
+        Some { value: p } => p
+        None => SubValueUnknown
+      }
       let lam_scope = if expected != none {
         let exp = expected.value
         if exp.params |> count > 0 {
           // Callable expected: thread each callable param type to corresponding lambda param.
-          // Dissolves infer_lambda_with_callable_type bypass.
+          // Last param gets elem_prov; others get SubValueUnknown.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
-            let existing_prov = match map_get(scope.locals, pair.second) {
-              Some { value: b } => b.provenance
-              None => SubValueUnknown
-            }
+            let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { SubValueUnknown }
             match exp.params |> skip(pair.first) |> first {
-              Some { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp), provenance: existing_prov)
-              None => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: existing_prov)
+              Some { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp), provenance: param_prov)
+              None => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
             }
           )
         } else if lam_params |> count == 1 {
           // Single element type expected: apply to sole param.
           match lam_params |> first {
             Some { value: p } =>
-              let existing_prov = match map_get(scope.locals, p) {
-                Some { value: b } => b.provenance
-                None => SubValueUnknown
-              }
-              extend_scope(scope: scope, name: p, resolved: exp, provenance: existing_prov)
+              extend_scope(scope: scope, name: p, resolved: exp, provenance: elem_prov)
             None => scope
           }
         } else {
-          // Element type expected with multiple params: apply to last param.
+          // Element type expected with multiple params: last gets elem_prov, others SubValueUnknown.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
-            let existing_prov = match map_get(scope.locals, pair.second) {
-              Some { value: b } => b.provenance
-              None => SubValueUnknown
-            }
+            let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { SubValueUnknown }
             if pair.first == (lam_params |> count) - 1 {
-              extend_scope(scope: acc, name: pair.second, resolved: exp, provenance: existing_prov)
+              extend_scope(scope: acc, name: pair.second, resolved: exp, provenance: param_prov)
             } else {
-              extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_param"), provenance: existing_prov)
+              extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_param"), provenance: param_prov)
             }
           )
         }
@@ -4361,7 +4381,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     match_bound_names: empty_map(),
     module_name: resolved.module.name,
     service_registry: ctx.svc_registry,
-    item_registry: ctx.item_registry
+    item_registry: ctx.item_registry,
+    lambda_param_provenance: empty_map()
   }
   let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)

@@ -1102,7 +1102,7 @@ Active work items. Each has a TDD test and a cleanup target.
 | S3 | Instrument let-bindings → classify from value expr | Test: `let child = node.left` produces StrictSubValue | `classify_binding_provenance` (04_infer.dag:2438) | DONE (04_infer.dag:769, 1682) |
 | S4 | Instrument match arms → StrictSubValue from variant field | Test: `match param { Cons { tail } => ... }` produces StrictSubValue on `tail` | `extend_scope_match_bound` (04_infer.dag:732) | DONE (PR #379) |
 | S5 | Instrument for-each variable → IteratedSubValue | Test: `children \|> map(c => ...)` produces IteratedSubValue on `c` | For-each handling in annotate_descent | DONE (04_infer.dag:1934-1947) |
-| S6 | Lambda params with element expected → IteratedSubValue | Test: fold/map callback param gets IteratedSubValue | Lambda heuristic (04_infer.dag:2870-2897) | DONE |
+| S6 | Lambda params with element expected → IteratedSubValue | Test: fold/map callback param gets IteratedSubValue | Lambda heuristic (04_infer.dag:2870-2897) | Partial (standard fold/map path; heuristic source) |
 | S7 | Lambda params with Callable expected (callee contracts) | Test: user-defined HOF callback param gets correct SVR | Full lambda transparency heuristic | Not started |
 | S8 | Declare lattice inhabitants (DescentEvidence + SubValueRelation) | Test: lattice laws (idempotent, commutative, absorptive) | `merge_argument_relations` now uses `meet_sub_value` | Phase 1: DescentEvidence lifters + SVR meet wired (PR #379). Phase 2: generic lifters (blocked on generic emission). |
 
