@@ -418,6 +418,12 @@ Additional duplication surfaced by review (PR #371, external audit):
   `go_scaffold.source_file_extension` in std/languages.dag.
 - `keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
   table. Reconcile to single authority.
+- HashMap vs BTreeMap disagreement: `map_template` in std/languages.dag
+  says `HashMap<{0},{1}>` but `empty_map` in rust/emit.dag uses
+  `BTreeMap::new()`. Pick one, delete the other.
+- `rt_function_registry` mirrors in rust/emit.dag: `rt_functions` and
+  `rt_bridge_function_names` are hand-maintained copies of data already
+  in the registry. Comments acknowledge the debt.
 - CallableOf coverage: `filter`, `any`, `all` now have CallableOf
   in their param_types (PR #379). `sort_by` deferred — its callback
   semantics are unresolved (key-extractor in primitives.dag vs
@@ -465,6 +471,10 @@ described but not structurally modeled in .dag:
 | Encoding lattice | `dsl/std/encoding.dag` names the lattice but delegates to Rust's `ContentEncoding` | Model join/meet in .dag; reconcile `Encoding` and `ContentEncoding` to one authority |
 | Stack<T> → FreeMonoid | `dsl/std/stack.dag` defines bespoke push/pop/fold_stack instead of attaching to FreeMonoid | Import algebra.dag; Stack IS FreeMonoid |
 | User-defined generic emission | Generic functions (T, V, K params) parse and type-check but emit unresolved type variables in Rust | Emitter needs monomorphization or generic Rust output |
+| **Duplicate foundational types** | `AuthScheme` defined in std/cloud.dag (3 variants) AND std/types.dag (4 variants, different payloads) — **actively divergent**. `CloudRuntime` and `WarningPolicy` exact duplicates in both files. | Pick single authority per type, delete the other |
+| **Phantom container types** | `container_type_arity` in std/types.dag lists NonEmptyList and NonEmptySet, but no `type NonEmptyList` or `type NonEmptySet` exists anywhere. Causes `__BUG_NO_PROFILE_*` fabrication fallback. | Either declare the types or remove from metadata tables |
+| Set not composed | Comments say `Set<A>` inhabits BooleanAlgebra but type declaration is opaque | Compose from BooleanAlgebra when generic emission supports it |
+| FermiDepth ad-hoc lattice | `fermi_max`, `fermi_ordinal` etc. implement lattice ops without declaring FermiDepth as BoundedLattice | Track 8 Phase 2 adjacent |
 
 ### Track 10: Extdeps modeling fidelity (Lane D)
 
@@ -478,6 +488,8 @@ audit (2026-04-10):
 | `LlmMessage.content: String` | extdeps/llm/llm.dag | Deferred — M1-level multimodal redesign (PR #388 changes to `List<ContentBlock>`) |
 | ~~`Gist.files: List<GistFile>`~~ | extdeps/github/gists.dag | DONE (PR #387) — `Map<String, GistFile>` |
 | OpenAI string-path extraction | extdeps/llm/openai.dag | Skipped — compiler-level `from` syntax feature, not extdeps issue |
+| `Gist.owner: String` | extdeps/github/gists.dag | Should be `GitHubUser` — already imported in same file, used structurally in pulls.dag |
+| `Gist.public: Bool` | extdeps/github/gists.dag | `GistVisibility` enum exists but unused; `public` still Bool |
 | ~~Policy defaults in `CloudSecretConfig`~~ | std/types.dag | DONE (PR #387) — defaults removed |
 | ~~`ProjectId` vs `GcpProjectId`~~ | std/types.dag | DONE (PR #387) — `GcpProjectId` deleted |
 
