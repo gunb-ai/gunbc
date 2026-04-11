@@ -121,11 +121,16 @@ checking, and structural descent proofs make them unrepresentable.
 | Diamond dependency divergence | Module graph deduplicates imports | DONE |
 | Non-termination | Structural descent proof (CX gate) | **424 violations → 0, then blocking** |
 | Record literal completeness | Missing-field diagnostic | **partial** |
-| Coercion completeness | Fail-closed inhabitant lookup | DONE |
+| Coercion completeness | Fail-closed inhabitant lookup | **partial** (fail-closed where implemented; coercion engine design incomplete) |
 
 **Gating item:** CX gate. Once 424 → 0 and the gate is blocking,
 every function that compiles is proven to terminate. This is the
 single biggest remaining item in Tier 1.
+
+**Note:** Tier 1 status claims reflect what the compiler enforces
+today, not aspirational targets. "DONE" means the diagnostic exists
+and blocks compilation. Items marked "partial" have gaps documented
+in their design docs.
 
 ### Tier 2: Runtime safety — proven safe or total
 

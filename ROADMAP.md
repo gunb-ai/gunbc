@@ -185,7 +185,7 @@ better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
 |--------|-------|-------|
 | A: Provenance infra | S1, S2, S3, S4, S5 | 04_env.dag, 04_infer.dag |
 | B: Clone elision | O1-O5 | ownership.dag, 05_emit_rust.dag |
-| C: std/ foundation | C1, ~~S8~~ (DONE) | std/induction.dag, std/algebra.dag, std/termination.dag |
+| C: std/ foundation | C1, S8 (Phase 1 done, Phase 2 blocked on generic emission) | std/induction.dag, std/algebra.dag, std/termination.dag |
 
 Zero file overlap between streams. After Stream A (S1-S5), CX
 consumer items C2-C6 can start (same files as Stream A, sequential).
