@@ -7292,14 +7292,13 @@ fn process(data: List<Int>) -> List<Int> {
     // matching (see function doc). Useful as regression gate, not for
     // precise claims.  As ownership modeling improves, these counts drop.
     // 2026-04-10: 40→45 — new functions in std/termination.dag
-    // (evidence_rank, join_evidence, optional_evidence_meet,
-    // map_evidence_merge_at) add 5 clones from new code transitively
-    // compiled via std.types→std.termination; not a regression in
-    // existing code — these are new function bodies with new bindings.
+    // 2026-04-10: 45→29 — O1/O2 last-use elision eliminates 16 violations.
+    // Remaining 29 are scope-blind false positives (common variable names
+    // like x, c, name matching across function boundaries).
 
-    const MOVABLE_CLONED_RATCHET: usize = 45;
+    const MOVABLE_CLONED_RATCHET: usize = 29;
     const TRY_UNWRAP_RATCHET: usize = 0;
-    const TOTAL_RATCHET: usize = 45;
+    const TOTAL_RATCHET: usize = 29;
 
     assert!(
         movable_but_cloned <= MOVABLE_CLONED_RATCHET,

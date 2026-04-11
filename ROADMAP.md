@@ -284,7 +284,7 @@ Three layers, sequenced by dependency:
 | Layer | Size | Blocked on | Impact | Status |
 |-------|------|-----------|--------|--------|
 | 1. Last-use elision | 1-2 PRs | Nothing | 1,831 clones eliminated | **DONE** (O1-O2) |
-| 2. Post-TCO ownership | 1 PR | Nothing | ~500-1,000 clones (est.) | Not started |
+| 2. Post-TCO ownership | — | — | N/A — movable set already correct | **N/A** (investigated, no real violations) |
 | 3. Borrow propagation | 3-5 PRs | LS-4 design | ~15,000-18,000 clones (est.) | Not started |
 
 **Layer 1 (last-use elision):** For each binding with fan-out > 1,

@@ -119,12 +119,24 @@ aggregates via scope-blind string matching (see pipeline.rs).
 | O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | build_last_use_set → last_use_index/last_use_spans on EmitGraphInfo → emit_var_ref checks span | 1,831 `.clone()` calls removed | **DONE** (ratchet 24000 → 22200) |
 | O3 | V1 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V1 = 0 | — | Deferred (coarse aggregate, not V1-specific) |
 
-### Layer 2: Post-TCO ownership (unblocked)
+### Layer 2: Post-TCO ownership (NOT A REAL ISSUE)
+
+Investigation (2026-04-10): V2 was described as "TCO gate zeroes the
+movable set." Empirical analysis shows this is not the case:
+
+1. The movable set flows unchanged through TCO functions — no zeroing.
+2. `emit_typed_tco_reassign` has a local heuristic that ADDS movability
+   for params in the reassignment expressions.
+3. Layer 1 (last-use elision) handles the main case: a binding used
+   once in the body + once in the self-call arg → last-use move.
+4. The 29 remaining movable_but_cloned violations are ALL scope-blind
+   false positives (common names like `x`, `c`, `name` matching across
+   function boundaries), NOT TCO-specific issues.
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| O4 | Run ownership analysis AFTER TCO transformation | Test: TCO-eligible function with fan-out=1 owned local produces move, not clone | TCO movable-set zeroing logic | Not started |
-| O5 | V2 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V2 = 0 | — | Not started |
+| O4 | Run ownership analysis AFTER TCO transformation | Investigation: movable set already flows correctly through TCO | None needed | **N/A** (no real violations found) |
+| O5 | V2 ratchet at 0 for focused test programs | movable_but_cloned 45→29, all false positives | — | **N/A** |
 
 ### Layer 3: Borrow propagation (needs LS-4 design)
 
