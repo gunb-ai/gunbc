@@ -395,14 +395,10 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
             break k;
 } else {
             {
-                let __tco_0 = base.clone();
-let __tco_1 = argument;
-let __tco_2 = (k + 1);
-let __tco_3 = (power * base.clone());
-base = __tco_0;
-argument = __tco_1;
-k = __tco_2;
-power = __tco_3;
+                let __tco_0 = (k + 1);
+let __tco_1 = (power * base.clone());
+k = __tco_0;
+power = __tco_1;
 continue;
 }
 }

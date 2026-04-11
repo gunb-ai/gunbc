@@ -687,17 +687,7 @@ pub fn infer_parser_always_advancing_members_worklist(mut queue: Rc<Vec<String>>
 if set_has(proven.clone(), name.clone()) {
             {
                 let __tco_0 = rest;
-let __tco_1 = func_index;
-let __tco_2 = parser_name_set;
-let __tco_3 = reverse_graph;
-let __tco_4 = proven;
-let __tco_5 = si;
 queue = __tco_0;
-func_index = __tco_1;
-parser_name_set = __tco_2;
-reverse_graph = __tco_3;
-proven = __tco_4;
-si = __tco_5;
 continue;
 }
 } else {
@@ -709,49 +699,21 @@ continue;
 };
 {
                     let __tco_0 = deduplicate(v2_rt::concat(rest, callers));
-let __tco_1 = func_index;
-let __tco_2 = parser_name_set;
-let __tco_3 = reverse_graph;
-let __tco_4 = v2_rt::rc_map_insert(proven, name.clone(), true);
-let __tco_5 = si;
+let __tco_1 = v2_rt::rc_map_insert(proven, name.clone(), true);
 queue = __tco_0;
-func_index = __tco_1;
-parser_name_set = __tco_2;
-reverse_graph = __tco_3;
-proven = __tco_4;
-si = __tco_5;
+proven = __tco_1;
 continue;
 }
 } else {
                 {
                     let __tco_0 = rest;
-let __tco_1 = func_index;
-let __tco_2 = parser_name_set;
-let __tco_3 = reverse_graph;
-let __tco_4 = proven;
-let __tco_5 = si;
 queue = __tco_0;
-func_index = __tco_1;
-parser_name_set = __tco_2;
-reverse_graph = __tco_3;
-proven = __tco_4;
-si = __tco_5;
 continue;
 }
 } },
     None => { {
                 let __tco_0 = rest;
-let __tco_1 = func_index;
-let __tco_2 = parser_name_set;
-let __tco_3 = reverse_graph;
-let __tco_4 = proven;
-let __tco_5 = si;
 queue = __tco_0;
-func_index = __tco_1;
-parser_name_set = __tco_2;
-reverse_graph = __tco_3;
-proven = __tco_4;
-si = __tco_5;
 continue;
 } },
 }
@@ -1142,20 +1104,12 @@ pub fn expr_descending_witness_source(mut expr: Rc<Node>, mut descending_witness
     ExprData::ExprBinOp { op, .. } => { match op.clone() {
     BinOp::Sub => { {
             let __tco_0 = binop_left(expr);
-let __tco_1 = descending_witness_names;
-let __tco_2 = si;
 expr = __tco_0;
-descending_witness_names = __tco_1;
-si = __tco_2;
 continue;
 } },
     BinOp::Div => { {
             let __tco_0 = binop_left(expr);
-let __tco_1 = descending_witness_names;
-let __tco_2 = si;
 expr = __tco_0;
-descending_witness_names = __tco_1;
-si = __tco_2;
 continue;
 } },
     _ => { break None; },
@@ -1282,13 +1236,7 @@ break (is_children_list_field(field) && match (*base.expr_data.clone()).clone() 
     ExprData::ExprMethodCall { method_semantics: ms, .. } => { match method_size_effect(ms.clone()) {
     Some(CollectionSizeEffect::ShrinkEffect) => { {
             let __tco_0 = method_receiver(expr);
-let __tco_1 = param_name;
-let __tco_2 = vars;
-let __tco_3 = si;
 expr = __tco_0;
-param_name = __tco_1;
-vars = __tco_2;
-si = __tco_3;
 continue;
 } },
     _ => { break false; },
@@ -3554,9 +3502,7 @@ pub fn receiver_size_var(mut recv: Rc<Node>, mut si: Option<Rc<NewlineIndex>>) -
 if method_preserves_collection_size(method_semantics.clone()) {
             {
                 let __tco_0 = inner_recv;
-let __tco_1 = si;
 recv = __tco_0;
-si = __tco_1;
 continue;
 }
 } else {
