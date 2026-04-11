@@ -24,6 +24,23 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 
 ---
 
+## Thesis alignment
+
+See [THESIS.md](THESIS.md) for the full thesis. Every track below
+serves one of these:
+
+| Thesis claim | What serves it | Status |
+|---|---|---|
+| **Causal engine** — validate source-to-drain consistency | Tracks 1, 3, 6, 7, 8, 9 (structural facts) | Active |
+| **Tier 1: Structural bugs impossible** | KF-1 (CX gate), Track 1 (provenance) | 424 violations → 0 |
+| **Tier 2: Runtime safety** | Track 11 (future) | **No track yet** |
+| **Tier 3: Verification from structure** | Track 12 (future) | **No track yet** |
+| **Emission is mechanical** | Tracks 2, 4; Track 13 (single emitter, future) | Partial |
+| **Omni-emission** | Track 14 (future) | **No track yet** |
+| **Free consequences** (parallelism, memoization, space) | Blocked on Tier 1 + ownership | Blocked |
+
+---
+
 ## Core thesis: close the model
 
 gunbc is a closed system. All data is finite (Bit/Word64). All
@@ -394,6 +411,99 @@ audit (2026-04-10):
 
 ---
 
+## Future tracks (thesis gaps — not yet active)
+
+These are named so they don't drift out of sight. Each corresponds
+to a thesis claim that has no active work.
+
+### Track 11: Runtime safety (Tier 2)
+
+**Thesis claim:** no internal operation can fail at runtime.
+
+**Current state:** zero coverage. Division by zero, integer overflow,
+string/array out-of-bounds, optional force-unwrap — all compile fine
+and crash or silently produce wrong data at runtime.
+
+**Design direction:** either prove preconditions at compile time
+(refinement types: `NonZero<Int>`, `BoundedIndex<N>`) or make all
+operations total (division returns `Option<Int>`, indexing returns
+`Option<T>`). No partial functions in the runtime.
+
+**Blocked on:** nothing conceptually. This is design work. The closed
+system makes it tractable — all values are finite, so bounds are
+decidable.
+
+### Track 12: Verification from structure (Tier 3)
+
+**Thesis claim:** the compiler generates verification from declarations.
+
+In a causal engine, the structure IS the behavior specification.
+The compiler has both the intent (declarations) and the output
+(emitted code). Verification is: **does the emitted code reproduce
+the declared intent?** This is not a separate test framework — it
+is a free consequence of having a closed causal graph.
+
+| What the compiler knows | What it can verify |
+|---|---|
+| Type `Order { amount: Float }` | Construct → serialize → deserialize → fields match |
+| Service `get_order(id) -> Order via rest::get(...)` with `mock_response` | Call mock → response parses to declared type |
+| Algebra law `FreeMonoid.concat is associative` | `concat(concat(a,b),c) == concat(a,concat(b,c))` for generated witnesses |
+| Function `fn sum(xs: List<Int>) -> Int` | Input/output pairs derived from type inhabitants |
+| `type Status = Active \| Inactive \| Suspended` | Exhaustive round-trip: every variant serializes and deserializes |
+
+Traditional testing verifies behavior independently of code. Here,
+behavior and structure are coupled — the declarations carry enough
+information to derive both the code AND its tests. The compiler
+emits both from the same source.
+
+**Levels (from testing-strategy.md):**
+- L4 (semantic correctness): execute emitted code, verify results
+- L5 (cross-language equivalence): same .dag → same behavior in all targets
+- L6 (exhaustive form coverage): every structural form compiles to every target
+- L7 (algebraic law verification): operations obey declared laws
+
+**Blocked on:** Track 5 (need working emission to execute against).
+
+### Track 13: Single emitter (compiler-laws.md Lane C)
+
+**Thesis claim:** emission is mechanical translation.
+
+**Current state:** 6,857 lines of language-specific code in three
+separate emitter files (`05_emit_rust.dag`, `05_emit_python.dag`,
+`05_emit_go.dag`) with 632 language mentions across 12 compiler files.
+The emitter decides instead of reading from data.
+
+**Target:** one emitter that reads `LanguageSpec` + `InhabitantDecl`
+data per target. Adding a new target language means adding a new
+`dsl/extdeps/languages/<lang>/` directory, not touching the compiler.
+
+**Blocked on:** Track 2 (LanguageSpec modeling), Track 7 (core table
+dissolution). Conceptually: the coercion engine must be complete
+enough that no inline language knowledge is needed.
+
+### Track 14: Omni-emission
+
+**Thesis claim:** one intent graph, many artifacts; emission topology
+is part of declared intent.
+
+**Current state:** `artifact.dag` is a placeholder (monolithic
+single-artifact plan). The compiler takes one target at a time via
+`compile_sources(sources, target)`. No mechanism for a `.dag` program
+to declare multi-target intent or for the compiler to handle
+cross-artifact glue (shared types, serialization contracts, API
+surface consistency).
+
+**Design direction:** artifact planning reads declared emission
+targets from the `.dag` source. The compiler validates cross-artifact
+type consistency (same type used in Rust server and TypeScript
+frontend → serialization contracts agree). Each artifact is a
+projection of the validated intent onto a specific target.
+
+**Blocked on:** Track 13 (single emitter — need target-agnostic
+emission before multi-target is meaningful).
+
+---
+
 ## Bootstrap
 
 **Status: COMPLETE.** Stage0 content is generated from .dag source.
@@ -439,13 +549,16 @@ equivalent exists. Requires cost ordering + equivalence catalog in
 **Status:** Not built. Infrastructure close (CostShape per method,
 CostExpr composition). Blocked by KF-1 (needs working cost algebra).
 
-### KF-3: Automated test generation from types
+### KF-3: Verification from structure (free)
 
-Compiler generates tests from type definitions. Add a type → tests
-appear. Grounded in finite, enumerable type algebra with canonical
-witness generation.
+In a causal engine, structure and behavior are coupled — the
+declarations carry enough information to derive both code AND its
+verification. The compiler emits both from the same source. Add a
+type → verification appears. Add a service → integration test
+appears. No hand-written tests needed for declared behavior.
 
-**Status:** Not built. Design in ROADMAP history / docs.
+**Status:** L0 (coercion tests from data) done. L4-L7 not built.
+See Track 12 for the full plan.
 
 ### KF-4: Cross-language equivalence proof
 
@@ -490,42 +603,57 @@ lossy ranking).
 ## Public release gates
 
 The release is the conjunction of all gates. No partial credit.
+Each gate maps to a thesis tier.
 
-### Gate 1: Model is closed
+### Gate 1: Causal engine is closed (Tier 1)
+
+| Criterion | Test | Track |
+|-----------|------|-------|
+| Provenance on bindings | 0 CX violations, reconstruction code deleted | Track 1 |
+| Complexity gate blocking | CostUnknown = compile error | KF-1 |
+| Language specs modeled | No inline target-language knowledge in emitter | Track 2 |
+| Node.name deleted | l1-ratchet = 0, field deleted | Track 3 |
+| Codegen from structural authority | CG acceptance criteria met | Track 4 |
+| Real program compiles and runs | review.dag end-to-end | Track 5 |
+| Performance | No test >2s, self-compile <30s | PERF |
+
+### Gate 2: Runtime safety (Tier 2)
+
+| Criterion | Test | Track |
+|-----------|------|-------|
+| All runtime operations total | No `.force()`, no unchecked division, no panics | Track 11 |
+| Checked arithmetic | Overflow = compile error or checked op | Track 11 |
+| Bounds safety | Out-of-bounds = compile error or Option return | Track 11 |
+
+### Gate 3: Verification from structure (Tier 3)
+
+| Criterion | Test | Track |
+|-----------|------|-------|
+| Semantic correctness (L4) | Emitted code executes, produces correct results | Track 12 |
+| Cross-language equivalence (L5) | Same .dag → same behavior in all targets | Track 12 / KF-4 |
+| Decidable language | Working (already met) | KF-5 |
+
+### Gate 4: Demo quality
 
 | Criterion | Test |
 |-----------|------|
-| Provenance on bindings (Track 1 complete) | 0 CX violations, reconstruction code deleted |
-| Language specs modeled (Track 2 complete) | No inline target-language knowledge in emitter |
-| Node.name deleted (Track 3 complete) | l1-ratchet = 0, field deleted |
-| Codegen from structural authority (Track 4) | CG acceptance criteria met |
-| RE ratchet (Track 5) | 21/21 |
-| Performance | No test >2s, self-compile <30s |
-
-### Gate 2: Killer features ship
-
-| Criterion | Test |
-|-----------|------|
-| KF-1: Complexity proof | 0 CostUnknown, gate blocking |
-| KF-2: Reject suboptimal | Equivalence catalog with ≥5 rules |
-| KF-4: Cross-language parity | All 3 backends compile full DSL |
-| KF-5: Decidable language | Working (already met) |
-
-### Gate 3: Demo quality
-
-| Criterion | Test |
-|-----------|------|
-| One impressive demo | Compile .dag agent → show Rust → run live → show complexity proof |
+| One impressive demo | Compile .dag service → show Rust + Python → run live → show proofs |
 | Documentation | README, getting-started, language reference |
 | Clean install | `cargo install gunbc` works |
 
 ### Release dependency chain
 
 ```
-Track 1 (provenance) ──→ KF-1 (complexity proof) ──→ Gate 2
+Track 1 (provenance) ──→ KF-1 (CX gate) ──→ Gate 1 (causal engine)
 Track 2 (language specs) ──→ Gate 1
 Track 3 (Node.name) ──→ Gate 1
 Track 4 (codegen) ──→ Gate 1
 Track 5 (RE) ──→ Gate 1
-                                              Gate 1 + Gate 2 ──→ Gate 3 ──→ Release
+                                                          │
+Track 11 (runtime safety) ──────────────────────────→ Gate 2 (runtime)
+                                                          │
+Track 12 (verification) ────────────────────────────→ Gate 3 (tests)
+Track 13 (single emitter) ──→ Track 14 (omni-emit)       │
+                                                          │
+                                    Gate 1 + Gate 2 + Gate 3 ──→ Gate 4 ──→ Release
 ```
