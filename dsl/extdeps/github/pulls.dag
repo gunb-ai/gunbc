@@ -19,6 +19,7 @@ import extdeps.github.github { GitHubUser }
 import std.types { Timestamp, Url, HttpMethod, AuthScheme }
 import std.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
+import std.serialization { WireFormat, Text }
 
 // -- Pull request model -----------------------------------------------
 
@@ -162,7 +163,8 @@ service github.Pulls {
     transport rest {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}",
-      headers: { "Accept": "application/vnd.github.diff" }
+      headers: { "Accept": "application/vnd.github.diff" },
+      response_format: Text
     }
     response {
       200 => String

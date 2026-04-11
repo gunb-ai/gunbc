@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at, LiteralValue, ExprData, make_expr_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, SourceSpan, resource_use_resource, BinOp, AlgebraFieldKind, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, is_shell_transport, is_file_transport, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at, LiteralValue, ExprData, make_expr_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, SourceSpan, resource_use_resource, BinOp, AlgebraFieldKind, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, is_shell_transport, is_file_transport, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond};
@@ -351,8 +351,9 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
         let callable_set = modules.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, bool>>, item: Rc<Node>| v2_rt::rc_map_merge(inner.clone(), collect_callable_refs(&item.body.clone().clone().unwrap(), &m.type_env.clone().source_index.clone()))));
 let proofs = Rc::new({ let mut __result = Vec::new(); for m in modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push({
             let pnames = item.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name_at(p.clone(), m.type_env.clone().source_index.clone()), true));
+let qualified = v2_rt::concat(v2_rt::concat(m.module.clone().name.clone(), ".".to_string()), item.name.clone());
 Rc::new(OwnershipProofEntry {
-    name: item.name.clone(),
+    name: qualified.clone(),
     proof: analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), &m.type_env.clone().source_index.clone()),
     param_names: pnames.clone(),
 })
@@ -362,15 +363,18 @@ proofs.iter().cloned().fold(Rc::new(OwnershipBuildResult {
     fold_eligible_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
     read_only_params_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
 }), |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
-            let read_only = if v2_rt::map_contains_key(&callable_set, entry.name.clone()) {
+            let read_only = if v2_rt::map_contains_key(&callable_set, entry.proof.clone().func_name.clone()) {
                 v2_rt::rc_empty_map::<bool>()
             } else {
                 build_read_only_params(entry.proof.clone(), entry.param_names.clone())
             };
+let movable = build_movable_set(entry.proof.clone());
+let fold_eligible = build_fold_eligible_set(entry.proof.clone());
+let bare = entry.proof.clone().func_name.clone();
 Rc::new(OwnershipBuildResult {
-    ownership_index: v2_rt::rc_map_insert(acc.ownership_index, entry.name.clone(), build_movable_set(entry.proof.clone())),
-    fold_eligible_index: v2_rt::rc_map_insert(acc.fold_eligible_index, entry.name.clone(), build_fold_eligible_set(entry.proof.clone())),
-    read_only_params_index: v2_rt::rc_map_insert(acc.read_only_params_index, entry.name.clone(), read_only.clone()),
+    ownership_index: v2_rt::rc_map_insert(v2_rt::rc_map_insert(acc.ownership_index, bare.clone(), movable.clone()), entry.name.clone(), movable.clone()),
+    fold_eligible_index: v2_rt::rc_map_insert(v2_rt::rc_map_insert(acc.fold_eligible_index, bare.clone(), fold_eligible.clone()), entry.name.clone(), fold_eligible.clone()),
+    read_only_params_index: v2_rt::rc_map_insert(v2_rt::rc_map_insert(acc.read_only_params_index, bare.clone(), read_only.clone()), entry.name.clone(), read_only.clone()),
 })
 } })
 }
@@ -540,7 +544,7 @@ let local_uses_str = if ((local_enum_uses.clone().len() as i64) == 0) {
             v2_rt::concat("\n".to_string(), local_enum_uses.clone().join(&"\n".to_string()))
         };
 let wire_contract_item = Rc::new({ let mut __result = Vec::new(); for i in typed_module.items.clone().iter().cloned() { if (i.name.clone().as_str() == "wire_contract".to_string().as_str()) { __result.push(i); } } __result }).first().cloned();
-let items_str = Rc::new({ let mut __result = Vec::new(); for item in typed_module.items.clone().iter().cloned() { __result.push(emit_typed_item(&item, &registry, &scope, shared_types.clone(), &emit_info, wire_contract_item.clone())); } __result }).join(&"\n\n".to_string());
+let items_str = Rc::new({ let mut __result = Vec::new(); for item in typed_module.items.clone().iter().cloned() { __result.push(emit_typed_item(&item, m.name.clone(), &registry, &scope, shared_types.clone(), &emit_info, wire_contract_item.clone())); } __result }).join(&"\n\n".to_string());
 let raw_filename = module_to_filename(m.name.clone());
 let filename = if (raw_filename.clone().as_str() == "main".to_string().as_str()) {
             "main_mod".to_string()
@@ -662,9 +666,10 @@ v2_rt::concat(v2_rt::concat(vec_wrapper, "\n\n".to_string()), set_wrapper)
 }
 }
 
-pub fn emit_typed_item(item: &Rc<Node>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, shared_types: Rc<HashMap<String, bool>>, emit_info: &Rc<EmitGraphInfo>, wire_contract_item: Option<Rc<Node>>) -> String {
+pub fn emit_typed_item(item: &Rc<Node>, module_name: String, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, shared_types: Rc<HashMap<String, bool>>, emit_info: &Rc<EmitGraphInfo>, wire_contract_item: Option<Rc<Node>>) -> String {
     {
         let env = scope.type_env.clone();
+let qualified_name = v2_rt::concat(v2_rt::concat(module_name, ".".to_string()), item.name.clone());
 let item_text = authored_name(env.clone(), item.clone());
 if is_type_def_item(&item) {
             emit_type_def_from_connective(&item, emit_info.recursive_type_set.clone(), shared_types, &env, emit_info.clone(), wire_contract_item)
@@ -677,11 +682,11 @@ if is_type_def_item(&item) {
                 } else {
                     if is_function_item(&item) {
                         {
-                            let fn_movable = match v2_rt::map_get(&emit_info.ownership_index.clone(), item.name.clone()) {
+                            let fn_movable = match v2_rt::map_get(&emit_info.ownership_index.clone(), qualified_name.clone()) {
     Some(m) => m.clone(),
     None => v2_rt::rc_empty_map::<bool>(),
 };
-let fn_fold_eligible = match v2_rt::map_get(&emit_info.fold_eligible_index.clone(), item.name.clone()) {
+let fn_fold_eligible = match v2_rt::map_get(&emit_info.fold_eligible_index.clone(), qualified_name.clone()) {
     Some(m) => m.clone(),
     None => v2_rt::rc_empty_map::<bool>(),
 };
@@ -689,7 +694,7 @@ let item_is_tco = is_tco_eligible(&item.name.clone(), &item.body.clone().clone()
 let fn_read_only = if item_is_tco {
                                 v2_rt::rc_empty_map::<bool>()
                             } else {
-                                match v2_rt::map_get(&emit_info.read_only_params_index.clone(), item.name.clone()) {
+                                match v2_rt::map_get(&emit_info.read_only_params_index.clone(), qualified_name.clone()) {
     Some(m) => m.clone(),
     None => v2_rt::rc_empty_map::<bool>(),
 }
@@ -4286,7 +4291,7 @@ let body_line = emit_rest_body_line(transport.clone(), &source_index);
 let headers = transport_headers(transport.clone(), source_index.clone());
 let header_lines = Rc::new({ let mut __result = Vec::new(); for h in headers.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = request.header(\"".to_string(), h.name.clone()), "\", ".to_string()), emit_simple_expr(&field_init_node_value(&h), &RenderTarget::Rust, &source_index)), ");".to_string())); } __result });
 let send_line = "let response = request.send().await?;".to_string();
-let response_handling = emit_response_code_handling(&op_node, &source_index);
+let response_handling = emit_response_code_handling(&op_node, transport.clone(), &source_index);
 let all_lines = Rc::new({ let mut __result = Vec::new(); for l in v2_rt::concat(v2_rt::concat(Rc::new(vec![client_init, url_line, auth_line]), header_lines), Rc::new(vec![query_line, body_line, send_line, response_handling])).iter().cloned() { if (l.clone().as_str() != "".to_string().as_str()) { __result.push(l); } } __result });
 all_lines.join(&"\n".to_string())
 }
@@ -4518,17 +4523,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let json_body: serde_js
 }
 }
 
-pub fn emit_plain_response_body(op_node: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+pub fn emit_plain_response_body(op_node: Rc<Node>, transport: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let rt = resolved_type(op_node);
-let is_single_string = (((rt.connective.clone() == Connective::Conj) && ((rt.children.clone().len() as i64) == 1)) && match rt.children.clone().first().cloned() {
-    Some(ch) => match ch.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: tn, .. }) => (coerce_primitive_type(RenderTarget::Rust, tn.name.clone()).as_str() == "String".to_string().as_str()),
-    _ => false,
-},
+        let is_text = match transport_response_format(transport, source_index) {
+    Some(fmt) => (fmt.name.clone().as_str() == "Text".to_string().as_str()),
     None => false,
-});
-if is_single_string {
+};
+if is_text {
             "let result = response.text().await?;\nOk(result)".to_string()
         } else {
             "let result = response.json().await?;\nOk(result)".to_string()
@@ -4536,7 +4537,7 @@ if is_single_string {
 }
 }
 
-pub fn emit_response_code_handling(op_node: &Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> String {
+pub fn emit_response_code_handling(op_node: &Rc<Node>, transport: Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> String {
     {
         let use_from_key = has_from_key_fields(op_node.clone(), source_index.clone());
 let response_props = Rc::new({ let mut __result = Vec::new(); for p in op_node.properties.clone().iter().cloned() { if has_response_prefix(&field_init_node_name_at(p.clone(), source_index.clone())) { __result.push(p); } } __result });
@@ -4544,18 +4545,18 @@ if ((response_props.clone().len() as i64) == 0) {
             if use_from_key.clone() {
                 emit_from_key_extraction(op_node.clone(), source_index.clone())
             } else {
-                emit_plain_response_body(op_node.clone(), source_index.clone())
+                emit_plain_response_body(op_node.clone(), transport.clone(), source_index.clone())
             }
         } else {
             {
-                let arms = Rc::new({ let mut __result = Vec::new(); for p in response_props.clone().iter().cloned() { __result.push(emit_response_arm(p.clone(), op_node.clone(), use_from_key.clone(), &source_index)); } __result });
+                let arms = Rc::new({ let mut __result = Vec::new(); for p in response_props.clone().iter().cloned() { __result.push(emit_response_arm(p.clone(), op_node.clone(), use_from_key.clone(), transport.clone(), &source_index)); } __result });
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let status = response.status().as_u16();\n".to_string(), "match status {\n".to_string()), arms.join(&"\n".to_string())), "\n    _ => Err(format!(\"unexpected status code: {}\", status).into())\n".to_string()), "}".to_string())
 }
         }
 }
 }
 
-pub fn emit_response_arm(prop: Rc<Node>, op_node: Rc<Node>, use_from_key: bool, source_index: &Option<Rc<NewlineIndex>>) -> String {
+pub fn emit_response_arm(prop: Rc<Node>, op_node: Rc<Node>, use_from_key: bool, transport: Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> String {
     {
         let name = field_init_node_name_at(prop, source_index.clone());
 let code_str = v2_rt::substring(&name, 9, v2_rt::string_length(&name));
@@ -4580,7 +4581,7 @@ if is_success {
             if use_from_key {
                 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { ".to_string()), emit_from_key_extraction(op_node, source_index.clone())), " },".to_string())
             } else {
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { ".to_string()), emit_plain_response_body(op_node, source_index.clone())), " },".to_string())
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { ".to_string()), emit_plain_response_body(op_node, transport, source_index.clone())), " },".to_string())
             }
         } else {
             v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { let err_body = response.text().await.unwrap_or_default(); Err(format!(\"HTTP {}: {}\", status, err_body).into()) },".to_string())
@@ -4748,68 +4749,92 @@ pub fn emit_shell_return(inferred: Rc<Node>, source_index: &Option<Rc<NewlineInd
     {
         let effective = unwrap_single_field_product(inferred);
 let is_product = is_product_type(effective.clone());
-let is_bool = (is_coproduct_type(effective.clone()) && ((effective.children.clone().len() as i64) == 2));
-if is_bool.clone() {
-            "Ok(output.status.success())".to_string()
+let single_from = if (is_product.clone() && ((effective.children.clone().len() as i64) == 1)) {
+            match effective.children.clone().first().cloned() {
+    Some(ch) => child_from_key(ch.clone(), source_index.clone()),
+    None => None,
+}
+        } else {
+            None
+        };
+match single_from {
+    Some(channel) => {
+            let is_optional = (effective.return_cardinality.clone() == Cardinality::CardOptional);
+emit_shell_channel_expr(&channel, is_optional.clone())
+},
+    None => if (is_product.clone() && ((effective.children.clone().len() as i64) > 1)) {
+            {
+                let needs_stderr = { let mut __found = false; for ch in effective.children.clone().iter().cloned() { if match child_from_key(ch.clone(), source_index.clone()) {
+    Some(ref __some_val) if __some_val == "stderr" => true,
+    _ => false,
+} { __found = true; break; } } __found };
+let stderr_line = if needs_stderr {
+                    "let stderr = String::from_utf8_lossy(&output.stderr).to_string();".to_string()
+                } else {
+                    "".to_string()
+                };
+let field_exprs = Rc::new({ let mut __result = Vec::new(); for ch in effective.children.clone().iter().cloned() { __result.push({
+                    let is_optional = (ch.return_cardinality.clone() == Cardinality::CardOptional);
+let channel = match child_from_key(ch.clone(), source_index.clone()) {
+    Some(c) => c.clone(),
+    None => "stdout".to_string(),
+};
+emit_shell_channel_expr(&channel, is_optional.clone())
+}); } __result });
+let lines = if (stderr_line.clone().as_str() != "".to_string().as_str()) {
+                    v2_rt::concat(stderr_line.clone(), "\n".to_string())
+                } else {
+                    "".to_string()
+                };
+v2_rt::concat(v2_rt::concat(v2_rt::concat(lines, "Ok((".to_string()), field_exprs.join(&", ".to_string())), "))".to_string())
+}
         } else {
             {
-                let __eff_is_container = node_is_element_collection(&effective, source_index.clone());
-if __eff_is_container {
-                    "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))".to_string()
+                let is_bool = (is_coproduct_type(effective.clone()) && ((effective.children.clone().len() as i64) == 2));
+if is_bool {
+                    "Ok(output.status.success())".to_string()
                 } else {
-                    if (is_product && ((effective.children.clone().len() as i64) > 1)) {
-                        {
-                            let stderr_line = "let stderr = String::from_utf8_lossy(&output.stderr).to_string();".to_string();
-let field_exprs = Rc::new({ let mut __result = Vec::new(); for ch in effective.children.clone().iter().cloned() { __result.push({
-                                let fname = authored_name_at(source_index.clone(), &ch);
-let snake = to_snake(fname.clone());
-let child_type = match ch.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: tn, .. }) => tn.clone(),
-    _ => ch.clone(),
-};
-let is_bool = (is_coproduct_type(child_type.clone()) && ((child_type.children.clone().len() as i64) == 2));
-let is_string = (coerce_primitive_type(RenderTarget::Rust, child_type.name.clone()).as_str() == "String".to_string().as_str());
-let is_optional = (ch.return_cardinality.clone() == Cardinality::CardOptional);
-if is_bool.clone() {
-                                    if is_optional.clone() {
-                                        "Some(output.status.success())".to_string()
-                                    } else {
-                                        "output.status.success()".to_string()
-                                    }
-                                } else {
-                                    if ((snake.clone().as_str() == "stderr".to_string().as_str()) && is_string.clone()) {
-                                        if is_optional.clone() {
-                                            "Some(stderr.clone())".to_string()
-                                        } else {
-                                            "stderr.clone()".to_string()
-                                        }
-                                    } else {
-                                        if is_string.clone() {
-                                            if is_optional.clone() {
-                                                "Some(stdout.clone())".to_string()
-                                            } else {
-                                                "stdout.clone()".to_string()
-                                            }
-                                        } else {
-                                            "serde_json::from_str(&stdout)?".to_string()
-                                        }
-                                    }
-                                }
-}); } __result });
-v2_rt::concat(v2_rt::concat(v2_rt::concat(stderr_line, "\nOk((".to_string()), field_exprs.join(&", ".to_string())), "))".to_string())
-}
-                    } else {
-                        {
-                            let is_optional = (effective.return_cardinality.clone() == Cardinality::CardOptional);
+                    {
+                        let __eff_is_container = node_is_element_collection(&effective, source_index.clone());
+if __eff_is_container {
+                            "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))".to_string()
+                        } else {
+                            {
+                                let is_optional = (effective.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional.clone() {
-                                "Ok(Some(stdout))".to_string()
-                            } else {
-                                "Ok(stdout)".to_string()
-                            }
+                                    "Ok(Some(stdout))".to_string()
+                                } else {
+                                    "Ok(stdout)".to_string()
+                                }
 }
-                    }
+                        }
+}
                 }
 }
+        },
+}
+}
+}
+
+pub fn emit_shell_channel_expr(channel: &String, is_optional: bool) -> String {
+    {
+        let base = if (channel.clone().as_str() == "exit_success".to_string().as_str()) {
+            "output.status.success()".to_string()
+        } else {
+            if (channel.clone().as_str() == "stderr".to_string().as_str()) {
+                "stderr.clone()".to_string()
+            } else {
+                if (channel.clone().as_str() == "stdout_lines".to_string().as_str()) {
+                    "Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())".to_string()
+                } else {
+                    "stdout.clone()".to_string()
+                }
+            }
+        };
+if is_optional {
+            v2_rt::concat(v2_rt::concat("Some(".to_string(), base), ")".to_string())
+        } else {
+            base
         }
 }
 }
@@ -5095,7 +5120,7 @@ pub fn resolve_param_default(param: Rc<Node>, registry: Rc<HashMap<String, Rc<It
 }
 }
 
-pub fn to_workflow_func(item: &Rc<Node>, module_name: String, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, module_items: Rc<Vec<Rc<Node>>>, source_index: &Option<Rc<NewlineIndex>>, read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>) -> Rc<WorkflowFunc> {
+pub fn to_workflow_func(item: &Rc<Node>, module_name: &String, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, module_items: Rc<Vec<Rc<Node>>>, source_index: &Option<Rc<NewlineIndex>>, read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>) -> Rc<WorkflowFunc> {
     {
         let svc_names = match lookup_item(registry.clone(), item.name.clone()) {
     Some(info) => info.service_names.clone(),
@@ -5105,13 +5130,14 @@ let defaults = item.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<St
     Some(lit) => v2_rt::rc_map_insert(acc.clone(), param_node_name_at(p.clone(), source_index.clone()), lit.clone()),
     None => acc.clone(),
 });
-let ro_params = match v2_rt::map_get(&read_only_params_index, item.name.clone()) {
+let qualified = v2_rt::concat(v2_rt::concat(module_name.clone(), ".".to_string()), item.name.clone());
+let ro_params = match v2_rt::map_get(&read_only_params_index, qualified) {
     Some(m) => m.clone(),
     None => v2_rt::rc_empty_map::<bool>(),
 };
 Rc::new(WorkflowFunc {
     name: item.name.clone(),
-    module_name: module_name,
+    module_name: module_name.clone(),
     params: item.params.clone(),
     inferred: resolved_type(item.clone()),
     uses: item.uses.clone(),
@@ -5139,7 +5165,7 @@ pub fn is_workflow_item(item: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInf
 }
 
 pub fn collect_workflow_funcs(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>) -> Rc<Vec<Rc<WorkflowFunc>>> {
-    Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_workflow_item(&item, registry.clone()) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(&item, tm.module.clone().name.clone(), &registry, tm.items.clone(), &tm.type_env.clone().source_index.clone(), read_only_params_index.clone())); } __result })).iter().cloned()); } __result })
+    Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_workflow_item(&item, registry.clone()) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(&item, &tm.module.clone().name.clone(), &registry, tm.items.clone(), &tm.type_env.clone().source_index.clone(), read_only_params_index.clone())); } __result })).iter().cloned()); } __result })
 }
 
 pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {

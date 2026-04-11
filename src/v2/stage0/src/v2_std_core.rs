@@ -1455,6 +1455,15 @@ pub fn transport_stdin_key() -> String {
     CACHED.with(|c| c.clone())
 }
 
+pub fn transport_response_format_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "response_format".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, body: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: "".to_string(),
@@ -1481,7 +1490,7 @@ pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
     make_transport_node(Rc::new(vec![]), Rc::new(vec![]), None, span)
 }
 
-pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, method: Option<Rc<Node>>, path: Option<Rc<Node>>, query: Option<Rc<Node>>, request_body: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<Node>>>, headers: Rc<Vec<Rc<Node>>>, method: Option<Rc<Node>>, path: Option<Rc<Node>>, query: Option<Rc<Node>>, request_body: Option<Rc<Node>>, response_format: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let zero_span = make_span(0, 0);
 let url_field = make_field_init_node(&transport_url_key(), base_url, zero_span.clone(), zero_span.clone());
@@ -1501,7 +1510,11 @@ let body_props = match request_body {
     Some(b) => Rc::new(vec![make_field_init_node(&transport_body_key(), b.clone(), zero_span.clone(), zero_span.clone())]),
     None => Rc::new(vec![]),
 };
-let props = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), method_props), path_props), query_props), body_props), auth_props), headers);
+let rf_props = match response_format {
+    Some(rf) => Rc::new(vec![make_field_init_node(&transport_response_format_key(), rf.clone(), zero_span.clone(), zero_span.clone())]),
+    None => Rc::new(vec![]),
+};
+let props = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), method_props), path_props), query_props), body_props), rf_props), auth_props), headers);
 make_transport_node(props, Rc::new(vec![]), None, span)
 }
 }
@@ -1669,8 +1682,12 @@ pub fn transport_stdin(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> O
     find_property(t.properties.clone(), transport_stdin_key(), source_index)
 }
 
+pub fn transport_response_format(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_response_format_key(), source_index)
+}
+
 pub fn is_config_reserved_key(name: &String) -> bool {
-    ((((((((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str())) || (name.clone().as_str() == transport_method_key().as_str())) || (name.clone().as_str() == transport_path_template_key().as_str())) || (name.clone().as_str() == transport_query_key().as_str())) || (name.clone().as_str() == transport_body_key().as_str())) || (name.clone().as_str() == transport_stdin_key().as_str()))
+    (((((((((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str())) || (name.clone().as_str() == transport_method_key().as_str())) || (name.clone().as_str() == transport_path_template_key().as_str())) || (name.clone().as_str() == transport_query_key().as_str())) || (name.clone().as_str() == transport_body_key().as_str())) || (name.clone().as_str() == transport_stdin_key().as_str())) || (name.clone().as_str() == transport_response_format_key().as_str()))
 }
 
 pub fn transport_headers(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<Node>>> {

@@ -14,7 +14,7 @@ pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     Some(_) => true,
     None => false,
 };
-result.clone()
+result
 }
 }
 

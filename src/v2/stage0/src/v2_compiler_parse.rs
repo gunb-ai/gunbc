@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_type_expr, param_node_default_value, make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name_at, field_access_field_at, expr_call_func_at, make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, NewlineIndex, InternTable, InternResult, empty_intern_table, intern, CompilerDiagnostic};
+pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_type_expr, param_node_default_value, make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name_at, field_access_field_at, expr_call_func_at, make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, NewlineIndex, InternTable, InternResult, empty_intern_table, intern, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -5196,10 +5196,10 @@ Rc::new(TransportResult {
 }
 
 pub fn parse_rest_binding_body(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<TransportResult> {
-    parse_rest_fields(tokens, state, None, None, None, None, None)
+    parse_rest_fields(tokens, state, None, None, None, None, None, None)
 }
 
-pub fn parse_rest_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut base_url: Option<Rc<Node>>, mut method: Option<Rc<Node>>, mut path_template: Option<Rc<Node>>, mut query: Option<Rc<Node>>, mut request_body: Option<Rc<Node>>) -> Rc<TransportResult> {
+pub fn parse_rest_fields(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut base_url: Option<Rc<Node>>, mut method: Option<Rc<Node>>, mut path_template: Option<Rc<Node>>, mut query: Option<Rc<Node>>, mut request_body: Option<Rc<Node>>, mut response_format: Option<Rc<Node>>) -> Rc<TransportResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state);
 let span = current_span(tokens.clone(), s.clone());
@@ -5214,7 +5214,7 @@ if (tok_is_rbrace(peek(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.c
 }), Rc::new(vec![]), None, make_span(0, 0)),
 };
 break Rc::new(TransportResult {
-    transport: rest_transport_node(bu, Rc::new(vec![]), Rc::new(vec![]), method, path_template, query, request_body, span.clone()),
+    transport: rest_transport_node(bu, Rc::new(vec![]), Rc::new(vec![]), method, path_template, query, request_body, response_format, span.clone()),
     state: s.clone(),
     err: None,
 });
@@ -5295,10 +5295,20 @@ request_body = __tco_1;
 continue;
 }
 } else {
-                                {
-                                    let __tco_0 = s2;
+                                if (fname.clone().as_str() == transport_response_format_key().as_str()) {
+                                    {
+                                        let __tco_0 = s2;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+response_format = __tco_1;
+continue;
+}
+} else {
+                                    {
+                                        let __tco_0 = s2;
 state = __tco_0;
 continue;
+}
 }
 }
 }
