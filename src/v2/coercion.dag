@@ -31,6 +31,7 @@ import extdeps.languages.go.types {
   go_type_checkpoints, go_algebra_inhabitants, go_callable,
   go_optional_template, go_cast_syntax
 }
+import extdeps.languages.dag.types { dag_type_checkpoints }
 
 // =========================================================================
 // Per-target dispatch
@@ -41,7 +42,7 @@ fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
     Rust => rust_type_checkpoints
     Python => python_type_checkpoints
     Go => go_type_checkpoints
-    Dag => []
+    Dag => dag_type_checkpoints
   }
 }
 

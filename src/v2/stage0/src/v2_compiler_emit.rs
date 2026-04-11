@@ -166,7 +166,7 @@ pub struct InterpPart {
 pub fn emit_simple_expr(expr: &Rc<Node>, target: &RenderTarget, source_index: &Option<Rc<NewlineIndex>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { value: v, .. } => emit_literal(v.clone(), target.clone()),
+    ExprData::ExprLiteral { value: v, .. } => emit_literal(v.clone(), &target),
     ExprData::ExprError { message, .. } => emit_error_expr(message.clone(), target.clone()),
     ExprData::ExprVar { .. } => emit_ident(expr_var_name_at(expr.clone(), source_index.clone()), target.clone()),
     ExprData::ExprFieldAccess { .. } => {
@@ -792,23 +792,23 @@ pub fn emit_keyword(key: String, target: RenderTarget) -> String {
     target_keyword(target, key)
 }
 
-pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
+pub fn emit_literal(value: Rc<LiteralValue>, target: &RenderTarget) -> String {
     match (*value).clone() {
     LiteralValue::LitStr { value: s, .. } => {
-        let suffix = match literal_suffix(target, "String".to_string()) {
+        let suffix = match literal_suffix(target.clone(), "String".to_string()) {
     Some(sfx) => sfx.clone(),
-    None => "".to_string(),
+    None => emit_error_expr("missing TypeCheckpoint for String literal suffix".to_string(), target.clone()),
 };
 emit_string_literal(s.clone(), suffix)
 },
     LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
     LiteralValue::LitFloat { value: f, .. } => f.clone(),
     LiteralValue::LitBool { value: b, .. } => if b.clone() {
-        emit_keyword("true".to_string(), target)
+        emit_keyword("true".to_string(), target.clone())
     } else {
-        emit_keyword("false".to_string(), target)
+        emit_keyword("false".to_string(), target.clone())
     },
-    LiteralValue::LitNull => emit_keyword("null".to_string(), target),
+    LiteralValue::LitNull => emit_keyword("null".to_string(), target.clone()),
 }
 }
 
@@ -881,18 +881,17 @@ let ret_str = match n.inferred.clone().as_deref().cloned() {
     _ => language_spec(target.clone()).void_type.clone(),
 };
 let spec = language_spec(target.clone());
-let base_template = match spec.callable_type_template.clone() {
-    Some(t) => t.clone(),
-    None => repr.template.clone(),
-};
-let result = if (ret_str.clone().as_str() == "".to_string().as_str()) {
+let result = match spec.callable_type_template.clone() {
+    Some(t) => v2_rt::replace(v2_rt::replace(t.clone(), "{params}".to_string(), param_str), "{return}".to_string(), ret_str.clone()),
+    None => if (ret_str.clone().as_str() == "".to_string().as_str()) {
                         {
-                            let void_template = v2_rt::replace(base_template, v2_rt::concat(repr.return_separator.clone(), "{return}".to_string()), "".to_string());
+                            let void_template = v2_rt::replace(repr.template.clone(), v2_rt::concat(repr.return_separator.clone(), "{return}".to_string()), "".to_string());
 v2_rt::replace(void_template, "{params}".to_string(), param_str)
 }
                     } else {
-                        v2_rt::replace(v2_rt::replace(base_template, "{params}".to_string(), param_str), "{return}".to_string(), ret_str.clone())
-                    };
+                        v2_rt::replace(v2_rt::replace(repr.template.clone(), "{params}".to_string(), param_str), "{return}".to_string(), ret_str.clone())
+                    },
+};
 return result
 }
             }
@@ -1910,7 +1909,7 @@ if is_string_like(target.clone(), authored_name_at(source_index, &base_node)) {
 
 pub fn emit_shared_expr(texpr: &Rc<Node>, target: &RenderTarget, source_index: Option<Rc<NewlineIndex>>, wrap_result: impl Fn(String) -> String + Clone, recurse: impl Fn(Rc<Node>) -> String + Clone, emit_var: impl Fn(Rc<Node>) -> String + Clone, emit_field_access: impl Fn(Rc<Node>) -> String + Clone, emit_call: impl Fn(Rc<Node>) -> String + Clone, emit_method_call: impl Fn(Rc<Node>) -> String + Clone, emit_match: impl Fn(Rc<Node>) -> String + Clone, emit_if: impl Fn(Rc<Node>) -> String + Clone, emit_let: impl Fn(Rc<Node>) -> String + Clone, emit_record_lit: impl Fn(Rc<Node>) -> String + Clone, emit_string_interp: impl Fn(Rc<Node>) -> String + Clone, emit_block: impl Fn(Rc<Node>) -> String + Clone, emit_cast: impl Fn(Rc<Node>) -> String + Clone, emit_for_each: impl Fn(Rc<Node>) -> String + Clone, emit_index: impl Fn(Rc<Node>) -> String + Clone, emit_slice: impl Fn(Rc<Node>) -> String + Clone, emit_bin_op: impl Fn(Rc<Node>) -> String + Clone) -> String {
     match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { value: v, .. } => wrap_result(emit_literal(v.clone(), target.clone())),
+    ExprData::ExprLiteral { value: v, .. } => wrap_result(emit_literal(v.clone(), &target)),
     ExprData::ExprError { message, .. } => wrap_result(emit_error_expr(message.clone(), target.clone())),
     ExprData::ExprVar { .. } => emit_var(texpr.clone()),
     ExprData::ExprFieldAccess { .. } => emit_field_access(texpr.clone()),

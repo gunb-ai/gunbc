@@ -932,16 +932,16 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
     second_accessor: ".1".to_string(),
 }),
     string_interp: Rc::new(StringInterpSyntax {
-    style: InterpStyle::FormatArgs,
-    format_template: "format!(\"{0}\", {1})".to_string(),
-    placeholder: "{}".to_string(),
-    plain_template: "\"{0}\".to_string()".to_string(),
+    style: InterpStyle::InlineExpr,
+    format_template: "\"{0}\"".to_string(),
+    placeholder: "".to_string(),
+    plain_template: "\"{0}\"".to_string(),
     escape_pairs: Rc::new(vec![Rc::new(EscapePair {
     from: "{".to_string(),
-    to: "{{".to_string(),
+    to: "\\{".to_string(),
 }), Rc::new(EscapePair {
     from: "}".to_string(),
-    to: "}}".to_string(),
+    to: "\\}".to_string(),
 })]),
 }),
     callable_type_template: None,

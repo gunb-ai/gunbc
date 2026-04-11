@@ -13,6 +13,7 @@ pub use crate::std_types::{container_to_algebra_name, container_to_algebra, cano
 pub use crate::extdeps_languages_rust_types::{rust_type_checkpoints, rust_algebra_inhabitants, rust_callable, rust_optional_template, rust_cast_syntax};
 pub use crate::extdeps_languages_python_types::{python_type_checkpoints, python_algebra_inhabitants, python_callable, python_optional_template, python_cast_syntax};
 pub use crate::extdeps_languages_go_types::{go_type_checkpoints, go_algebra_inhabitants, go_callable, go_optional_template, go_cast_syntax};
+pub use crate::extdeps_languages_dag_types::{dag_type_checkpoints};
 use CoercionAssertion::*;
 
 pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
@@ -20,7 +21,7 @@ pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
     RenderTarget::Rust => rust_type_checkpoints(),
     RenderTarget::Python => python_type_checkpoints(),
     RenderTarget::Go => go_type_checkpoints(),
-    RenderTarget::Dag => Rc::new(vec![]),
+    RenderTarget::Dag => dag_type_checkpoints(),
 }
 }
 

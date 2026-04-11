@@ -948,11 +948,11 @@ fn dag_spec() -> LanguageSpec {
       second_accessor: ".1"
     },
     string_interp: StringInterpSyntax {
-      style: FormatArgs,
-      format_template: "format!(\"{0}\", {1})",
-      placeholder: "{}",
-      plain_template: "\"{0}\".to_string()",
-      escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
+      style: InlineExpr,
+      format_template: "\"\{0\}\"",
+      placeholder: "",
+      plain_template: "\"\{0\}\"",
+      escape_pairs: [EscapePair { from: "{", to: "\\{" }, EscapePair { from: "}", to: "\\}" }]
     },
     callable_type_template: null,
     naming_case: AsAuthored,

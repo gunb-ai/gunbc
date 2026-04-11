@@ -411,7 +411,7 @@ pub fn emit_py_inferred(inferred: Rc<Node>, source_index: Option<Rc<NewlineIndex
 pub fn emit_py_pattern(pattern: Rc<MatchPattern>, source_index: Option<Rc<NewlineIndex>>) -> String {
     match (*pattern).clone() {
     MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Python),
-    MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), RenderTarget::Python),
+    MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), &RenderTarget::Python),
     MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } => emit_py_variant_pattern(n.clone(), &fbs, source_index),
     MatchPattern::Wildcard => "_".to_string(),
 }

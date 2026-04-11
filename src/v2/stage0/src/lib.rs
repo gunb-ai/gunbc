@@ -14,6 +14,7 @@ pub mod std_syntax;
 pub mod std_termination;
 pub mod v2_compiler_runtime_rust;
 pub mod extdeps_languages_dag_syntax;
+pub mod extdeps_languages_dag_types;
 pub mod extdeps_languages_go_syntax;
 pub mod extdeps_languages_go_types;
 pub mod extdeps_languages_python_syntax;

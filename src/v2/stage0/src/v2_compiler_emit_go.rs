@@ -407,7 +407,7 @@ pub fn emit_go_inferred(inferred: &Rc<Node>, source_index: Option<Rc<NewlineInde
 pub fn emit_go_pattern(pattern: Rc<MatchPattern>) -> String {
     match (*pattern).clone() {
     MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Go),
-    MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), RenderTarget::Go),
+    MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), &RenderTarget::Go),
     MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } => emit_go_variant_pattern(n.clone(), fbs.clone()),
     MatchPattern::Wildcard => "_".to_string(),
 }
