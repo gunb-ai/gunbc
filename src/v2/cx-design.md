@@ -502,23 +502,23 @@ sustainable.
 
 ### Ratchet
 
-421 honest violations (measured 2026-04-11). Root-cause audit identifies
-8 categories:
+421 violations measured locally (2026-04-11); ratchet in bootstrap.rs
+is 424. Root-cause audit identifies 8 categories:
 
-| Cat | Root cause | Count | Fix stream |
-|-----|-----------|------:|------------|
+| Cat | Root cause | Count | Fix |
+|-----|-----------|------:|-----|
 | A | Node tree descent (children are sub-values) | 159 | Body-inferred return contracts |
 | B | Parser SCC (integer position advancement) | 132 | Stream D: structural parser ([parser-design.md](parser-design.md)) |
 | C | Emission TCO mutual recursion | 22 | Body-inferred return contracts |
 | D | Inference mutual recursion (list shrinkage) | 15 | Body-inferred return contracts |
-| E | Complexity self-analysis (parser progress) | 17 | Follow-on from Stream D |
-| F | Tokenizer (integer position into bounded string) | 22 | Stream D: structural tokenizer |
+| E | Complexity self-analysis (parser progress) | 17 | Follow-on work |
+| F | Tokenizer (integer position into bounded string) | 22 | Separate PR (span design needed) |
 | G | Arithmetic descent (`(n-d)/10`) | 44 | S3 classification refinement |
 | H | Graph DFS (visited-set termination) | 10 | Deferred (needs worklist primitive) |
 
-**Path to 0:** Stream D (-154) + body inference (-196) + arithmetic
-refinement (-44) + complexity self-analysis (-17) = -411. Remaining
-~10 = graph DFS (needs language primitive, ROADMAP I1/I2).
+**Path to 0:** Stream D (-132) + tokenizer (-22, separate PR) +
+body inference (-196) + arithmetic (-44) + complexity self-analysis
+(-17) = -411. Remaining ~10 = graph DFS (needs language primitive).
 
 Not all violations trace to construct-discard-reconstruct. Categories
 B+F (154) trace to **integer opacity** — the parser uses `pos: Int` where

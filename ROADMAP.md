@@ -204,7 +204,7 @@ Stream B (ownership)    O1→O2→O3→O4→O5            │  (independent)
 Stream C (std/)         C1  S8 ───────────────────┘
                         (both feed into CX consumer)
 
-Stream D (structural parser)    P1 ────────────────── (parser/tokenizer independent; rename overlaps A/C)
+Stream D (structural parser)    P1 ────────────────── (02_parse.dag + compile.dag only)
 ```
 
 **Stream A: Provenance pipeline** (04_infer.dag, 04_env.dag, complexity.dag)
@@ -223,19 +223,20 @@ C1 (direct SubValueRelation→LoweringTarget) and S8 (lattice
 inhabitant declarations). Both small, both unblocked. C1 enables
 better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
 
-**Stream D: Structural parser** (02_parse.dag, 01_tokenize.dag, compile.dag)
+**Stream D: Structural parser** (02_parse.dag, compile.dag)
 Restructure parser from integer position indexing to list consumption.
-Eliminates 154 CX violations by construction — no new concepts needed.
-Also renames SubValueRelation → ProgressRelation (honest name).
-Design complete: [src/v2/parser-design.md](src/v2/parser-design.md).
-Parser/tokenizer restructuring is independent of other streams.
-The ProgressRelation rename touches Stream A/C files (induction.dag,
-computation.dag, 04_env.dag, 04_infer.dag, complexity.dag) — sequence
-the rename after or atomic with any in-flight Stream A work.
+Eliminates 132 CX violations (Category B) by construction.
+Design: [src/v2/parser-design.md](src/v2/parser-design.md).
+Touches only parser + compile boundary — no overlap with other streams.
 
-### CX violation audit (421 violations, 2026-04-11)
+Not in Stream D (separate future PRs):
+- Tokenizer restructuring (22 violations, needs span position design)
+- SubValueRelation → ProgressRelation rename (overlaps Stream A/C)
 
-The violation count breaks into 8 root-cause categories:
+### CX violation audit (measured 2026-04-11, ratchet is 424)
+
+Local measurement found 421 violations (ratchet set at 424 in
+bootstrap.rs). The violation count breaks into 8 root-cause categories:
 
 | Cat | Root cause | Count | Fix |
 |-----|-----------|------:|-----|
@@ -243,14 +244,15 @@ The violation count breaks into 8 root-cause categories:
 | B | Parser SCC (position advancement) | 132 | **Stream D: structural parser** |
 | C | Emission TCO mutual recursion | 22 | Body-inferred return contracts |
 | D | Inference mutual recursion (list shrinkage) | 15 | Body-inferred return contracts |
-| E | Complexity self-analysis | 17 | Follow-on from Stream D |
-| F | Tokenizer (position into bounded string) | 22 | **Stream D: structural tokenizer** |
+| E | Complexity self-analysis | 17 | Follow-on work |
+| F | Tokenizer (position into bounded string) | 22 | Separate PR (span design needed) |
 | G | Arithmetic descent (`(n-d)/10`) | 44 | Classification refinement in S3 |
 | H | Graph DFS (visited-set termination) | 10 | Deferred (needs worklist primitive) |
 
-**Path to 0:** Stream D (154) + body inference (196) + arithmetic (44)
-+ complexity self-analysis (17) = 411. Remaining ~10 = graph DFS
-(needs language primitive).
+**Path to 0:** Stream D (-132) + body inference (-196) + tokenizer
+(-22) + arithmetic (-44) + complexity self-analysis (-17) = -411.
+Remaining ~10 = graph DFS (needs language primitive). Tokenizer and
+rename are separate PRs, not counted in Stream D scope.
 
 ### What to start now
 
@@ -259,9 +261,9 @@ The violation count breaks into 8 root-cause categories:
 | A: Provenance infra | S1, S2, S3, S4, S5 | 04_env.dag, 04_infer.dag |
 | B: Clone elision | O1-O5 | ownership.dag, 05_emit_rust.dag |
 | C: std/ foundation | C1, S8 (Phase 1 done, Phase 2 blocked on generic emission) | std/induction.dag, std/algebra.dag, std/termination.dag |
-| D: Structural parser | P1 (one-shot PR) | 02_parse.dag, 01_tokenize.dag |
+| D: Structural parser | P1 | 02_parse.dag, compile.dag |
 
-Zero file overlap between streams. After Stream A (S1-S5), CX
+Streams A-D have no file overlap. After Stream A (S1-S5), CX
 consumer items C2-C6 can start (same files as Stream A, sequential).
 
 ### Active workboards

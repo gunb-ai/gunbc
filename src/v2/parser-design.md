@@ -117,9 +117,9 @@ fn expect(tokens: List<Token>, expected: ExpectedToken) -> TokenResult {
       if token_matches_expected(token: t, expected: expected) {
         TokenResult { token: t, tokens: tokens |> skip(1), err: none }
       } else {
-        ExpectResult { token: t, tokens: tokens, err: Some { ... } }
+        TokenResult { token: t, tokens: tokens, err: Some { ... } }
       }
-    None => ExpectResult { ... }
+    None => TokenResult { ... }
   }
 }
 
@@ -156,6 +156,18 @@ to:
 ```dag
 type TypeResult { type_expr: Node, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 ```
+
+**Why ParseContext is minimal:** `source_index` is read by most parse
+functions that construct AST nodes (for span attribution via
+`source_index`). `intern_table` is read/written once in `parse_module`.
+Both are genuinely shared across parser functions — this is not a
+convenience bundle. A function that only inspects tokens (helpers) does
+NOT take ctx; a function that builds AST nodes (parse functions) does.
+
+**Bespoke result types are a deliberate deferral.** The ~55 result types
+(TypeResult, ExprResult, etc.) are not the clean end state — a generic
+result pattern (M6 direction) would be better. This PR keeps them to
+minimize scope; collapsing to a generic result is a separate refactor.
 
 Helper results (no ctx — callers use `ctx` from their own scope):
 ```dag
@@ -197,58 +209,66 @@ correct because `tokens` was the unchanging full list. In the new code,
 `tokens: tokens` is STILL correct at every call — because `tokens` is
 shadowed to always be the current remaining list.
 
-### D6: Lookahead uses offset into remaining list
+### D6: Lookahead is suffix-based, not offset-based
 
-Most lookahead is 1-token (`tokens |> first`). Limited cases use offset:
+Most lookahead is 1-token (`tokens |> first`). For 2-token lookahead,
+`tokens |> skip(1) |> first`.
+
+For unbounded lookahead (`scan_for_fat_arrow_after_braces`), the scanner
+recurses on the remaining suffix — not an integer offset. This keeps
+the "no integer opacity" invariant consistent throughout:
 
 ```dag
-// 2-token lookahead:
-tokens |> skip(1) |> first
+// scan_for_fat_arrow_after_braces: recurse on suffix, not offset
+fn scan_for_fat_arrow_after_braces(tokens: List<Token>, start_skip: Int) -> Bool {
+  scan_braces_depth(remaining: tokens |> skip(start_skip), depth: 1)
+}
 
-// scan_for_fat_arrow_after_braces (unbounded read-only scan):
-fn scan_braces_depth(tokens: List<Token>, offset: Int, depth: Int) -> Bool {
-  match tokens |> skip(offset) |> first {
-    Some { value: t } =>
-      if is_lbrace(t) { scan_braces_depth(tokens: tokens, offset: offset + 1, depth: depth + 1) }
-      else if is_rbrace(t) { scan_braces_depth(tokens: tokens, offset: offset + 1, depth: depth - 1) }
-      else { scan_braces_depth(tokens: tokens, offset: offset + 1, depth: depth) }
-    None => false
+fn scan_braces_depth(remaining: List<Token>, depth: Int) -> Bool {
+  if depth <= 0 {
+    // matched all braces — check for fat arrow
+    match remaining |> first {
+      Some { value: t } => is_fat_arrow_shape(shape: t.shape)
+      None => false
+    }
+  } else {
+    match remaining |> first {
+      Some { value: t } =>
+        if is_lbrace_shape(shape: t.shape) {
+          scan_braces_depth(remaining: remaining |> skip(1), depth: depth + 1)
+        } else if is_rbrace_shape(shape: t.shape) {
+          scan_braces_depth(remaining: remaining |> skip(1), depth: depth - 1)
+        } else {
+          scan_braces_depth(remaining: remaining |> skip(1), depth: depth)
+        }
+      None => false
+    }
   }
 }
 ```
 
-`scan_braces_depth` doesn't consume tokens — it's a read-only scan with
-offset. Bounded by `|tokens|` (arithmetic descent on offset toward list
-length).
+`remaining |> skip(1)` is standard collection consumption — bounded by
+`|remaining|`, provable by construction. No integer offset reasoning.
 
-### D7: Tokenizer restructured in same PR
+### D7: Tokenizer deferred (separate PR)
 
-The tokenizer (`01_tokenize.dag`) uses the same pattern: `pos: Int` on
-`source_chars: List<Int>`. Restructure to pass remaining chars:
+The tokenizer (`01_tokenize.dag`) has the same integer-opacity pattern
+(`pos: Int` on `source_chars: List<Int>`), accounting for 22 violations.
+However, the tokenizer **constructs spans from byte positions**
+(`make_span(start: pos, end: pos + len)`). Restructuring to list
+consumption requires designing how to track byte offsets for span
+construction without reintroducing integer position tracking. This is
+a separate design problem deferred to a follow-up PR.
 
-```dag
-// Before:
-fn source_skip_ws(source: SourceRef, start: Int) -> Int {
-  if start >= source_len(source) { start }
-  else { let ch = source.source_chars[start]; ... source_skip_ws(source, start + 1) }
-}
+### D8: SubValueRelation → ProgressRelation deferred (separate PR)
 
-// After:
-fn source_skip_ws(chars: List<Int>) -> List<Int> {
-  match chars |> first {
-    Some { value: ch } =>
-      if ch == code_point(" ") || ch == code_point("\t") {
-        source_skip_ws(chars: chars |> skip(1))
-      } else { chars }
-    None => chars
-  }
-}
-```
-
-### D8: SubValueRelation renamed to ProgressRelation
+The rename is conceptually clean but touches files in Streams A and C
+(induction.dag, computation.dag, 04_env.dag, 04_infer.dag,
+complexity.dag). To maintain zero file overlap between streams, the
+rename is a separate PR sequenced after any in-flight Stream A work.
 
 The type models all forms of progress toward termination, not just
-structural sub-values. Rename in the same PR:
+structural sub-values. Target:
 
 ```dag
 type ProgressRelation
