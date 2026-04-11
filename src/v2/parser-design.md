@@ -58,15 +58,43 @@ Replaces `ParserState { pos: Int, source_index: NewlineIndex?, intern_table: Int
 The `pos: Int` field is deleted. `source_index` is read-only.
 `intern_table` is mutated once (module name interning in `parse_module`).
 
-### D3: Helper functions take only tokens
+### D3: Minimum information — inspection vs consumption
 
-`peek`, `advance`, `skip_newlines`, `eat`, `expect`, `current_span`, and
-all `peek_is_*` functions take `tokens: List<Token>` only. They don't need
-ParseContext.
+**Principle:** each helper receives the absolute minimum information it
+needs. Inspection helpers need a `Token?`. Consumption helpers need a
+`List<Token>`. No helper receives more than it uses.
+
+**Inspection helpers** take `Token?` (or `Token`), not `List<Token>`.
+They check properties of a single token. The caller extracts the token
+from the correct remaining list — no ambiguity possible.
 
 ```dag
-fn peek(tokens: List<Token>) -> Token? { tokens |> first }
+// All ~30 peek_is_* functions become token inspectors:
+fn is_newline_token(tok: Token?) -> Bool {
+  match tok { Some { value: t } => match t.shape { ShNewline => true  _ => false }  None => false }
+}
+fn is_keyword_token(tok: Token?, kw: String) -> Bool {
+  match tok { Some { value: t } => match t.shape { ShKeyword => t.text == kw  _ => false }  None => false }
+}
+fn is_ident_token(tok: Token?) -> Bool {
+  match tok { Some { value: t } => match t.shape { ShIdent => true  _ => false }  None => false }
+}
+fn is_eof_token(tok: Token?) -> Bool {
+  match tok { Some { value: t } => match t.shape { ShEof => true  _ => false }  None => true }
+}
+fn token_span(tok: Token?) -> SourceSpan {
+  match tok { Some { value: t } => t.span  None => make_span(start: 0, end: 0) }
+}
+fn token_shape(tok: Token?) -> TokenShape? {
+  match tok { Some { value: t } => Some { value: t.shape }  None => none }
+}
+```
 
+`peek` is eliminated — `tokens |> first` IS peek. No wrapper needed.
+
+**Consumption helpers** take `List<Token>` and return a new `List<Token>`:
+
+```dag
 fn advance(tokens: List<Token>) -> AdvanceResult {
   match tokens |> first {
     Some { value: t } => AdvanceResult { token: t, tokens: tokens |> skip(1) }
@@ -83,11 +111,11 @@ fn skip_newlines(tokens: List<Token>) -> List<Token> {
   }
 }
 
-fn expect(tokens: List<Token>, expected: ExpectedToken) -> ExpectResult {
+fn expect(tokens: List<Token>, expected: ExpectedToken) -> TokenResult {
   match tokens |> first {
     Some { value: t } =>
       if token_matches_expected(token: t, expected: expected) {
-        ExpectResult { token: t, tokens: tokens |> skip(1), err: none }
+        TokenResult { token: t, tokens: tokens |> skip(1), err: none }
       } else {
         ExpectResult { token: t, tokens: tokens, err: Some { ... } }
       }
@@ -95,13 +123,28 @@ fn expect(tokens: List<Token>, expected: ExpectedToken) -> ExpectResult {
   }
 }
 
-fn current_span(tokens: List<Token>) -> SourceSpan {
+fn eat(tokens: List<Token>, expected: ExpectedToken) -> EatResult {
   match tokens |> first {
-    Some { value: t } => t.span
-    None => make_span(start: 0, end: 0)
+    Some { value: t } =>
+      if token_matches_expected(token: t, expected: expected) {
+        EatResult { consumed: true, tokens: tokens |> skip(1), token: Some { value: t } }
+      } else {
+        EatResult { consumed: false, tokens: tokens, token: none }
+      }
+    None => EatResult { consumed: false, tokens: tokens, token: none }
   }
 }
 ```
+
+**Why this dissolves the token threading problem:** In the old design,
+helpers took `List<Token>` and the question "which list?" caused ~100+
+bugs in the bulk transform. With inspection helpers taking `Token?`,
+the caller does `let tok = tokens |> first` once and passes `tok` to
+all inspectors. No list reference passes through inspection helpers,
+so no ambiguity is possible.
+
+**`current_span` becomes `token_span`** — takes `Token?`, not a list.
+`peek` is eliminated — `tokens |> first` IS peek.
 
 ### D4: Result types carry remaining tokens + ctx
 
@@ -114,27 +157,45 @@ to:
 type TypeResult { type_expr: Node, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 ```
 
-Helper results carry only `tokens`:
+Helper results (no ctx — callers use `ctx` from their own scope):
 ```dag
 type AdvanceResult { token: Token, tokens: List<Token> }
-type ExpectResult { token: Token, tokens: List<Token>, err: ErrorNode? }
+type EatResult { consumed: Bool, tokens: List<Token>, token: Token? }
+type TokenResult { token: Token, tokens: List<Token>, err: ErrorNode? }
 ```
 
-### D5: Callers pass remaining tokens
+### D5: Shadow `tokens` at each step — one variable, always current
 
-The fundamental call pattern changes:
+The fundamental call pattern changes. Instead of a separate `s` variable
+for advanced state, **shadow `tokens` at each consumption step**:
 
 ```dag
-// Before: every call receives the FULL token list; state.pos tracks position
-let r = parse_type_expr(tokens: tokens, state: state)
-let s2 = skip_newlines(tokens: tokens, state: r.state)
-parse_callable(tokens: tokens, state: s2)
+// Before: tokens is FULL list, state.pos tracks position, s rebinds state
+let s = skip_newlines(tokens: tokens, state: state)
+let r = expect(tokens: tokens, state: s, expected: ExpectKeyword { text: "module" })
+if has_err(err: r.err) { return ModuleResult { ..., state: r.state, err: r.err } }
+let s = r.state
+let r = parse_dotted_ident(tokens: tokens, state: s)
 
-// After: every call receives REMAINING tokens; list shrinks at each step
-let r = parse_type_expr(tokens: tokens, ctx: ctx)
-let s2 = skip_newlines(tokens: r.tokens)
-parse_callable(tokens: s2, ctx: r.ctx)
+// After: tokens IS the remaining list, shadowed at each step
+let tokens = skip_newlines(tokens: tokens)
+let tok = tokens |> first                           // inspect current token
+let r = expect(tokens: tokens, expected: ExpectKeyword { text: "module" })
+if has_err(err: r.err) { return ModuleResult { ..., tokens: r.tokens, ctx: ctx, err: r.err } }
+let tokens = r.tokens                               // shadow: tokens is now after expect
+let r = parse_dotted_ident(tokens: tokens, ctx: ctx)
+let tokens = r.tokens                               // shadow: tokens is now after dotted_ident
 ```
+
+**Key invariant:** `tokens` always means "current remaining." No `s`,
+`s2`, or `s3` variables. Inspection uses `tokens |> first` (unambiguous).
+Error returns use `ctx` from scope (not `r.ctx`), since helper results
+don't carry ctx.
+
+**Why this works:** In the old code, `tokens: tokens` in every call was
+correct because `tokens` was the unchanging full list. In the new code,
+`tokens: tokens` is STILL correct at every call — because `tokens` is
+shadowed to always be the current remaining list.
 
 ### D6: Lookahead uses offset into remaining list
 
@@ -234,9 +295,10 @@ parse(tokens, source_index)
 ```
 parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult
   |
-  +-- let s = skip_newlines(tokens: tokens)       // s: shorter List<Token>
-  +-- let adv = advance(tokens: s)                // adv.tokens: skip(1) of s
-  +-- parse_callable(tokens: adv.tokens, ctx: ctx)  // RECURSIVE: shorter list
+  +-- let tokens = skip_newlines(tokens: tokens)   // shadow: shorter List<Token>
+  +-- let tok = tokens |> first                    // inspect: Token?
+  +-- let adv = advance(tokens: tokens)            // consume: adv.tokens = skip(1)
+  +-- parse_callable(tokens: adv.tokens, ctx: ctx) // RECURSIVE: shorter list
   |     binding provenance: adv.tokens has IteratedSubValue of tokens
   |     -> CollectionShrinkCall -> CX proves descent
   |
@@ -244,32 +306,96 @@ parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult
       -> bounded by |tokens| -> terminates
 ```
 
+### Typical parse function (after)
+
+```dag
+fn parse_module(tokens: List<Token>, ctx: ParseContext) -> ModuleResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let tok = tokens |> first
+  let start_span = token_span(tok: tok)
+
+  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "module" })
+  if has_err(err: r.err) { return ModuleResult { ..., tokens: r.tokens, ctx: ctx, err: r.err } }
+  let tokens = r.tokens
+
+  let r = parse_dotted_ident(tokens: tokens, ctx: ctx)
+  if has_err(err: r.err) { return ModuleResult { ..., tokens: r.tokens, ctx: r.ctx, err: r.err } }
+  let mod_name = r.name
+  let tokens = skip_newlines(tokens: r.tokens)
+
+  let r = parse_imports(tokens: tokens, ctx: ctx)
+  if has_err(err: r.err) { return ModuleResult { ..., tokens: r.tokens, ctx: r.ctx, err: r.err } }
+  let imports = r.imports
+  let tokens = r.tokens
+
+  let r = parse_items(tokens: tokens, ctx: ctx)
+  // ... same pattern ...
+  ModuleResult { module: mod, tokens: r.tokens, ctx: ctx, err: none }
+}
+```
+
+Note: `tokens: tokens` in every call is ALWAYS correct because `tokens`
+is shadowed at each step. Error returns use `ctx` from scope (not `r.ctx`)
+for helper results. Parse results DO have ctx.
+
 ---
 
 ## Scope
 
 | Component | Files | Lines affected | Nature |
 |-----------|-------|---------------|--------|
-| Parser restructure | 02_parse.dag | ~4500 | Mechanical: sig+body changes |
-| Tokenizer restructure | 01_tokenize.dag | ~600 | Same pattern, smaller |
+| Parser restructure | 02_parse.dag | ~4500 | Function-by-function rewrite |
 | Compile boundary | compile.dag | ~10 | Wire new parse interface |
-| ProgressRelation rename | induction.dag, computation.dag, 04_env.dag, 04_infer.dag, complexity.dag | ~30 sites | Rename |
-| Result types | 02_parse.dag (top) | ~55 types | Add tokens field, rename state->ctx |
 | Stage0 regen | stage0/ | generated | Regen from .dag changes |
 
-### Key numbers
+### Not in this PR (separate PRs)
 
-- ~198 function signatures to update
-- ~55 result types to update
-- ~500+ call sites to update (pass remaining tokens)
-- ~15 helper functions rewritten (peek, advance, expect, etc.)
-- ~30 rename sites (ProgressRelation)
-
-### Not in this PR
-
+- Tokenizer restructuring — deferred (span construction needs design; only 22 violations)
+- ProgressRelation rename — separate PR (overlaps Stream A files)
 - Body-inferred return contracts — separate follow-up PR
 - Arithmetic classification refinement (`(n-d)/10`) — separate PR
 - Graph DFS worklist pattern (10 violations) — needs language primitive
+
+### Implementation order
+
+**Phase 0: Refactor helpers to minimum information (FIRST)**
+Rewrite ~30 `peek_is_*` functions to take `Token?` instead of
+`(tokens, state)`. Eliminate `peek` (callers use `tokens |> first`).
+Rewrite `current_span` → `token_span(tok: Token?)`. This is a
+self-contained change within the current parser structure — rename
+the helpers and update their call sites while `ParserState` still
+exists. Compile and test. This reduces the surface area for Phase 1.
+
+**Phase 1: Types + consumption helpers**
+Change ParserState → ParseContext (delete `pos`). Update ~55 result
+types. Rewrite advance/skip_newlines/expect/eat. Compile — expect
+many errors from the ~198 functions that still reference old types.
+
+**Phase 2: Parse functions, function by function**
+Transform each parse function top-to-bottom. For each:
+1. Change signature: `state: ParserState` → `ctx: ParseContext`
+2. Shadow `tokens` at each consumption step
+3. Use `tokens |> first` for inspection, pass `Token?` to inspectors
+4. Error returns: `ctx` from scope for helper results, `r.ctx` for
+   parse results
+Compile every ~10 functions to catch errors early.
+
+**Phase 3: compile.dag boundary**
+Update the tokenize→parse call site.
+
+**Phase 4: Regen + test**
+Regen stage0, build, run full test suite.
+
+### Lessons from first attempt
+
+1. **Never bulk-sed call-site threading.** Token threading requires
+   understanding local dataflow. Transform function by function.
+2. **Helper results don't have ctx.** Error returns must use `ctx`
+   from scope, not `r.ctx`, when `r` is a TokenResult/EatResult.
+3. **Phase 0 (helper refactoring) is the key insight.** By making
+   inspection helpers take `Token?` FIRST, the token threading
+   problem disappears by construction — inspectors can't reference
+   the wrong list because they don't take a list.
 
 ---
 
@@ -277,7 +403,9 @@ parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult
 
 | Before | After | Delta | Source |
 |--------|-------|-------|--------|
-| 421 | ~267 | -154 | Parser SCC (132) + tokenizer (22) dissolved by construction |
+| 421 | ~289 | -132 | Parser SCC dissolved by construction |
+
+Note: tokenizer (22 violations) deferred to separate PR.
 
 ---
 
