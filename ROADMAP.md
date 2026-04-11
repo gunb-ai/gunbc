@@ -359,11 +359,16 @@ First target: `gunbc/tools/review.dag` (PR review agent).
 
 ### Track 6: Algebra field dispatch (Lane A)
 
-**Resolved (M8/M9).** `ExprBinOp.algebra_field` and `OperatorSpec.algebra_field`
-now use the structural `AlgebraFieldKind` coproduct (defined in `std/syntax.dag`)
-instead of `String?`. All producers and consumers updated.
+**Partially resolved (M8/M9).** `ExprBinOp.algebra_field` and
+`OperatorSpec.algebra_field` now use the structural `AlgebraFieldKind`
+coproduct (defined in `std/syntax.dag`) instead of `String?`. Dispatch
+is structural. Single-authority data table `algebra_field_entries` in
+`std/syntax.dag` declares the kind→name mapping.
 
-Status: DONE.
+**Remaining:** Child lookup still goes through `find_child_named`
+(string). `algebra_field_kind_name` in `04_types.dag` converts back
+to strings for this lookup. The full structural fix requires typed
+child identifiers on algebra Nodes so lookup is by kind, not name.
 
 ### Track 7: Core table dissolution + duplication cleanup (Lane A + D)
 

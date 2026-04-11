@@ -865,6 +865,9 @@ fn extract_optional_inner_node(n: Node) -> Node {
 }
 
 // Convert AlgebraFieldKind to the field name string for child lookup on types.
+// Authority: algebra_field_entries in std/syntax.dag — this match must stay
+// in sync. NOTE: child lookup still goes through find_child_named (string).
+// The full structural fix requires typed child identifiers on algebra Nodes.
 fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {
   match kind {
     AlgAdd => "add"

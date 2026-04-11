@@ -137,7 +137,7 @@ import v2.compiler.emit {
   has_mock_prefix,
   extract_test_projections,
   is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
-  tco_reassign_core,
+  tco_reassign_core, is_tco_identity_passthrough,
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors,
   extract_modifier_names,
@@ -3724,16 +3724,6 @@ fn expr_references_var(node: Node, var_name: String, source_index: NewlineIndex?
   match node.expr_data {
     ExprVar { binding_kind: _ } => expr_var_name_at(texpr: node, source_index: source_index) == var_name
     _ => node.children |> any(c => expr_references_var(node: c, var_name: var_name, source_index: source_index))
-  }
-}
-
-// Check if a TCO self-call argument is an identity pass-through: `f(param: param)`.
-// When the arg is ExprVar with the same name as the corresponding param, the
-// reassignment `let __tco = param; param = __tco;` is a no-op and can be skipped.
-fn is_tco_identity_passthrough(arg_val: Node, param_name: String, si: NewlineIndex?) -> Bool {
-  match arg_val.expr_data {
-    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: arg_val, source_index: si) == param_name
-    _ => false
   }
 }
 

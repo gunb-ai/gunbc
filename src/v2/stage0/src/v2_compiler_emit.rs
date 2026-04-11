@@ -2146,10 +2146,30 @@ pub fn emit_typed_first_arg_shared(args: Rc<Vec<Rc<Node>>>, target: RenderTarget
 }
 }
 
+pub fn is_tco_identity_passthrough(arg_val: Rc<Node>, param_name: String, si: Option<Rc<NewlineIndex>>) -> bool {
+    match (*arg_val.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => (expr_var_name_at(arg_val.clone(), si).as_str() == param_name.as_str()),
+    _ => false,
+}
+}
+
 pub fn emit_typed_tco_reassign_shared(args: Rc<Vec<Rc<Node>>>, params: Rc<Vec<Rc<Node>>>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let ordered_args = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(recurse(arg_value(a.clone()))); } __result });
-let param_names = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), source_index.clone()), target.clone())); } __result });
+        let arg_values = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(arg_value(a.clone())); } __result });
+let pairs = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(params.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if {
+            let pname = param_node_name_at(pair.1.clone(), source_index.clone());
+let av = match arg_values.clone().get(pair.0.clone() as usize).cloned() {
+    Some(v) => v.clone(),
+    None => pair.1.clone(),
+};
+!is_tco_identity_passthrough(av.clone(), pname.clone(), source_index.clone())
+} { __result.push(pair); } } __result });
+let filtered_arg_values = Rc::new({ let mut __result = Vec::new(); for pair in pairs.clone().iter().cloned() { __result.push(match arg_values.clone().get(pair.0.clone() as usize).cloned() {
+    Some(v) => v.clone(),
+    None => pair.1.clone(),
+}); } __result });
+let ordered_args = Rc::new({ let mut __result = Vec::new(); for av in filtered_arg_values.iter().cloned() { __result.push(recurse(av.clone())); } __result });
+let param_names = Rc::new({ let mut __result = Vec::new(); for pair in pairs.clone().iter().cloned() { __result.push(emit_ident(param_node_name_at(pair.1.clone(), source_index.clone()), target.clone())); } __result });
 shared_tco_reassign(ordered_args, param_names, language_spec(target.clone()))
 }
 }
