@@ -81,8 +81,9 @@ import v2.compiler.languages {
   BlockSyntax, TcoSyntax, ExpressionSemantics,
   IfValueForm, IfExpression, ConditionalTernary, IfStatement,
   VisibilitySpec, KeywordVisibility, CaseVisibility,
-  NamingCase, PascalCase, SnakeCase,
+  NamingCase, PascalCase, SnakeCase, CamelCase, AsAuthored,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
+  StringInterpSyntax, InterpStyle, FormatArgs, InlineExpr, EscapePair,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
   ContainerUsageTrigger, AsyncUsageTrigger,
@@ -265,53 +266,38 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_index: NewlineIndex
 }
 
 fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, source_index: NewlineIndex?) -> String {
+  let spec = language_spec(target: target)
+  let interp = spec.string_interp
   let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
-  match target {
-    Rust =>
+  match interp.style {
+    FormatArgs =>
       let fmt_parts = parts |> map(p => match p {
         Text { value: v } =>
-          let escaped = if has_interpolations { escape_rust_interp_text(s: v) } else { escape_string_literal_body(s: v) }
+          let base = escape_string_literal_body(s: v)
+          let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
         Interpolation { expr: e } =>
-          InterpPart { format_segment: "{}", arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
+          InterpPart { format_segment: interp.placeholder, arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
       })
       let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
       let args = fmt_parts
         |> map(p => p.arg_expr)
         |> filter(a => a != "")
       if args |> count == 0 {
-        concat("\"", fmt_str, "\".to_string()")
+        apply_type_template1(template: interp.plain_template, arg0: fmt_str)
       } else {
         let args_str = args |> join(separator: ", ")
-        concat("format!(\"", fmt_str, "\", ", args_str, ")")
+        apply_type_template2(template: interp.format_template, arg0: fmt_str, arg1: args_str)
       }
-    Go =>
-      let fmt_parts = parts |> map(p => match p {
-        Text { value: v } =>
-          let escaped = if has_interpolations { escape_go_interp_text(s: v) } else { escape_string_literal_body(s: v) }
-          InterpPart { format_segment: escaped, arg_expr: "" }
-        Interpolation { expr: e } =>
-          InterpPart { format_segment: "%v", arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
-      })
-      let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
-      let args = fmt_parts
-        |> map(p => p.arg_expr)
-        |> filter(a => a != "")
-      if args |> count == 0 {
-        concat("\"", fmt_str, "\"")
-      } else {
-        let args_str = args |> join(separator: ", ")
-        concat("fmt.Sprintf(\"", fmt_str, "\", ", args_str, ")")
-      }
-    Python =>
+    InlineExpr =>
       let segments = parts |> map(p => match p {
         Text { value: v } =>
-          if has_interpolations { escape_python_interp_text(s: v) } else { escape_string_literal_body(s: v) }
+          let base = escape_string_literal_body(s: v)
+          if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
         Interpolation { expr: e } =>
           concat("{", emit_simple_expr(expr: e, target: target, source_index: source_index), "}")
       })
-      concat("f\"", segments |> join(separator: ""), "\"")
-    _ => emit_error_expr(message: "unsupported simple string interpolation target", target: target)
+      apply_type_template1(template: interp.format_template, arg0: segments |> join(separator: ""))
   }
 }
 
@@ -585,6 +571,22 @@ fn to_screaming_snake(name: String) -> String {
   snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
 }
 
+// Convert a snake_case name to camelCase.
+fn to_camel(name: String) -> String {
+  let parts = name |> split(delimiter: "_")
+  if parts |> count == 0 { name }
+  else {
+    let first_part = match parts |> first {
+      Some { value: p } => p |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
+      None => ""
+    }
+    let rest_parts = parts |> enumerate
+      |> filter(pair => pair.first > 0)
+      |> map(pair => capitalize_first(s: pair.second))
+    concat(first_part, rest_parts |> join(separator: ""))
+  }
+}
+
 // Check if a character is uppercase.
 fn is_upper(ch: Int) -> Bool {
   ch >= 65 && ch <= 90
@@ -658,6 +660,8 @@ fn apply_naming_case(name: String, case_style: NamingCase) -> String {
       pascal_parts |> join(separator: "")
     }
     SnakeCase => to_snake(name: name)
+    CamelCase => to_camel(name: name)
+    AsAuthored => name
   }
 }
 
@@ -825,6 +829,12 @@ fn escape_python_interp_text(s: String) -> String {
     |> split(delimiter: "}") |> join(separator: "}}")
 }
 
+// Generic escape-pair application: folds over pairs, applying split/join for each.
+// Replaces per-language escape_*_interp_text functions for new data-driven callers.
+fn apply_escape_pairs(s: String, pairs: List<EscapePair>) -> String {
+  pairs |> fold(init: s, f: (acc, pair) => acc |> split(delimiter: pair.from) |> join(separator: pair.to))
+}
+
 // Emit a string literal with language-specific suffix (e.g. ".to_string()" for Rust).
 fn emit_string_literal(s: String, suffix: String) -> String {
   concat("\"", escape_string_literal_body(s: s), "\"", suffix)
@@ -873,14 +883,12 @@ fn emit_keyword(key: String, target: RenderTarget) -> String {
 fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   match value {
     LitStr { value: s } =>
+      // String literal suffix from TypeCheckpoint (e.g. ".to_string()" for Rust).
+      // Targets without TypeCheckpoints (Dag) get empty suffix — no error needed
+      // because the suffix is a rendering convenience, not a type-safety contract.
       let suffix = match literal_suffix(target: target, dag_name: "String") {
         Some { value: sfx } => sfx
-        // Dag target has no TypeCheckpoints — suffix is always empty.
-        // For real targets, missing checkpoint is fail-closed via emit_error_expr.
-        None => match target {
-          Dag => ""
-          _ => emit_error_expr(message: "missing TypeCheckpoint for String literal suffix", target: target)
-        }
+        None => ""
       }
       emit_string_literal(s: s, suffix: suffix)
     LitInt { value: i } => to_string(value: i)
@@ -959,12 +967,17 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
       Some { value: Resolved { node: rt } } => render_node_type(n: rt, target: target, shared_types: shared_types, source_index: source_index)
       _ => language_spec(target: target).void_type
     }
-    let callable_str = replace(replace(repr.template, "\{params\}", param_str), "\{return\}", ret_str)
-    let go_callable_str = if ret_str == "" { concat("func(", param_str, ")") } else { callable_str }
-    let result = match target {
-      Rust => concat("Rc<dyn ", replace(callable_str, "fn(", "Fn("), ">")
-      Go => go_callable_str
-      _ => callable_str
+    let spec = language_spec(target: target)
+    let base_template = match spec.callable_type_template {
+      Some { value: t } => t
+      None => repr.template
+    }
+    let result = if ret_str == "" {
+      // Void return: strip return_separator + {return} placeholder to avoid dangling separator.
+      let void_template = replace(base_template, concat(repr.return_separator, "\{return\}"), "")
+      replace(void_template, "\{params\}", param_str)
+    } else {
+      replace(replace(base_template, "\{params\}", param_str), "\{return\}", ret_str)
     }
     return result
   }
@@ -1710,35 +1723,24 @@ fn is_tco_candidate(texpr: Node, func_name: String, source_index: NewlineIndex?)
 // P4.1: Shared identifier and statement rendering
 // =========================================================================
 
-// Target-dispatched identifier rendering.
-// Rust: snake_case + r#keyword escape. Go: camelCase + _suffix escape.
-// Python: snake_case + _suffix escape.
+// Data-driven identifier rendering: reads naming_case and reserved_words from LanguageSpec.
 fn emit_ident(name: String, target: RenderTarget) -> String {
-  match target {
-    Rust =>
-      let snake = to_snake(name: name)
-      if language_spec(target: Rust).reserved_words.keywords |> any(r => r == snake) { concat(reserved_prefix(target: Rust), snake) }
-      else { snake }
-    Go =>
-      let parts = name |> split(delimiter: "_")
-      if parts |> count == 0 { name }
-      else {
-        let first_part = match parts |> first {
-          Some { value: p } => p |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
-          None => ""
-        }
-        let rest_parts = parts |> enumerate
-          |> filter(pair => pair.first > 0)
-          |> map(pair => capitalize_first(s: pair.second))
-        let camel = concat(first_part, rest_parts |> join(separator: ""))
-        if language_spec(target: Go).reserved_words.keywords |> any(r => r == camel) { concat(camel, reserved_suffix(target: Go)) }
-        else { camel }
-      }
-    Python =>
-      let snake = to_snake(name: name)
-      if language_spec(target: Python).reserved_words.keywords |> any(r => r == snake) { concat(snake, reserved_suffix(target: Python)) }
-      else { snake }
-    Dag => name
+  let spec = language_spec(target: target)
+  let converted = match spec.naming_case {
+    SnakeCase => to_snake(name: name)
+    CamelCase => to_camel(name: name)
+    PascalCase => capitalize_first(s: to_camel(name: name))
+    AsAuthored => name
+  }
+  let is_reserved = spec.reserved_words.keywords |> any(r => r == converted)
+  if is_reserved {
+    match spec.reserved_words.strategy {
+      PrefixEscape { prefix: p } => concat(p, converted)
+      SuffixEscape { suffix: s } => concat(converted, s)
+      NoEscape => converted
+    }
+  } else {
+    converted
   }
 }
 

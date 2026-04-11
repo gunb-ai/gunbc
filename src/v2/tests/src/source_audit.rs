@@ -691,13 +691,16 @@ fn testgen_emits_valid_rust() {
         emit_source.contains("TestProjection"),
         "05_emit.dag should contain TestProjection"
     );
+    // Callable wrapping is data-driven: template lives in languages.dag,
+    // emitter reads callable_type_template from LanguageSpec.
+    let lang_source = read_v2_file("src/v2/languages.dag");
     assert!(
-        emit_source.contains("Rc<dyn ") && emit_source.contains("Fn("),
-        "05_emit.dag should render Rust callable types as Rc<dyn Fn(...)> via CallableRepr"
+        lang_source.contains("Rc<dyn Fn(") && lang_source.contains("callable_type_template"),
+        "languages.dag should declare Rust callable_type_template as Rc<dyn Fn(...)>"
     );
     assert!(
-        !emit_source.contains("Rust => concat(\"impl Fn("),
-        "05_emit.dag should not render Rust callable types as impl Fn in shared emit"
+        emit_source.contains("callable_type_template"),
+        "05_emit.dag should read callable_type_template from LanguageSpec"
     );
 }
 

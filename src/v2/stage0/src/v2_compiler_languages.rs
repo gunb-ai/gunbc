@@ -29,6 +29,7 @@ use ImportTrigger::*;
 use IfValueForm::*;
 use NamingCase::*;
 use VisibilitySpec::*;
+use InterpStyle::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -188,6 +189,8 @@ pub struct ExpressionSemantics {
 pub enum NamingCase {
     PascalCase,
     SnakeCase,
+    CamelCase,
+    AsAuthored,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -264,6 +267,9 @@ pub struct LanguageSpec {
     pub type_arg_close: String,
     pub void_type: String,
     pub tuple_syntax: Rc<TupleSyntax>,
+    pub string_interp: Rc<StringInterpSyntax>,
+    pub callable_type_template: Option<String>,
+    pub naming_case: NamingCase,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -272,6 +278,28 @@ pub struct TupleSyntax {
     pub pair_template: String,
     pub multi_template: String,
     pub separator: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum InterpStyle {
+    FormatArgs,
+    InlineExpr,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EscapePair {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StringInterpSyntax {
+    pub style: InterpStyle,
+    pub format_template: String,
+    pub placeholder: String,
+    pub plain_template: String,
+    pub escape_pairs: Rc<Vec<Rc<EscapePair>>>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -399,6 +427,21 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     multi_template: rust_tuple_multi_template(),
     separator: rust_tuple_separator(),
 }),
+    string_interp: Rc::new(StringInterpSyntax {
+    style: InterpStyle::FormatArgs,
+    format_template: "format!(\"{0}\", {1})".to_string(),
+    placeholder: "{}".to_string(),
+    plain_template: "\"{0}\".to_string()".to_string(),
+    escape_pairs: Rc::new(vec![Rc::new(EscapePair {
+    from: "{".to_string(),
+    to: "{{".to_string(),
+}), Rc::new(EscapePair {
+    from: "}".to_string(),
+    to: "}}".to_string(),
+})]),
+}),
+    callable_type_template: Some("Rc<dyn Fn({params}) -> {return}>".to_string()),
+    naming_case: NamingCase::SnakeCase,
 })
 }
 
@@ -527,6 +570,21 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     multi_template: python_tuple_multi_template(),
     separator: python_tuple_separator(),
 }),
+    string_interp: Rc::new(StringInterpSyntax {
+    style: InterpStyle::InlineExpr,
+    format_template: "f\"{0}\"".to_string(),
+    placeholder: "".to_string(),
+    plain_template: "f\"{0}\"".to_string(),
+    escape_pairs: Rc::new(vec![Rc::new(EscapePair {
+    from: "{".to_string(),
+    to: "{{".to_string(),
+}), Rc::new(EscapePair {
+    from: "}".to_string(),
+    to: "}}".to_string(),
+})]),
+}),
+    callable_type_template: None,
+    naming_case: NamingCase::SnakeCase,
 })
 }
 
@@ -655,6 +713,18 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     multi_template: go_tuple_multi_template(),
     separator: go_tuple_separator(),
 }),
+    string_interp: Rc::new(StringInterpSyntax {
+    style: InterpStyle::FormatArgs,
+    format_template: "fmt.Sprintf(\"{0}\", {1})".to_string(),
+    placeholder: "%v".to_string(),
+    plain_template: "\"{0}\"".to_string(),
+    escape_pairs: Rc::new(vec![Rc::new(EscapePair {
+    from: "%".to_string(),
+    to: "%%".to_string(),
+})]),
+}),
+    callable_type_template: None,
+    naming_case: NamingCase::CamelCase,
 })
 }
 
@@ -781,6 +851,21 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
     multi_template: dag_tuple_multi_template(),
     separator: dag_tuple_separator(),
 }),
+    string_interp: Rc::new(StringInterpSyntax {
+    style: InterpStyle::FormatArgs,
+    format_template: "format!(\"{0}\", {1})".to_string(),
+    placeholder: "{}".to_string(),
+    plain_template: "\"{0}\".to_string()".to_string(),
+    escape_pairs: Rc::new(vec![Rc::new(EscapePair {
+    from: "{".to_string(),
+    to: "{{".to_string(),
+}), Rc::new(EscapePair {
+    from: "}".to_string(),
+    to: "}}".to_string(),
+})]),
+}),
+    callable_type_template: None,
+    naming_case: NamingCase::AsAuthored,
 })
 }
 

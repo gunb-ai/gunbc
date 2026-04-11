@@ -261,8 +261,9 @@ type ExpressionSemantics {
 }
 
 // Naming case — bootstrap-local mirror of std.languages.NamingCase.
-// Only PascalCase is used by current visibility rendering.
-type NamingCase = PascalCase | SnakeCase
+// PascalCase: visibility rendering. SnakeCase/CamelCase: identifier rendering.
+// AsAuthored: pass through unchanged (Dag target).
+type NamingCase = PascalCase | SnakeCase | CamelCase | AsAuthored
 
 // Visibility specification — how each language controls export/access.
 // Ref: Rust Reference §6.1 "Visibility", Go Spec "Exported identifiers".
@@ -343,6 +344,12 @@ type LanguageSpec {
   type_arg_close: String               // ">" or "]"
   void_type: String                    // "()" / "None" / ""
   tuple_syntax: TupleSyntax
+  string_interp: StringInterpSyntax
+  // Callable type rendering: non-null overrides CallableRepr.template entirely.
+  // Rust: "Rc<dyn Fn({params}) -> {return}>". Others: null (use CallableRepr).
+  callable_type_template: String?
+  // Identifier case conversion for local variable names.
+  naming_case: NamingCase
 }
 
 type TupleSyntax {
@@ -350,6 +357,25 @@ type TupleSyntax {
   pair_template: String      // "({0}, {1})" — {0} = first, {1} = second
   multi_template: String     // "({0})" — {0} = joined parts
   separator: String          // ", " / "; "
+}
+
+// String interpolation — three structurally different models:
+//   FormatArgs: format function + positional args (Rust format!, Go fmt.Sprintf)
+//   InlineExpr: inline interpolation (Python f-strings)
+// C-1: dissolves `match target` in emit_simple_string_interp.
+type InterpStyle = FormatArgs | InlineExpr
+
+type EscapePair {
+  from: String
+  to: String
+}
+
+type StringInterpSyntax {
+  style: InterpStyle
+  format_template: String          // FormatArgs: "format!(\"{0}\", {1})"; InlineExpr: "f\"{0}\""
+  placeholder: String              // FormatArgs: "{}" or "%v"; InlineExpr: unused
+  plain_template: String           // no-interpolation fallback: "\"{0}\".to_string()" / "\"{0}\""
+  escape_pairs: List<EscapePair>   // interp-specific escaping applied after standard string escape
 }
 
 // =========================================================================
@@ -470,7 +496,16 @@ fn rust_spec() -> LanguageSpec {
       pair_template: rust_tuple_pair_template,
       multi_template: rust_tuple_multi_template,
       separator: rust_tuple_separator
-    }
+    },
+    string_interp: StringInterpSyntax {
+      style: FormatArgs,
+      format_template: "format!(\"{0}\", {1})",
+      placeholder: "{}",
+      plain_template: "\"{0}\".to_string()",
+      escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
+    },
+    callable_type_template: "Rc<dyn Fn(\{params\}) -> \{return\}>",
+    naming_case: SnakeCase
   }
 }
 
@@ -587,7 +622,16 @@ fn python_spec() -> LanguageSpec {
       pair_template: python_tuple_pair_template,
       multi_template: python_tuple_multi_template,
       separator: python_tuple_separator
-    }
+    },
+    string_interp: StringInterpSyntax {
+      style: InlineExpr,
+      format_template: "f\"{0}\"",
+      placeholder: "",
+      plain_template: "f\"{0}\"",
+      escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
+    },
+    callable_type_template: null,
+    naming_case: SnakeCase
   }
 }
 
@@ -704,7 +748,16 @@ fn go_spec() -> LanguageSpec {
       pair_template: go_tuple_pair_template,
       multi_template: go_tuple_multi_template,
       separator: go_tuple_separator
-    }
+    },
+    string_interp: StringInterpSyntax {
+      style: FormatArgs,
+      format_template: "fmt.Sprintf(\"{0}\", {1})",
+      placeholder: "%v",
+      plain_template: "\"{0}\"",
+      escape_pairs: [EscapePair { from: "%", to: "%%" }]
+    },
+    callable_type_template: null,
+    naming_case: CamelCase
   }
 }
 
@@ -824,7 +877,16 @@ fn dag_spec() -> LanguageSpec {
       pair_template: dag_tuple_pair_template,
       multi_template: dag_tuple_multi_template,
       separator: dag_tuple_separator
-    }
+    },
+    string_interp: StringInterpSyntax {
+      style: FormatArgs,
+      format_template: "format!(\"{0}\", {1})",
+      placeholder: "{}",
+      plain_template: "\"{0}\".to_string()",
+      escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
+    },
+    callable_type_template: null,
+    naming_case: AsAuthored
   }
 }
 
