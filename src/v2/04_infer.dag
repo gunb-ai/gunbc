@@ -1926,7 +1926,15 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Some { value: callable_inferred(n: exp) }
         } else { none }
       } else { none }
-      let body_result = infer_expr(texpr: lam_body, scope: lam_scope, expected: body_expected)
+      // Clear lambda_param_provenance before entering the body — it's only
+      // for THIS lambda's params, not for nested lambdas inside the body.
+      let body_scope = InferScope {
+        type_env: lam_scope.type_env, func_env: lam_scope.func_env,
+        locals: lam_scope.locals, match_bound_names: lam_scope.match_bound_names,
+        module_name: lam_scope.module_name, service_registry: lam_scope.service_registry,
+        item_registry: lam_scope.item_registry, lambda_param_provenance: empty_map()
+      }
+      let body_result = infer_expr(texpr: lam_body, scope: body_scope, expected: body_expected)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
       let lam_texpr = make_expr_node(

@@ -2001,7 +2001,17 @@ if ((exp.params.clone().len() as i64) > 0) {
             } else {
                 None
             };
-let body_result = infer_expr(lam_body, lam_scope.clone(), body_expected);
+let body_scope = Rc::new(InferScope {
+    type_env: lam_scope.type_env.clone(),
+    func_env: lam_scope.func_env.clone(),
+    locals: lam_scope.locals.clone(),
+    match_bound_names: lam_scope.match_bound_names.clone(),
+    module_name: lam_scope.module_name.clone(),
+    service_registry: lam_scope.service_registry.clone(),
+    item_registry: lam_scope.item_registry.clone(),
+    lambda_param_provenance: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+});
+let body_result = infer_expr(lam_body, body_scope, body_expected);
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
 let lam_texpr = make_expr_node(Rc::new(ExprData::ExprLambda {
