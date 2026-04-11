@@ -502,11 +502,30 @@ sustainable.
 
 ### Ratchet
 
-424 honest violations (PR #370). These represent genuine gaps in
-the compositional evidence model — not implementation bugs. The
-violation count traces directly to the construct-discard-reconstruct
-pattern: each violation is a case where the reconstruction heuristics
-fail to re-derive information that was available at binding time.
+421 honest violations (measured 2026-04-11). Root-cause audit identifies
+8 categories:
+
+| Cat | Root cause | Count | Fix stream |
+|-----|-----------|------:|------------|
+| A | Node tree descent (children are sub-values) | 159 | Body-inferred return contracts |
+| B | Parser SCC (integer position advancement) | 132 | Stream D: structural parser ([parser-design.md](parser-design.md)) |
+| C | Emission TCO mutual recursion | 22 | Body-inferred return contracts |
+| D | Inference mutual recursion (list shrinkage) | 15 | Body-inferred return contracts |
+| E | Complexity self-analysis (parser progress) | 17 | Follow-on from Stream D |
+| F | Tokenizer (integer position into bounded string) | 22 | Stream D: structural tokenizer |
+| G | Arithmetic descent (`(n-d)/10`) | 44 | S3 classification refinement |
+| H | Graph DFS (visited-set termination) | 10 | Deferred (needs worklist primitive) |
+
+**Path to 0:** Stream D (-154) + body inference (-196) + arithmetic
+refinement (-44) + complexity self-analysis (-17) = -411. Remaining
+~10 = graph DFS (needs language primitive, ROADMAP I1/I2).
+
+Not all violations trace to construct-discard-reconstruct. Categories
+B+F (154) trace to **integer opacity** — the parser uses `pos: Int` where
+structural list consumption would be provable. Category G (44) traces to
+**arithmetic opacity** — composite expressions like `(n-d)/10` aren't
+recognized as ProportionalShrink. Category H (10) traces to **set opacity**
+— visited-set growth is not expressible as a bounded primitive.
 
 ---
 
@@ -1110,11 +1129,11 @@ Active work items. Each has a TDD test and a cleanup target.
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
 | C1 | Direct SubValueRelation → LoweringTarget (bypass CallPattern) | Test: StrictSubValue{ProportionalShrink{2}} → correct LoweringTarget with factor | `sub_value_to_call_pattern` (std/induction.dag:206, lossy bridge) | DONE |
-| C2 | Switch classify_recursion_pattern to read binding provenance | Test: violation count matches or improves vs current | `classify_argument` (04_infer.dag:2633, ~200 lines) | Not started |
+| C2 | Switch annotate_descent to read binding provenance from scope_locals | Test: violation count matches or improves vs current | `classify_argument` fallback (04_infer.dag:2776) | DONE (PR #386) — hybrid: reads binding provenance for ExprVar/ExprFieldAccess, falls back to classify_argument for ExprCall |
 | C3 | Validate: binding provenance == CX-L2 reconstruction on all functions | Test: for every function, assert new path agrees with old path | Comparison harness (temporary, deleted after C4) | Not started |
 | C4 | Delete annotate_descent_evidence and all reconstruction code | Test: all existing CX tests pass without reconstruction | See cleanup catalog below | Not started |
 | C5 | Delete old proof system (construct_termination_proof) | Test: all SCC analysis reads provenance, no fallback | `construct_termination_proof` (~200 lines), `classify_scc_call_progress` (~60 lines) | Not started |
-| C6 | Re-enable CX gate as blocking (0 violations) | Test: `strict_compile_diagnostic_count` = 0 | CX gate disable in compile.dag + main.rs exit code filter | Not started |
+| C6 | Re-enable CX gate as blocking (0 violations) | Test: `strict_compile_diagnostic_count` = 0 | CX gate disable in compile.dag + main.rs exit code filter | Not started — requires Stream D + body inference + arithmetic refinement |
 
 ### TDD strategy
 
