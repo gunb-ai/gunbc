@@ -520,7 +520,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
-  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
+  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, read_only_params_index: emit_info.read_only_params_index)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   if workflow_default_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: workflow_default_diags }
@@ -4403,6 +4403,30 @@ fn emit_from_key_extraction(op_node: Node, source_index: NewlineIndex?) -> Strin
     "\nOk(", tuple_body, ")")
 }
 
+// Emit response body for operations without `from` key annotations.
+// String-typed single-field outputs use response.text() since they may
+// carry non-JSON payloads (e.g. diffs with Accept: application/vnd.github.diff).
+// Uses coerce_primitive_type to check the rendered type rather than comparing
+// the source type name directly.
+fn emit_plain_response_body(op_node: Node, source_index: NewlineIndex?) -> String {
+  let rt = resolved_type(n: op_node)
+  let is_single_string = rt.connective == Conj
+    && rt.children |> count == 1
+    && match rt.children |> first {
+      Some { value: ch } => match ch.inferred {
+        Some { value: Resolved { node: tn } } =>
+          coerce_primitive_type(target: Rust, dag_name: tn.name) == "String"
+        _ => false
+      }
+      None => false
+    }
+  if is_single_string {
+    "let result = response.text().await?;\nOk(result)"
+  } else {
+    "let result = response.json().await?;\nOk(result)"
+  }
+}
+
 fn emit_response_code_handling(op_node: Node, source_index: NewlineIndex?) -> String {
   let use_from_key = has_from_key_fields(op_node: op_node, source_index: source_index)
   let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_index: source_index)))
@@ -4410,7 +4434,7 @@ fn emit_response_code_handling(op_node: Node, source_index: NewlineIndex?) -> St
     if use_from_key {
       emit_from_key_extraction(op_node: op_node, source_index: source_index)
     } else {
-      "let result = response.json().await?;\nOk(result)"
+      emit_plain_response_body(op_node: op_node, source_index: source_index)
     }
   } else {
     let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, source_index: source_index))
@@ -4440,11 +4464,7 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, source_index
     if use_from_key {
       concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_index: source_index), " },")
     } else {
-      // TODO: response wire format (text vs json) should be a structural
-      // fact in std/, not inferred by the emitter. Currently all success
-      // responses use response.json(). String-body responses (like diffs)
-      // need a WireFormat declaration on the response block.
-      concat("    ", pattern, " => { let result = response.json().await?; Ok(result) },")
+      concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, source_index: source_index), " },")
     }
   } else {
     concat("    ", pattern, " => { let err_body = response.text().await.unwrap_or_default(); Err(format!(\"HTTP {}: {}\", status, err_body).into()) },")
@@ -4623,10 +4643,28 @@ fn emit_shell_return(inferred: Node, source_index: NewlineIndex?) -> String {
     if __eff_is_container {
       "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))"
     } else if is_product && effective.children |> count > 1 {
-      // BRIDGE: assumes shell stdout is JSON-parseable into the output type.
-      // Dissolves when transport definitions declare channel→field mappings
-      // (stdout from stdout, stderr from stderr, success from exit_code).
-      concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
+      // Shell output channels: map fields by type and name to process channels.
+      // Bool fields → exit code success, "stderr" → captured stderr,
+      // other String fields → captured stdout.
+      let stderr_line = "let stderr = String::from_utf8_lossy(&output.stderr).to_string();"
+      let field_exprs = effective.children |> map(ch =>
+        let fname = authored_name_at(source_index: source_index, node: ch)
+        let snake = to_snake(name: fname)
+        let child_type = match ch.inferred {
+          Some { value: Resolved { node: tn } } => tn
+          _ => ch
+        }
+        let is_bool = is_coproduct_type(n: child_type) && child_type.children |> count == 2
+        let is_optional = ch.return_cardinality == CardOptional
+        if is_bool {
+          "output.status.success()"
+        } else if snake == "stderr" {
+          if is_optional { "Some(stderr.clone())" } else { "stderr.clone()" }
+        } else {
+          if is_optional { "Some(stdout.clone())" } else { "stdout.clone()" }
+        }
+      )
+      concat(stderr_line, "\nOk((", field_exprs |> join(separator: ", "), "))")
     } else {
       let is_optional = effective.return_cardinality == CardOptional
       if is_optional {
@@ -4872,6 +4910,8 @@ fn emit_mock_prop_setup(mock_prop: Node, depth: Int, source_index: NewlineIndex?
 
 fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
   let header = concat("[package]\nname = \"", crate_name, "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n")
+  // [workspace] makes the crate standalone so it can be built inside a parent workspace dir.
+  let workspace = "\n[workspace]\n"
   let deps = "\n[dependencies]\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\n"
   let cli_dep = "clap = { version = \"4\", features = [\"derive\"] }\n"
   let async_deps = if has_services {
@@ -4880,7 +4920,7 @@ fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
     ""
   }
   let lazy_dep = "lazy_static = \"1\"\n"
-  TextFile { path: "Cargo.toml", content: concat(header, deps, cli_dep, async_deps, lazy_dep) }
+  TextFile { path: "Cargo.toml", content: concat(header, workspace, deps, cli_dep, async_deps, lazy_dep) }
 }
 
 // has_service_items is now shared -- imported from v2.compiler.emit
@@ -4902,6 +4942,9 @@ type WorkflowFunc {
   // Resolved param defaults: param name → literal string value.
   // Data references resolved at construction time via registry + module items.
   resolved_defaults: Map<String, String>
+  // Read-only params from ownership analysis — used by CLI call-site
+  // to add & for params whose function signature takes &T.
+  read_only_params: Map<String, Bool>
   source_index: NewlineIndex?
 }
 
@@ -4948,7 +4991,7 @@ fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, module_it
   }
 }
 
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, module_items: List<Node>, source_index: NewlineIndex?) -> WorkflowFunc {
+fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, module_items: List<Node>, source_index: NewlineIndex?, read_only_params_index: Map<String, Map<String, Bool>>) -> WorkflowFunc {
   let svc_names = match lookup_item(registry: registry, name: item.name) {
     Some { value: info } => info.service_names
     None => []
@@ -4959,6 +5002,10 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
       None => acc
     }
   )
+  let ro_params = match map_get(read_only_params_index, item.name) {
+    Some { value: m } => m
+    None => empty_map()
+  }
   WorkflowFunc {
     name: item.name,
     module_name: module_name,
@@ -4967,6 +5014,7 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
     uses: item.uses,
     service_names: svc_names,
     resolved_defaults: defaults,
+    read_only_params: ro_params,
     source_index: source_index
   }
 }
@@ -4990,11 +5038,11 @@ fn is_workflow_item(item: Node, registry: Map<String, ItemInfo>) -> Bool {
   }
 }
 
-fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> List<WorkflowFunc> {
+fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>, read_only_params_index: Map<String, Map<String, Bool>>) -> List<WorkflowFunc> {
   modules |> flat_map(tm =>
     tm.items
       |> filter(item => is_workflow_item(item: item, registry: registry))
-      |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry, module_items: tm.items, source_index: tm.type_env.source_index))
+      |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry, module_items: tm.items, source_index: tm.type_env.source_index, read_only_params_index: read_only_params_index))
   )
 }
 
@@ -5646,10 +5694,17 @@ fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
 
 // Emit the argument list for calling a workflow function from main.
 // Includes the function's params, then service instance args.
-// CLI args from clap are owned values — pass them directly without &.
+// CLI args from clap are owned values. Params that the function takes
+// by reference (read-only non-Copy types) need & at the call site.
 fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
   let param_args = wf.params |> map(p =>
-    emit_ident(name: param_node_name_at(n: p, source_index: wf.source_index), target: Rust)
+    let pname = param_node_name_at(n: p, source_index: wf.source_index)
+    let ident = emit_ident(name: pname, target: Rust)
+    let n = param_node_type_expr(n: p)
+    let is_borrowable = map_contains_key(wf.read_only_params, pname)
+      && n.params |> count == 0
+      && needs_reference_node(n: n)
+    if is_borrowable { concat("&", ident) } else { ident }
   )
   let service_args = emit_main_service_arg_list(wf: wf, has_services: has_services)
   let all_args = concat(param_args, service_args)

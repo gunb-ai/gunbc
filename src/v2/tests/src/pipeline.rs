@@ -5548,6 +5548,70 @@ fn shell_emit_cron_upsert_script() {
     );
 }
 
+// ── RE-3e: Wire contract controls enum serde tag ─────────────────────────
+#[test]
+fn wire_contract_as_authored_omits_variant_tag() {
+    let source = r#"module re3e_wire
+
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
+
+data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
+
+type UserType = User | Bot | Organization
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3e_wire.rs");
+    assert!(
+        !content.contains("_variant"),
+        "RE-3e: AsAuthored wire_contract should NOT emit _variant tag, got:\n{content}"
+    );
+}
+
+// ── RE-3f: Single-field String output uses response.text() ───────────────
+#[test]
+fn rest_string_output_uses_text() {
+    let source = r#"module re3e
+
+import std.types { HttpMethod, AuthScheme }
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+    auth: Bearer
+  }
+  operation GetDiff {
+    input { auth_token: Secret, id: Int }
+    output { diff: String }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/items/\{id\}/diff",
+      headers: { "Accept": "text/plain" }
+    }
+    response {
+      200 => String
+      404 => String
+    }
+    mock_response {
+      200 => "some diff text" "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3e.rs");
+    assert!(
+        content.contains("response.text().await"),
+        "RE-3e: single-field String output should use response.text(), got:\n{content}"
+    );
+    assert!(
+        !content.contains("200 => { let result = response.json()"),
+        "RE-3e: should NOT use response.json() for String output, got:\n{content}"
+    );
+}
+
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {

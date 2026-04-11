@@ -397,7 +397,7 @@ let emit_info = Rc::new(EmitGraphInfo {
 });
 let shared_types = emit_info.shared_types.clone();
 let registry = typed.item_registry.clone();
-let workflow_funcs = collect_workflow_funcs(typed.modules.clone(), registry.clone());
+let workflow_funcs = collect_workflow_funcs(typed.modules.clone(), registry.clone(), emit_info.read_only_params_index.clone());
 let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone());
 if ((workflow_default_diags.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
@@ -4518,6 +4518,24 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let json_body: serde_js
 }
 }
 
+pub fn emit_plain_response_body(op_node: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    {
+        let rt = resolved_type(op_node);
+let is_single_string = (((rt.connective.clone() == Connective::Conj) && ((rt.children.clone().len() as i64) == 1)) && match rt.children.clone().first().cloned() {
+    Some(ch) => match ch.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: tn, .. }) => (coerce_primitive_type(RenderTarget::Rust, tn.name.clone()).as_str() == "String".to_string().as_str()),
+    _ => false,
+},
+    None => false,
+});
+if is_single_string {
+            "let result = response.text().await?;\nOk(result)".to_string()
+        } else {
+            "let result = response.json().await?;\nOk(result)".to_string()
+        }
+}
+}
+
 pub fn emit_response_code_handling(op_node: &Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> String {
     {
         let use_from_key = has_from_key_fields(op_node.clone(), source_index.clone());
@@ -4526,7 +4544,7 @@ if ((response_props.clone().len() as i64) == 0) {
             if use_from_key.clone() {
                 emit_from_key_extraction(op_node.clone(), source_index.clone())
             } else {
-                "let result = response.json().await?;\nOk(result)".to_string()
+                emit_plain_response_body(op_node.clone(), source_index.clone())
             }
         } else {
             {
@@ -4562,7 +4580,7 @@ if is_success {
             if use_from_key {
                 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { ".to_string()), emit_from_key_extraction(op_node, source_index.clone())), " },".to_string())
             } else {
-                v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { let result = response.json().await?; Ok(result) },".to_string())
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { ".to_string()), emit_plain_response_body(op_node, source_index.clone())), " },".to_string())
             }
         } else {
             v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { let err_body = response.text().await.unwrap_or_default(); Err(format!(\"HTTP {}: {}\", status, err_body).into()) },".to_string())
@@ -4582,7 +4600,7 @@ pub fn emit_exit_code_handling(op_node: Rc<Node>, inferred: Rc<Node>, source_ind
     {
         let exit_props = Rc::new({ let mut __result = Vec::new(); for p in op_node.properties.clone().iter().cloned() { if has_exit_prefix(&field_init_node_name_at(p.clone(), source_index.clone())) { __result.push(p); } } __result });
 if ((exit_props.clone().len() as i64) == 0) {
-            emit_shell_return(inferred.clone(), source_index.clone())
+            emit_shell_return(inferred.clone(), &source_index)
         } else {
             {
                 let has_nonzero = { let mut __found = false; for p in exit_props.clone().iter().cloned() { if (field_init_node_name_at(p.clone(), source_index.clone()).as_str() == "exit_nonzero".to_string().as_str()) { __found = true; break; } } __found };
@@ -4609,7 +4627,7 @@ let pattern = if (code_str.clone().as_str() == "nonzero".to_string().as_str()) {
         };
 let is_success = (code_str.clone().as_str() == "0".to_string().as_str());
 if is_success {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { ".to_string()), emit_shell_return(inferred, source_index.clone())), " },".to_string())
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { ".to_string()), emit_shell_return(inferred, &source_index)), " },".to_string())
         } else {
             v2_rt::concat(v2_rt::concat("    ".to_string(), pattern), " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(stderr.into()) },".to_string())
         }
@@ -4726,25 +4744,55 @@ if is_opt.clone() {
 }
 }
 
-pub fn emit_shell_return(inferred: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+pub fn emit_shell_return(inferred: Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> String {
     {
         let effective = unwrap_single_field_product(inferred);
 let is_product = is_product_type(effective.clone());
 let is_bool = (is_coproduct_type(effective.clone()) && ((effective.children.clone().len() as i64) == 2));
-if is_bool {
+if is_bool.clone() {
             "Ok(output.status.success())".to_string()
         } else {
             {
-                let __eff_is_container = node_is_element_collection(&effective, source_index);
+                let __eff_is_container = node_is_element_collection(&effective, source_index.clone());
 if __eff_is_container {
                     "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))".to_string()
                 } else {
                     if (is_product && ((effective.children.clone().len() as i64) > 1)) {
-                        "let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)".to_string()
+                        {
+                            let stderr_line = "let stderr = String::from_utf8_lossy(&output.stderr).to_string();".to_string();
+let field_exprs = Rc::new({ let mut __result = Vec::new(); for ch in effective.children.clone().iter().cloned() { __result.push({
+                                let fname = authored_name_at(source_index.clone(), &ch);
+let snake = to_snake(fname.clone());
+let child_type = match ch.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: tn, .. }) => tn.clone(),
+    _ => ch.clone(),
+};
+let is_bool = (is_coproduct_type(child_type.clone()) && ((child_type.children.clone().len() as i64) == 2));
+let is_optional = (ch.return_cardinality.clone() == Cardinality::CardOptional);
+if is_bool.clone() {
+                                    "output.status.success()".to_string()
+                                } else {
+                                    if (snake.clone().as_str() == "stderr".to_string().as_str()) {
+                                        if is_optional.clone() {
+                                            "Some(stderr.clone())".to_string()
+                                        } else {
+                                            "stderr.clone()".to_string()
+                                        }
+                                    } else {
+                                        if is_optional.clone() {
+                                            "Some(stdout.clone())".to_string()
+                                        } else {
+                                            "stdout.clone()".to_string()
+                                        }
+                                    }
+                                }
+}); } __result });
+v2_rt::concat(v2_rt::concat(v2_rt::concat(stderr_line, "\nOk((".to_string()), field_exprs.join(&", ".to_string())), "))".to_string())
+}
                     } else {
                         {
                             let is_optional = (effective.return_cardinality.clone() == Cardinality::CardOptional);
-if is_optional {
+if is_optional.clone() {
                                 "Ok(Some(stdout))".to_string()
                             } else {
                                 "Ok(stdout)".to_string()
@@ -4971,6 +5019,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), fiel
 pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
     {
         let header = v2_rt::concat(v2_rt::concat("[package]\nname = \"".to_string(), crate_name), "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n".to_string());
+let workspace = "\n[workspace]\n".to_string();
 let deps = "\n[dependencies]\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\n".to_string();
 let cli_dep = "clap = { version = \"4\", features = [\"derive\"] }\n".to_string();
 let async_deps = if has_services {
@@ -4981,7 +5030,7 @@ let async_deps = if has_services {
 let lazy_dep = "lazy_static = \"1\"\n".to_string();
 Rc::new(TextFile {
     path: "Cargo.toml".to_string(),
-    content: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(header, deps), cli_dep), async_deps), lazy_dep),
+    content: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(header, workspace), deps), cli_dep), async_deps), lazy_dep),
 })
 }
 }
@@ -4995,6 +5044,7 @@ pub struct WorkflowFunc {
     pub uses: Rc<Vec<Rc<Node>>>,
     pub service_names: Rc<Vec<String>>,
     pub resolved_defaults: Rc<HashMap<String, String>>,
+    pub read_only_params: Rc<HashMap<String, bool>>,
     pub source_index: Option<Rc<NewlineIndex>>,
 }
 
@@ -5036,7 +5086,7 @@ pub fn resolve_param_default(param: Rc<Node>, registry: Rc<HashMap<String, Rc<It
 }
 }
 
-pub fn to_workflow_func(item: &Rc<Node>, module_name: String, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, module_items: Rc<Vec<Rc<Node>>>, source_index: &Option<Rc<NewlineIndex>>) -> Rc<WorkflowFunc> {
+pub fn to_workflow_func(item: &Rc<Node>, module_name: String, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, module_items: Rc<Vec<Rc<Node>>>, source_index: &Option<Rc<NewlineIndex>>, read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>) -> Rc<WorkflowFunc> {
     {
         let svc_names = match lookup_item(registry.clone(), item.name.clone()) {
     Some(info) => info.service_names.clone(),
@@ -5046,6 +5096,10 @@ let defaults = item.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<St
     Some(lit) => v2_rt::rc_map_insert(acc.clone(), param_node_name_at(p.clone(), source_index.clone()), lit.clone()),
     None => acc.clone(),
 });
+let ro_params = match v2_rt::map_get(&read_only_params_index, item.name.clone()) {
+    Some(m) => m.clone(),
+    None => v2_rt::rc_empty_map::<bool>(),
+};
 Rc::new(WorkflowFunc {
     name: item.name.clone(),
     module_name: module_name,
@@ -5054,6 +5108,7 @@ Rc::new(WorkflowFunc {
     uses: item.uses.clone(),
     service_names: svc_names,
     resolved_defaults: defaults,
+    read_only_params: ro_params,
     source_index: source_index.clone(),
 })
 }
@@ -5074,8 +5129,8 @@ pub fn is_workflow_item(item: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInf
     }
 }
 
-pub fn collect_workflow_funcs(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<Vec<Rc<WorkflowFunc>>> {
-    Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_workflow_item(&item, registry.clone()) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(&item, tm.module.clone().name.clone(), &registry, tm.items.clone(), &tm.type_env.clone().source_index.clone())); } __result })).iter().cloned()); } __result })
+pub fn collect_workflow_funcs(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>) -> Rc<Vec<Rc<WorkflowFunc>>> {
+    Rc::new({ let mut __result = Vec::new(); for tm in modules.iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_workflow_item(&item, registry.clone()) { __result.push(item); } } __result }).iter().cloned() { __result.push(to_workflow_func(&item, tm.module.clone().name.clone(), &registry, tm.items.clone(), &tm.type_env.clone().source_index.clone(), read_only_params_index.clone())); } __result })).iter().cloned()); } __result })
 }
 
 pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
@@ -5421,7 +5476,17 @@ if has_services.clone() {
 
 pub fn emit_main_call_args(wf: &Rc<WorkflowFunc>, has_services: bool) -> String {
     {
-        let param_args = Rc::new({ let mut __result = Vec::new(); for p in wf.params.clone().iter().cloned() { __result.push(emit_ident(param_node_name_at(p.clone(), wf.source_index.clone()), RenderTarget::Rust)); } __result });
+        let param_args = Rc::new({ let mut __result = Vec::new(); for p in wf.params.clone().iter().cloned() { __result.push({
+            let pname = param_node_name_at(p.clone(), wf.source_index.clone());
+let ident = emit_ident(pname.clone(), RenderTarget::Rust);
+let n = param_node_type_expr(&p);
+let is_borrowable = ((v2_rt::map_contains_key(&wf.read_only_params.clone(), pname.clone()) && ((n.params.clone().len() as i64) == 0)) && needs_reference_node(&n));
+if is_borrowable.clone() {
+                v2_rt::concat("&".to_string(), ident.clone())
+            } else {
+                ident.clone()
+            }
+}); } __result });
 let service_args = emit_main_service_arg_list(&wf, has_services);
 let all_args = v2_rt::concat(param_args, service_args);
 all_args.join(&", ".to_string())
