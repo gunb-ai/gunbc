@@ -825,9 +825,9 @@ pub fn emit_container(kind: &String, inner: String, target: &RenderTarget) -> St
     } else {
         match coerce_container_template(target.clone(), kind.clone()) {
     Some(template) => apply_type_template1(template.clone(), inner),
-    None => match target.clone() {
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(kind.clone(), "[".to_string()), inner), "]".to_string()),
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(kind.clone(), "<".to_string()), inner), ">".to_string()),
+    None => {
+            let spec = language_spec(target.clone());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(kind.clone(), spec.type_arg_open.clone()), inner), spec.type_arg_close.clone())
 },
 }
     }
@@ -865,10 +865,8 @@ if ((n_is_type_var || n_is_error.clone()) && ((n.children.clone().len() as i64) 
                     } else {
                         "TypeVariable".to_string()
                     };
-let err_str = match target.clone() {
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("compile_error!(\"unresolved ".to_string(), label), " type reached emit\")".to_string()),
-    _ => v2_rt::concat(v2_rt::concat("__EMIT_BUG_UNRESOLVED_".to_string(), label), "__".to_string()),
-};
+let spec = language_spec(target.clone());
+let err_str = apply_type_template1(spec.error_type_template.clone(), v2_rt::concat("UNRESOLVED_".to_string(), label));
 return err_str
 }
             }
@@ -880,11 +878,7 @@ let param_strs = Rc::new({ let mut __result = Vec::new(); for p in n.params.clon
 let param_str = param_strs.join(&repr.param_separator.clone());
 let ret_str = match n.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => render_node_type(&rt, &target, &shared_types, &source_index),
-    _ => match target.clone() {
-    RenderTarget::Go => "".to_string(),
-    RenderTarget::Python => "None".to_string(),
-    _ => "()".to_string(),
-},
+    _ => language_spec(target.clone()).void_type.clone(),
 };
 let callable_str = v2_rt::replace(v2_rt::replace(repr.template.clone(), "{params}".to_string(), param_str.clone()), "{return}".to_string(), ret_str.clone());
 let go_callable_str = if (ret_str.clone().as_str() == "".to_string().as_str()) {
@@ -916,9 +910,9 @@ if is_disj {
                     let base = if (n.ident_span.clone() != None) {
                         coerce_primitive_type(target.clone(), tn.clone())
                     } else {
-                        match target.clone() {
-    RenderTarget::Rust => "compile_error!(\"unresolved anonymous coproduct type reached emit\")".to_string(),
-    _ => "__EMIT_BUG_ANONYMOUS_COPRODUCT__".to_string(),
+                        {
+                            let spec = language_spec(target.clone());
+apply_type_template1(spec.error_type_template.clone(), "ANONYMOUS_COPRODUCT".to_string())
 }
                     };
 let disj_str = if shared.clone() {
@@ -1071,10 +1065,8 @@ let base = if is_container {
                     } else {
                         {
                             let type_base = coerce_primitive_type(target.clone(), tn.clone());
-match target.clone() {
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(type_base.clone(), "[".to_string()), child_str), "]".to_string()),
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(type_base.clone(), "<".to_string()), child_str), ">".to_string()),
-}
+let spec = language_spec(target.clone());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(type_base.clone(), spec.type_arg_open.clone()), child_str), spec.type_arg_close.clone())
 }
                     };
 let single_str = if shared.clone() {
@@ -1094,10 +1086,8 @@ return multi_tuple_str
             }
 let type_base = coerce_primitive_type(target.clone(), tn.clone());
 let args_joined = child_strs.clone().join(&", ".to_string());
-let base = match target.clone() {
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(type_base.clone(), "[".to_string()), args_joined), "]".to_string()),
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(type_base.clone(), "<".to_string()), args_joined), ">".to_string()),
-};
+let spec = language_spec(target.clone());
+let base = v2_rt::concat(v2_rt::concat(v2_rt::concat(type_base.clone(), spec.type_arg_open.clone()), args_joined), spec.type_arg_close.clone());
 if shared.clone() {
                 wrap_shared_type(target.clone(), base.clone())
             } else {
@@ -1108,32 +1098,25 @@ if shared.clone() {
 }
 
 pub fn render_tuple_parts(parts: &Rc<Vec<String>>, target: RenderTarget) -> String {
-    if ((parts.clone().len() as i64) > 0) {
-        {
-            let joined = parts.clone().join(&", ".to_string());
-match target {
-    RenderTarget::Go => if ((parts.clone().len() as i64) == 2) {
+    {
+        let spec = language_spec(target);
+let ts = spec.tuple_syntax.clone();
+if ((parts.clone().len() as i64) > 0) {
+            if ((parts.clone().len() as i64) == 2) {
                 match parts.clone().first().cloned() {
-    Some(first_part) => match parts.clone().get(1 as usize).cloned() {
-    Some(second_part) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("struct{ First ".to_string(), first_part.clone()), "; Second ".to_string()), second_part.clone()), " }".to_string()),
-    None => v2_rt::concat(v2_rt::concat("struct{ ".to_string(), parts.clone().join(&"; ".to_string())), " }".to_string()),
+    Some(p0) => match parts.clone().get(1 as usize).cloned() {
+    Some(p1) => apply_type_template2(ts.pair_template.clone(), p0.clone(), p1.clone()),
+    None => apply_type_template1(ts.multi_template.clone(), parts.clone().join(&ts.separator.clone())),
 },
-    None => v2_rt::concat(v2_rt::concat("struct{ ".to_string(), parts.clone().join(&"; ".to_string())), " }".to_string()),
+    None => apply_type_template1(ts.multi_template.clone(), parts.clone().join(&ts.separator.clone())),
 }
             } else {
-                v2_rt::concat(v2_rt::concat("struct{ ".to_string(), parts.clone().join(&"; ".to_string())), " }".to_string())
-            },
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat("Tuple[".to_string(), joined), "]".to_string()),
-    _ => v2_rt::concat(v2_rt::concat("(".to_string(), joined), ")".to_string()),
+                apply_type_template1(ts.multi_template.clone(), parts.clone().join(&ts.separator.clone()))
+            }
+        } else {
+            ts.empty.clone()
+        }
 }
-}
-    } else {
-        match target {
-    RenderTarget::Python => "Tuple".to_string(),
-    RenderTarget::Go => "struct{}".to_string(),
-    _ => "()".to_string(),
-}
-    }
 }
 
 pub fn is_type_alias_return_node(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
@@ -1727,32 +1710,21 @@ if { let mut __found = false; for r in language_spec(RenderTarget::Python).reser
 }
 
 pub fn emit_let_binding(name: String, value: String, target: &RenderTarget) -> String {
-    match target.clone() {
-    RenderTarget::Dag => v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), name), " = ".to_string()), value),
-    _ => {
+    {
         let spec = language_spec(target.clone());
 apply_type_template2(spec.annotations.clone().let_binding_inferred.clone(), emit_ident(name, target.clone()), value)
-},
 }
 }
 
 pub fn emit_let_binding_annotated(name: String, type_str: String, value: String, target: &RenderTarget) -> String {
-    match target.clone() {
-    RenderTarget::Dag => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), name), ": ".to_string()), type_str), " = ".to_string()), value),
-    _ => {
+    {
         let spec = language_spec(target.clone());
 apply_type_template3(spec.annotations.clone().let_binding_annotated.clone(), emit_ident(name, target.clone()), type_str, value)
-},
 }
 }
 
 pub fn emit_return(value: String, target: RenderTarget) -> String {
-    match target {
-    RenderTarget::Rust => v2_rt::concat("return ".to_string(), value),
-    RenderTarget::Go => v2_rt::concat("return ".to_string(), value),
-    RenderTarget::Python => v2_rt::concat("return ".to_string(), value),
-    RenderTarget::Dag => v2_rt::concat("return ".to_string(), value),
-}
+    v2_rt::concat("return ".to_string(), value)
 }
 
 pub fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget) -> String {
@@ -1763,23 +1735,17 @@ pub fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget)
 }
 
 pub fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> String {
-    match target {
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat(v2_rt::concat("|".to_string(), params_str), "| ".to_string()), body_str),
-    RenderTarget::Go => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func(".to_string(), params_str), ") interface{} { return ".to_string()), body_str), " }".to_string()),
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat("lambda ".to_string(), params_str), ": ".to_string()), body_str),
-    RenderTarget::Dag => v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), params_str), ") => ".to_string()), body_str),
+    {
+        let spec = language_spec(target);
+apply_type_template2(spec.lambda_template.clone(), params_str, body_str)
 }
 }
 
 pub fn emit_error_expr(message: String, target: RenderTarget) -> String {
     {
         let msg = emit_string_literal(message, "".to_string());
-match target {
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("panic!(".to_string(), msg), ")".to_string()),
-    RenderTarget::Go => v2_rt::concat(v2_rt::concat("panic(".to_string(), msg), ")".to_string()),
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat("raise RuntimeError(".to_string(), msg), ")".to_string()),
-    RenderTarget::Dag => v2_rt::concat(v2_rt::concat("error(".to_string(), msg), ")".to_string()),
-}
+let spec = language_spec(target);
+apply_type_template1(spec.error_expr_template.clone(), msg)
 }
 }
 
@@ -1792,32 +1758,23 @@ param_strs.join(&", ".to_string())
 }
 
 pub fn emit_list_lit_expr(element_strs: &Rc<Vec<String>>, target: RenderTarget) -> String {
-    if ((element_strs.clone().len() as i64) == 0) {
-        match target {
-    RenderTarget::Rust => "Rc::new(vec![])".to_string(),
-    RenderTarget::Python => "[]".to_string(),
-    RenderTarget::Go => "[]interface{}{}".to_string(),
-    RenderTarget::Dag => "[]".to_string(),
+    {
+        let spec = language_spec(target);
+if ((element_strs.clone().len() as i64) == 0) {
+            spec.list_literal_empty.clone()
+        } else {
+            {
+                let els_str = element_strs.clone().join(&", ".to_string());
+apply_type_template1(spec.list_literal_template.clone(), els_str)
 }
-    } else {
-        {
-            let els_str = element_strs.clone().join(&", ".to_string());
-match target {
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("Rc::new(vec![".to_string(), els_str), "])".to_string()),
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat("[".to_string(), els_str), "]".to_string()),
-    RenderTarget::Go => v2_rt::concat(v2_rt::concat("[]interface{}{".to_string(), els_str), "}".to_string()),
-    RenderTarget::Dag => v2_rt::concat(v2_rt::concat("[".to_string(), els_str), "]".to_string()),
+        }
 }
-}
-    }
 }
 
-pub fn emit_null_coalesce(l_str: &String, r_str: String, target: RenderTarget) -> String {
-    match target {
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat(v2_rt::concat(l_str.clone(), ".unwrap_or_else(|| ".to_string()), r_str), ")".to_string()),
-    RenderTarget::Python => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), l_str.clone()), " if ".to_string()), l_str.clone()), " is not None else ".to_string()), r_str), ")".to_string()),
-    RenderTarget::Go => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func() interface{} { if ".to_string(), l_str.clone()), " != nil { return ".to_string()), l_str.clone()), " }; return ".to_string()), r_str), " }()".to_string()),
-    RenderTarget::Dag => v2_rt::concat(v2_rt::concat(l_str.clone(), " ?? ".to_string()), r_str),
+pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> String {
+    {
+        let spec = language_spec(target);
+apply_type_template2(spec.null_coalesce_template.clone(), l_str, r_str)
 }
 }
 
@@ -1984,7 +1941,7 @@ let right = binop_right(texpr.clone());
 let left_str = recurse(left);
 let right_str = recurse(right);
 if is_null_coalesce(op.clone()) {
-            wrap_result(emit_null_coalesce(&left_str, right_str, target))
+            wrap_result(emit_null_coalesce(left_str, right_str, target))
         } else {
             {
                 let op_str = emit_bin_op_symbol(op.clone(), &target, algebra.clone());

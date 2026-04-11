@@ -906,10 +906,8 @@ fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
     match coerce_container_template(target: target, container_name: kind) {
       Some { value: template } => apply_type_template1(template: template, arg0: inner)
       None =>
-        match target {
-          Python => concat(kind, "[", inner, "]")
-          _ => concat(kind, "<", inner, ">")
-        }
+        let spec = language_spec(target: target)
+        concat(kind, spec.type_arg_open, inner, spec.type_arg_close)
     }
   }
 }
@@ -946,10 +944,8 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   // Error / unresolved type variable
   if (n_is_type_var || n_is_error) && n.children |> count == 0 {
     let label = if n_is_error { "CompilerError" } else { "TypeVariable" }
-    let err_str = match target {
-      Rust => concat("compile_error!(\"unresolved ", label, " type reached emit\")")
-      _ => concat("__EMIT_BUG_UNRESOLVED_", label, "__")
-    }
+    let spec = language_spec(target: target)
+    let err_str = apply_type_template1(template: spec.error_type_template, arg0: concat("UNRESOLVED_", label))
     return err_str
   }
 
@@ -961,11 +957,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     let param_str = param_strs |> join(separator: repr.param_separator)
     let ret_str = match n.inferred {
       Some { value: Resolved { node: rt } } => render_node_type(n: rt, target: target, shared_types: shared_types, source_index: source_index)
-      _ => match target {
-        Go => ""
-        Python => "None"
-        _ => "()"
-      }
+      _ => language_spec(target: target).void_type
     }
     let callable_str = replace(replace(repr.template, "\{params\}", param_str), "\{return\}", ret_str)
     let go_callable_str = if ret_str == "" { concat("func(", param_str, ")") } else { callable_str }
@@ -994,10 +986,8 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     let base = if n.ident_span != none {
       coerce_primitive_type(target: target, dag_name: tn)
     } else {
-      match target {
-        Rust => "compile_error!(\"unresolved anonymous coproduct type reached emit\")"
-        _ => "__EMIT_BUG_ANONYMOUS_COPRODUCT__"
-      }
+      let spec = language_spec(target: target)
+      apply_type_template1(template: spec.error_type_template, arg0: "ANONYMOUS_COPRODUCT")
     }
     let disj_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
     return disj_str
@@ -1103,10 +1093,8 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
       emit_container(kind: to_snake(name: tn), inner: child_str, target: target)
     } else {
       let type_base = coerce_primitive_type(target: target, dag_name: tn)
-      match target {
-        Python => concat(type_base, "[", child_str, "]")
-        _ => concat(type_base, "<", child_str, ">")
-      }
+      let spec = language_spec(target: target)
+      concat(type_base, spec.type_arg_open, child_str, spec.type_arg_close)
     }
     let single_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
     return single_str
@@ -1119,35 +1107,28 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   }
   let type_base = coerce_primitive_type(target: target, dag_name: tn)
   let args_joined = child_strs |> join(separator: ", ")
-  let base = match target {
-    Python => concat(type_base, "[", args_joined, "]")
-    _ => concat(type_base, "<", args_joined, ">")
-  }
+  let spec = language_spec(target: target)
+  let base = concat(type_base, spec.type_arg_open, args_joined, spec.type_arg_close)
   if shared { wrap_shared_type(target: target, inner: base) } else { base }
 }
 
 fn render_tuple_parts(parts: List<String>, target: RenderTarget) -> String {
+  let spec = language_spec(target: target)
+  let ts = spec.tuple_syntax
   if parts |> count > 0 {
-    let joined = parts |> join(separator: ", ")
-    match target {
-      Go => if parts |> count == 2 {
-        match parts |> first {
-          Some { value: first_part } => match parts |> skip(1) |> first {
-            Some { value: second_part } => concat("struct{ First ", first_part, "; Second ", second_part, " }")
-            None => concat("struct{ ", parts |> join(separator: "; "), " }")
-          }
-          None => concat("struct{ ", parts |> join(separator: "; "), " }")
+    if parts |> count == 2 {
+      match parts |> first {
+        Some { value: p0 } => match parts |> skip(1) |> first {
+          Some { value: p1 } => apply_type_template2(template: ts.pair_template, arg0: p0, arg1: p1)
+          None => apply_type_template1(template: ts.multi_template, arg0: parts |> join(separator: ts.separator))
         }
-      } else { concat("struct{ ", parts |> join(separator: "; "), " }") }
-      Python => concat("Tuple[", joined, "]")
-      _ => concat("(", joined, ")")
+        None => apply_type_template1(template: ts.multi_template, arg0: parts |> join(separator: ts.separator))
+      }
+    } else {
+      apply_type_template1(template: ts.multi_template, arg0: parts |> join(separator: ts.separator))
     }
   } else {
-    match target {
-      Python => "Tuple"
-      Go => "struct{}"
-      _ => "()"
-    }
+    ts.empty
   }
 }
 
@@ -1762,31 +1743,18 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
 }
 
 fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
-  match target {
-    Dag => concat("let ", name, " = ", value)
-    _ =>
-      let spec = language_spec(target: target)
-      apply_type_template2(template: spec.annotations.let_binding_inferred, arg0: emit_ident(name: name, target: target), arg1: value)
-  }
+  let spec = language_spec(target: target)
+  apply_type_template2(template: spec.annotations.let_binding_inferred, arg0: emit_ident(name: name, target: target), arg1: value)
 }
 
 fn emit_let_binding_annotated(name: String, type_str: String, value: String, target: RenderTarget) -> String {
-  match target {
-    Dag => concat("let ", name, ": ", type_str, " = ", value)
-    _ =>
-      let spec = language_spec(target: target)
-      apply_type_template3(template: spec.annotations.let_binding_annotated, arg0: emit_ident(name: name, target: target), arg1: type_str, arg2: value)
-  }
+  let spec = language_spec(target: target)
+  apply_type_template3(template: spec.annotations.let_binding_annotated, arg0: emit_ident(name: name, target: target), arg1: type_str, arg2: value)
 }
 
 
 fn emit_return(value: String, target: RenderTarget) -> String {
-  match target {
-    Rust => concat("return ", value)
-    Go => concat("return ", value)
-    Python => concat("return ", value)
-    Dag => concat("return ", value)
-  }
+  concat("return ", value)
 }
 
 // =========================================================================
@@ -1803,22 +1771,14 @@ fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget) -> 
 }
 
 fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> String {
-  match target {
-    Rust => concat("|", params_str, "| ", body_str)
-    Go => concat("func(", params_str, ") interface{} { return ", body_str, " }")
-    Python => concat("lambda ", params_str, ": ", body_str)
-    Dag => concat("(", params_str, ") => ", body_str)
-  }
+  let spec = language_spec(target: target)
+  apply_type_template2(template: spec.lambda_template, arg0: params_str, arg1: body_str)
 }
 
 fn emit_error_expr(message: String, target: RenderTarget) -> String {
   let msg = emit_string_literal(s: message, suffix: "")
-  match target {
-    Rust => concat("panic!(", msg, ")")
-    Go => concat("panic(", msg, ")")
-    Python => concat("raise RuntimeError(", msg, ")")
-    Dag => concat("error(", msg, ")")
-  }
+  let spec = language_spec(target: target)
+  apply_type_template1(template: spec.error_expr_template, arg0: msg)
 }
 
 fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String {
@@ -1830,31 +1790,18 @@ fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String
 }
 
 fn emit_list_lit_expr(element_strs: List<String>, target: RenderTarget) -> String {
+  let spec = language_spec(target: target)
   if element_strs |> count == 0 {
-    match target {
-      Rust => "Rc::new(vec![])"
-      Python => "[]"
-      Go => "[]interface{}{}"
-      Dag => "[]"
-    }
+    spec.list_literal_empty
   } else {
     let els_str = element_strs |> join(separator: ", ")
-    match target {
-      Rust => concat("Rc::new(vec![", els_str, "])")
-      Python => concat("[", els_str, "]")
-      Go => concat("[]interface{}{", els_str, "}")
-      Dag => concat("[", els_str, "]")
-    }
+    apply_type_template1(template: spec.list_literal_template, arg0: els_str)
   }
 }
 
 fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> String {
-  match target {
-    Rust => concat(l_str, ".unwrap_or_else(|| ", r_str, ")")
-    Python => concat("(", l_str, " if ", l_str, " is not None else ", r_str, ")")
-    Go => concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
-    Dag => concat(l_str, " ?? ", r_str)
-  }
+  let spec = language_spec(target: target)
+  apply_type_template2(template: spec.null_coalesce_template, arg0: l_str, arg1: r_str)
 }
 
 

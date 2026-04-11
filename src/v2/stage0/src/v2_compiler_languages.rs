@@ -19,9 +19,10 @@ pub use crate::extdeps_languages_rust_syntax::{rust_operators, rust_item_forms};
 pub use crate::extdeps_languages_python_syntax::{python_operators, python_item_forms};
 pub use crate::extdeps_languages_go_syntax::{go_operators, go_item_forms};
 pub use crate::extdeps_languages_dag_syntax::{dag_operators};
-pub use crate::extdeps_languages_rust_emit::{rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_string_types, rust_method_templates, rust_func_keyword, rust_async_prefix, rust_struct_keyword, rust_enum_keyword, rust_type_alias_keyword, rust_param_separator, rust_return_arrow, rust_param_type_sep, rust_module_keyword, rust_import_keyword, rust_import_from_keyword};
-pub use crate::extdeps_languages_python_emit::{python_keywords, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates, python_string_types, python_func_keyword, python_async_prefix, python_struct_keyword, python_enum_keyword, python_type_alias_keyword, python_param_separator, python_return_arrow, python_param_type_sep, python_module_keyword, python_import_keyword, python_import_from_keyword};
-pub use crate::extdeps_languages_go_emit::{go_keywords, go_reserved, go_reserved_escape_suffix, go_manifest_file, go_method_templates, go_string_types, go_func_keyword, go_async_prefix, go_struct_keyword, go_enum_keyword, go_type_alias_keyword, go_param_separator, go_return_arrow, go_param_type_sep, go_module_keyword, go_import_keyword, go_import_from_keyword};
+pub use crate::extdeps_languages_rust_emit::{rust_keywords, rust_container_templates, rust_reserved, rust_reserved_escape_prefix, rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy, rust_serde_tag, rust_serde_rename_template, rust_source_extension, rust_source_dir, rust_visibility, rust_string_types, rust_method_templates, rust_func_keyword, rust_async_prefix, rust_struct_keyword, rust_enum_keyword, rust_type_alias_keyword, rust_param_separator, rust_return_arrow, rust_param_type_sep, rust_module_keyword, rust_import_keyword, rust_import_from_keyword, rust_lambda_template, rust_error_expr_template, rust_list_literal_empty, rust_list_literal_template, rust_null_coalesce_template, rust_error_type_template, rust_type_arg_open, rust_type_arg_close, rust_void_type, rust_tuple_empty, rust_tuple_pair_template, rust_tuple_multi_template, rust_tuple_separator};
+pub use crate::extdeps_languages_python_emit::{python_keywords, python_reserved, python_reserved_escape_suffix, python_derive_attribute, python_default_value, python_source_extension, python_module_init, python_method_templates, python_string_types, python_func_keyword, python_async_prefix, python_struct_keyword, python_enum_keyword, python_type_alias_keyword, python_param_separator, python_return_arrow, python_param_type_sep, python_module_keyword, python_import_keyword, python_import_from_keyword, python_lambda_template, python_error_expr_template, python_list_literal_empty, python_list_literal_template, python_null_coalesce_template, python_error_type_template, python_type_arg_open, python_type_arg_close, python_void_type, python_tuple_empty, python_tuple_pair_template, python_tuple_multi_template, python_tuple_separator};
+pub use crate::extdeps_languages_go_emit::{go_keywords, go_reserved, go_reserved_escape_suffix, go_manifest_file, go_method_templates, go_string_types, go_func_keyword, go_async_prefix, go_struct_keyword, go_enum_keyword, go_type_alias_keyword, go_param_separator, go_return_arrow, go_param_type_sep, go_module_keyword, go_import_keyword, go_import_from_keyword, go_lambda_template, go_error_expr_template, go_list_literal_empty, go_list_literal_template, go_null_coalesce_template, go_error_type_template, go_type_arg_open, go_type_arg_close, go_void_type, go_tuple_empty, go_tuple_pair_template, go_tuple_multi_template, go_tuple_separator};
+pub use crate::extdeps_languages_dag_emit::{dag_keywords, dag_container_templates, dag_reserved, dag_string_types, dag_func_keyword, dag_async_prefix, dag_struct_keyword, dag_enum_keyword, dag_type_alias_keyword, dag_param_separator, dag_return_arrow, dag_param_type_sep, dag_module_keyword, dag_import_keyword, dag_import_from_keyword, dag_source_extension, dag_lambda_template, dag_error_expr_template, dag_list_literal_empty, dag_list_literal_template, dag_null_coalesce_template, dag_error_type_template, dag_type_arg_open, dag_type_arg_close, dag_void_type, dag_tuple_empty, dag_tuple_pair_template, dag_tuple_multi_template, dag_tuple_separator};
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
 use ImportTrigger::*;
@@ -253,6 +254,24 @@ pub struct LanguageSpec {
     pub tco: Rc<TcoSyntax>,
     pub items: Rc<ItemKeywords>,
     pub expression_semantics: Rc<ExpressionSemantics>,
+    pub lambda_template: String,
+    pub error_expr_template: String,
+    pub list_literal_empty: String,
+    pub list_literal_template: String,
+    pub null_coalesce_template: String,
+    pub error_type_template: String,
+    pub type_arg_open: String,
+    pub type_arg_close: String,
+    pub void_type: String,
+    pub tuple_syntax: Rc<TupleSyntax>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TupleSyntax {
+    pub empty: String,
+    pub pair_template: String,
+    pub multi_template: String,
+    pub separator: String,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -364,6 +383,21 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     expression_semantics: Rc::new(ExpressionSemantics {
     if_value_form: IfValueForm::IfExpression,
     wildcard_case: None,
+}),
+    lambda_template: rust_lambda_template(),
+    error_expr_template: rust_error_expr_template(),
+    list_literal_empty: rust_list_literal_empty(),
+    list_literal_template: rust_list_literal_template(),
+    null_coalesce_template: rust_null_coalesce_template(),
+    error_type_template: rust_error_type_template(),
+    type_arg_open: rust_type_arg_open(),
+    type_arg_close: rust_type_arg_close(),
+    void_type: rust_void_type(),
+    tuple_syntax: Rc::new(TupleSyntax {
+    empty: rust_tuple_empty(),
+    pair_template: rust_tuple_pair_template(),
+    multi_template: rust_tuple_multi_template(),
+    separator: rust_tuple_separator(),
 }),
 })
 }
@@ -478,6 +512,21 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     if_value_form: IfValueForm::ConditionalTernary,
     wildcard_case: None,
 }),
+    lambda_template: python_lambda_template(),
+    error_expr_template: python_error_expr_template(),
+    list_literal_empty: python_list_literal_empty(),
+    list_literal_template: python_list_literal_template(),
+    null_coalesce_template: python_null_coalesce_template(),
+    error_type_template: python_error_type_template(),
+    type_arg_open: python_type_arg_open(),
+    type_arg_close: python_type_arg_close(),
+    void_type: python_void_type(),
+    tuple_syntax: Rc::new(TupleSyntax {
+    empty: python_tuple_empty(),
+    pair_template: python_tuple_pair_template(),
+    multi_template: python_tuple_multi_template(),
+    separator: python_tuple_separator(),
+}),
 })
 }
 
@@ -591,6 +640,147 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     if_value_form: IfValueForm::IfStatement,
     wildcard_case: Some("default".to_string()),
 }),
+    lambda_template: go_lambda_template(),
+    error_expr_template: go_error_expr_template(),
+    list_literal_empty: go_list_literal_empty(),
+    list_literal_template: go_list_literal_template(),
+    null_coalesce_template: go_null_coalesce_template(),
+    error_type_template: go_error_type_template(),
+    type_arg_open: go_type_arg_open(),
+    type_arg_close: go_type_arg_close(),
+    void_type: go_void_type(),
+    tuple_syntax: Rc::new(TupleSyntax {
+    empty: go_tuple_empty(),
+    pair_template: go_tuple_pair_template(),
+    multi_template: go_tuple_multi_template(),
+    separator: go_tuple_separator(),
+}),
+})
+}
+
+pub fn dag_spec() -> Rc<LanguageSpec> {
+    Rc::new(LanguageSpec {
+    target_name: "dag".to_string(),
+    reserved_words: Rc::new(ReservedWords {
+    keywords: dag_reserved(),
+    strategy: Rc::new(ReservedWordStrategy::NoEscape),
+}),
+    scaffold: Rc::new(ProjectScaffold {
+    manifest_file: None,
+    module_init_file: None,
+    source_file_extension: dag_source_extension(),
+    source_dir: None,
+}),
+    serialization: Rc::new(SerializationSpec {
+    struct_derives: None,
+    struct_derives_copy: None,
+    enum_derives: None,
+    enum_derives_copy: None,
+    tag_attribute: None,
+    rename_attribute_template: None,
+    derive_attribute: None,
+    default_value: None,
+}),
+    test_conventions: Rc::new(TestConventions {
+    file_prefix: "test_".to_string(),
+    file_suffix: "".to_string(),
+    file_dir: Some("tests/".to_string()),
+    function_prefix: "test_".to_string(),
+    name_style: TestNameStyle::SnakeCaseTestNames,
+    async_decorator: None,
+}),
+    visibility: Rc::new(VisibilitySpec::KeywordVisibility {
+    prefix: "".to_string(),
+}),
+    sharing: Rc::new(SharingStrategy {
+    needs_sharing: true,
+    wrap_template: "Rc<{0}>".to_string(),
+    clone_value: "{0}.clone()".to_string(),
+    deref_clone: "(*{0}).clone()".to_string(),
+    field_clone: "{0}.{1}.clone()".to_string(),
+    iter_owned: "{0}.iter().cloned()".to_string(),
+    clone_suffix: ".cloned()".to_string(),
+    borrow_param_template: "&{0}".to_string(),
+    borrow_arg_template: "&{0}".to_string(),
+}),
+    indexing: Rc::new(IndexingSemantics {
+    list_index: "{0}[({1}) as usize].clone()".to_string(),
+    map_index: "({0}).get(&{1}).cloned()".to_string(),
+    string_index: "v2_rt::char_at(&{0}, {1})".to_string(),
+    list_slice: None,
+    string_slice: Some("v2_rt::substring(&{0}, {1}, {2})".to_string()),
+}),
+    annotations: Rc::new(AnnotationRequirements {
+    let_binding_inferred: "let {0} = {1}".to_string(),
+    let_binding_annotated: "let {0}: {1} = {2}".to_string(),
+    lambda_param_typed: "{0}: {1}".to_string(),
+    lambda_param_untyped: "{0}".to_string(),
+}),
+    method_templates: Some(rust_method_templates()),
+    service_fields: Rc::new(ServiceFieldTemplates {
+    rest_decl: "    pub base_url: String,\n".to_string(),
+    auth_decl: "    pub auth_token: String,\n".to_string(),
+    shell_decl: "    pub working_dir: Option<String>,\n".to_string(),
+    file_decl: "    pub base_path: String,\n".to_string(),
+    rest_ctor: "        base_url: \"{0}\".to_string(),\n".to_string(),
+    auth_ctor: "        auth_token: String::new(),\n".to_string(),
+    shell_ctor: "        working_dir: None,\n".to_string(),
+    file_ctor: "        base_path: \".\".to_string(),\n".to_string(),
+}),
+    block_syntax: Rc::new(BlockSyntax {
+    block_open: " {\n".to_string(),
+    block_close: "}".to_string(),
+    else_clause: "} else {\n".to_string(),
+    match_keyword: "match ".to_string(),
+    case_keyword: "".to_string(),
+    arm_separator: ",".to_string(),
+    stmt_terminator: ";".to_string(),
+    significant_whitespace: false,
+}),
+    for_each_syntax: Rc::new(ForEachSyntax {
+    prefix: "for ".to_string(),
+    separator: " in ".to_string(),
+}),
+    tco: Rc::new(TcoSyntax {
+    loop_keyword: "loop".to_string(),
+    break_return: "break".to_string(),
+    continue_str: "continue;".to_string(),
+    temp_var_prefix: "__tco_".to_string(),
+    temp_decl_prefix: "let ".to_string(),
+    temp_assign_op: " = ".to_string(),
+}),
+    items: Rc::new(ItemKeywords {
+    func_keyword: dag_func_keyword(),
+    async_prefix: dag_async_prefix(),
+    struct_keyword: dag_struct_keyword(),
+    enum_keyword: dag_enum_keyword(),
+    type_alias_keyword: dag_type_alias_keyword(),
+    param_separator: dag_param_separator(),
+    return_arrow: dag_return_arrow(),
+    param_type_sep: dag_param_type_sep(),
+    module_keyword: dag_module_keyword(),
+    import_keyword: dag_import_keyword(),
+    import_from_keyword: dag_import_from_keyword(),
+}),
+    expression_semantics: Rc::new(ExpressionSemantics {
+    if_value_form: IfValueForm::IfExpression,
+    wildcard_case: None,
+}),
+    lambda_template: dag_lambda_template(),
+    error_expr_template: dag_error_expr_template(),
+    list_literal_empty: dag_list_literal_empty(),
+    list_literal_template: dag_list_literal_template(),
+    null_coalesce_template: dag_null_coalesce_template(),
+    error_type_template: dag_error_type_template(),
+    type_arg_open: dag_type_arg_open(),
+    type_arg_close: dag_type_arg_close(),
+    void_type: dag_void_type(),
+    tuple_syntax: Rc::new(TupleSyntax {
+    empty: dag_tuple_empty(),
+    pair_template: dag_tuple_pair_template(),
+    multi_template: dag_tuple_multi_template(),
+    separator: dag_tuple_separator(),
+}),
 })
 }
 
@@ -599,7 +789,7 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
     RenderTarget::Rust => rust_spec(),
     RenderTarget::Go => go_spec(),
     RenderTarget::Python => python_spec(),
-    RenderTarget::Dag => rust_spec(),
+    RenderTarget::Dag => dag_spec(),
 }
 }
 
