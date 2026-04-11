@@ -35,6 +35,8 @@ import v2.std.core {
   TextFile, SourceSpan,
   BinOp, UnaryOpKind, NullCoalesce, AlgebraFieldKind,
   DeclaredFuncSig,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
+  MatchPattern, Wildcard,
   lambda_param_names_at, record_lit_type_name_at,
   arm_body, arm_pattern, arm_guard,
   arg_name_at, arg_value,
@@ -2233,6 +2235,203 @@ fn emit_typed_first_arg_shared(args: List<Node>, target: RenderTarget, recurse: 
   match args |> first {
     Some { value: a } => recurse(arg_value(n: a))
     None => emit_error_expr(message: "missing method argument", target: target)
+  }
+}
+
+// =========================================================================
+// Unified typed expression handlers (Phase 2)
+//
+// These replace per-language typed_* functions. Each reads LanguageSpec
+// data instead of branching on target. The `recurse` callback is the
+// caller's expression entry point (emit_py_typed_expr / emit_go_typed_expr
+// during transition; emit_unified_typed_expr once fully unified).
+// =========================================================================
+
+// Unified typed string interpolation — reads StringInterpSyntax from LanguageSpec.
+// Same model as emit_simple_string_interp but uses `recurse` for expression rendering.
+fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+  let spec = language_spec(target: target)
+  let interp = spec.string_interp
+  let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
+  match interp.style {
+    FormatArgs =>
+      let fmt_parts = parts |> map(p => match p {
+        Text { value: v } =>
+          let base = escape_string_literal_body(s: v)
+          let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
+          InterpPart { format_segment: escaped, arg_expr: "" }
+        Interpolation { expr: e } =>
+          InterpPart { format_segment: interp.placeholder, arg_expr: recurse(e) }
+      })
+      let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
+      let args = fmt_parts |> map(p => p.arg_expr) |> filter(a => a != "")
+      if args |> count == 0 {
+        apply_type_template1(template: interp.plain_template, arg0: fmt_str)
+      } else {
+        let args_str = args |> join(separator: ", ")
+        apply_type_template2(template: interp.format_template, arg0: fmt_str, arg1: args_str)
+      }
+    InlineExpr =>
+      let segments = parts |> map(p => match p {
+        Text { value: v } =>
+          let base = escape_string_literal_body(s: v)
+          if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
+        Interpolation { expr: e } =>
+          concat("{", recurse(e), "}")
+      })
+      apply_type_template1(template: interp.format_template, arg0: segments |> join(separator: ""))
+  }
+}
+
+// Unified typed record literal — reads RecordLitSyntax from LanguageSpec.
+fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target: RenderTarget, source_index: NewlineIndex?, recurse: fn(Node) -> String) -> String {
+  let rls = language_spec(target: target).record_lit
+  match type_name {
+    None => {
+      if fields |> count == 0 {
+        rls.anon_empty
+      } else {
+        let field_strs = fields |> map(f =>
+          concat(rls.anon_field_indent, "\"", field_init_node_name_at(n: f, source_index: source_index), "\": ", recurse(field_init_node_value(n: f)), ",")
+        )
+        let fields_str = field_strs |> join(separator: "\n")
+        concat(rls.anon_prefix, fields_str, "\n", rls.anon_suffix)
+      }
+    }
+    Some { value: tn } =>
+      if fields |> count == 0 {
+        concat(tn, rls.named_empty)
+      } else {
+        let field_strs = fields |> map(f =>
+          concat(emit_export_ident(name: field_init_node_name_at(n: f, source_index: source_index), target: target), rls.named_field_sep, recurse(field_init_node_value(n: f)))
+        )
+        let fields_str = field_strs |> join(separator: rls.named_field_join)
+        concat(tn, rls.named_open, fields_str, rls.named_close)
+      }
+  }
+}
+
+// Unified typed call — reads async_call_prefix from LanguageSpec, uses emit_export_ident.
+fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, recurse: fn(Node) -> String) -> String {
+  let spec = language_spec(target: target)
+  let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
+  let arg_strs = ordered_args |> map(a => recurse(arg_value(n: a)))
+  let callee = lookup_item(registry: registry, name: func)
+  let extra_args = match callee {
+    Some { value: info } =>
+      let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0
+      if has_effects {
+        let resource_args = info.resource_names |> map(rn => emit_ident(name: rn, target: target))
+        let service_args = info.service_names |> map(sn => service_var_name(service_name: sn))
+        concat(resource_args, service_args)
+      } else { [] }
+    None => []
+  }
+  let all_args = concat(arg_strs, extra_args)
+  let args_str = all_args |> join(separator: ", ")
+  let call_str = concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
+  match callee {
+    Some { value: info } =>
+      let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0
+      if has_effects { concat(spec.async_call_prefix, call_str) } else { call_str }
+    None => call_str
+  }
+}
+
+// Unified bridge method name: applies case conversion + overrides from LanguageSpec.
+fn bridge_method_name_unified(method_name: String, target: RenderTarget) -> String {
+  let spec = language_spec(target: target)
+  let overridden = apply_bridge_method_overrides(name: method_name, overrides: spec.bridge_method_overrides)
+  apply_naming_case(name: overridden, case_style: spec.bridge_method_case)
+}
+
+// Unified algebra method call — tries template, falls back to bridge function.
+fn emit_algebra_method_call_unified(method_name: String, receiver: Node, args: List<Node>, target: RenderTarget, first_arg_str: String, recurse: fn(Node) -> String) -> String {
+  let spec = language_spec(target: target)
+  let recv_str = recurse(receiver)
+  match emit_algebra_method_template(method_name: method_name, recv_str: recv_str, first_arg_str: first_arg_str, target: target) {
+    Some { value: result } => result
+    None =>
+      let function_name = bridge_method_name_unified(method_name: method_name, target: target)
+      let arg_strs = args |> map(a => recurse(arg_value(n: a)))
+      let all_args = concat([recv_str], arg_strs)
+      concat(spec.bridge_method_prefix, emit_export_ident(name: function_name, target: target), "(", all_args |> join(separator: ", "), ")")
+  }
+}
+
+// Unified plain method call.
+fn emit_plain_method_call_unified(receiver: Node, method: String, args: List<Node>, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+  let recv_str = recurse(receiver)
+  let arg_strs = args |> map(a => recurse(arg_value(n: a)))
+  let args_str = arg_strs |> join(separator: ", ")
+  concat(recv_str, ".", emit_export_ident(name: method, target: target), "(", args_str, ")")
+}
+
+// Unified typed method call — dispatches on MethodSemantics, reads LanguageSpec.
+fn emit_typed_method_call_unified(receiver: Node, method: String, args: List<Node>, method_semantics: MethodSemantics?, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, recurse: fn(Node) -> String) -> String {
+  let spec = language_spec(target: target)
+  let source_index = scope.type_env.source_index
+  if method_semantics != none { match method_semantics.value {
+    ServiceMethodSemantics { service_name: svc_name } => {
+      let var_name = service_var_name(service_name: svc_name)
+      let arg_strs = args |> map(a => recurse(arg_value(n: a)))
+      let args_str = arg_strs |> join(separator: ", ")
+      concat(spec.async_call_prefix, var_name, ".", emit_export_ident(name: method, target: target), "(", args_str, ")")
+    }
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } =>
+      let mn = method_def.name
+      let first_arg_str = emit_typed_first_arg_shared(args: args, target: target, recurse: recurse)
+      emit_algebra_method_call_unified(method_name: mn, receiver: receiver, args: args, target: target, first_arg_str: first_arg_str, recurse: recurse)
+    PlainMethodSemantics =>
+      emit_plain_method_call_unified(receiver: receiver, method: method, args: args, target: target, recurse: recurse)
+  } }
+  else {
+    if is_typed_service_call_receiver(receiver: receiver, source_index: source_index) {
+      match extract_typed_service_name(receiver: receiver, source_index: source_index) {
+        Some { value: svc_name } =>
+          let var_name = service_var_name(service_name: svc_name)
+          let arg_strs = args |> map(a => recurse(arg_value(n: a)))
+          let args_str = arg_strs |> join(separator: ", ")
+          concat(spec.async_call_prefix, var_name, ".", emit_export_ident(name: method, target: target), "(", args_str, ")")
+        None => spec.service_error_fallback
+      }
+    } else {
+      emit_plain_method_call_unified(receiver: receiver, method: method, args: args, target: target, recurse: recurse)
+    }
+  }
+}
+
+// Unified typed match — reads BlockSyntax, takes pattern renderer as callback.
+// Indent model: significant_whitespace languages indent case arms (depth+1/depth+2),
+// brace languages keep arms at depth level (depth/depth+1).
+fn emit_typed_match_unified(scrutinee_str: String, arms: List<Node>, target: RenderTarget, depth: Int, recurse: fn(Node, Int) -> String, render_pattern: fn(MatchPattern) -> String, source_index: NewlineIndex?) -> String {
+  let spec = language_spec(target: target)
+  let bs = spec.block_syntax
+  let es = spec.expression_semantics
+  let case_depth = if bs.significant_whitespace { depth + 1 } else { depth }
+  let body_depth = case_depth + 1
+  let arm_strs = arms |> map(arm =>
+    let pat = arm_pattern(n: arm)
+    let body_str = recurse(arm_body(n: arm), body_depth)
+    let guard_str = match arm_guard(n: arm) {
+      Some { value: g } => concat(" if ", recurse(g, depth))
+      None => ""
+    }
+    let case_kw = match pat {
+      Wildcard => match es.wildcard_case {
+        Some { value: wc } => wc
+        None => concat(bs.case_keyword, render_pattern(pat))
+      }
+      _ => concat(bs.case_keyword, render_pattern(pat))
+    }
+    concat(make_indent(level: case_depth), case_kw, guard_str, ":\n",
+      make_indent(level: body_depth), body_str)
+  )
+  let arms_str = arm_strs |> join(separator: "\n")
+  if bs.block_close == "" {
+    concat(bs.match_keyword, scrutinee_str, bs.block_open, arms_str)
+  } else {
+    concat(bs.match_keyword, scrutinee_str, bs.block_open, arms_str, "\n", make_indent(level: depth), bs.block_close)
   }
 }
 
