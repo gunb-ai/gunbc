@@ -111,12 +111,23 @@ aggregates via scope-blind string matching (see pipeline.rs).
 
 ## Workboard
 
-### Layer 1: Last-use elision (unblocked)
+### Layer 1: Last-use elision (blocked on stable binding identity)
+
+Threading last-use facts through the emit boundary requires stable
+binding identity. A name-keyed Map<String, Int> collapses distinct
+bindings with the same authored name, violating the explicit boundary
+contracts invariant. The ownership-internal span_start data is correct,
+but cannot be exposed at the emit boundary until bindings have unique
+identifiers.
+
+**Blocked on:** Track 3 (stable binding identity via InternTable or
+declaration span). Once bindings have unique identifiers, last-use
+facts can flow through EmitGraphInfo without lossy name collisions.
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| O1 | Track use-site ordering in BindingUsage | Test: `binding_last_use_index` returns correct position | — | Not started |
-| O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | Test: compile .dag with known fan-out, assert last use has no `.clone()` in emitted Rust | Hardcoded `.clone()` at use sites | Not started |
+| O1 | Track use-site ordering in BindingUsage | span_start populated in walk_expr | — | Not started (needs identity-keyed table) |
+| O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | Needs stable binding identity at emit boundary | — | Blocked on Track 3 |
 | O3 | V1 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V1 = 0 | — | Not started |
 
 ### Layer 2: Post-TCO ownership (unblocked)
